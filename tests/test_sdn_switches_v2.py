@@ -58,12 +58,29 @@ def tab(net, monkeypatch):  # noqa: F811 - the fixture, used
             "ctl": ctl}
 
 
-def _record(device, outcome, sha, dpid_hex=""):
-    flow_intent.record_operation(LIST, {
+def _record(device, outcome, sha, dpid_hex="", source=None):
+    row = {
         "id": f"ofcfg-{device}", "actor": ACTOR, "at": "2026-11-10T02:00:00Z",
         "outcome": outcome, "dpid_hex": dpid_hex, "export_sha256": sha,
         "verify": {"checks": [{"name": "x", "state": "pass", "words": "the read-back"}]},
-        "response": {"kind": "openflow_config", "device": device, "template": "arista_eos"}})
+        "response": {"kind": "openflow_config", "device": device, "template": "arista_eos"}}
+    if source is not None:
+        row["source"] = source
+    flow_intent.record_operation(LIST, row)
+
+
+def _origins(device):
+    """*device*'s origins in the committed export, as a configuration made now records them."""
+    from modules.nsot import export as X
+    from modules.sdn import openflow_values as V
+    return V.from_export(X.read(LIST)["export"], device)["origins"]
+
+
+def _state_cell(html: str, device: str) -> str:
+    """*device*'s State cell, as text a person reads (tags dropped, spaces folded)."""
+    row = re.search(rf'<tr class="of-row" data-switch="{device}">(.*?)</tr>', html, re.S).group(1)
+    cell = re.search(r'<td data-l="State">(.*?)</td>', row, re.S).group(1)
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", cell)).split())
 
 
 def _groups(html: str) -> dict:
@@ -105,9 +122,58 @@ class TestTheVerifyView:
     def test_an_export_committed_since_a_configuration_draws_it_as_differing(self, tab):
         _record("arista-sw1", "verified", "f" * 64, f"{DPIDS['arista-sw1']:016x}")
         html = tab["client"].get(f"{BASE}/view?list={LIST}").get_data(as_text=True)
-        assert "arista-sw1" in _groups(html)["differs"]
+        # The operator, the Lab 9 sitting (2026-11-10): it is NetBox that changed, and the
+        # row says so, never "Differs from intent" as though the switch had drifted.
+        groups = _groups(html)
+        assert "arista-sw1" in groups["netbox_changed"] and "differs" not in groups
         assert "not the committed one" in unescape(html)
+        cell = _state_cell(html, "arista-sw1")
+        assert cell.startswith("NetBox changed since configured")
+        # This record kept no origins (it is from before they were kept): nothing is guessed.
+        assert "which of its values changed is not known" in cell
+        assert "fffffff" in cell and tab["sha"][:7] in cell
         assert tab["opened"] == []
+
+    def test_netbox_changed_names_each_value_before_and_after_and_both_exports(self, tab):
+        """A switch configured from an earlier export, its record keeping what it was built
+        from: the row names the value NetBox changed, before → after, and each export's
+        commit. One whose values are the same in both says so; a rollback still differs."""
+        from modules.nsot import export as X
+        was = [dict(o, **{"is": "192.0.2.9:6653"}) if o["value"] == "controller" else dict(o)
+               for o in _origins("arista-sw1")]
+        assert [o["is"] for o in _origins("arista-sw1") if o["value"] == "controller"] == \
+            ["192.0.2.1:6653"], "the fixture's controller, changed in the record above"
+        _record("arista-sw1", "verified", "f" * 64, f"{DPIDS['arista-sw1']:016x}",
+                source={"export_sha256": "f" * 64, "export_commit": "a" * 40, "origins": was})
+        _record("arista-sw2", "verified", "e" * 64,
+                source={"export_sha256": "e" * 64, "export_commit": "b" * 40,
+                        "origins": _origins("arista-sw2")})
+        _record("procurve-sw", "rolled_back", "d" * 64)
+        html = tab["client"].get(f"{BASE}?list={LIST}").get_data(as_text=True)
+        groups = _groups(html)
+        assert groups["netbox_changed"] == ["arista-sw1", "arista-sw2"]
+        assert groups["differs"] == ["procurve-sw"], "a rollback is the switch's, not NetBox's"
+        text = unescape(html)
+        assert '<strong class="tone-warn">2</strong> NetBox changed since configured' in text
+        assert '<strong class="tone-danger">1</strong> differs from intent' in text
+        cell = _state_cell(html, "arista-sw1")
+        assert cell.startswith("NetBox changed since configured")
+        assert "controller : 192.0.2.9:6653 → 192.0.2.1:6653" in cell
+        assert "version" not in cell, "a value that did not change is not listed"
+        commit = X.last_commit(LIST)["commit"]
+        row = re.search(r'data-switch="arista-sw1">(.*?)</tr>', html, re.S).group(1)
+        assert f"/v2/history?commit={'a' * 40}" in row and ">fffffff</span>" in row
+        assert f"/v2/history?commit={commit}" in row and f">{tab['sha'][:7]}</span>" in row
+        assert "The switch was not read" in cell
+        same = _state_cell(html, "arista-sw2")
+        assert "none of the values recorded for arista-sw2 changed: NetBox changed elsewhere" \
+            in same and "→" not in same
+        assert _state_cell(html, "procurve-sw") == "Differs from intent"
+        # The filter narrows to the new state, and the view read no switch.
+        only = tab["client"].get(f"{BASE}/view?list={LIST}&state=netbox_changed")
+        assert _groups(only.get_data(as_text=True)) == {
+            "netbox_changed": ["arista-sw1", "arista-sw2"]}
+        assert tab["opened"] == [] and tab["ctl"].reads == 0
 
     @pytest.mark.parametrize("query,want", [
         ("state=not_configured", {"not_configured": ["arista-sw1", "arista-sw2", "ovs2",
@@ -129,6 +195,50 @@ class TestTheVerifyView:
         assert "has no committed NSOT export" in html and "Export it from NetBox on SDN › Apps" \
             in html
         assert _groups(html) == {} and tab["opened"] == []
+
+
+class TestWhatNetBoxChanged:
+    """`netbox_moved`: the two exports' values compared, never the switch; an IPv6 controller
+    beside an IPv4 one (docs/IPV6_PARITY.md)."""
+
+    @pytest.mark.parametrize("before,after", [
+        ("192.0.2.9:6653", "192.0.2.1:6653"),
+        ("[2001:db8::9]:6653", "[2001:db8::1]:6653"),
+        ("192.0.2.9:6653", "[2001:db8::1]:6653")], ids=["ipv4", "ipv6", "ipv4 to ipv6"])
+    def test_a_changed_controller_is_named_before_and_after(self, before, after):
+        from modules import sdn_switches_page as P
+        record = {"export_sha256": "f" * 64, "source": {
+            "export_sha256": "f" * 64, "export_commit": "a" * 40, "origins": [
+                {"value": "controller", "is": before, "from": "NetBox Service 'openflow'"},
+                {"value": "version", "is": "1.3", "from": "the config context"},
+                {"value": "DPID", "is": "", "from": "custom field openflow_datapath_id"}]}}
+        now = [{"value": "controller", "is": after, "from": "NetBox Service 'openflow'"},
+               {"value": "version", "is": "1.3", "from": "Mercury's default"},
+               {"value": "DPID", "is": "", "from": "custom field openflow_datapath_id"},
+               {"value": "OpenFlow VLAN", "is": "200", "from": "the untagged VLAN"}]
+        got = P.netbox_moved("lab9", record, "c" * 64, "b" * 40, now)
+        assert got["known"] and got["changes"] == [
+            {"value": "controller", "before": before, "after": after},
+            {"value": "OpenFlow VLAN", "before": "not given", "after": "200"}]
+        assert (got["from_sha"], got["from_commit"], got["to_sha"], got["to_commit"]) == \
+            ("f" * 64, "a" * 40, "c" * 64, "b" * 40)
+
+    def test_a_record_that_kept_no_origins_guesses_nothing(self):
+        from modules import sdn_switches_page as P
+        got = P.netbox_moved("lab9", {"export_sha256": "f" * 64}, "c" * 64, "b" * 40,
+                             [{"value": "controller", "is": "192.0.2.1:6653", "from": "x"}])
+        assert got["known"] is False and got["changes"] == [] and got["from_commit"] == ""
+
+    @pytest.mark.parametrize("record,want", [
+        ({"outcome": "rolled_back", "export_sha256": "f" * 64}, "differs"),
+        ({"outcome": "rollback_failed", "export_sha256": "c" * 64}, "differs"),
+        ({"outcome": "verified", "export_sha256": "f" * 64}, "netbox_changed"),
+        ({"outcome": "unverified", "export_sha256": "f" * 64}, "netbox_changed"),
+        ({"outcome": "verified", "export_sha256": "c" * 64}, "connected"),
+        (None, "connected")])
+    def test_a_failure_is_the_switch_s_and_a_moved_export_is_netbox_s(self, record, want):
+        from modules import sdn_switches_page as P
+        assert P.state_of(record, 7, {7}, "c" * 64) == want
 
 
 # --------------------------------------------------------------------------- configure
@@ -199,6 +309,54 @@ class TestConfigureFromNetBox:
             "list": LIST, "hash": f["hash"][0], "plan": f["plan"]}).get_data(as_text=True))
         assert "Configured 0 of 1" in out and "moved since the preview" in out
         assert sw.sets == []
+
+    def test_an_ovs_bridge_previews_its_whole_transaction_then_already_as_intended(
+            self, tab, monkeypatch):
+        """The preview card of an Open vSwitch server (the operator, the Lab 9 sitting): it
+        draws the exact `ovs-vsctl` transaction, which is byte for byte what the confirm
+        then sends; and a bridge that needs nothing previews as "already as intended",
+        "nothing is sent", with no program drawn and nothing sent on its confirm."""
+        from modules import discovery
+        from modules.nsot import reads
+        from modules.sdn import ovs
+        from tests.test_openflow_config import FakeOvs, Server
+        fake = FakeOvs()
+        monkeypatch.setattr("modules.connection.with_temp_connection", Server(fake))
+        monkeypatch.setattr("modules.commands.run_device_command",
+                            lambda conn, c, **kw: "Bridge br0\n")
+        run = reads.run(LIST, ["ovs1"], ["sudo -n ovs-vsctl show"], ACTOR,
+                        session=lambda dev, fn: fn(None))
+        assert T.confirm(LIST, "ovs", discovery.capture_name(
+            "ovs1", "sudo -n ovs-vsctl show", run["id"]), ACTOR, "access-assertion")["ok"]
+        c = tab["client"]
+
+        def writes():
+            return [x for x in fake.sent if ovs.write_refusal(x) == ""]
+        r = c.post(f"{BASE}/configure/preview", data={"list": LIST, "device": "ovs1"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "ovs1 · Open vSwitch (one OVSDB transaction)" in html
+        (program,) = re.findall(r'<pre class="mono small of-program">(.*?)</pre>', html, re.S)
+        program = unescape(program)
+        assert program.startswith("sudo -n ovs-vsctl --may-exist add-br ")
+        assert " -- set-controller " in program and "tcp:192.0.2.1:6653" in program
+        assert "already as intended" not in html and writes() == [], "a preview sends nothing"
+        f = _fields(html)
+        # (The controller of the fixture lists datapath 3, the one NetBox gives ovs1.)
+        done = c.post(f"{BASE}/configure/confirm", data={"list": LIST, "hash": f["hash"][0],
+                                                         "plan": f["plan"]})
+        assert "Configured 1 of 1" in done.get_data(as_text=True)
+        assert writes() == [program], "what the preview drew is what was sent, byte for byte"
+        # The bridge now reads as its program sets it: the next preview says so.
+        again = unescape(c.post(f"{BASE}/configure/preview", data={
+            "list": LIST, "device": "ovs1"}).get_data(as_text=True))
+        assert "already as intended</span>" in again
+        assert ("ovs1 already reads as its program sets it: nothing is sent; Verify still "
+                "reads it back and the controller's switch list") in again
+        assert 'class="mono small of-program"' not in again and "<dt>Changes</dt>" not in again
+        f = _fields(again)
+        out = unescape(c.post(f"{BASE}/configure/confirm", data={
+            "list": LIST, "hash": f["hash"][0], "plan": f["plan"]}).get_data(as_text=True))
+        assert "already as intended, nothing sent" in out and writes() == [program]
 
     def _configure(self, tab, monkeypatch, devices):
         """Preview then confirm *devices* through the two routes; the result card's text."""
@@ -394,22 +552,34 @@ def test_a_held_preview_and_result_draw_every_row_and_the_note_as_one_thin_bar(t
 # --------------------------------------------------------------------------- the templates card
 
 class TestTheTemplatesCard:
-    def _capture(self, monkeypatch):
+    def _capture(self, monkeypatch, command="show running-config"):
         from modules import discovery
         from modules.nsot import reads
         monkeypatch.setattr("modules.commands.run_device_command",
                             lambda conn, c, **kw: "openflow\n   no shutdown\n")
-        r = reads.run(LIST, ["arista-sw1"], ["show running-config"], ACTOR,
+        r = reads.run(LIST, ["arista-sw1"], [command], ACTOR,
                       session=lambda dev, fn: fn(None))
-        return discovery.capture_name("arista-sw1", "show running-config", r["id"])
+        return discovery.capture_name("arista-sw1", command, r["id"])
+
+    @staticmethod
+    def _picker(page: str, template: str = "arista_eos") -> dict:
+        """*template*'s capture picker on the page: ``{"options": [names, in order],
+        "selected": [the names drawn selected]}``."""
+        m = re.search(rf'<select id="of-cap-{template}"[^>]*>(.*?)</select>', page, re.S)
+        if not m:
+            return {"options": [], "selected": []}
+        opts = re.findall(r'<option value="([^"]+)"( selected)?>', m.group(1))
+        return {"options": [unescape(n) for n, _s in opts],
+                "selected": [unescape(n) for n, s in opts if s]}
 
     def test_confirm_against_a_capture_commits_bound_to_both_hashes(self, tab, net, monkeypatch):
         c = tab["client"]
         before = unescape(c.get(f"{BASE}?list={LIST}").get_data(as_text=True))
-        assert "no capture of a Arista EOS device on lab9" in before
+        assert ("Not available: no capture of show running-config from lab9's Arista EOS "
+                "devices") in before
         name = self._capture(monkeypatch)
         page = c.get(f"{BASE}?list={LIST}").get_data(as_text=True)
-        assert f'<option value="{name}">' in page
+        assert f'<option value="{name}" selected>' in page
         r = c.post(f"{BASE}/template/preview", data={"list": LIST, "template": "arista_eos",
                                                      "capture": name})
         html = unescape(r.get_data(as_text=True))
@@ -436,6 +606,139 @@ class TestTheTemplatesCard:
         html = unescape(r.get_data(as_text=True))
         assert r.status_code == 409 and "eeeeeeeeeeee" in html and "nothing was committed" in html
         assert T.status(LIST, "arista_eos")["status"] == T.DRAFT
+
+    def test_the_picker_starts_on_the_newest_capture_of_the_configuration_read(
+            self, tab, monkeypatch):
+        """C3012 (the operator, the Lab 9 sitting): the picker defaulted to the newest capture
+        of any command. A template's lines are configuration, so it offers the captures of
+        the device's configuration read, newest first, and starts on the newest; a newer
+        capture of another command is never the default, and is not offered."""
+        c = tab["client"]
+        first = self._capture(monkeypatch)
+        version = self._capture(monkeypatch, "show version")
+        got = self._picker(c.get(f"{BASE}?list={LIST}").get_data(as_text=True))
+        assert got == {"options": [first], "selected": [first]}, (got, version)
+        newer = self._capture(monkeypatch)
+        self._capture(monkeypatch, "show openflow")
+        page = c.get(f"{BASE}?list={LIST}").get_data(as_text=True)
+        assert self._picker(page) == {"options": [newer, first], "selected": [newer]}
+        assert "captures of show running-config from its Arista EOS devices, newest first" \
+            in unescape(page)
+        assert tab["opened"] == []
+
+    def test_no_capture_of_the_command_and_reads_that_cannot_be_read_are_said_apart(
+            self, tab, monkeypatch):
+        c = tab["client"]
+        self._capture(monkeypatch, "show version")
+        page = unescape(c.get(f"{BASE}?list={LIST}").get_data(as_text=True))
+        row = re.search(r'<td data-l="Template" class="mono">arista_eos</td>(.*?)</tr>', page,
+                        re.S).group(1)
+        said = " ".join(re.sub(r"<[^>]+>", " ", row).split())
+        assert self._picker(page)["options"] == [] and "Confirm against a capture…" in said
+        assert ("no capture of show running-config from lab9's Arista EOS devices (1 other "
+                "read of them is kept, none of that command): run it on Show commands "
+                "first") in said
+        # Unreadable is another state than none: the reads could not be read, said with why.
+
+        from modules import discovery
+        real = discovery.captures
+
+        def broken(network):
+            raise OSError("the reads folder is not readable")
+        monkeypatch.setattr("modules.discovery.captures", broken)
+        page = unescape(c.get(f"{BASE}?list={LIST}").get_data(as_text=True))
+        row = re.search(r'<td data-l="Template" class="mono">arista_eos</td>(.*?)</tr>', page,
+                        re.S).group(1)
+        said = " ".join(re.sub(r"<[^>]+>", " ", row).split())
+        assert ("lab9's saved reads could not be read (OSError: the reads folder is not "
+                "readable), so whether lab9 holds a capture of show running-config from its "
+                "Arista EOS devices is not known and none is offered") in said
+        assert "no capture of" not in said and "<select" not in row
+        # Nothing here committed a confirmation: the template is a draft still, and a
+        # preview asked by hand with the other read's capture draws its card and commits
+        # nothing either (the person judges; the picker only stops offering it).
+        monkeypatch.setattr("modules.discovery.captures", real)
+        version = next(x["name"] for x in discovery.captures(LIST)["captures"]
+                       if x["command"] == "show version")
+        r = c.post(f"{BASE}/template/preview", data={"list": LIST, "template": "arista_eos",
+                                                     "capture": version})
+        assert r.status_code == 200 and T.status(LIST, "arista_eos")["status"] == T.DRAFT
+        assert T.confirmation(LIST, "arista_eos") is None
+
+    def test_a_changed_template_is_confirmed_again_from_the_picker_s_default(
+            self, tab, net, monkeypatch):
+        """The re-confirm path: a template confirmed, then changed, is a draft again; its
+        picker starts on the newest capture of the command it was confirmed against, a newer
+        capture of another command notwithstanding, and confirming from that default commits
+        the new confirmation."""
+        c = tab["client"]
+        first = self._capture(monkeypatch)
+        f = _fields(c.post(f"{BASE}/template/preview", data={
+            "list": LIST, "template": "arista_eos", "capture": first}).get_data(as_text=True))
+        c.post(f"{BASE}/template/confirm", data={k: v[0] for k, v in f.items()})
+        assert T.status(LIST, "arista_eos")["status"] == T.CONFIRMED
+        assert 'id="of-cap-arista_eos"' not in c.get(f"{BASE}?list={LIST}").get_data(
+            as_text=True), "a confirmed template offers no picker"
+        was = T._text
+        monkeypatch.setattr(T, "_text", lambda name: was(name) + (
+            "# a later release's edit\n" if name == "arista_eos" else ""))
+        newer = self._capture(monkeypatch)
+        self._capture(monkeypatch, "show version")
+        page = c.get(f"{BASE}?list={LIST}").get_data(as_text=True)
+        assert "confirm it again" in unescape(page)
+        got = self._picker(page)
+        assert got == {"options": [newer, first], "selected": [newer]}
+        r = c.post(f"{BASE}/template/preview", data={"list": LIST, "template": "arista_eos",
+                                                     "capture": got["selected"][0]})
+        f = _fields(r.get_data(as_text=True))
+        assert r.status_code == 200 and f["template_sha256"] == [T.sha256("arista_eos")]
+        done = c.post(f"{BASE}/template/confirm", data={k: v[0] for k, v in f.items()})
+        assert "Confirmed arista_eos" in done.get_data(as_text=True)
+        s = T.status(LIST, "arista_eos")
+        assert s["status"] == T.CONFIRMED and s["capture"] == newer
+
+    def test_a_template_confirmed_against_another_read_starts_on_that_read(self):
+        """`fitting_captures`: the command the network's earlier confirmation was of comes
+        first, then the driver's configuration read; an Open vSwitch server's is its
+        `ovs-vsctl show`, a Comware switch's its `display current-configuration`."""
+        from modules import discovery
+        from modules import sdn_switches_page as P
+
+        def cap(device, driver, command, run):
+            return {"name": discovery.capture_name(device, command, run), "device": device,
+                    "driver": driver, "command": command, "at": run, "archived": False}
+        caps = [cap("sw1", "arista_eos", "show version", "r5"),
+                cap("sw1", "arista_eos", "show running-config", "r4"),
+                cap("sw1", "arista_eos", "show running-config all", "r3"),
+                cap("ovs1", "ovs_linux", "sudo -n ovs-vsctl list-br", "r2"),
+                cap("ovs1", "ovs_linux", "sudo -n ovs-vsctl show", "r1"),
+                cap("hp1", "hp_comware", "display current-configuration", "r0")]
+        plain = P.fitting_captures(["arista_eos"], "", caps)
+        assert plain["commands"] == ["show running-config"] and plain["others"] == 2
+        assert plain["default"] == "sw1/show_running-config/r4"
+        earlier = P.fitting_captures(["arista_eos"], "sw1/show_running-config_all/r0", caps)
+        assert earlier["commands"] == ["show running-config all", "show running-config"]
+        assert earlier["default"] == "sw1/show_running-config_all/r3"
+        assert [c["name"] for c in earlier["offered"]] == [
+            "sw1/show_running-config/r4", "sw1/show_running-config_all/r3"]
+        ovs = P.fitting_captures(["ovs_linux"], "", caps)
+        assert ovs["default"] == "ovs1/sudo_-n_ovs-vsctl_show/r1" and ovs["others"] == 1
+        assert P.fitting_captures(["hp_comware"], "", caps)["default"] == \
+            "hp1/display_current-configuration/r0"
+        none = P.fitting_captures(["arista_eos"], "", caps[:1])
+        assert none["default"] == "" and none["offered"] == [] and none["others"] == 1
+
+    def test_every_template_s_driver_has_a_configuration_read_on_its_capture_list(self):
+        """The picker's question needs an answer for every template: each driver a template
+        is for names its configuration read, and that read is on the driver's own capture
+        list (so Show commands can run it)."""
+        from modules import discovery
+        drivers = [(n, d) for n in T.names() for d in T.load(n).get("drivers") or []]
+        assert len(drivers) >= 7, "floor: the five templates' drivers"
+        for name, driver in drivers:
+            command = discovery.config_command(driver)
+            assert command and command in discovery.commands_for(driver), (name, driver)
+        assert discovery.config_command("linux") == "", "a host has no OpenFlow template"
 
 
 # --------------------------------------------------------------------------- verify now

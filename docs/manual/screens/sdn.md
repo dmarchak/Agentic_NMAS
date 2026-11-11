@@ -232,7 +232,10 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   requests steered and replies dropped, counted from the SDN reader's last read of the flows.
   **Edit settings…** chooses every edge switch or some; **Preview steering…** compiles the
   flows and reads each switch's table, listing every request with its REST body; **Steer DHCP
-  on <N> switch(es)** sends them as you, bound to that preview. **Remove steering…** previews
+  on <N> switch(es)** sends them as you, bound to that preview. While steering can't be
+  compiled (no committed NSOT export, one that can't be read, or one that does not compile),
+  the card says why and what to do, and **Preview steering…** is greyed with that reason until
+  it compiles. **Remove steering…** previews
   removing exactly the flows it recorded, and **Remove <N> steering flow(s)** removes them. Step by
   step: [Steer DHCP to the network's server](dhcp-steering).
 - **No app version can be listed** says why (no code repository set, not fetched yet, or the

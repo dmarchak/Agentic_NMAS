@@ -196,6 +196,11 @@ def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = No
             # (board F4, Platforms and roles); like _platform, never sent to a device.
             "_role_slug":   role_slug,
             "_site":        site_slug,
+            # NetBox's own names for the platform and the site, read with the inventory
+            # (C2984): what a person recognises, drawn beside the slug where one is chosen
+            # (Credentials › Profiles); never sent to a device, and matched by nothing.
+            "_platform_name": str((raw.get("platform") or {}).get("name") or ""),
+            "_site_name":     str((raw.get("site") or {}).get("name") or ""),
             # Its other management addresses, NetBox's primary IPv6 and out-of-band address
             # (C2625: an onboarding refuses an address any observe device answers on); never
             # sent to a device.

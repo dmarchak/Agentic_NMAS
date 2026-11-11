@@ -39,7 +39,12 @@ def exists() -> dict:
     NetBox roles the loaded NetBox inventories hold it for; the platforms are the platform
     map's (a device whose platform is not in it is skipped, so nothing else can match); the
     sites are those a loaded NetBox device is at. Read from the loaded inventories and the
-    settings, never NetBox: a page read, no per-device work but one pass over each list."""
+    settings, never NetBox: a page read, no per-device work but one pass over each list.
+
+    And, for the form's picker (C2984, `scope_options`), what a person knows each by:
+    ``platform_names`` and ``site_names`` (NetBox's own name for a slug, where a loaded device
+    carries it) and ``platform_devices`` and ``site_devices`` (how many loaded NetBox devices
+    are on it), counted in the same pass."""
     from modules import inventory
     from modules.inventory.role_kind import KINDS as ROLE_KINDS
     from modules.nsot import listref
@@ -47,6 +52,8 @@ def exists() -> dict:
 
     roles = {k: set() for k in ROLE_KINDS}
     sites = set()
+    names = {"_platform": {}, "_site": {}}
+    devices = {"_platform": {}, "_site": {}}
     for name in sorted(listref._registry()):
         try:
             rows = inventory.loaded_rows(name)
@@ -58,22 +65,49 @@ def exists() -> dict:
                 roles[d["role"]].add(d["_role_slug"])
             if d.get("_site"):
                 sites.add(d["_site"])
+            for key in ("_platform", "_site"):
+                slug = d.get(key)
+                if slug:
+                    devices[key][slug] = devices[key].get(slug, 0) + 1
+                    if d.get(f"{key}_name"):
+                        names[key].setdefault(slug, str(d[f"{key}_name"]))
     platforms = sorted(get_setting("platform_map", DEFAULTS["platform_map"]) or {})
     return {"kinds": {k: sorted(v) for k, v in roles.items()}, "platforms": platforms,
-            "sites": sorted(sites)}
+            "sites": sorted(sites),
+            "platform_names": names["_platform"], "site_names": names["_site"],
+            "platform_devices": devices["_platform"], "site_devices": devices["_site"]}
+
+
+def scope_options(known: dict = None) -> dict:
+    """The form's choices for "The platform or site" (C2984; the charter's "What Mercury knows
+    is chosen, never typed"): ``{"platforms": [...], "sites": [...]}``, each ``{"slug",
+    "name", "devices"}``: exactly the slugs `name_of` accepts (the platform map's; the sites
+    of the loaded NetBox devices), each with NetBox's name for it where a loaded device
+    carries one and how many loaded NetBox devices are on it. No value outside these lists is
+    accepted, so the field is a plain selection, never a combo box."""
+    known = exists() if known is None else known
+
+    def rows(slugs, names, counts):
+        # A name that is the slug again adds nothing: the slug is drawn once.
+        return [{"slug": s, "name": n if n != s else "",
+                 "devices": (counts or {}).get(s, 0)}
+                for s in slugs for n in [(names or {}).get(s, "")]]
+    return {"platforms": rows(known["platforms"], known.get("platform_names"),
+                              known.get("platform_devices")),
+            "sites": rows(known["sites"], known.get("site_names"), known.get("site_devices"))}
 
 
 def choices(known: dict = None) -> list:
     """The form's ``(value, words)`` choices: a platform, one per kind (naming the NetBox
     roles it covers now), a site, every device."""
     known = exists() if known is None else known
-    out = [("platform", "every device on a platform (its NetBox platform slug, below)")]
+    out = [("platform", "every device on a platform (chosen below)")]
     for kind, slugs in known["kinds"].items():
         held = (f"NetBox roles now: {', '.join(slugs)}" if slugs else
                 "no loaded NetBox device has it yet")
         out.append((f"role:{kind}",
                     f"every {kind} (its NetBox role has mercury_kind {kind}; {held})"))
-    out.append(("site", "every device at a site (its NetBox site slug, below)"))
+    out.append(("site", "every device at a site (chosen below)"))
     out.append(("default", "every device nothing before it covers (default)"))
     return out
 
@@ -85,6 +119,14 @@ def name_of(kind: str, value: str, known: dict = None) -> tuple:
     from modules.inventory.role_kind import KINDS as ROLE_KINDS
 
     value = (value or "").strip()
+    # A scope that takes no platform or site, given one (C2984: the form's second choice left
+    # at something): refused naming both, never saved as though the choice had narrowed it.
+    whole = "the default profile" if kind == "default" else (
+        f"a profile for every {kind.partition(':')[2]}" if kind.startswith("role:") else "")
+    if whole and value:
+        return "", (f"{whole} covers its devices on every platform and at every site, and "
+                    f"{value!r} was chosen as its platform or site: choose none, or choose a "
+                    "platform or a site as what the profile covers")
     if kind == "default":
         return "default", ""
     if kind.startswith("role:"):

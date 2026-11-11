@@ -10,7 +10,7 @@
     <button type="button" class="btn btn-primary" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
     <div class="menu" role="menu" x-show="isOpen" x-cloak>
       {%- set changes = changes or {'offered': True, 'state': '', 'why': '', 'host': False} %}
-      <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.{% if changes.state %} <span data-management="{{ 'host' if changes.host else 'observe' }}">{{ device.hostname }} is {{ changes.state }}: nothing that changes it is offered.</span>{% endif %}</p>
+      <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.{% if changes.state %} <span data-management="{{ 'host' if changes.host else 'observe' }}">{{ device.hostname }} is {{ changes.state }}: nothing that changes it is offered. Retire… is offered: it sends nothing to {{ device.hostname }}, and changes {{ brand.short }}'s records and, where NetBox writes are on, NetBox's record of it.</span>{% endif %}</p>
       {#- A row built on v2 draws its card in place of the tab; its href opens the page with
           the card for a browser without script. C2606, C2608: on an observe-only device or a
           host a changing row is drawn greyed, saying why, as Revert and Retry are. -#}
@@ -80,6 +80,6 @@
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ rekey.why }}">Re-key…<span class="sr-only"> (not offered: {{ rekey.why }})</span></span></div>
       {%- endif %}
       <div class="menu-rule"></div>
-      <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
+      <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close" title="Sends nothing to {{ device.hostname }}: takes it out of management in {{ brand.short }}'s records and, where NetBox writes are on, in NetBox's record of it. Its preview lists every change, and what survives and where, before anything is done.">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
     </div>
   </div>

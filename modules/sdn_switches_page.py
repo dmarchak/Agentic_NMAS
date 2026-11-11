@@ -13,8 +13,13 @@ should be, what the controller lists and what Mercury last configured, joined on
   network (`openflow_templates.status`).
 
 **A switch's state** (`state_of`), worst first:
-- ``differs``: its last configuration rolled back or failed, or was made from an export other
-  than the committed one (NetBox moved since);
+- ``differs``: its last configuration rolled back or failed;
+- ``netbox_changed``: its last configuration held, and was made from an export other than the
+  committed one: NetBox's values moved after the switch was configured, so the cause is said
+  as NetBox's change and never as the switch's (the operator, the Lab 9 sitting, 2026-11-10).
+  `netbox_moved` names what changed for the switch, each value before and after, between the
+  two exports, from the origins its record kept (`openflow_config.source_of`) and the
+  committed export's; where the record kept none, or none of them changed, it says that;
 - ``not_connected``: configured (verified) and its datapath id is not in the controller's list;
 - ``not_configured``: Mercury never configured it, and the controller does not list it;
 - ``connected``: in the controller's list, and either configured from the committed export or
@@ -34,6 +39,7 @@ import logging
 log = logging.getLogger(__name__)
 
 STATES = (("differs", "Differs from intent", "danger"),
+          ("netbox_changed", "NetBox changed since configured", "warn"),
           ("not_connected", "Configured, not connected", "warn"),
           ("not_configured", "Not configured", "muted"),
           ("connected", "Connected as intended", "ok"))
@@ -97,12 +103,44 @@ def state_of(record, dpid, listed: set, export_sha: str) -> str:
     """The switch's state (see the module's list)."""
     seen = dpid is not None and dpid in listed
     if record:
-        if record.get("outcome") in ("rolled_back", "rollback_failed") or (
-                record.get("export_sha256") and record["export_sha256"] != export_sha):
+        if record.get("outcome") in ("rolled_back", "rollback_failed"):
             return "differs"
+        if record.get("export_sha256") and record["export_sha256"] != export_sha:
+            return "netbox_changed"
         if record.get("outcome") in ("verified", "unverified"):
             return "connected" if seen else "not_connected"
     return "connected" if seen else "not_configured"
+
+
+def netbox_moved(network: str, record: dict, export_sha: str, export_commit: str,
+                 now_origins: list) -> dict:
+    """What NetBox changed for a switch between the export its last configuration was built
+    from (*record*: its ``export_sha256`` and its ``source``, `openflow_config.source_of`) and
+    the committed one (*export_sha*, written by *export_commit*; *now_origins*: the switch's
+    origins in it, `openflow_values.from_export`). The comparison is of the two exports'
+    values, never of the switch: this view reads no switch.
+
+    ``{"network", "from_sha", "from_commit", "to_sha", "to_commit", "known", "changes":
+    [{"value", "before", "after"}]}``: one change per value whose words differ between the two
+    (a value one export gives and the other does not reads "not given"). ``known`` is False
+    for a record kept before origins were (nothing to compare: which value changed is not
+    known, and none is guessed); True with no change when the export moved for something
+    else in NetBox. A datapath id is not compared here: an origin names where it came from
+    and never prints it."""
+    source = record.get("source") or {}
+
+    def by_value(origins):
+        return {str(o.get("value")): str(o.get("is") or "") for o in origins or []
+                if o.get("value")}
+    before, now = by_value(source.get("origins")), by_value(now_origins)
+    changes = [{"value": k, "before": before.get(k) or "not given",
+                "after": now.get(k) or "not given"}
+               for k in list(before) + [k for k in now if k not in before]
+               if before.get(k, "") != now.get(k, "")]
+    return {"network": network, "from_sha": str(record.get("export_sha256") or ""),
+            "from_commit": str(source.get("export_commit") or ""),
+            "to_sha": export_sha, "to_commit": export_commit,
+            "known": bool(before), "changes": changes if before else []}
 
 
 def switches_view(network: str, args=None) -> dict:
@@ -136,6 +174,13 @@ def switches_view(network: str, args=None) -> dict:
         log.warning("sdn switches: %s's inventory could not be read: %s", network, exc)
         inventory = {}
     rows, export = [], got.get("export") if got["ok"] else None
+    committed = None                      # the commit that wrote the export: read once, if asked
+
+    def export_commit():
+        nonlocal committed
+        if committed is None:
+            committed = str((X.last_commit(network) or {}).get("commit") or "")
+        return committed
     for dev in (_marked(export) if export else []):
         name = dev["name"]
         vals = V.from_export(export, name)
@@ -160,6 +205,10 @@ def switches_view(network: str, args=None) -> dict:
             "dpid": dpid_hex, "seen": dpid is not None and dpid in listed["dpids"],
             "seen_by": listed["dpids"].get(dpid, "") if dpid is not None else "",
             "record": _record_words(rec), "state": state,
+            # What NetBox changed since the switch was configured, said with the state.
+            "netbox": netbox_moved(network, rec, out["export"]["sha256"], export_commit(),
+                                   vals.get("origins") or [])
+            if state == "netbox_changed" else {},
             "state_words": STATE_WORDS[state][0], "tone": STATE_WORDS[state][1]})
     known = {_dpid_int(r["dpid"]) for r in rows} - {None}
     out["unknown"] = [{"dpid": f"{d:016x}", "controller": c}
@@ -197,29 +246,88 @@ def _record_words(rec) -> dict:
 
 # --------------------------------------------------------------------------- the templates card
 
+#: The most captures one template's picker offers (newest first).
+CAPTURES_OFFERED = 20
+
+
+def fitting_captures(drivers: list, earlier: str, caps: list) -> dict:
+    """The captures a template for *drivers* is confirmed against, out of *caps*
+    (`discovery.captures`, newest first), and the one its picker starts on (C3012; the
+    charter: a picker's default fits the question asked, never the newest item of any kind).
+
+    A template's lines are configuration, so the capture that answers "does this syntax fit
+    this release" is one of the device's configuration read (`discovery.config_command`, per
+    driver); and where the network confirmed the template before (*earlier*: that
+    confirmation's capture name, kept when the template has changed since), of the command
+    that capture was of. ``{"commands": [the commands, the earlier confirmation's first],
+    "offered": [captures of them, newest first], "default": the name of the newest capture of
+    the first of those commands that has one, "others": how many captures of the drivers'
+    devices are of another command}``."""
+    from modules import discovery
+
+    mine = [c for c in caps if c.get("driver") in drivers and not c.get("archived")]
+    parts = str(earlier or "").split("/")
+    was = parts[1] if len(parts) == 3 else ""
+    slugs, commands = [], []
+
+    def want(slug, command):
+        if slug and slug not in slugs:
+            slugs.append(slug)
+            commands.append(command)
+    # The earlier confirmation's command, said as a capture of it names it (its slug alone
+    # is in the confirmation; a capture of it gives the command's own words).
+    want(was, next((c["command"] for c in mine
+                    if discovery.command_slug(c.get("command")) == was),
+                   was.replace("_", " ")))
+    for d in drivers:
+        command = discovery.config_command(d)
+        want(discovery.command_slug(command), command)
+    fits = [c for c in mine if discovery.command_slug(c.get("command")) in slugs]
+    default = ""
+    for slug in slugs:
+        default = next((c["name"] for c in fits
+                        if discovery.command_slug(c.get("command")) == slug), "")
+        if default:
+            break
+    return {"commands": commands,
+            "offered": [{k: c.get(k) for k in ("name", "device", "command", "at")}
+                        for c in fits[:CAPTURES_OFFERED]],
+            "default": default, "others": len(mine) - len(fits)}
+
+
 def templates_card(network: str, rows: list) -> list:
     """Each template that renders, with the network's switches on it, its status, and the
-    captures a person may confirm it against (`discovery.captures`, of a device whose driver
-    the template is for, newest first)."""
+    captures a person may confirm it against: those of the command it is confirmed against
+    (`fitting_captures`), newest first, the picker starting on the newest. ``captures_error``
+    says why the network's reads could not be read, apart from a network that holds no such
+    capture (absent and unreadable are different states)."""
     from modules import discovery
     from modules.sdn import openflow_templates as T
 
+    caps, error = [], ""
     try:
-        caps = discovery.captures(network).get("captures") or []
+        got = discovery.captures(network)
+        caps = got.get("captures") or []
+        if got.get("unreadable"):
+            n = len(got["unreadable"])
+            error = (f"{n} of {network}'s saved reads could not be read "
+                     f"({', '.join(got['unreadable'][:3])}{', …' if n > 3 else ''})")
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         log.warning("sdn switches: %s's captures could not be read: %s", network, exc)
-        caps = []
+        error = f"{network}'s saved reads could not be read ({type(exc).__name__}: {exc})"[:300]
     out = []
     for name in T.names():
         t = T.load(name)
         if t.get("support") == "unknown":
             continue
-        drivers = t.get("drivers") or []
-        mine = [{k: c.get(k) for k in ("name", "device", "command", "at")}
-                for c in caps if c.get("driver") in drivers and not c.get("archived")][:20]
+        status = T.status(network, name)
+        fit = fitting_captures(t.get("drivers") or [], status.get("capture", ""), caps)
         out.append({"name": name, "family": t.get("family", ""),
                     "switches": [r["name"] for r in rows if r["platform"] == name],
-                    "status": T.status(network, name), "captures": mine,
+                    "status": status, "captures": fit["offered"],
+                    "capture_default": fit["default"],
+                    "capture_commands": fit["commands"], "capture_others": fit["others"],
+                    "captures_error": error,
                     "ipv6": bool(t.get("ipv6_controller")),
                     "vendor_driver": name == "ovs" or name in _cli_names()})
     return out

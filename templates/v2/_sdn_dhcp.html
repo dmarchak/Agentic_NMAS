@@ -14,18 +14,26 @@
 {%- macro server_line(v) -%}
 {%- if v %}{{ v.device }}, {{ v.address }}, MAC <span class="mono">{{ v.mac }}</span> on {{ v.switch }} port {{ v.port_no }} ({{ v.switch_interface }}; NetBox Service <span class="mono">dhcp</span>, {{ s.protected or 'protected by the NSOT' }}){% else %}not known{% endif -%}
 {%- endmacro -%}
+{#- C2995 (the operator, the Lab 9 sitting, 2026-11-10): while steering cannot compile
+    (`s.error`: the card's own read of the export and its compile, the two steps the preview
+    itself runs first), the preview is not offered as a working control: it is drawn
+    disabled, saying why, and the notice above says what to do. -#}
 {%- macro preview_form(words='Preview steering…', primary=False) -%}
+{%- if s.error %}
+<span class="apps-act dhcp-act"><button class="btn" type="button" disabled aria-disabled="true" data-op="dhcp-steering" title="Not available: {{ s.error }}" data-refused="Not available: {{ s.error }}">{{ words }}</button>{{ how('dhcp-steering', 'preview', compact=True, op='steering') }}</span>
+{%- else %}
 <form class="apps-act dhcp-act" hx-post="{{ url_for('sdn_dhcp_v2.preview') }}" hx-target="#dhcp-steering" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ net }}"><input type="hidden" name="scope" value="all">
   <button class="btn{{ ' btn-primary' if primary }}" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Compiles the flows from the committed NSOT export and reads each switch's table now; nothing is sent until you confirm"><span class="op-idle">{{ words }}</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'preview', compact=True, op='steering') }}
 </form>
+{%- endif %}
 {%- endmacro -%}
 
 {%- if s.state_card == 'rest' %}
 <section class="card sdn-dhcp" id="dhcp-steering" aria-labelledby="h-dhcp-steering">
   <div class="sdn-ctl-hd"><h2 id="h-dhcp-steering">DHCP steering</h2>{% if s.error %}{{ badge("can't compile", 'danger') }}{% elif s.steered_switches %}{{ badge('on ' ~ s.steered_switches ~ ' switch' ~ ('es' if s.steered_switches != 1 else ''), 'ok') }}{% else %}{{ badge('not steered', 'muted') }}{% endif %}</div>
   {%- if s.error %}
-  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Steering can't be compiled from the NSOT:</strong> {{ s.error }}.</p></div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Steering can't be compiled from the NSOT:</strong> {{ s.error }}. {% if s.no_export %}<a href="{{ back }}#nsot-export">Export it from NetBox on the NSOT export card</a> above, then preview steering.{% else %}Correct it in NetBox, <a href="{{ back }}#nsot-export">export again on the NSOT export card</a> above, then preview steering.{% endif %} Preview steering… is not offered until it compiles.</p></div>
   {%- endif %}
   <dl class="sdn-kv">
     <dt>DHCP server</dt><dd>{{ server_line(s.server) }}</dd>
@@ -60,7 +68,7 @@
       {%- else %}<span class="hint">No edge switch is known: {{ s.error or 'the export names no end host' }}.</span>{% endfor %}
       <span class="hint">An edge switch is one with an end host (a NetBox device tagged mercury-end-host) cabled to it. The switches on the way to the server are steered whichever you choose.</span>
     </fieldset>
-    <div class="apps-acts"><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Compiles the flows for this choice and reads each switch's table now; nothing is sent until you confirm"><span class="op-idle">Preview…</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'settings') }}{{ close('Cancel') }}</div>
+    <div class="apps-acts">{% if s.error %}<button class="btn" type="button" disabled aria-disabled="true" data-op="dhcp-steering" title="Not available: {{ s.error }}" data-refused="Not available: {{ s.error }}">Preview…</button>{{ how('dhcp-steering', 'settings') }}{% else %}<button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="dhcp-steering" title="Compiles the flows for this choice and reads each switch's table now; nothing is sent until you confirm"><span class="op-idle">Preview…</span><span class="op-busy">Reading the switches…</span></button>{{ how('dhcp-steering', 'settings') }}{% endif %}{{ close('Cancel') }}</div>
   </form>
 </section>
 

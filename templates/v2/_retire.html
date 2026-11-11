@@ -17,6 +17,15 @@
          {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='retire', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML" hx-include="find .op-form"{% endif %}>
   <div class="op-hd"><h2 id="op-title">Retire {{ c.host }} from management</h2>
     <div class="op-hd-actions">{{ how('retire') }}{{ close_button('Cancel') }}</div></div>
+  {#- C2992 (the operator, the Lab 9 sitting, 2026-11-10: "the button should say what it
+      does"): before anything else, that nothing is sent to the device, what changes in
+      Mercury's records and in NetBox's record, and what survives and where. From the plan. -#}
+  <div class="op-part op-retire-does"><h3>What Retire does</h3><div>
+    <p><strong>Nothing is sent to {{ c.host }}.</strong> No session is opened to it and its running configuration is not changed{% if c.management %}. {{ c.host }} is {{ c.management }}: Retire is offered all the same, because it changes records and never the device{% endif %}.</p>
+    <p><strong>In {{ brand.short }}'s records:</strong> {{ c.host }} leaves {{ c.list }}'s inventory, and what {{ brand.short }} keeps for it is removed or archived ({% if c.todo %}{{ c.todo }} step{{ 's' if c.todo != 1 }} to do, listed in order below{% else %}every step is already done{% endif %}).</p>
+    <p><strong>In NetBox's record of it:</strong> {{ c.netbox.what or 'no step of this plan names it' }}{{ '' if c.netbox.what.endswith('.') else '.' }}{% for n in c.netbox.not_done %} {{ n }}{{ '' if n.endswith('.') else '.' }}{% endfor %}</p>
+    <p><strong>What survives, and where:</strong> {% if c.files %}its intent and golden ({{ c.files | join(', ') }}) leave {{ c.list }}'s working tree and stay in its repository's history, in the parent of the retire commit{% else %}it has no intent or golden committed in {{ c.list }}'s repository, so none is removed{% endif %}; its credential survives only in the break-glass record; everything else that survives is named below with how it is removed.</p>
+  </div></div>
   <form class="op-form" hx-get="{{ url_for('device_v2.retire', name=c.host) }}" hx-trigger="change"
         hx-target="#device-op" hx-swap="outerHTML">
   <input type="hidden" name="back" value="{{ c.back }}">

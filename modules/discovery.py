@@ -124,26 +124,35 @@ def is_python_read(command) -> bool:
 
 #: driver -> the family in words, its capture list, the command its platform-map Test asks,
 #: why netmiko's `enable()` for it is never sent (``no_enable``), the one write its session
-#: may carry while the device is held (``held_write``), and the one configuration set it may
+#: may carry while the device is held (``held_write``), the one configuration set it may
 #: carry while held (``held_config``: the OpenFlow configuration's lines, each one of its
-#: template's shapes, `held_config_refusal`; Lab 9 Objective 2).
+#: template's shapes, `held_config_refusal`; Lab 9 Objective 2), and the read on its capture
+#: list whose answer is the device's configuration (``config``, `config_command`: what an
+#: OpenFlow template's lines are judged against, so the capture a person confirms it against,
+#: C3012). A driver with no template has none.
 _OPENFLOW_LINES = ("the OpenFlow configuration's lines (modules/sdn/openflow_config.py), each "
                    "one of its template's shapes (modules/sdn/openflow_cli.py)")
 DRIVERS = {
     "arista_eos":     {"family": "Arista EOS", "commands": _ARISTA,
+                       "config": "show running-config",
                        "held_config": _OPENFLOW_LINES},
     "hp_procurve":    {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "config": "show running-config",
                        "held_config": _OPENFLOW_LINES},
     "aruba_osswitch": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "config": "show running-config",
                        "held_config": _OPENFLOW_LINES},
     "aruba_procurve": {"family": "HP ProCurve / ArubaOS-Switch", "commands": _PROCURVE,
+                       "config": "show running-config",
                        "held_config": _OPENFLOW_LINES},
     "aruba_os":       {"family": "Aruba (netmiko's ArubaOS driver; AOS-CX's list)",
-                       "commands": _AOSCX},
+                       "commands": _AOSCX, "config": "show running-config"},
     "hp_comware":     {"family": "HP Comware", "commands": _COMWARE,
+                       "config": "display current-configuration",
                        "version": "display version",
                        "no_enable": "netmiko's Comware enable() is system-view, config mode"},
     "ovs_linux":      {"family": "Open vSwitch", "commands": _OVS,
+                       "config": "sudo -n ovs-vsctl show",
                        "version": "ovs-vsctl --version",
                        "no_enable": "netmiko's Linux enable() is `sudo -s`, a root shell",
                        "held_write": "the OpenFlow configuration's ovs-vsctl transaction"},
@@ -192,6 +201,14 @@ _COMWARE_INSTANCE_VIEWS = ("controller", "listened", "flow-table")
 def is_driver(device_type) -> bool:
     """Is *device_type* a driver Mercury may only read with (discovery)?"""
     return str(device_type or "").strip().lower() in DRIVERS
+
+
+def config_command(device_type) -> str:
+    """The read on *device_type*'s capture list whose answer is the device's configuration
+    (``DRIVERS[...]["config"]``), or ``""`` for a driver with none: the command a capture is
+    of when an OpenFlow template is confirmed against it."""
+    entry = DRIVERS.get(str(device_type or "").strip().lower()) or {}
+    return entry.get("config", "")
 
 
 def commands_for(device_type) -> tuple:

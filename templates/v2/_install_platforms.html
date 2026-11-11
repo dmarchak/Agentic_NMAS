@@ -18,8 +18,13 @@
   <section class="card set-card set-card-wide" id="card-platform-map" aria-labelledby="h-platform-map">
     <div class="card-head"><h2 id="h-platform-map">Platform map</h2>{{ badge('every network', 'neutral') }}</div>
     <p class="muted small">A NetBox platform (its slug) → the driver Mercury opens a session with, the config dialect it renders from, and how it delivers. An unmapped platform is skipped with its reason, or takes the default driver below. Devices from a local list keep the driver their list names.</p>
+    {#- C2981 (the operator, the Lab 9 sitting, 2026-11-10: four previews answered and none
+        was seen): Add, Remove and Preview changes answer with the preview card drawn
+        directly under this card, and the page brought to it (`show:`: htmx scrolls the
+        named element into view after the swap; a refusal has no preview card, and the
+        page is brought to the top of the region, where the refusal is drawn). -#}
     <form method="post" action="{{ url_for('settings_v2.platforms_preview') }}"
-          hx-post="{{ url_for('settings_v2.platforms_preview') }}" hx-target="#install-platforms" hx-swap="outerHTML">
+          hx-post="{{ url_for('settings_v2.platforms_preview') }}" hx-target="#install-platforms" hx-swap="outerHTML show:#card-platforms-preview:top">
       <input type="hidden" name="kind" value="platforms">
       <div class="table-wrap">
       <table class="table set-table set-maps">
@@ -57,9 +62,9 @@
       </div>
     </form>
   </section>
+  {%- if pv %}{% include "v2/_install_platforms_preview.html" %}{% endif %}
   <section class="card set-card set-card-wide" id="card-role-map" aria-labelledby="h-role-map">
     <div class="card-head"><h2 id="h-role-map">Roles</h2>{{ badge('NetBox', 'neutral') }}</div>
     <p class="muted small">What a device is (router, switch or firewall) is NetBox's: its Device Role's <span class="mono">mercury_kind</span> field, read with the inventory. A role without one is “not classified in NetBox”, never guessed from a hostname; set it on the role in NetBox.</p>
   </section>
-  {%- if pv %}{% include "v2/_install_platforms_preview.html" %}{% endif %}
 </div>

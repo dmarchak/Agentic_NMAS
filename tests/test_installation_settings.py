@@ -550,6 +550,41 @@ class TestPlatformsAndRoles:
         assert "keep the driver their list names" in pv and "Default" in pv
         assert "Test with" in pv and 'value="Branch|nb1|cisco_ios"' in html
 
+    def test_the_preview_is_drawn_under_the_platform_map_and_the_page_brought_to_it(
+            self, networks, netbox_branch):
+        """C2981 (the operator, the Lab 9 sitting, 2026-11-10): the preview was the region's
+        last element, below Roles, and four previews went unseen. It is drawn directly under
+        the Platform map card, and the form's swap names it as what to bring into view."""
+        _r, page = _get(networks, "/v2/settings/installation?tab=platforms")
+        form = re.search(r'<form[^>]*hx-post="/v2/settings/installation/platforms/preview"[^>]*>',
+                         page).group(0)
+        assert 'hx-swap="outerHTML show:#card-platforms-preview:top"' in form
+        _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                         _platform_form(new_slug="linux", new_driver="cisco_ios",
+                                        new_dialect="cisco_ios", new_transport="ssh"))
+        at = [html.index(f'id="{i}"') for i in ("card-platform-map", "card-platforms-preview",
+                                                 "card-role-map")]
+        assert at == sorted(at), "the preview sits between the Platform map and Roles"
+        assert html.count('id="card-platforms-preview"') == 1
+        # The preview's own Save, pressed as the card sends it: its answer is drawn at the
+        # top of the tab (the swap brings the page there), and the map then holds the
+        # platform, on the page and in the settings.
+        import html as html_mod
+        from modules.settings_schema import get_setting
+        card = re.search(r'<section[^>]*id="card-platforms-preview".*?</section>', html,
+                         re.S).group(0)
+        assert 'hx-swap="outerHTML show:top"' in card
+        proposal = html_mod.unescape(re.search(r'name="proposal" value="([^"]*)"',
+                                               card).group(1))
+        fp = re.search(r'name="fingerprint" value="([^"]*)"', card).group(1)
+        r, out = _post(networks, "/v2/settings/installation/platforms/apply",
+                       {"proposal": proposal, "fingerprint": fp})
+        assert r.status_code == 200 and out.index("<strong>Saved</strong>") < out.index(
+            'id="card-platform-map"')
+        assert get_setting("platform_map")["linux"]["netmiko_device_type"] == "cisco_ios"
+        _r, again = _get(networks, "/v2/settings/installation?tab=platforms")
+        assert '<span class="mono">linux</span>' in _section(again, "card-platform-map")
+
     def test_adding_a_platform_loads_what_was_skipped(self, networks, netbox_branch):
         _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
                          _platform_form(new_slug="nexus", new_driver="cisco_ios",
@@ -616,6 +651,73 @@ class TestPlatformsAndRoles:
         _r, html = _get(networks, f"/v2/settings/installation/platforms/test/Branch/{run}")
         assert "passed" in html and "through <span class=\"mono\">cisco_ios</span>" in html
         assert "Version 17.9" in html
+
+
+#: Where the preview card and the Roles card are in the window, and whether the page moved.
+PLATFORMS_JS = """
+var pv = document.querySelector('#card-platforms-preview');
+var roles = document.querySelector('#card-role-map');
+var r = pv ? pv.getBoundingClientRect() : null;
+return {drawn: !!pv, top: r ? Math.round(r.top) : null, height: window.innerHeight,
+        scrolled: Math.round(window.scrollY || document.documentElement.scrollTop),
+        before_roles: !!(pv && roles && (pv.compareDocumentPosition(roles) & 4)),
+        words: pv ? pv.querySelector('h2').textContent : ''};
+"""
+PLATFORMS_SETTLED = ("return !!window.htmx && !document.querySelector("
+                     "'.htmx-swapping, .htmx-settling, .htmx-request')")
+
+
+def test_add_brings_the_preview_into_view_in_a_real_browser(networks, netbox_branch):
+    """C2981, in a real browser, in a window shorter than the Platform map card: a new
+    platform typed and Add pressed. The preview card is drawn under the Platform map, above
+    Roles, and its heading is inside the window, below the sticky top bar: the page moved to
+    it. Before the fix it was the region's last element and the page did not move."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the route tests above still run")
+    import app as A
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 620})
+            b.go(srv.url("/v2/settings/installation?tab=platforms"))
+            b.wait_for(PLATFORMS_SETTLED, 20)
+            before = b.js(PLATFORMS_JS)
+            # A refusal first (a slug no platform has): it is drawn at the top of the
+            # region, and the page is brought there, where the person can read it.
+            b.type("#card-platform-map input[name=new_slug]", "Not A Slug")
+            b.click("#card-platform-map tbody tr:last-child button[type=submit]")
+            b.wait_for("return !!document.querySelector('#install-platforms > .notice-danger')",
+                       30)
+            b.wait_for(PLATFORMS_SETTLED, 20)
+            b.wait_for("var r = document.querySelector('#install-platforms > .notice-danger')"
+                       ".getBoundingClientRect(); return r.top >= 0 && r.top < 200", 10)
+            refused = b.js("var n = document.querySelector('#install-platforms > "
+                           ".notice-danger'); return {top: Math.round("
+                           "n.getBoundingClientRect().top), words: n.textContent}")
+            # Then the operator's own add: a Linux host's platform, read only, no dialect.
+            b.js("var f = document.querySelector('#card-platform-map form');"
+                 "f.querySelector('[name=new_driver]').value = 'linux';"
+                 "f.querySelector('[name=new_dialect]').value = ''; return 1")
+            b.type("#card-platform-map input[name=new_slug]", "linux")
+            b.click("#card-platform-map tbody tr:last-child button[type=submit]")
+            b.wait_for("return !!document.querySelector('#card-platforms-preview')", 30)
+            b.wait_for(PLATFORMS_SETTLED, 20)
+            b.wait_for("var r = document.querySelector('#card-platforms-preview')"
+                       ".getBoundingClientRect(); return r.top >= 0 && r.top < 200", 10)
+            after = b.js(PLATFORMS_JS)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert not before["drawn"] and before["scrolled"] == 0
+    assert "Not previewed" in refused["words"] and 56 <= refused["top"] < 200, refused
+    assert after["drawn"] and after["before_roles"], after
+    assert "what it changes" in after["words"]
+    # Its top is inside the window, clear of the 56 px top bar, and the page moved to put it
+    # there (the Platform map card alone is taller than this window).
+    assert 56 <= after["top"] < after["height"] / 2, after
+    assert after["scrolled"] > 0, after
 
 
 class TestNoTextSendsAPersonToTodaysSettings:

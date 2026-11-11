@@ -13,7 +13,14 @@ and NetBox's record of the device.
 
 ## How you start it {#start}
 
-On the device page, under Actions, **Retire…**: its card opens in place of the tab. You type
+On the device page, under Actions, **Retire…**: its card opens in place of the tab. The row
+says on hover what it does, and it is offered on an observe-only device and on a host as well,
+because it sends nothing to the device: the menu's note says so there. The card opens with
+**What Retire does**, before the reason: nothing is sent to the device; what changes in
+Mercury's records; what changes in NetBox's record of the device, in the plan's own words (set
+to Decommissioning and renamed where NetBox writes are on, and said as not changed where they
+are off); and what survives and where (its intent and golden stay in the repository's history,
+its credential only in the break-glass record). You type
 a reason, and the card plans again with it; the reason is part of the plan's hash, so the
 confirm is bound to the reason you see. Confirming (**Retire <device>**, which needs a
 verified person) sends that hash back to be checked, and the result is drawn in the same

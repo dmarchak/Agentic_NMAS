@@ -170,6 +170,60 @@ def test_a_refusal_is_drawn_in_the_card_s_place_and_sends_nothing(ui, monkeypatc
     assert ui.writes == [] and X.read(NET)["ok"]
 
 
+def _said(html: str) -> str:
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", html)).split())
+
+
+@pytest.mark.parametrize("state,why,todo", [
+    ("none", f"{NET} has no committed NSOT export",
+     "Export it from NetBox on the NSOT export card above, then preview steering."),
+    ("unreadable", f"{NET}'s committed NSOT export cannot be read: its sha256 does not verify",
+     "Correct it in NetBox, export again on the NSOT export card above, then preview steering."),
+    ("no service", "holds no NetBox Service named 'dhcp'",
+     "Correct it in NetBox, export again on the NSOT export card above, then preview steering."),
+])
+def test_while_steering_cannot_compile_the_preview_is_not_offered_and_says_what_to_do(
+        ui, monkeypatch, state, why, todo):
+    """C2995 (the operator, the Lab 9 sitting, 2026-11-10): "Preview steering…" stayed
+    enabled while the card said "can't compile". It is drawn disabled, saying why, with what
+    to do in the notice, for each reason the preview's own first steps refuse: no committed
+    export, one that can't be read, one that does not compile. The words are the ones the
+    preview itself refuses with (one owner of the condition)."""
+    if state == "none":
+        monkeypatch.setattr(X, "read", lambda network, rev="HEAD": {
+            "ok": False, "export": None, "sha256": "", "absent": True,
+            "error": f"{network} has no committed NSOT export at {rev}: export it first"})
+    elif state == "unreadable":
+        monkeypatch.setattr(X, "read", lambda network, rev="HEAD": {
+            "ok": False, "export": None, "sha256": "",
+            "error": "its sha256 does not verify"})
+    else:
+        records = lab9_dhcp_records()
+        records["services"] = [x for x in records["services"] if x["name"] != "dhcp"]
+        ui.held["doc"] = export_of(records)
+    sent = len(ui.sent)
+    html = _text(ui.client.get(f"/v2/sdn/dhcp/card?list={NET}"))
+    said = _said(html)
+    assert "can't compile" in said and "Steering can't be compiled from the NSOT: " in said
+    assert why in said and todo in said
+    assert "Preview steering… is not offered until it compiles." in said
+    assert f'href="/v2/sdn/apps?list={NET}#nsot-export"' in html
+    # Not a working control: no form posts the preview, and the button is disabled with why.
+    assert 'hx-post="/v2/sdn/dhcp/preview"' not in html
+    button = re.search(r"<button[^>]*>Preview steering…</button>", html).group(0)
+    assert 'disabled aria-disabled="true"' in button
+    assert why in unescape(re.search(r'data-refused="Not available: ([^"]*)"', button).group(1))
+    # Edit settings…' own Preview… is the same control on the same condition.
+    settings = _text(ui.client.get(f"/v2/sdn/dhcp/settings?list={NET}"))
+    assert re.search(r'<button[^>]*disabled aria-disabled="true"[^>]*>Preview…</button>',
+                     settings)
+    assert 'type="submit"' not in settings
+    # One owner: the preview itself refuses for that same reason, in the same words.
+    r = ui.client.post("/v2/sdn/dhcp/preview", data={"list": NET, "scope": "all"})
+    assert r.status_code == 409 and why in _said(_text(r))
+    assert ui.sent[sent:] == [] and ui.writes == []
+
+
 def test_history_names_each_steered_switch_and_what_was_sent(ui, monkeypatch):
     """The operator, 2026-11-10: History's Device column said "fleet" and its What a datapath
     id for every switch steering touched. Each row names its switch (from the committed

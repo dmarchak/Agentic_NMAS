@@ -2701,6 +2701,9 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 /* The result's rows (the operator, 2026-11-10): each value before and after on a line of its
    own, the lines sent on expand, and under each switch what its program was built from. */
 .of-change-value { color: var(--ink-2); }
+.of-moved { margin-top: 4px; }
+/* C2981: an answer brought into view lands below the sticky top bar (56 px), not under it. */
+#install-platforms, #card-platforms-preview { scroll-margin-top: 72px; }
 .of-result details > summary { cursor: pointer; }
 .of-result .of-program { margin-top: 4px; }
 /* The switch's name on one line; never the row under it, whose one cell is a sentence. */

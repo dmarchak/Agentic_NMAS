@@ -97,7 +97,29 @@ draws a guide: a deviation, the line "Device: the deploy program draws a guide p
 STANDING_APPROVAL_LOG.md; the region "Deploy: The program" below says so. No other region
 moved. Templates sha256 before:
 `0336b633b878443964c6e90d21c8ad87d09aa90bcef690660692fc9374bb0d01`.
-Templates sha256: `b5ba864e07ec64d0e41b26d8650f1e7914d58ffc3cfd69d0191e5ad31ae2bf38`
+Hashed again 2026-11-11 for C2992 and the operator's work order from the Lab 9 sitting
+(2026-11-10: "the capture picker default and re-confirm; 'Differs from intent' says NetBox
+changed; the OVS preview shows its transaction and 'already as intended'; Retire on observe
+devices says what it does; credential profile slug as a dropdown"; at the sitting, of Retire…
+on the router and the 2960: "the button should say what it does"). Two templates moved.
+`_actions_menu.html`: the Retire… row carries its own words on hover (its title, which a screen
+reader reads as its description; the row's name stays "Retire…":
+"Sends nothing to <device>: takes it out of management in Mercury's records and, where NetBox
+writes are on, in NetBox's record of it. Its preview lists every change, and what survives and
+where, before anything is done."), and on an observe-only device or a host the menu's note
+adds "Retire… is offered: it sends nothing to <device>, and changes Mercury's records and,
+where NetBox writes are on, NetBox's record of it."; a managed device's menu draws the same
+rows and the same note as before. `_retire.html`: the card opens with a part "What Retire
+does", above Why: nothing is sent to the device (and, on an observe-only device or a host, why
+Retire is offered all the same); what changes in Mercury's records, with how many steps are to
+do; NetBox's record of it in the plan's own words, with what the plan says it does not do
+there; what survives and where. Every other part of the card is as compared. Compared by
+reading the templates against board 12 and the card tests/test_device_retire_v2.py renders,
+with no new shot (tests/test_board_shots.py draws no observe-only device); one deviation,
+logged; the regions "Retire: what it does" and "Actions menu: Retire…'s own words" below.
+Templates sha256 before:
+`b5ba864e07ec64d0e41b26d8650f1e7914d58ffc3cfd69d0191e5ad31ae2bf38`.
+Templates sha256: `1446343d05a0120b023505e25335e77b4d5fe5d97fa2aa0e8a831a9e0536567f`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it
@@ -348,6 +370,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Retry | the blocked program, the reason, what it will not do, checks; waits on the reason | the same, the reason field inline; the confirm offered once a reason is typed (shot `device-retry-ready`) | **same** |
 | Retry when no block stands | "Nothing to retry", why not; the menu row says the same on hover | the menu rows greyed with the why on hover (tests/test_device_revert_retry_v2.py's `test_no_block_offers_neither_and_says_why_on_each`); the lab's block stood after the revert, so the card was not reached | **same** |
 | Retire: the card | why (the reason), what retire changes in order (six steps, the lab startup frozen), generated so dropped, what survives, checks, refused until the break-glass record holds the credential | the same parts and the refusal, the steps the plan's own (NetBox masked, override cleared, one commit, the legacy file, the CSV row: no lab step), a Not changed part, an advisory line when the golden carries Mercury's heartbeat applet | **deviation** (log: Device: Retire's steps are the plan's own, with no lab step) |
+| Retire: what it does | not drawn: the card opens on Why | a first part, "What Retire does": "Nothing is sent to <device>" (and, on an observe-only device or a host, why Retire is offered all the same), "In Mercury's records", "In NetBox's record of it" in the plan's own words with what it does not do there, and "What survives, and where" | **deviation** (log: Device: Retire says what it does before it is pressed) |
+| Actions menu: Retire…'s own words | the row "Retire…" with its (i); no observe-only device drawn | the same row and (i), with its hover and screen-reader words saying it sends nothing and what it changes; on an observe-only device or a host the note adds "Retire… is offered: it sends nothing to <device>…" | **deviation** (log: Device: Retire says what it does before it is pressed) |
 | Retire: the export check | "Export the record on Credentials…" (a link) | the same button, and the check's words name a host command (`…/python scripts/nmas-breakglass export --list Lab …`); the result names `nmas-retire --breakglass <file>` | **deviation** (log: Device: Retire's export check and result name host commands (a defect, register C650 follow-up)) |
 | Retire: result | r5 is retired, Done; what happened; Dropped; Still to remove; "this address shows its retired record"; Back to Devices | the same, with the one stepper and Recorded; the header's Actions menu, re-read after the retire, draws "Couldn't load this view. Try again" | **deviation** (log: Device: after Retire the header's Actions menu draws Couldn't load this view (a defect, register C650 follow-up)) |
 | A held device, its lease and takeover | HoldTakeover (R26): wait while it moves; after 10 minutes still, Take over r2's hold…, recorded | the refusal by name and the redraw when free; no lease, no takeover | **later** R26's lease and recorded takeover (docs/CONCURRENCY_AUDIT.md R26, approved 2026-10-04, not built) |

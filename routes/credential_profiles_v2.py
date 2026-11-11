@@ -26,7 +26,7 @@ def _ctx(**extra) -> dict:
     from modules.preview_confirm import confirm_part
 
     known = P.exists()
-    return dict({"v": P.view(), "kinds": P.choices(known), "exists_now": known,
+    return dict({"v": P.view(), "kinds": P.choices(known), "scopes": P.scope_options(known),
                  "may": confirm_part(request, "configure"),
                  "rot": SR.page_view(), "may_rotate": confirm_part(request, "confirm")},
                 **extra)

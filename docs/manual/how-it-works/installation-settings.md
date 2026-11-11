@@ -240,7 +240,9 @@ local list keep the driver and role their list names. A driver is chosen from th
 dialect from the dialects it knows: neither is typed.
 
 A change is never saved blind. **Remove**, **Add** and **Preview changes** each show what it
-would do first:
+would do first, in a preview card drawn directly under the Platform map card; the page moves to
+it when it arrives, and to the top of the tab when the change is refused or saved, where that
+is said:
 
 1. `check`: every row is checked: a supported driver, a known dialect, ssh or netconf, a NetBox
    slug; a new slug not already in the map. Removing a platform a device uses is refused,

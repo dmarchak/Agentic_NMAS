@@ -13,7 +13,29 @@ card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of
 (the register row the main thread names for it).
 
 Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html, templates/v2/_sdn_built_from.html
-Templates sha256: `b9770db2dc70c3145152fee00463f7a4e80d12096ab05b16315451ebf8e52bc0`
+Templates sha256: `e304bade82241ccd1b346c73ee00576bae3471f6bffb1f0f3a83e2ed60c8527d`
+Hashed again 2026-11-11 for the operator's work order from the Lab 9 sitting (2026-11-10: "the
+capture picker default and re-confirm; 'Differs from intent' says NetBox changed; the OVS
+preview shows its transaction and 'already as intended'; Retire on observe devices says what it
+does; credential profile slug as a dropdown"). Two regions of `_sdn_switches.html` moved, and
+nothing else. **NetBox changed since configured:** a switch whose last configuration held and
+was made from an export other than the committed one is no longer drawn as "Differs from
+intent": it is a state of its own, with its count in the summary, its group, its choice in the
+state filter, and under its badge each of the switch's values that differs between the two
+exports (before → after) and each export with the commit that wrote it, or that none of its
+recorded values changed, or that which changed is not known (a record kept before origins
+were); the regions "Summary", "Groups by state" and "State: NetBox changed" below. **The capture
+picker:** it offers the captures of the read the template is confirmed against (the device's
+configuration read, or the read the network's earlier confirmation was of), newest first, and
+starts on the newest, where it offered the newest twenty captures of any command; no such
+capture and saved reads that can't be read are said apart; the region "The capture picker"
+below. The Open vSwitch preview was read against the work order and needed no change
+(`_sdn_of_config.html` is as compared: its program is the whole transaction, and a bridge that
+needs nothing reads "already as intended" and "nothing is sent"). Compared by reading the
+template against artboard A and the HTML tests/test_sdn_switches_v2.py's lab renders, with no
+new shot; two deviations, logged (the templates before hashed
+`b9770db2dc70c3145152fee00463f7a4e80d12096ab05b16315451ebf8e52bc0`).
+
 Hashed again 2026-11-11 for C2996 and C2779 (the operator, 2026-11-10: "arista_eos renders ALL
 bound ports in ONE 'bind interface' line ... plus a read-back of the bound set (C2779)"). One
 region moved, in `_sdn_of_config.html`: **the preview card's Verify line** ends with what
@@ -65,11 +87,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Page head | "SDN (i)" | "SDN · Switches (i)" and the tab's sub-line, as every SDN tab is built | **deviation** (log: Board lab9-sdn A built, 9) |
 | Tabs | Controllers, Switches (on), Flows, Apps, Protected, Policies, Responses | Controllers, Switches (on), Flows, Apps, Policies, Responses, one nav for every SDN tab (`_sdn_tabs.html`) | **later** (Protected is an artboard of its own, not built; Policies built 2026-11-10, docs/fidelity/sdn-policies.md) |
-| Summary | five counts: marked, connected as intended, configured not connected, differs, seen by the controller not in NetBox | the five, toned as drawn, and "not configured" between differs and seen; the export's short hash after | **deviation** (log: Board lab9-sdn A built, 1) |
+| Summary | five counts: marked, connected as intended, configured not connected, differs, seen by the controller not in NetBox | the five, toned as drawn, with "NetBox changed since configured" after differs (2026-11-11) and "not configured" before seen; the export's short hash after | **deviation** (log: Board lab9-sdn A built, 1) |
 | Search and filters | search "name, DPID or address", Every state, Every platform | the same three, the state list the four states, the platform list each template's family; a Search button for a page with no script | **same** |
 | Configure from NetBox… and Verify now | both, then "read 14:02 UTC, 40 s ago" | both, each busy on itself with its (i); the reader's last read as a stamp that ages | **same** |
 | The table's columns | Switch, Platform, NetBox and intent, Controller sees, Switch reports, State, an action | Choose, Switch (with its address), Platform, NetBox and intent (controller:port · version · transport), Controller sees (DPID on the controller, or not in the list), Last configured, State, an action | **deviation** (log: Board lab9-sdn A built, 2) |
-| Groups by state | "Differs from intent (1)", "Configured, not connected (1)", "Connected as intended (3)" | the same, worst first, with "Not configured (n)" | **same** |
+| Groups by state | "Differs from intent (1)", "Configured, not connected (1)", "Connected as intended (3)" | the same, worst first, with "Not configured (n)", and "NetBox changed since configured (n)" after Differs for a switch configured from an earlier export | **deviation** (log: Board lab9-sdn A built on for the Lab 9 sitting's interface findings, 1) |
+| State: NetBox changed | the board's of-hp-1 "differs from intent" stands for every difference | the badge "NetBox changed since configured" (warn); under it each value before → after between the export it was configured from and the committed one, each export with its commit as a link, and that the switch was not read; or "none of the values recorded for <switch> changed: NetBox changed elsewhere"; or "which of its values changed is not known" | **deviation** (log: Board lab9-sdn A built on for the Lab 9 sitting's interface findings, 1) |
+| The capture picker | a capture's select beside a draft template, its contents and default not drawn | the captures of the read the template is confirmed against, newest first, the newest chosen; its hover says which read; with none, the control greyed naming the read to run on Show commands and how many other reads are kept; with saved reads that can't be read, that said instead | **deviation** (log: Board lab9-sdn A built on for the Lab 9 sitting's interface findings, 2) |
 | A switch's detail | ▾ on the row, a full-width row: NetBox, Intent, Last configured, Why not connected | the switch's name opens it in its cell: NetBox (instance, ports, defaults, what is left out), Driver, Last configured (its record on History), its verify | **deviation** (log: Board lab9-sdn A built, 3) |
 | Row actions and the fold | Preview the fix… on a differing row, Verify now on a not-connected row, "show 2" | Preview the fix… on differing and not-configured rows, Verify now on a not-connected row, a checkbox per row, "and N more" past 25 | **deviation** (log: Board lab9-sdn A built, 4) |
 | IPv6 | not drawn | "Arista EOS and ArubaOS-Switch take an IPv4 controller only…" under the bar | **deviation** (log: Board lab9-sdn A built, 8) |

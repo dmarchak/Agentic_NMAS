@@ -1000,8 +1000,19 @@ def retire_card(ref, host: str, preview: dict, viewer: dict, plan: dict) -> dict
     unchanged = [n for n in plan.get("not_doing") or []
                  if n not in watched and not n.startswith(("NetBox device ", "the approval of "))]
     breakglass = next((g for g in t["gates"] if g.get("name") == BREAKGLASS_GATE), {})
+    # C2992: what Retire does, said before it is pressed, from the plan itself: its step for
+    # NetBox's record in the plan's own words (what it sets, or that it has nothing to
+    # change), with what the plan says it does NOT do there (which "Not changed" leaves to
+    # this part), the files that leave the tree and stay in history, and how many steps are
+    # still to do.
+    nb = next((s for s in plan.get("steps") or [] if s.get("key") == "netbox_record"), {})
     return {"op": "retire", "state": "preview", "host": host, "list": ref.name,
             "reason": plan.get("reason") or "",
+            "netbox": {"what": nb.get("what", ""),
+                       "not_done": [n for n in plan.get("not_doing") or []
+                                    if n.startswith("NetBox device ")]},
+            "files": list(plan.get("files") or []),
+            "todo": sum(1 for s in plan.get("steps") or [] if not s.get("done")),
             "steps": [{"what": s.get("what", ""), "done": bool(s.get("done"))}
                       for s in plan.get("steps") or []],
             "generated": list(plan.get("generated") or []),

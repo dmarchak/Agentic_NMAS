@@ -27,7 +27,9 @@ address (192.0.2.x), and, for the observe-only cases, its rendered ``config_cont
 import copy
 import json
 import os
+import re
 import threading
+from html import unescape
 
 import pytest
 
@@ -232,6 +234,123 @@ def test_the_form_draws_the_kinds_as_choices_and_a_choice_saves_its_profile(page
     with open(page["dir"] / "credential_profiles.json", encoding="utf-8") as fh:
         saved = json.load(fh)["profiles"]
     assert list(saved) == ["role:switch"] and saved["role:switch"]["username"] == "u"
+
+
+# ------------------------------------------------------------------ C2984: the scope is chosen
+
+@pytest.fixture
+def loaded(page, monkeypatch):
+    """The lab's NetBox inventory as loaded, two of its platforms and its site carrying
+    NetBox's own names (the capture's records, their names edited), and its platform map."""
+    from modules import inventory, settings_schema
+    from modules.nsot import listref
+    records = lab_records()
+    for r in records:
+        r["site"]["name"] = "Lab 9"
+        if r["platform"]["slug"] == "arista-eos":
+            r["platform"]["name"] = "Arista EOS"
+    real = settings_schema.get_setting
+    monkeypatch.setattr(netbox_source, "get_setting",
+                        lambda key, default=None: PLATFORM_MAP if key == "platform_map" else "")
+    rows, _skipped, _warnings = netbox_source.adapt_devices(records, kinds=KINDS)
+    assert len(rows) == len(LAB), "floor: every lab device loaded"
+    monkeypatch.setattr(settings_schema, "get_setting", lambda key, default=None: (
+        PLATFORM_MAP if key == "platform_map" else real(key, default)))
+    monkeypatch.setattr(listref, "_registry", lambda: {"lab9": "lab9"})
+    monkeypatch.setattr(inventory, "loaded_rows", lambda name: rows)
+    return page
+
+
+class TestThePlatformOrSiteIsChosen:
+    """C2984 (the operator, the Lab 9 sitting, 2026-11-10: "Make it a dropdown of the known
+    platform slugs from the platform map (each with its platform name and device count), and
+    of the networks' sites"; the charter's "What Mercury knows is chosen, never typed")."""
+
+    def test_the_inventory_carries_netbox_s_names_and_they_reach_no_session(self, lab):
+        from modules import inventory
+        records = lab_records()
+        records[2]["platform"]["name"] = "Arista EOS"
+        records[2]["site"]["name"] = "Lab 9"
+        devices, _s, _w = adapt(records)
+        assert devices["of-sw1"]["_platform_name"] == "Arista EOS"
+        assert devices["of-sw1"]["_site_name"] == "Lab 9"
+        sent = inventory.strip_metadata(devices["of-sw1"])
+        assert "_platform_name" not in sent and "_site_name" not in sent
+
+    def test_the_form_offers_each_platform_and_site_by_name_slug_and_count(self, loaded):
+        html = unescape(loaded["client"].get("/v2/credentials/profiles/form")
+                        .get_data(as_text=True))
+        assert 'name="value" type="text"' not in html, "no free text: the server takes none"
+        field = re.search(r'<select id="cp-value" name="value">(.*?)</select>', html, re.S)
+        options = [(v, " ".join(words.split())) for v, words in re.findall(
+            r'<option value="([^"]*)"[^>]*>(.*?)</option>', field.group(1), re.S)]
+        assert options == [
+            ("", "none: it covers a kind, or every device"),
+            ("arista-eos", "Arista EOS (arista-eos) · 2 loaded devices"),
+            ("cisco-ios", "cisco-ios · 2 loaded devices"),
+            ("hp-procurve", "hp-procurve · 1 loaded device"),
+            ("linux", "linux · 1 loaded device"),
+            ("ovs", "ovs · 2 loaded devices"),
+            ("lab", "Lab 9 (lab) · 8 loaded devices")], options
+        groups = re.findall(r'<optgroup label="([^"]+)">', field.group(1))
+        assert groups == ["Platforms in the platform map", "Sites with a loaded NetBox device"]
+        # Each drawn choice saves under exactly its scope (presence alone would not show
+        # it): the site as a site profile, a platform as a platform profile.
+        body = {"username": "u", "password": "Prof-Pass-9917", "secret": ""}
+        for kind, value in (("site", options[-1][0]), ("platform", options[1][0])):
+            r = loaded["client"].post("/v2/credentials/profiles",
+                                      data=dict(body, kind=kind, value=value))
+            assert r.status_code == 200, (kind, value)
+        with open(loaded["dir"] / "credential_profiles.json", encoding="utf-8") as fh:
+            assert sorted(json.load(fh)["profiles"]) == ["platform:arista-eos", "site:lab"]
+
+    def test_a_drawn_choice_saves_its_profile_and_a_refusal_keeps_it_chosen(self, loaded):
+        import json
+        c = loaded["client"]
+        body = {"username": "u", "password": "Prof-Pass-9917", "secret": ""}
+        r = c.post("/v2/credentials/profiles", data=dict(body, kind="platform",
+                                                         value="arista-eos"))
+        assert r.status_code == 200 and "Saved platform:arista-eos" in r.get_data(as_text=True)
+        # A site chosen for a platform profile: refused naming both, and drawn chosen still.
+        r = c.post("/v2/credentials/profiles", data=dict(body, kind="platform", value="lab"))
+        html = unescape(r.get_data(as_text=True))
+        assert r.status_code == 400 and "no device can match platform:lab" in html
+        assert "arista-eos, cisco-ios, hp-procurve, linux, ovs" in html
+        assert '<option value="lab" selected>' in html
+        with open(loaded["dir"] / "credential_profiles.json", encoding="utf-8") as fh:
+            assert list(json.load(fh)["profiles"]) == ["platform:arista-eos"]
+
+    @pytest.mark.parametrize("kind,words", [
+        ("role:switch", "a profile for every switch covers its devices on every platform and "
+                        "at every site, and 'lab' was chosen as its platform or site"),
+        ("default", "the default profile covers its devices on every platform and at every "
+                    "site, and 'lab' was chosen as its platform or site")])
+    def test_a_kind_or_the_default_given_a_site_is_refused_naming_both(self, loaded, kind,
+                                                                      words):
+        r = loaded["client"].post("/v2/credentials/profiles", data={
+            "kind": kind, "value": "lab", "username": "u", "password": "Prof-Pass-9917",
+            "secret": ""})
+        assert r.status_code == 400 and words in unescape(r.get_data(as_text=True))
+        assert not (loaded["dir"] / "credential_profiles.json").exists()
+
+    def test_with_nothing_loaded_each_group_says_so(self, page, monkeypatch):
+        from modules import settings_schema
+        real = settings_schema.get_setting
+        monkeypatch.setattr(settings_schema, "get_setting", lambda key, default=None: (
+            {} if key == "platform_map" else real(key, default)))
+        html = unescape(page["client"].get("/v2/credentials/profiles/form")
+                        .get_data(as_text=True))
+        assert '<option value="" disabled>no platform is in the platform map</option>' in html
+        assert ('<option value="" disabled>no NetBox inventory has loaded a device at a site'
+                '</option>') in html
+        # The only choice left is none: a platform profile saved with it is refused, naming
+        # the scope, and nothing is stored.
+        r = page["client"].post("/v2/credentials/profiles", data={
+            "kind": "platform", "value": "", "username": "u", "password": "Prof-Pass-9917",
+            "secret": ""})
+        assert r.status_code == 400 and "name the platform it covers" in unescape(
+            r.get_data(as_text=True))
+        assert not (page["dir"] / "credential_profiles.json").exists()
 
 
 # ------------------------------------------------------------------ T21: "no login" as a state

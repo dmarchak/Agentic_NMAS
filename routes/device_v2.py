@@ -2294,7 +2294,10 @@ def _retire_card(ref, dev, back, fields):
     out = mask_payload({"plan": p, "preview": retire_preview(
         p, busy=busy_text(ref.name, host), request=request)})
     c = device_actions.retire_card(ref, host, out["preview"], _viewer(), out["plan"])
-    c.update(back=back, ip=dev.get("ip", ""))
+    # C2992: an observe-only device or a host is offered Retire, and the card says why
+    # (`management.state_words`, the Actions menu's own words for it).
+    from modules.inventory import management
+    c.update(back=back, ip=dev.get("ip", ""), management=management.state_words(dev))
     return c
 
 

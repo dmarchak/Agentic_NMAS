@@ -74,9 +74,14 @@ The password and enable secret are shown only as set or not set, and **Password 
 says when the password was last changed.
 
 **Add a profile…** asks what it covers (a platform, one of the kinds, each naming the NetBox
-roles it covers now, a site, or every device), the platform's or site's slug where it needs
-one, the username, the password and, if its devices need one, the enable secret; a new profile
-needs the username and the password. A name no device can match is refused, naming the scope
+roles it covers now, a site, or every device), the platform or site where it needs one, the
+username, the password and, if its devices need one, the enable secret; a new profile needs the
+username and the password. **The platform or site** is chosen, never typed: the platforms in
+the platform map and the sites a loaded NetBox device is at, each by NetBox's name with its
+slug beside it and how many loaded devices are on it; it stays at **none** for a kind or the
+default profile, and a kind or the default given a platform or site is refused, naming both. A
+platform is added on Settings › Installation › Platforms and roles. A name no device can match
+is refused, naming the scope
 and what exists: the kinds Mercury has, the platforms in the platform map, the sites a loaded
 NetBox device is at. **Edit…** keeps any field you leave empty; **Save the profile** saves the
 form. **Delete…** says what the profile covered and that those devices then take their login

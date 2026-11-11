@@ -42,7 +42,9 @@ _METADATA_KEYS = ("_source", "_netbox_id", "_cred_source", "_platform", "_site",
                   # where NetBox set it (modules/inventory/management.py).
                   "_login", "_management", "_management_from", "_management_problem",
                   # C2625: the device's other management addresses, never sent.
-                  "_ip6", "_oob_ip")
+                  "_ip6", "_oob_ip",
+                  # C2984: NetBox's names for the platform and the site, for a picker.
+                  "_platform_name", "_site_name")
 
 # In-memory cache: list_name -> {devices, skipped, warnings, fetched_at, stale, error}
 _memory: dict = {}

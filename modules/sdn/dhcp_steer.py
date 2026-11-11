@@ -451,6 +451,12 @@ def _export(network: str, export=None) -> dict:
 
     got = X.read(network)
     if not got["ok"]:
+        # None committed and one that can't be read are different states (C2995): the card
+        # at rest says which, and what to do about each.
+        if got.get("absent"):
+            exc = Refused(f"{network} has no committed NSOT export")
+            exc.no_export = True
+            raise exc
         raise Refused(f"{network}'s committed NSOT export cannot be read: {got['error']}")
     return got["export"]
 
@@ -830,7 +836,7 @@ def view(s: dict) -> dict:
     """What `templates/v2/_sdn_dhcp.html` draws of a card, a preview or a result, and nothing
     else (every carried field is drawn; the operation's own answer keeps the rest)."""
     hosts = s.get("hosts")
-    out = {k: s.get(k) for k in ("network", "state_card", "error", "edge_switches",
+    out = {k: s.get(k) for k in ("network", "state_card", "error", "no_export", "edge_switches",
                                  "steered_switches", "ipv6", "protected", "kind", "hash",
                                  "cookies", "flows", "unchanged", "warnings", "export_sha256",
                                  "connection", "chosen", "scope", "outcome") if k in s}
@@ -861,16 +867,23 @@ def view(s: dict) -> dict:
 
 def card(network: str, *, cached=None, export=None) -> dict:
     """The DHCP steering card at rest (board lab9-sdn B): the server, the edge switches, what
-    is steered by Mercury's record and the stored counters. A read: no controller, no NetBox."""
+    is steered by Mercury's record and the stored counters. A read: no controller, no NetBox.
+
+    ``error`` is why steering cannot be compiled now, by the preview's own two steps
+    (`_export`, then `compile`: one owner of that condition, C2995), so the card offers
+    Preview steering… only while it is ``""``; ``no_export`` says the reason is that nothing
+    is committed (apart from an export that can't be read or does not compile)."""
     from modules.sdn import connections
 
     out = {"network": network, "state_card": "rest", "server": None, "error": "",
+           "no_export": False,
            "edge_switches": [], "hosts": 0, "steered_switches": 0, "counts": None,
            "ipv6": IPV6_WORDS, "connection": "", "protected": "", "export_sha256": ""}
     try:
         doc = _export(network, export)
     except Refused as exc:
         out["error"] = str(exc)
+        out["no_export"] = bool(getattr(exc, "no_export", False))
         doc = None
     if doc is not None:
         c = compile(doc)

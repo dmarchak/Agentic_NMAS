@@ -1897,6 +1897,35 @@ def _no_change_window(client, _lab, _mp):
         mp.undo()
 
 
+def _lab9_sitting_findings(client, _lab, _mp):
+    """Two states the walk's lab does not hold, drawn for the Lab 9 sitting's interface
+    findings (2026-11-10). **C2984:** Credentials › Profiles' form with a NetBox inventory
+    loaded (the walk's lists are local, so no device is at a NetBox site): "The platform or
+    site" offers the site by NetBox's name, its slug and its device count. **C2992:** the
+    Retire card of a device NetBox holds while NetBox writes are off: "What Retire does" says
+    what the plan does not do in NetBox's record. Both patches are undone before the next
+    provider; nothing is written."""
+    import pytest
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr("modules.inventory.loaded_rows", lambda name: [
+            {"hostname": "of-sw1", "role": "switch", "_role_slug": "openflow-switch",
+             "_platform": "arista-eos", "_platform_name": "Arista EOS",
+             "_site": "lab", "_site_name": "Lab 9"}])
+        form = client.get("/v2/credentials/profiles/form", headers={"Accept": "text/html"})
+        assert form.status_code == 200 and "Lab 9 (lab)" in form.get_data(as_text=True)
+        mp.setattr("modules.nsot.retire._netbox_facts", lambda l, h: {
+            "checked": True, "exists": True, "id": 9, "tags": [], "created_by_nmas": False,
+            "writes": False, "device": {"id": 9, "name": h, "local_context_data": {}}})
+        card = client.get("/v2/device/r3/retire?reason=returned+to+the+provider",
+                          headers={"Accept": "text/html"})
+        assert card.status_code == 200 and ("NetBox device 9 is NOT set to Decommissioning"
+                                            in card.get_data(as_text=True)), card.status_code
+    finally:
+        mp.undo()
+
+
 def _netbox_lag(client, _lab, _mp):
     """The device page's NetBox tab with NetBox holding less than r3's committed golden
     (C1344): the reader's stored answer as tests/test_netbox_after_intent.py reads it from the
@@ -3776,7 +3805,17 @@ def _sdn_switches(client, _lab, _mp):
                 {"kind": "operation", "id": "ofcfg-2", "at": "2026-11-10T02:12:00Z",
                  "actor": "op@example.com", "outcome": "rolled_back", "export_sha256": "f" * 64,
                  "error": "Verify failed", "verify": {"checks": []},
-                 "response": {"kind": "openflow_config", "device": "procurve-sw"}}]
+                 "response": {"kind": "openflow_config", "device": "procurve-sw"}},
+                # A configuration that held, made from an earlier export whose openflow
+                # Service was at another address: NetBox changed since, and the row names
+                # the value before and after (the operator, the Lab 9 sitting, 2026-11-10).
+                {"kind": "operation", "id": "ofcfg-3", "at": "2026-11-10T02:14:00Z",
+                 "actor": "op@example.com", "outcome": "verified", "export_sha256": "e" * 64,
+                 "source": {"export_sha256": "e" * 64, "export_commit": "b2c3d4e5f6" * 4,
+                            "origins": [{"value": "controller", "is": "192.0.2.9:6653",
+                                         "from": "NetBox Service 'openflow' on controller"}]},
+                 "verify": {"checks": []},
+                 "response": {"kind": "openflow_config", "device": "arista-sw2"}}]
         mp.setattr("modules.sdn.flow_intent.operations",
                    lambda network: {"state": "ok", "rows": rows, "error": ""})
         capture = {"name": "arista-sw1/show_running-config/20261110T020000Z",
@@ -3791,6 +3830,7 @@ def _sdn_switches(client, _lab, _mp):
         base = "/v2/sdn/switches"
         page = client.get(f"{base}?list=Lab").get_data(as_text=True)
         assert 'data-state="differs"' in page and "00000000000003e7" in page
+        assert 'data-state="netbox_changed"' in page and "192.0.2.9:6653 → " in page
         assert client.get(f"{base}/view?list=Lab&q=arista").status_code == 200
         assert "Confirm arista_eos against" in client.post(f"{base}/template/preview", data={
             "list": "Lab", "template": "arista_eos", "capture": capture["name"]}).get_data(
@@ -4071,7 +4111,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _read_only_account,
+                   _no_change_window, _read_only_account, _lab9_sitting_findings,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,

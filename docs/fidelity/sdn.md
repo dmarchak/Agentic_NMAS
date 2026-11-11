@@ -61,6 +61,7 @@ The regions whose names begin "D:".
 | D: IPv6 | B: not covered, DHCPv6 (UDP 546 and 547) is not steered: it floods as before | the same | **same** |
 | D: the counts | B: Last hour, requests steered and replies dropped | Counted, the same two numbers since each flow was installed, with the read's time | **deviation** (log: C2904 B 1) |
 | D: the actions | B: Edit settings…, Preview steering…, Remove steering…, How does this work? | the same, each preview busy on itself, a compact (i) beside each preview; Remove steering… disabled, its reason on hover, when nothing is recorded | **same** |
+| D: can't compile | B: not drawn (the board's card compiles) | the chip "can't compile", the notice saying why and what to do (Export it from NetBox on the NSOT export card, or correct NetBox and export again), and Preview steering… and the settings' Preview… greyed with that reason until it compiles | **deviation** (log: C2995 B 1) |
 | D: settings, the preview, a refusal, the result | no artboard for DHCP (the DNS card's settings and preview are drawn) | drawn after the DNS card's: Steer on every edge switch or chosen ones with Preview…; the preview's rows (switch, what, priority, REST body) with Steer DHCP on <N> switch(es); Remove <N> steering flow(s); a refusal with Close; the result per switch | **deviation** (log: C2904 B 2) |
 | D: phone width | no artboard | the tables stack by their labels as the Apps tab's do; not shot | **later** (C2858: the card's board shot at 390) |
 
@@ -135,7 +136,22 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `8519b0cd49c02efdb9cb6bc0d3d85176a18108d9b390324817fb058941b73b94`
+Templates sha256: `50a32ea0e10c56fdd1b532c62777d378752ff882096cd8781e0ddcaaa3bcee65`
+Hashed again 2026-11-11 for C2995 (the operator's Lab 9 sitting, 2026-11-10: "Preview
+steering…" stays enabled while steering "can't compile"; expected, in the operator's report,
+"disabled with the reason on hover (no committed NSOT export)"; the same work order as the
+Switches tab's: "the capture picker default and re-confirm; 'Differs from intent' says NetBox
+changed; the OVS preview shows its transaction and 'already as intended'; Retire on observe
+devices says what it does; credential profile slug as a dropdown"): `_sdn_dhcp.html` alone
+moved. While the card's own read of the export and its compile refuse (the preview's first two
+steps), Preview steering… and Edit settings…' Preview… are drawn greyed with the reason on
+hover, and the notice under the head says what to do: "Export it from NetBox on the NSOT
+export card above, then preview steering." when none is committed, "Correct it in NetBox,
+export again on the NSOT export card above, then preview steering." otherwise, then "Preview
+steering… is not offered until it compiles." A card that compiles is drawn as before. The
+region row "D: can't compile" above; compared by reading the template against artboard B, with
+no new shot (the templates then hashed
+`8519b0cd49c02efdb9cb6bc0d3d85176a18108d9b390324817fb058941b73b94` before it).
 Hashed again 2026-11-11 for C2985, C2675 and C2983 (a controller taken as it is; the operator
 at the Lab 9 sitting: "every fix through Mercury ... No solution may require the CLI", and for
 this item "a route for listen.conf's /opt/ryu-apps ExecStart through Mercury or the installer

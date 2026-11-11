@@ -115,6 +115,12 @@ not record (step 1), an edge switch chosen that has no end host, a switch whose 
 read, a protected class the flow would meet and this feature does not own, or a preview that
 moved.
 
+The card at rest runs the preview's own first two steps (reading the committed export and
+compiling it). While either refuses, the card reads **can't compile**, says why and what to do
+(export from NetBox on the NSOT export card when none is committed; correct NetBox and export
+again otherwise), and **Preview steering…** and Edit settings…' **Preview…** are greyed with
+that reason: a preview that could only be refused is not offered.
+
 ## The result {#result}
 
 The result lists each switch with its outcome and how many flows read back as sent, what was

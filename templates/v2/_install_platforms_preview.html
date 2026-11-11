@@ -39,8 +39,10 @@
   </form>
   {%- endif %}
   <div id="platforms-test"></div>
+  {#- C2981: Save answers at the top of the region (Saved, or what moved), so the page is
+      brought there. -#}
   <form class="set-foot" method="post" action="{{ url_for('settings_v2.platforms_apply') }}"
-        hx-post="{{ url_for('settings_v2.platforms_apply') }}" hx-target="#install-platforms" hx-swap="outerHTML">
+        hx-post="{{ url_for('settings_v2.platforms_apply') }}" hx-target="#install-platforms" hx-swap="outerHTML show:top">
     <input type="hidden" name="proposal" value="{{ pv.proposal_json }}">
     <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
     <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save{% if e.changes %} and refresh the NetBox lists{% endif %}</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='saving the map') }}</span>

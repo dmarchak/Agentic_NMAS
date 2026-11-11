@@ -134,6 +134,10 @@ capture again before the next Configure.
 
 A template is a draft on a network until a verified person confirms it against a saved capture
 of one of its devices (a `show running-config` read on [Show commands](show-commands-screen)).
+The picker offers only the captures of that read (an Open vSwitch server's is `sudo -n ovs-vsctl
+show`, a Comware switch's `display current-configuration`), newest first, and starts on the
+newest; where the network confirmed the template before against another read, that read's
+captures come first. A template that changed is confirmed again from the same picker.
 **Confirm against a capture…** shows the template's lines, each with its citation and why,
 beside the capture; **Confirm <template>** commits `openflow_confirmations/<template>.yml` in the network's
 repository as you, naming the capture and both hashes. A template that changes is a draft again.

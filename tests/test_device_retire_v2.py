@@ -93,6 +93,126 @@ class TestTheMenu:
         assert "Retire r5 from management" in body[body.index('id="tab-body"'):]
 
 
+def _words(html: str) -> str:
+    """*html* as a person reads it: tags dropped, entities read, spaces folded."""
+    return " ".join(html_mod.unescape(re.sub(r"<[^>]+>", " ", html)).split())
+
+
+class TestRetireSaysWhatItDoes:
+    """C2992 (the operator, the Lab 9 sitting, 2026-11-10: Retire… offered on an observe-only
+    device, "the button should say what it does"): the row and the card's first part say that
+    nothing is sent to the device, what changes in Mercury's records and in NetBox's record,
+    and what survives and where, before anything is pressed."""
+
+    def _observe(self, monkeypatch):
+        """r5 as an observe-only device: its inventory row's mark, as NetBox's context sets it."""
+        import routes.device_v2 as D
+        real = D._device_or_404
+
+        def marked(name):
+            found, refusal = real(name)
+            if found is not None:
+                found = (found[0], dict(found[1], _management="observe",
+                                        _management_from="the device's local config context"))
+            return found, refusal
+        monkeypatch.setattr(D, "_device_or_404", marked)
+
+    @staticmethod
+    def _no_session(monkeypatch):
+        """Any session to a device fails the test: Retire's words are that none is opened."""
+        monkeypatch.setattr("modules.connection.open_ssh", lambda *a, **kw: pytest.fail(
+            "Retire opened a session to a device"))
+
+    def _retire(self, lab):
+        """Retire… pressed and confirmed: the card's own confirm, posted as the card sends it.
+        The retire commit's message, read from the repository."""
+        _r, card = _card(lab)
+        r = lab["client"].post("/v2/device/r5/retire/confirm", data=_vals(card))
+        assert r.status_code == 200 and "r5 is retired" in r.get_data(as_text=True)
+        return lab["R"].git(lab["repo"], "log", "-1", "--format=%B")[1]
+
+    def test_the_row_says_it_sends_nothing_and_what_it_changes(self, exported, monkeypatch):
+        page = exported
+        self._no_session(monkeypatch)
+        _r, body = _get(page, "/v2/device/r5")
+        menu = html_mod.unescape(body[body.index('role="menu"'):body.index('class="tabs"')])
+        row = menu[menu.index('data-op="retire"'):]
+        row = row[:row.index("</a>")]
+        assert ('title="Sends nothing to r5: takes it out of management in Mercury\'s records '
+                "and, where NetBox writes are on, in NetBox's record of it. Its preview lists "
+                'every change, and what survives and where, before anything is done."') in row
+        assert row.endswith(">Retire…"), "the row's name stays Retire…: its words are its hover"
+        assert "Retire… is offered" not in menu, "a managed device's menu needs no such note"
+        # Pressed and confirmed, it does what the row said: Mercury's records change (the
+        # retire commit, and the address then shows the retired record), and no session to
+        # any device was opened on the way (`_no_session` would have failed the test).
+        message = self._retire(exported)
+        assert "Retired-Device: r5" in message and f"Actor: {TEST_PERSON}" in message
+        assert "Its record" in _get(exported, "/v2/device/r5")[1]
+
+    def test_the_card_leads_with_what_it_does_from_the_plan(self, exported):
+        before = _state(exported)
+        _r, card = _card(exported)
+        assert card.index("<h3>What Retire does</h3>") < card.index("<h3>Why</h3>")
+        does = _words(_part(card, "What Retire does"))
+        assert ("Nothing is sent to r5. No session is opened to it and its running "
+                "configuration is not changed.") in does
+        assert "In Mercury's records: r5 leaves Lab's inventory" in does
+        steps = re.findall(r"<li>(.*?)</li>", _part(card, "What retire changes, in order"))
+        todo = sum(1 for s in steps if "(already done)" not in s)
+        assert f"({todo} step{'s' if todo != 1 else ''} to do, listed in order below)" in does
+        # NetBox's record, in the plan's own words: this world's NetBox writes are off, so
+        # the record is not changed, and the card says that, not that it is.
+        assert "In NetBox's record of it: nothing to change in NetBox's record" in does
+        assert "NetBox device 9 is NOT set to Decommissioning or renamed: NetBox writes are " \
+            "off here" in does
+        assert ".." not in does
+        assert ("What survives, and where: its intent and golden (host_vars/r5.yml, "
+                "golden/r5.cfg) leave Lab's working tree and stay in its repository's "
+                "history, in the parent of the retire commit; its credential survives only "
+                "in the break-glass record") in does
+        assert _state(exported) == before, "a preview writes nothing"
+
+    def test_netbox_s_record_is_said_as_the_plan_changes_it(self, exported, monkeypatch):
+        """With NetBox writes on the plan sets the record to Decommissioning and renames it:
+        the card's first part says so in the plan's words."""
+        from modules import device_actions
+        from tests.v2_card_models import spying
+        with spying(device_actions, "retire_card") as calls:
+            _card(exported)
+        args = calls[-1][0]
+        plan = dict(args[4])
+        step = ("set NetBox device 9 to Decommissioning and rename it r5-retired-9, through "
+                "Mercury's NetBox write gate with its before recorded, then read back")
+        plan["steps"] = [dict(s, what=step, done=False) if s.get("key") == "netbox_record"
+                         else s for s in plan["steps"]]
+        plan["not_doing"] = [n for n in plan["not_doing"] if not n.startswith("NetBox device 9 "
+                                                                              "is NOT")]
+        assert any(s.get("key") == "netbox_record" for s in plan["steps"]), "the plan's step"
+        c = device_actions.retire_card(*args[:4], plan)
+        assert c["netbox"]["what"] == step
+        assert not any("is NOT set" in n for n in c["netbox"]["not_done"])
+
+    def test_on_an_observe_device_the_menu_and_the_card_say_why_it_is_offered(
+            self, exported, monkeypatch):
+        self._observe(monkeypatch)
+        self._no_session(monkeypatch)
+        _r, card = _card(exported)
+        does = _words(_part(card, "What Retire does"))
+        assert ("Nothing is sent to r5. No session is opened to it and its running "
+                "configuration is not changed. r5 is observe (the device's local config "
+                "context): Retire is offered all the same, because it changes records and "
+                "never the device.") in does
+        _r, body = _get(exported, "/v2/device/r5")
+        menu = _words(body[body.index('role="menu"'):body.index('class="tabs"')])
+        assert ("r5 is observe (the device's local config context): nothing that changes it "
+                "is offered. Retire… is offered: it sends nothing to r5, and changes Mercury's "
+                "records and, where NetBox writes are on, NetBox's record of it.") in menu
+        # And it is true of an observe-only device: confirmed, it retires in Mercury's
+        # records with no session opened to it.
+        assert "Retired-Device: r5" in self._retire(exported)
+
+
 class TestTheCard:
     def test_steps_generated_survives_and_a_preview_writes_nothing(self, exported, monkeypatch,
                                                                     tmp_path):

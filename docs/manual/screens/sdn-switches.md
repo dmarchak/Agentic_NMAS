@@ -9,14 +9,21 @@ contacts no switch and no controller.
 ## The summary
 
 How many switches are marked for OpenFlow, and how many are connected as intended, configured
-but not connected, differing from intent, and not configured; then the datapath ids the
-controller lists that no switch in the export carries (seen by the controller, not in NetBox).
+but not connected, differing from intent, changed in NetBox since they were configured, and not
+configured; then the datapath ids the controller lists that no switch in the export carries
+(seen by the controller, not in NetBox).
 
-A switch **differs from intent** when its last configuration rolled back or failed, or was made
-from an export other than the committed one (NetBox has moved since). It is **configured, not
-connected** when its last configuration verified and the controller does not list it now; **not
-configured** when Mercury never configured it and the controller does not list it; **connected
-as intended** when the controller lists it.
+A switch **differs from intent** when its last configuration rolled back or failed. It reads
+**NetBox changed since configured** when its last configuration held and was made from an
+export other than the committed one: the change is NetBox's, not the switch's, and the row says
+so. Under the label it names each of the switch's values that differs between the two exports,
+before → after, and each export with the commit that wrote it. Where none of the switch's
+recorded values changed it says the change is elsewhere in NetBox, and where the switch's record
+was kept before Mercury recorded each value's source it says which value changed is not known.
+The switch itself is not read for this: **Preview the fix…** reads it and shows what would be
+sent. A switch is **configured, not connected** when its last configuration verified and the
+controller does not list it now; **not configured** when Mercury never configured it and the
+controller does not list it; **connected as intended** when the controller lists it.
 
 ## Searching and filtering
 
@@ -39,8 +46,14 @@ Asks the controllers for their switch lists now; the age beside it is the last r
 ## The OpenFlow templates
 
 Each template, the network's switches on it, and its status: confirmed (by whom, when, against
-which capture) or a draft, with **Confirm against a capture…**. See
-[How it works](openflow-config#templates).
+which capture) or a draft, with **Confirm against a capture…**. The picker beside it offers the
+network's captures of the read the template is confirmed against, newest first, and starts on
+the newest: the device's configuration read (`show running-config` on Arista EOS and
+ArubaOS-Switch, `sudo -n ovs-vsctl show` on an Open vSwitch server, `display
+current-configuration` on Comware), or the read the network's earlier confirmation was of. A
+capture of another command is not offered. With no such capture the control is greyed and says
+which read to run on Show commands; if the network's saved reads can't be read it says that
+instead. See [How it works](openflow-config#templates).
 
 ## IPv6
 
