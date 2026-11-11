@@ -173,9 +173,12 @@ deploys through intent.
 
 **What the session to an OVS server may carry** (`modules/sdn/ovs.py`, driver `ovs_linux`):
 - **reads:** `ovs-vsctl --version`; `sudo -n ovs-vsctl` `show`, `list-br`, `list controller`
-  (target and is_connected), and per bridge `get-controller`, `get-fail-mode`, `list-ports`,
-  `get bridge … protocols` or `datapath_id`, and per port `get interface … ofport_request` or
-  `ofport`; `sudo -n ovs-ofctl -O OpenFlow13 show <bridge>`;
+  (whole, or target and is_connected), and per bridge `get-controller`, `get-fail-mode`,
+  `list-ports`, `get bridge … protocols`, `datapath_id`, `fail_mode` or `other_config`, and
+  per port `get interface … ofport_request` or `ofport`; `list bridge`, `list port` and
+  `list interface`, each whole or one record by its name; `sudo -n ovs-ofctl -O OpenFlow13`
+  `show`, `dump-flows`, `dump-ports`, `dump-ports-desc` and `dump-tables`, each of one
+  `<bridge>` (every form: `ovs.read_forms()`; C2991);
 - **one write, only while held:** the transaction's shapes, with every argument one token of
   its shape and no shell character;
 - **never Linux's `enable()`:** that is `sudo -s`, a root shell.

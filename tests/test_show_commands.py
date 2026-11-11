@@ -167,6 +167,34 @@ class TestARun:
         c = reads_page.result("Lab", "run1", job="j1")
         assert c["state"] == "done" and c["record"]["done"] == 1, c["record"]
 
+    def test_an_answer_cut_at_the_cap_says_how_much_is_kept_and_how_much_was_cut(
+            self, sc, monkeypatch):
+        """C2990: "If a cap exists for size, it must say in place that it cut and how much."
+        The cap cuts by size, never a line in the middle of an answer that fits: a line far
+        longer than the screen is kept and drawn whole (its box scrolls sideways)."""
+        from modules.nsot import reads as R
+        long_line = "ExecStart=/opt/ryu-venv/bin/ryu-manager " + " ".join(
+            f"ryu.app.module_{i:03d}" for i in range(40))
+        log = "".join(f"line {i:03d} of the log buffer, nothing secret in it\n"
+                      for i in range(60))
+        sc["fleet"].answers["r3"].update({"show logging": log, "show version": long_line})
+        sc["fleet"].answers["r9"].update({"show logging": "short", "show version": long_line})
+        monkeypatch.setattr(R, "cap_bytes", lambda list_name: 1024)
+        _r, target = _run(sc, ["show logging", "show version"])
+        record = R.get("Lab", re.search(R.RUN_ID, target).group(0))
+        cut, whole = record["results"]["r3"]["answers"]
+        assert cut["cut"] and cut["bytes"] == len(log) == 2940 and len(cut["answer"]) == 1024
+        assert not whole["cut"] and whole["answer"] == long_line and len(long_line) == 799
+        _r, html = _get(sc, target)
+        assert ("2940 bytes, longer than one answer's cap: the first 1024 bytes are kept and "
+                "shown here and the last 1916 were cut, so this is its start, never the "
+                "whole.") in html
+        assert f'<pre class="ask-pre">{long_line}</pre>' in html
+        _r, card = _get(sc, "/v2/device/r3?tab=ask&list=Lab&run="
+                        + record["id"] + "&command=show+logging")
+        assert ("The answer is 2940 bytes, longer than one answer's cap: the first 1024 bytes "
+                "are kept and shown here and the last 1916 were cut") in card
+
     def test_the_run_is_a_history_row(self, sc):
         _run(sc, ["show clock"])
         from modules.history_sources import show_commands
@@ -176,6 +204,164 @@ class TestARun:
         (e,) = got["events"]
         assert e["kind"] == "show_commands" and e["what"] == "Show commands: show clock"
         assert e["devices"] == ["r3", "r9"] and e["outcome"].startswith("2 answered")
+
+
+#: A run id of the one shape (`reads.RUN_ID`) that names no run.
+NO_RUN = "20261014T" + "0" * 12 + "Z-" + "0" * 32
+
+
+def _start(lab, commands=("show clock",)):  # noqa: F811
+    """Run pressed, its answer's address and the job's id, WITHOUT waiting for the job."""
+    r = lab["client"].post("/v2/show-commands/run", headers={"HX-Request": "true"},
+                           data={"list": "Lab", "command": list(commands),
+                                 "fingerprint": _fingerprint(lab)})
+    target = r.headers["HX-Redirect"]
+    return target, re.search(r"job=([0-9a-f]{32})", target).group(1)
+
+
+def _region(html):
+    return re.search(r'<section class="card sc-result[^"]*"[^>]*>', html).group(0)
+
+
+class TestARunInProgress:
+    """C2988 (the operator's Lab 9 sitting, 2026-11-10): Run's own answer opened the run's page,
+    which drew "No such run" while the top bar counted the run as running, on every run, and
+    stayed so until a reload. The run's record was first written by the job's thread, so a
+    page asked before that write found none, and the "No such run" region listens for nothing.
+    Here the job's thread is held, so the page is asked while the run exists only as what the
+    request that started it recorded."""
+
+    @pytest.fixture
+    def held(self, sc, monkeypatch):
+        import threading
+        from modules.nsot import reads as R
+        go, real = threading.Event(), R.run
+
+        def run(*a, **kw):
+            assert go.wait(30), "the test never let the job begin"
+            return real(*a, **kw)
+        monkeypatch.setattr(R, "run", run)
+        yield go
+        go.set()
+
+    def test_a_run_whose_job_has_not_begun_is_drawn_running_and_listens(self, sc, held):
+        from modules.nsot import capture_job, reads as R
+        target, job = _start(sc)
+        try:
+            record = R.get("Lab", re.search(R.RUN_ID, target).group(0))
+            _r, html = _get(sc, target)
+            assert "No such run" not in html, "a run in progress, drawn as an absence"
+            region = _region(html)
+            assert 'aria-busy="true"' in region
+            assert 'hx-trigger="nmas:reads from:body"' in region and f"job={job}" in region
+            assert "1 command on 2 devices" in html and ">running<" in html
+            assert f"By {record['actor']}," in html and record["actor"]
+            assert "Asking r3, r9: 0 of 2 read so far, still reading r3, r9." in html
+            assert '<td class="mono">show clock</td>' in html
+            assert sc["fleet"].sent == []
+            # And an id that names no run still says so, differently: no listener, no progress.
+            r, absent = _get(sc, f"/v2/show-commands/run/{NO_RUN}?list=Lab")
+            assert r.status_code == 200 and "No such run" in absent
+            assert f"Lab holds no run {NO_RUN}." in absent and "this address names none" in absent
+            assert 'href="/v2/show-commands?list=Lab#sc-runs"' in absent
+            assert "hx-trigger" not in _region(absent) and "aria-busy" not in _region(absent)
+        finally:
+            held.set()
+            assert capture_job.wait(job, 30)
+        _r, html = _get(sc, target.replace("?", "/part?", 1))
+        assert "hx-trigger" not in _region(html) and ">done<" in html and "2 alike" in html
+        assert "Asking r3" not in html
+
+    def test_start_records_the_run_before_its_job_exists(self, sc, held):
+        from modules.nsot import capture_job, reads as R
+        import app as A
+        with A.app.test_request_context("/v2/show-commands/run", method="POST"):
+            got = R.start("Lab", ["r3", "r9"], ["show clock"], "p@example.invalid",
+                          reason="a stated reason here")
+        try:
+            record = R.get("Lab", got["run"])
+            assert record is not None, "the run's page reads this record by its id"
+            assert (record["state"], record["devices"], record["commands"]) == \
+                ("running", ["r3", "r9"], ["show clock"])
+            assert record["actor"] == "p@example.invalid" and record["results"] == {}
+            assert record["started_at"] and record["finished_at"] is None
+            assert record["reason"] == "a stated reason here"
+        finally:
+            held.set()
+            assert capture_job.wait(got["job"], 30)
+        assert R.get("Lab", got["run"])["state"] == "done"
+
+    def test_a_run_mid_read_names_what_is_read_and_what_it_still_reads(self, sc, monkeypatch):
+        import threading
+        import time
+        from modules.nsot import capture_job, reads as R
+        go, fleet = threading.Event(), sc["fleet"]
+
+        def session(dev, fn):
+            if dev["hostname"] == "r9":
+                assert go.wait(30), "the test never let r9 answer"
+            return fleet(dev, fn)
+        monkeypatch.setattr("modules.connection.with_temp_connection", session)
+        target, job = _start(sc)
+        run_id = re.search(R.RUN_ID, target).group(0)
+        try:
+            deadline = time.time() + 30
+            while "r3" not in (R.get("Lab", run_id) or {}).get("results", {}):
+                assert time.time() < deadline, "r3's answer never landed in the record"
+                time.sleep(0.05)
+            _r, html = _get(sc, target.replace("?", "/part?", 1))
+            assert 'hx-trigger="nmas:reads from:body"' in _region(html)
+            assert "Asking r3, r9: 1 of 2 read so far, still reading r9." in html
+            assert "03:20:01.123 UTC" in html, "r3's answer, drawn while r9 is still read"
+        finally:
+            go.set()
+            assert capture_job.wait(job, 30)
+        _r, html = _get(sc, target)
+        assert ">done<" in html and "2 alike" in html and "still reading" not in html
+
+
+    def test_a_run_whose_job_raises_is_recorded_failed_and_its_page_says_why(self, sc,
+                                                                            monkeypatch):
+        """A job that raised after its record had begun left the record "running": its page
+        drew a finished run with nothing read, and said nothing of the failure. The record
+        says failed, with the reason, and so do the run's page, Ask the device and History."""
+        from modules import fanout
+        from modules.history_sources import show_commands
+        from modules.nsot import capture_job, listref, reads as R
+
+        def read_each(*a, **kw):
+            raise RuntimeError("the readers could not be started")
+        monkeypatch.setattr(fanout, "read_each", read_each)
+        target, job = _start(sc)
+        assert capture_job.wait(job, 30) and capture_job.get(job)["state"] == "failed"
+        record = R.get("Lab", re.search(R.RUN_ID, target).group(0))
+        why = "RuntimeError: the readers could not be started"
+        assert (record["state"], record["failed"]) == ("failed", why)
+        assert record["finished_at"] and record["results"] == {} and sc["fleet"].sent == []
+        _r, html = _get(sc, target)
+        assert ">failed<" in html and ">done<" not in html and ">running<" not in html
+        assert (f"<strong>The run failed before it finished:</strong> {why} 0 of 2 devices had "
+                "been read and are kept below; the others were not read.") in html
+        assert "hx-trigger" not in _region(html) and "aria-busy" not in _region(html)
+        _r, card = _get(sc, f"/v2/device/r3?tab=ask&list=Lab&run={record['id']}")
+        assert f"<strong>The run failed:</strong> {why}" in card
+        (e,) = show_commands({"ref": listref.resolve("Lab"), "device": "", "limit": 50,
+                              "since": None, "members": None})["events"]
+        assert e["outcome"].startswith("failed") and e["detail"] == why
+
+    def test_a_fleet_in_progress_is_a_count_never_one_long_line(self, monkeypatch):
+        """Large fleets: a run of 900 names its first devices and counts the rest."""
+        from modules import reads_page
+        from modules.nsot import reads as R
+        hosts = [f"d{i:03d}" for i in range(900)]
+        monkeypatch.setattr(R, "retention_days", lambda list_name: 30)
+        record = R.begun("Lab", NO_RUN, hosts, ["show clock"], "p@example.invalid", started=1.0)
+        record["results"] = {h: {"state": "answered", "answers": []} for h in hosts[:5]}
+        monkeypatch.setattr(R, "get", lambda list_name, run_id: record)
+        c = reads_page.result("Lab", NO_RUN)
+        assert c["state"] == "running" and (c["record"]["total"], c["record"]["done"]) == (900, 5)
+        assert c["record"]["devices"] == hosts[:12] and c["record"]["more"] == 888
+        assert c["record"]["pending"] == hosts[5:17] and c["record"]["pending_more"] == 883
 
 
 #: r1's real `show ip ospf neighbor` (tests/fixtures/operational), and the same answer with only
@@ -401,6 +587,178 @@ class TestTheLoggingPath:
                               headers={"HX-Request": "true"})
         html = html_mod.unescape(r.get_data(as_text=True))
         assert "Not run:" in html and "r1 was not tested in" in html and lp["fleet"].sent == []
+
+
+class TestALoggingPathTestInProgress:
+    """C2988, the page's other way in: Test the logging path opens the same run's page, and its
+    record was first written later still (after each device's golden was read for its trap
+    level)."""
+
+    def _start(self, lp):
+        r = lp["client"].post("/v2/show-commands/logging-path", headers={"HX-Request": "true"},
+                              data={"list": "Lab", "command": [""],
+                                    "fingerprint": _fingerprint(lp)})
+        target = r.headers["HX-Redirect"]
+        return target, re.search(r"job=([0-9a-f]{32})", target).group(1)
+
+    def test_a_test_whose_job_has_not_begun_is_drawn_sending_and_listens(self, lp, monkeypatch):
+        import threading
+        from modules.nsot import capture_job, logging_path as LP
+        go, real = threading.Event(), LP.run
+
+        def run(*a, **kw):
+            assert go.wait(30), "the test never let the job begin"
+            return real(*a, **kw)
+        monkeypatch.setattr(LP, "run", run)
+        target, job = self._start(lp)
+        try:
+            _r, html = _get(lp, target)
+            assert "No such run" not in html, "a test in progress, drawn as an absence"
+            region = _region(html)
+            assert 'hx-trigger="nmas:reads from:body"' in region and f"job={job}" in region
+            assert "Logging path on 2 devices" in html and "0 of 2 lines sent" in html
+            assert "The line's level is being chosen" in html and "send log" not in html
+            assert lp["fleet"].sent == []
+        finally:
+            go.set()
+            assert capture_job.wait(job, 30)
+        _r, html = _get(lp, target)
+        assert "hx-trigger" not in _region(html) and "not received" in html
+        assert "The line: " in html and "being chosen" not in html
+
+    def test_a_test_whose_job_raises_is_recorded_failed_and_says_why(self, lp, monkeypatch):
+        """The lines sent, then the watch raising: the record stayed "watching" for ever, its
+        page busy and listening for an end that never came. It says failed, with the reason
+        and what had been sent, and offers Test again."""
+        from modules.nsot import capture_job, logging_path as LP, reads as R
+
+        def outcome(record, **kw):
+            raise RuntimeError("the answer from Loki could not be read")
+        monkeypatch.setattr(LP, "outcome", outcome)
+        target, job = self._start(lp)
+        assert capture_job.wait(job, 30) and capture_job.get(job)["state"] == "failed"
+        record = R.get("Lab", re.search(R.RUN_ID, target).group(0))
+        why = "RuntimeError: the answer from Loki could not be read"
+        assert (record["state"], record["failed"]) == ("failed", why)
+        assert sorted(record["results"]) == ["r3", "r9"]          # what was sent is kept
+        _r, html = _get(lp, target)
+        assert "Logging path on 2 devices" in html and ">failed<" in html
+        assert (f"<strong>The test failed before it finished:</strong> {why} 2 of 2 lines had "
+                "been sent, and 0 had arrived; no result was reached. Test again.") in html
+        assert "hx-trigger" not in _region(html) and "aria-busy" not in _region(html)
+        assert ">running<" not in html and "watching Loki" not in html
+        assert '<span class="op-idle">Test again</span>' in html
+
+    def test_a_test_refused_in_its_job_says_so_and_why(self, lp, monkeypatch):
+        """Refused in the job, before any line was sent (every device held back): the record
+        begun with the request says refused and why, never left drawn as sending."""
+        from modules.nsot import capture_job, logging_path as LP, reads as R
+        why = "Refused: nothing was sent. r3 traps at no level a test line may use."
+
+        def run(*a, **kw):
+            raise LP.Refused(why)
+        monkeypatch.setattr(LP, "run", run)
+        target, job = self._start(lp)
+        assert capture_job.wait(job, 30)
+        record = R.get("Lab", re.search(R.RUN_ID, target).group(0))
+        assert (record["state"], record["refused"]) == ("refused", why)
+        _r, html = _get(lp, target)
+        assert "The logging path's test" in html and ">refused<" in html
+        assert "Not run:" in html and "nothing was sent" in html and "No such run" not in html
+        assert "hx-trigger" not in _region(html) and lp["fleet"].sent == []
+
+
+DONE_JS = ("var r = document.getElementById('sc-result'); return !!r && !r.hasAttribute('aria-busy')"
+           " && r.textContent.indexOf('2 alike') >= 0")
+
+
+class TestARunInProgressInARealBrowser:
+    """C2988: "It should show the run as in progress and fill in when it finishes" (the
+    operator, 2026-11-10). The page Run opens, in a real browser, with the job's thread held:
+    it is drawn running, and it becomes the result when the run announces its end, with no
+    reload; also when that end was announced before the page's live channel had connected (the
+    region is in flight, so the page's first connect reads it once more)."""
+
+    @pytest.fixture
+    def held(self, sc, monkeypatch):
+        import threading
+        from tests import browser
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why})")
+        from modules.nsot import capture_job, reads as R
+        go, real = threading.Event(), R.run
+
+        def run(*a, **kw):
+            assert go.wait(60), "the test never let the job begin"
+            return real(*a, **kw)
+        monkeypatch.setattr(R, "run", run)
+        target, job = _start(sc)
+        import app as A
+        with browser.Served(A.app) as srv, browser.Browser() as b:
+            try:
+                yield {"b": b, "url": srv.url(target), "go": go, "job": job}
+            finally:
+                go.set()
+                capture_job.wait(job, 30)
+                b.go("about:blank")
+                browser.close_socketio_sessions()
+
+    def test_the_page_is_drawn_running_and_fills_in_when_the_run_ends(self, held):
+        b = held["b"]
+        b.go(held["url"])
+        b.wait_for("return !!document.querySelector('#sc-result[aria-busy=\"true\"]')", 15)
+        text = b.js("return document.getElementById('sc-result').textContent")
+        assert "No such run" not in text and "Asking r3, r9: 0 of 2 read so far" in text
+        b.js("window.__stayed = 1; return 1")                # a reload would lose this mark
+        b.wait_for("return !!window.NMAS && NMAS.live().state === 'connected'", 15)
+        held["go"].set()                                    # the run reads, ends and announces
+        b.wait_for(DONE_JS, 30)
+        assert b.js("return window.__stayed") == 1, "the page was reloaded, not redrawn"
+
+    def test_a_run_that_ended_before_the_channel_connected_still_fills_in(self, held,
+                                                                         monkeypatch):
+        from modules import reads_page
+        from modules.nsot import capture_job
+        b, real, drawn = held["b"], reads_page.result, []
+
+        def result(list_name, run_id, **kw):
+            c = real(list_name, run_id, **kw)
+            if not drawn:
+                # The page's own request: read as running, and the run ends and announces
+                # before this answer has left the server, so before the page's channel exists.
+                drawn.append(c["state"])
+                held["go"].set()
+                assert capture_job.wait(held["job"], 30)
+            return c
+        monkeypatch.setattr(reads_page, "result", result)
+        b.go(held["url"])
+        b.js("window.__stayed = 1; return 1")
+        assert drawn == ["running"], drawn
+        b.wait_for(DONE_JS, 30)
+        assert b.js("return window.__stayed") == 1, "the page was reloaded, not redrawn"
+
+
+class TestRegionsInFlight:
+    """The pure half of the first connect's catch-up (static/js/nmas_v2.js, `inFlightKeys`):
+    the keys the regions drawn in flight listen for, each once."""
+
+    def _keys(self, triggers):
+        import json
+
+        import dukpy
+        with open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8") as fh:
+            src = fh.read()
+        return dukpy.evaljs("var window = {};\n" + src
+                            + f"\nwindow.NMAS_V2.inFlightKeys({json.dumps(triggers)});")
+
+    def test_each_key_once_in_the_order_met(self):
+        assert self._keys(["nmas:reads from:body",
+                           "nmas:capture_preview from:body, nmas:reads from:body"]) == \
+            ["reads", "capture_preview"]
+
+    def test_nothing_in_flight_asks_nothing(self):
+        assert self._keys([]) == [] and self._keys(["click", None, ""]) == []
 
 
 @pytest.mark.parametrize("width", [1366, 390])

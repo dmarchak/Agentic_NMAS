@@ -5,25 +5,29 @@
     masked answer, the columns a person ticked blanked) and collapsed; filters. Nothing is a
     reference unless a person chooses one, and nothing expected, so a group is neutral: colour
     is kept for failed and skipped. An empty answer says so. A device that did not answer is
-    never inside a group. A logging-path test draws its own region (_lp_result.html). -#}
+    never inside a group. A logging-path test draws its own region (_lp_result.html). A run is
+    recorded before its page is answered (C2988), so "No such run" is an id the network holds
+    no record of, never a run that has only just started. -#}
 {%- set part = url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list) -%}
 {%- if r.logging_path is defined and r.logging_path %}{% include "v2/_lp_result.html" %}{% else -%}
 <section class="card sc-result" id="sc-result" aria-labelledby="sc-result-h"
   {%- if r.state == 'running' %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
   {%- if r.state == 'unknown' %}
   <h2 id="sc-result-h" class="sc-h2">No such run</h2>
-  <p class="muted">{{ r.list }} holds no run {{ r.run }}.</p>
+  <p class="muted">{{ r.list }} holds no run {{ r.run }}. A run that is still reading is drawn here as running, with its progress; this address names none. The network's runs are listed on <a href="{{ url_for('reads_v2.show_commands', list=r.list) }}#sc-runs">Show commands</a>, under Recent runs.</p>
   {%- elif r.state == 'refused' %}
-  <h2 id="sc-result-h" class="sc-h2">{{ r.record.commands | join('; ') }} {{ badge('refused', 'danger') }}</h2>
+  <h2 id="sc-result-h" class="sc-h2">{{ r.record.commands | join('; ') or r.record.what }} {{ badge('refused', 'danger') }}</h2>
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ r.record.refused }} No device was asked.</p></div>
   {%- else %}
   <div class="sc-hd"><h2 id="sc-result-h">{{ r.record.commands | length }} command{{ 's' if r.record.commands | length != 1 }} on {{ r.record.total }} device{{ 's' if r.record.total != 1 }}
-    {% if r.state == 'running' %}{{ badge('running', 'warn') }}{% else %}{{ badge('done', 'ok') }}{% endif %}</h2></div>
+    {% if r.state == 'running' %}{{ badge('running', 'warn') }}{% elif r.failed %}{{ badge('failed', 'danger') }}{% else %}{{ badge('done', 'ok') }}{% endif %}</h2></div>
   <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}.{% if r.record.reason %}{% if r.record.urgent %} Level {{ r.record.urgent }}, allowed by the reason.{% endif %} Why: {{ r.record.reason }}.{% endif %} Recorded in History.</p>
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ r.error }}</p></div>{% endif %}
+  {%- if r.failed %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The run failed before it finished:</strong> {{ r.failed }} {{ r.record.done }} of {{ r.record.total }} devices had been read and are kept below; the others were not read. Run it again from <a href="{{ url_for('reads_v2.show_commands', list=r.list) }}">Show commands</a>.</p></div>{% endif %}
   {%- if r.lost %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this run was reading: {{ r.record.done }} of {{ r.record.total }} devices had answered and are kept below; the others were not read.</p></div>{% endif %}
   {%- if r.state == 'running' %}
   {{ run_summary(r.progress) }}
+  <p class="muted sc-asking">Asking {{ r.record.devices | join(', ') }}{% if r.record.more %} and {{ r.record.more }} more{% endif %}: {{ r.record.done }} of {{ r.record.total }} read so far{% if r.record.pending %}, still reading {{ r.record.pending | join(', ') }}{% if r.record.pending_more %} and {{ r.record.pending_more }} more{% endif %}{% endif %}.</p>
   <p class="muted">The answers so far are below; the summary is final when the last device is done.</p>
   {%- endif %}
   <div class="table-wrap"><table class="table sc-sum">
@@ -84,7 +88,7 @@
       {%- if g.archived %}<p class="muted">The answer was moved to the archive after the network's retention.</p>
       {%- elif g.empty %}<p class="sc-empty">No output (empty answer). {{ g.devices | join(', ') }} answered, and the answer was empty. A read that failed is drawn red and says why, never like this.</p>
       {%- else %}<pre class="ask-pre">{{ g.answer }}</pre>{% if c.ignore %}<p class="muted small">The ignored columns are shown as {{ '·' }}.</p>{% endif %}{% endif %}
-      {%- if g.cut %}<p class="muted small">{{ g.bytes }} bytes, longer than one answer's cap: this is its start, never the whole.</p>{% endif %}
+      {%- if g.cut %}<p class="muted small">{{ g.bytes }} bytes, longer than one answer's cap: the first {{ g.kept }} bytes are kept and shown here and the last {{ g.bytes - g.kept }} were cut, so this is its start, never the whole. Narrow the read with <span class="mono">| include</span> or <span class="mono">| begin</span> to read the rest.</p>{% endif %}
       <div class="sc-devs">{% for d in g.devices %}<a class="sc-dev" href="{{ url_for('device_v2.device', name=d, tab='ask', run=r.run, list=r.list) }}">{{ d }}</a>{% endfor %}</div>
       {%- if r.answered_devices | length > 1 %}
       <form class="sc-pair" method="get" action="{{ url_for('reads_v2.show_commands_result', run_id=r.run) }}#sc-compare">

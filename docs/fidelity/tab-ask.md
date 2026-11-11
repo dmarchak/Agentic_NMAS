@@ -31,13 +31,23 @@ Shots: `tab-ask-board-1440`, `-1280` beside `tab-ask-page-1440`, `-1280` (idle);
 `tab-ask-t2-preview-page-*`, `tab-ask-t2-result-page-*` and `tab-ask-t2-nothing-page-1440`.
 Compared 2026-10-16.
 Templates compared: templates/v2/_ask.html, templates/v2/_ask_check.html, templates/v2/_ask_reason.html, templates/v2/_privileged.html
-Templates sha256: `c426a916faa1e2b5045208103d630a2761263f6045f436b7a5d2339e9b8ac3f7`
+Templates sha256: `3cd10e0dcf9d1df334faac1639284b0588f939f10bdd316c08d76661e5d8fb4e`
 
 Compared again 2026-10-17 (C1023) after Run (`_ask_check.html`) became busy on itself from the
 press until the run's card draws ("Starting the read…"); the card's own running state, "Reading…"
 and disabled, is unchanged. At rest the page draws the same words. Compared by the template and
 the page the tests draw (tests/test_v2_busy_on_itself.py, tests/test_show_commands.py), not a
 new shot; no region's verdict changed.
+
+Hashed again 2026-11-11 for the operator's Lab 9 sitting of 2026-11-10 (C2990: 'Show commands
+truncates a long answer line with no way to read the rest'), for `_ask.html` alone (the
+templates then hashed `c426a916faa1e2b5045208103d630a2761263f6045f436b7a5d2339e9b8ac3f7`
+before it): an answer cut at the cap now also says how many bytes are kept and shown and how
+many were cut ("the first 1024 bytes are kept and shown here and the last 1916 were cut"),
+the same sentence Show commands' result draws, so one answer reads the same on both. Compared
+by the template and the card the test draws (tests/test_show_commands.py
+`test_an_answer_cut_at_the_cap_says_how_much_is_kept_and_how_much_was_cut`), with no new shot;
+no region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

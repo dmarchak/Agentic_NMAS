@@ -129,6 +129,17 @@ class TestEachTypeOpensWithItsDriver:
             assert discovery.command_refusal(cisco, "show clock") == ""
 
 
+#: Commands on no capture list. EOS lists `show running-config all` (the operator, 2026-11-10),
+#: so its case asks one still off its list; every other driver's cases are as they were.
+OFF_THE_LIST = ("show clock", "show running-config all", "show version | json",
+                "show tech-support", "reload", "write memory", "configure terminal")
+EOS_LISTS = {"show running-config all": "show running-config diffs"}
+
+
+def _off_the_list(driver):
+    return [EOS_LISTS.get(c, c) if driver == "arista_eos" else c for c in OFF_THE_LIST]
+
+
 class TestOnlyTheCaptureList:
     @pytest.mark.parametrize("driver", DRIVERS)
     def test_each_listed_command_runs_unheld(self, driver):
@@ -137,11 +148,9 @@ class TestOnlyTheCaptureList:
             conn.send_command(command)
         assert FakeConn.sent == list(discovery.commands_for(driver))
 
-    @pytest.mark.parametrize("driver", DRIVERS)
     @pytest.mark.parametrize("ip", ADDRESSES, ids=("ipv4", "ipv6"))
-    @pytest.mark.parametrize("command", ["show clock", "show running-config all",
-                                         "show version | json", "show tech-support",
-                                         "reload", "write memory", "configure terminal"])
+    @pytest.mark.parametrize("driver,command",
+                             [(d, c) for d in DRIVERS for c in _off_the_list(d)])
     def test_a_command_off_the_list_is_refused_naming_it_and_nothing_is_sent(
             self, driver, ip, command):
         conn = _open(driver, ip)
@@ -150,6 +159,24 @@ class TestOnlyTheCaptureList:
         assert repr(command) in str(e.value) and ip in str(e.value)
         assert discovery.DRIVERS[driver]["family"] in str(e.value)
         assert FakeConn.sent == []
+
+    @pytest.mark.parametrize("ip", ADDRESSES, ids=("ipv4", "ipv6"))
+    def test_show_running_config_all_is_a_read_on_eos_only_and_whole(self, ip):
+        """The operator, 2026-11-10: EOS's configuration with its defaults, an allowlisted read
+        for the EOS platform only, as a whole command (no pipe, nothing after it)."""
+        conn = _open("arista_eos", ip)
+        conn.send_command("show running-config all")
+        assert FakeConn.sent == ["show running-config all"]
+        for near in ("show running-config all | section router", "show running-config all detail",
+                     "show running-config all | redirect flash:x", "show running-config all; bash"):
+            with pytest.raises(C.DiscoveryOnly):
+                conn.send_command(near)
+        assert FakeConn.sent == ["show running-config all"]
+        for driver in DRIVERS:
+            if driver != "arista_eos":
+                why = discovery.command_refusal(driver, "show running-config all")
+                assert "REFUSED" in why and "'show running-config all'" in why, driver
+        assert discovery.listed_on("show running-config all") == ("arista_eos",)
 
     def test_a_command_off_the_list_is_refused_even_while_held(self):
         conn = _open("arista_eos")
@@ -244,7 +271,9 @@ class Session:
     def answer(self, command):
         if command == "display current-configuration":
             return COMWARE_CONFIG
-        return CONFIG if command == "show running-config" else f"{command}: ok"
+        if command in ("show running-config", "show running-config all"):
+            return CONFIG
+        return f"{command}: ok"
 
 
 @pytest.fixture
@@ -287,6 +316,24 @@ class TestTheCapture:
             assert secret not in config["answer"], secret
         assert "username admin privilege 15 role network-admin secret" in config["answer"]
         assert "   description uplink" in config["answer"] and "hostname sw1" in config["answer"]
+
+    def test_eos_running_config_all_is_masked_in_what_is_kept_and_drawn(self, lab, tmp_path):
+        """The same masking path as `show running-config`: the record, the stored file, the
+        capture and what Show commands' result draws hold no secret."""
+        from modules import reads_page
+        r, _s = _run(["sw1"], ["show running-config", "show running-config all"])
+        plain, with_defaults = r["results"]["sw1"]["answers"]
+        assert with_defaults["state"] == "answered"
+        assert with_defaults["answer"] == plain["answer"] and discovery.MASK in plain["answer"]
+        stored = (tmp_path / LIST / "reads" / f"{r['id']}.json").read_text()
+        name = f"sw1/{discovery.command_slug('show running-config all')}/{r['id']}"
+        drawn = [g["answer"] for c in reads_page.result(LIST, r["id"])["commands"]
+                 for g in c["groups"]]
+        for secret in SECRETS:
+            assert secret not in with_defaults["answer"] and secret not in stored, secret
+            assert secret not in discovery.capture(LIST, name)["text"], secret
+            assert all(secret not in text for text in drawn), secret
+        assert "hostname sw1" in with_defaults["answer"]
 
     def test_a_cisco_device_keeps_the_read_only_allowlist(self, lab):
         r, s = _run(["r1"], ["show clock"])

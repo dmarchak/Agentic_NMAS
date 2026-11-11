@@ -23,14 +23,24 @@ else is refused before any device is asked, naming its tier and where to go inst
    bounded by the network's read timeout. Several devices are read at once, up to the
    network's limit (`reads_max_workers`, six unless changed). A device that does not answer,
    or a command that fails, is named with why; nothing is drawn as an answer it did not give.
+   A reason longer than 400 characters is kept to its first 400, and says in place how many
+   it had and how many were cut. A Linux host or Open vSwitch server answers through a terminal, so its programs colour and
+   page their output; those terminal control codes are removed from the answer, and nothing
+   else is.
 4. `mask`: each answer is masked as a golden is, by the position of every secret and by every
    credential the installation holds, before it is kept or drawn.
 5. `cap`: an answer longer than the network's cap (`reads_answer_cap_kib`, 32 KiB unless
    changed) is kept to the cap and marked cut, with its whole size and a fingerprint of the
-   whole answer, so two answers still compare.
+   whole answer, so two answers still compare. The page says how many bytes are kept and
+   shown, and how many were cut. Only the cap cuts an answer: a long line is kept whole.
 6. `record`: the run is written when it starts and when it ends: who (a person, or the agent
    for a person), when, the network, the commands, each device's outcome and its masked
-   answers. History shows it. Answers are kept for the network's retention
+   answers. The start is written before the run's page opens, so the page of a run that has
+   only just started says running, and it reads the record again each time the run says a
+   device has answered and when it ends (and once more as the page's live updates first
+   connect, so a run that ended in that moment is not left drawn as running). A run whose
+   job fails before it finishes is recorded as failed, with the reason and what it had read,
+   and its page says so. History shows it. Answers are kept for the network's retention
    (`reads_retention_days`, 30 unless changed), then moved to the network's S3/MinIO archive;
    who, when and what stay for good. With no archive configured the answers stay here.
 
@@ -59,6 +69,39 @@ that long, plus 30 seconds.
 
 The agent runs the reads and `verify /md5`. A line in a device's log and the session's
 settings are a person's to send.
+
+### On an Open vSwitch server {#ovs}
+
+A device whose platform is Open vSwitch on Linux (the `ovs_linux` driver) is read by its own
+list, and by nothing else; these commands are asked only of such a device, and are refused on
+every other. Each is the whole command exactly as listed; all but the version read run under
+`sudo -n`, which never prompts for a password.
+`<bridge>` and `<port>` are one interface name each (letters, digits, `_`, `.` and `-`,
+beginning with a letter or a digit, at most 15 characters); nothing else may follow, and no
+option may be added.
+
+| Command | What it prints |
+|---|---|
+| `ovs-vsctl --version` | the Open vSwitch version |
+| `sudo -n ovs-vsctl show` | the database as a tree: bridges, ports, interfaces, controllers |
+| `sudo -n ovs-vsctl list-br`, `list-ports <bridge>` | the bridges; one bridge's ports |
+| `sudo -n ovs-vsctl get-controller <bridge>`, `get-fail-mode <bridge>` | a bridge's controller targets; its fail mode |
+| `sudo -n ovs-vsctl get bridge <bridge> protocols`, `datapath_id`, `fail_mode` or `other_config` | one column of a bridge (also `--if-exists get bridge <bridge> other-config:datapath-id`) |
+| `sudo -n ovs-vsctl get interface <port> ofport` or `ofport_request` | a port's OpenFlow port number, given or requested |
+| `sudo -n ovs-vsctl list bridge`, `list port`, `list interface`, each alone or with one name | a table's records, or one record |
+| `sudo -n ovs-vsctl list controller` (also `--columns=target,is_connected list controller`) | the controllers and whether each is connected |
+| `sudo -n ovs-ofctl -O OpenFlow13 show <bridge>` | the switch's features and ports |
+| `sudo -n ovs-ofctl -O OpenFlow13 dump-flows <bridge>` | the bridge's flow entries |
+| `sudo -n ovs-ofctl -O OpenFlow13 dump-ports <bridge>`, `dump-ports-desc <bridge>` | its ports' counters; its ports' descriptions |
+| `sudo -n ovs-ofctl -O OpenFlow13 dump-tables <bridge>` | its tables' statistics |
+
+A command that changes the switch (`set`, `add-br`, `del-port`, `add-flow`, `mod-flows`), a
+second command, an option such as `--db`, another table or column, and another program
+(`ovs-appctl`) are refused. A command typed close to a listed one is refused naming the listed
+form: `ovs-vsctl show` answers that the listed form is `sudo -n ovs-vsctl show`, and
+`ovs-ofctl dump-flows <bridge>` that it is `sudo -n ovs-ofctl -O OpenFlow13 dump-flows <bridge>`.
+Mercury never rewrites what you typed: what is sent is what you saw. The answers are masked as
+every answer is, and a line holding a credential word is masked after that word.
 
 **Tier 2, changes the device's state, recoverably: not here.** `clear counters`,
 `clear arp-cache`, `clear logging`, `undebug all` (and `clear ip bgp <peer> soft`, not yet

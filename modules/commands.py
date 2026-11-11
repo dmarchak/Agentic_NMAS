@@ -10,6 +10,14 @@ ONCE: a read that does not finish, or whose reply holds an echoed command or
 the session's own prompt, raises, and its session is never read again (C272,
 `config_read.SPENT_ATTR`). It used to fall back to a timing read on the same
 session, which returned two outputs stitched into one (C271).
+
+**Terminal control sequences are removed from a host shell's answers** (C2989,
+`strip_control_sequences`): a session Netmiko itself marks as one whose terminal writes them
+(`ansi_escape_codes`, which its Linux and Open vSwitch drivers set) answers with a pager's and
+a colouring program's codes around the text, and Netmiko removes only the ones on its own list.
+What it leaves is removed here, the one place, so every reader of such an answer (the reads
+engine's record and page, the controller's unit readers) is given the text alone. A whole
+configuration (`CONFIG_READS`) is never touched: it is kept as the device gave it.
 """
 
 import re
@@ -25,6 +33,29 @@ logger = logging.getLogger(__name__)
 #: A whole configuration: read once, never retried on its session, and judged
 #: before it is returned (modules/config_read.py).
 CONFIG_READS = ("show running-config", "show startup-config")
+
+#: A terminal control sequence, as ECMA-48 and ECMA-35 define one, each beginning with ESC:
+#: a CSI sequence (ESC [, parameter bytes 0x30 to 0x3F, intermediate bytes 0x20 to 0x2F, one
+#: final byte 0x40 to 0x7E: colours `ESC[0;1;34m`, a private mode `ESC[?1h`, erase and cursor
+#: moves); an OSC string (ESC ], ended by BEL or ST: a window title); a DCS, SOS, PM or APC
+#: string (ended by ST); and any other escape sequence (ESC, intermediate bytes, one final
+#: byte 0x30 to 0x7E: the keypad modes `ESC=` and `ESC>`, a character set `ESC(B`, save and
+#: restore cursor). A lone ESC is removed too. Nothing that does not begin with ESC is
+#: matched, so no printable text is ever removed: `[Unit]` and a literal `[0m` stay.
+_CONTROL_SEQUENCE = re.compile(
+    "\x1b(?:"
+    r"\[[0-?]*[ -/]*[@-~]"
+    r"|\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    r"|[PX^_][^\x1b]*\x1b\\"
+    r"|[ -/]*[0-~]"
+    r")?")
+
+
+def strip_control_sequences(text: str) -> str:
+    """*text* with every terminal control sequence removed (`_CONTROL_SEQUENCE`) and nothing
+    else: the one home for it (C2989: a Linux host's `systemctl` answers arrived with a
+    pager's `ESC[?1h ESC=` and a colour's `ESC[0;1;34m` around them)."""
+    return _CONTROL_SEQUENCE.sub("", text or "")
 
 
 def _usable_prompt(conn) -> str:
@@ -169,6 +200,9 @@ def _run(conn, command: str, read_timeout: int) -> str:
 
     # Remove leading null/control characters occasionally injected by IOS
     output = output.lstrip("\x00").lstrip("^@")
+    if getattr(conn, "ansi_escape_codes", False) is True:
+        # A host shell's session (Netmiko's own mark): what its strip left (C2989).
+        output = strip_control_sequences(output)
 
     # Collapse repeated identical prompts at the end (belt-and-suspenders)
     lines = output.splitlines()

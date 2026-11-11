@@ -113,6 +113,7 @@ status** read is the last row.
 |---|---|
 | `show version` | confirmed (netmiko autodetect; ntc-templates) |
 | `show running-config` | (inferred) |
+| `show running-config all` | the operator's Lab 9 sitting, 2026-11-10 (read on EOS 4.17.0F: every default line as well); whole, EOS only |
 | `show interfaces status` | confirmed (ntc-templates) |
 | `show ip interface brief` | confirmed (ntc-templates) |
 | `show lldp neighbors` | confirmed (ntc-templates) |
@@ -201,6 +202,13 @@ Each command runs under `sudo -n`, which never prompts. The server's sudoers gra
 | `sudo -n ovs-vsctl get-controller <bridge>`, `get-fail-mode <bridge>`, `list-ports <bridge>` | confirmed: the same page |
 | `sudo -n ovs-vsctl get bridge <bridge> protocols`, `get bridge <bridge> datapath_id`, `--if-exists get bridge <bridge> other-config:datapath-id` | confirmed: the same page (`get`), and the columns from ovs-vswitchd.conf.db(5); `--if-exists` with `get` (inferred) |
 | `sudo -n ovs-ofctl -O OpenFlow13 show <bridge>` | (inferred; ovs-ofctl(8) was not read) |
+| `sudo -n ovs-vsctl get bridge <bridge> fail_mode`, `get bridge <bridge> other_config` (C2991) | the same `get` as above; the columns (inferred: named from ovs-vswitchd.conf.db(5)'s Bridge table as the two above were, not read again for these two) |
+| `sudo -n ovs-vsctl list bridge`, `list port`, `list interface`, each alone or with one `<bridge>` or `<port>` name; `list controller` (C2991) | `list` as confirmed above for `list controller`; a record named by its name (inferred: ovs-vsctl(8) was not read again for it) |
+| `sudo -n ovs-ofctl -O OpenFlow13 dump-flows <bridge>`, `dump-ports <bridge>`, `dump-ports-desc <bridge>`, `dump-tables <bridge>` (C2991) | (inferred; ovs-ofctl(8) was not read. Asked for by the operator from the Lab 9 sitting of 2026-11-10; none has been run through Mercury on a server yet) |
+
+A command close to a listed one (typed without `sudo -n`, or `ovs-ofctl` without
+`-O OpenFlow13`) is refused naming the listed form; it is never rewritten (C2991,
+`ovs.listed_form`).
 
 ## 4. What to read in each answer to pick the driver
 

@@ -1890,7 +1890,10 @@ def show_commands(ctx):
             continue
         s = r.get("summary") or {}
         outcome = ("refused" if r.get("state") == "refused" else
-                   "running" if r.get("state") == "running" else s.get("words", ""))
+                   "running" if r.get("state") == "running" else
+                   # The run's job raised (`reads.fail`): what it had read, then that it failed.
+                   f"failed ({s.get('words') or 'nothing read'})" if r.get("state") == "failed"
+                   else s.get("words", ""))
         what = f"Show commands: {'; '.join(r.get('commands') or [])[:120]}"
         lp = r.get("logging_path") or {}
         if r.get("purpose") == "test the logging path":
@@ -1901,7 +1904,7 @@ def show_commands(ctx):
                 order = ("not received", "not sent", "unknown", "received")
                 outcome = ", ".join(f"{lp['counts'][k]} {k}" for k in order
                                     if lp.get("counts", {}).get(k))
-            elif r.get("state") != "refused":
+            elif r.get("state") not in ("refused", "failed"):
                 outcome = "watching"
         # Whom each device's read signed in as (H28's read-only account, C2661): its account's
         # name and the profile it came from, never a password.
@@ -1912,7 +1915,7 @@ def show_commands(ctx):
             if s.get("username"))
         events.append(_event(r.get("started_at"), "show_commands", what,
                              hosts, who=reads.actor_words(r),
-                             detail=(r.get("refused") or r.get("purpose")
+                             detail=(r.get("refused") or r.get("failed") or r.get("purpose")
                                      or (f"Why: {r['reason']}" if r.get("reason") else "")),
                              outcome=outcome,
                              record=[("Run", r.get("id")), ("Devices", len(r.get("devices") or [])),

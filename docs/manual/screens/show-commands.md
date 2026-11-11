@@ -15,7 +15,10 @@ several at once up to the network's limit, and one another operation holds is sk
 **Commands**: one or more, each checked as you type: `read-only`, a heavy read's cost, or which
 tier it is in and where to go instead. **Add a command** and **Remove** change the list; up to 10
 per run. Every command must be in Tier 1 before any device is asked, and `show tech-support` is asked of one device only,
-on its page.
+on its page. An Open vSwitch server is read by its own list (`sudo -n ovs-vsctl show`,
+`sudo -n ovs-ofctl -O OpenFlow13 dump-flows <bridge>` and the others in
+[the command policy](show-commands#ovs)), asked only of such a server; a command typed close
+to one of them (`ovs-vsctl show`) is refused naming the listed form to type instead.
 
 **Or a saved set**: the network's saved sets, each with its commands; **Use** fills the card
 with them. **Save these commands as a set…** takes a name and an optional description, and
@@ -35,15 +38,21 @@ not configured. How it works:
 
 A run's page leads with the summary: per command, how many devices answered (and how many of
 those answers were empty), how many distinct answers there were, and which failed or were
-skipped. While it runs, it shows how many devices are done and draws the answers as they
-arrive; you can leave and come back.
+skipped. While it runs, the page says **running**: who started it and when, the devices it is
+asking (the first twelve named, then how many more), how many are read so far and which it is
+still reading, and the answers as they arrive. It fills in by itself as devices answer and when
+the run ends, with no reload; you can leave and come back. A run is on its page from the moment
+**Run** is pressed. If the run itself fails before it finishes, the page says **failed**, with
+the reason and how many devices had been read; their answers are kept. "No such run" means the address names a run this network has no record of;
+the network's runs are under [Recent runs](show-commands-screen#recent-runs).
 
 The answers are **grouped**: devices whose answer is the same form one group, its answer shown
 once, collapsed, named by its devices in a neutral colour (nothing was expected, so no group is
 "right" or "wrong"). A group opens to its answer and its devices; a device opens its own answer
 on its page. An empty answer says "No output (empty answer)". A device that did not answer is
 never inside a group: it is listed as failed (red) or skipped (amber), with why. An answer
-longer than the network's cap says it was cut.
+longer than the network's cap says it was cut, how many bytes are kept and shown and how many
+were cut. A line longer than the screen is kept and drawn whole: its box scrolls sideways.
 
 **Ignore when grouping**: when the answers begin with a table's header line, its columns are
 offered to tick; **Group again** blanks the ticked ones and groups again. The choice is
@@ -62,7 +71,8 @@ The page leads with what to act on: how many devices' lines were **not received 
 (red), **not sent** (amber), **unknown** (Loki could not be asked: neither), and **received**
 (green, with how long each took). A device not received says when Loki last received anything
 from it, and offers **Open its Logs** and **Test it again**; **Test again** repeats the whole
-test.
+test. A test that fails before it reaches a result says **failed**, with the reason and how
+many lines had been sent and had arrived, and offers **Test again**.
 
 ## Recent runs {#recent-runs}
 

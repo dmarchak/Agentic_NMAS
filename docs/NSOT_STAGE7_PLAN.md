@@ -2206,6 +2206,14 @@ parts, each covering one way of looking current while not being:
   says whether it is current cannot be told;
 - **catch-up on reconnect** re-fetches every subscribed panel once, covering
   what was announced while the channel was down (not on the first connect).
+  **A region drawn in flight is read once more on the first connect** (C2988,
+  the operator, 2026-11-10; `catchUpInFlight` in static/js/nmas_v2.js): a
+  page that loads holding a run or a job still working (`aria-busy="true"`
+  with an `nmas:` trigger) is current only until that work ends, and its end
+  is announced once; announced before the page's channel had connected, it
+  was never heard, and the region stayed "running" until a reload. The keys
+  such regions listen for are relayed once, when the channel first connects.
+  A page with nothing in flight asks nothing: it is current as loaded.
 
 **No data polling, and that answers the cadence question under section 0a.**
 Every change to displayed data has a sender: a mutating route (its keys

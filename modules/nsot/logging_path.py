@@ -365,9 +365,25 @@ def start(list_name: str, hosts: list, actor: str) -> dict:
         return {"refused": why}
     run_id = reads.new_id()
     label = "logging path on " + (hosts[0] if len(hosts) == 1 else f"{len(hosts)} devices")
-    job = capture_job.start(list_name, label, actor,
-                            lambda job_id: {"run": run(list_name, hosts, actor,
-                                                       run_id=run_id)["id"]},
+    # Recorded at its start, before the job's thread exists (C2988, `reads.begin`): the test's
+    # page opens with this request's answer. The line it sends is chosen in the job (each
+    # device's trap level, read from its golden), so the record names no command yet.
+    reads.begin(list_name, run_id, hosts, [], actor, purpose=PURPOSE)
+
+    def work(job_id):
+        try:
+            return {"run": run(list_name, hosts, actor, run_id=run_id)["id"]}
+        except Refused as exc:
+            # Refused in the job, before any line was sent: the record begun above says so.
+            reads.refuse_begun(list_name, run_id, str(exc))
+            raise
+        except Exception as exc:                      # noqa: BLE001 (recorded, then the job's)
+            # Anything else the test raised (reading a golden, sending, watching Loki): its
+            # record says failed and why, never left sending or watching.
+            reads.fail(list_name, run_id, exc)
+            raise
+
+    job = capture_job.start(list_name, label, actor, work,
                             kind="logging path", announce_keys=reads.ANNOUNCE_KEYS,
                             announcer=reads.ANNOUNCER)
     return {"job": job, "run": run_id}

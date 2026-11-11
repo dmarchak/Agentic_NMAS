@@ -31,13 +31,46 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `f2f90f7d588b3e264fd8dc963bd4977390c0bba2606f6a10f4cdcb23c00dd9e1`
+Templates sha256: `82918556235cb9624d35f4bcf872dc189b1829127b7710cb95046da9571077db`
 
 Compared again 2026-10-17 (C1023) after Group again (`_sc_result.html`) and Test again and "Test (device)
 again" (`_lp_result.html`) became busy on themselves while their request is out
 ("Grouping again…", "Starting the test…"). At rest the page draws the same words. Compared by
 the template and the page the tests draw (tests/test_v2_busy_on_itself.py), not a new shot; no
 region's verdict changed.
+
+Hashed again 2026-11-11 for the operator's Lab 9 sitting of 2026-11-10 (C2988, C2990), for
+`_sc_result.html` and `_lp_result.html` (the templates then hashed
+`f2f90f7d588b3e264fd8dc963bd4977390c0bba2606f6a10f4cdcb23c00dd9e1` before it). The operator's
+words: 'Show commands opened /v2/show-commands/run/<id> while the top bar showed "2 running",
+and drew "No such run: <network> holds no run ...". It should show the run as in progress and
+fill in when it finishes.' and 'Show commands truncates a long answer line with no way to read
+the rest'. What changed in what is drawn:
+- **Running** (C's region 7): one line added under the bar and its counts, "Asking r3, r9: 0 of
+  2 read so far, still reading r3, r9." (the first twelve devices named, then how many more),
+  above the board's own "the summary is final when the last device is done". The bar, the
+  counts and the listener are the board's, unchanged. The page is now drawn so for a run whose
+  job has not written yet, where it drew "No such run".
+- **No such run** (no board draws it): the same heading; its sentence now adds that a run
+  still reading is drawn as running, and links Show commands' Recent runs.
+- **An answer cut at the cap** (its deviation, logged, stands): the sentence in the group now
+  also says how many bytes are kept and shown and how many were cut, and how to narrow the read.
+- **F: sending** (F's 7f): a test recorded at its start, before its job has chosen the line's
+  level, says "The line's level is being chosen, from what each device's logging trap
+  forwards." where the line is named once chosen; a test refused in its job is headed "The
+  logging path's test" with the refused badge and the reason, as a refused run is.
+- **A run or a test whose job fails** (no board draws it): the head's badge reads "failed"
+  in red where it read "done" or "running", over a red notice, "The run failed before it
+  finished: <reason> N of M devices had been read and are kept below; the others were not
+  read." (a test: "The test failed before it finished: <reason> N of M lines had been sent,
+  and K had arrived; no result was reached. Test again.", with Test again offered as on a
+  finished test). The region is not busy and listens for nothing. Before, such a run was
+  drawn done with nothing read, and such a test watching for ever.
+Compared by the template and the pages the tests draw (tests/test_show_commands.py:
+`TestARunInProgress` and `TestALoggingPathTestInProgress` (their failed-job tests among them),
+`TestARunInProgressInARealBrowser`,
+`test_an_answer_cut_at_the_cap_says_how_much_is_kept_and_how_much_was_cut`), with no new shot;
+no region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

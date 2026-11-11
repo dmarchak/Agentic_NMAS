@@ -63,7 +63,11 @@ _ARISTA = ("show version", "show running-config", "show interfaces status",
            "show ip interface brief", "show lldp neighbors", "show openflow",
            "show openflow flows", "show openflow ports",
            # ZTP status (inferred: a DISA STIG for EOS 4.x names it; not in Arista's manual).
-           "show zerotouch")
+           "show zerotouch",
+           # The configuration with every default line (the operator's Lab 9 sitting,
+           # 2026-11-10: it showed what a config line's default was). Whole, EOS only; masked
+           # as `show running-config` is (`masked`: `redact_text`, then `mask_lines`).
+           "show running-config all")
 _PROCURVE = ("show version", "show system", "show running-config", "show interfaces brief",
              "show vlans", "show lldp info remote-device", "show openflow",
              # DHCP auto-configuration's vendor class and state (inferred: an HPE community
@@ -233,6 +237,21 @@ def command_refusal(device_type, command) -> str:
     return (f"REFUSED: {shown!r} is not on the {DRIVERS[driver]['family']} capture list, and a "
             f"{driver} device is read only by that list until Mercury has a driver for it: "
             f"{'; '.join(allowed)}. Nothing was sent.")
+
+
+def near_miss(command) -> str:
+    """Why *command*, which no list allows, is a near miss of a listed read, naming both (the
+    command as typed and the listed form), or ``""`` when it is a near miss of none (C2991: a
+    person typed `ovs-vsctl show` and was told only "in no tier of Mercury's command
+    policy", while the list held `sudo -n ovs-vsctl show`). Nothing is rewritten: the person
+    asks the listed form themselves, and what is sent is what they saw."""
+    from modules.sdn import ovs
+    form = ovs.listed_form(command) if isinstance(command, str) else ""
+    if not form:
+        return ""
+    return (f"REFUSED: {command[:80]!r} is not a listed read; the listed form is `{form}`, an "
+            f"{DRIVERS['ovs_linux']['family']} read (asked only of an ovs_linux device, exactly "
+            "as it is listed). Nothing was sent.")
 
 
 def listed_on(command, drivers=None) -> tuple:

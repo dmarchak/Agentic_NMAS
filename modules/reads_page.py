@@ -101,6 +101,8 @@ def outcome_words(record: dict, host: str) -> dict:
     if record.get("state") == "running":
         return {"state": "running", "words": "reading"}
     r = (record.get("results") or {}).get(host) or {}
+    if record.get("state") == "failed" and not r:
+        return {"state": "failed", "words": f"the run failed: {record.get('failed', '')}"}
     state = r.get("state", "")
     if state == reads.ANSWERED:
         cut = any(a.get("cut") for a in r.get("answers") or [])
@@ -130,10 +132,17 @@ def answers(record: dict, host: str) -> list:
         out.append({"command": c, "state": a.get("state", ""), "answer": a.get("answer", ""),
                     "archived": a.get("state") == reads.ANSWERED and "answer" not in a,
                     "why": a.get("why", ""), "cut": a.get("cut", False),
-                    "bytes": a.get("bytes", 0), "took_s": a.get("took_s"),
+                    "bytes": a.get("bytes", 0), "kept": kept_bytes(a),
+                    "took_s": a.get("took_s"),
                     "previous": ({"id": prev["id"], "at": _when(prev.get("started_at")),
                                   "who": reads.actor_words(prev)} if prev else None)})
     return out
+
+
+def kept_bytes(answer: dict) -> int:
+    """How many bytes of an answer are kept and shown: all of it, or its start when it was
+    cut at the cap (C2990: a cut says in place how much it kept and how much it cut)."""
+    return len((answer.get("answer") or "").encode("utf-8"))
 
 
 def ask(list_name: str, host: str, *, command: str = "", job: str = "", run_id: str = "",
@@ -176,6 +185,10 @@ def ask(list_name: str, host: str, *, command: str = "", job: str = "", run_id: 
         if record.get("state") == "running":
             c["state"] = "running"
             return c
+        if record.get("state") == "failed" and host not in (record.get("results") or {}):
+            # The run's job raised before this device was read: the record's own reason.
+            c.update(state="failed", why=record.get("failed") or "the run failed")
+            return c
         c["outcome"] = outcome_words(record, host)
         c["answers"] = answers(record, host)
         c["state"] = "done"
@@ -198,6 +211,9 @@ def ask(list_name: str, host: str, *, command: str = "", job: str = "", run_id: 
 
 #: Devices named in the pick card before "and N more" (the large-fleet rule: never one long list).
 SHOWN_DEVICES = 30
+#: A run in progress names its devices, and those still being read: the first 12 of each,
+#: then how many more (a fleet of 900 is a count, never one long line).
+RUN_DEVICES_NAMED = 12
 
 
 def _inventory(list_name: str) -> list:
@@ -290,7 +306,15 @@ def logging_view(record: dict, running: bool, lost: bool = False) -> dict:
          # A run recorded before C587 sent at informational; its record names no level.
          "level": lp.get("level", logging_path.LEVEL),
          "wait": logging_path.WAIT_SECONDS, "groups": [], "counts": [], "lost": False,
-         "received": []}
+         # The line's level is chosen in the job, from each device's golden: a test recorded
+         # at its start (C2988) names no line until then, and the page says so.
+         "chosen": bool(lp or record.get("commands")),
+         "received": [], "failed": ""}
+    if record.get("state") == "failed" and lp.get("state") != "done":
+        # The test's job raised: said with its reason, never drawn as sending or watching.
+        v.update(state="failed", failed=record.get("failed") or "the test's job failed",
+                 received=sorted((lp.get("received") or {}).items()))
+        return v
     if lp.get("state") != "done" and lost:
         # The job that sent and watched is gone (a restart): said, never drawn as running.
         v.update(state="watching", lost=True,
@@ -391,7 +415,7 @@ def normalise(answer: str, cols: dict, ignore: list) -> str:
 
 
 def _groups(record: dict, command: str, ignore: list = None) -> dict:
-    """``{"groups": [{"devices", "answer", "cut", "bytes", "sha", "archived", "empty"}],
+    """``{"groups": [{"devices", "answer", "cut", "bytes", "kept", "sha", "archived", "empty"}],
     "failed": [(host, why)], "skipped": [(host, why)], "unknown": [(host, why)], "columns"}`` for
     one command, the largest group first. Answers group when the whole masked answer is the same,
     with the columns in *ignore* (recorded with the run, C580) blanked first; a cut or archived
@@ -425,7 +449,8 @@ def _groups(record: dict, command: str, ignore: list = None) -> dict:
             if shown != text:
                 key = hashlib.sha256(shown.encode("utf-8")).hexdigest()
         g = by_key.setdefault(key, {"devices": [], "answer": shown, "cut": a.get("cut", False),
-                                    "bytes": a.get("bytes", 0), "sha": key,
+                                    "bytes": a.get("bytes", 0), "kept": kept_bytes(a),
+                                    "sha": key,
                                     "archived": "answer" not in a,
                                     "empty": "answer" in a and not text.strip(),
                                     "lines": len([ln for ln in text.splitlines() if ln.strip()])})
@@ -460,6 +485,11 @@ def _vs(group: dict, ref: dict) -> dict:
     return {"same": False, "only_ref": len(theirs - mine), "only_here": len(mine - theirs)}
 
 
+def _logging_purpose() -> str:
+    from modules.nsot import logging_path
+    return logging_path.PURPOSE
+
+
 def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: str = "",
            show: str = "grouped", left: str = "", right: str = "", command: str = "",
            against: str = "") -> dict:
@@ -475,9 +505,15 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
     c = {"list": list_name, "run": run_id, "job": job, "find": find, "text": text,
          "show": show if show in ("grouped", "differences", "failed") else "grouped",
          "against": against or "", "state": "unknown", "commands": [], "compare": None,
-         "differences": None, "answered_devices": []}
+         "differences": None, "answered_devices": [], "failed": ""}
     if record is None:
         return c
+    if record.get("state") == "failed":
+        # The run's job raised (`reads.fail`): the record's own reason, masked.
+        c["failed"] = record.get("failed") or "the run's job failed"
+    elif record.get("state") == "running" and j is not None and j["state"] == "failed":
+        # The job failed and its record does not say so (the write of that failed too).
+        c["failed"] = "the run's job failed, and its record does not say why"
     running = record.get("state") == "running" and (j is None or j["state"] == "running")
     if record.get("state") == "running" and job and j is None:
         running = False                                # the job is gone: a restart
@@ -485,10 +521,22 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
     total = len(record.get("devices") or [])
     done = len(record.get("results") or {})
     summary = reads.summarise(record)
+    names = list(record.get("devices") or [])
+    pending = [h for h in names if h not in (record.get("results") or {})]
     c.update(state="refused" if record.get("state") == "refused" else
              "running" if running else "done",
              record={"at": _when(record.get("started_at")), "who": reads.actor_words(record),
                      "commands": record.get("commands") or [], "total": total, "done": done,
+                     # A run that names no command (a logging-path test refused in its job,
+                     # before its line was chosen) is headed by what it was.
+                     "what": ("The logging path's test"
+                              if record.get("purpose") == _logging_purpose() else "A read"),
+                     # While it runs (C2988): the devices it asks, and those not read yet,
+                     # the first `RUN_DEVICES_NAMED` of each named and the rest counted.
+                     "devices": names[:RUN_DEVICES_NAMED],
+                     "more": max(0, len(names) - RUN_DEVICES_NAMED),
+                     "pending": pending[:RUN_DEVICES_NAMED],
+                     "pending_more": max(0, len(pending) - RUN_DEVICES_NAMED),
                      "refused": record.get("refused", ""), "reason": record.get("reason", ""),
                      # Board C582, 4: the level the reason allowed, named beside it.
                      "urgent": (reason_part(record.get("commands") or [], "")

@@ -48,7 +48,7 @@
     <p class="muted">Answered ({{ a.bytes }} bytes); the answer was moved to the archive after the network's retention. Who, when and what stay here.</p>
     {%- elif a.state == 'answered' %}
     <pre class="ask-pre">{{ a.answer }}</pre>
-    {%- if a.cut %}<p class="ask-cut">{{ badge('cut at the cap', 'warn') }} The answer is {{ a.bytes }} bytes, longer than one answer's cap, so this is its start, never the whole. Narrow it with <span class="mono">| include</span> or <span class="mono">| begin</span>.</p>{% endif %}
+    {%- if a.cut %}<p class="ask-cut">{{ badge('cut at the cap', 'warn') }} The answer is {{ a.bytes }} bytes, longer than one answer's cap: the first {{ a.kept }} bytes are kept and shown here and the last {{ a.bytes - a.kept }} were cut, so this is its start, never the whole. Narrow it with <span class="mono">| include</span> or <span class="mono">| begin</span>.</p>{% endif %}
     {%- elif a.state %}
     <p class="ask-cut">{{ badge('failed', 'danger') }} {{ a.why }}</p>
     {%- endif %}

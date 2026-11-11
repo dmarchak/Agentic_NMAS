@@ -6,14 +6,16 @@
     neither. modules/reads_page.logging_view. -#}
 {%- set v = r.logging_path -%}
 <section class="card sc-result lp-result" id="sc-result" aria-labelledby="sc-result-h"
-  {%- if v.state != 'done' and not v.lost %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if v.state not in ('done', 'failed') and not v.lost %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
   <div class="sc-hd"><h2 id="sc-result-h">Logging path on {{ v.total }} device{{ 's' if v.total != 1 }}
-    {% if v.state == 'done' %}{{ badge('done', 'ok' if v.counts | length == 1 and v.counts[0].state == 'received' else 'muted') }}{% elif v.lost %}{{ badge('stopped', 'danger') }}{% else %}{{ badge('running', 'warn') }}{% endif %}</h2>
-    <div class="sc-devs">{% if v.state == 'done' %}<button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run) }}" hx-target="#sc-result" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test again</span><span class="op-busy">Starting the test…</span></button>{{ how('logging-path', op='logging-path') }}{% else %}{{ how('logging-path', op='logging-path') }}{% endif %}</div></div>
-  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}. The line: <span class="mono">send log {{ v.level }} {{ v.token }}</span>. Recorded in History.</p>
+    {% if v.state == 'done' %}{{ badge('done', 'ok' if v.counts | length == 1 and v.counts[0].state == 'received' else 'muted') }}{% elif v.lost %}{{ badge('stopped', 'danger') }}{% elif v.state == 'failed' %}{{ badge('failed', 'danger') }}{% else %}{{ badge('running', 'warn') }}{% endif %}</h2>
+    <div class="sc-devs">{% if v.state in ('done', 'failed') %}<button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run) }}" hx-target="#sc-result" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test again</span><span class="op-busy">Starting the test…</span></button>{{ how('logging-path', op='logging-path') }}{% else %}{{ how('logging-path', op='logging-path') }}{% endif %}</div></div>
+  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}. {% if v.chosen %}The line: <span class="mono">send log {{ v.level }} {{ v.token }}</span>.{% else %}The line's level is being chosen, from what each device's logging trap forwards.{% endif %} Recorded in History.</p>
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ r.error }}</p></div>{% endif %}
   {%- if v.lost %}
   <div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this test was watching Loki: {{ v.received | length }} line{{ 's' if v.received | length != 1 }} had arrived; the others were not watched for. Test again.</p></div>
+  {%- elif v.state == 'failed' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The test failed before it finished:</strong> {{ v.failed }} {{ v.sent }} of {{ v.total }} lines had been sent, and {{ v.received | length }} had arrived; no result was reached. Test again.</p></div>
   {%- elif v.state == 'sending' %}
   {{ run_summary(v.progress) }}
   <p class="muted">Sending, then Loki is watched for each line, {{ v.wait }} s after its send.</p>

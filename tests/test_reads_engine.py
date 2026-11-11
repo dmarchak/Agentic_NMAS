@@ -125,6 +125,30 @@ class TestARun:
         assert again["actor"] == "op@example.invalid" and reads.actor_words(again) == \
             "op@example.invalid"
 
+    def test_a_long_failure_reason_says_it_was_cut_and_how_much(self, lab):
+        """A failed read's reason was cut at 400 characters and said nothing. It says in
+        place that it was cut and how much, as a capped answer does (C2990), for a device's
+        failure and for a command's; a short reason is kept whole."""
+        long = "the session ended: " + "x" * 981                    # 1000 characters
+
+        class Conn:
+            def answer(self, command):
+                raise RuntimeError(long if command == "show clock" else "no answer")
+
+        def session(dev, fn):
+            if dev["hostname"] == "r1":
+                raise OSError(long)
+            return fn(Conn())
+        r, _ = _run(["r1", "r2"], ["show clock", "show version"], session=session)
+        device, (cut, short) = r["results"]["r1"], r["results"]["r2"]["answers"]
+        assert device["state"] == "failed" and device["why"] == (
+            ("OSError: " + long)[:400] + " [cut: the first 400 of this reason's 1009 "
+            "characters are kept and the last 609 were cut]")
+        assert cut["state"] == "failed" and cut["why"] == (
+            ("RuntimeError: " + long)[:400] + " [cut: the first 400 of this reason's 1014 "
+            "characters are kept and the last 614 were cut]")
+        assert short["why"] == "RuntimeError: no answer"
+
     def test_the_summary_groups_alike_answers(self, lab):
         answers = dict(ANSWERS, **{"show clock": "*02:20:01.123 UTC Thu Oct 8 2026"})
         s = Session(answers=answers)

@@ -1257,6 +1257,39 @@
     var missed = missedKeys(now ? now.getAttribute('hx-trigger') : '', relayedAt, asked);
     if (missed.length) relay(missed[0]);       // one re-read covers every key it listens to
   }
+
+  /* PURE: the keys the regions drawn IN FLIGHT listen for, each once, from their hx-trigger
+     values. A region in flight is one the server drew busy with a listener (`aria-busy="true"`
+     and an `nmas:` trigger: a run still reading, a job still working). */
+  function inFlightKeys(triggers) {
+    var out = [], seen = {}, re = /nmas:([a-z_]+) from:body/g, m;
+    for (var i = 0; i < (triggers || []).length; i++) {
+      re.lastIndex = 0;
+      while ((m = re.exec(triggers[i] || '')) !== null) {
+        if (!seen[m[1]]) { seen[m[1]] = true; out.push(m[1]); }
+      }
+    }
+    return out;
+  }
+
+  /* A page that loads holding a region IN FLIGHT is current only until that work ends, and
+     its end is announced once. Announced before this page's channel first connected, it was
+     never heard, and the region stayed "running" until a reload (C2988: a Show commands run
+     that ended in the moment between its page being drawn and the channel connecting). So on
+     the FIRST connect each key such a region listens for is relayed once: one re-read, made
+     after the channel is hearing, so nothing later is missed. A page with nothing in flight
+     asks nothing: a page just loaded is current (nmas_invalidation.js). Never a timer's read:
+     it runs once, when the page's own tick first sees the channel connected. */
+  var firstConnectSeen = false;
+  function catchUpInFlight() {
+    if (firstConnectSeen || !root.NMAS || !root.NMAS.live) return;
+    if ((root.NMAS.live().state || '') !== 'connected') return;
+    firstConnectSeen = true;
+    var all = root.document.querySelectorAll('[aria-busy="true"][hx-trigger*="nmas:"]'), t = [];
+    for (var i = 0; i < all.length; i++) t.push(all[i].getAttribute('hx-trigger'));
+    var keys = inFlightKeys(t);
+    for (var k = 0; k < keys.length; k++) relay(keys[k]);
+  }
   function relayReachability() { relay('reachability'); }
   function relayIntegrationHealth() { relay('integration_health'); }
   function relayCredentialHealth() { relay('credential_health'); }
@@ -2259,7 +2292,7 @@
       drawStale();
       drawDeploys(root.document);
       applyRemembered(root.document);
-      root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
+      root.setInterval(function () { drawLive(); catchUpInFlight(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
     root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); });
@@ -2312,6 +2345,7 @@
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
                   badgeDoubt: badgeDoubt, staleNote: staleNote, missedKeys: missedKeys,
+                  inFlightKeys: inFlightKeys,
                   stallBody: stallBody,
                   isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,

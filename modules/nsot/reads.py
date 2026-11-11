@@ -23,7 +23,10 @@ A run, in order, and nothing out of it:
 5. **Concurrent across devices, bounded** (`fanout.read_each`, `reads_max_workers`, R1).
 6. **Recorded**, at its start and at its end: who (a person, or "the agent, for <person>"), when,
    the network, the commands, each device's outcome and its masked answers. One file per run,
-   replaced atomically, read by History.
+   replaced atomically, read by History. A run started as a job (`start`) is recorded at its
+   start by the request that started it, before the job's thread exists (C2988): the run's
+   page opens with that request's answer, and a record the job wrote first could arrive after
+   the page asked for it.
 
 Retention (R2): answers are kept `reads_retention_days`, then MOVED to the network's S3/MinIO
 archive (`expire`), never deleted; who, when and what are kept for good. Where no archive is
@@ -84,6 +87,23 @@ FLEET_REFUSED = (("show", "tech-support"),)
 
 #: The words a device's outcome is drawn with.
 ANSWERED, FAILED, SKIPPED, UNKNOWN = "answered", "failed", "skipped", "unknown"
+
+
+#: A failure's reason is kept to this many characters. Nothing reads it but a person: it is
+#: drawn on one line of the result (a failed device's row, Ask the device's notice), and a
+#: library's failure text can run to pages (Netmiko's sign-in failure lists its common causes).
+REASON_MAX = 400
+
+
+def kept_reason(text: str) -> str:
+    """A failure's reason as it is kept and drawn: whole, or its first `REASON_MAX` characters
+    and, in place, that it was cut and how much (as a capped answer says, C2990; it was cut
+    at 400 characters and said nothing)."""
+    text = text or ""
+    if len(text) <= REASON_MAX:
+        return text
+    return (f"{text[:REASON_MAX]} [cut: the first {REASON_MAX} of this reason's {len(text)} "
+            f"characters are kept and the last {len(text) - REASON_MAX} were cut]")
 
 
 class Refused(ValueError):
@@ -175,6 +195,10 @@ def refusal(commands: list, n_devices: int, by: str = "person", reason: str = ""
                 why = (f"REFUSED: a read only on a {' or '.join(families)} discovery session "
                        f"({', '.join(elsewhere)}), and the devices' drivers are "
                        f"{', '.join(sorted({str(d) for d in drivers}))}. Nothing was sent.")
+            else:
+                # On no list, and a near miss of a listed read: the refusal names the listed
+                # form it compared with, never only "in no tier" (C2991).
+                why = discovery.near_miss(c) or why
             return f"`{c[:120]}`: {why}"
     if n_devices > 1:
         for c in commands:
@@ -361,7 +385,7 @@ def _answer(conn, command: str, values: dict, cap: int, driver: str = "") -> dic
     except Exception as exc:                          # noqa: BLE001 (the command's failure)
         from modules.utils import error_text
         return {"command": command, "state": FAILED,
-                "why": masked(error_text(exc), values, driver)[:400],
+                "why": kept_reason(masked(error_text(exc), values, driver)),
                 "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
     text = masked(raw, values, driver)
     data = text.encode("utf-8")
@@ -378,6 +402,66 @@ def new_id(now: float = None) -> str:
     micro = min(999999, int((now - int(now)) * 1e6))      # truncated: never wraps the second
     return (time.strftime("%Y%m%dT%H%M%S", time.gmtime(now)) + f"{micro:06d}Z-"
             + uuid.uuid4().hex)
+
+
+def begun(list_name: str, run_id: str, hosts: list, commands: list, actor: str, *,
+          by: str = "person", purpose: str = "", reason: str = "", drivers: dict = None,
+          started: float = None) -> dict:
+    """A run's record at its start: who, when, the network, the commands and the devices,
+    nothing read yet (`state` ``running``, no result). The one shape `run` fills in and
+    `start` writes before its job exists."""
+    return {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
+            "reason": (reason or "").strip(),
+            "started_at": time.time() if started is None else started, "finished_at": None,
+            "state": "running", "commands": list(commands), "devices": list(hosts),
+            "results": {}, "refused": "", "drivers": dict(drivers or {}),
+            "retention": {"days": retention_days(list_name), "archived": None}}
+
+
+def begin(list_name: str, run_id: str, hosts: list, commands: list, actor: str, **kw) -> dict:
+    """Record a run at its start (`begun`), written before its job's thread exists (C2988).
+    The request that starts a job answers with the run's page, and the page reads this record
+    by its id: written first by the job, it could land after the page asked, and a run in
+    progress was drawn as "No such run", a region that listens for nothing, until a person
+    reloaded (on an installation reached over loopback, on every run). The job writes the
+    same shape again as it begins (`run`), then each device's outcome as it lands."""
+    record = begun(list_name, run_id, hosts, commands, actor, **kw)
+    _write(list_name, record)
+    return record
+
+
+def refuse_begun(list_name: str, run_id: str, why: str) -> None:
+    """A run recorded at its start (`begin`) whose job then refused before asking any device:
+    its record says so, with why, never left as running. A record already ended is kept."""
+    record = get(list_name, run_id)
+    if record is None or record.get("state") != "running":
+        return
+    record.update(state="refused", refused=why, finished_at=time.time())
+    _write(list_name, record)
+    _announce()
+
+
+def fail(list_name: str, run_id: str, exc: BaseException) -> None:
+    """The job running *run_id* raised *exc*: its record says ``failed`` with the reason
+    (masked, `kept_reason`), keeping whatever it had read, so the run's page says it failed and
+    why, never "running" for ever (every action ends in something readable; a raising work is
+    its job's failed state, and the record is what outlives the job). A record already refused
+    or failed is kept as it is; a failure to write this one is logged, never raised over the
+    work's own."""
+    from modules.redact import known_secret_values, redact_text
+    from modules.utils import error_text
+    try:
+        record = get(list_name, run_id)
+        if record is None or record.get("state") in ("refused", "failed"):
+            return
+        record.update(state="failed",
+                      failed=kept_reason(redact_text(error_text(exc), known_secret_values())),
+                      finished_at=record.get("finished_at") or time.time(),
+                      summary=summarise(record))
+        _write(list_name, record)
+        _announce()
+    except Exception:                                 # noqa: BLE001 (the work's own is raised)
+        log.exception("reads: run %s failed, and its record could not say so", run_id)
 
 
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
@@ -401,12 +485,8 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     started = time.time()
     run_id = run_id or new_id(started)
-    record = {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
-              "reason": (reason or "").strip(),
-              "started_at": started, "finished_at": None, "state": "running",
-              "commands": commands, "devices": hosts, "results": {}, "refused": "",
-              "drivers": dict(drivers or {}),
-              "retention": {"days": retention_days(list_name), "archived": None}}
+    record = begun(list_name, run_id, hosts, commands, actor, by=by, purpose=purpose,
+                   reason=reason, drivers=drivers, started=started)
     why = (refusal(commands, len(hosts), by, reason)
            or ("" if hosts else "Refused: no device to ask."))
     if why:
@@ -486,7 +566,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
             except Exception as exc:                  # noqa: BLE001 (that device's failure)
                 from modules.redact import redact_text
                 from modules.utils import error_text
-                out = {"state": FAILED, "why": redact_text(error_text(exc), values)[:400],
+                out = {"state": FAILED, "why": kept_reason(redact_text(error_text(exc), values)),
                        "took_s": round(time.time() - t0, 2)}
         landed(host, out)
         if progress is not None:
@@ -629,11 +709,19 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
         return {"refused": why, "run": run_id}
     label = (f"{len(commands)} command(s) on " +
              (hosts[0] if len(hosts) == 1 else f"{len(hosts)} devices"))
-    job = capture_job.start(list_name, label, actor,
-                            lambda job_id: {"run": run(list_name, hosts, commands, actor,
-                                                        by=by, purpose=purpose,
-                                                        run_id=run_id, reason=reason,
-                                                        drivers=drivers)["id"]},
+    # Recorded at its start, before the job's thread exists (C2988, `begin`).
+    begin(list_name, run_id, hosts, commands, actor, by=by, purpose=purpose, reason=reason,
+          drivers=drivers)
+
+    def work(job_id):
+        try:
+            return {"run": run(list_name, hosts, commands, actor, by=by, purpose=purpose,
+                               run_id=run_id, reason=reason, drivers=drivers)["id"]}
+        except Exception as exc:                      # noqa: BLE001 (recorded, then the job's)
+            fail(list_name, run_id, exc)
+            raise
+
+    job = capture_job.start(list_name, label, actor, work,
                             kind="show commands", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER)
     return {"job": job, "run": run_id}
