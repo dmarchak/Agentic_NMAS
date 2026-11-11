@@ -31,9 +31,12 @@ from tests.test_heal_decide import lab  # the fixture, named by each test below
 from tests.test_heal_policy import T0, auto, confirm, iso
 from tests.test_sdn_connections import networks  # the fixture `lab` builds on
 from tests.test_heal_triggers import _Lazy
+from tests import test_duplicate_router_id as DUP  # R8's real log lines, read by the reader
+from tests import test_grafana_reader as GR  # the real Grafana capture, its loader and edits
 
 A, DC, DS, I, K = (_Lazy("act"), _Lazy("decide"), _Lazy("decisions"), _Lazy("incidents"),
                    _Lazy("kinds"))
+TR = _Lazy("triggers")
 SETTER = "admin@example.com"
 LOAD = " ip ospf cost 10\n"
 ADJ = {"kind": "adjacency", "key": "adj:1", "epoch": T0 - 900, "at": iso(T0 - 900),
@@ -519,6 +522,180 @@ class TestTheSymptom:
             "adjacencies"
         assert A._store_for({"kind": "adjacency_log", "source": "adjacency-log@g2"}) == \
             "adjacencies@g2"
+
+
+# ── The judge: one trigger's symptom on its store's document ────────────────────────────────
+
+def _alerts_doc(at, view=None, am=()):
+    """The Grafana alerts reader's document read at *at*: the REAL capture
+    (tests/fixtures/grafana/, sixteen rules, a quiet fleet) parsed by the real reader
+    (tests/test_grafana_reader.py's loader), *view* the rules view with a test's one edit and
+    *am* the Alertmanager's entries."""
+    return {"last_good": {"read_started": at, "value": GR.parse(view, list(am))}}
+
+
+def _alert_trigger(inst):
+    """An alert's trigger as `triggers.from_alerts` makes it from the reader's instance: the
+    rule's name, and the interface its labels name (none: "")."""
+    labels = inst.get("labels") or {}
+    return {"kind": "alert", "key": "alert:1", "epoch": T0 - 60, "at": iso(T0 - 60),
+            "source": "grafana-alerts", "rule": inst.get("rule") or "",
+            "interface": next((labels[k] for k in TR.INTERFACE_LABELS if labels.get(k)), ""),
+            "related": [], "words": f"the alert {inst.get('rule') or '?'} fired"}
+
+
+class TestTheJudge:
+    """`judge`: one trigger on its store's document is ``gone``, ``present`` or ``stale``
+    (cannot be told). A verify that says "gone" passes a heal and one that says "present"
+    rolls a removed feature back, so each case names the verdict and its wrong neighbour
+    (mutation run 75's 42 survivors: no test had asked `judge` about an alert, another
+    network, another neighbour, a trigger naming less, or the instant of the change)."""
+
+    DOWN4, DOWN6 = TestTheSymptom.DOWN4, TestTheSymptom.DOWN6
+    #: R8's real duplicate lines, read by the real reader 60 s after r6's, and its trigger.
+    DUP_SINCE = DUP.R4_AT - 30
+
+    def _logged(self):
+        return DUP._cached(DUP._read(DUP.BOTH), DUP.R6_AT + 60)["doc"]
+
+    # The read's time against the change's.
+
+    def test_a_store_never_read_is_stale_even_since_time_zero(self):
+        """No read's time is no read: never "gone" on a document nobody read, never "present"
+        on a value nobody dated."""
+        assert A.judge(ADJ, {}, "Default", "edge-b", since=0) == "stale"
+        assert A.judge(ADJ, None, "Default", "edge-b", since=0) == "stale"
+        undated = {"last_good": {"value": {"adjacencies": {"k": self.DOWN4}}}}
+        assert A.judge(ADJ, undated, "Default", "edge-b", since=0) == "stale"
+
+    def test_a_read_begun_at_the_instant_of_the_change_is_not_after_it(self):
+        """Only a read begun AFTER the change says anything of it: one begun at its very
+        instant is neither "gone" (nothing down in it) nor "present" (the adjacency in it)."""
+        assert A.judge(ADJ, _adj_doc(1000), "Default", "edge-b", since=1000) == "stale"
+        assert A.judge(ADJ, _adj_doc(1000, self.DOWN4), "Default", "edge-b",
+                       since=1000) == "stale"
+        assert A.judge(ADJ, _adj_doc(1000.5), "Default", "edge-b", since=1000) == "gone"
+        assert A.judge(ADJ, _adj_doc(1000.5, self.DOWN4), "Default", "edge-b",
+                       since=1000) == "present"
+
+    # An adjacency down (the adjacencies reader's value).
+
+    def test_an_adjacency_down_on_another_network_is_not_this_ones(self):
+        down = _adj_doc(1010, self.DOWN4)
+        assert A.judge(ADJ, down, "Default", "edge-b", since=1000) == "present"
+        assert A.judge(ADJ, down, "Branch", "edge-b", since=1000) == "gone"
+
+    @pytest.mark.parametrize("protocol, mine, other", [("OSPF", DOWN4, DOWN6),
+                                                       ("OSPFv3", DOWN6, DOWN4)])
+    def test_the_other_familys_adjacency_is_not_the_triggers(self, protocol, mine, other):
+        """OSPF and OSPFv3 are different protocols: with IPv4's adjacency back and IPv6's
+        still down, IPv4's symptom is gone and IPv6's is not (and the other way round)."""
+        t = dict(ADJ, protocol=protocol)
+        assert A.judge(t, _adj_doc(1010, other), "Default", "edge-b", since=1000) == "gone"
+        assert A.judge(t, _adj_doc(1010, mine), "Default", "edge-b", since=1000) == "present"
+
+    def test_an_adjacency_down_to_a_neighbour_the_trigger_does_not_name(self):
+        """The trigger is edge-b's adjacency to core-a (its ``related``): edge-b's adjacency
+        to another neighbour still down is another symptom, not this one still there."""
+        other = dict(self.DOWN4, devices=["edge-b", "leaf-c"])
+        assert A.judge(ADJ, _adj_doc(1010, other), "Default", "edge-b", since=1000) == "gone"
+        assert A.judge(ADJ, _adj_doc(1010, other, self.DOWN4), "Default", "edge-b",
+                       since=1000) == "present"
+
+    @pytest.mark.parametrize("entry", [DOWN4, DOWN6])
+    def test_an_adjacency_trigger_naming_no_protocol_is_either_familys(self, entry):
+        """`triggers.from_adjacencies` gives "" for an entry the reader named no protocol
+        for: any family's adjacency between the two is then the symptom."""
+        unnamed = {k: v for k, v in ADJ.items() if k != "protocol"}
+        for t in (unnamed, dict(ADJ, protocol="")):
+            assert A.judge(t, _adj_doc(1010, entry), "Default", "edge-b",
+                           since=1000) == "present"
+            assert A.judge(t, _adj_doc(1010), "Default", "edge-b", since=1000) == "gone"
+
+    # A firing alert (the Grafana alerts reader's value).
+
+    def _syslog_on_s4(self):
+        """Edit (tests/test_grafana_reader.py's `silenced_syslog`): the real `Critical syslog
+        received` instance set Alerting for s4; no Alertmanager entry, so nothing silenced."""
+        view, _am = GR.silenced_syslog()
+        doc = _alerts_doc(1010, view)
+        (inst,) = doc["last_good"]["value"]["instances"]
+        assert (inst["kind"], inst["device"]) == ("condition", "s4")
+        return doc, _alert_trigger(inst)
+
+    def test_an_alert_still_firing_on_its_device_is_present_and_resolved_is_gone(self):
+        doc, t = self._syslog_on_s4()
+        assert (t["rule"], t["interface"]) == ("Critical syslog received", "")
+        assert A.judge(t, doc, "Lab", "s4", since=1000) == "present"
+        quiet = _alerts_doc(1010)
+        assert quiet["last_good"]["value"]["instances"] == [], "the capture as it is"
+        assert A.judge(t, quiet, "Lab", "s4", since=1000) == "gone"
+
+    def test_the_same_rule_firing_on_another_device_is_not_this_devices(self):
+        """s3's own episode of the rule has ended while s4's still fires: s3's is gone."""
+        doc, t = self._syslog_on_s4()
+        assert A.judge(t, doc, "Lab", "s3", since=1000) == "gone"
+
+    def test_with_no_device_named_the_rule_firing_is_the_symptom(self):
+        """`alert_firing` compares the device only when one is named."""
+        doc, t = self._syslog_on_s4()
+        assert A.judge(t, doc, "Lab", "", since=1000) == "present"
+
+    def test_an_alert_on_an_interface_is_that_interfaces(self):
+        """Edit: one real `Interface error rate elevated` instance (a polled address and its
+        ``ifDescr``) set Alerting. Its own trigger is present; the trigger of the same rule
+        on another of the capture's interfaces is gone."""
+        view = GR.load("rules_view")
+        alerts = GR.rule(view, "Interface error rate elevated")["alerts"]
+        mine = alerts[0]["labels"]["ifDescr"]
+        elsewhere = next(a["labels"]["ifDescr"] for a in alerts
+                         if a["labels"]["ifDescr"] != mine)
+        alerts[0]["state"] = "Alerting"
+        doc = _alerts_doc(1010, view)
+        (inst,) = doc["last_good"]["value"]["instances"]
+        t = _alert_trigger(inst)
+        assert t["interface"] == mine and elsewhere not in ("", mine)
+        assert A.judge(t, doc, "Lab", "s1", since=1000) == "present"
+        assert A.judge(dict(t, interface=elsewhere), doc, "Lab", "s1", since=1000) == "gone"
+
+    def test_an_alert_the_alertmanager_names_no_rule_for_is_its_own_triggers(self):
+        """Edit: an Alertmanager entry carrying a real `Device unreachable (SNMP)` instance's
+        labels with its ``alertname`` taken out, so the reader keeps it under no rule (its
+        ``rule`` is ""), and so does its trigger. Still held, it is present, where a rule
+        firing under a name is not its symptom."""
+        labels = {k: v for k, v in GR.rule(GR.load("rules_view"), "Device unreachable (SNMP)")[
+            "alerts"][0]["labels"].items() if k != "alertname"}
+        am = [{"fingerprint": "f1", "startsAt": "2026-09-28T20:22:00Z", "labels": labels,
+               "status": {"state": "active", "silencedBy": []}}]
+        doc = _alerts_doc(1010, am=am)
+        (inst,) = doc["last_good"]["value"]["instances"]
+        t = _alert_trigger(inst)
+        assert (inst["rule"], inst["kind"], t["rule"]) == ("", "condition", "")
+        assert A.judge(t, doc, "Lab", "s1", since=1000) == "present"
+        named, _t = self._syslog_on_s4()
+        assert A.judge(t, named, "Lab", "s4", since=1000) == "gone"
+
+    # A duplicate router-id logged (the adjacency-log reader's value, R8's real lines).
+
+    def test_a_duplicate_logged_for_the_other_family_is_not_the_triggers(self):
+        """The real lines are OSPF's: OSPFv3's trigger for the same id is gone on them."""
+        trigger = DUP.TestR8Verify.TRIGGER
+        doc = self._logged()
+        assert A.judge(trigger, doc, "Lab", "r6", since=self.DUP_SINCE) == "present"
+        assert A.judge(dict(trigger, protocol="OSPFv3"), doc, "Lab", "r6",
+                       since=self.DUP_SINCE) == "gone"
+
+    def test_a_duplicate_trigger_naming_no_protocol_is_either_familys(self):
+        unnamed = {k: v for k, v in DUP.TestR8Verify.TRIGGER.items() if k != "protocol"}
+        for t in (unnamed, dict(unnamed, protocol="")):
+            assert A.judge(t, self._logged(), "Lab", "r6", since=self.DUP_SINCE) == "present"
+
+    def test_a_duplicate_trigger_naming_no_router_id_cannot_be_told(self):
+        """A trigger that names no id names nothing to look for in the log: never "gone" (a
+        pass on a comparison nobody made), while the real lines still log a duplicate."""
+        unnamed = {k: v for k, v in DUP.TestR8Verify.TRIGGER.items() if k != "router_id"}
+        for t in (unnamed, dict(unnamed, router_id="")):
+            assert A.judge(t, self._logged(), "Lab", "r6", since=self.DUP_SINCE) == "stale"
 
 
 class TestUnitsLeft:

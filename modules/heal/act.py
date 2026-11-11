@@ -265,23 +265,28 @@ def _store_for(trigger: dict) -> str:
 
 
 def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> str:
-    """One trigger's symptom on its store's document: ``stale`` (not read since *since*),
+    """One trigger's symptom on its store's document: ``stale`` (not read since *since*; or
+    a duplicate router-id that could not be looked for: no Loki read, or no id named),
     ``present`` or ``gone``."""
     good = (doc or {}).get("last_good") or {}
-    if float(good.get("read_started") or 0) <= float(since):
+    at = float(good.get("read_started") or 0)
+    if at <= float(since):
         return "stale"
     value = good.get("value") or {}
     if trigger["kind"] == "duplicate_router_id" and value.get("configured") is False:
         # The adjacency-log reader's value with no Loki configured holds no line because none
         # was read: neither a pass nor a fail, so never "gone".
         return "stale"
+    if trigger["kind"] == "duplicate_router_id" and not trigger.get("router_id"):
+        # A trigger that names no router-id names nothing to look for in the log (no group the
+        # reader makes holds an empty id): neither a pass nor a fail, so never "gone".
+        return "stale"
     if trigger["kind"] == "alert":
         present = alert_firing(value, device, trigger.get("rule") or "",
                                trigger.get("interface") or "")
     elif trigger["kind"] == "duplicate_router_id":
         present = duplicate_logged(value, network, trigger.get("protocol") or "",
-                                   trigger.get("router_id") or "",
-                                   float(good.get("read_started") or 0), since)
+                                   trigger.get("router_id"), at, since)
     else:
         present = adjacency_down(value, network, [device] + list(trigger.get("related") or []),
                                  trigger.get("protocol") or "")
