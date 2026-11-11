@@ -210,6 +210,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Needs attention: every row names something wrong AND an action, and says how it clears**
   (resolving, acknowledged, or time). A fact nobody acts on is its source's finding under What
   was checked, never a row. [tests/test_attention_rows_act.py; tests/test_acknowledge.py (`CLEARS`)]
+- **A Needs attention row names one action, except a declared healing row, which names its
+  running step, says no person is needed, and offers only Open** (the operator, 2026-11-11).
+  Cost: one declared row kind and its test. Prevents: a heal in progress either hidden from
+  the page or drawn as something a person must act on. [not mechanised yet: the healing row
+  lands with the incident page's Healing card; tests/test_attention_rows_act.py then holds
+  that only a declared healing row has no action]
 - **The screen answers the person's question; the evidence is one level down.** A notice says
   what to do or does not appear; a stale or unreadable source is itself a row.
   [partly: tests/test_needs_attention.py] [why](docs/LESSONS.md#the-screen-answers-the-question)
