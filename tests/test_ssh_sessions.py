@@ -100,10 +100,21 @@ class TestEverySessionIsCounted:
         assert f"ssh: closed {IP} for test:named" in text
 
     def test_an_owner_is_attributed_when_the_caller_names_none(self):
+        """The owner is the first frame outside modules.connection: here, this test.
+
+        Under the weekly mutation measurement every function of the module is called through
+        the tool's own wrapper, so THAT is the first frame outside the module, whoever asked
+        (scheduled run 71, 2026-11-08, ended on this test before any mutant ran: C2895). There
+        the owner is held to be the wrapper's frame: still named, still never a frame of
+        modules.connection itself, so a mutant that stops walking out of the module fails."""
         C.open_ssh(_params())
         owner = C.held_sessions()[IP]["sessions"][0]["owner"]
-        assert owner.endswith("test_ssh_sessions:"
-                              "test_an_owner_is_attributed_when_the_caller_names_none"), owner
+        if any("__mutmut_" in name for name in vars(C)):
+            module, _, function = owner.partition(":")
+            assert module.split(".")[0] == "mutmut" and function, owner
+        else:
+            assert owner.endswith("test_ssh_sessions:"
+                                  "test_an_owner_is_attributed_when_the_caller_names_none"), owner
 
 
 class TestTheBudgetKeepsALineForAPerson:
