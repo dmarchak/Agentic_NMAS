@@ -71,6 +71,8 @@ EXCEPTIONS = {
     "modules/invalidation.py": (SUPPORT, "which screens a change refreshes"),
     "modules/job_health.py": (SUPPORT, "job health's rows for Needs attention"),
     "modules/list_settings.py": (SUPPORT, "per-network settings access"),
+    "modules/local_account.py": (SUPPORT, "who is asking: a loopback-only installation's one "
+                                          "local account"),
     "modules/logs_page.py": (SUPPORT, "the Logs page's model"),
     "modules/logs_tail_page.py": (SUPPORT, "the live log tail's model"),
     "modules/manual.py": (SUPPORT, "the manual's pages"),

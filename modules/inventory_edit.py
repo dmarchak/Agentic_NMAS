@@ -52,6 +52,9 @@ class RoleEditRefused(ValueError):
 #: identities for one person, unlabelled). The record keeps both fields; this
 #: is how every reader of it says who.
 ACTOR_BASIS = {"access": "", "host-shell": "host login, not a verified identity",
+               # The one local account of an installation listening on loopback only
+               # (modules/local_account.py): a person signed in there, never the proxy's.
+               "local-account": "local account, kit",
                "none": "not identified"}
 
 

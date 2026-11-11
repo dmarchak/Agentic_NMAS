@@ -1,0 +1,38 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Settings › Installation › Access and identity: the installation's one local account
+    (modules/local_account.py; C2520's first step, the operator 2026-11-10). Off by default,
+    and offered only where Mercury listens on loopback only. Signed out and possible: the
+    sign-in form. Signed in: who, and Sign out. Not possible: the one reason, naming both sides.
+    The password is never drawn back. -#}
+<section class="card set-card" id="card-local-account" aria-labelledby="h-local-account">
+  <div class="card-head"><h2 id="h-local-account">Local account</h2></div>
+  {%- if la_refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not signed in:</strong> {{ la_refused }}.</div></div>
+  {%- endif %}
+  {%- if la_not_out %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not signed out:</strong> {{ la_not_out }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if la.signed_in %}
+  <p>Signed in as <strong>{{ la.name }}</strong> (local account, kit). The session ends {{ la.idle_min }} minutes after its last use.</p>
+  <form class="set-inline" method="post" action="{{ url_for('settings_v2.local_sign_out') }}"
+        hx-post="{{ url_for('settings_v2.local_sign_out') }}" hx-target="#card-local-account" hx-swap="outerHTML">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Sign out</span><span class="op-busy">Signing out…</span></button>{{ how('installation-settings', 'local-account', compact=True, op='signing out') }}</span>
+  </form>
+  {%- elif la.enabled %}
+  <p class="muted small">This installation listens on this machine only, and its one local account (<span class="mono">{{ la.account }}</span>) may sign in here. A person signed in is recorded as “{{ la.account }} (local account, kit)”, never as a verified sign-in through an access proxy.</p>
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.local_sign_in') }}"
+        hx-post="{{ url_for('settings_v2.local_sign_in') }}" hx-target="#card-local-account" hx-swap="outerHTML" autocomplete="off">
+    <label for="f-local-name">Account name</label>
+    <div><input id="f-local-name" name="name" type="text" maxlength="64" required autocomplete="username"></div>
+    <label for="f-local-password">Password</label>
+    <div><input id="f-local-password" name="password" type="password" maxlength="1024" required autocomplete="current-password"></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{% if la.wait_s %} disabled title="A sign-in failed: the next attempt is taken in {{ la.wait_s }} s"{% endif %}><span class="op-idle">Sign in</span><span class="op-busy">Signing in…</span></button>{{ how('installation-settings', 'local-account', op='signing in') }}</span>
+      {%- if la.wait_s %}<span class="muted small">A sign-in failed: the next attempt is taken in {{ la.wait_s }} s.</span>{% endif %}
+    </div>
+  </form>
+  {%- else %}
+  <p class="muted">Local sign-in is not offered here: {{ la.why }}.</p>
+  <p class="muted small">It is for an installation that listens on this machine only (the laptop kit). The account and its password are set on the machine itself (<span class="mono">scripts/nmas-local-account</span>, at least {{ la.min_password }} characters); behind an access proxy, identity is the proxy's.</p>
+  {%- endif %}
+</section>

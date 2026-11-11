@@ -768,6 +768,82 @@ def install_ratify():
     return _fragment("v2/_install_access.html", acc=I.access_view(ident), done=out)
 
 
+# ── The installation's one local account (modules/local_account.py): its card, sign-in and
+#    sign-out. Off by default, and only where Mercury listens on loopback only. ─────────────
+
+def _local_card(status: int = 200, signed_in_as: str = None, **ctx):
+    """The card. *signed_in_as* is the response's own change (a name on a sign-in, "" on a
+    sign-out), which this request's cookie does not carry yet."""
+    from modules import local_account as LA
+
+    la = LA.view(request)
+    if signed_in_as is not None:
+        la = dict(la, signed_in=bool(signed_in_as), name=signed_in_as)
+    return _fragment("v2/_local_account.html", status, la=la, **ctx)
+
+
+@bp.route("/installation/local-account", methods=["GET"])
+def local_account_card():
+    """The local account's card: the sign-in form, who is signed in, or why it is not offered."""
+    return _local_card()
+
+
+@bp.route("/installation/local-account/sign-in", methods=["POST"])
+@no_store
+def local_sign_in():
+    """Sign the local account in: a signed session cookie when the name and password are the
+    account's. The password is read from the form and never drawn back, logged or kept."""
+    from modules import local_account as LA
+
+    got = LA.sign_in(request, request.form.get("name", ""), request.form.get("password", ""))
+    if not got["ok"]:
+        return _local_card(403 if got["why"].startswith(("refused", "local sign-in is off"))
+                           else 401, la_refused=got["why"])
+    out = _local_card(signed_in_as=got["name"])
+    out.set_cookie(LA.COOKIE, got["cookie"], **LA.cookie_args(request))
+    # Every part of the page draws the viewer: read it all again as the person signed in.
+    out.headers["HX-Refresh"] = "true"
+    return out
+
+
+@bp.route("/installation/local-account/sign-out", methods=["POST"])
+@no_store
+def local_sign_out():
+    """Sign the local account out: the session cookie cleared."""
+    from modules import local_account as LA
+
+    st = LA.state()
+    why = (f"local sign-in is off: {st['why']}" if not st["enabled"]
+           else LA.origin_refusal(request))
+    if why:
+        return _local_card(403, la_not_out=why)
+    out = _local_card(signed_in_as="")
+    out.delete_cookie(LA.COOKIE, path="/")
+    out.headers["HX-Refresh"] = "true"
+    return out
+
+
+@bp.after_app_request
+def _local_session_seen(response):
+    """A local session's last-seen time, written again when `local_account.identity` found it
+    older than its refresh interval: the session ends by idleness, not by its first issue."""
+    try:
+        from flask import current_app, g
+
+        sess = getattr(g, "nmas_local_refresh", None)
+        if sess:
+            from modules import local_account as LA
+
+            acct = LA.account()
+            if acct and acct.get("name") == sess.get("name"):
+                response.set_cookie(LA.COOKIE, LA.issue(acct, current_app.secret_key,
+                                                        issued=sess["issued"]),
+                                    **LA.cookie_args(request))
+    except Exception:                                   # noqa: BLE001 (never breaks a response)
+        pass
+    return response
+
+
 # ── Board F4, Diagnostics: four cards; the drift card's controls are the only writes ────────
 
 @bp.route("/installation/diagnostics/redaction", methods=["GET"])

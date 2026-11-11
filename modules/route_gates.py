@@ -335,6 +335,10 @@ GATES = {
     "settings_v2.platforms_apply": _g(K, "writes the platform or role map as previewed, bound to its fingerprint, recorded, and refreshes each NetBox list (board F4)"),
     "settings_v2.install_ratify": _g(K, "records a decision about an access or identity setting: writes the value already in force, never a change, recorded (board F4, C625)", "ratify_setting"),
     "settings_v2.diag_drift_interval": _g(K, "sets the drift schedule for every network, recorded (board F4, Diagnostics)"),
+    # The local account's sign-in and sign-out (modules/local_account.py): the request that
+    # establishes an identity cannot be gated on one. Each checks its own origin and peer.
+    "settings_v2.local_sign_in": _g(N, "signs the installation's one local account in: sets a signed session cookie where the setting is on, Mercury listens on loopback only and the password matches; writes no setting and reaches no device"),
+    "settings_v2.local_sign_out": _g(N, "signs the local account out: clears the session cookie; writes nothing else"),
     "settings_v2.diag_drift_switch": _g(K, "turns a network's drift checks off or on, with who and when, recorded (board F4)"),
     "settings_v2.diag_drift_check": _g(N, "the schedule does this anyway; it only happens earlier (board F4's Check now)"),
     "device_v2.diagnose_run": _g(R, "Diagnose… (board H, H16): a runbook's reads through the "

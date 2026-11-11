@@ -47,13 +47,33 @@ def _who() -> dict:
 
     ident = identity.viewer()
     if not ident.is_identified:
+        # The installation's local account (modules/local_account.py): where a sign-in is
+        # possible the chip links to it; where the installation listens on loopback only, or
+        # the setting is on, and it is not possible, the chip says why. Elsewhere, nothing.
+        sign_in, local = "", ""
+        try:
+            from flask import url_for
+
+            from modules import local_account
+            st = local_account.state()
+            if st["enabled"]:
+                sign_in = url_for("settings_v2.installation", tab="access") + "#card-local-account"
+            elif st["loopback"] or st["setting"]:
+                local = f"Local sign-in is not offered: {st['why']}"
+        except Exception:                               # noqa: BLE001 (the chip still draws)
+            pass
         return {"identified": False, "name": "Not identified", "initials": "?",
                 "why": ident.reason or ident.outcome,
-                "note": "you can look; a gated action will refuse"}
+                "note": "you can look; a gated action will refuse",
+                "sign_in": sign_in, "local": local}
     name = (identity.service_label(ident.service_id) if ident.kind == "service"
             else ident.actor)
+    # How they were verified, in the identity's own word (`identity.verification_of`, which
+    # fails closed): an identity that does not say is drawn with no claim about it.
+    how = {identity.LOCAL_ACCOUNT: "with this installation's local account",
+           identity.ACCESS: "through Cloudflare Access"}.get(identity.verification_of(ident), "")
     return {"identified": True, "name": name, "kind": ident.kind,
-            "initials": (name or "?")[:2].upper(), "why": "", "note": ""}
+            "initials": (name or "?")[:2].upper(), "why": "", "note": "", "how": how}
 
 
 def _page_list() -> str:

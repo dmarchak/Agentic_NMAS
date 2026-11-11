@@ -15,6 +15,8 @@ never the checkout's. Prints names and states, never a value that could be a sec
                                           (C2897, refused after REVEAL_UNTIL)
     kit_settings.py exception-off WHY     the gates restored, recorded in History
     kit_settings.py netbox-writes-on WHY  NetBox's master write switch on, recorded (C2548)
+    kit_settings.py local-account-on WHY  the local account's sign-in allowed, recorded
+    kit_settings.py local-account-off WHY the local account's sign-in off again, recorded
     kit_settings.py last-exception        the newest exception record, one line
     kit_settings.py safety                the safety defaults, one PASS/FAIL line each
 
@@ -257,6 +259,35 @@ def netbox_writes_on(why: str) -> None:
           "Connections, NetBox connection")
 
 
+def local_account(on: bool, why: str) -> None:
+    """The local account's setting on or off for the kit's installation (the operator,
+    2026-11-10: the kit had no verified person, so every operation asking for one refused).
+    Written through Mercury's own path and recorded in History with its reason. It only allows
+    a sign-in: the account and its password are `scripts/nmas-local-account`'s, and Mercury
+    still refuses it unless it listens on loopback only (`modules/local_account.state`)."""
+    from modules import installation_settings as IS
+    from modules import local_account as LA
+    from modules.settings_schema import get_setting
+
+    if not why.strip():
+        sys.exit("kit_settings: the local account's setting needs a reason")
+    was = bool(get_setting(LA.SETTING, False))
+    if was == on:
+        print(f"local account: already {'ON' if on else 'OFF'}, nothing written")
+    else:
+        _write({LA.SETTING: on})
+        got = IS._record({"kind": "local_account_" + ("on" if on else "off"), "card": "access",
+                          "actor": ACTOR, "actor_verified": VERIFIED, "fields": [LA.SETTING],
+                          "changes": [{"key": LA.SETTING, "label": "Local account sign-in",
+                                       "kind": "bool", "old": was, "new": on}],
+                          "reason": f"the laptop kit: {why.strip()}"})
+        if not got.get("recorded"):
+            sys.exit(f"kit_settings: written and NOT recorded: {got.get('record_error')}")
+        print(f"local account: {'ON' if on else 'OFF'} (recorded in History)")
+    st = LA.state()
+    print("local account sign-in: " + ("possible" if st["enabled"] else f"not yet: {st['why']}"))
+
+
 def last_exception() -> None:
     from modules import installation_settings as IS
 
@@ -311,6 +342,10 @@ if __name__ == "__main__":
         exception_off(" ".join(args))
     elif cmd == "netbox-writes-on" and args:
         netbox_writes_on(" ".join(args))
+    elif cmd == "local-account-on" and args:
+        local_account(True, " ".join(args))
+    elif cmd == "local-account-off" and args:
+        local_account(False, " ".join(args))
     elif cmd == "last-exception":
         last_exception()
     elif cmd == "safety":

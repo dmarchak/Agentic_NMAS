@@ -65,6 +65,7 @@ NETWORK_FREE = {
     # declaration "settings_v2.installation*" covered the page alone, and every card, save and
     # test on it named a network; tests/test_page_network.py holds the path to these names).
     "settings_v2.install*": "the installation's settings: every network's, no one's",
+    "settings_v2.local_*": "the installation's one local account: every network's, no one's",
     "settings_v2.diag_*": "the installation's diagnostics: every network's, no one's",
     "settings_v2.platforms_*": "the installation's platforms: every network's, no one's",
     "settings_v2.records_*": "the installation's records stores: every network's, no one's",

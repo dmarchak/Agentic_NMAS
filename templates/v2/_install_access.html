@@ -81,4 +81,6 @@
       <div><dt>You may</dt><dd>{% set allowed = acc.you.may | selectattr('1') | map(attribute='0') | list %}{{ (allowed | join(', ') | lower) if allowed else 'none of the gated actions' }}</dd></div>
     </dl>
   </section>
+  {#- The local account's card draws itself (modules/local_account.py): off by default. -#}
+  <div id="card-local-account" hx-get="{{ url_for('settings_v2.local_account_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
 </div>

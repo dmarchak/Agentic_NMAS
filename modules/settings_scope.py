@@ -122,7 +122,7 @@ SCOPES: dict = {
              "proxmox_backup_storage", "proxmox_backup_vmids"),
     **_group(HOST, "identity", "cf_access_aud", "cf_access_jwks_ttl", "cf_access_service_labels",
              "cf_access_team_domain", "cf_access_trusted_peers", "service_allowed_operations",
-             "allowed_host_names", "require_same_origin_writes",
+             "allowed_host_names", "require_same_origin_writes", "local_account_enabled",
              *(f"require_{w}_for_{a}" for w in ("identity", "person")
                for a in ("approve", "break_glass", "configure", "confirm", "publish_remote",
                          "reveal"))),

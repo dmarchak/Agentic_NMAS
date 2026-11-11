@@ -254,7 +254,7 @@ class TestTheJobCarriesTheVerifiedPerson:
         from modules import identity
 
         class Ident:
-            is_identified, actor = True, "op@example.com"
+            is_identified, actor, verification = True, "op@example.com", "access"
 
         seen = {}
 

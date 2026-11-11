@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""The installation's one local account (modules/local_account.py): set it, clear it, or say
+its state.
+
+    nmas-local-account set-password <name>   # asks the password twice, never echoing it
+    nmas-local-account clear                  # removes the account, ending every session
+    nmas-local-account status                 # whether a local sign-in is possible, and why not
+
+The password is read with `getpass` from the terminal: it is never an argument, never echoed,
+printed or logged, and only its scrypt hash is kept, in ``local_account.json``, owner-only. A
+sign-in is possible only where the setting ``local_account_enabled`` is on AND Mercury listens
+on loopback only; `status` names which of them does not hold. Run on the machine itself, with
+NMAS_DATA_DIR naming the installation's data folder when it is not the checkout's.
+
+Exit 0: done; 1: refused (named).
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+import getpass  # noqa: E402
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None, ask=getpass.getpass) -> int:
+    from modules import local_account as LA
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sp = sub.add_parser("set-password", help="set the account's name and password")
+    sp.add_argument("name")
+    sub.add_parser("clear", help="remove the account")
+    sub.add_parser("status", help="whether a local sign-in is possible")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "set-password":
+        first = ask(f"Password for {args.name} (at least {LA.MIN_PASSWORD} characters): ")
+        again = ask("The same password again: ")
+        if first != again:
+            print("refused: the two entries differ; nothing was written")
+            return 1
+        try:
+            out = LA.set_password(args.name, first)
+        except LA.Refused as exc:
+            print(f"refused: {exc}; nothing was written")
+            return 1
+        finally:
+            first = again = ""
+        print(f"set: the local account is {out['name']} (its hash kept, never the password), "
+              f"at {out['set_at']}; any earlier session has ended")
+    elif args.cmd == "clear":
+        print("cleared: the account is removed" if LA.clear() else "nothing to clear: no "
+              "account was set")
+    st = LA.state()
+    print("local sign-in: " + ("possible, as " + st["account"] if st["enabled"]
+                               else f"not possible: {st['why']}"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -59,6 +59,14 @@ def _bodies(v):
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
+        # The local account (modules/local_account.py) is off by default, so both refuse
+        # naming the setting, before a name or password is read.
+        "settings_v2.local_sign_in": (403, ("form", {}),
+                                      "local sign-in is off (the setting's default): refused "
+                                      "naming it, no cookie set"),
+        "settings_v2.local_sign_out": (403, ("form", {}),
+                                       "local sign-in is off: refused naming it, nothing "
+                                       "cleared"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
         "sdn_v2.flow_preview": (400, ("form", {"list": LIST, "do": "add"}),
