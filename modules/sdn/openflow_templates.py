@@ -532,7 +532,7 @@ def confirm(network: str, name: str, capture_name: str, actor: str, actor_verifi
     from modules import discovery
     from modules.nsot import repo as R
 
-    if not actor or not actor_verified:
+    if not actor or actor_verified in ("", "none"):
         return {"ok": False, "error": "a template is confirmed by a verified person"}
     t = load(name)
     cap = discovery.capture(network, capture_name)

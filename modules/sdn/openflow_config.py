@@ -393,7 +393,7 @@ def _cli_apply(network, device, dev, name, confirmed_hash, *, actor, actor_verif
            "hash": "", "plan": None, "sent": [], "verify": {"checks": []},
            "rollback": {"ran": False}, "record": {"ok": False, "error": ""}, "actor": actor,
            "device": device, "template": name, "saved": False, "save_words": NOT_SAVED}
-    if not actor or not actor_verified:
+    if not actor or actor_verified in ("", "none"):
         out["error"] = "an OpenFlow configuration is applied by a verified person"
         return out
     why = T.push_refusal(network, name)

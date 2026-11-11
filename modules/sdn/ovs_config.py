@@ -360,7 +360,7 @@ def apply(network: str, device: str, confirmed_hash: str, *, actor: str,
     out = {"ok": False, "error": "", "at": "values", "outcome": "refused", "id": op_id,
            "hash": "", "plan": None, "sent": [], "verify": {"checks": []},
            "rollback": {"ran": False}, "record": {"ok": False, "error": ""}, "actor": actor}
-    if not actor or not actor_verified:
+    if not actor or actor_verified in ("", "none"):
         out["error"] = "an OpenFlow configuration is applied by a verified person"
         return out
     why = T.push_refusal(network, TEMPLATE)
