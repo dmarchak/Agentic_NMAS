@@ -907,6 +907,27 @@ def _device_side(ctx, subs) -> str:
     return f"; {'; '.join(said)}" if said else ""
 
 
+def _half_open_facts(ctx, subs, session: dict) -> dict:
+    """The half-open finding's facts, kept beside its claim so a screen can say them in fewer
+    words (Needs attention's "Mercury's diagnosis" line, `modules/heal/seen_before.py`):
+    ``{"session", "quiet_s", "connections", "connected"}``. *session* is the far end of the
+    session the collector holds (the device's address and port, IPv4 or IPv6, as the socket
+    table gave it); *quiet_s* how long nothing was received on it (None: the kernel's socket
+    diagnostics were not read); *connections* the connection ids the device's receivers for
+    *subs* read; *connected* whether every receiver read reads Connected (None when one was
+    not read, or the device holds none)."""
+    rows = [r for s in subs for r in ((ctx.receivers.get(s) or {}).get("rows") or [])]
+    unread = any((ctx.receivers.get(s) or {}).get("rows") is None for s in subs)
+    ids = sorted({str(r["connection"]) for r in rows if r.get("connection")},
+                 key=lambda x: (len(x), x))
+    return {"session": f"{session['remote']} port {session['rport']}",
+            "quiet_s": (int(session["lastrcv_ms"]) // 1000
+                        if session.get("lastrcv_ms") is not None else None),
+            "connections": ids,
+            "connected": (None if unread or not rows else
+                          all(r.get("state") == "Connected" for r in rows))}
+
+
 def _r_half_open(rule, ctx):
     hits, none, live = [], [], []
     for c, g in _collectors_read(ctx, rule):
@@ -934,7 +955,8 @@ def _r_half_open(rule, ctx):
         s = est[0]
         quiet = (f", nothing received on it for {_ago(s['lastrcv_ms'] / 1000)}"
                  if s.get("lastrcv_ms") is not None else "")
-        hits.append(D.finding(
+        facts = _half_open_facts(ctx, subs, s)
+        hits.append(dict(facts=facts, **D.finding(
             rule, (f"the collector still holds an established session from {ctx.host} "
                    f"({s['remote']} port {s['rport']}) on {c['key']}{quiet}, yet {ctx.host}'s "
                    "stream is lost: half-open, the collector holding it up while "
@@ -945,7 +967,7 @@ def _r_half_open(rule, ctx):
             + ctx.receiver_ev(subs),
             incomplete=ctx.receiver_incomplete(subs), agree=len(est),
             rule_out=f"no established session from {ctx.host} on the collector",
-            todo=RECOVERY.format(host=ctx.host)))
+            todo=RECOVERY.format(host=ctx.host))))
     if hits:
         return hits, ""
     return [], "; ".join(live + ([f"no session from {ctx.host} stands on the collector at "

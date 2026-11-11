@@ -678,6 +678,12 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-why h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-3); font-weight: 600; }
 .att-det { border-top: 1px solid var(--line-2); padding-top: 8px; }
+/* The fix-it path's first step on a lost telemetry stream's row (board recurring-fixes): the
+   lead sentence, Seen before, Does it need you? and Mercury's diagnosis, above What to do. */
+.att-fix { display: flex; flex-direction: column; gap: 6px; }
+.att-fix p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.att-fix .fix-lead { font-size: 14px; }
+.att-fix .fix-next { color: var(--ink-2); }
 .att-todo h3, .att-det h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-3); font-weight: 600; }
 @media (max-width: 700px) {

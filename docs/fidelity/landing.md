@@ -35,7 +35,33 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `4023bd656a6003a1a9cda804c7e3801a05d752a6194ab1ab3194a56b23e755ed`
+Templates sha256: `99803edad84391646e26be2eb567997783534c563c3cf45f7b3503205507599b`
+
+**Hashed again 2026-11-11 for the fix-it path** (board recurring-fixes, text only, self-signed
+under the Phase 7 mode 2026-11-10: its step 1, the notification, and step 2's fallback, built
+without Explain), compared by the template diff against the board's words (no shot: the board
+is text; tests/test_seen_before.py draws the row through the real app on the worked example's
+times). `_attention.html` gains one block, first in an opened row whose action is
+`resubscribe` (`attention.stream_fix`): the lead sentence with the measured time, **Seen
+before on <device> (when)** when a past loss matches (or that it could not be checked), **Does
+it need you?**, and **Mercury's diagnosis** with when it was read (read, not made, absent or
+unreadable), above What to do; and a macro that draws a record's moment for the viewer's zone.
+Every other row is unchanged. The deviations are one line of the approval log ("Board
+recurring-fixes built 1"). Templates sha256 before:
+`4023bd656a6003a1a9cda804c7e3801a05d752a6194ab1ab3194a56b23e755ed`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The row's one line (step 1) | title · Needs you · since Nov 8, 21:30 UTC (37 h) | its severity, title, age and Re-subscribe…, as board NA-R draws every row; "Needs you" and the 37 hours are the opened row's sentences | **deviation** (log: Board recurring-fixes built 1) |
+| The lead sentence (step 1) | "<device> has sent no telemetry to the collector for 37 hours. Monitoring for <device> is blind until it does." | the same words, the time measured from the alert's onset to the reading; the subscriptions named when not every stream of the device is lost; a reading past its promise said as the past | **same** |
+| Seen before (step 1) | when it was seen, "fixed by hand on the console, by removing and re-adding the receivers. That fix held 31 minutes", Open that incident | when it was seen, what was lost and for how long, how it ended from what a record shows (a Mercury operation with its record; a configuration change in the device's log with its time; by itself), how long that held from the alert's clear, Open that incident | **deviation** (log: Board recurring-fixes built 1) |
+| Seen before, a store unread (step 1's rule) | not drawn | "couldn't be checked: <why>", never read as never seen | **deviation** (log: Board recurring-fixes built 1) |
+| Does it need you? (step 1) | "Yes: the fix changes <device>'s configuration, so a person approves it. If you don't, <device>'s telemetry stays lost." | the same words; for a device two networks hold, that no operation is offered and where the reason is | **same** |
+| Explain (steps 1 and 2) | the button, busy on itself | not drawn: there is no Explain in this build (the row's kept Explain answer from Monitoring is unchanged) | **later** (the board's steps 2 and 3, By Nov 13: Explain's history retrieval and checked citations) |
+| Mercury's diagnosis (step 2's fallback) | under "Couldn't explain: <why>", the finding in words, then Re-subscribe… | drawn directly above What to do: the finding in the record's words with when it was read and by whom, what it says to do next, then Re-subscribe… | **deviation** (log: Board recurring-fixes built 1) |
+| Mercury's diagnosis, none (step 2's fallback) | not drawn | absent, not made and unreadable each said as itself; no control on the row runs the diagnosis | **deviation** (log: Board recurring-fixes built 1) |
+| A source that can't be read (step 1's failure state) | "Couldn't read Grafana's alerts: <why>" with Read again | the source's own row, "Grafana alerts could not be read", with its reason; no Read again | **deviation** (log: Board recurring-fixes built 1) |
+| Details for the record | under the row | what matched and why, what was searched, how each sentence was measured, in the row's collapsed record | **same** |
 
 **Compared again 2026-11-10 for C2838** (re-subscribe a lost telemetry stream), by the template
 diff (no new shot; tests/test_heal_resubscribe_v2.py draws the row and its card through the

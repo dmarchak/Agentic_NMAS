@@ -162,6 +162,11 @@ Needs attention ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)),
 each lost subscription's receiver, waits about 10 s, adds it back and checks the stream. The
 diagnosis itself changes nothing.
 
+That row draws this diagnosis too, above Re-subscribe: its first hypothesis in plain words,
+when it was read and what it says to do next
+([A lost telemetry stream, opened](needs-attention#a-lost-telemetry-stream)). It draws only
+one recorded since the stream was lost; with none, it says so.
+
 ## The result
 
 The diagnosis is drawn in the card's place when the run ends: its headline (how many

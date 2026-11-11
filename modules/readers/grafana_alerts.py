@@ -90,6 +90,15 @@ and the after-store step records each rule added, changed or removed against the
 state (`modules/alert_rule_changes.py`), drawn in History. A ruler that did not hold every rule
 the rules view lists is a partial answer for this (`rule_definitions_complete`), and nothing
 is recorded from it.
+
+**A lost telemetry stream's past, from Mercury's own records** (the fix-it path's first step:
+MERCURY_CHARTER, "The fix-it path"). While a lost-stream alert fires, the value also carries
+``streams`` (`lost_streams`, `modules/heal/seen_before.py`): for each such device, whether the
+same loss was seen before, how it ended and how long that held, and Mercury's diagnosis of
+this loss. It is Mercury's records read beside Grafana's answer, as ``bands`` is Prometheus's:
+read in the job so that Needs attention, which builds its rows from this value on every page
+request, searches nothing. A store it could not read is said in the value, never raised: the
+read of Grafana does not fail for it.
 """
 
 import logging
@@ -476,7 +485,32 @@ def read(client=None, list_name: str = "") -> dict:
         from modules.integrations.prometheus import PrometheusIntegration
         prom = PrometheusIntegration(list_name=list_name)
     value["bands"] = band_readings(value, prom=prom)
+    value["streams"] = lost_streams(value, list_name)
     return value
+
+
+def store_name(list_name: str = "") -> str:
+    """The store this reader keeps *list_name*'s configuration's value in (its own name for
+    Default's), as the alert history names each alert's instance (`alert_history.identity`)."""
+    from modules import integration_groups as IG
+
+    if not list_name:
+        return READER.name
+    gid = IG.combined_id(tuple(READER.per_group), list_name)
+    return IG.store_name(READER.name, gid) if gid else READER.name
+
+
+def lost_streams(value: dict, list_name: str = "") -> dict:
+    """What Mercury's own records say of each device with a lost-stream alert firing in
+    *value*: whether it was seen before, how that ended and how long it held, and Mercury's
+    diagnosis of this loss (`modules/heal/seen_before.py`; the fix-it path's first step and
+    its second's fallback, no AI). Read here, in the job, so a page never searches a record
+    store: Needs attention draws it from the stored value. Nothing is read while no
+    lost-stream alert fires; it never raises (a store that cannot be read is said on the
+    row)."""
+    from modules.heal import seen_before
+
+    return seen_before.context(value, store_name(list_name))
 
 
 def _prometheus_uids(list_name: str = "") -> set:
@@ -539,7 +573,12 @@ READER = reader_job.register(reader_job.Reader(
          "attention and 8.6's triage",
     endpoints=(RULER, RULES_VIEW, ALERTMANAGER, SILENCES,
                "Prometheus: GET /api/v1/query, the rule's own query for each alerting series a "
-               "person acknowledged within a band (C433)"),
+               "person acknowledged within a band (C433)",
+               "Mercury's own records (the alert history, the operations' record, the deploy "
+               "receipts, the heal step log) and Loki: GET /loki/api/v1/query_range and "
+               "/loki/api/v1/query, a device's configuration-change lines during a past "
+               "lost-stream incident no Mercury operation ended; only while a lost-stream "
+               "alert fires (modules/heal/seen_before.py)"),
     interval_seconds=60,
     interval_basis=("both rule groups evaluate every 60 s (measured 2026-09-28), so a "
                     "faster read sees nothing new"),

@@ -2402,6 +2402,108 @@ def resubscribe_action(members: list):
             "open": "resubscribe", "device": device, "subs": ids}
 
 
+def stream_fix(action: dict, onset, value: dict, value_at, promise, now: float) -> tuple:
+    """What a lost telemetry stream's row says when it is opened, above its action (the
+    fix-it path's first step and its second's fallback, no AI: MERCURY_CHARTER, "The fix-it
+    path"): ``(fix, record)``. *fix* is ``{"device", "lead", "needs", "seen", "diagnosis"}``:
+
+    - ``lead``: how long the device has sent nothing, measured from the alert's own onset to
+      the reading the row stands on (*value_at*, never a device's uptime, never this
+      request's clock), and what that costs. It says "no telemetry" only when every
+      lost-stream rule Grafana holds for the device is firing; otherwise it names the
+      subscriptions. A reading older than its promise (*promise*, seconds) is said as the
+      past it is, never as now;
+    - ``needs``: whether it needs a person, and what happens if nobody acts;
+    - ``seen``: the "Seen before" line's parts (`modules/heal/seen_before.py`, read by the
+      alerts reader and kept in its value's ``streams``), None when no past incident
+      matches, or why it could not be checked;
+    - ``diagnosis``: Mercury's own diagnosis of this loss, read, absent, not made or
+      unreadable, each said as itself.
+
+    *record* is what goes under Details for the record: what matched and why, what was
+    searched, and how each sentence was measured. Reads nothing: every part comes from the
+    stored value."""
+    from modules.heal import seen_before as SB
+    from modules.heal.diagnose_stream import TITLE
+
+    device, subs = action["device"], list(action["subs"])
+    held = set()
+    for r in (value or {}).get("rules") or []:
+        m = TITLE.match(str(r.get("title") or "").strip())
+        if m and m.group("device") == device:
+            held.add(m.group("sub"))
+    whole = bool(held) and held <= set(subs)
+    as_of = value_at if value_at is not None else now
+    stale = bool(promise and value_at is not None and now - value_at > promise)
+    span = SB.span_words(as_of - onset) if onset is not None else ""
+    one = len(subs) == 1
+    if whole:
+        who, sent = device, "sent no telemetry"
+        cost = f"Monitoring for {device} is blind until it does."
+    else:
+        who = (f"{device}'s telemetry subscription{'' if one else 's'} "
+               f"{SB._and(subs)}")
+        sent = "sent nothing"
+        cost = (f"What {'it carries' if one else 'they carry'} is missing from monitoring "
+                f"until {'it does' if one else 'they do'}.")
+    has = "has" if whole or one else "have"
+    if stale:
+        lead = (f"When Grafana's alerts were last read, {_span_words(now - value_at)} ago, "
+                f"{who} had {sent} to the collector"
+                + (f" for {span}" if span else "; when it stopped is not recorded")
+                + f". That reading is older than its promise ({_span_words(promise)}), so "
+                  "this may no longer be true.")
+    elif span:
+        lead = f"{who} {has} {sent} to the collector for {span}. {cost}"
+    else:
+        lead = (f"{who} {has} {sent} to the collector; when it stopped is not recorded. "
+                f"{cost}")
+    streams = (value or {}).get("streams")
+    if streams is None:
+        why = ("not searched yet: this reading of Grafana's alerts was stored before "
+               "Mercury's records were read beside it; the next read searches them")
+        entry = None
+    elif streams.get("state") != "read":
+        why = f"Mercury's records could not be read ({streams.get('why') or 'no reason'})"
+        entry = None
+    else:
+        entry = (streams.get("devices") or {}).get(device)
+        why = ("not searched: the alert's labels and its rule's title do not name the same "
+               "device")
+    seen = (entry or {}).get("seen") or {"state": "unreadable", "why": why, "record": why}
+    diag = (entry or {}).get("diagnosis") or {"state": "unreadable", "why": why,
+                                               "record": why}
+    drawn = None
+    if seen.get("state") == "match":
+        drawn = {"state": "match", "from": seen["from"], "to": seen["to"],
+                 "what": seen["what"], "cause": seen.get("cause") or "",
+                 "ended": {k: (seen.get("ended") or {}).get(k) or ""
+                           for k in ("words", "at", "tail", "list")},
+                 "held": {k: (seen.get("held") or {}).get(k) or ""
+                          for k in ("words", "at", "tail")} if seen.get("held") else None,
+                 "range": seen.get("range") or "all"}
+    elif seen.get("state") != "none":
+        drawn = {"state": "unreadable", "why": seen.get("why") or why}
+    fix = {"device": device, "lead": lead,
+           "needs": (f"Yes: the fix changes {device}'s configuration, so a person approves "
+                     f"it. If you don't, {device}'s telemetry stays lost."),
+           "seen": drawn,
+           "diagnosis": {k: diag.get(k) or ("" if k != "more" else 0)
+                         for k in ("state", "words", "at", "by", "next", "more", "list",
+                                   "why")}}
+    record = {
+        "silence_measured": ((f"measured from the alert's onset to the reading at {_iso(as_of)}"
+                  if onset is not None else "the alert records no onset")
+                 + ("; every lost-stream rule Grafana holds for " + device + " is firing ("
+                    + ", ".join(sorted(held, key=lambda x: (len(x), x))) + ")" if whole else
+                    "; Grafana holds lost-stream rules for " + device + "'s subscriptions "
+                    + (", ".join(sorted(held, key=lambda x: (len(x), x))) or "none read")
+                    + ", and " + ", ".join(subs) + " fire")),
+        "seen_before": seen.get("record") or seen.get("why") or "",
+        "diagnosis": diag.get("record") or diag.get("why") or ""}
+    return fix, record
+
+
 def _incidents(instances: list) -> list:
     """Groups of instances, each group one incident, by onset; an instance
     with no onset is an incident of its own (never merged on a guess)."""
@@ -2671,13 +2773,22 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         # carries its one action, Re-subscribe, drawn in place on the row
         # (routes/resubscribe_v2.py), its subscriptions from the rules' own titles.
         stream = resubscribe_action(members) if not whole_pipeline else None
+        fix = None
         if stream:
             action = stream
+            # The fix-it path's first step, and its second's fallback (no AI): the row's lead
+            # sentence, "Seen before", whether it needs a person and Mercury's diagnosis, all
+            # from this stored value (the alerts reader searched Mercury's records).
+            fix, said = stream_fix(stream, first["onset"], v, _ts(good.get("value_at")),
+                                   doc.get("stale_after_seconds"), started)
+            operands = dict(operands, **said)
         if evidence:
             action = dict(action, href=evidence)
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
             what, cause, action, level, devices=devices, since=first["onset"],
             operands=operands)
+        if fix:
+            rows[-1]["fix"] = fix
         # Board NA-R: the evidence packs of its alerts (`evidence_pack.alert_key`), so the
         # opened item draws the SAME kept Explain answer Monitoring shows (one cause, one
         # Explain: the first alert's pack).

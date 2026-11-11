@@ -33,6 +33,9 @@
 {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
 {%- endmacro -%}
+{#- A moment a record holds, in the viewer's own zone with its date (nmas_v2.js `drawClock`),
+    the UTC time the server's words and on hover. -#}
+{%- macro when(iso) -%}<time class="clock" datetime="{{ iso }}" data-clock="date" title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[:16] | replace('T', ' ') }} UTC</time>{%- endmacro -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
      hx-trigger="{{ attention_trigger }}">
   {%- set counts = namespace(danger=0, warning=0, unknown=0) %}
@@ -65,6 +68,41 @@
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>
       <div class="att-body">
+      {#- The fix-it path (MERCURY_CHARTER, "The fix-it path"; board recurring-fixes, its step
+          1 and step 2's fallback, with no AI): a lost telemetry stream's row says first, in
+          plain words, how long the device has sent nothing and what that costs, whether the
+          same loss was seen before and how that ended (drawn only when a past incident
+          matches; a store that could not be read is said, never read as "never seen"),
+          whether it needs a person, and Mercury's own diagnosis of this loss with when it
+          was read (read, not made, absent and unreadable are each said as themselves). All
+          of it comes from the alerts reader's stored value (attention.stream_fix); the
+          action, Re-subscribe, follows under What to do. No Explain control is drawn: there
+          is none yet. -#}
+      {%- if r.fix %}
+      {%- set fx = r.fix %}
+      <div class="att-fix">
+        <p class="fix-lead">{{ fx.lead }}</p>
+        {%- if fx.seen and fx.seen.state == 'match' %}
+        {%- set s = fx.seen %}
+        <p class="fix-seen"><strong>Seen before on {{ fx.device }} ({{ when(s.from) }} to {{ when(s.to) }}):</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ when(s.ended.at) }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ when(s.held.at) }}{% endif %}{{ s.held.tail }}{% endif %} <a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
+        {%- elif fx.seen %}
+        <p class="fix-seen warn-text"><strong>Seen before on {{ fx.device }}:</strong> couldn't be checked: {{ fx.seen.why }}. Whether {{ fx.device }} lost telemetry before is not known.</p>
+        {%- endif %}
+        {%- if (nets.get(fx.device) or [])|length == 1 %}
+        <p class="fix-needs"><strong>Does it need you?</strong> {{ fx.needs }}</p>
+        {%- else %}
+        <p class="fix-needs"><strong>Does it need you?</strong> Yes: {{ fx.device }}'s telemetry stays lost until a person acts, and no operation is offered for it here: the reason is under What to do.</p>
+        {%- endif %}
+        {%- set d = fx.diagnosis %}
+        <p class="fix-diag"><strong>Mercury's diagnosis:</strong>
+          {%- if d.state == 'read' %} {{ d.words }} <span class="muted small">Read {{ stamp(d.at) }}{% if d.by %} by {{ d.by }}{% endif %}, with no AI{% if d.more %}; {{ d.more }} more hypothes{{ 'is' if d.more == 1 else 'es' }} in its record{% endif %}.</span>{% if d.next %} <span class="fix-next">Next, as the diagnosis says: {{ d.next }}.</span>{% endif %}
+          {%- elif d.state == 'not_made' %} <span class="warn-text">not made. It was asked for {{ stamp(d.at) }}{% if d.by %} by {{ d.by }}{% endif %}, and answered: {{ d.why }}.</span>
+          {%- elif d.state == 'absent' %} <span class="muted">not read for this loss: {{ d.why }}. Self-healing reads it by itself, where it is on for the device's network, before it tells the team about a lost stream; no control on this row reads it yet.</span>
+          {%- else %} <span class="warn-text">couldn't be read: {{ d.why }}.</span>
+          {%- endif %}
+          {%- if d.list and d.state in ('read', 'not_made') %} <a href="{{ url_for('device_v2.device', name=fx.device, list=d.list, tab='history') }}">Open it on {{ fx.device }}'s History</a>{% endif %}</p>
+      </div>
+      {%- endif %}
       <div class="att-todo">
       <h3>What to do</h3>
       <div class="att-action">

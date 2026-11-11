@@ -23,6 +23,14 @@ a reason; and the button, named for the work, **Re-subscribe <device>'s telemetr
 busy on itself until the card answers in place. It is offered only for a device found in
 exactly one network.
 
+Above the card, the opened row says what Mercury's own records hold about the loss, with no
+AI ([A lost telemetry stream, opened](needs-attention#a-lost-telemetry-stream)): how long the
+device has sent nothing; **Seen before on <device>**, when a past loss on it matches, with how
+that one ended and how long it held (a re-subscribe that read the stream back is named as the
+operation that fixed it, with its record); whether it needs you; and **Mercury's diagnosis**
+of this loss with when it was read, or that none is recorded, that one was not made, or that
+its record could not be read. They are what you read before you decide to re-subscribe.
+
 The program and the button are always for the subscriptions ticked: ticking or unticking one
 draws the card again for that selection. A subscription of the device that is not in the alert
 and sends to the same receiver (the same address and port) as one that is, is listed too,

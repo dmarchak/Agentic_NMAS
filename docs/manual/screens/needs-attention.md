@@ -484,6 +484,51 @@ each subscription ticked, the exact program, a reason and the button
 ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). A device that two networks
 name is not offered it, and the row says so.
 
+### A lost telemetry stream, opened {#a-lost-telemetry-stream}
+
+Opened, a lost telemetry stream's row says four things first, above What to do. Each is written
+by Mercury's code from its own records, with no AI:
+
+- **How long, and what it costs:** "edge1 has sent no telemetry to the collector for 37 hours.
+  Monitoring for edge1 is blind until it does." The time is measured from the alert's own
+  onset to the reading the row stands on, never from the device's uptime. It says "no
+  telemetry" only when every lost-stream rule Grafana holds for the device is firing;
+  otherwise it names the subscriptions that sent nothing. When the reading of Grafana's alerts
+  is older than its promise, the sentence says so and speaks of then, not now.
+- **Seen before on edge1 (when):** drawn only when a past loss on the same device matches:
+  when it began and cleared, how it ended, and how long that held before telemetry was lost
+  again, with **Open that incident** (Monitoring › Alerts › History, for that device). The
+  match is the same device, the same symptom and the same cause first, then the nearest in
+  time. How it ended is only what a record shows:
+  - **a Mercury operation**, with **Open that operation's record**: a re-subscribe whose own
+    check read the stream back is said to have fixed it; any other operation that ran during
+    it is said as that, and that no record says it cleared the loss;
+  - **no Mercury operation recorded**, with a configuration change in the device's log during
+    it, its time, and whether it was made on the console or which account and address the
+    line names. It is never called a fix by hand: the log shows a change, not what it did;
+  - **it cleared by itself**, said only when the device's log holds other lines from that
+    time and none is a configuration change. A log that holds nothing from then, or cannot be
+    asked, cannot say nothing changed, and the line says which.
+
+  A store that could not be read (the alert history, the operations' record, the receipts) is
+  named in the line with why; it is never read as "never seen".
+- **Does it need you?** "Yes: the fix changes edge1's configuration, so a person approves it.
+  If you don't, edge1's telemetry stays lost."
+- **Mercury's diagnosis:** the newest "a telemetry stream lost" diagnosis recorded since this
+  loss began ([A telemetry stream lost](diagnose#stream)), in plain words, with when it was
+  read and what it says to do next: "a session that carries nothing (half-open). edge1 reads
+  Connected on connection 496, the collector holds edge1's session, and no data has arrived
+  on it for 37 hours." Otherwise it says which of three things is true: none is recorded for
+  this loss (one read before it began is never drawn as this loss's), one was asked for and
+  not made, with its reason, or the record could not be read. Self-healing runs that
+  diagnosis by itself where it is on for the device's network; no control on the row runs it
+  yet.
+
+The action follows: Re-subscribe, in What to do. What matched, what was searched and how each
+sentence was measured are under **Details for the record**. Mercury searches its records when
+it reads Grafana's alerts (once a minute, and only while a stream is lost), never when the
+page is drawn, so a diagnosis recorded just now appears with the next read.
+
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}
 
 An alert that fires on one series nearly all the time (a port that always discards a little,

@@ -296,6 +296,38 @@ def change_lines(dev: dict, since: float = None, *, now: float = None) -> dict:
     return view
 
 
+def lines_held(dev: dict, start: float, end: float) -> dict:
+    """How many lines of the device Loki holds from *start* to *end* (epoch seconds):
+    ``{"configured", "error", "count"}``, *count* None when it could not be asked. It is what
+    makes "no configuration change was logged then" a finding (`modules/heal/seen_before.py`):
+    a log that holds nothing of the device from a window cannot say nothing changed in it. One
+    count over the window, asked at its end; never raises, and nothing reaches the device."""
+    from modules.integrations.loki import LokiIntegration
+
+    host = dev.get("hostname", "")
+    out = {"configured": True, "error": "", "count": None}
+    if not _NAME.match(host or ""):
+        return dict(out, error=f"the name {host!r} cannot be matched safely in a log query")
+    loki = LokiIntegration()
+    if not loki.is_configured():
+        return dict(out, configured=False, error="Loki is not configured")
+    try:
+        sel = selector(host, start=start, client=loki)
+    except NoSyslogJob as exc:
+        return dict(out, error=f"the syslog job could not be found: {exc}")
+    span = max(1, int(end - start))
+    r = loki._get("loki/api/v1/query",  # noqa: SLF001
+                  query=f"sum(count_over_time({sel} [{span}s]))", time=int(end * 1e9))
+    if not r.get("ok"):
+        detail = f" ({r['detail']})" if r.get("detail") else ""
+        return dict(out, error=f"Loki could not be asked: {r.get('error')}{detail}")
+    try:
+        rows = (r["response"].json().get("data") or {}).get("result") or []
+        return dict(out, count=int(float(rows[0]["value"][1])) if rows else 0)
+    except (ValueError, AttributeError, KeyError, IndexError, TypeError) as exc:
+        return dict(out, error=f"Loki's answer could not be read: {exc}")
+
+
 def for_device(dev: dict, *, now: float = None) -> dict:
     """The Logs tab's view. Never raises; a source that could not be read is
     said, never drawn as a quiet device."""

@@ -141,16 +141,55 @@ class TestTheRead:
         f = self.Fake()
         v = G.read(f)
         assert f.asked == [G.RULER, G.RULES_VIEW, G.ALERTMANAGER, G.SILENCES]
-        # Grafana's four, and Prometheus for acknowledged-within-a-band series (C433), which
-        # this run has none of.
-        grafana = [e for e in G.READER.endpoints if not e.startswith("Prometheus:")]
+        # Grafana's four; Prometheus for acknowledged-within-a-band series (C433), which
+        # this run has none of; and Mercury's own records and Loki for a lost telemetry
+        # stream's past (the fix-it path's first step, modules/heal/seen_before.py), read
+        # only while a lost-stream alert fires, which this quiet fleet has none of.
+        grafana = [e for e in G.READER.endpoints
+                   if not e.startswith(("Prometheus:", "Mercury's own records"))]
         assert set(grafana) == set(f.asked) and v["counts"]["rules"] == 16
         assert v["bands"] == {}
+        assert (v.get("streams") or {}).get("state") == "read"
+        assert v["streams"]["devices"] == {}
 
     def test_a_refusal_names_the_endpoint_and_is_a_failed_attempt(self, tmp_path, monkeypatch):
         monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
         with pytest.raises(ConnectionError, match="rules.*HTTP 403"):
             G.read(self.Fake(fail=G.RULES_VIEW))
+
+    def test_the_value_it_stores_carries_a_lost_streams_past(self, tmp_path, monkeypatch):
+        """The fix-it path's first step (modules/heal/seen_before.py): with a lost-stream
+        alert firing, the reader's own read keeps what Mercury's records say of it in the
+        value it stores, so a page reads nothing more. Grafana answers with the captures
+        (the 2026-10-26 rules view, r2's two real lost-stream instances set firing, and the
+        ruler with the generator's rules for them); the alert history holds one past loss,
+        written by the reader's own writer; the reader's dependency, the records' sources,
+        is tests/test_seen_before.py's (the networks said, the clock fixed)."""
+        # Imported here: tests/test_seen_before.py imports this module for its loaders.
+        from tests import test_seen_before as T
+
+        T.make_world(tmp_path, monkeypatch)
+        T.past_loss()
+        monkeypatch.setattr("modules.heal.seen_before.Sources", T.Src)
+        view = T.history_load("rules_view")
+        for sub in T.SUBS:
+            inst = rule(view, f"NMAS telemetry stream lost: r2 subscription {sub}")
+            inst["alerts"][0]["state"], inst["alerts"][0]["activeAt"] = T.FIRING, T.LOST_2
+        bodies = {G.RULER: T.ruler_for("r2"), G.RULES_VIEW: view, G.ALERTMANAGER: [],
+                  G.SILENCES: []}
+
+        class Grafana:
+            def _get(self, path):
+                class Resp:
+                    def json(self):
+                        return copy.deepcopy(bodies[path])
+                return {"ok": True, "response": Resp()}
+
+        v = G.read(Grafana())
+        streams = v.get("streams") or {}
+        assert streams.get("state") == "read", streams
+        assert streams["devices"]["r2"]["seen"]["state"] == "match"
+        assert G.store_name() == T.STORE == G.READER.name
 
     def test_the_reader_is_declared_with_its_measured_interval(self):
         assert G.READER in R.readers() and G.READER.interval_seconds == 60
