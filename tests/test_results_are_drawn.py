@@ -188,6 +188,16 @@ PAGE_RECORD = {
         "v2.history_page"),
     "privileged_v2.confirm": ("templates/v2/_privileged.html",
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
+    # C2838: a telemetry re-subscribe and its Re-add the receiver, each answered in place on the
+    # lost stream's Needs attention row (its job, then its record's outcome, each
+    # subscription's checks and any stale session flagged); the run read again on the device's
+    # History (`history_sources.privileged`, "Telemetry: …").
+    "resubscribe_v2.confirm": ("templates/v2/_resubscribe.html",
+                               ('data-holds-live="review"', "c.record", "s.verify", "r.why"),
+                               "device_v2.history"),
+    "resubscribe_v2.readd": ("templates/v2/_resubscribe.html",
+                             ('data-holds-live="review"', "c.record", "s.verify", "r.why"),
+                             "device_v2.history"),
     # Board H, artboard E (H9): a self-healing proposal approved on its Needs attention card,
     # its answer in place (the job it started, the hash it was bound to); the heal's steps and
     # outcome read on the device's History (`history_sources.heal`).

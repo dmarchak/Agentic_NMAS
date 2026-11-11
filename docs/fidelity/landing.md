@@ -35,7 +35,22 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `efb6c6240f451997636916e359ccba78cc0cbbac0fcf5fa20dff3d5d30c887e3`
+Templates sha256: `4023bd656a6003a1a9cda804c7e3801a05d752a6194ab1ab3194a56b23e755ed`
+
+**Compared again 2026-11-10 for C2838** (re-subscribe a lost telemetry stream), by the template
+diff (no new shot; tests/test_heal_resubscribe_v2.py draws the row and its card through the
+real app): `_attention.html` gains one branch, for a row whose action is `resubscribe` (every
+member a lost-stream rule of one device, `attention.resubscribe_action`): **Re-subscribe
+<device>'s telemetry (<ids>)…** on its line, which opens the row to its card, drawn in What to
+do when the row is opened (`templates/v2/_resubscribe.html`, read from committed intent), and,
+for a device two networks name, the reason it is not offered. The boards draw an alert row's
+action as Read the rule in Grafana: one deviation, logged ("C2838 1"). Every other row's line
+and What to do are unchanged. Templates sha256 before:
+`efb6c6240f451997636916e359ccba78cc0cbbac0fcf5fa20dff3d5d30c887e3`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A lost telemetry stream's row (C2838) | an alert row: Read the rule in Grafana | Re-subscribe <device>'s telemetry (<ids>)… on its line, its card in the opened row | **deviation** (log: C2838 1) |
 
 **Compared again 2026-11-09 for C2817 and C2823** (the operator's three templates, "right as
 drawn", 2026-11-09; ~/Documents/nmas-reports/2026-11-08T2000Z-human-readable-mocks.md), by the

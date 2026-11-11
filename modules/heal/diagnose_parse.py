@@ -441,12 +441,59 @@ def telemetry_brief(text: str, interface: str = "") -> dict:
                          for m in _TEL_ROW.finditer(text, head.end())})
 
 
+#: `show telemetry ietf subscription <id> receiver` (IOS-XE; captured on two lab routers through
+#: the reads engine, 2026-11-10, tests/fixtures/diagnose/, C2890): its heading, then one block per
+#: receiver, each a ``Name: value`` line (the device prints ``Profile:`` and ``Explanation:``
+#: with nothing after them). Only the Connected form is captured; the State and Explanation
+#: are read as the device prints them, never mapped to a word they did not say.
+_RCV_HEAD = re.compile(r"^\s*Telemetry subscription receivers detail:\s*$", re.MULTILINE)
+_RCV_FIELD = re.compile(r"^\s*(?P<name>Subscription ID|Address|Port|Protocol|Profile|Connection"
+                        r"|State|Explanation):[ \t]*(?P<value>.*?)[ \t\r]*$", re.MULTILINE)
+_RCV_KEYS = {"Subscription ID": "subscription", "Address": "address", "Port": "port",
+             "Protocol": "protocol", "Profile": "profile", "Connection": "connection",
+             "State": "state", "Explanation": "explanation"}
+
+
+def telemetry_receiver(text: str, interface: str = "") -> dict:
+    """``{"receivers": [{subscription, address, port, protocol, profile, connection, state,
+    explanation, connected}]}``: each receiver the device holds for the subscription, its
+    address compressed when it is one IPv4 or IPv6 address (C2890). No heading is unreadable;
+    a heading with no receiver block is the device holding none. A block with no ``State``
+    line is unreadable, never read as a state."""
+    head = _RCV_HEAD.search(text or "")
+    if not head:
+        return _out(UNREADABLE, why="no receiver detail in the answer (its heading, "
+                                    "\"Telemetry subscription receivers detail:\", is absent)")
+    rows, cur = [], None
+    for m in _RCV_FIELD.finditer(text, head.end()):
+        key = _RCV_KEYS[m.group("name")]
+        if key == "subscription":
+            cur = {k: "" for k in _RCV_KEYS.values()}
+            rows.append(cur)
+        if cur is None:
+            return _out(UNREADABLE, why=f"a {m.group('name')!r} line before any receiver's "
+                                        "Subscription ID")
+        cur[key] = m.group("value")
+    for r in rows:
+        if not r["state"]:
+            return _out(UNREADABLE, why=f"subscription {r['subscription']}'s receiver block "
+                                        "holds no State line")
+        try:
+            r["address"] = ipaddress.ip_address(r["address"]).compressed
+        except ValueError:
+            pass
+        r["port"] = int(r["port"]) if r["port"].isdigit() else None
+        r["connected"] = r["state"] == "Connected"
+    return _out(PARSED, {"receivers": rows})
+
+
 #: Each read kind's parser (`diagnose.READS` names the kinds).
 PARSERS = {"interfaces": interfaces, "ip_interface": ip_interface, "cdp": cdp, "lldp": lldp,
            "ospf_neighbor": ospf_neighbor, "ospfv3_neighbor": ospfv3_neighbor,
            "bgp_summary": peers_from_summary, "arp": arp, "ipv6_interface": ipv6_interface,
            "reach_ping": ping, "route": route, "traceroute": traceroute, "acl_counters": access_list,
-           "nd": nd, "mac": mac_table, "stp": stp, "telemetry_brief": telemetry_brief}
+           "nd": nd, "mac": mac_table, "stp": stp, "telemetry_brief": telemetry_brief,
+           "telemetry_receiver": telemetry_receiver}
 #: The parsers that read by the device's dialect (the platform pack's entries are per dialect).
 BY_DIALECT = frozenset({"arp"})
 

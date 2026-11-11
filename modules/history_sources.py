@@ -1936,12 +1936,19 @@ def privileged(ctx):
         state = r.get("state", "")
         outcome = {"done": "done, verified", "unverified": "done, not verified",
                    "refused": "not sent", "failed": "failed", "running": "running"}.get(state, state)
+        # C2838: a telemetry re-subscribe or re-add keeps its record here too, said as itself.
+        title = (f"Telemetry: {r.get('command', '')}" if str(r.get("key") or "").startswith(
+            "telemetry-") else f"Privileged: {r.get('command', '')}")
+        # A record that says how its person was verified (a re-subscribe's ``actor_verified``)
+        # is drawn with it; one that does not (a Tier 2 run's) names its actor as before.
+        how = r.get("actor_verified")
         events.append(_event(r.get("started_at"), "privileged",
-                             f"Privileged: {r.get('command', '')}", [host], who=r.get("actor", ""),
+                             title, [host],
+                             who=_who(r.get("actor", ""), how) if how else r.get("actor", ""),
                              detail=r.get("reason", ""), outcome=outcome,
                              record=[("Run", r.get("id")), ("Reason", r.get("reason")),
                                      ("Verify", (r.get("verify") or {}).get("words")),
-                                     ("Why", r.get("why"))]))
+                                     ("Why", r.get("why")), ("Verified by", how)]))
     return _out(events, errors)
 
 

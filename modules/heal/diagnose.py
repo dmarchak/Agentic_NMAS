@@ -767,13 +767,14 @@ def _logs(network: str, host: str, now: float) -> dict:
 
 def run(network: str, runbook: str, target: dict, actor: str, *, incident: str = "",
         session=None, logs=None, sleep=time.sleep, model: dict = None, intents: dict = None,
-        now: float = None, record: bool = True, collector=None) -> dict:
+        now: float = None, record: bool = True, collector=None, series=None) -> dict:
     """Run *runbook* on *target* and answer the diagnosis (recorded in the step log unless
     *record* is False). A refusal is a diagnosis too (``state`` ``refused`` or ``busy``,
     nothing read), never raised. *session* (tests) is the reads engine's seam; *logs* is
     ``logs(network, host, now) -> {state, why, lines}``; *sleep* waits between the rounds;
     *collector* (tests) replaces the lost-stream runbook's local read of the collector's
-    sockets (`diagnose_stream.read_collector`)."""
+    sockets (`diagnose_stream.read_collector`), and *series* (tests) its read of the stream's
+    own series in Prometheus (`diagnose_stream.series_of`, C2892)."""
     started = time.time() if now is None else float(now)
     did = new_id()
     out = {"id": did, "network": network, "runbook": runbook,
@@ -798,7 +799,7 @@ def run(network: str, runbook: str, target: dict, actor: str, *, incident: str =
     if runbook == "stream_lost":
         from modules.heal import diagnose_stream
         diagnose_stream.run_plan(p, out, actor, session=session, logs=logs or _logs,
-                                 collector=collector, started=started)
+                                 collector=collector, series=series, started=started)
         out["finished_at"] = _iso(time.time())
         return _recorded(network, out, record)
     out["devices"] = [e["host"] for e in p["ends"]]

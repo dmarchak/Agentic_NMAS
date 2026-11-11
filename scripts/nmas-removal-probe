@@ -273,6 +273,17 @@ EXEMPLARS = {
         "setup": [LOOP, " dampening"],
         "unit": {"chain": [LOOP], "line": " dampening"},
         "teardown": ["no " + LOOP]}],
+    # C2838: a dial-out subscription's receiver, on a SCRATCH subscription (9199) to a
+    # documentation address nothing listens on, so no stream of the device's moves; IOS-XE
+    # only (a device without the command reads `unsupported`).
+    "telemetry.receiver": [{
+        "setup": ["telemetry ietf subscription 9199", " encoding encode-kvgpb",
+                  " filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/"
+                  "five-seconds", " stream yang-push", " update-policy periodic 60000",
+                  " receiver ip address 192.0.2.15 57000 protocol grpc-tcp"],
+        "unit": {"chain": ["telemetry ietf subscription 9199"],
+                 "line": " receiver ip address 192.0.2.15 57000 protocol grpc-tcp"},
+        "teardown": ["no telemetry ietf subscription 9199"]}],
     # Routes to Null0 for documentation prefixes: nothing is sent anywhere. Refused on a
     # device that redistributes static routes, where the scratch would be advertised.
     "global.ip-route": [

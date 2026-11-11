@@ -427,7 +427,9 @@ class TestTheRuns:
         assert {r.name for r in S.STREAM_RULES} == {
             "device_unread", "stream_missing", "stream_invalid", "collector_unreached",
             "collector_down", "half_open", "no_session", "outlived_cause",
-            "cause_just_cleared", "cause_stands", "stream_config_changed"}
+            "cause_just_cleared", "cause_stands", "stream_config_changed",
+            # C2892: its planted cases are in TestTheStreamItself below.
+            "stream_flowing"}
 
 
 # ── Which incidents run it, and the cause from the heal records ─────────────────────────────
@@ -514,3 +516,95 @@ class TestWhichIncidents:
         m = S.TITLE.match(rule["title"])
         assert m and (m.group("device"), m.group("sub")) == ("r2", "101")
         assert (rule["labels"]["nmas"], rule["labels"]["subscription"]) == ("telemetry", "101")
+
+
+# ── The device's receiver and the stream itself (C2890, C2892) ──────────────────────────────
+
+#: The receiver reads, real captures (tests/fixtures/diagnose/README.md): r7's, Connected on
+#: connection 496 while it was NOT streaming.
+R7_101 = text("r7__show_telemetry_ietf_subscription_101_receiver.txt")
+R7_102 = text("r7__show_telemetry_ietf_subscription_102_receiver.txt")
+
+
+def with_receivers(a101=R7_101, a102=R7_102) -> dict:
+    out = answers()
+    out[("r2", "show telemetry ietf subscription 101 receiver")] = a101
+    out[("r2", "show telemetry ietf subscription 102 receiver")] = a102
+    return out
+
+
+def flowing_run(tmp_path, series, got_answers=None, ss=None, **pk):
+    from modules.heal import diagnose as D
+    from modules.heal import diagnose_stream as S
+    model, intents = fleet(at_collector())
+    root = proc(tmp_path, **pk)
+    return D.run("Default", "stream_lost", target(), ACTOR,
+                 session=Fleet(got_answers or with_receivers()), logs=quiet, model=model,
+                 intents=intents, now=NOW, series=series,
+                 collector=lambda a, p, s: S.read_collector(a, p, s, proc=root, ss=ss))
+
+
+PRESENT = {"state": "present", "count": 1, "why": "1 series with a sample in the last 90 s"}
+ABSENT = {"state": "absent", "count": 0, "why": "no sample in the last 90 s"}
+
+
+class TestTheStreamItself:
+    def test_the_devices_side_is_evidence_and_complete(self, world, tmp_path):
+        """C2890: with r7's real receiver answers, the half-open hypothesis names the device's
+        own side (Connected on connection 496) and its evidence is complete."""
+        got = flowing_run(tmp_path, lambda d, s: ABSENT, tcp6=False)
+        half = next(h for h in got["hypotheses"] if h["rule"] == "half_open")
+        assert ("r2 reads subscription 101's receiver 10.255.1.10 port 57000 Connected on "
+                "connection 496") in half["claim"]
+        assert half["incomplete"] == [], half["incomplete"]
+        assert any(e.get("line") == "State Connected, connection 496"
+                   for e in half["evidence"]), half["evidence"]
+
+    def test_one_receiver_unreadable_is_the_only_one_incomplete(self, world, tmp_path):
+        got = flowing_run(tmp_path, lambda d, s: ABSENT, with_receivers(a102=""), tcp6=False)
+        half = next(h for h in got["hypotheses"] if h["rule"] == "half_open")
+        assert len(half["incomplete"]) == 1 and "subscription 102's receiver" in \
+            half["incomplete"][0] and "C2890" in half["incomplete"][0]
+
+    def test_the_stream_back_is_the_symptom_gone(self, world, tmp_path):
+        from modules.heal import auto_diagnose as AD
+        got = flowing_run(tmp_path, lambda d, s: PRESENT, tcp6=False)
+        assert got["hypotheses"] == [], got["hypotheses"]
+        check = ("r2's subscriptions 101 and 102 have data in Prometheus now (a sample in the "
+                 "last 90 s, the lost-stream alert's own query): the stream is back")
+        assert {"check": check, "rule": "stream_flowing"} in got["ruled_out"]
+        assert AD.symptom_gone(got) == check
+        whys = {n.get("rule"): n["why"] for n in got["not_checked"]}
+        assert whys["outlived_cause"].startswith("the stream is back")
+
+    def test_the_stream_still_lost_is_said_and_decides_the_rest(self, world, tmp_path):
+        from modules.heal import auto_diagnose as AD
+        got = flowing_run(tmp_path, lambda d, s: ABSENT, tcp6=False)
+        whys = {n.get("rule"): n["why"] for n in got["not_checked"]}
+        assert whys["stream_flowing"] == ("subscriptions 101 and 102 on r2 have no sample in "
+                                          "Prometheus in the last 90 s: the stream is still lost")
+        assert "half_open" in rules(got) and AD.symptom_gone(got) == ""
+
+    def test_prometheus_unread_decides_nothing(self, world, tmp_path):
+        got = flowing_run(tmp_path, lambda d, s: {"state": "unread",
+                                                  "why": "Prometheus is not configured"},
+                          tcp6=False)
+        whys = {n.get("rule"): n["why"] for n in got["not_checked"]}
+        assert "Prometheus is not configured" in whys["stream_flowing"]
+        assert set(rules(got)[:2]) == {"outlived_cause", "half_open"}, "judged as before"
+        step = next(s for s in got["steps"] if s["step"] == "stream")
+        assert step["result"] == "not_read"
+
+    def test_a_session_receiving_now_is_not_half_open(self, world, tmp_path):
+        """C2892: the kernel's socket diagnostics (ss_tni_4's, its device row's lastrcv written
+        as 287 ms) say the session carries data, which /proc alone cannot."""
+        ss4 = open(os.path.join(COLLECTOR, "ss_tni_4.txt"), encoding="utf-8").read()
+        live = ss4.replace("lastrcv:5966281", "lastrcv:287")
+        got = flowing_run(tmp_path, lambda d, s: ABSENT, ss=lambda p: (live, ""), tcp6=False)
+        assert "half_open" not in rules(got)
+        assert any("received data 0 s ago" in r["check"] for r in got["ruled_out"]
+                   if r["rule"] == "half_open")
+        stale = flowing_run(tmp_path / "2", lambda d, s: ABSENT, ss=lambda p: (ss4, ""),
+                            tcp6=False)
+        half = next(h for h in stale["hypotheses"] if h["rule"] == "half_open")
+        assert "nothing received on it for 99 minutes" in half["claim"]

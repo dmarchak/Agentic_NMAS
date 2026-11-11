@@ -2216,6 +2216,99 @@ class TestNsotExportCards(_Cards):
         return html
 
 
+# ── Needs attention: a lost telemetry stream's Re-subscribe card (C2838) ──────────────────────
+
+class TestResubscribeCards(_Cards):
+    """On tests/test_heal_resubscribe.py's lab (r2's real configuration on a box, its real
+    intent), the card read by the real route from the real plan. Re-subscribe r2's telemetry
+    (101, 102) is pressable; blocked: a subscription intent does not declare, so the plan
+    refuses and the card draws no button. Re-add the receiver for 101 is drawn once a real run,
+    pressed through the real confirm route, left the receiver removed; blocked: intent no
+    longer holds that subscription's receiver, so the re-add's plan refuses and the card says
+    why where the button was."""
+    from tests import test_heal_resubscribe as _hr, test_sdn_connections as _sc
+    # The operation these cases draw, whose sources `_world` replaces.
+    import modules.heal.resubscribe as _op  # noqa: F401
+    networks, lab = hosted(_sc.networks), hosted(_hr.lab)
+
+    CASES = {
+        "resubscribe": ("_resubscribe.html",
+                        "Re-subscribe {{ c.host }}'s telemetry ({{ names }})",
+                        r"Re-subscribe r2's telemetry \(101, 102\)",
+                        "data: intent declares no such subscription, so the plan refuses"),
+        "readd": ("_resubscribe.html", "Re-add the receiver for {{ x.sub }}",
+                  r"Re-add the receiver for 101",
+                  "data: intent no longer holds the receiver, so the re-add's plan refuses"),
+    }
+    BASE = "/v2/device/r2/resubscribe"
+    HX = {"HX-Request": "true"}
+
+    def _world(self, request, src):
+        """The real app's client on the lab, the operation's sources *src*, a started run made
+        in the request's thread."""
+        import app as A
+        request.getfixturevalue("lab")
+        mp = request.getfixturevalue("monkeypatch")
+        state = {"src": src}
+        mp.setattr("modules.heal.resubscribe.Sources", lambda net, **kw: state["src"])
+        mp.setattr("modules.nsot.capture_job.start",
+                   lambda lst, label, actor, work, **kw: (work("j-1"), "j-1")[1])
+        return A.app.test_client(), state
+
+    def _card(self, client, subs):
+        return _text(client.get(f"{self.BASE}?list=Default&subs={subs}", headers=self.HX))
+
+    def _left_removed(self, request):
+        """A run whose re-add never lands (the box drops both attempts), pressed through the
+        real confirm route: subscription 101's receiver is left removed."""
+        from tests.test_heal_resubscribe import REASON, Box, Src
+        box = Box(readd_fails=2)
+        client, state = self._world(request, Src(box=box))
+        card = self._card(client, "101")
+        h = re.search(r'name="hash::101" value="([0-9a-f]+)"', card)
+        program = re.search(r'hx-vals=\'\{"program": "([0-9a-f]+)"\}\'', card)
+        assert h and program, "floor: the card carries 101's hash and the selection's"
+        out = _text(client.post(f"{self.BASE}/confirm?list=Default", headers=self.HX, data={
+            "sub": "101", "reason": REASON, "subs": "101", "picked": "1",
+            "program": program.group(1), "previewed": "101", "hash::101": h.group(1)}))
+        assert "receiver for 101 is removed" in html_mod.unescape(out), "floor: left removed"
+        return client, state, box
+
+    def drawn_resubscribe(self, request):
+        from tests.test_heal_resubscribe import Src
+        client, _state = self._world(request, Src())
+        html = self._card(client, "101,102")
+        assert "Afterwards:" in html, "floor: the plan's card is drawn"
+        return html
+
+    def blocked_resubscribe(self, request, monkeypatch):
+        from tests.test_heal_resubscribe import Src
+        client, _state = self._world(request, Src())
+        html = self._card(client, "103")
+        assert "Re-subscribe is not offered:" in html, "floor: the refused plan is drawn"
+        return html
+
+    def drawn_readd(self, request):
+        client, _state, _box = self._left_removed(request)
+        html = self._card(client, "101")
+        assert "r2's receiver for 101 is removed." in html_mod.unescape(html), (
+            "floor: the removed receiver leads the card")
+        return html
+
+    def blocked_readd(self, request, monkeypatch):
+        from tests.test_heal_resubscribe import Src
+        client, state, box = self._left_removed(request)
+
+        def no_receiver(intents):
+            for s in intents["r2"]["telemetry"]:
+                s["settings"] = [x for x in s["settings"] if not x.startswith("receiver ")]
+        state["src"] = Src(box=box, intent_edit=no_receiver)
+        html = self._card(client, "101")
+        assert "Re-add the receiver is not offered:" in html, (
+            "floor: the re-add's refused plan is drawn")
+        return html
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -2283,9 +2376,11 @@ class TestThePopulation:
         version's Publish <version>, C2854, 2026-11-09; 79 until SDN › Apps' Add <name> as a
         Draft, the operator's decision of 2026-11-10; 80 until SDN › Switches' Configure N
         switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10; 82 until SDN ›
-        Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904)."""
+        Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904;
+        84 until a lost telemetry stream's Re-subscribe <device>'s telemetry (<ids>) and Re-add
+        the receiver for <id>, C2838, 2026-11-10)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 84, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 86, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

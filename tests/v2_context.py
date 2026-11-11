@@ -3429,6 +3429,97 @@ def _heal_and_notify(client, _lab, _mp):
         mp.undo()
 
 
+def _resubscribe(client, _lab, _mp):
+    """C2838: a lost telemetry stream's Re-subscribe card on r3, in each state it draws: the
+    preview (r2's real intent standing in for r3's: its two subscriptions), one of them
+    unticked (the sharing notice), none ticked, a refused plan, a
+    run's result, a receiver left removed with Re-add the receiver, and a run still going. The
+    operation's sources are tests/test_heal_resubscribe.py's box and reads, for this provider
+    alone; its records are removed after."""
+    import os as _os
+
+    import pytest
+
+    from modules import config
+    from modules.nsot import capture_job, privileged
+    from tests import test_heal_resubscribe as T
+
+    hx = {"HX-Request": "true"}
+    mp = pytest.MonkeyPatch()
+    folder = _os.path.join(config.get_list_data_dir("Lab"), "privileged")
+    # The lab points `get_list_data_dir` (where a run's record is written) at its folder and
+    # leaves `list_data_path` (where the card reads it) on the store; one folder here, as on
+    # a host.
+    mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+    had = set(_os.listdir(folder)) if _os.path.isdir(folder) else set()
+
+    def lab_src(**kw):
+        src = T.Src(**kw)
+        src.device = lambda h: dict(T.DEV, hostname="r3") if h == "r3" else {}
+        src._intents["r3"] = src._intents["r2"]
+        return src
+
+    state = {"src": lab_src()}
+    try:
+        mp.setattr("modules.heal.resubscribe.Sources", lambda net, **kw: state["src"])
+        mp.setattr("modules.commands.run_device_command",
+                   lambda conn, c, read_timeout=None: conn.answer(c))
+        base = "/v2/device/r3/resubscribe"
+
+        def drawn(query):
+            """The card for *query*: its text, each subscription's hash and the selection's."""
+            text = client.get(f"{base}?list=Lab&{query}", headers=hx).get_data(as_text=True)
+            program = re.search(r'hx-vals=\'\{"program": "([0-9a-f]{16})"\}\'', text)
+            return (text, dict(re.findall(r'name="hash::(\d+)" value="([0-9a-f]{16})"', text)),
+                    program.group(1) if program else "")
+
+        body, hashes, program = drawn("subs=101,102")
+        assert set(hashes) == {"101", "102"} and program, "the card offers no run"
+        assert client.get(f"{base}?list=Lab&subs=999", headers=hx).status_code == 200
+        # One unticked: the card drawn again for that selection, saying the one left out
+        # shares its receiver; and none ticked.
+        one, _h, _p = drawn("subs=101,102&picked=1&sub=101")
+        assert "Subscription 102 is not ticked" in one, one[:400]
+        none, _h, _p = drawn("subs=101,102&picked=1")
+        assert "Nothing is ticked" in none, none[:400]
+        r = client.post(f"{base}/confirm?list=Lab", headers=hx, data={
+            "sub": ["101", "102"], "reason": T.REASON, "subs": "101,102", "picked": "1",
+            "program": program, "previewed": "101,102",
+            **{f"hash::{s}": h for s, h in hashes.items()}})
+        assert r.status_code == 200, r.status_code
+        run = re.search(r"run=([0-9TZ]+-[0-9a-f]{32})", r.get_data(as_text=True))
+        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
+        if job:
+            capture_job.wait(job.group(1), 10)
+        if run:
+            done = client.get(f"{base}?list=Lab&subs=101,102&run={run.group(1)}",
+                              headers=hx).get_data(as_text=True)
+            assert "Re-subscribed" in done, done[:400]
+        # A receiver the run left removed: the danger and Re-add the receiver lead the card.
+        state["src"] = lab_src(box=T.Box(readd_fails=2))
+        _body, hashes, program = drawn("subs=101")
+        r = client.post(f"{base}/confirm?list=Lab", headers=hx, data={
+            "sub": ["101"], "reason": T.REASON, "subs": "101", "picked": "1",
+            "program": program, "previewed": "101", "hash::101": hashes["101"]})
+        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
+        if job:
+            capture_job.wait(job.group(1), 10)
+        removed = client.get(f"{base}?list=Lab&subs=101", headers=hx).get_data(as_text=True)
+        assert "is removed." in removed, removed[:400]
+        # A run still going: its record written as running, no job to read.
+        rec = {"id": "20261110T000000000000Z-" + "0" * 32, "list": "Lab", "device": "r3",
+               "key": "telemetry-resubscribe", "state": "running", "outcome": "running",
+               "started_at": 1.0, "config_change": True}
+        privileged.record("Lab", rec)
+        going = client.get(f"{base}?list=Lab&subs=101&run={rec['id']}", headers=hx)
+        assert "Re-subscribing on r3" in going.get_data(as_text=True)
+    finally:
+        mp.undo()
+        if _os.path.isdir(folder):
+            for name in set(_os.listdir(folder)) - had:
+                _os.remove(_os.path.join(folder, name))
+
+
 def _heal_proposal(client, _lab, _mp):
     """Board H, artboard E (H9): a self-healing proposal's Needs attention row and its card, in
     each state the card draws: the proposal confirmable, a refusal in place (the reason typed
@@ -3955,7 +4046,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal,
+                   _heal_proposal, _resubscribe,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,

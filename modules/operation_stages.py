@@ -70,6 +70,22 @@ STAGES = {
         "privileged_v2.preview", "hash", "modules.nsot.privileged.verify",
         "n/a: what Tier 2 clears cannot be put back; the device rebuilds it (counters, ARP, "
         "the log buffer), and the preview says so", "modules.nsot.privileged.record"),
+    # C2838: re-subscribe a lost telemetry stream (modules/heal/resubscribe.py), from its Needs
+    # attention row: the preview is the card's plan from committed intent; the confirm is bound
+    # to ``program``, the selection's hash (the whole program in the order it is sent and the
+    # subscriptions chosen), which its button carries, each subscription's own hash going with
+    # it from the form (``hash::<id>``); the Re-add the receiver to ``hash``, its one
+    # subscription's one send. Verify the three checks; rollback the re-add sent once more
+    # and, still not landed, the removed state with Re-add the receiver; the record the
+    # operations' record History reads.
+    "resubscribe_v2.confirm": Stages(
+        "resubscribe_v2.preview", "program",
+        "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
+        "modules.heal.resubscribe._record"),
+    "resubscribe_v2.readd": Stages(
+        "resubscribe_v2.preview", "hash",
+        "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
+        "modules.heal.resubscribe._record"),
     # Heal to intent's Tier 2 (board H, parts H5 and H9, artboard E; routes/heal_proposal_v2):
     # a self-healing proposal approved by its hash on its Needs attention card. The preview is
     # the card's read of the proposal; verify the pipeline's, then the reset's measured rule;
@@ -502,6 +518,10 @@ HISTORY = {
     # The columns ignored when grouping a run (C580): recorded on that run, drawn on its row.
     "reads_v2.show_commands_ignore": ("show_commands",),
     "privileged_v2.confirm": ("privileged",),
+    # C2838: a re-subscribe and a re-add, each in the operations' record (History's privileged
+    # source, `history_sources.privileged`).
+    "resubscribe_v2.confirm": ("privileged",),
+    "resubscribe_v2.readd": ("privileged",),
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),

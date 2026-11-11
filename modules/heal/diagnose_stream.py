@@ -31,15 +31,25 @@ read here, from both of its ends:
    table (`STREAM_RULES`).
 
 **Measured, not assumed.** The brief is parsed against its real capture (an IOS-XE router,
-2026-10-17, tests/fixtures/diagnose/). The receiver read has no capture in the suite (C2890): it is sent,
-its masked answer kept on History › Reads, and a rule that needed it says its evidence is
-incomplete, never a guess. The socket tables are parsed against a real capture of this
-kernel's (tests/fixtures/diagnose/collector/README.md).
+2026-10-17, tests/fixtures/diagnose/). The receiver read is parsed against its real captures
+(one router streaming and one not, both reading State Connected, 2026-11-10; C2890), so the
+device's own
+side of the session is evidence in the half-open and no-session hypotheses; a receiver answer
+the parser cannot read says its evidence is incomplete, never a guess. The socket tables are
+parsed against a real capture of this kernel's (tests/fixtures/diagnose/collector/README.md).
+
+**The stream itself** (C2892): each lost subscription's series in Prometheus, the lost-stream
+alert's own query (`count(last_over_time({device, subscription}[90s]))`, `series_of`), read
+through Mercury's Prometheus client. A series present now means the stream is back: the
+half-open hypothesis is ruled out for it (a session that carries data is not half-open, which
+the socket tables alone cannot tell), and `stream_flowing`'s passed check is the runbook's
+symptom-gone check (`auto_diagnose.SYMPTOM_GONE_RULES`). Prometheus unread is said, and decides
+nothing.
 
 **What it does not do:** re-establish the stream. Removing and re-adding a subscription's
-receiver is a device change (C2838's operation, not built); the diagnosis names it as what to
-do next, in words. No check here reads the stream itself (its series in Prometheus), so this
-runbook never says the symptom is gone (`auto_diagnose.SYMPTOM_GONE_RULES` holds none for it).
+receiver is a device change, the operation `modules/heal/resubscribe.py` (C2838), which a
+person starts from the lost stream's Needs attention row; the diagnosis names it as what to do
+next.
 """
 
 import ipaddress
@@ -55,7 +65,8 @@ log = logging.getLogger(__name__)
 
 RUNBOOK = "stream_lost"
 #: The runbook's steps, in order, as the manual names them.
-STEPS = ("plan", "hold", "read", "collector", "cause", "logs", "compare", "rank", "record")
+STEPS = ("plan", "hold", "read", "collector", "stream", "cause", "logs", "compare", "rank",
+         "record")
 #: The lost-stream alert's window and its group's evaluation interval, as
 #: scripts/nmas-telemetry-rules writes them (`WINDOW_SECONDS`, the group's "1m"; held equal
 #: by tests/test_heal_diagnose_stream.py): a stream back now is read by the alert at most
@@ -82,13 +93,19 @@ TCP_STATES = {"01": "ESTABLISHED", "02": "SYN-SENT", "03": "SYN-RECV", "04": "FI
               "05": "FIN-WAIT-2", "06": "TIME-WAIT", "07": "CLOSE", "08": "CLOSE-WAIT",
               "09": "LAST-ACK", "0A": "LISTEN", "0B": "CLOSING", "0C": "NEW-SYN-RECV"}
 LISTEN, ESTABLISHED = "LISTEN", "ESTABLISHED"
-#: What to do next when the stream is stuck at its ends: the operator's sequence (C2838).
-RECOVERY = ("Re-establish {host}'s stream: for each lost subscription remove its receiver, "
-            "wait about 10 s, add it back and check its state; Mercury has no operation that "
-            "does this yet")
-#: The receiver read's state, as its step says it.
-RECEIVER_UNREAD = ("read, and not yet interpreted: no capture of its answer is in the suite yet "
-                   "(C2890), so its masked answer is on History › Reads for a person to read")
+#: What to do next when the stream is stuck at its ends: the operator's sequence (C2838), the
+#: operation `modules/heal/resubscribe.py` runs.
+RECOVERY = ("Re-subscribe {host}'s streams from the lost stream's row on Needs attention: for "
+            "each lost subscription Mercury will remove its receiver, wait about 10 s, add it "
+            "back and check its state")
+#: A receiver answer the parser could not read, as a hypothesis's incomplete evidence says it.
+RECEIVER_UNREAD = ("not read as a receiver's detail; the parser is built on captures of the "
+                   "Connected form only (C2890), and the masked answer is on History › Reads")
+#: The lost-stream alert's own query for one subscription (scripts/nmas-telemetry-rules,
+#: `rule_for`), read to tell whether the stream is back (C2892).
+SERIES_QUERY = 'count(last_over_time({{device="{device}", subscription="{sub}"}}[{window}s]))'
+#: A device's name as a PromQL label value: one token, nothing a query could be spliced with.
+_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class Refused(D.Refused):
@@ -406,14 +423,89 @@ def _v6only(proc: str) -> bool:
         return False
 
 
-def read_collector(address: str, port: int, sources, proc: str = "/proc") -> dict:
+#: Each session's last receive, from the kernel's socket diagnostics (inet_diag) as `ss -tni`
+#: prints them (C2892; tests/fixtures/diagnose/collector/README.md): a session line, then its
+#: indented detail line holding ``bytes_received:<n>`` and ``lastrcv:<ms>``.
+SS_COMMAND = ("ss", "-tni", "state", "established")
+_SS_SESSION = re.compile(r"^\s*\d+\s+\d+\s+(?P<local>\S+):(?P<lport>\d+)\s+"
+                         r"(?P<remote>\S+):(?P<rport>\d+)\s*$")
+_SS_FIELD = re.compile(r"\b(bytes_received|lastrcv):(\d+)\b")
+#: `ss` answered in well under a second on the development laptop (2026-11-10); a local read
+#: of the kernel's tables, bounded at 5 s so a hung one is named, never waited on.
+SS_TIMEOUT_S = 5
+
+
+def _ss_address(text: str):
+    t = text[1:-1] if text.startswith("[") and text.endswith("]") else text
+    got = ipaddress.ip_address(t.split("%", 1)[0])
+    return getattr(got, "ipv4_mapped", None) or got
+
+
+def parse_ss(text: str) -> tuple:
+    """``(rows, why)``: each established session `ss -tni` printed, ``{"local", "lport",
+    "remote", "rport", "bytes_received", "lastrcv_ms"}`` (an IPv4-mapped IPv6 address read as
+    its IPv4 address; a field the detail line lacks is None), or ``([], why)`` when the answer
+    holds no heading `ss` prints."""
+    lines = (text or "").splitlines()
+    if not lines or not lines[0].startswith("Recv-Q"):
+        return [], "the answer is not `ss`'s table (no Recv-Q heading)"
+    rows = []
+    for line in lines[1:]:
+        m = _SS_SESSION.match(line)
+        if m:
+            try:
+                rows.append({"local": _ss_address(m.group("local")),
+                             "lport": int(m.group("lport")),
+                             "remote": _ss_address(m.group("remote")),
+                             "rport": int(m.group("rport")),
+                             "bytes_received": None, "lastrcv_ms": None})
+            except ValueError:
+                return [], f"`ss` printed a session this reader cannot read: {line.strip()!r}"
+            continue
+        if rows and line[:1].isspace():
+            for name, value in _SS_FIELD.findall(line):
+                rows[-1]["lastrcv_ms" if name == "lastrcv" else name] = int(value)
+    return rows, ""
+
+
+def receiving_now(session: dict):
+    """Whether *session* (`read_collector`'s) received a segment inside the stream's window
+    (`ALERT_WINDOW_S`, the lost-stream alert's own window): True, False, or None when its last
+    receive was not read (the /proc tables alone: can't tell)."""
+    ms = (session or {}).get("lastrcv_ms")
+    if ms is None:
+        return None
+    return int(ms) <= ALERT_WINDOW_S * 1000
+
+
+def run_ss(port: int) -> tuple:
+    """``(text, why)``: `ss -tni state established "( sport = :<port> )"` on this host, a local
+    read (no shell, no root, nothing written), or ``("", why)``."""
+    import subprocess
+
+    try:
+        got = subprocess.run([*SS_COMMAND, f"( sport = :{int(port)} )"], capture_output=True,
+                             text=True, timeout=SS_TIMEOUT_S, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "", f"`ss` could not be run ({type(exc).__name__})"
+    if got.returncode != 0:
+        return "", f"`ss` exited {got.returncode}"
+    return got.stdout, ""
+
+
+def read_collector(address: str, port: int, sources, proc: str = "/proc", ss=None) -> dict:
     """The collector's side of one stream, read on this host: ``{"state", "why", "address",
-    "port", "listening", "sessions", "others"}``. *state* ``read``, ``elsewhere`` (*address* is
-    not this host's: nothing is read) or ``unread`` (a table could not be read). *listening*
-    names each listener on *port* that takes *address* (bound to it, or a wildcard of its
-    family, or IPv6's wildcard taking IPv4 unless bindv6only); *sessions* each socket on
+    "port", "listening", "sessions", "others", "activity"}``. *state* ``read``, ``elsewhere``
+    (*address* is not this host's: nothing is read) or ``unread`` (a table could not be read).
+    *listening* names each listener on *port* that takes *address* (bound to it, or a wildcard
+    of its family, or IPv6's wildcard taking IPv4 unless bindv6only); *sessions* each socket on
     *port* at *address* whose far end is one of *sources* (the device's addresses), with its
-    state; *others* the established sessions there from any other address."""
+    state and, from the kernel's socket diagnostics (`ss`, C2892), its ``bytes_received`` and
+    ``lastrcv_ms`` (None when they were not read: /proc carries neither, so "can't tell");
+    *others* the established sessions there from any other address. The two fields are on a
+    session only when the diagnostics were read. *ss(port) -> (text, why)*
+    reads the diagnostics: `run_ss` on this host's own /proc, none on another (a test's
+    tables); *activity* says whether they were read."""
     want = ipaddress.ip_address(address)
     src = set()
     for s in sources or []:
@@ -453,7 +545,61 @@ def read_collector(address: str, port: int, sources, proc: str = "/proc") -> dic
                                      "state": r["state"]})
         elif r["state"] == ESTABLISHED:
             base["others"] += 1
+    if ss is None and proc == "/proc":
+        ss = run_ss
+    if ss is None:
+        base["activity"] = "not read: the socket diagnostics are read on this host only"
+    else:
+        text, why = ss(int(port))
+        rows, why = parse_ss(text) if not why else ([], why)
+        if why:
+            base["activity"] = f"not read: {why}"
+        else:
+            seen = {(str(x["remote"]), x["rport"]): x for x in rows
+                    if x["lport"] == int(port) and x["local"] == want}
+            for s in base["sessions"]:
+                x = seen.get((s["remote"], s["rport"])) or {}
+                s["bytes_received"] = x.get("bytes_received")
+                s["lastrcv_ms"] = x.get("lastrcv_ms")
+            base["activity"] = "read"
     return dict(base, state="read", why="")
+
+
+# ── The stream itself: its series in Prometheus (C2892) ─────────────────────────────────────
+
+def series_of(device: str, sub: str, prom=None) -> dict:
+    """Whether *device*'s subscription *sub* has data now, by the lost-stream alert's own query
+    (`SERIES_QUERY`, its window `ALERT_WINDOW_S`) through Mercury's Prometheus client:
+    ``{"state", "count", "why", "query"}``, *state* ``present`` (a sample in the window),
+    ``absent`` (none: the stream is still lost) or ``unread`` (Prometheus not configured, not
+    answering, or a name that is not one label token), which decides nothing."""
+    query = ""
+    if not _LABEL.match(str(device or "")) or not SUBSCRIPTION.fullmatch(str(sub or "")):
+        return {"state": "unread", "count": None, "query": query,
+                "why": f"{device!r} subscription {sub!r} is not one device name and one "
+                       "subscription id, so no query is made of them"}
+    query = SERIES_QUERY.format(device=device, sub=sub, window=ALERT_WINDOW_S)
+    try:
+        if prom is None:
+            from modules.integrations.prometheus import PrometheusIntegration
+            prom = PrometheusIntegration()
+        if not prom.is_configured():
+            return {"state": "unread", "count": None, "query": query,
+                    "why": "Prometheus is not configured"}
+        got = prom._get("api/v1/query", query=query)
+        if not got.get("ok"):
+            return {"state": "unread", "count": None, "query": query,
+                    "why": f"Prometheus could not be asked: {got.get('error')}"}
+        result = ((got["response"].json() or {}).get("data") or {}).get("result") or []
+        count = sum(float(r["value"][1]) for r in result)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return {"state": "unread", "count": None, "query": query,
+                "why": f"Prometheus's answer could not be read ({type(exc).__name__})"}
+    if count > 0:
+        return {"state": "present", "count": int(count), "query": query,
+                "why": f"{int(count)} series with a sample in the last {ALERT_WINDOW_S} s"}
+    return {"state": "absent", "count": 0, "query": query,
+            "why": f"no sample in the last {ALERT_WINDOW_S} s"}
 
 
 # ── The run ─────────────────────────────────────────────────────────────────────────────────
@@ -471,7 +617,7 @@ def _step(p: dict, ans: dict) -> dict:
     parts = []
     for c in p["reads"][a]:
         if c["kind"] == "telemetry_receiver":
-            parts.append(f"subscription {c['sub']}'s receiver as {a} holds it ({RECEIVER_UNREAD})")
+            parts.append(f"subscription {c['sub']}'s receiver as {a} holds it")
         elif c["kind"] == "telemetry_brief":
             parts.append(f"{a}'s subscriptions and their states")
         else:
@@ -482,10 +628,11 @@ def _step(p: dict, ans: dict) -> dict:
 
 
 def run_plan(p: dict, out: dict, actor: str, *, session=None, logs=None, collector=None,
-             started: float = 0.0) -> None:
+             series=None, started: float = 0.0) -> None:
     """Run the plan *p* into the diagnosis *out* (`diagnose.run`'s, recorded by it).
     *collector* is ``collector(address, port, sources) -> read_collector's answer`` (tests);
-    *logs* `diagnose._logs`' shape."""
+    *series* ``series(device, sub) -> series_of's answer`` (tests); *logs* `diagnose._logs`'
+    shape."""
     network, a = p["network"], p["source"]
     out["devices"] = [a]
     out["steps"].append({"step": "plan", "result": "ok", "words": (
@@ -522,6 +669,17 @@ def run_plan(p: dict, out: dict, actor: str, *, session=None, logs=None, collect
             if got.get("state") == "read" else f"not read: {got.get('why')}"))
         out["steps"].append({"step": "collector", "result": "ok" if got.get("state") == "read"
                              else "not_read", "words": words})
+    ask = series or series_of
+    for s in p["subscriptions"]:
+        try:
+            ctx.series[s] = ask(a, s)
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            ctx.series[s] = {"state": "unread", "why": f"the read failed ({type(exc).__name__})"}
+    out["steps"].append({"step": "stream", "result": "ok" if all(
+        v.get("state") != "unread" for v in ctx.series.values()) else "not_read",
+        "words": "the stream's own series in Prometheus: " + "; ".join(
+            f"subscription {s}: {v.get('state')} ({v.get('why')})"
+            for s, v in ctx.series.items())})
     cause = (p["target"].get("cause") or {"state": "unread",
                                            "why": "no incident's records were given"})
     ctx.cause = cause
@@ -567,12 +725,23 @@ class StreamContext:
         self.device_why = ans.get("why") or ans.get("state") or ""
         self.device_failed = ans.get("state") in ("failed", "unknown")
         self.brief, self.brief_ref, self.brief_why = None, "", ""
-        self.receivers, self.pings = {}, {}
+        self.receivers, self.pings, self.series = {}, {}, {}
         self.collectors, self.cause, self.logs, self.why_not = {}, {}, {}, {}
         for c in p["reads"][self.host]:
             text, ref, why = _answer(ans, self.host, c["command"])
             if c["kind"] == "telemetry_receiver":
-                self.receivers[c["sub"]] = {"ref": ref, "why": why or RECEIVER_UNREAD}
+                # The device's own side of the stream's session (C2890): its receivers for
+                # this subscription, each State and Connection as the device printed them.
+                rows = None
+                if text is not None:
+                    got = P.parse("telemetry_receiver", text)
+                    if got["state"] == P.PARSED:
+                        rows = got["facts"]["receivers"]
+                    else:
+                        why = f"{got['why']}; {RECEIVER_UNREAD}"
+                self.receivers[c["sub"]] = {"ref": ref, "rows": rows,
+                                            "why": "" if rows is not None else
+                                            (why or RECEIVER_UNREAD)}
                 continue
             facts = None
             if text is not None:
@@ -586,12 +755,43 @@ class StreamContext:
                 self.pings[c["collector"]] = {"facts": facts, "ref": ref, "why": why,
                                               "command": c["command"]}
 
-    def receiver_incomplete(self) -> list:
-        """Each lost subscription's receiver, as the device holds it: why it is not read."""
+    def receiver_incomplete(self, subs=None) -> list:
+        """Each of *subs*' receivers (every lost subscription's by default) the device's answer
+        did not give: why it is not read. One read is not missing."""
         return [f"subscription {s}'s receiver on {self.host} "
                 f"(`{D.render('telemetry_receiver', self.plan['dialect'], sub=s)}`): "
                 f"{self.receivers.get(s, {}).get('why') or RECEIVER_UNREAD}"
-                for s in self.plan["subscriptions"]]
+                for s in (self.plan["subscriptions"] if subs is None else subs)
+                if (self.receivers.get(s) or {}).get("rows") is None]
+
+    def receiver_words(self, sub: str) -> str:
+        """What the device says of *sub*'s receivers, as it printed them; ``""`` unread."""
+        rows = (self.receivers.get(sub) or {}).get("rows")
+        if rows is None:
+            return ""
+        if not rows:
+            return f"{self.host} holds no receiver for subscription {sub}"
+        return "; ".join(
+            f"{self.host} reads subscription {sub}'s receiver {r['address']} port {r['port']} "
+            f"{r['state']}" + (f" on connection {r['connection']}" if r["connection"] else "")
+            + (f" ({r['explanation']})" if r["explanation"] else "") for r in rows)
+
+    def receiver_ev(self, subs) -> list:
+        """The device's receiver reads for *subs* as evidence, those that were read."""
+        out = []
+        for s in subs:
+            rows = (self.receivers.get(s) or {}).get("rows")
+            if rows is None:
+                continue
+            got = "; ".join(f"State {r['state']}" + (f", connection {r['connection']}"
+                                                      if r["connection"] else "")
+                            for r in rows) or "no receiver"
+            out.append(D.ev(self.receivers[s]["ref"], got))
+        return out
+
+    def flowing(self, subs) -> list:
+        """The subscriptions of *subs* whose series is in Prometheus now (C2892)."""
+        return [s for s in subs if (self.series.get(s) or {}).get("state") == "present"]
 
 
 def _sockets_ref(c: dict) -> str:
@@ -701,8 +901,14 @@ def _r_collector_down(rule, ctx):
     return hits, ("; ".join(ok) if ok and not hits else "")
 
 
+def _device_side(ctx, subs) -> str:
+    """The device's own words for its receivers of *subs*, as a clause; ``""`` unread."""
+    said = [w for w in (ctx.receiver_words(s) for s in subs) if w]
+    return f"; {'; '.join(said)}" if said else ""
+
+
 def _r_half_open(rule, ctx):
-    hits, none = [], []
+    hits, none, live = [], [], []
     for c, g in _collectors_read(ctx, rule):
         if not g["listening"]:
             continue
@@ -710,18 +916,40 @@ def _r_half_open(rule, ctx):
         if not est:
             none.append(c["key"])
             continue
+        subs = c["subscriptions"]
+        flowing = ctx.flowing(subs)
+        if flowing and len(flowing) == len(subs):
+            # C2892: a session that carries data is not half-open; the sockets alone cannot
+            # tell the two apart, the stream's own series can.
+            live.append(f"the session from {ctx.host} on {c['key']} carries data: "
+                        f"{_subs_words(flowing)} in Prometheus now")
+            continue
+        receiving = [s for s in est if receiving_now(s)]
+        if receiving:
+            # The kernel's socket diagnostics: a segment received inside the stream's window.
+            s = receiving[0]
+            live.append(f"the session from {ctx.host} ({s['remote']} port {s['rport']}) on "
+                        f"{c['key']} received data {s['lastrcv_ms'] // 1000} s ago")
+            continue
         s = est[0]
+        quiet = (f", nothing received on it for {_ago(s['lastrcv_ms'] / 1000)}"
+                 if s.get("lastrcv_ms") is not None else "")
         hits.append(D.finding(
             rule, (f"the collector still holds an established session from {ctx.host} "
-                   f"({s['remote']} port {s['rport']}) on {c['key']}, yet {ctx.host}'s stream "
-                   "is lost: half-open, the collector holding it up while "
-                   f"{ctx.host} has given it up"),
-            [D.ev(_sockets_ref(c), f"{s['remote']}:{s['rport']} {s['state']}")],
-            incomplete=ctx.receiver_incomplete(), agree=len(est),
+                   f"({s['remote']} port {s['rport']}) on {c['key']}{quiet}, yet {ctx.host}'s "
+                   "stream is lost: half-open, the collector holding it up while "
+                   f"{ctx.host} has given it up" + _device_side(ctx, subs)),
+            [D.ev(_sockets_ref(c), f"{s['remote']}:{s['rport']} {s['state']}"
+                  + (f", lastrcv {s['lastrcv_ms']} ms, {s.get('bytes_received')} bytes "
+                     "received" if s.get("lastrcv_ms") is not None else ""))]
+            + ctx.receiver_ev(subs),
+            incomplete=ctx.receiver_incomplete(subs), agree=len(est),
             rule_out=f"no established session from {ctx.host} on the collector",
             todo=RECOVERY.format(host=ctx.host)))
-    return hits, (f"no session from {ctx.host} stands on the collector at "
-                  f"{_and(none)}" if none and not hits else "")
+    if hits:
+        return hits, ""
+    return [], "; ".join(live + ([f"no session from {ctx.host} stands on the collector at "
+                                  f"{_and(none)}"] if none else []))
 
 
 def _r_no_session(rule, ctx):
@@ -739,14 +967,38 @@ def _r_no_session(rule, ctx):
             rule, (f"the collector listens on {c['key']} and holds no session from "
                    f"{ctx.host}" + (f", though {ctx.host} reaches it" if reaches else "")
                    + f": {ctx.host} is not dialling out to it, or something on the path drops "
-                   f"port {c['port']}"),
-            [D.ev(_sockets_ref(c), f"no session from {ctx.host}'s addresses")],
-            incomplete=ctx.receiver_incomplete(),
+                   f"port {c['port']}" + _device_side(ctx, c["subscriptions"])),
+            [D.ev(_sockets_ref(c), f"no session from {ctx.host}'s addresses")]
+            + ctx.receiver_ev(c["subscriptions"]),
+            incomplete=ctx.receiver_incomplete(c["subscriptions"]),
             rule_out=f"a session from {ctx.host} on the collector",
             todo=RECOVERY.format(host=ctx.host) + f"; or find what drops port {c['port']} "
                                                   "on the path"))
     return hits, (f"the collector holds a session from {ctx.host} at {_and(held)}"
                   if held and not hits else "")
+
+
+def _r_stream_flowing(rule, ctx):
+    """C2892: the symptom-gone check. Every lost subscription's series in Prometheus now is
+    the stream back, ruled out as a cause of anything; one absent is the symptom standing,
+    said, and one unread decides nothing."""
+    subs = ctx.plan["subscriptions"]
+    got = {s: ctx.series.get(s) or {"state": "unread", "why": "not read"} for s in subs}
+    unread = [s for s in subs if got[s].get("state") == "unread"]
+    absent = [s for s in subs if got[s].get("state") == "absent"]
+    if absent:
+        ctx.why_not[rule.name] = (f"{_subs_words(absent)} on {ctx.host} "
+                                  f"{'has' if len(absent) == 1 else 'have'} no sample in "
+                                  f"Prometheus in the last {ALERT_WINDOW_S} s: the stream is "
+                                  "still lost")
+        return [], ""
+    if unread:
+        ctx.why_not[rule.name] = "; ".join(f"subscription {s}: {got[s].get('why')}"
+                                           for s in unread)
+        return [], ""
+    return [], (f"{ctx.host}'s {_subs_words(subs)} {'has' if len(subs) == 1 else 'have'} data "
+                f"in Prometheus now (a sample in the last {ALERT_WINDOW_S} s, the lost-stream "
+                "alert's own query): the stream is back")
 
 
 def _cause_ev(cause: dict) -> dict:
@@ -830,28 +1082,44 @@ def _r_config_changed(rule, ctx):
                       todo="Find who changed it on History")], ""
 
 
+def _unless_back(fn):
+    """A cause rule judged only while the stream is lost: with every lost subscription's series
+    in Prometheus now (C2892) there is no symptom left to explain, so it is not checked, said."""
+    def judged(rule, ctx):
+        subs = ctx.plan["subscriptions"]
+        if subs and len(ctx.flowing(subs)) == len(subs):
+            ctx.why_not[rule.name] = (f"the stream is back ({_subs_words(subs)} in Prometheus "
+                                      "now), so there is no lost stream to explain")
+            return [], ""
+        return fn(rule, ctx)
+    return judged
+
+
 STREAM_RULES = (
+    D.Rule("stream_flowing", "protocol", "strong", "the stream's own series back in "
+           "Prometheus", _r_stream_flowing),
     D.Rule("device_unread", "network", "strong", "the device not read by Mercury either",
-           _r_device_unread),
+           _unless_back(_r_device_unread)),
     D.Rule("stream_missing", "policy", "decisive",
            "a lost subscription missing on the device, though intent declares it",
-           _r_stream_missing),
+           _unless_back(_r_stream_missing)),
     D.Rule("stream_invalid", "protocol", "decisive", "a lost subscription not Valid on the "
-           "device", _r_stream_invalid),
+           "device", _unless_back(_r_stream_invalid)),
     D.Rule("collector_unreached", "network", "decisive", "the device not reaching its "
-           "collector", _r_collector_unreached),
+           "collector", _unless_back(_r_collector_unreached)),
     D.Rule("collector_down", "protocol", "decisive", "nothing listening on the stream's port "
-           "on the collector", _r_collector_down),
+           "on the collector", _unless_back(_r_collector_down)),
     D.Rule("half_open", "protocol", "strong", "a half-open session: the collector holding a "
            "session from the device while its stream is lost", _r_half_open),
     D.Rule("no_session", "protocol", "strong", "no session from the device on the collector, "
-           "which listens", _r_no_session),
+           "which listens", _unless_back(_r_no_session)),
     D.Rule("outlived_cause", "protocol", "strong", "the stream still lost well after its cause "
-           "was put back", _r_outlived_cause),
+           "was put back", _unless_back(_r_outlived_cause)),
     D.Rule("cause_just_cleared", "protocol", "circumstantial", "the stream's cause put back "
-           "too recently for the alert to have cleared", _r_cause_just_cleared),
+           "too recently for the alert to have cleared", _unless_back(_r_cause_just_cleared)),
     D.Rule("cause_stands", "policy", "circumstantial", "the stream's likely cause, a change on "
-           "another device, still standing", _r_cause_stands),
+           "another device, still standing", _unless_back(_r_cause_stands)),
     D.Rule("stream_config_changed", "policy", "circumstantial",
-           "a configuration change on the device in the last hour", _r_config_changed),
+           "a configuration change on the device in the last hour",
+           _unless_back(_r_config_changed)),
 )

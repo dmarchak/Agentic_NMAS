@@ -124,6 +124,14 @@ ENTRY_POINTS = {
         "modules.heal.bounce", fromlist=["Session"]).Session(
             "Default", {"hostname": "edge1"}, "Gi4", "op", {}, operation="probe", detail="",
             label="test").mask(PLANTED),
+    # A telemetry re-subscribe's words and answers, masked into its record (C2838).
+    "modules/heal/resubscribe.py:mask": lambda: __import__(
+        "modules.heal.resubscribe", fromlist=["_Run"])._Run("Default", {}, None, {}).mask(
+            PLANTED),
+    # The re-subscribe card's plan, every line masked before the template draws it (C2838).
+    "routes/resubscribe_v2.py:_masked": lambda: "\n".join(__import__(
+        "routes.resubscribe_v2", fromlist=["_masked"])._masked(
+            {"ok": False, "refusals": [PLANTED], "dialect": "", "units": []})["refusals"]),
     # Every string a heal's step log row keeps, masked before it is stored (board H, H6).
     "modules/heal/steplog.py:masked": lambda: "\n".join(
         __import__("modules.heal.steplog", fromlist=["masked"]).masked(

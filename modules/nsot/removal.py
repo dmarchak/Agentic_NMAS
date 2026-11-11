@@ -204,6 +204,13 @@ SHAPES = (
           r"^ipv6 traffic-filter \S+ (in|out)$"),
     Shape("global.named-acl", "global", "stanza",
           r"^ip(v6)? access-list (?:(?:standard|extended) )?(?!\d+$)\S+$"),
+    # A dial-out telemetry subscription's receiver (C2838): the re-subscribe operation
+    # (modules/heal/resubscribe.py) removes it and adds it back, the operator's recovery for a
+    # stream stuck after its path came back. Measured by the operator's hand run on a lab
+    # C8000v (IOS-XE), 2026-11-08 (C2838's amendment), recorded in removal_measured.json; every
+    # run of the operation measures it again (the removal's read-back, exactly that line).
+    Shape("telemetry.receiver", "telemetry ietf subscription", "leaf",
+          r"^receiver ip address \S+ \d+( protocol \S+)?( .+)?$"),
 )
 
 #: What a measurement found, in words.
@@ -247,7 +254,9 @@ def _in_context(context: str, chain: tuple) -> bool:
     return chain[0].startswith({"interface": "interface ", "ip access-list": "ip access-list ",
                                 "router bgp": "router bgp ", "router ospf": "router ospf ",
                                 "ipv6 router ospf": "ipv6 router ospf ",
-                                "router rip": "router rip"}.get(context, "\0"))
+                                "router rip": "router rip",
+                                "telemetry ietf subscription": "telemetry ietf subscription "
+                                }.get(context, "\0"))
 
 
 def shape_for(chain, line: str, kind: str):

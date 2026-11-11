@@ -123,6 +123,10 @@ GATES = {
     "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; persist_op.apply)"),
     "device_v2.rekey_confirm": _g(C, "keeps the SSH host key a device answers with now in place of the one Mercury holds (C906): every later session signs in to whatever presents it, so a person confirms it, bound to both keys"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
+    # C2838: re-subscribe a lost telemetry stream (modules/heal/resubscribe.py), from its Needs
+    # attention row.
+    "resubscribe_v2.confirm": _g(C, "re-subscribes a device's lost telemetry streams: for each subscription ticked, removes its receiver (Mode B, the person's reason in the hash) and adds it back from committed intent, holding the device, bound to each subscription's previewed hash; verified by the device, the stream's series and the collector, recorded", "telemetry_resubscribe"),
+    "resubscribe_v2.readd": _g(C, "adds a telemetry subscription's receiver back from committed intent (Re-add the receiver), holding the device, bound to its previewed hash; verified and recorded", "telemetry_resubscribe"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
     # PHASE8_PLAN 17.1 S8 and S16 (C1912): the flow-operation core, modules/sdn/flow_ops.py.
     "sdn_v2.flow_confirm": _g(C, "adds, edits or removes a flow (or a meter) on an SDN switch through its controller, holding the switch, bound to the previewed requests' hash; verified by reading the table back, rolled back on failure, recorded", "sdn_flows"),

@@ -103,6 +103,8 @@ PAGES = (
      "how-it-works/notifications.md"),
     ("diagnose", "Diagnose: a runbook's reads, ranked into hypotheses", H,
      "how-it-works/diagnose.md"),
+    ("telemetry-resubscribe", "Re-subscribe a lost telemetry stream", H,
+     "how-it-works/telemetry-resubscribe.md"),
     ("controller-app-deploy", "Deploy apps to an SDN controller", H,
      "how-it-works/controller-app-deploy.md"),
     ("nsot-export", "Commit a network's NSOT export", H, "how-it-works/nsot-export.md"),
@@ -305,6 +307,9 @@ OPERATIONS = {
     "diagnose-reach": ("modules.heal.diagnose_reach", "STEPS"),
     # C2828: the lost-stream runbook self-healing runs on a lost telemetry stream.
     "diagnose-stream": ("modules.heal.diagnose_stream", "STEPS"),
+    # C2838: re-subscribe a lost telemetry stream, and its one-step Re-add the receiver.
+    "telemetry-resubscribe": ("modules.heal.resubscribe", "STEPS"),
+    "telemetry-readd": ("modules.heal.resubscribe", "READD_STEPS"),
     # Board H, H10: the heal loop (its pass, its decision and its act) and its notices.
     "heal": ("modules.heal.decide", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),
@@ -348,7 +353,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "console-server-key": "installation-settings",
                   "console-server-rekey": "rekey",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
-                  "diagnose-stream": "diagnose",
+                  "diagnose-stream": "diagnose", "telemetry-readd": "telemetry-resubscribe",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",

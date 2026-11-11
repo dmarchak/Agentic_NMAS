@@ -24,6 +24,8 @@
 {%- elif r.action.open == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
 {#- C2817 (mock 2): a dry-run record's question opens the row to its Right / Wrong. -#}
 {%- elif r.action.open == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
+{#- C2838: a lost telemetry stream's Re-subscribe… opens the row to its card, drawn in it. -#}
+{%- elif r.action.open == 'resubscribe' %}<a class="btn btn-small btn-outline att-jump" data-op="telemetry-resubscribe" data-next-acts="resubscribe" href="#resub-{{ r.action.device | replace('.', '-') }}">Re-subscribe {{ r.action.device }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</a>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}
 {#- C2817's amendment (the operator, 2026-11-09): a can't-fix whose likeliest cause is another
     device's change leads with that device, labelled as a hypothesis. -#}
 {%- elif r.likely %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
@@ -102,6 +104,8 @@
         {%- elif r.action.open == 'heal_halt' %}
         {#- A dry-run record's Right / Wrong, drawn below (C2817, mock 2). -#}
         {%- elif r.action.open == 'heal_mark' %}
+        {#- C2838: a lost stream's Re-subscribe is its card, drawn below. -#}
+        {%- elif r.action.open == 'resubscribe' %}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
@@ -130,6 +134,16 @@
           halt, drawn from the row itself (it carries the halt). -#}
       {%- if r.action.open == 'heal_halt' %}
       {%- with halt_id=r.action.halt, list_name=r.action.list, device=r.action.device, halt=none, answered=false, lifted=none, refused=none, reason=none %}{% include "v2/_heal_halt.html" %}{% endwith %}
+      {%- endif %}
+      {#- C2838: a lost telemetry stream's Re-subscribe card (routes/resubscribe_v2.preview),
+          read from committed intent when the row is opened, in the device's own network. -#}
+      {%- if r.action.open == 'resubscribe' %}
+      {%- set rd = r.action.device %}
+      {%- if (nets.get(rd) or [])|length == 1 %}
+      <div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(',')) }}" hx-trigger="toggle once from:closest details.att" hx-swap="outerHTML"><p class="small muted">Drawn when this item is open: what Re-subscribe will send to {{ rd }}, from its committed intent.</p></div>
+      {%- else %}
+      <p class="small muted">Re-subscribe is not offered: {{ (nets.get(rd) or [])|length }} of the networks Mercury holds name a device {{ rd }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
+      {%- endif %}
       {%- endif %}
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}

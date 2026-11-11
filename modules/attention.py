@@ -2343,6 +2343,23 @@ def group_title(members: list) -> str:
     return f"{where}: {what}" if where else what
 
 
+def resubscribe_action(members: list):
+    """The action of a row whose every member is a lost telemetry stream of ONE device (C2838):
+    ``{"label", "open": "resubscribe", "device", "subs"}``, the subscriptions from the rules'
+    own titles (`_TELEMETRY_RULE`), or None (another rule among them, no device, or two)."""
+    subs = [_TELEMETRY_RULE.search(str(m.get("rule") or "")) for m in members or []]
+    devices = {m.get("device") for m in members or []}
+    if not members or not all(subs) or len(devices) != 1 or None in devices:
+        return None
+    (device,) = devices
+    ids = sorted({s.group(1) for s in subs}, key=lambda x: (len(x), x))
+    if not all(i.isdigit() for i in ids):
+        return None
+    return {"label": (f"Re-subscribe {device}'s telemetry ({', '.join(ids)}): Mercury removes "
+                      "and re-adds each receiver from intent, then checks the stream is back"),
+            "open": "resubscribe", "device": device, "subs": ids}
+
+
 def _incidents(instances: list) -> list:
     """Groups of instances, each group one incident, by onset; an instance
     with no onset is an incident of its own (never merged on a guess)."""
@@ -2608,6 +2625,12 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                           # against (C2316): a firing that began after it raises the row.
                           "events": [first["onset"]]})
             continue
+        # C2838: a lost telemetry stream of one device (every member a lost-stream rule of it)
+        # carries its one action, Re-subscribe, drawn in place on the row
+        # (routes/resubscribe_v2.py), its subscriptions from the rules' own titles.
+        stream = resubscribe_action(members) if not whole_pipeline else None
+        if stream:
+            action = stream
         if evidence:
             action = dict(action, href=evidence)
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",

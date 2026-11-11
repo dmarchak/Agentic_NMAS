@@ -1,0 +1,5 @@
+Recv-Q Send-Q      Local Address:Port        Peer Address:Port
+0      0                   [2001:db8::10]:57000              [2001:db8:4::6]:41714
+	 cubic wscale:10,10 rto:201 rtt:0.009/0.004 ato:40 mss:32768 pmtu:65536 rcvmss:1500 advmss:65464 cwnd:10 bytes_received:1500 segs_out:1 segs_in:3 data_segs_in:1 send 291271111111bps lastsnd:312 lastrcv:312 lastack:312 pacing_rate 582542222216bps delivered:1 app_limited rcv_space:65464 rcv_ssthresh:78372 minrtt:0.009 snd_wnd:65536 rcv_wnd:78848
+0      0      [::ffff:192.0.2.10]:57000 [::ffff:192.0.2.6]:60235
+	 cubic wscale:10,10 rto:201 rtt:0.028/0.014 ato:40 mss:32768 pmtu:65535 rcvmss:1500 advmss:65483 cwnd:10 bytes_received:1500 segs_out:1 segs_in:3 data_segs_in:1 send 93622857143bps lastsnd:316 lastrcv:316 lastack:316 pacing_rate 187245714280bps delivered:1 app_limited rcv_space:65483 rcv_ssthresh:78372 minrtt:0.028 snd_wnd:65536 rcv_wnd:78848

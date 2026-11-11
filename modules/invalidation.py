@@ -284,6 +284,10 @@ DECLARED = {
     "reads_v2.logging_path_run": ("reads",),
     "privileged_v2.preview": ("reads",),
     "privileged_v2.confirm": ("privileged",),
+    # C2838: a re-subscribe's run is a job whose record is the operations' record; its end
+    # announces `privileged` (and its verify's reads, `reads`, as each run lands).
+    "resubscribe_v2.confirm": ("privileged",),
+    "resubscribe_v2.readd": ("privileged",),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),

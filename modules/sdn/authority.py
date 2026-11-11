@@ -35,6 +35,10 @@ DIRECT = {
     "device_v2.reload_confirm": ("view", "name"),
     "device_v2.rekey_confirm": ("view", "name"),
     "privileged_v2.confirm": ("view", "name"),
+    # C2838: a telemetry re-subscribe, and its Re-add the receiver, send configuration lines
+    # to the device their address names (from its Needs attention row).
+    "resubscribe_v2.confirm": ("view", "name"),
+    "resubscribe_v2.readd": ("view", "name"),
     "onboard_v2.verify": ("view", "name"),
     # Records what the device holds, or what Mercury will send it (its golden and intent).
     "device_v2.capture_confirm": ("view", "name"),

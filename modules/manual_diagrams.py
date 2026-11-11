@@ -1581,6 +1581,42 @@ def privileged():
     ])
 
 
+def telemetry_resubscribe():
+    return svg(560, (
+        "Re-subscribe a lost telemetry stream: the plan reads each subscription's receiver from "
+        "the device's committed intent and refuses one whose removal is not measured; you tick "
+        "the subscriptions and confirm with a reason, each bound to its hash and the selection "
+        "to its own; holding the device, the run is recorded before anything is sent, then "
+        "each receiver's state, the collector's sessions and the configuration are read; "
+        "every ticked receiver is removed, one after the other, the read-back after each "
+        "showing exactly the lines removed so far gone; ten seconds pass, once; each is added "
+        "back, once more if it did not land, and the configuration must read as before; then "
+        "for each subscription the device's receiver on a new connection, the stream's data "
+        "in Prometheus and a new session on the collector are read for up to 290 seconds; a "
+        "receiver that did not come back is said, with Re-add the receiver; the run is "
+        "recorded with each subscription's own outcome, and History shows it. Nothing is "
+        "saved to startup."), [
+        lanes(20, 554),
+        doc("box", 14, 40, 186, 36, "The plan", "intent's receiver, measured"), num(14, 40, 1),
+        t(14, 92, "refused: nothing read or sent", "sm"),
+        person(14, 104, 186, 30, "You tick and confirm, a reason"), num(14, 104, 2),
+        band(150, 330, "The run · a job, the device held"),
+        device(262, 170, 118, 300, "The device", "never saved", top=True),
+        *rows([
+            (176, None, 3, "Recorded first", "its own change is Mercury's"),
+            (212, "read", 4, "Read before", "state, sessions, config"),
+            (248, "send", 5, "Remove every ticked receiver", "each read back as gone"),
+            (284, "clock", 6, "Wait 10 s, once", ""),
+            (320, "send", 7, "Add each back", "once more if not landed"),
+            (356, "read", 8, "Verify each, up to 290 s", "device, stream, collector"),
+        ]),
+        t(36, 396, "Not back: that receiver is removed,", "sm"),
+        t(36, 409, "said, with Re-add the receiver.", "sm"),
+        store(14, 490, 186, 40, "The run's record", "who, why, each check"), num(14, 490, 9),
+        t(14, 546, "History shows it.", "sm"),
+    ])
+
+
 def heal_proposal():
     return svg(540, (
         "Approve a self-healing proposal: self-healing found a fix that needs a person and "
@@ -2336,6 +2372,7 @@ DIAGRAMS = {
     "sdn-analyse-tools": sdn_analyse_tools,
     "diagnose": diagnose,
     "privileged": privileged,
+    "telemetry-resubscribe": telemetry_resubscribe,
     "heal-proposal": heal_proposal,
     "heal": heal,
     "notifications": notifications,

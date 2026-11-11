@@ -279,6 +279,12 @@
         "detail": "",
         "device": "r2",
         "result": "exact"
+      },
+      "telemetry.receiver": {
+        "at": "2026-11-08T20:59:28Z",
+        "detail": "the operator's hand run on its console, not the probe (C2838's amendment): `no receiver ip address <address> <port> protocol grpc-tcp` under `telemetry ietf subscription 102` at 20:59:28 UTC, the line added back at 20:59:41 UTC, the subscription then Valid and its receiver Connected. Every run of the re-subscribe operation (modules/heal/resubscribe.py) reads the configuration back after the removal and refuses to go on unless exactly that line left",
+        "device": "a lab C8000v (C2838)",
+        "result": "exact"
       }
     }
   },

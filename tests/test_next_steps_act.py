@@ -96,6 +96,11 @@ OPENERS = {
                   "document.querySelector('.heal-mark-wrong summary')"),
     "heal_halt": ("document.querySelector('.heal-halt input[name=reason]') && "
                   "document.querySelector('.heal-halt button[hx-include]')"),
+    # A lost telemetry stream's Re-subscribe… (C2838): its card drawn in place on the opened
+    # row, its subscriptions to tick and its button carrying the selection's hash (pressed
+    # in a real browser by tests/test_heal_resubscribe_v2.py).
+    "resubscribe": ("document.querySelector('.resub input[name=sub]') && "
+                    "document.querySelector('.resub button[hx-vals]')"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,

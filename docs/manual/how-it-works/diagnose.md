@@ -120,18 +120,28 @@ path between two devices. Self-healing runs it when a lost-stream alert raised t
 3. `read`: on the device, through the reads engine: `show telemetry ietf subscription all`
    (each subscription's state), `show telemetry ietf subscription <id> receiver` for each lost
    subscription, and a ping to each collector address (`ping ipv6` for an IPv6 one). The
-   receiver's answer is not yet interpreted: it is on History › Reads to read, and a hypothesis
-   that needed it says its evidence is incomplete.
+   receiver's answer is read: its State and its connection, as the device prints them, are
+   evidence in the half-open and no-session hypotheses. An answer that cannot be read as a
+   receiver's says so, and a hypothesis that needed it says its evidence is incomplete. A
+   receiver reading Connected is not proof of a stream: a stuck device reads Connected too.
 4. `collector`: when the collector is Mercury's own host, its TCP sockets on the stream's port,
    read from the kernel's tables on the host, IPv4 and IPv6: whether anything listens there,
    each session from one of the device's addresses and its state, and how many sessions stand
-   from other devices. Nothing is sent and nothing is changed. A collector at an address that
-   is not Mercury's host is not read, and the result says so.
-5. `cause`: from self-healing's own records, the change on another device just before the
+   from other devices; and from the kernel's socket diagnostics, each session's bytes received
+   and how long since it last received anything. A session that received data within the
+   stream's window (90 s) is carrying data, never half-open. Nothing is sent and nothing is
+   changed. A collector at an address that is not Mercury's host is not read, and the result
+   says so.
+5. `stream`: each lost subscription's own series in Prometheus, by the lost-stream alert's own
+   query. A series there now means the stream is back: the result says so, every cause rule is
+   left unchecked (there is nothing left to explain), and self-healing reads the symptom as
+   gone. Prometheus not answering decides nothing, and is said.
+6. `cause`: from self-healing's own records, the change on another device just before the
    stream was lost (the one the alert names, or the only one), and whether Mercury has read
    that device back at intent since, and when.
-6. `logs`: the device's configuration lines in the last hour, from Loki.
-7. `compare`, `rank` and `record`: as for an adjacency, with this runbook's rules: Mercury
+7. `logs`: the device's configuration lines in the last hour, from Loki.
+8. `compare`, `rank` and `record`: as for an adjacency, with this runbook's rules: the stream
+   back in Prometheus; Mercury
    cannot read the device either; a subscription missing on the device, or not Valid; the
    device not reaching its collector; nothing listening on the collector's port; a half-open
    session (the collector still holds a session from the device while its stream is lost); no
@@ -147,9 +157,10 @@ minutes before this diagnosis". The stream is then stuck at the device or the co
 the path. When it was put back less than that ago, the stream may already be back and the
 alert not yet cleared: the result says so, and when to diagnose again.
 
-What to do about a stuck stream is said with it: for each lost subscription, remove its
-receiver, wait about 10 s, add it back, and check its state. Mercury has no operation that does
-this yet, so the diagnosis names it and changes nothing.
+What to do about a stuck stream is said with it: re-subscribe it, from the lost stream's row on
+Needs attention ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)), which removes
+each lost subscription's receiver, waits about 10 s, adds it back and checks the stream. The
+diagnosis itself changes nothing.
 
 ## The result
 

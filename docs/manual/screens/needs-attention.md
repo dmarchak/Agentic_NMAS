@@ -474,6 +474,12 @@ fingerprint and where its device came from, and a silence for its id and what it
 device's own page says the same in its Alerts check, in amber: "held: edge1 is restarting as
 planned …".
 
+A row whose every alert is a lost telemetry stream of one device carries **Re-subscribe
+<device>'s telemetry (<ids>)…**, which opens the row to its card: what will be true afterwards,
+each subscription ticked, the exact program, a reason and the button
+([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). A device that two networks
+name is not offered it, and the row says so.
+
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}
 
 An alert that fires on one series nearly all the time (a port that always discards a little,

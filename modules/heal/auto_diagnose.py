@@ -98,7 +98,10 @@ def _iso(epoch: float) -> str:
 #: now: "adjacency down with both ends at intent" reading the adjacency up at both ends
 #: (`diagnose._r_one_way`'s passed check), "A can't reach B" with every probe answered
 #: (`diagnose_reach._reached`).
-SYMPTOM_GONE_RULES = {"adjacency_down": "one_way", "cant_reach": "reach"}
+SYMPTOM_GONE_RULES = {"adjacency_down": "one_way", "cant_reach": "reach",
+                      # C2892: a lost stream's every subscription back in Prometheus, by the
+                      # lost-stream alert's own query (`diagnose_stream._r_stream_flowing`).
+                      "stream_lost": "stream_flowing"}
 
 
 def symptom_gone(d: dict) -> str:

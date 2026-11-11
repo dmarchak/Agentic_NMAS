@@ -1,0 +1,98 @@
+{%- from "v2/_macros.html" import icon, stamp, how -%}
+{#- Re-subscribe a lost telemetry stream (C2838; routes/resubscribe_v2.card,
+    modules/heal/resubscribe.py), drawn in the lost stream's Needs attention row by
+    templates/v2/_attention.html when the row is opened, and again by each post with its answer
+    in place. Outcome first (what will be true afterwards, the device it touches, the undo),
+    each subscription ticked with its receiver from committed intent, the exact program one
+    level down, a reason, and the button named for the work, busy on itself until the card
+    answers. Several ticked are a batch (every removal, one wait, every re-add): the program,
+    its hash and the button are drawn for exactly the ticks shown, and a tick changed draws the
+    card again; a subscription left unticked that sends to a ticked one's receiver is said. A
+    receiver a run left removed leads, in danger, with Re-add the receiver, one for each. The
+    reason and the ticks sit outside any form, so Enter submits nothing; each button sends them
+    by hx-include. Started, running or answered, the card holds a live redraw of the list
+    (`data-holds-live`) until Show it now. -#}
+{%- set cid = 'resub-' ~ (c.host | replace('.', '-')) -%}
+{%- set p = c.plan or {} -%}
+{%- set W = c.outcome_words or {} -%}
+<div class="heal-prop resub" id="{{ cid }}"{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}
+  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(','), run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
+{%- if c.error %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not sent:</strong> {{ c.error }}</p></div>
+{%- endif %}
+{%- if c.state == 'running' %}
+  <p><strong>Re-subscribing on {{ c.host }}.</strong> {{ c.host }} is held: {% if c.subs|length > 1 %}every chosen receiver is removed, {{ c.wait_s }} s pass, each is added back, then for each one the device, the stream and the collector are read for up to {{ c.bound_s }} s{% else %}the receiver is removed, {{ c.wait_s }} s pass, it is added back, then the device, the stream and the collector are read for up to {{ c.bound_s }} s{% endif %}. This answer updates when the run ends.</p>
+{%- elif c.state == 'result' %}
+  {%- set r = c.record %}
+  {%- set ok = r.state == 'done' %}
+  <div class="notice notice-{{ 'muted' if ok else ('warning' if r.state == 'unverified' else 'danger') }} set-result" role="{{ 'status' if ok else 'alert' }}">{{ icon('tick' if ok else 'warn', 16) }}<p><strong>{{ W.get(r.outcome, r.outcome) | capitalize }}:</strong> {{ r.why }}</p></div>
+  {%- for s in r.subscriptions or [] %}
+  <details class="small" data-keep="{{ cid }}-sub-{{ s.sub }}"><summary>Subscription {{ s.sub }}: {{ W.get(s.outcome, s.outcome) }}</summary>
+    <ul>
+      {%- for name, v in (s.verify or {}).items() %}<li><strong>{{ {'device': 'The device', 'stream': 'The stream', 'collector': 'The collector'}.get(name, name) }}</strong> ({{ {'pass': 'passed', 'fail': 'failed', 'cant_tell': "can't tell"}.get(v.state, v.state) }}): {{ v.words }}</li>{% endfor %}
+      {%- for f in s.stale or [] %}<li class="warn-text">Flagged: {{ f }}</li>{% endfor %}
+    </ul></details>
+  {%- endfor %}
+  <p class="small">Recorded by {{ r.actor }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
+{%- else %}
+  {%- for x in c.removed or [] %}
+  {%- set rid = cid ~ '-readd-' ~ x.sub %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }}'s receiver for {{ x.sub }} is removed.</strong> A re-subscribe removed it and it has not been added back, so subscription {{ x.sub }} sends nothing until it is. Re-add the receiver adds intent's receiver line back, holding {{ c.host }}, then checks the stream as a re-subscribe does.</p></div>
+  {%- if x.hash %}
+  {#- The one confirm pattern: the button carries the hash its route binds the confirm to
+      (the re-add's own, its whole program). -#}
+  <div class="att-action" id="{{ rid }}"><input type="hidden" name="sub" value="{{ x.sub }}"><input type="hidden" name="subs" value="{{ c.subs | join(',') }}">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-post="{{ url_for('resubscribe_v2.readd', name=c.host, list=c.list) }}" hx-vals='{"hash": "{{ x.hash }}"}' hx-include="#{{ rid }}" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Adds subscription {{ x.sub }}'s receiver back from {{ c.host }}'s committed intent, bound to {{ x.hash }}; nothing is removed or saved"{{ gate('confirm') }}><span class="op-idle">Re-add the receiver for {{ x.sub }}</span><span class="op-busy">Starting…</span></button>{{ how('telemetry-resubscribe', 're-add-the-receiver', compact=True, op='Re-add the receiver') }}</span></div>
+  {%- else %}<p class="small">Re-add the receiver is not offered: {{ x.refused }}</p>{% endif %}
+  {%- endfor %}
+  {%- if not c.choices %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Re-subscribe is not offered:</strong> {{ p.refusals | join('; ') }}</p></div>
+  {%- else %}
+  {%- set names = p.units | map(attribute='sub') | join(', ') %}
+  {%- set order = p.units | map(attribute='sub') | join(', then ') %}
+  {%- set many = p.units|length > 1 %}
+  {%- if p.ok %}
+  <p><strong>Afterwards:</strong> {{ c.host }} dials out to its collector again, on a new connection, for {{ 'subscriptions' if many else 'subscription' }} {{ names }}{% if many %}, their receivers removed together and then added back{% endif %}; its configuration ends exactly as it is now, and nothing is saved to startup.</p>
+  <p class="small">Touches {{ c.host }} only, holding it while it runs. {% if many %}Every ticked receiver is removed first, in the order listed ({{ order }}), each read back as gone; then {{ c.wait_s }} s pass; then each is added back from committed intent, in the same order. No ticked subscription sends anything from its removal until its re-add. They are removed together because a device's subscriptions to one receiver share one connection, and one left in place can keep the old connection open.{% else %}Its receiver is removed for about {{ c.wait_s }} s, so subscription {{ names }} sends nothing meanwhile, then added back from committed intent.{% endif %} Undo: none is needed, as the configuration ends as it began; a receiver that does not come back is said, with Re-add the receiver. Checked for up to {{ c.bound_s }} s each: {{ c.host }}'s receiver on a new connection, the stream's data in Prometheus, and a new session on the collector.</p>
+  {%- endif %}
+  <div id="{{ cid }}-form">
+  {#- A tick changed draws the card again for that selection: its program, its hash and its
+      button are always the ticked subscriptions', in the order listed. -#}
+  <fieldset class="resub-subs" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list) }}" hx-trigger="change" hx-include="#{{ cid }}-form" hx-target="#{{ cid }}" hx-swap="outerHTML"><legend class="small">Subscriptions</legend>
+    {%- for ch in c.choices %}
+    <label class="small"><input type="checkbox" name="sub" value="{{ ch.sub }}"{% if ch.sub in c.ticked %} checked{% endif %}> Subscription {{ ch.sub }}: <span class="mono">{{ ch.line }}</span>{% if ch.shares %} <span class="muted">(not in this alert; it sends to the same receiver as {{ ch.shares | join(', ') }})</span>{% endif %}</label><input type="hidden" name="hash::{{ ch.sub }}" value="{{ ch.hash }}">
+    {%- endfor %}
+  </fieldset>
+  <input type="hidden" name="subs" value="{{ c.subs | join(',') }}"><input type="hidden" name="picked" value="1"><input type="hidden" name="previewed" value="{{ names | replace(' ', '') }}">
+  {%- for x in c.sharing or [] %}
+  <div class="notice notice-warning" role="status">{{ icon('warn', 16) }}<p><strong>Subscription {{ x.sub }} is not ticked, and it sends to the same receiver as {{ x.shares | join(' and ') }}</strong> ({{ x.address }} port {{ x.port }}). A device's subscriptions to one receiver share one connection, so {{ x.sub }} may keep the old connection open, and {{ x.shares | join(' and ') }} may rejoin it instead of dialling again. {% if x.offered %}Tick {{ x.sub }} to re-subscribe them together.{% else %}It cannot be ticked here: {{ x.refused }}{% endif %}</p></div>
+  {%- endfor %}
+  {%- if p.ok %}
+  <details class="small" data-keep="{{ cid }}-program"><summary>The exact program</summary>
+    <pre class="ask-pre">{% for u in p.units %}{{ u.remove | join('\n') }}
+{% endfor %}(wait {{ c.wait_s }} s){% for u in p.units %}
+{{ u.readd | join('\n') }}{% endfor %}</pre>
+    <p class="faint small">{% if many %}This selection, in this order ({{ order }}), is bound to {{ p.hash }}: each removal first, one wait, then each re-add. {% else %}This selection is bound to {{ p.hash }}. {% endif %}A tick changed draws the program again.</p>
+    {%- for u in p.units %}
+    <p class="faint small">Subscription {{ u.sub }}, bound to {{ u.hash }}: if its receiver in {{ c.host }}'s intent moves before you confirm, nothing is sent.</p>
+    {%- endfor %}
+    <p class="faint small">Removing a receiver is Mode B: measured on {{ p.dialect }}, and each run reads the configuration back after each removal to see that exactly the lines removed so far left before anything more is sent.</p>
+  </details>
+  {%- elif p.refusals %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Re-subscribe is not offered:</strong> {{ p.refusals | join('; ') }}</p></div>
+  {%- else %}
+  <p class="small muted">Nothing is ticked: tick a subscription to draw its program.</p>
+  {%- endif %}
+  <label class="heal-field" for="{{ cid }}-why">Reason (recorded with each receiver's removal)<input id="{{ cid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ c.reason or '' }}"></label>
+  </div>
+  {%- if p.ok %}
+  {#- The one confirm pattern: the button carries the hash its route binds the confirm to, the
+      selection's (the whole program drawn above, in its order); each ticked subscription's own
+      hash goes with it from the form. -#}
+  <div class="att-action">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-post="{{ url_for('resubscribe_v2.confirm', name=c.host, list=c.list) }}" hx-vals='{"program": "{{ p.hash }}"}' hx-include="#{{ cid }}-form" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Removes and re-adds each ticked receiver on {{ c.host }}, holding it, as you, with your reason; nothing is saved"{{ gate('confirm') }}><span class="op-idle">Re-subscribe {{ c.host }}'s telemetry ({{ names }})</span><span class="op-busy">Starting…</span></button>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}</span>
+  </div>
+  {%- endif %}
+  {%- endif %}
+{%- endif %}
+</div>
