@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""After a deploy: the smoke check, read-only, on the host Mercury runs on.
+
+    scripts/nmas-post-deploy-check <expected sha> [--checkout PATH] [--base URL]
+                                   [--expect-heal NETWORK=MODE ...] [--expect-local-account-off]
+
+    # from another machine, the script sent on stdin to the app's own interpreter (it then
+    # needs --checkout; another interpreter would be re-run, which a script on stdin cannot be):
+    /opt/mercury-venv/bin/python -I - <expected sha> --checkout <the host's checkout> ... < this file
+
+It asks the running Mercury for `/health` and five pages, counts the tracebacks its service has
+logged since it started, reads each network's self-healing mode, and reads whether a local
+account could be offered. It prints status codes, counts, mode names and yes-or-no facts,
+never a value of a setting, and it changes nothing.
+
+`SMOKE OK` is printed, and the exit is 0, only when every one of these holds:
+- `/health` answers ok and names the expected commit;
+- each page answers 200;
+- the service's journal since its start holds no traceback;
+- each `--expect-heal NETWORK=MODE` is that network's mode now (an installation states its
+  own; with none given the modes are printed and not judged);
+- with `--expect-local-account-off` (the operator, 2026-11-11: an installation behind an
+  access proxy): the line reads exactly
+  `local account: off (setting off, access proxy configured, not loopback-only)`. The three
+  facts are Mercury's own (`modules.local_account.state`, `identity.is_configured`), the ones
+  that decide whether a local sign-in is offered; any other combination is said, fact by fact,
+  and is not OK. An installation that listens on loopback only and uses the local account
+  does not pass this option, and should not give it.
+
+Exit 0: SMOKE OK. 1: SMOKE FAILED, each failed line said. 2: usage.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+
+def _checkout_arg(argv) -> str:
+    """The value of ``--checkout PATH`` in *argv*, or ""."""
+    for i, a in enumerate(argv):
+        if a == "--checkout" and i + 1 < len(argv):
+            return argv[i + 1]
+    return ""
+
+
+# The checkout to import Mercury from: this file's own, or, sent on stdin, --checkout's.
+_HERE = globals().get("__file__")
+CHECKOUT = (os.path.dirname(os.path.dirname(os.path.abspath(_HERE)))
+            if _HERE and os.path.isfile(_HERE) else _checkout_arg(sys.argv[1:]))
+if not CHECKOUT:
+    sys.exit("nmas-post-deploy-check: sent on stdin, it needs --checkout PATH (and the app's "
+             "interpreter, /opt/mercury-venv/bin/python on the host)")
+sys.path.insert(0, CHECKOUT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+PAGES = ("/v2/", "/v2/devices", "/v2/history", "/v2/settings/installation?tab=notifications",
+         "/v2/settings/installation")
+SERVICE = "flask-app"
+#: The one line that passes `--expect-local-account-off`, word for word (the operator's).
+LOCAL_ACCOUNT_OFF = "local account: off (setting off, access proxy configured, not loopback-only)"
+
+
+def local_account_line(setting: bool, proxied: bool, loopback: bool) -> tuple:
+    """``(ok, line)`` for the three facts that decide whether a local sign-in can be offered:
+    the setting, whether an access proxy is configured, whether Mercury listens on loopback
+    only. OK is exactly: the setting off, a proxy configured, not loopback-only. Any other
+    combination is NOT OK and says each fact as it was read."""
+    ok = (not setting) and proxied and (not loopback)
+    if ok:
+        return True, LOCAL_ACCOUNT_OFF
+    return False, ("local account: NOT as expected (setting " + ("ON" if setting else "off")
+                   + ", access proxy " + ("configured" if proxied else "NOT configured")
+                   + ", " + ("LOOPBACK-ONLY" if loopback else "not loopback-only") + ")")
+
+
+def read_local_account() -> dict:
+    """``{"setting", "proxied", "loopback"}`` from Mercury's own two functions, or
+    ``{"error": words}``: a fact that could not be read is not a pass."""
+    try:
+        from modules import identity, local_account
+        state = local_account.state()
+        return {"setting": bool(state["setting"]), "loopback": bool(state["loopback"]),
+                "proxied": bool(identity.is_configured())}
+    except Exception as exc:                            # noqa: BLE001
+        return {"error": f"{type(exc).__name__}"}
+
+
+def heal_expectations(pairs) -> dict:
+    """``{network: mode}`` from each ``NETWORK=MODE``; a pair without "=" or with an empty
+    side raises ValueError naming it."""
+    out = {}
+    for pair in pairs or []:
+        network, sep, mode = str(pair).partition("=")
+        if not sep or not network.strip() or not mode.strip():
+            raise ValueError(f"--expect-heal takes NETWORK=MODE, and got {pair!r}")
+        out[network.strip()] = mode.strip()
+    return out
+
+
+def heal_lines(modes: dict, expected: dict) -> tuple:
+    """``(ok, lines)``: each network's mode now, and each expectation judged. An expected
+    network that is not one of the installation's is not OK and is said."""
+    ok, lines = True, []
+    for network, got in modes.items():
+        lines.append(f"heal {network} | mode now {got.get('mode')} | set {got.get('set')} "
+                     f"| state {got.get('state')}")
+    for network, mode in expected.items():
+        got = modes.get(network)
+        if got is None:
+            ok = False
+            lines.append(f"heal {network}: expected {mode}, and the installation has no such "
+                         "network")
+        elif got.get("mode") != mode:
+            ok = False
+            lines.append(f"heal {network}: expected {mode}, and its mode now is "
+                         f"{got.get('mode')}")
+    return ok, lines
+
+
+def page_lines(base: str, pages, fetch) -> tuple:
+    """``(ok, lines)``: each page's status through *fetch* (``fetch(url) -> status``; an HTTP
+    error's code, any other failure its type's name)."""
+    ok, lines = True, []
+    for path in pages:
+        try:
+            code = fetch(base + path)
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+        except Exception as exc:                        # noqa: BLE001
+            code = type(exc).__name__
+        lines.append(f"page {path} {code}")
+        ok = ok and code == 200
+    return ok, lines
+
+
+def _fetch(url: str) -> int:
+    return urllib.request.urlopen(url, timeout=20).status
+
+
+def _health(base: str) -> dict:
+    return json.load(urllib.request.urlopen(base + "/health", timeout=10))
+
+
+def _journal(since: str) -> str:
+    return subprocess.run(["journalctl", "-u", SERVICE, "--since", since + " UTC",
+                           "--no-pager", "-o", "cat"], capture_output=True, text=True).stdout
+
+
+def _modes() -> dict:
+    from modules.heal import policy
+    from modules.nsot import listref
+    return {net: policy.current(net) for net in listref.names()}
+
+
+def run(want: str, *, base: str, expected_heal: dict, local_account_off: bool,
+        health=_health, fetch=_fetch, journal=_journal, modes=_modes,
+        local_account=read_local_account, out=print) -> bool:
+    """The whole check; True for SMOKE OK. Each source is a parameter so the judgement is
+    tested on its own."""
+    ok = True
+    try:
+        h = health(base)
+    except Exception as exc:                            # noqa: BLE001
+        out(f"health: not answered ({type(exc).__name__})")
+        h, ok = {}, False
+    else:
+        out(f"health: {h.get('ok')} {str(h.get('commit', ''))[:8]} started {h.get('started_at')}")
+        ok = ok and bool(h.get("ok")) and str(h.get("commit", "")).startswith(want)
+    pages_ok, lines = page_lines(base, PAGES, fetch)
+    for line in lines:
+        out(line)
+    ok = ok and pages_ok
+    since = str(h.get("started_at", "")).replace("T", " ").rstrip("Z")
+    if since:
+        text = journal(since)
+        tracebacks = text.count("Traceback (most recent call last)")
+        out(f"journal since start: {len(text.splitlines())} lines, {tracebacks} tracebacks")
+        ok = ok and tracebacks == 0
+    else:
+        out("journal since start: not read (the health answer named no start time)")
+        ok = False
+    try:
+        heal_ok, lines = heal_lines(modes(), expected_heal)
+    except Exception as exc:                            # noqa: BLE001
+        heal_ok, lines = False, [f"heal: not read ({type(exc).__name__})"]
+    for line in lines:
+        out(line)
+    ok = ok and heal_ok
+    facts = local_account()
+    if "error" in facts:
+        out(f"local account: not read ({facts['error']})")
+        ok = ok and not local_account_off
+    else:
+        account_ok, line = local_account_line(facts["setting"], facts["proxied"],
+                                              facts["loopback"])
+        out(line)
+        if local_account_off:
+            ok = ok and account_ok
+    out("SMOKE " + ("OK" if ok else "FAILED"))
+    return ok
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if any(a in ("-h", "--help") for a in argv):
+        print(__doc__)
+        return 0
+    want, base, checkout, heal, account_off = "", "http://127.0.0.1:5000", "", [], False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--expect-local-account-off":
+            account_off = True
+        elif a in ("--base", "--checkout", "--expect-heal") and i + 1 < len(argv):
+            i += 1
+            if a == "--base":
+                base = argv[i].rstrip("/")
+            elif a == "--checkout":
+                checkout = argv[i]
+            else:
+                heal.append(argv[i])
+        elif a.startswith("-") or want:
+            print(f"nmas-post-deploy-check: not understood: {a!r}", file=sys.stderr)
+            return 2
+        else:
+            want = a
+        i += 1
+    if not want:
+        print("usage: nmas-post-deploy-check <expected sha> [--checkout PATH] [--base URL] "
+              "[--expect-heal NETWORK=MODE ...] [--expect-local-account-off]", file=sys.stderr)
+        return 2
+    try:
+        expected = heal_expectations(heal)
+    except ValueError as exc:
+        print(f"nmas-post-deploy-check: {exc}", file=sys.stderr)
+        return 2
+    if checkout and checkout not in sys.path:
+        sys.path.insert(0, checkout)
+    return 0 if run(want, base=base, expected_heal=expected,
+                    local_account_off=account_off) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
