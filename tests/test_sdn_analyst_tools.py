@@ -296,6 +296,26 @@ def test_the_final_answer_is_checked_as_b1_s_a_read_that_ran_citable(tw):
     assert use["use"].startswith("shown: 2 findings after 2 pass(es) and 1 read(s)")
 
 
+def test_the_trace_tool_s_answer_citing_whole_lines_is_cut_to_ids_by_the_same_check(tw):
+    """B4 shares B1's check (`analyst.check`): an entry cited as a whole line is its leading
+    id, a read's too, and a made-up id leading a line is still dropped."""
+    snap, _s = collected_snapshot()
+    (drop,) = flows_of(snap)["drops"]
+    tw.script = [
+        {"findings": [], "reads": [ask("trace", src="198.51.100.250", dst="198.51.100.20",
+                                       proto="icmp")]},
+        {"findings": [finding([f"{drop['id']} table 0, priority 500, a drop"], "medium",
+                              "A drop flow on OVS 3"),
+                      finding(["read:1 the trace from .250"], "low", "The trace is dropped"),
+                      finding(["flow:never:held and its words"], "critical",
+                              "A claim citing nothing held")]}]
+    r = tools(tw, snap)
+    assert r["ok"] and r["state"] == "answered"
+    assert [f["evidence"] for f in r["findings"]] == [[drop["id"]], ["read:1"]]
+    assert [f["trimmed"] for f in r["findings"]] == [[drop["id"]], ["read:1"]]
+    assert r["dropped"] == 1 and r["removed_ids"] == 1 and r["trimmed_ids"] == 3
+
+
 def test_an_answer_citing_a_refused_read_falls_back_to_the_first_pass(tw):
     snap, _s = collected_snapshot()
     port = f"port:ctl-1:{OVS3}:3"
