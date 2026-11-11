@@ -699,15 +699,18 @@ def test_each_press_redraws_the_region_and_keeps_its_state(world, monkeypatch):
     assert r.status_code == 200 and 'id="sdn-analyse"' in _html(r)
     snap = AN.latest_snapshot(NET)
     assert snap["by"] and "5 switches, collected" in _html(r)
+    # The issue is planted BEFORE the analysis, as on the hardware: one planted after it is
+    # "planted after this analysis", never found (C2956), and planted after the Ask here it
+    # was found only when both fell in the same second (CI run 1596, 2026-11-11).
+    r = c.post("/v2/sdn/analyse/planted", headers=h, data={
+        "list": NET, "name": "Port 3 pulled", "evidence": f"port:ctl-1:{OVS3}:3", "why": ""})
+    assert r.status_code == 200 and "Port 3 pulled" in _html(r)
+    (issue,) = AN.planted(NET)["issues"]
     world.answer = answer(finding([f"port:ctl-1:{OVS3}:3"]))
     r = c.post("/v2/sdn/analyse/ask", data={"list": NET, "snapshot": snap["id"]}, headers=h)
     html = _html(r)
     assert r.status_code == 200 and "1 finding" in html and "Link down on 0000000000000003" in html
     assert "Was this right?" in html and len(world.sent) == 1
-    r = c.post("/v2/sdn/analyse/planted", headers=h, data={
-        "list": NET, "name": "Port 3 pulled", "evidence": f"port:ctl-1:{OVS3}:3", "why": ""})
-    assert r.status_code == 200 and "Port 3 pulled" in _html(r)
-    (issue,) = AN.planted(NET)["issues"]
     r = c.post(f"/v2/sdn/analyse/planted/{issue['id']}/why", headers=h,
                data={"list": NET, "why": "the port's LINK_DOWN"})
     assert r.status_code == 200 and AN.planted(NET)["issues"][0]["why"] == "the port's LINK_DOWN"
@@ -752,3 +755,287 @@ def test_analyse_is_an_ai_control_and_collect_and_the_sheet_stay_usable(world, m
         assert not AIC.re.search(r'<button[^>]*data-ai-off[^>]*>\s*<span class="op-idle">Collect now',
                                  text)
     AIC.check_screen(monkeypatch, get, "sdn_analyse", parity)
+
+
+# ── prompt v2: an evidence item is one id and nothing else (the Lab 9 sitting, 2026-11-10) ────
+
+#: prompts/sdn_analyse.v1.md as it was released (a recorded answer answers the text it was sent).
+V1_SHA256 = "1c536b6cde3c392fffc4f314d6b1ea45d4fa555ecd349195af356fe6a3db59c8"
+
+
+def test_v2_says_an_evidence_item_is_one_id_in_the_prompt_and_the_schema_and_v1_is_as_it_was():
+    from modules.ai import prompts, schemas
+
+    assert ("sdn_analyse", 2) in prompts.available(), "v2 is a file of its own"
+    v1, v2 = prompts.load("sdn_analyse", 1), prompts.load("sdn_analyse", 2)
+    assert v1["sha256"] == V1_SHA256, "a released prompt is never edited"
+    rule = "Each item is one id and nothing else"
+    assert rule in v2["text"] and rule not in v1["text"]
+    assert "the evidence item is `port:ctl-1:0000000000000003:3`" in v2["text"], "one example"
+    # Everything but the evidence rule, the last line, is v1's.
+    was, now = v1["text"].splitlines(), v2["text"].splitlines()
+    assert len(was) == len(now)
+    assert [i for i, (a, b) in enumerate(zip(was, now)) if a != b] == [len(was) - 1]
+    # The schema says it of each item, in what the provider is sent.
+    model = AN.SCHEMA_OF[2]
+    assert schemas.REGISTRY[("sdn_analyse", 2)] is model
+    item = schemas.schema_for(model)["$defs"]["FindingV2"]["properties"]["evidence"]["items"]
+    assert item == {"type": "string", "description": AN.EVIDENCE_ITEM_WORDS}
+    assert AN.EVIDENCE_ITEM_WORDS.startswith("One evidence id and nothing else")
+    # No pattern: the gateway removes one from what is sent, so it would constrain nothing the
+    # model writes and only refuse, whole, an answer the check can use.
+    assert "pattern" in schemas.ANTHROPIC_UNSUPPORTED
+    assert "pattern" not in schemas.keywords(schemas.json_schema(model))
+    port = "port:ctl-1:0000000000000003:3"
+    line = port + " link DOWN, admin up"
+    whole = model.model_validate_json(json.dumps(answer(finding([line]))))
+    (kept,) = AN.check(whole, {port})["findings"]
+    assert kept["evidence"] == [port] and kept["trimmed"] == [port]
+    # v1 stays readable: its schema is registered, and an answer recorded under it parses.
+    assert schemas.REGISTRY[("sdn_analyse", 1)] is AN.NetworkAnalysis is AN.SCHEMA_OF[1]
+    old = AN.NetworkAnalysis.model_validate_json(json.dumps(answer(finding([line]))))
+    assert [f.evidence for f in old.findings] == [[line]]
+
+
+def test_a_press_asks_the_version_in_use_and_a_candidate_is_asked_only_when_named(world):
+    from modules.ai import prompts
+
+    snap = snap_of(world)
+    port = f"port:ctl-1:{OVS3}:3"
+    line = next(ln for ln in AN.facts(snap).splitlines() if ln.startswith(port + " "))
+    world.answer = answer(finding([line]))
+    pressed = analyse(world, snap)
+    actor = "evaluation:v2-candidate"
+    got = AN.ask_snapshot(NET, snap, actor=actor, trigger=triggers.evaluation(actor),
+                          send=world.send, prompt=2)
+    rows = {x["id"]: x for x in calls.read()["rows"] if x.get("feature") == AN.FEATURE}
+    in_use = "{}.v{}".format(*AN.PROMPT)
+    assert rows[pressed["call_id"]]["prompt"] == in_use, "a press names no version"
+    assert world.sent[0]["system"][0]["text"] == prompts.load(*AN.PROMPT)["text"]
+    asked = rows[got["call_id"]]
+    assert (asked["prompt"], asked["schema"]) == ("sdn_analyse.v2", "sdn_analyse.v2")
+    assert world.sent[1]["system"][0]["text"] == prompts.load("sdn_analyse", 2)["text"]
+    described = json.dumps(world.sent[1]["output_config"]["format"]["schema"])
+    assert AN.EVIDENCE_ITEM_WORDS in described and '"pattern"' not in described
+    # The check stays in force under v2: an entry cited as a whole line is cut to its id.
+    assert got["ok"] and got["findings"][0]["evidence"] == [port]
+    assert got["findings"][0]["trimmed"] == [port] and got["trimmed_ids"] == 1
+    # A version the analyst does not hold is refused by name, and nothing is sent.
+    with pytest.raises(ValueError, match="no prompt version 9; it has v1, v2"):
+        AN.ask_snapshot(NET, snap, actor=actor, trigger=triggers.evaluation(actor),
+                        send=world.send, prompt=9)
+    assert len(world.sent) == 2
+
+
+# ── check this answer again: no new call (the Lab 9 sitting, 2026-11-10) ─────────────────────
+
+CHECKER = "checker@example.com"
+
+
+def analysed_as_at_the_sitting(world, monkeypatch, snap, *findings):
+    """An analysis made as the check stood at the Lab 9 sitting: an evidence entry compared
+    whole, so an answer citing whole snapshot lines kept nothing. The record of the call keeps
+    the answer as the provider gave it."""
+    world.answer = answer(*findings)
+    with monkeypatch.context() as m:
+        m.setattr(AN, "evidence_id", lambda entry: str(entry if entry is not None else "").strip())
+        return analyse(world, snap)
+
+
+def schema_in_use() -> str:
+    """The answer schema of the prompt version in use, as a call's row names it."""
+    return "{}.v{}".format(*AN.SCHEMA_OF[AN.PROMPT[1]].__ai_schema__)
+
+
+def _port_line(snap):
+    port = f"port:ctl-1:{OVS3}:3"
+    return port, next(ln for ln in AN.facts(snap).splitlines() if ln.startswith(port + " "))
+
+
+def test_a_recorded_answer_is_checked_again_with_no_new_call_and_kept_beside_the_first(
+        world, monkeypatch):
+    snap = snap_of(world)
+    port, line = _port_line(snap)
+    assert AN.add_planted(NET, "Port 3 pulled", port, actor=PERSON)["ok"]
+    r = analysed_as_at_the_sitting(
+        world, monkeypatch, snap, finding([line], "high", "Port 3 is down"),
+        finding(["port:made:up and its words"], "low", "A made-up id"))
+    assert r["ok"] and r["findings"] == [] and r["dropped"] == 2, "as at the sitting"
+    assert AN.view(NET)["missed"] == 1
+    before = calls.read()["rows"]
+    got = AN.recheck(NET, r["id"], actor=CHECKER, now=2_000_000_000.0)
+    assert got["ok"] and got["id"] == r["id"], got
+    again = got["rechecked"]
+    # Today's check on the same recorded answer and the same sealed snapshot.
+    (kept_finding,) = again["findings"]
+    assert kept_finding["finding"] == "Port 3 is down" and kept_finding["evidence"] == [port]
+    assert kept_finding["trimmed"] == [port] and again["trimmed_ids"] == 2
+    assert again["dropped"] == 1 and again["dropped_by"]["unknown_only"] == 1
+    assert again["removed_ids"] == 1
+    assert (again["by"], again["at"]) == (CHECKER, AN._iso(2_000_000_000.0))
+    # No new call: nothing sent, no row added to the record of AI calls, nothing spent.
+    assert len(world.sent) == 1 and calls.read()["rows"] == before
+    # Kept on the analysis's record under its own key; the first check is as it was.
+    kept = AN.analysis(NET, r["id"])
+    assert kept["rechecked"] == again
+    assert {k: kept[k] for k in AN.CHECK_KEYS} == {k: r[k] for k in AN.CHECK_KEYS}
+    assert kept["findings"] == [] and kept["dropped"] == 2 and kept["at"] == r["at"]
+    uses = calls.uses()[r["call_id"]]
+    assert [u["use"] for u in uses] == ["shown: 0 findings, 2 dropped by the check",
+                                        "checked again: 1 findings, 1 dropped by the check"]
+    assert uses[1]["actor"] == CHECKER
+    assert uses[1]["detail"].startswith("no new AI call: the recorded answer read as "
+                                        + schema_in_use())
+    # The planted sheet is marked from the re-check, on the page, in both downloads and in
+    # History › Export's sheets; each download says so.
+    v = AN.view(NET)
+    assert (v["found"], v["missed"]) == (1, 0) and v["planted"][0]["by"] == ["Port 3 is down"]
+    assert v["result"]["findings"] == [] and v["result"]["rechecked"] == again
+    md = AN.sheet_markdown(NET, by=PERSON)
+    assert "| Port 3 pulled | found |" in md
+    assert (f"- Marks: checked again {again['at']} by {CHECKER}, no new AI call: found and "
+            "missed are marked from that check; the first check kept 0 findings and dropped 2"
+            in md)
+    assert "- Findings kept: 1; dropped by the check: 1" in md
+    rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
+    assert rows[3][0] == "# marks" and rows[3][1].startswith(f"checked again {again['at']}")
+    assert rows[5][:2] == ["Port 3 pulled", "found"]
+    (sheet,) = AN.sheets(NET)["sheets"]
+    assert sheet["rows"][0]["found"] == "found" and sheet["analysis"]["rechecked"] == again
+    # A second re-check replaces the first re-check, never the first check.
+    later = AN.recheck(NET, r["id"], actor=PERSON, now=2_000_000_600.0)["rechecked"]
+    kept = AN.analysis(NET, r["id"])
+    assert kept["rechecked"] == later and later["by"] == PERSON and kept["findings"] == []
+
+
+def test_without_a_re_check_the_sheet_and_its_downloads_are_as_they_were(world):
+    snap = snap_of(world)
+    port, _line = _port_line(snap)
+    assert AN.add_planted(NET, "Port 3 pulled", port, actor=PERSON)["ok"]
+    world.answer = answer(finding([port]))
+    r = analyse(world, snap)
+    assert AN.as_checked(r) is r and "rechecked" not in AN.analysis(NET, r["id"])
+    md = AN.sheet_markdown(NET, by=PERSON)
+    assert "- Marks:" not in md and "- Findings kept: 1; dropped by the check: 0" in md
+    rows = list(csv.reader(io.StringIO(AN.sheet_csv(NET, by=PERSON))))
+    assert [row[0] for row in rows[:4]] == ["# network", "# analysis", "# made", "planted"]
+
+
+def test_a_re_check_is_refused_naming_why_and_nothing_is_kept(world, monkeypatch):
+    from modules.settings_schema import write_settings
+
+    snap = snap_of(world)
+    port, line = _port_line(snap)
+
+    def refusal(an_id):
+        got = AN.recheck(NET, an_id, actor=CHECKER)
+        assert not got["ok"] and got["rechecked"] is None, got
+        assert "rechecked" not in AN.analysis(NET, an_id)
+        return got["error"]
+
+    assert "no analysis by that id is kept for Default" in refusal("an-0000000000000000")
+    assert "no analysis by that id" in refusal("../latest")
+    # An answer that is not the schema it was asked under is not read as one now either.
+    world.raw = "the network looks fine"
+    malformed = analyse(world, snap)
+    assert malformed["error"] == "schema"
+    assert f"the recorded answer is not {schema_in_use()}: " in refusal(malformed["id"])
+    world.raw = None
+    # A call refused before anything was sent kept no answer.
+    assert write_settings({"ai_cap_usd_per_day": 0.0001})["ok"]
+    capped = analyse(world, snap)
+    assert capped["error"] == "over_cap"
+    assert "the call's record keeps no answer (its verdict is 'over_cap'" in refusal(capped["id"])
+    assert write_settings({"ai_cap_usd_per_day": 1.50})["ok"]
+    # An analysis the card no longer draws: a newer one was kept since.
+    world.answer = answer(finding([line]))
+    first = analyse(world, snap)
+    second = analyse(world, snap)
+    assert "a newer analysis was kept since this card was drawn" in refusal(first["id"])
+    # The record of AI calls no longer holds the call.
+    with monkeypatch.context() as m:
+        m.setattr(calls, "_path", lambda: str(world.dir / "another_calls.jsonl"))
+        assert "does not hold this analysis's call" in refusal(second["id"])
+    # An analysis that did not use its answer has no first check to set a second beside.
+    record = os.path.join(AN._dir(NET), "analyses", f"{second['id']}.json")
+    as_kept = AN.analysis(NET, second["id"])
+    with open(record, "w", encoding="utf-8") as fh:
+        json.dump(dict(as_kept, ok=False, error="check", detail="the loop refused it whole"), fh)
+    assert "did not use its answer (the loop refused it whole)" in refusal(second["id"])
+    with open(record, "w", encoding="utf-8") as fh:
+        json.dump(as_kept, fh)
+    # The snapshot changed since it was kept: the answer cannot be held to it.
+    path = os.path.join(AN._dir(NET), "snapshots", f"{snap['id']}.json")
+    kept = json.load(open(path, encoding="utf-8"))
+    kept["switches"][0]["name"] = "edited"
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(kept, fh)
+    assert "changed since it was kept" in refusal(second["id"])
+    assert not any(u["use"].startswith("checked again")
+                   for uses in calls.uses().values() for u in uses)
+    assert len(world.sent) == 3, "the malformed answer and the two analyses; no re-check sent"
+
+
+def test_check_this_answer_again_pressed_on_the_card_draws_both_checks_and_marks_the_sheet(
+        world, monkeypatch):
+    import app as APP
+
+    snap = snap_of(world)
+    port, line = _port_line(snap)
+    assert AN.add_planted(NET, "Port 3 pulled", port, actor=PERSON)["ok"]
+    r = analysed_as_at_the_sitting(world, monkeypatch, snap,
+                                   finding([line], "high", "Port 3 is down"))
+    c = APP.app.test_client()
+    page = _html(c.get(f"/v2/sdn/flows?list={NET}"))
+    # The control as the card draws it: where it posts, what it carries, what its hover says.
+    form = re.search(r'<form[^>]*hx-post="(/v2/sdn/analyse/recheck[^"]*)"[^>]*>(.*?)</form>',
+                     page, re.S)
+    assert form, "the findings card draws Check this answer again"
+    fields = dict(re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)"', form.group(2)))
+    assert fields == {"list": NET, "analysis": r["id"]}
+    assert re.search(r'<button[^>]*title="Makes no AI call and costs nothing[^"]*"[^>]*>'
+                     r'<span class="op-idle">Check this answer again</span>'
+                     r'<span class="op-busy">Checking…</span></button>', form.group(2))
+    assert 'data-manual="sdn-analyse#recheck"' in form.group(2)
+    # Before the press: the sitting's card, and no word of a re-check.
+    assert ">0 findings</h2>" in page and ">missed</span>" in page
+    assert "Checked again" not in page and 'id="sdn-an-marks-from"' not in page
+    pressed = c.post(form.group(1), data=fields, headers={"HX-Request": "true"})
+    html = _html(pressed)
+    assert pressed.status_code == 200 and 'id="sdn-analyse"' in html
+    by = AN.analysis(NET, r["id"])["rechecked"]["by"]
+    assert by and len(world.sent) == 1, "the press made no AI call"
+    # The first check's findings and counts as they are, and the re-check's under them.
+    assert ">0 findings</h2>" in html and "Nothing abnormal was reported in this snapshot." in html
+    again = html[html.index('id="sdn-an-rc"'):html.index('aria-labelledby="sdn-an-p"')]
+    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by " + re.escape(by)
+                     + r", no new AI call: 1 finding</h3>", html)
+    assert "Port 3 is down" in again and port in again
+    assert "1 cited as a whole snapshot line; its id kept" in again
+    assert "no claim was dropped" in again and "1 evidence entry was a whole snapshot line" in again
+    # The sheet's marks are the re-check's, and it says so.
+    sheet = html[html.index('aria-labelledby="sdn-an-p"'):]
+    assert 'id="sdn-an-marks-from"' in sheet and "(no new AI call), not from its first check" in sheet
+    assert ">found</span>" in sheet and ">missed</span>" not in sheet and "1 found · 0 missed" in sheet
+    # A refusal says why in place, and keeps nothing.
+    bad = c.post("/v2/sdn/analyse/recheck", data={"list": NET, "analysis": "an-0000000000000000"},
+                 headers={"HX-Request": "true"})
+    assert bad.status_code == 422
+    assert "Couldn't check again: no analysis by that id is kept for Default." in _html(bad)
+
+
+def test_check_this_answer_again_is_gated_declared_and_a_person_s_or_refused(world, monkeypatch):
+    from modules import identity, invalidation, operation_stages, route_gates
+
+    gate = route_gates.gate_for("sdn_analyse_v2.recheck")
+    assert gate is not None and gate.kind == "configure" and "NO AI call" in gate.reason
+    assert invalidation.DECLARED["sdn_analyse_v2.recheck"] == ("ai_calls", "sdn")
+    assert operation_stages.HISTORY["sdn_analyse_v2.recheck"].startswith("n/a: no AI call")
+    snap = snap_of(world)
+    _port, line = _port_line(snap)
+    r = analysed_as_at_the_sitting(world, monkeypatch, snap, finding([line]))
+    monkeypatch.setattr(identity, "identify", lambda _request: identity.Identity(
+        outcome="no_header", reason="no access assertion"))
+    refused = _press("/v2/sdn/analyse/recheck", analysis=r["id"])
+    assert refused.status_code in (401, 403), refused.status_code
+    assert "rechecked" not in AN.analysis(NET, r["id"])

@@ -46,6 +46,18 @@ severities (``none``, ``low``): a finding of medium or above answers it as a thr
 issue is skipped, said. The role is reported beside the others; the pass
 rule stays 19.13's, on the blind role alone.
 
+**The Lab 9 sitting's cases** (the role ``sitting``; tests/fixtures/ai_cases/sdn_analyse/
+lab9_sitting.json): what the analyst got wrong on the lab's hardware on 2026-11-10, each
+modelled on the test fabric (the analyst tests' recorded controller, flows planted; nothing of
+the lab's), never blind, reported as their own role. A case here holds a whole ``collection``
+(`closed_loop.collect_threat_data`'s answer with its links and hosts), and its snapshot is the
+analyst's own of it (`case_snapshot`), with no edit. Two kinds: a planted flow whose output
+port leads away from its destination (a threat case, found by its ``cites_any``), and a pair of
+flows whose matches are disjoint (a drop of DHCP replies beside a forward of DHCP requests: a
+benign case). A benign case may name ``disjoint`` groups in its expectation: a kept finding
+above info that cites every id of a group sets those flows against each other, and answers the
+case as a threat (`false_conflicts`), whatever its severity.
+
 **The measures** (`score_run`, `summary`, 19.13's), per technique, the difference and its
 uncertainty: correct (a threat case's issue found by a kept finding at a severity its
 expectation names; a benign case answered with no finding above its expected severities), each
@@ -76,7 +88,9 @@ SETS = (("recorded", "tests/fixtures/ai_cases/sdn_classify/recorded.json"),
         ("recorded", "tests/fixtures/ai_cases/sdn_classify/recorded_from_blind.json"),
         ("recorded", "tests/fixtures/ai_cases/sdn_classify/recorded_walk.json"),
         ("held_out", "tests/fixtures/ai_cases/sdn_classify/held_out.json"),
-        ("blind", "tests/fixtures/blind_sets/sdn_classify/blind_cases.json"))
+        ("blind", "tests/fixtures/blind_sets/sdn_classify/blind_cases.json"),
+        # Not 19.13's: the Lab 9 sitting's cases (the module's docstring), each a collection.
+        ("sitting", "tests/fixtures/ai_cases/sdn_analyse/lab9_sitting.json"))
 NOT_CONVERTED = {"tests/fixtures/blind_sets/sdn_classify/blind_normal_cases.json":
                  "its two cases hold a collection, not an evidence pack's section"}
 #: Lab 8's hosts (edit 4): the host's number, its switch's datapath id, its port.
@@ -87,8 +101,11 @@ DEFAULT_RUNS = 10
 BOOTSTRAP = 2000
 SEED = 1913
 TECHNIQUES = ("baseline", "tools")
-#: 19.13's fixture roles, and the lab hardware's snapshots (C2965).
-FIXTURE_ROLES = ("recorded", "held_out", "blind")
+#: 19.13's roles; the Lab 9 sitting's cases, read from a case file as they are; and the lab
+#: hardware's snapshots (C2965).
+ROLES_1913 = ("recorded", "held_out", "blind")
+SITTING = "sitting"
+FIXTURE_ROLES = ROLES_1913 + (SITTING,)
 HARDWARE = "hardware"
 ROLES = FIXTURE_ROLES + (HARDWARE,)
 #: A clean hardware snapshot's expected severities: 19.13's benign cases' own.
@@ -234,11 +251,15 @@ def _hosts(conn: str, dpid: int) -> list:
 
 def case_snapshot(case: dict, network: str) -> dict:
     """The case's fixed snapshot (the module's edits 1 to 5), built and sealed by the analyst's
-    own `build_snapshot`. A hardware case's is its kept snapshot, as it was sealed."""
+    own `build_snapshot`. A hardware case's is its kept snapshot, as it was sealed. A case that
+    holds a whole ``collection`` (the Lab 9 sitting's) is that collection's snapshot, built as
+    Collect now builds one, its links and hosts as collected and nothing edited."""
     from modules.sdn import analyst as AN
 
     if case.get("role") == HARDWARE:
         return case["snapshot"]
+    if case.get("collection"):
+        return AN.build_snapshot(network, case["collection"], by=f"b4-eval:{case.get('key')}")
     section = case.get("section") or {}
     pieces = section.get("pieces") or []
     det = next((p for p in pieces if p.get("kind") == "detection"), {})
@@ -339,9 +360,11 @@ def score_run(case: dict, snap: dict, result: dict) -> dict:
     missed_issues = [m.get("name") for m in missed]
     found = bool(issues) and not missed
     at_severity = any(f.get("severity") in allowed for f in hits)
-    threat = any(SEVERITY_RANK.get(f.get("severity"), 0) > top
-                 and SEVERITY_RANK.get(f.get("severity"), 0) >= SEVERITY_RANK["medium"]
-                 for f in findings)
+    conflicts = false_conflicts(case, findings)
+    threat = bool(conflicts) or any(
+        SEVERITY_RANK.get(f.get("severity"), 0) > top
+        and SEVERITY_RANK.get(f.get("severity"), 0) >= SEVERITY_RANK["medium"]
+        for f in findings)
     ok = bool((result or {}).get("ok"))
     correct = ok and (found and at_severity if kind == "threat" else
                       not threat if kind == "benign" else None)
@@ -352,7 +375,26 @@ def score_run(case: dict, snap: dict, result: dict) -> dict:
             "missed_ids": [m.get("id") for m in missed] if kind == "threat" else [],
             "false_positives": judged.count("false_positive"), "real": judged.count("real"),
             "notes": judged.count("note"), "threat_answered": kind == "benign" and threat,
+            "false_conflicts": len(conflicts) if kind == "benign" else 0,
             "correct": correct, "judged": judged}
+
+
+def disjoint_groups(case: dict) -> list:
+    """The groups of flow ids a case's expectation names ``disjoint``: flows whose matches no
+    packet can meet together, so one never shadows or contradicts another."""
+    return [list(g) for alt in _alternatives(case.get("expect") or {})
+            for g in alt.get("disjoint") or [] if g]
+
+
+def false_conflicts(case: dict, findings: list) -> list:
+    """The kept *findings* that set flows the case names disjoint against each other
+    (`disjoint_groups`): each cites every id of one group at a severity above info (an info
+    finding is a note, as `sdn_analyst_tools.judge` reads one). Judged by the ids cited, never
+    by the finding's words. The Lab 9 sitting, 2026-11-10: both techniques reported a drop of
+    DHCP replies and a forward of DHCP requests as a conflict."""
+    groups = disjoint_groups(case)
+    return [f for f in findings or [] if f.get("severity") != "info"
+            and any(all(i in (f.get("evidence") or []) for i in g) for g in groups)]
 
 
 def wrong_row(case: dict, snap: dict, result: dict, scored: dict, *, network: str, actor: str,
@@ -379,6 +421,8 @@ def wrong_row(case: dict, snap: dict, result: dict, scored: dict, *, network: st
             "error": scored["error"], "missed": scored["missed"],
             "false_positives": scored["false_positives"],
             "threat_answered": scored["threat_answered"],
+            "false_conflicts": scored.get("false_conflicts", 0),
+            "disjoint": disjoint_groups(case) if scored.get("false_conflicts") else [],
             "issue": [p for i in named for p in i["evidence"]],
             "missed_issues": list(scored.get("missed_issues") or []),
             "severities": sorted(expected_severities(case)),
@@ -572,10 +616,16 @@ def report_markdown(results: dict, meta: dict) -> str:
              f"- Baseline: {WORDS['baseline']}, prompt {meta.get('baseline_prompt')}; technique: "
              f"{WORDS['tools']}, prompts {meta.get('tools_prompts')}; model "
              f"{meta.get('model')}",
-             f"- Cases: {sum(c['role'] != HARDWARE for c in results.get('cases') or [])} from "
+             f"- Cases: {sum(c['role'] in ROLES_1913 for c in results.get('cases') or [])} from "
              "19.13's files; not converted: "
              + "; ".join(f"{k} ({v})" for k, v in NOT_CONVERTED.items()),
              f"- Pass rule (frozen, 19.13): {s['pass_rule']['words']}"]
+    sitting = [c for c in results.get("cases") or [] if c["role"] == SITTING]
+    if sitting:
+        lines.append(f"- The Lab 9 sitting's cases: {len(sitting)}, modelled on the test fabric "
+                     "after what the analyst got wrong on 2026-11-10 (a planted flow missed; "
+                     "disjoint flows reported as a conflict); never blind, and no part of the "
+                     "pass rule")
     hw = s["hardware"]
     if hw:
         cases = [c for c in results.get("cases") or [] if c["role"] == HARDWARE]
@@ -643,15 +693,40 @@ def estimate(cases: list, network: str, runs: int) -> dict:
             "hardware": sum(1 for c in cases if c.get("role") == HARDWARE)}
 
 
+def asked_prompts(version: int = None) -> tuple:
+    """``(what a run asks, refusal)`` for *version* of the analyst's prompt (None: the one in
+    use): ``{"version", "in_use", "in_use_words", "baseline_prompt", "tools_prompts"}``, the
+    baseline's prompt and the trace tool's two built on it (`sdn_analyst_tools.PASSES_OF`) as
+    the record of AI calls names them; a version either arm does not hold is refused, naming
+    the versions it does."""
+    from modules.ai import sdn_analyst_tools as AT
+    from modules.sdn import analyst as AN
+
+    try:
+        (name, v), _schema = AN.asked_as(version)
+        AT.loop_for(v)
+    except ValueError as exc:
+        return {}, str(exc)
+    first, second = AT.PASSES_OF[v]
+    return {"version": v, "in_use": v == AN.PROMPT[1],
+            "in_use_words": f"{AN.PROMPT[0]}.v{AN.PROMPT[1]}",
+            "baseline_prompt": f"{name}.v{v}",
+            "tools_prompts": f"{first[0]}.v{first[1]} and v{second[1]}"}, ""
+
+
 def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monotonic,
          out=print) -> int:
     """The script's body (`scripts/nmas-sdn-b4-eval` hands in the two arms): refuses without
     ``--yes-spend`` (printing what the run would spend), an ``--out`` inside the checkout, a
     person's address as the actor, or a network the gateway cannot name; a ``--snapshots``
     folder inside the checkout, the role ``hardware`` without one or one without it, and
-    ``--clean`` without ``--snapshots`` or naming a snapshot the folder does not hold. Exit 0
-    when the run finished, 3 when a refusal stopped it, 2 when nothing was asked."""
+    ``--clean`` without ``--snapshots`` or naming a snapshot the folder does not hold; a
+    ``--prompt`` naming a version the analyst does not hold. ``--prompt N`` asks both arms with
+    version N of the analyst's prompt (`asked_prompts`), a candidate measured before it is
+    adopted; the report names the prompts asked. Exit 0 when the run finished, 3 when a
+    refusal stopped it, 2 when nothing was asked."""
     import argparse
+    import functools
 
     from modules.ai import calls, cases as AIC, profiles, triggers
 
@@ -670,6 +745,10 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
                     help="snapshot ids, comma-separated, kept with every planted issue "
                          "restored: each a benign hardware case")
     ap.add_argument("--out", required=True, help="a folder outside the checkout")
+    ap.add_argument("--prompt", type=int, default=0,
+                    help="ask both arms with this version of the analyst's prompt (and the "
+                         "trace tool's two built on it) in place of the ones in use: a "
+                         "candidate measured before it is adopted")
     ap.add_argument("--actor", default="")
     ap.add_argument("--yes-spend", action="store_true",
                     help="spend: without it, the run says what it would spend and stops")
@@ -699,6 +778,13 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     if shape:
         out(f"nmas-sdn-b4-eval: {shape}")
         return 2
+    asked, why_not = asked_prompts(args.prompt or None)
+    if why_not:
+        out(f"nmas-sdn-b4-eval: --prompt {args.prompt}: {why_not}; nothing was asked")
+        return 2
+    if args.prompt:
+        # Each arm handed the candidate's version; an arm asked without it asks the one in use.
+        arms = {t: functools.partial(fn, prompt=args.prompt) for t, fn in arms.items()}
     actor, refusal = AIC.evaluation_actor(args.actor, "sdn-b4-eval", now)
     network, why = AIC.run_network(args.list) if not refusal else ("", "")
     if refusal or why:
@@ -728,7 +814,9 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     out(f"nmas-sdn-b4-eval: {est['cases']} cases ({est['hardware']} of them the lab hardware's "
         f"snapshots) x {args.runs} runs x 2 techniques: at most "
         f"{est['calls']} calls, about ${est['usd']:.4f} by the over-estimate (the tool arm at "
-        "its two calls), on " + profiles.task("sdn_analyse")["model"])
+        "its two calls), on " + profiles.task("sdn_analyse")["model"]
+        + f"; prompts {asked['baseline_prompt']} and {asked['tools_prompts']}"
+        + ("" if asked["in_use"] else f" (a candidate: {asked['in_use_words']} is in use)"))
     if not args.yes_spend:
         out("nmas-sdn-b4-eval: refused: nothing was asked or spent; read the ledger's spend "
             "left first (PHASE8_PLAN 0.5), then run again with --yes-spend")
@@ -742,8 +830,9 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     meta = {"actor": actor, "network": network,
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if now is None
                                                                  else now)),
-            "model": profiles.task("sdn_analyse")["model"], "baseline_prompt": "sdn_analyse.v1",
-            "tools_prompts": "sdn_analyse_tools.v1 and v2", "estimate": est}
+            "model": profiles.task("sdn_analyse")["model"],
+            "baseline_prompt": asked["baseline_prompt"], "tools_prompts": asked["tools_prompts"],
+            "prompt_in_use": asked["in_use"], "estimate": est}
     os.makedirs(args.out, exist_ok=True)
     stem = os.path.join(args.out, "b4-eval-" + actor.split(":", 1)[1])
     with open(stem + ".json", "w", encoding="utf-8") as fh:

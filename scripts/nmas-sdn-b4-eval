@@ -27,6 +27,22 @@ on the blind role alone.
     nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
         --roles hardware --snapshots /tmp/b4-snapshots --clean snap-<id> --out /tmp/b4-eval
 
+**The Lab 9 sitting's cases** (the role ``sitting``, run by default beside 19.13's; never
+blind, and no part of the pass rule): what the analyst got wrong on the lab's hardware on
+2026-11-10, modelled on the test fabric (tests/fixtures/ai_cases/sdn_analyse/lab9_sitting.json):
+a planted flow whose output port leads away from its destination, to be found, and a drop of
+DHCP replies beside a forward of DHCP requests, whose matches are disjoint, which no finding
+above info may cite together; each in IPv4 and IPv6. ``--roles sitting`` runs them alone.
+
+**A candidate prompt** (``--prompt N``): both arms ask version N of the analyst's prompt, the
+trace tool the two built on it (modules/ai/sdn_analyst_tools.py `PASSES_OF`), in place of the
+ones in use, so a new version is measured before it is adopted (docs/TESTING.md, "AI prompt
+versions"); the first line printed and the report name the prompts asked. Version 2 says an
+evidence item is one id and nothing else. Without it, the versions in use are asked.
+
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-b4-eval --list <network> --runs 10 \\
+        --prompt 2 --out /tmp/b4-eval-v2
+
 **It spends only with --yes-spend.** Without it, it prints the cases, the most calls and about
 what they cost (each arm's own over-estimate of each snapshot), and stops with nothing asked
 (exit 2). Never run in CI: its tests run it on a fake provider.

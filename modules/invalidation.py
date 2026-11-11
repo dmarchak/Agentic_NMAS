@@ -589,6 +589,9 @@ DECLARED = {
     # Lab 9 B4: Analyse with the trace tool, up to two recorded calls and the send log's reads,
     # its analysis kept beside B1's.
     "sdn_analyse_v2.ask_tools": ("ai_calls", "sdn"),
+    # Check this answer again: no call; the network's analysis record gains the re-check, and
+    # the call's record of use a row (History's view of the call).
+    "sdn_analyse_v2.recheck": ("ai_calls", "sdn"),
     "sdn_analyse_v2.planted_add": ("sdn",),
     "sdn_analyse_v2.planted_why": ("sdn",),
     # C2913: a planted issue corrected or taken off the sheet, the network's own record.

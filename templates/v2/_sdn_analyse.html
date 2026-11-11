@@ -5,7 +5,11 @@
     snapshot and its estimate, a collection running, the latest analysis (its findings checked
     against the snapshot in code) and the planted issues marked against it; read from the
     network's small files, never a controller. *said* is a press's answer (Collect now, Analyse,
-    a planted issue's add, why, edit or removal), drawn in place. Each planted row's Edit… and
+    a planted issue's add, why, edit or removal, Check this answer again), drawn in place.
+    Check this answer again (the Lab 9 sitting, 2026-11-10) makes no AI call: the recorded
+    answer checked again is drawn under the first check's findings (*x.rechecked*: when, by
+    whom, its findings and counts), and the planted issues are then marked from it, said above
+    the sheet; with no re-check neither is drawn. Each planted row's Edit… and
     Remove… (C2913, board I revised 2026-11-10) open in place; an issue planted after the
     analysis is marked so, neither found nor missed (C2956); Changes to the sheet lists the
     sheet's history, newest first. Included by _sdn_view.html on Flows, and
@@ -44,6 +48,14 @@
 {%- if said.ask and not said.ask.ok %}
 <p class="small notice notice-warn" role="alert">Couldn't analyse: {{ said.ask.detail or said.ask.error }}. Nothing of an answer is used.</p>
 {%- endif %}
+{#- A re-check refused is said beside the control that asked (on its card, below); one that
+    names neither card's analysis (a newer one was kept since the card was drawn) is said here. -#}
+{%- set rcs = said.recheck %}
+{%- set rcs_here = rcs and x and x.ok and rcs.id == x.id %}
+{%- set rcs_tools = rcs and an.tools.result and an.tools.result.ok and rcs.id == an.tools.result.id %}
+{%- if rcs and not rcs.ok and not rcs_here and not rcs_tools %}
+<p class="small notice notice-warn" role="alert">Couldn't check again: {{ rcs.error }}.</p>
+{%- endif %}
 <div class="sdn-an-cols">
 <section class="card sdn-an-findings" aria-labelledby="sdn-an-f">
   {%- if x and x.ok %}
@@ -60,6 +72,29 @@
   {%- endif %}
   <p class="muted small">Each claim cites evidence the collection holds; a claim citing nothing it holds is dropped by the check: {% if x.dropped %}<span title="{% for k, n in (x.dropped_by or {}).items() if n %}{{ k | replace('_', ' ') }}: {{ n }}{{ '; ' if not loop.last }}{% endfor %}">{{ x.dropped }}</span> {{ 'was' if x.dropped == 1 else 'were' }} ({{ x.dropped_words }}){% else %}none was{% endif %}{% if x.removed_ids %}, and {{ x.removed_ids }} cited id{{ 's' if x.removed_ids != 1 }} the collection does not hold {{ 'was' if x.removed_ids == 1 else 'were' }} removed{% endif %}{% if x.trimmed_ids %}; {{ x.trimmed_ids }} evidence entr{{ 'y was a whole snapshot line; its id was' if x.trimmed_ids == 1 else 'ies were whole snapshot lines; their ids were' }} kept{% endif %}{% if x.capped %}; {{ x.capped }} text{{ 's' if x.capped != 1 }} past its length shortened with …{% endif %}.</p>
   {%- with fb=ai_feedback(x.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+  {%- set rc = x.rechecked %}
+  <div class="sdn-an-recheck" id="sdn-an-recheck">
+    <form class="op-act" hx-post="{{ url_for('sdn_analyse_v2.recheck') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ an.network }}"><input type="hidden" name="analysis" value="{{ x.id }}">
+      <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }} title="Makes no AI call and costs nothing: reads this call's recorded answer again and holds it to the same kept snapshot by the check as it is now; the findings above stay as they are"><span class="op-idle">Check this answer again</span><span class="op-busy">Checking…</span></button>{{ how('sdn-analyse', 'recheck', compact=True, op='Check this answer again') }}
+    </form>
+    {%- if rcs_here and not rcs.ok %}
+    <p class="small notice notice-warn" role="alert">Couldn't check again: {{ rcs.error }}.</p>
+    {%- endif %}
+    {%- if rc %}
+    <h3 id="sdn-an-rc">Checked again {{ stamp(rc.at) }} by {{ rc.by }}, no new AI call: {{ rc.findings | length }} finding{{ 's' if rc.findings | length != 1 }}</h3>
+    {%- if rc.findings %}
+    <div class="table-wrap"><table class="table sdn-an-tbl" aria-labelledby="sdn-an-rc"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
+    {%- for f in rc.findings %}
+      <tr><td data-l="Finding">{{ badge(f.severity, sev_kind.get(f.severity, 'muted')) }} {{ f.finding }}</td><td data-l="Why">{{ f.why }}</td><td data-l="Evidence" class="mono small">{{ f.evidence | join(' · ') }}{% if f.removed %}<br><span class="faint" title="{{ f.removed | join(', ') }}">{{ f.removed | length }} id{{ 's' if f.removed | length != 1 }} the collection does not hold, removed</span>{% endif %}{% if f.trimmed %}<br><span class="faint" title="{{ f.trimmed | join(', ') }}">{{ f.trimmed | length }} cited as a whole snapshot line; its id kept</span>{% endif %}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+    {%- else %}
+    <p class="muted">Checked again, this answer keeps no finding.</p>
+    {%- endif %}
+    <p class="muted small">The same recorded answer, held to the same snapshot by the check as it is now: {% if rc.dropped %}<span title="{% for k, n in (rc.dropped_by or {}).items() if n %}{{ k | replace('_', ' ') }}: {{ n }}{{ '; ' if not loop.last }}{% endfor %}">{{ rc.dropped }}</span> claim{{ ' was' if rc.dropped == 1 else 's were' }} dropped ({{ rc.dropped_words }}){% else %}no claim was dropped{% endif %}{% if rc.removed_ids %}, and {{ rc.removed_ids }} cited id{{ 's' if rc.removed_ids != 1 }} the collection does not hold {{ 'was' if rc.removed_ids == 1 else 'were' }} removed{% endif %}{% if rc.trimmed_ids %}; {{ rc.trimmed_ids }} evidence entr{{ 'y was a whole snapshot line; its id was' if rc.trimmed_ids == 1 else 'ies were whole snapshot lines; their ids were' }} kept{% endif %}{% if rc.capped %}; {{ rc.capped }} text{{ 's' if rc.capped != 1 }} past its length shortened with …{% endif %}. The findings above are the first check's, as it was made.</p>
+    {%- endif %}
+  </div>
   {%- elif x %}
   <div class="sdn-ctl-hd"><h2 id="sdn-an-f">No findings</h2><span class="faint small">asked {{ stamp(x.at) }} by {{ x.actor }}{% if x.call_id %} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a>{% endif %}</span></div>
   <p class="small notice notice-warn" role="status">Couldn't analyse the snapshot {{ x.snapshot_id }}: {{ x.detail or x.error }}. Nothing of an answer is used{% if x.findings %} ({{ x.findings | length }}){% endif %}{% if x.dropped %}, {{ x.dropped }} dropped{% endif %}{% if x.dropped_words %} ({{ x.dropped_words }}){% endif %}{% if x.removed_ids %}; {{ x.removed_ids }} ids removed{% endif %}; {{ x.model }}, collected {{ x.collected_at }}.</p>
@@ -73,6 +108,9 @@
   {%- if an.planted_state == 'unreadable' %}
   <p class="small notice notice-danger" role="alert">The planted issues cannot be read ({{ an.planted_error }}); none is drawn as found or missed.</p>
   {%- elif an.planted %}
+  {%- if x and x.ok and x.rechecked %}
+  <p class="small notice notice-muted" role="status" id="sdn-an-marks-from">Found and missed are marked from the answer as checked again {{ stamp(x.rechecked.at) }} by {{ x.rechecked.by }} (no new AI call), not from its first check.</p>
+  {%- endif %}
   <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Planted</th><th>Found</th><th>Why</th></tr></thead><tbody>
   {%- for p in an.planted %}
     {%- set edit_failed = said.edit and said.edit.pid == p.id and not said.edit.ok %}

@@ -9,6 +9,10 @@ its planted-issue sheet (modules/sdn/analyst.py).
 - **Analyse with the trace tool** (Lab 9 B4) asks the same over the same snapshot through the
   read loop: at most two calls, the model's reads answered from the kept snapshot alone; its
   answer, its tool calls and the comparison with the first drawn in place.
+- **Check this answer again** (on either findings card) makes NO AI call: the call's recorded
+  answer is read again, held by today's check to the same kept snapshot, and drawn under the
+  first check's findings with who pressed it and when; the planted issues are then marked
+  from it, and the card says so.
 - **Add a planted issue…** and a row's **Save** keep the network's planted-issue sheet; a row's
   **Edit…** (Save changes) corrects its name and evidence and its **Remove…** (Remove from the
   sheet) takes it off, kept marked removed (C2913), each change in the sheet's history;
@@ -87,6 +91,24 @@ def ask_tools():
     got = sdn_analyst_tools.analyse(network, (request.form.get("snapshot") or "").strip(),
                                 actor=actor, trigger=triggers.person(actor))
     return _region(network, {"ask_tools": got})
+
+
+@bp.route("/recheck", methods=["POST"])
+def recheck():
+    """Check this answer again (the Lab 9 sitting, 2026-11-10): NO AI call. The analysis the
+    card drew (its id from the form: B1's or the trace tool's) has its recorded answer read
+    again from the record of AI calls, parsed by the schema it was asked under and held by
+    today's check to the same kept snapshot (`analyst.recheck`); the result is kept on the
+    analysis's record beside the first check, with who pressed it and when, and the region
+    redraws with both. A refusal is said in place, and nothing is kept."""
+    from modules import identity
+    from modules.sdn import analyst
+
+    network = _network()
+    got = analyst.recheck(network, (request.form.get("analysis") or "").strip(),
+                          actor=identity.request_actor())
+    said = {"ok": got["ok"], "error": got["error"], "id": got["id"]}
+    return _region(network, {"recheck": said}, 200 if got["ok"] else 422)
 
 
 @bp.route("/planted", methods=["POST"])

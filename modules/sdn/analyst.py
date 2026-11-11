@@ -42,6 +42,13 @@ person planted.
    history with who, when, and what it was and is (C2913). The sheet downloads as Markdown or
    CSV (`sheet_markdown`, `sheet_csv`), for the lab's document and B5's false-positive log.
 
+**Check this answer again** (`recheck`; the Lab 9 sitting, 2026-11-10): no AI call. The
+record of AI calls keeps each answer's text; a kept analysis's is read again, parsed by the
+schema version it was asked under (`SCHEMA_OF`) and held by today's `check` to the same sealed
+snapshot. The result is kept on the analysis's record under ``rechecked``, beside the first
+check and never over it, and a planted issue is then marked from it everywhere it is marked
+(`as_checked`), each surface saying so.
+
 **Evidence ids** reuse the collection's own where it has one: a flow's
 ``flow:<connection>:<dpid hex>:t<table>:p<priority>:<match digest>`` (`closed_loop.flow_ref`,
 stable from one collection to the next) and a port's ``port:<connection>:<dpid hex>:<port>``
@@ -67,13 +74,22 @@ import threading
 import time
 import uuid
 from enum import Enum
-from typing import List
+from typing import Annotated, List
+
+from pydantic import Field
 
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
 
 FEATURE = "sdn_analyse"
+#: The prompt version in use: what a person's press asks (`analyse`). Each version's answer
+#: schema is `SCHEMA_OF`; a version it holds that is not this one is a candidate, asked only
+#: by the evaluation (`ask_snapshot`'s *prompt*; scripts/nmas-sdn-b4-eval ``--prompt N``)
+#: until its measurement adopts it (docs/TESTING.md, "AI prompt versions"). **v2** (the Lab 9
+#: sitting, 2026-11-10: v1's answer cited each evidence entry as a whole snapshot line) says
+#: an evidence item is one id and nothing else, in the prompt and in the schema's own words;
+#: `check` cuts an entry to its id under every version.
 PROMPT = ("sdn_analyse", 1)
 #: The port counters' spacing for a collection's rates (seconds): the loop's own
 #: (`loop.SAMPLE_INTERVAL`), within `closed_loop.MIN_INTERVAL` to `MAX_INTERVAL`.
@@ -157,6 +173,45 @@ class Finding(StrictModel):
 @register("sdn_analyse", 1)
 class NetworkAnalysis(StrictModel):
     findings: List[Finding]
+
+
+#: What v2's schema says of one evidence item (sent with the request as the item's
+#: description). **No pattern:** the gateway removes ``pattern`` from what the provider is sent
+#: (`schemas.ANTHROPIC_UNSUPPORTED`), so one here would constrain nothing the model writes and
+#: only refuse, whole, an answer `check` can use (an entry cited as a whole line is cut to its
+#: id and kept).
+EVIDENCE_ITEM_WORDS = ("One evidence id and nothing else: the first word of a fact's line, up "
+                       "to its first space, copied exactly. Never the rest of the line.")
+EvidenceId = Annotated[str, Field(description=EVIDENCE_ITEM_WORDS)]
+
+
+class FindingV2(StrictModel):
+    # `Finding`, each evidence item described as an id alone (prompt v2). A comment, not a
+    # docstring: a model's docstring is its schema's description, which is sent.
+    severity: AnalystSeverity
+    finding: str
+    why: str
+    evidence: List[EvidenceId]
+
+
+@register("sdn_analyse", 2)
+class NetworkAnalysisV2(StrictModel):
+    findings: List[FindingV2]
+
+
+#: Each prompt version's answer schema: v1 was written for `NetworkAnalysis`, so an answer
+#: recorded under it is read as it was asked (`recheck`).
+SCHEMA_OF = {1: NetworkAnalysis, 2: NetworkAnalysisV2}
+
+
+def asked_as(version: int = None) -> tuple:
+    """``((prompt name, version), its answer schema)`` for *version* of the analyst's prompt
+    (None: the one in use, `PROMPT`); ValueError names a version `SCHEMA_OF` does not hold."""
+    version = PROMPT[1] if version is None else version
+    if version not in SCHEMA_OF:
+        raise ValueError(f"sdn_analyse has no prompt version {version!r}; it has "
+                         f"{', '.join(f'v{v}' for v in sorted(SCHEMA_OF))}")
+    return (PROMPT[0], version), SCHEMA_OF[version]
 
 
 # ───────────────────────────────────────────────────────────────────────────── the store
@@ -770,13 +825,16 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
 
 
 def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=None,
-                 today: str = None, now: float = None) -> dict:
+                 today: str = None, now: float = None, prompt: int = None) -> dict:
     """`analyse`'s call and check over *snap* (a sealed snapshot in hand), reading and writing
     no store: the baseline arm of B4's evaluation (scripts/nmas-sdn-b4-eval), which asks about
     a case's snapshot without making it the network's. Refused before any call on the
-    classification marking or the topology class off (``refused_before`` set)."""
+    classification marking or the topology class off (``refused_before`` set). *prompt* is a
+    version of the analyst's prompt asked in place of the one in use (`asked_as`: a candidate
+    measured before it is adopted; the evaluation's ``--prompt``), never a press's."""
     from modules.ai import egress_classes, gateway, profiles
 
+    named, schema = asked_as(prompt)
     now = time.time() if now is None else now
     snap_id = snap.get("id", "")
     marked = egress_classes.classification_marking(network)
@@ -790,7 +848,7 @@ def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=No
                         f"rates are the topology class, and {gate['why']}; nothing was sent",
                         refused_before=True)
     model = profiles.task(FEATURE)["model"]
-    asked = gateway.ask(FEATURE, PROMPT, NetworkAnalysis, {"snapshot": facts(snap)},
+    asked = gateway.ask(FEATURE, named, schema, {"snapshot": facts(snap)},
                         actor=actor, trigger=trigger, send=send, today=today, network=network,
                         subject={"kind": "sdn_snapshot", "id": snap_id, "devices": []})
     out = {"ok": False, "error": "", "detail": "", "network": network, "snapshot_id": snap_id,
@@ -811,6 +869,125 @@ def analysis(network: str, an_id: str) -> dict:
         return {}
     got, _err = _read_json(os.path.join(_dir(network), "analyses", f"{an_id}.json"))
     return got if isinstance(got, dict) else {}
+
+
+# ───────────────────────────────────────────────────────────────────────────── check again
+
+#: `check`'s own keys on an analysis record: what a re-check answers, kept under
+#: ``rechecked`` beside them and never over them.
+CHECK_KEYS = ("findings", "dropped", "dropped_by", "dropped_words", "removed_ids", "capped",
+              "trimmed_ids")
+#: The tasks whose recorded answer `recheck` reads: B1's and the trace tool's (its name as
+#: `sdn_analyst_tools.FEATURE` has it; this module is imported by that one).
+RECHECKED_TASKS = (FEATURE, "sdn_analyse_tools")
+
+
+def as_checked(result: dict) -> dict:
+    """*result* (a kept analysis) as its latest check left it: with a re-check kept
+    (`recheck`), the re-check's findings and counts in place of the first check's; otherwise
+    *result* itself. What a planted issue is marked against everywhere it is marked (the
+    page's sheet, both downloads, History › Export, the comparison with the trace tool), each
+    saying when its marks are a re-check's. The record itself keeps both."""
+    again = (result or {}).get("rechecked")
+    if not (result and result.get("ok") and isinstance(again, dict)):
+        return result
+    return dict(result, **{k: again[k] for k in CHECK_KEYS if k in again})
+
+
+def recheck(network: str, an_id: str, *, actor: str, now: float = None) -> dict:
+    """Check the kept analysis *an_id*'s answer again as *actor*, with NO new AI call:
+    ``{"ok", "error", "id", "rechecked"}``. The answer is the text the record of AI calls
+    keeps for the analysis's call (``response``: the model's answer as received, masked on its
+    way to the record like everything kept there), parsed by the schema version it was asked
+    under (the call's ``schema``, from the registry: an answer asked under v1 is read as v1),
+    then held by today's `check` to the same sealed snapshot's evidence ids, and for the trace
+    tool's analysis to the reads its record says ran. Nothing is sent to a model or a switch,
+    and the gateway is not asked.
+
+    The result is kept ON the analysis's record under ``rechecked`` (`CHECK_KEYS`, and ``at``
+    and ``by``): the first check's findings and counts stay as they were, beside it; a later
+    re-check replaces an earlier one. The call's record of use gains a row saying so.
+
+    Refused, naming why, and nothing kept: no such analysis; one the card no longer draws (a
+    newer one was kept since); an analysis that made no call; a call the record does not
+    hold, or holds for another task or snapshot; a record that keeps no answer (a refusal
+    before anything was sent); a schema this release does not hold; an answer that does not
+    parse under it; a snapshot that cannot be read or changed since it was kept."""
+    from pydantic import ValidationError
+
+    from modules.ai import calls, schemas
+    from modules.ai import sdn_analyst_tools  # noqa: F401 (registers the trace tool's schemas)
+
+    now = time.time() if now is None else now
+
+    def refused(why: str) -> dict:
+        return {"ok": False, "error": why, "id": an_id, "rechecked": None}
+
+    result = analysis(network, an_id)
+    if not result:
+        return refused(f"no analysis by that id is kept for {network}")
+    latest = _latest(network)
+    if an_id not in (latest.get("analysis"), latest.get("analysis_tools")):
+        return refused("a newer analysis was kept since this card was drawn, and the card "
+                       "now draws that one")
+    call_id = result.get("call_id") or ""
+    if not call_id:
+        return refused("this analysis made no AI call, so no answer is recorded for it")
+    found = calls.find(call_id)
+    if found["state"] == "unreadable":
+        return refused(f"the record of AI calls cannot be read ({found['error']})")
+    row = found["row"]
+    if not row:
+        return refused("the record of AI calls does not hold this analysis's call")
+    about = (row.get("subject") or {}).get("id")
+    if row.get("feature") not in RECHECKED_TASKS or about != result.get("snapshot_id"):
+        return refused(f"the call recorded for this analysis is the task "
+                       f"{row.get('feature')!r} about {about!r}, not an analysis of the "
+                       f"snapshot {result.get('snapshot_id')!r}")
+    text = row.get("response")
+    if not isinstance(text, str) or not text.strip():
+        return refused("the call's record keeps no answer (its verdict is "
+                       f"{row.get('verdict')!r}: {row.get('detail') or 'no detail'})")
+    asked = str(row.get("schema") or "")
+    name, _sep, version = asked.rpartition(".v")
+    model = (schemas.REGISTRY.get((name, int(version)))
+             if name in RECHECKED_TASKS and version.isdigit() else None)
+    if model is None:
+        return refused(f"the answer was asked under the schema {asked!r}, which this release "
+                       "does not hold")
+    try:
+        answer = model.model_validate_json(text)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        where = ".".join(str(p) for p in first["loc"]) or "the answer"
+        return refused(f"the recorded answer is not {asked}: {where}: {first['msg']}")
+    if not result.get("ok"):
+        # An answer the analysis never checked (the trace tool's loop refused it whole, say):
+        # there is no first check to set a second beside.
+        return refused("this analysis did not use its answer ("
+                       f"{result.get('detail') or result.get('error') or 'no reason kept'}), so "
+                       "there is no check of it to make again")
+    got = snapshot(network, result.get("snapshot_id") or "")
+    if not got["ok"]:
+        return refused(f"{got['error']}, so the answer cannot be held to it")
+    ran = {r.get("id") for r in result.get("reads") or []
+           if r.get("verdict") == "run" and r.get("id")}
+    checked = check(answer, evidence_ids(got["snapshot"]) | ran)
+    kept = dict({k: checked[k] for k in CHECK_KEYS}, at=_iso(now), by=actor)
+    path = os.path.join(_dir(network), "analyses", f"{an_id}.json")
+    with _lock(network):
+        current, err = _read_json(path)
+        if err or not isinstance(current, dict):
+            return refused(f"the analysis's record cannot be read ({err or 'not an object'})")
+        current["rechecked"] = kept
+        _write_json(path, current)
+    calls.record_use(call_id, f"checked again: {len(kept['findings'])} findings, "
+                     f"{kept['dropped']} dropped by the check", actor=actor,
+                     detail="; ".join(w for w in ("no new AI call: the recorded answer read "
+                                                  f"as {asked}", kept["dropped_words"],
+                                                  trimmed_words(kept)) if w),
+                     links={"page": "/v2/sdn/flows", "anchor": "sdn-analyse"})
+    return {"ok": True, "error": "", "id": an_id, "rechecked": kept}
 
 
 # ───────────────────────────────────────────────────────────────────────────── planted issues
@@ -1063,8 +1240,19 @@ def _sheet_rows(network: str) -> tuple:
     latest = _latest(network)
     result = analysis(network, latest.get("analysis") or "")
     snap = snapshot(network, result.get("snapshot_id") or "").get("snapshot") if result else None
-    rows = marks(planted(network)["issues"], result, evidence_ids(snap) if snap else None)
+    rows = marks(planted(network)["issues"], as_checked(result),
+                 evidence_ids(snap) if snap else None)
     return result, rows
+
+
+def again_words(result: dict) -> str:
+    """What a download says when its sheet is marked from a re-check (`as_checked`), or ""."""
+    again = (result or {}).get("rechecked")
+    if not (result and result.get("ok") and isinstance(again, dict)):
+        return ""
+    return (f"checked again {again.get('at')} by {again.get('by')}, no new AI call: found and "
+            f"missed are marked from that check; the first check kept "
+            f"{len(result.get('findings') or [])} findings and dropped {result.get('dropped', 0)}")
 
 
 def _epoch(at) -> float:
@@ -1086,7 +1274,8 @@ def sheets(network: str, from_s: float = None, to_s: float = None) -> dict:
     issue a person removed is on no sheet (C2913). A read
     (C2945): History › Export's failure log lists every planted issue each analysis missed. An
     analysis or the planted issues that cannot be read is said in *error*, the rest still
-    read, never a shorter list said whole."""
+    read, never a shorter list said whole. An analysis checked again (`recheck`) is marked
+    from that check (`as_checked`), its record (``rechecked``) saying when and by whom."""
     issues = planted(network)
     errors = [f"the planted issues: {issues['error']}"] if issues["state"] == "unreadable" else []
     folder = os.path.join(_dir(network), "analyses")
@@ -1106,7 +1295,7 @@ def sheets(network: str, from_s: float = None, to_s: float = None) -> dict:
         if at is None or (from_s is not None and at < from_s) or (to_s is not None
                                                                    and at >= to_s):
             continue
-        found.append({"analysis": got, "rows": marks(issues["issues"], got)})
+        found.append({"analysis": got, "rows": marks(issues["issues"], as_checked(got))})
     found.sort(key=lambda s: (_epoch(s["analysis"].get("at")), s["analysis"].get("id") or ""))
     state = "unreadable" if errors else "ok" if names or issues["state"] == "ok" else "absent"
     return {"state": state, "error": "; ".join(errors), "sheets": found}
@@ -1123,6 +1312,8 @@ def sheet_csv(network: str, *, by: str, now: float = None) -> str:
     w.writerow(["# analysis", result.get("id", "none"), "snapshot", result.get("snapshot_id", ""),
                 "call", result.get("call_id", ""), "model", result.get("model", "")])
     w.writerow(["# made", _iso(now), "by", by])
+    if again_words(result):
+        w.writerow(["# marks", again_words(result)])
     w.writerow(["planted", "found", "evidence", "found by", "in the collection", "why"])
     for r in rows:
         w.writerow([r["name"], r["found"], " ".join(r["evidence"]), " | ".join(r["by"]),
@@ -1138,16 +1329,19 @@ def sheet_markdown(network: str, *, by: str, now: float = None) -> str:
     """The planted-issue sheet as Markdown, with the same header facts as `sheet_csv`."""
     now = time.time() if now is None else now
     result, rows = _sheet_rows(network)
+    checked = as_checked(result)
     lines = [f"# Planted issues on {_md(network)}", "",
              f"- Analysis: {result.get('id', 'none')} (snapshot {result.get('snapshot_id', '-')}, "
              f"collected {result.get('collected_at', '-')}; call {result.get('call_id', '-')}, "
              f"{result.get('model', '-')})",
-             f"- Findings kept: {len(result.get('findings') or [])}; dropped by the check: "
-             f"{result.get('dropped', 0)}",
-             f"- Planted: {tally(rows)['words']}",
-             f"- Made {_iso(now)} by {_md(by)}", "",
-             "| Planted | Found | Evidence | Found by | In the collection | Why |",
-             "|---|---|---|---|---|---|"]
+             f"- Findings kept: {len(checked.get('findings') or [])}; dropped by the check: "
+             f"{checked.get('dropped', 0)}"]
+    if again_words(result):
+        lines.append(f"- Marks: {_md(again_words(result))}")
+    lines += [f"- Planted: {tally(rows)['words']}",
+              f"- Made {_iso(now)} by {_md(by)}", "",
+              "| Planted | Found | Evidence | Found by | In the collection | Why |",
+              "|---|---|---|---|---|---|"]
     for r in rows:
         lines.append("| " + " | ".join(_md(x) for x in (
             r["name"], r["found"], " ".join(r["evidence"]), "; ".join(r["by"]) or "-",
@@ -1209,7 +1403,9 @@ def changes(history: list) -> list:
 def view(network: str, now: float = None) -> dict:
     """What board I's region draws, from the network's small files only (no controller call, no
     write): the latest snapshot's summary and estimate, a collection running, the latest
-    analysis and the planted issues marked against it."""
+    analysis and the planted issues marked against it. An analysis checked again (`recheck`)
+    carries both checks (``result`` and its ``rechecked``); the planted issues are marked from
+    the re-check (`as_checked`), which the card says."""
     from modules.ai import profiles
     from modules.ai import sdn_analyst_tools
 
@@ -1217,9 +1413,9 @@ def view(network: str, now: float = None) -> dict:
     result = analysis(network, latest.get("analysis") or "")
     snap_sum = latest.get("snapshot") or {}
     issues = planted(network)
-    rows = [dict(r, rev=rev(r)) for r in marks(issues["issues"], result)]
+    rows = [dict(r, rev=rev(r)) for r in marks(issues["issues"], as_checked(result))]
     tools = sdn_analyst_tools.view_part(network, latest, snap_sum, result)
-    tool_rows = marks(issues["issues"], tools["result"])
+    tool_rows = marks(issues["issues"], as_checked(tools["result"]))
     counts = tally(rows)
     return {"network": network, "snapshot": snap_sum, "running": running(network, now),
             "collect_failed": latest.get("collect_failed") or {},

@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "AnalystSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AnalystSeverity",
+      "type": "string"
+    },
+    "FindingV2": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "description": "One evidence id and nothing else: the first word of a fact's line, up to its first space, copied exactly. Never the rest of the line.",
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "finding": {
+          "title": "Finding",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/AnalystSeverity"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "finding",
+        "why",
+        "evidence"
+      ],
+      "title": "FindingV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/FindingV2"
+      },
+      "title": "Findings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "findings"
+  ],
+  "title": "NetworkAnalysisV2",
+  "type": "object"
+}

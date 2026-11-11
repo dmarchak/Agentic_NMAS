@@ -13,7 +13,8 @@ two passes, its three reads a pass, its check of each request, its mask and 4 Ki
 answer, its send log): pass 1 is B1's call with an optional ``reads`` field; Mercury checks
 each read asked for and answers the allowed ones; pass 2 has the reads and cannot ask again.
 Same model, same prompt otherwise (prompts/sdn_analyse_tools.v1.md and .v2.md are B1's text
-with the reads' part added), same snapshot facts.
+with the reads' part added; .v3.md and .v4.md are the same on B1's v2, `PASSES_OF`), same
+snapshot facts.
 
 **The tools are a closed set of reads served from the SEALED snapshot** (`SEALED`, the
 ``seal`` transport, the topology class): nothing is read live, ever, during an analysis or an
@@ -65,8 +66,15 @@ from modules.sdn import analyst as AN
 log = logging.getLogger(__name__)
 
 FEATURE = "sdn_analyse_tools"
-PROMPT_FIRST = ("sdn_analyse_tools", 1)
-PROMPT_SECOND = ("sdn_analyse_tools", 2)
+#: The loop's two prompts (pass 1, pass 2) by the version of B1's prompt each pair is built on
+#: (`analyst.SCHEMA_OF`; "same prompt otherwise": each is that version's text with the reads'
+#: part added). B1's v2 (an evidence item is one id and nothing else) is the trace tool's v3
+#: and v4; pass 2's says the same of a read cited as ``read:<n>``.
+PASSES_OF = {1: (("sdn_analyse_tools", 1), ("sdn_analyse_tools", 2)),
+             2: (("sdn_analyse_tools", 3), ("sdn_analyse_tools", 4))}
+#: The pair in use: the one built on B1's prompt in use (`analyst.PROMPT`), so the two
+#: techniques are adopted together and the comparison stays the reads' alone.
+PROMPT_FIRST, PROMPT_SECOND = PASSES_OF[AN.PROMPT[1]]
 #: The loop's whole spend at most, in tokens: both passes' prompts by the gateway's fallback
 #: over-estimate and each pass's whole answer bound (its pin's max_tokens). Provisional, not
 #: measured: the lab's five switches are about 25,000 tokens a pass (pins/sdn_analyse.json);
@@ -432,9 +440,33 @@ def _no_whole_refusal(answer, *, read_ids) -> str:
     return ""
 
 
-LOOP = RL.LoopFeature(task=FEATURE, first=(PROMPT_FIRST, NetworkAnalysisReads),
-                      second=(PROMPT_SECOND, AN.NetworkAnalysis), check=_no_whole_refusal,
-                      cites=_cites)
+@register("sdn_analyse_tools", 2)
+class NetworkAnalysisReadsV2(StrictModel):
+    """Pass 1: B1's findings, and at most 3 reads asked of Mercury (a fourth is refused)."""
+    # On B1's prompt v2: each evidence item described as an id alone (`analyst.FindingV2`).
+    findings: List[AN.FindingV2]
+    reads: List[SealedRead] = []
+
+
+#: Pass 1's schema by B1's prompt version (pass 2's is B1's own, `analyst.SCHEMA_OF`).
+READS_SCHEMA_OF = {1: NetworkAnalysisReads, 2: NetworkAnalysisReadsV2}
+#: The loop by B1's prompt version (`PASSES_OF`): the one in use, and each candidate, asked
+#: only by the evaluation (`ask_snapshot`'s *prompt*) until its measurement adopts it.
+LOOPS = {v: RL.LoopFeature(task=FEATURE, first=(PASSES_OF[v][0], READS_SCHEMA_OF[v]),
+                           second=(PASSES_OF[v][1], AN.SCHEMA_OF[v]),
+                           check=_no_whole_refusal, cites=_cites)
+         for v in sorted(PASSES_OF)}
+LOOP = LOOPS[AN.PROMPT[1]]
+
+
+def loop_for(version: int = None):
+    """The loop built on *version* of B1's prompt (None: the one in use); ValueError names a
+    version no loop is built on."""
+    version = AN.PROMPT[1] if version is None else version
+    if version not in LOOPS:
+        raise ValueError(f"no trace-tool prompts are built on sdn_analyse v{version}; they "
+                         f"are built on {', '.join(f'v{v}' for v in sorted(LOOPS))}")
+    return LOOPS[version]
 
 
 # ───────────────────────────────────────────────────────────────────────────── the call
@@ -495,16 +527,20 @@ def _reads_shown(records: list, said: dict) -> list:
 
 
 def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=None,
-                 today: str = None, now: float = None, cap: int = None) -> dict:
+                 today: str = None, now: float = None, cap: int = None,
+                 prompt: int = None) -> dict:
     """The tool-calling analysis of *snap* (sealed, in hand), reading and writing no analyst
     store: the loop's two passes at most (`read_loop.run` over `SEALED`), then B1's check of the
     final answer. B4's technique arm (scripts/nmas-sdn-b4-eval) and the press's core. Refused
     before any call on the classification marking or the topology class off
     (``refused_before``). ``{"ok", "error", "detail", "network", "snapshot_id", "actor", "at",
     "call_id", "calls", "cost_usd", "model", "technique", "passes", "state", "words", "loop",
-    "reads", "findings", "dropped", "dropped_words", "removed_ids", "capped"}``."""
+    "reads", "findings", "dropped", "dropped_words", "removed_ids", "capped"}``. *prompt* is a
+    version of B1's prompt whose loop is asked in place of the one in use (`loop_for`: a
+    candidate measured before it is adopted; the evaluation's ``--prompt``), never a press's."""
     from modules.ai import egress_classes, profiles
 
+    loop = loop_for(prompt)
     now = time.time() if now is None else now
     snap_id = snap.get("id", "")
     base = {"ok": False, "error": "", "detail": "", "network": network, "snapshot_id": snap_id,
@@ -524,7 +560,7 @@ def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=No
                     detail=("the snapshot's flows and port rates, and every read of it, are "
                             f"the topology class, and {gate['why']}; nothing was sent"))
     scope = {"snapshot": snap, "said": {}}
-    got = RL.run(SEALED, LOOP, ask=_total_capped(cap), network=network,
+    got = RL.run(SEALED, loop, ask=_total_capped(cap), network=network,
                  data={"snapshot": AN.facts(snap), "hosts": hosts_text(snap)}, actor=actor,
                  trigger=trigger, subject={"kind": "sdn_snapshot", "id": snap_id, "devices": []},
                  scope=scope, send=send, today=today)
@@ -654,7 +690,8 @@ def compare(network: str, b1: dict, tools: dict, kept: dict = None) -> dict:
     on the same snapshot: per technique its findings, planted found and missed, false
     positives by `judge`, calls and cost. The abnormal ids are the latest snapshot's kept
     summary (*kept*, `summary_of`'s) when it is that snapshot (no snapshot read), else that
-    snapshot's own."""
+    snapshot's own. An analysis checked again (`analyst.recheck`) is counted from that check
+    (`analyst.as_checked`), as the sheet is marked, its row saying so (``rechecked``)."""
     if not (b1 and tools and b1.get("ok") and tools.get("ok")
             and b1.get("snapshot_id") == tools.get("snapshot_id")):
         return {}
@@ -668,11 +705,12 @@ def compare(network: str, b1: dict, tools: dict, kept: dict = None) -> dict:
         abnormal = abnormal_ids(snap)
     issues = AN.planted(network)["issues"]
     rows = []
-    for name, r, calls_n in (("Without tools (B1)", b1, 1),
-                             ("With the trace tool", tools, len(tools.get("calls") or []))):
+    for name, first, calls_n in (("Without tools (B1)", b1, 1),
+                                 ("With the trace tool", tools, len(tools.get("calls") or []))):
+        r = AN.as_checked(first)
         marked = AN.marks(issues, r)
         judged = [judge(f, issues, abnormal) for f in r.get("findings") or []]
-        rows.append({"name": name, "findings": len(judged),
+        rows.append({"name": name, "findings": len(judged), "rechecked": r is not first,
                      "found": sum(m["found"] == "found" for m in marked),
                      "missed": sum(m["found"] == "missed" for m in marked),
                      "false_positives": judged.count("false_positive"),

@@ -593,8 +593,15 @@ def _b4_rows(network: str, row: dict) -> list:
                             outcome="counted as a benign run answered as a threat in the "
                                     "run's report (the pass rule's measure)",
                             case=row.get("case") or "",
-                            expected="no finding of medium or above, past "
-                                     + (", ".join(row.get("severities") or []) or "none"),
+                            # A case naming flows whose matches are disjoint (the Lab 9
+                            # sitting's benign cases): the run set them against each other.
+                            expected=("no finding above info citing both flows of a pair "
+                                      "whose matches are disjoint: "
+                                      + "; ".join(" and ".join(g) for g in row.get("disjoint")
+                                                  or [])
+                                      if row.get("false_conflicts") else
+                                      "no finding of medium or above, past "
+                                      + (", ".join(row.get("severities") or []) or "none")),
                             got=over, link=record, source="sdn_evaluations"))
     return out
 

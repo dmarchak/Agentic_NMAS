@@ -3111,6 +3111,12 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-an-reads { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .sdn-an-reads li { overflow-wrap: anywhere; }
 .sdn-an-tools h3 { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+/* Check this answer again (no AI call): its control and, once pressed, the re-check's findings
+   under the first check's, on either findings card. */
+.sdn-an-recheck { display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  border-top: 1px solid var(--line-2); padding-top: 10px; }
+.sdn-an-recheck form { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+.sdn-an-recheck h3 { margin: 0; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 900px) {
   .sdn-an-cols { grid-template-columns: 1fr; }
 }
