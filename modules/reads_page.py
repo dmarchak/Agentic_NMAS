@@ -114,7 +114,9 @@ def outcome_words(record: dict, host: str) -> dict:
 
 
 def recent(list_name: str, host: str, limit: int = 10) -> dict:
-    got = reads.runs(list_name, device=host, limit=limit)
+    """*host*'s recent runs a person (or the agent, for one) asked: a read an operation or a
+    heal made as part of its own run is listed in that run's record, never here."""
+    got = reads.runs(list_name, device=host, limit=limit, part=False)
     rows = [{"id": r["id"], "at": _when(r.get("started_at")), "who": reads.actor_words(r),
              "commands": r.get("commands") or [], "devices": len(r.get("devices") or []),
              **outcome_words(r, host)} for r in got["runs"]]
@@ -351,7 +353,9 @@ def logging_view(record: dict, running: bool, lost: bool = False) -> dict:
 
 
 def recent_runs(list_name: str, limit: int = 20) -> dict:
-    got = reads.runs(list_name, limit=limit)
+    """Show commands' recent runs: those a person (or the agent, for one) asked. A read an
+    operation or a heal made as part of its own run is listed in that run's record."""
+    got = reads.runs(list_name, limit=limit, part=False)
     return {"rows": [{"id": r["id"], "at": _when(r.get("started_at")), "who": reads.actor_words(r),
                       "commands": r.get("commands") or [], "devices": len(r.get("devices") or []),
                       "state": r.get("state"), "refused": r.get("refused", ""),

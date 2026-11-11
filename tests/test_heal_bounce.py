@@ -209,6 +209,83 @@ def decide(src, diagnosis=PICK_DIAGNOSIS):
     return got, rows
 
 
+class TestTheDecisionsOwnReads:
+    """The decision's fresh reads are the decision's (the operator, 2026-11-11): kept in the
+    reads store naming the incident and the step, listed under the step in the step log,
+    never Show commands runs of their own."""
+
+    @pytest.fixture
+    def engine(self, stores, monkeypatch):
+        """The REAL sources' read through the real reads engine (its allowlist, masking and
+        store), each device's session answering from the fake sources' captures."""
+        src = Src()
+
+        class Conn:
+            def __init__(self, host):
+                self.host = host
+
+            def answer(self, command):
+                return src.answers[(self.host, command)]
+
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path=None: [dict(DEV), dict(FAR)])
+        monkeypatch.setattr("modules.commands.run_device_command",
+                            lambda conn, c, read_timeout=None: conn.answer(c))
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda dev, fn: fn(Conn(dev["hostname"])))
+        src.read = B().Sources(NET).read
+        return src
+
+    def test_they_name_the_incident_and_are_listed_under_the_decisions_step(self, engine):
+        from modules import history_sources as HS
+        from modules import reads_page
+        from modules.heal import steplog
+        from modules.nsot import listref, reads
+        got, rows = decide(engine)
+        assert rows[-1]["outcome"] == "would_heal", rows[-1]["words"]
+        kept = list(reversed(reads.runs(NET)["runs"]))
+        assert [r["devices"] for r in kept] == [["r3"], ["r4"]]
+        assert {r["by"] for r in kept} == {"heal"}
+        assert all(r["part_of"] == {"kind": "port bounce", "id": "hi-1", "step": "fresh",
+                                    "record": "heal steps"} for r in kept)
+        ctx = {"ref": listref.resolve(NET), "device": "", "limit": 50, "since": None,
+               "members": None}
+        assert HS.show_commands(ctx)["events"] == []
+        assert reads_page.recent_runs(NET)["rows"] == []
+        assert reads_page.recent(NET, "r3")["rows"] == []
+        (row,) = [r for r in steplog.read(NET)["rows"] if r["row"] == "decision"]
+        (step,) = [s for s in row["steps"] if s["step"] == "fresh"]
+        asked = [(e["device"], e["command"]) for e in step["reads"]]
+        assert asked == [("r3", f"show interfaces {GI4}"), ("r3", f"show ip cef {MANAGER}"),
+                         ("r4", f"show interfaces {GI4}")]
+        assert [e["read_id"] for e in step["reads"]] == [kept[0]["id"], kept[0]["id"],
+                                                         kept[1]["id"]]
+        assert {e["result"] for e in step["reads"]} == {"pass"}
+        assert {e["at"] for e in step["reads"]} == {
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(T0))}, "to the second, as all are"
+        # History's row of the incident says the step's reads after its words, counted.
+        (incident,) = HS.heal(ctx)["events"]
+        (said,) = [v for k, v in incident["record"] if str(k).endswith(". fresh")]
+        assert said.startswith("ok: r3: 2 of 2 read(s); r4: read. Reads: ")
+        assert f"1 read of `show ip cef {MANAGER}`: 1 pass; the last: r3: read" in said
+        assert f"2 reads of `show interfaces {GI4}`: 2 pass; the last: r4: read" in said
+        # A person's own run of the same read is still one row.
+        mine = reads.run(NET, ["r3"], [f"show interfaces {GI4}"], "op@example.invalid")
+        (event,) = HS.show_commands(ctx)["events"]
+        assert dict(event["record"])["Run"] == mine["id"]
+
+    def test_a_read_not_answered_is_unreadable_under_the_step(self, stores):
+        from modules.heal import steplog
+        src = Src()
+        del src.answers[("r4", f"show interfaces {GI4}")]
+        decide(src)
+        (row,) = [r for r in steplog.read(NET)["rows"] if r["row"] == "decision"]
+        (step,) = [s for s in row["steps"] if s["step"] == "fresh"]
+        far = [e for e in step["reads"] if e["device"] == "r4"]
+        assert [e["result"] for e in far] == ["unreadable"]
+        assert far[0]["words"] == "r4: not read (not answered)" and far[0]["read_id"] == ""
+
+
 class TestTheDecision:
     def test_no_action_chosen_records_nothing(self, stores):
         got, rows = decide(Src(), {"hypotheses": []})

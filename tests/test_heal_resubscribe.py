@@ -914,21 +914,259 @@ class TestTheVerify:
         assert v["state"] == "cant_tell" and rec["outcome"] == "unverified"
 
     def test_the_receiver_read_goes_through_the_reads_engine(self, lab):
-        """(a) on History › Reads: a run of the reads engine, recorded, as the person."""
+        """(a) through the reads engine and kept in its store, as the RUN's own read (the
+        operator, 2026-11-11): it names the run, its kind is the operation's, never
+        ``person``, and the person is who it was read for."""
         from modules.heal import resubscribe as R
         from modules.nsot import reads
-        from tests.test_heal_diagnose import Fleet
-        f = Fleet({("r2", "show telemetry ietf subscription 101 receiver"): [
-            R2_101, new_connection(R2_101)]})
-        src = Src()
-        real = R.Sources(NET, session=f)
-        src.receiver = real.receiver
+        src, _f = engine_src([R2_101, new_connection(R2_101)])
         rec = run(src, subs=("101",))
         assert rec["outcome"] == "resubscribed", rec["why"]
         runs = reads.runs(NET)["runs"]
         assert len(runs) == 2 and {r["actor"] for r in runs} == {ACTOR}
-        assert all(r["commands"] == ["show telemetry ietf subscription 101 receiver"]
-                   for r in runs)
+        assert all(r["commands"] == [RECEIVER_101] for r in runs)
+        assert R.READS_BY == reads.OPERATION and {r["by"] for r in runs} == {reads.OPERATION}
+        assert [r["part_of"] for r in reversed(runs)] == [
+            {"kind": R.OPERATION, "id": rec["id"], "step": step, "record": "privileged"}
+            for step in ("before", "verify")]
+        assert reads.actor_words(runs[0]) == f"{R.OPERATION}'s own reads, for {ACTOR}"
+
+
+# ── The run's own reads, in its own record (the operator, 2026-11-11) ───────────────────────
+
+RECEIVER_101 = "show telemetry ietf subscription 101 receiver"
+
+
+def engine_src(answers, **kw):
+    """The operation's sources with (a)'s read through the REAL reads engine (its allowlist,
+    hold, masking and store), the device's session faked at the engine's one seam: r2 answers
+    subscription 101's receiver read with each of *answers* in turn."""
+    from modules.heal import resubscribe as R
+    from tests.test_heal_diagnose import Fleet
+    f = Fleet({("r2", RECEIVER_101): list(answers)})
+    src = Src(**kw)
+    src.receiver = R.Sources(NET, session=f).receiver
+    return src, f
+
+
+def history(source):
+    """What History's *source* lists for the network, read as History reads it."""
+    from modules import history_sources as HS
+    from modules.nsot import listref
+    return HS.SOURCES[source]({"ref": listref.resolve(NET), "device": "", "limit": 50,
+                               "since": None, "members": None})["events"]
+
+
+def verify_step(rec, sub="101"):
+    (step,) = [s for s in rec["steps"] if s["step"] == "verify" and s.get("sub") == sub]
+    return step
+
+
+class TestTheRunsOwnReads:
+    #: The receiver before, three reads still on the old connection, then the new one: the
+    #: verify reads the device four times.
+    ANSWERS = [R2_101, R2_101, R2_101, R2_101, new_connection(R2_101)]
+
+    def test_n_verify_reads_are_one_record_and_never_rows_of_their_own(self, lab):
+        """The defect: 52 verify reads were 52 Show commands rows under the person's name.
+        Now one operation record holds each read under its verify step, and History's reads
+        source, Show commands' recent runs and Ask the device list none of them."""
+        from modules import reads_page
+        from modules.nsot import privileged, reads
+        src, f = engine_src(self.ANSWERS)
+        rec = stored(run(src, subs=("101",)))
+        assert rec["outcome"] == "resubscribed", rec["why"]
+        asked = [s for s in f.sent if s == ("r2", RECEIVER_101)]
+        assert len(asked) == 5, "one read before, four in the verify"
+        kept = list(reversed(reads.runs(NET)["runs"]))
+        assert len(kept) == 5, "each read is still kept in the reads store, masked, once"
+        # No row of its own anywhere a person's runs are listed.
+        assert history("show_commands") == []
+        assert reads_page.recent_runs(NET)["rows"] == []
+        assert reads_page.recent(NET, "r2")["rows"] == []
+        assert reads.runs(NET, part=False)["runs"] == []
+        assert len(reads.runs(NET, part=True)["runs"]) == 5
+        # One operation record, the reads under its steps, in order, each naming its answer.
+        assert [r["id"] for r in privileged.runs(NET)["runs"]] == [rec["id"]]
+        mine = [e for e in verify_step(rec)["reads"] if e["check"] == "device"]
+        assert [e["read_id"] for e in mine] == [r["id"] for r in kept[1:]]
+        assert [e["result"] for e in mine] == ["fail", "fail", "fail", "pass"]
+        assert {e["command"] for e in mine} == {RECEIVER_101}
+        assert all("the same connection as before" in e["words"] for e in mine[:3])
+        assert "connection 985, a new one" in mine[3]["words"]
+        ats = [e["at"] for e in mine]
+        assert ats == sorted(ats) and len(set(ats)) == 4, "each when it was read, in order"
+        before = next(s for s in rec["steps"] if s["step"] == "before")
+        assert [e["read_id"] for e in before["reads"] if e["check"] == "device"] == [
+            kept[0]["id"]]
+        # The run is the person's, and its reads are attributable to it and through it.
+        assert rec["actor"] == ACTOR and rec["actor_verified"] == "access"
+        assert {r["part_of"]["id"] for r in kept} == {rec["id"]}
+        # History's row of the operation says its reads in one line, counted.
+        (event,) = history("privileged")
+        said = dict(event["record"])["Reads, verify"]
+        assert f"4 reads of `{RECEIVER_101}`, about 10 s apart: 1 pass, 3 fail" in said
+
+    def test_a_persons_own_run_and_a_read_kept_before_the_rule_are_each_still_a_row(self, lab):
+        """Beside an operation's reads, History lists exactly the runs that name no run: a
+        person's own, and a row an earlier release kept ``by`` a person for an operation.
+        Nothing in that old row says whose it was, so it stays as it was recorded, its detail
+        saying what it was for, and nothing is guessed."""
+        from modules import reads_page
+        from modules.nsot import reads
+        src, f = engine_src(self.ANSWERS)
+        old = reads.run(NET, ["r2"], [RECEIVER_101], ACTOR, session=f,
+                        purpose="telemetry re-subscribe: subscription 101's receiver")
+        run(src, subs=("101",))
+        mine = reads.run(NET, ["r2"], [RECEIVER_101], ACTOR, session=f)
+        newest, oldest = history("show_commands")
+        assert dict(newest["record"])["Run"] == mine["id"] and newest["who"] == ACTOR
+        assert dict(oldest["record"])["Run"] == old["id"]
+        assert oldest["detail"] == "telemetry re-subscribe: subscription 101's receiver"
+        assert [r["id"] for r in reads_page.recent_runs(NET)["rows"]] == [mine["id"], old["id"]]
+        assert [r["id"] for r in reads_page.recent(NET, "r2")["rows"]] == [mine["id"], old["id"]]
+        assert mine["by"] == "person" and "part_of" not in mine and "part_of" not in old
+
+    def test_a_run_in_progress_shows_the_reads_made_so_far(self, lab):
+        from modules.nsot import privileged
+        seen = []
+
+        class Watched(Clock):
+            def sleep(self, s):
+                (rec,) = privileged.runs(NET)["runs"]
+                steps = [x for x in rec["steps"] if x["step"] == "verify"]
+                seen.append((rec["state"], steps[0]["result"] if steps else "",
+                             len(steps[0]["reads"]) if steps else 0))
+                super().sleep(s)
+
+        src, _f = engine_src(self.ANSWERS, clock=Watched())
+        rec = stored(run(src, subs=("101",)))
+        during = [x for x in seen if x[1]]
+        assert [x[:2] for x in during] == [("running", "running")] * 3, seen
+        counts = [x[2] for x in during]
+        assert counts == sorted(counts) and counts[0] >= 1 and counts[-1] > counts[0], counts
+        step = verify_step(rec)
+        assert step["result"] == "ok" and len(step["reads"]) > counts[-1]
+
+    def test_a_verify_is_begun_with_its_bound_and_ended_in_place(self, lab):
+        """The verify is the run's newest step from its start, with when it began and the
+        longest it waits, so the card counts it down; its end is the same record, keeping
+        when it began, its bound, its subscription and its reads."""
+        from modules import run_stepper
+        from modules.heal import resubscribe as R
+        from modules.nsot import privileged
+        seen = []
+
+        class Watched(Clock):
+            def sleep(self, s):
+                (rec,) = privileged.runs(NET)["runs"]
+                seen.append((self.t, [dict(x) for x in rec["steps"]]))
+                super().sleep(s)
+
+        src, _f = engine_src(self.ANSWERS, clock=Watched())
+        rec = stored(run(src, subs=("101",)))
+        at, steps = next((t, s) for t, s in seen if s[-1]["step"] == "verify")
+        running = steps[-1]
+        assert running["result"] == "running" and running["began"] == running["at"]
+        assert (running["wait_s"], running["wait_bound"]) == (R.VERIFY_BOUND_S, True)
+        drawn = run_stepper.from_record(R.STEPS, steps, ended=False, now=at + 10)
+        assert drawn["lead"]["key"] == "verify"
+        assert drawn["lead"]["wait"]["words"] == "up to 290 s: 280 s left"
+        ended = verify_step(rec)
+        assert ended["result"] == "ok" and ended["began"] == running["began"] < ended["at"]
+        assert (ended["wait_s"], ended["wait_bound"], ended["sub"]) == (290, True, "101")
+        assert len(ended["reads"]) > len(running["reads"]) >= 1 and ended["checks"]
+        assert [s["step"] for s in rec["steps"]].count("verify") == 1, "ended in place"
+
+    def test_the_card_is_told_after_every_round_of_a_verifys_reads(self, lab, monkeypatch):
+        """Each round's reads move the run's card by the one path every step's change takes
+        (`op_progress.moved`): told with the reads of rounds one, two and three in the list,
+        not only when the verify begins and ends."""
+        from modules.nsot import privileged
+        told = []
+
+        def moved(op_id=None):
+            got = privileged.runs(NET)["runs"]
+            steps = got[0]["steps"] if got else []
+            if steps and steps[-1]["step"] == "verify" and steps[-1]["result"] == "running":
+                told.append(len(steps[-1].get("reads") or []))
+
+        monkeypatch.setattr("modules.op_progress.moved", moved)
+        src, _f = engine_src(self.ANSWERS)
+        rec = stored(run(src, subs=("101",)))
+        assert rec["outcome"] == "resubscribed", rec["why"]
+        # Round 1 reads all three, round 2 the device and the collector, round 3 the device;
+        # the fourth telling is the verify's own end (its last round passed), said before the
+        # record is written again.
+        assert told == [3, 5, 6, 6], "what the stored record held each time the card was told"
+
+    def test_every_read_of_the_verify_is_kept_and_the_record_stays_bounded(self, lab):
+        """No data for the whole bound: 30 rounds. One entry a read made, each short, the
+        step's reads under the bound the reads store states."""
+        import json
+        from modules.nsot import reads
+        series, collector = seq([ABSENT]), seq([coll(OLD)])
+        src = Src(receiver=seq([receiver_read(R2_101)]), series=series, collector=collector)
+        rec = stored(run(src, subs=("101",)))
+        assert rec["outcome"] == "not_back"
+        step = verify_step(rec)
+        by_check = {k: [e for e in step["reads"] if e["check"] == k]
+                    for k in ("device", "stream", "collector")}
+        assert len(by_check["stream"]) == series.calls["n"] == 30
+        assert len(by_check["collector"]) == collector.calls["n"] - 1, "less the read before"
+        assert len(by_check["device"]) == src.receiver.calls["n"] - 1
+        assert {e["result"] for e in by_check["stream"]} == {"fail"}
+        assert all(e["read_id"] == "" for e in by_check["stream"] + by_check["collector"])
+        assert len(step["reads"]) <= reads.STEP_READS_MAX and "reads_dropped" not in step
+        assert all(len(e["words"]) <= reads.ENTRY_WORDS_MAX for e in step["reads"])
+        assert len(json.dumps(step["reads"], indent=1)) < 64 * 1024
+
+    @pytest.mark.parametrize("address", ["192.0.2.10", "2001:db8::10"])
+    def test_the_collectors_read_is_named_by_its_address_ipv4_and_ipv6(self, address):
+        """The collector's read is named in the record by the receiver's address as intent
+        holds it, an IPv6 one whole beside an IPv4 one."""
+        from modules.heal import resubscribe as R
+        from modules.nsot import reads
+        asked = R._collector_asked({"address": address, "port": 57000})
+        assert asked == f"the collector's sessions on {address} port 57000"
+        entry = reads.read_entry(asked, "pass", "1 session(s) from r2",
+                                 at="2026-11-11T16:38:25Z", check="collector")
+        assert entry["command"] == asked and entry["read_id"] == ""
+
+    def test_an_unreadable_read_is_neither_a_pass_nor_a_fail(self, lab):
+        src = Src(receiver=seq([receiver_read(R2_101), UNREAD]))
+        rec = stored(run(src, subs=("101",)))
+        mine = [e for e in verify_step(rec)["reads"] if e["check"] == "device"]
+        assert mine and {e["result"] for e in mine} == {"unreadable"}
+        assert "the session failed" in mine[0]["words"]
+
+    def test_a_run_that_fails_inside_its_verify_leaves_no_step_running(self, lab):
+        def broken(*_a):
+            raise OSError("Prometheus went away")
+
+        src = Src(series=broken)
+        rec = stored(run(src, subs=("101",)))
+        assert rec["outcome"] == "failed" and rec["state"] == "failed"
+        step = verify_step(rec)
+        assert step["result"] == "unknown" and "the run ended before this step did" in \
+            step["words"]
+        assert [e["check"] for e in step["reads"]] == ["device"], "what it had read is kept"
+        assert not [s for s in rec["steps"] if s["result"] == "running"]
+
+    def test_a_read_off_the_allowlist_is_still_refused_and_said(self, lab, monkeypatch):
+        """The operation's reads go through the same allowlist, whole: one that is no read is
+        refused before any session, recorded as the run's, and the verify cannot tell."""
+        from modules.nsot import reads
+        monkeypatch.setattr("modules.heal.diagnose.render",
+                            lambda kind, dialect, **kw: "clear telemetry ietf subscription 101")
+        src, f = engine_src(self.ANSWERS)
+        rec = stored(run(src, subs=("101",)))
+        assert f.sent == [], "nothing reached the device through the reads engine"
+        assert {r["state"] for r in reads.runs(NET)["runs"]} == {"refused"}
+        assert {r["part_of"]["id"] for r in reads.runs(NET)["runs"]} == {rec["id"]}
+        mine = [e for e in verify_step(rec)["reads"] if e["check"] == "device"]
+        assert mine and {e["result"] for e in mine} == {"unreadable"}
+        assert "REFUSED" in mine[0]["words"] and history("show_commands") == []
 
 
 # ── Self-healing sees the operation's own change as Mercury's ───────────────────────────────

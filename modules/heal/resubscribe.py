@@ -115,8 +115,13 @@ MEASURED_BACK_S = 116
 VERIFY_BOUND_S = 290
 #: The verify reads again this often while it waits.
 POLL_S = 10
-#: The reads engine's kind for the verify's device reads (`reads.run`'s *by*).
-READS_BY = "person"
+#: The reads engine's kind for the operation's device reads (`reads.run`'s *by*,
+#: `reads.OPERATION`): the operation asks them, never the person as a Show commands run of
+#: their own (the operator, 2026-11-11). Each is the run's (`reads.within`, in `apply`), and
+#: the run's record names the person.
+READS_BY = "operation"
+#: Where the run's record is kept, as its reads name it (`reads.part`'s *record*).
+RECORD = "privileged"
 ANNOUNCE_KEYS = ("privileged",)
 ANNOUNCER = "privileged"
 
@@ -478,14 +483,14 @@ class Sources:
         return conn
 
     def receiver(self, host: str, sub: str, actor: str, dialect: str) -> dict:
-        """(a)'s read, through THE reads engine (recorded on History › Reads), in this thread so
-        the operation's own hold covers it: ``{"state": "read"|"unread", "rows", "why",
-        "run"}``."""
-        from modules.heal import diagnose as D
+        """(a)'s read, through THE reads engine (masked and kept in its store, as the run's:
+        `reads.within` in `apply`), in this thread so the operation's own hold covers it:
+        ``{"state": "read"|"unread", "rows", "why", "run"}``, *run* the reads store's id the
+        run's record names the read by."""
         from modules.heal import diagnose_parse as P
         from modules.nsot import reads
 
-        cmd = D.render("telemetry_receiver", dialect, sub=sub)
+        cmd = receiver_command(dialect, sub)
         try:
             rec = reads.run(self.network, [host], [cmd], actor, by=READS_BY, inline=True,
                             session=self.session,
@@ -523,6 +528,14 @@ class Sources:
         from modules.redact import known_secret_values
 
         return known_secret_values()
+
+
+def receiver_command(dialect: str, sub: str) -> str:
+    """(a)'s read of one subscription's receiver, as the reads engine is asked it and the
+    run's record names it."""
+    from modules.heal import diagnose as D
+
+    return D.render("telemetry_receiver", dialect, sub=sub)
 
 
 # ── The record ──────────────────────────────────────────────────────────────────────────────
@@ -604,35 +617,68 @@ def _moved() -> None:
 class _Run:
     def __init__(self, network: str, rec: dict, src, values: dict):
         self.network, self.rec, self.src, self.values = network, rec, src, values
+        #: The run its reads name (`reads.within`'s, set by `apply` once the device is held).
+        self.part = {}
 
     def mask(self, text: str) -> str:
         from modules.redact import redact_text
 
         return redact_text(text or "", self.values)
 
-    def begin(self, name: str, words: str, *, wait_s=None) -> None:
+    def begin(self, name: str, words: str, *, wait_s=None, bound: bool = False,
+              **more) -> dict:
         """A step that takes time begins: recorded ``running`` now, with when it began and
-        the wait it declares, so the run's newest step is the one it is in (the operator,
-        2026-11-11); its own `step` then ends it in place."""
+        the wait it declares (a fixed length, or with *bound* the longest it waits:
+        ``wait_bound``), so the run's newest step is the one it is in (the operator,
+        2026-11-11); its own `step` then ends it in place. Returns the record: what the step
+        reads while it runs goes under it as it happens (`read`). *more* is kept on it (a
+        verify's ``sub`` and its ``reads``)."""
         at = _iso(self.src.clock())
-        self.rec["steps"].append(dict({"step": name, "result": "running",
-                                       "words": self.mask(words), "at": at, "began": at},
-                                      **({"wait_s": wait_s} if wait_s else {})))
+        got = dict({"step": name, "result": "running", "words": self.mask(words), "at": at,
+                    "began": at},
+                   **({"wait_s": wait_s} if wait_s else {}),
+                   **({"wait_bound": True} if wait_s and bound else {}), **more)
+        self.rec["steps"].append(got)
         _moved()
+        return got
 
-    def step(self, name: str, result: str, words: str, **more) -> None:
+    def step(self, name: str, result: str, words: str, **more) -> dict:
+        """A step's record, returned. One `begin` opened (the newest record, of this name,
+        still ``running``, with ``began``) is ended in place: it keeps when it began, its
+        wait, and whatever it kept while it ran (its reads, its ``sub``); any other is
+        appended, as before."""
         ended = dict({"step": name, "result": result, "words": self.mask(words),
                       "at": _iso(self.src.clock())}, **more)
         steps = self.rec["steps"]
         last = steps[-1] if steps else {}
         if last.get("step") == name and last.get("result") == "running" and last.get("began"):
-            # The step `begin` opened: ended in place, keeping when it began and its wait.
-            steps[-1] = dict(ended, **{k: last[k] for k in ("began", "wait_s") if k in last})
+            ended = dict({k: v for k, v in last.items() if k not in ended}, **ended)
+            steps[-1] = ended
         else:
             steps.append(ended)
         _moved()
+        return ended
+
+    def read(self, step: dict, command: str, got: dict, found: dict, **more) -> None:
+        """One read into *step*'s ``reads`` as it happens (`reads.keep_read`: in order, short,
+        bounded): what was asked, when, what the operation found in its own words (*found*'s,
+        a check's state and words, masked), and whether it passed, was read and did not, or
+        could not be read; *got*'s ``run`` names the reads store's run that holds the device's
+        masked answer. *more* is kept on the entry (``check``: which of the three it is)."""
+        from modules.nsot import reads
+
+        result = {"pass": "pass", "cant_tell": "unreadable"}.get(found.get("state"), "fail")
+        reads.keep_read(step, reads.read_entry(
+            command, result, self.mask(found.get("words") or ""), at=_iso(self.src.clock()),
+            read_id=(got or {}).get("run") or "", **more))
 
     def finish(self, outcome: str, words: str) -> dict:
+        for s in self.rec["steps"]:
+            if s.get("result") == "running":
+                # A step still going when the run ended (the run failed inside it): said,
+                # never left running in a finished record.
+                s.update(result="unknown", at=_iso(self.src.clock()),
+                         words=f"{s.get('words')}: the run ended before this step did")
         self.rec.update(outcome=outcome, state=RECORD_STATE.get(outcome, "failed"),
                         why=self.mask(words), finished_at=self.src.clock())
         self.step("record", "ok", OUTCOME_WORDS.get(outcome, outcome))
@@ -694,7 +740,11 @@ def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, p
              + f"); the run's hash, the reason in it: {rec['hash']}")
     op = READD_OPERATION if readd else OPERATION
     try:
-        with device_ops.hold(network, device, op, actor, detail=p["words"], ip=p["ip"]):
+        # Every read the run makes in this thread is the run's own (`reads.within`): kept in
+        # the reads store naming this run and its step, never a Show commands run of the
+        # person's.
+        with device_ops.hold(network, device, op, actor, detail=p["words"], ip=p["ip"]), \
+                reads.within(op, rec["id"], "before", RECORD) as run.part:
             run.step("hold", "ok", f"{device} held for the whole operation")
             return _held(run, p, actor, readd)
     except device_ops.DeviceBusy as exc:
@@ -752,21 +802,25 @@ def _held(run: _Run, p: dict, actor: str, readd: bool) -> dict:
                 operation=READD_OPERATION if readd else OPERATION, detail=p["words"],
                 label="telemetry re-subscribe", opener=src.opener, clock=src.clock)
     addresses = src.addresses(p["hv"])
-    before = {}
+    before, asked = {}, {"reads": []}
     for u in p["units"]:
-        before[u["sub"]] = {"receiver": src.receiver(device, u["sub"], actor, p["dialect"]),
-                            "collector": src.collector(u["address"], u["port"], addresses)}
+        b = before[u["sub"]] = {
+            "receiver": src.receiver(device, u["sub"], actor, p["dialect"]),
+            "collector": src.collector(u["address"], u["port"], addresses)}
+        _read_before(run, asked, device, u, b, p["dialect"])
     running, why = _running(s)
     if running is None:
         run.step("before", "refused", f"{device}'s running configuration could not be read "
-                                      f"({why}), and the run compares its end with it")
+                                      f"({why}), and the run compares its end with it",
+                 reads=asked["reads"])
         rec["config_change"] = False
         return run.finish("refused", f"{device}'s running configuration could not be read "
                                      f"before ({why}). Nothing was sent")
     s.before = running
     run.step("before", "ok", "; ".join(_before_words(device, u, before[u["sub"]])
                                        for u in p["units"])
-             + f"; the running configuration, {len(running.splitlines())} lines")
+             + f"; the running configuration, {len(running.splitlines())} lines",
+             reads=asked["reads"])
     # Each subscription's own record, kept from the first send on (`removal`: whether its
     # removal was sent; `landed`: whether its re-add was read back), so a run that fails
     # part-way still says which receivers it left removed (`_unfinished`).
@@ -969,6 +1023,32 @@ def _overall(gots: list, sent: bool, readd: bool) -> tuple:
     return ("readded" if readd else "resubscribed"), words
 
 
+def _read_before(run: _Run, step: dict, device: str, u: dict, b: dict, dialect: str) -> None:
+    """The two reads before, of one subscription, into the ``before`` step's reads."""
+    r, c = b["receiver"], b["collector"]
+    run.read(step, receiver_command(dialect, u["sub"]), r, {
+        "state": "pass" if r.get("state") == "read" else "cant_tell",
+        "words": ("; ".join(f"{x['state']} on connection {x['connection'] or 'none'}"
+                            for x in r.get("rows") or []) or "no receiver")
+        if r.get("state") == "read" else f"not read ({r.get('why')})"}, check="device")
+    run.read(step, _collector_asked(u), None, {
+        "state": "pass" if c.get("state") == "read" else "cant_tell",
+        "words": (f"{len(c.get('sessions') or [])} session(s) from {device}"
+                  if c.get("state") == "read" else f"not read ({c.get('why')})")},
+        check="collector")
+
+
+def _collector_asked(u: dict) -> str:
+    """What (c)'s read asks, as the run's record names it: no device command, Mercury's own
+    read of the collector's sessions."""
+    return f"the collector's sessions on {u['address']} port {u['port']}"
+
+
+def _stream_asked(sub: str) -> str:
+    """What (b)'s read asks, as the run's record names it: Prometheus, no device."""
+    return f"Prometheus: subscription {sub}'s series"
+
+
 def _before_words(device: str, u: dict, b: dict) -> str:
     r, c = b["receiver"], b["collector"]
     dev = ("not read (" + r["why"] + ")" if r["state"] != "read" else
@@ -1064,25 +1144,45 @@ def verify(run: _Run, p: dict, u: dict, before: dict, addresses: list, actor: st
     """The three checks of one subscription, read until each passes or `VERIFY_BOUND_S` ends:
     ``{"outcome": "pass"|"fail"|"cant_tell", "words", "checks", "stale"}``. A check whose last
     read could not be read is ``cant_tell``; one read and not passing at the bound is ``fail``.
-    """
+
+    The step is in the record from its start (`_Run.begin`: ``running``, with when it began
+    and its bound, which the card counts down), and each read goes into its ``reads`` as it
+    happens (`_Run.read`), the record written and the card told after every round: a run in
+    progress shows the reads made so far, and a finished one each of them, in order, without
+    a row of its own anywhere (the operator, 2026-11-11). Its own `_Run.step` ends it in
+    place."""
     src, device, sub = run.src, p["device"], u["sub"]
     start = src.clock()
     deadline = start + VERIFY_BOUND_S
     checks = {k: {"state": "cant_tell", "words": "not read"} for k in
               ("device", "stream", "collector")}
     stale = []
+    run.part["step"] = "verify"
+    step = run.begin("verify", (
+        f"subscription {sub}: reading the device, the stream and the collector every "
+        f"{POLL_S} s until each says it is back, for at most {VERIFY_BOUND_S} s"),
+        wait_s=VERIFY_BOUND_S, bound=True, sub=sub, reads=[])
+    asked = receiver_command(p["dialect"], sub)
     while True:
         if checks["device"]["state"] != "pass":
-            checks["device"] = _device_check(device, sub, before["receiver"],
-                                             src.receiver(device, sub, actor, p["dialect"]))
+            got = src.receiver(device, sub, actor, p["dialect"])
+            checks["device"] = _device_check(device, sub, before["receiver"], got)
+            run.read(step, asked, got, checks["device"], check="device")
         if checks["stream"]["state"] != "pass":
             checks["stream"] = _stream_check(device, sub, src.series(device, sub))
+            run.read(step, _stream_asked(sub), None, checks["stream"], check="stream")
         if checks["collector"]["state"] != "pass":
             checks["collector"], stale = _collector_check(
                 device, u, before["collector"], src.collector(u["address"], u["port"],
                                                               addresses))
+            run.read(step, _collector_asked(u), None, checks["collector"], check="collector")
         if all(c["state"] == "pass" for c in checks.values()) or src.clock() >= deadline:
             break
+        # The reads so far: kept in the record (a page opened later, or served by another
+        # process, reads them there) and the run's card told, by the one path every step's
+        # change takes (`_moved`).
+        _record(run.network, run.rec)
+        _moved()
         src.sleep(min(POLL_S, max(0.0, deadline - src.clock())))
     took = round(src.clock() - start)
     for c in checks.values():

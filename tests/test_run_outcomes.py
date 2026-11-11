@@ -26,6 +26,7 @@ import re
 import pytest
 
 import modules.heal.resubscribe  # noqa: F401  (the operation the cards are about)
+from modules.heal.resubscribe import Sources as RealSources  # before `resub` replaces it
 from tests.conftest import TEST_PERSON
 from tests.test_heal_act import SETTER, FakeAct, decided
 from tests.test_heal_decide import GOLDEN, ROUTE4
@@ -264,10 +265,70 @@ class TestAReSubscribesOutcome:
         assert taken.count('data-took="') == 12
         assert taken.count('<details class="run-checks"') == 2
         assert '<details class="run-checks" open' not in taken
-        assert taken.count("<strong>stream</strong> (fail)") == 2, "each verify's own checks"
+        # Each verify's reads are one level further down, in a closed list of its own (the
+        # run's reads are kept under its step since 2026-11-11): its checks are counted
+        # outside those lists.
+        checks = re.sub(r'<details class="run-reads".*?</details>', "", taken, flags=re.S)
+        assert checks.count("<strong>stream</strong> (fail)") == 2, "each verify's own checks"
+        assert taken.count('<details class="run-reads"') == 2
+        assert not re.search(r'<details class="run-reads"[^>]* open', taken)
         passed = taken[taken.index('data-took="re-add"'):taken.index('data-took="verify"')]
         assert "run-checks" not in passed and "back; the running configuration" in passed, \
             "a step that passed: its one-line outcome, no checks"
+
+    def test_a_failed_verify_draws_its_checks_one_line_of_its_reads_and_the_reads_closed(
+            self, resub):
+        """A real re-subscribe whose stream never comes back, its receiver read through the
+        real reads engine: the card draws, under the failed Verify step and nowhere else, its
+        three checks, ONE line saying its reads, and every read in a closed list one level
+        down; the failure's sentence is on the card once (the operator, 2026-11-11: "its
+        verify reads go in its own record", "Say the failure once")."""
+        from markupsafe import escape
+        from modules import run_stepper
+        from modules.nsot import privileged
+        from tests.test_heal_diagnose import Fleet
+        from tests.test_heal_resubscribe import RECEIVER_101, R2_101, new_connection
+        # The device answers on a new connection at once and the collector's session is new on
+        # its second read; the stream's series stays absent for the whole 290 s: 30 rounds.
+        src = Src(series=seq([ABSENT]))
+        src.receiver = RealSources(NET, session=Fleet({("r2", RECEIVER_101): [
+            R2_101, new_connection(R2_101)]})).receiver
+        run_one(resub, src)
+        rec = privileged.runs(NET)["runs"][0]
+        assert (rec["state"], rec["outcome"]) == ("failed", "not_back")
+        (verify,) = [s for s in rec["steps"] if s["step"] == "verify"]
+        n = len(verify["reads"])
+        assert verify["result"] == "failed" and n == 1 + 30 + 2, "device, stream, collector"
+        assert [e["read_id"] != "" for e in verify["reads"] if e["check"] == "device"] == [True]
+        body = page(resub)
+        lead = body[body.index('data-lead="verify"'):body.index('class="run-trail"')]
+        taken = body[body.index('class="run-trail"'):]
+        assert ">Failed at: Verify 101</strong>" in lead
+        assert "run-line" not in lead and "run-reads" not in lead, "nothing read in the lead"
+        # Under the failed Verify step only, closed.
+        assert body.count('<details class="run-checks"') == 1
+        assert not re.search(r'<details class="run-checks"[^>]* open', body)
+        block = taken[taken.index('data-took="verify"'):taken.index('data-took="record"')]
+        assert block.count('<details class="run-checks"') == 1
+        checks, _sep, listed = block.partition('<details class="run-reads"')
+        # Its three checks, each once, as the verify ended on them.
+        assert checks.count('<li class="run-line run-line-') == 3, "its checks, and no more"
+        for name, state in (("device", "pass"), ("stream", "fail"), ("collector", "pass")):
+            assert checks.count(f"<strong>{name}</strong> ({state})") == 1, name
+        # ONE line saying its reads.
+        said = run_stepper.reads_words(verify["reads"])
+        assert said.startswith(f"{n} reads, about 10 s apart: 2 pass, 31 fail; the last: "
+                               "subscription 101's series is not in Prometheus")
+        assert body.count('class="run-line run-reads-said"') == 1
+        assert checks.count(str(escape(said))) == 1
+        # Every read, one level down, in a closed list.
+        assert body.count('<details class="run-reads"') == 1
+        assert not re.search(r'<details class="run-reads"[^>]* open', body)
+        assert f"<summary>The {n} reads</summary>" in listed
+        assert listed[:listed.index("</ol>")].count('<li class="run-line run-line-') == n
+        # The failure's sentence once: the record's own, in the red box.
+        assert body.count(str(escape(rec["why"]))) == 1
+        assert body.count(str(escape(verify["words"]))) == 0
 
     def test_a_run_still_going_is_one_entry_and_its_page_reopens_its_card(self, resub):
         """The operator's run showed twice ("r7 · telemetry re-subscribe" and "re-subscribe

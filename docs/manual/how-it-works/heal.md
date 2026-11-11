@@ -157,7 +157,9 @@ step is the deploy pipeline's ([Deploy](deploy)):
 5. `authorise`: each removal carries the policy's reason; a dangerous line is refused.
 6. `apply`: holding the device, it applies the program through the deploy's nine stages.
 7. `intent`: each healed unit is checked to be at intent.
-8. `symptom`: the symptom that opened the incident is read again.
+8. `symptom`: the symptom that opened the incident is read again, every 30 s until it is gone
+   or its bound ends. Each read is kept under this step in the heal's record: when, the
+   reader's store that was asked, and gone, still there or not read since the change.
 9. `saved`: once verified, the running configuration is saved and the device released.
 10. `golden`: the device is captured and read again against its new golden.
 11. `record`: the outcome is recorded and the incident closed.
@@ -210,7 +212,9 @@ the mode on it ("dry run" is never read as Auto). A decision's own outcome (woul
 back, a proposal, can't fix) leads with what happened in plain words. Opened, the row says what
 happened (each fact at its time, then a likely cause labelled as a hypothesis where Mercury
 holds both ends of one) and what Mercury did or would do. **Details for the record**, closed
-until you open it, holds every step and its result, the incident and decision ids, the program
+until you open it, holds every step and its result (a step that read says its reads after its
+words, counted: how many, of what, how they went and the last one), the incident and decision
+ids, the program
 (masked) and its hash, the policy, and the records the incident wrote: the deploy receipt, the
 golden commit (`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the
 change record and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
@@ -349,7 +353,10 @@ down with its far end up, or the interface's one OSPF neighbour stuck, is a boun
    text; a decisive finding above it, such as an MTU mismatch, means no action.
 2. `stops`: the kill switch, the mode, a halt and planned work, as for any heal.
 3. `rates`: the heals per device and per network an hour.
-4. `fresh`: both ends are read again, with the device's own route back to Mercury.
+4. `fresh`: both ends are read again, with the device's own route back to Mercury. These reads
+   are the decision's own: each is listed under this step in the step log, naming its masked
+   answer, and none is a Show commands row on History
+   ([How Show commands works](show-commands#an-operations-reads)).
 5. `guards`: the port still down (one that came back by itself is left alone); the far end up,
    not held and not being worked on; never the interface Mercury reaches the device on, never
    one the device's own `show ip cef` (or `show ipv6 cef` for an IPv6 manager) names as its way
@@ -450,7 +457,8 @@ with no configuration cause is a clear considered:
 2. `stops`: the kill switch, the mode, a halt and planned work, as for any heal.
 3. `rates`: the heals per device and per network an hour.
 4. `fresh`: the neighbour is read again (the second of the two reads), with the device's own
-   route back to Mercury.
+   route back to Mercury. These reads are the decision's own, listed under this step in the
+   step log, never Show commands rows on History.
 5. `guards`: the session still not Established (one that came back by itself is left alone);
    never a clear that would withdraw the route the device reaches Mercury by (a hard clear of
    the neighbour that route is learned from is never sent); once per neighbour per incident;

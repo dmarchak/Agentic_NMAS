@@ -123,6 +123,9 @@ ROLLBACK_READ = "show archive config rollback timer"
 #: Who a bounce is recorded as, and how its reads run (`reads.run`'s *by*).
 ACTOR = "Mercury (self-healing)"
 READS_BY = "heal"
+#: Where a decision's steps are kept, as its fresh reads name it (`reads.part`'s *record*):
+#: the heal step log, under its incident.
+RECORD = "heal steps"
 ANNOUNCER = "heal-act"
 
 #: The decision's steps, in order (`consider`), for the manual's How it works page.
@@ -753,7 +756,9 @@ class Sources:
         return manager_toward(address)
 
     def read(self, host: str, commands: list) -> dict:
-        """``{command: answer}`` for the commands answered, ``{"_why": why}`` when none was."""
+        """``{command: answer}`` for the commands answered, ``{"_why": why}`` when none was;
+        ``_run`` is the reads store's run that holds the masked answers (the decision's
+        ``fresh`` step names each read by it, `fresh_reads`)."""
         from modules.nsot import reads
 
         try:
@@ -764,7 +769,8 @@ class Sources:
         r = (rec.get("results") or {}).get(host) or {}
         got = {a["command"]: a.get("answer") or "" for a in r.get("answers") or []
                if a.get("state") == "answered"}
-        return got or {"_why": r.get("why") or r.get("state") or "not read"}
+        return dict(got or {"_why": r.get("why") or r.get("state") or "not read"},
+                    _run=rec.get("id", ""))
 
     def flap(self, device, interface, now, at_least, minutes):
         from modules.heal import flaps
@@ -791,6 +797,25 @@ class Sources:
         from modules.redact import known_secret_values
 
         return known_secret_values()
+
+
+def fresh_reads(asked: list, at: str) -> list:
+    """A decision's fresh reads as its ``fresh`` step keeps them (`reads.read_entry`): one
+    entry for each command asked of each device, *asked* being ``[(host, commands, got)]``
+    with *got* a source's ``read`` answer. The answers stay in the reads store, each named by
+    its run's id; the read is the decision's, never a Show commands run of its own (the
+    operator, 2026-11-11)."""
+    from modules.nsot import reads
+
+    step = {}
+    for host, commands, got in asked:
+        for c in commands:
+            ok = c in got
+            reads.keep_read(step, reads.read_entry(
+                c, "pass" if ok else "unreadable",
+                f"{host}: read" if ok else f"{host}: not read ({got.get('_why') or 'no answer'})",
+                at=at, read_id=got.get("_run") or "", device=host))
+    return step.get("reads") or []
 
 
 def _ospf_rows(text: str, interface: str):
@@ -851,6 +876,7 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
     """The bounce's decision on *pick* (`diagnose.action_for`'s): a record, not yet written."""
     from modules.heal import actions, diagnose, guards
     from modules.heal.guards import value
+    from modules.nsot import reads
 
     src = sources
     kind, at = pick["kind"], pick.get("at") or {}
@@ -873,8 +899,8 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
             "steps": [{"step": "choose", "result": "ok", "words": pick.get("words") or ""}],
             "phase": "stops"}
 
-    def passed(name, words, then):
-        base["steps"].append({"step": name, "result": "ok", "words": words})
+    def passed(name, words, then, **more):
+        base["steps"].append(dict({"step": name, "result": "ok", "words": words}, **more))
         base["phase"] = then
 
     def stop(g, phase=None):
@@ -932,13 +958,20 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
         near.append(cmd)
     if kind == "ospf_reset":
         near.append(f"show ip ospf neighbor {interface} detail")
-    got = src.read(device, near)
     far_dev, far_if = at.get("far_host") or "", at.get("far_interface") or ""
-    far_got = src.read(far_dev, [f"show interfaces {far_if}"]) if far_dev and far_if else {}
+    far = [f"show interfaces {far_if}"] if far_dev and far_if else []
+    # The decision's own reads (`reads.within`): kept in the reads store naming the incident
+    # and this step, listed under it in the step log, never Show commands runs of their own.
+    with reads.within(kind.replace("_", " "), incident_id, "fresh", RECORD):
+        got = src.read(device, near)
+        far_got = src.read(far_dev, far) if far else {}
     far_read = "read" if far_got and "_why" not in far_got else "not read"
     passed("fresh", (f"{device}: {len([c for c in near if c in got])} of {len(near)} read(s)"
                      + (f" ({got['_why']})" if "_why" in got else "")
-                     + (f"; {far_dev}: {far_read}" if far_dev else "")), "guards")
+                     + (f"; {far_dev}: {far_read}" if far_dev else "")), "guards",
+           reads=fresh_reads([(device, near, got), (far_dev, far, far_got)],
+                             # To the second, as every read entry's time is written.
+                             time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))))
 
     facts = {}
     decided = {"holds": True, "words": pick.get("words") or "the diagnosis's first hypothesis"}

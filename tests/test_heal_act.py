@@ -394,6 +394,36 @@ class TestVerify:
         assert src.symptoms_in_apply == 0, "read after the save, the device released"
         assert DS.halted("Default") == {}, "kept, never rolled back"
 
+    def test_the_symptoms_reads_are_under_its_step_in_the_heals_one_record(self, lab):
+        """One heal, one record: each read of its verify is an entry under the ``symptom``
+        step of its act row, and none is a Show commands run on History or anywhere a
+        person's runs are listed."""
+        from modules import history_sources as HS
+        from modules import reads_page
+        from modules.heal import steplog
+        from modules.nsot import listref, reads
+        polls = [reads.read_entry("the adjacencies reader's stored value", result, words,
+                                  at=iso(T0 + 30 * n))
+                 for n, (result, words) in enumerate([("fail", "still there")] * 4
+                                                     + [("pass", "gone")])]
+        running = changed(("logging host 192.0.2.50\n", ""))
+        d = decided(running, triggers=[CFG, ADJ], kinds=("missing_line",))
+        got, _src, _d = act(running, decision=d, symptom={
+            "state": "gone", "words": "the symptom is gone (1 read again)", "reads": polls})
+        assert got["outcome"] == "healed", got["words"]
+        (row,) = [r for r in steplog.read("Default")["rows"] if r["row"] == "act"]
+        (step,) = [s for s in row["steps"] if s["step"] == "symptom"]
+        assert step["reads"] == polls and len(step["reads"]) == 5
+        assert reads.reads_words(step).startswith(
+            "5 reads of `the adjacencies reader's stored value`, about 30 s apart: 1 pass, "
+            "4 fail")
+        ctx = {"ref": listref.resolve("Default"), "device": "", "limit": 50, "since": None,
+               "members": None}
+        assert HS.show_commands(ctx)["events"] == []
+        assert reads_page.recent_runs("Default")["rows"] == []
+        # Only the step that read keeps reads: no other step carries an empty list.
+        assert all("reads" not in s for s in row["steps"] if s["step"] != "symptom")
+
     def test_a_symptom_that_cannot_be_read_is_partial(self, lab):
         running = changed(("logging host 192.0.2.50\n", ""))
         d = decided(running, triggers=[CFG, ADJ], kinds=("missing_line",))
@@ -439,6 +469,27 @@ class TestTheSymptom:
                              read=lambda store: {"state": "ok", "doc": docs.pop(0)},
                              request=lambda store: True)
         assert got["state"] == "gone" and docs == []
+
+    def test_each_read_of_the_symptom_is_kept_in_order_for_the_heals_record(self):
+        """The heal's verify reads go in its own record (the operator, 2026-11-11): when,
+        the store asked, and gone, still there or not read since the change."""
+        clock = {"t": 1000.0}
+        docs = [_adj_doc(900, self.DOWN4), _adj_doc(1010, self.DOWN4), _adj_doc(1040)]
+        got = A.read_symptom("Default", "edge-b", [ADJ], since=1000,
+                             clock=lambda: clock["t"],
+                             sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
+                             read=lambda store: {"state": "ok", "doc": docs.pop(0)},
+                             request=lambda store: True)
+        assert [e["result"] for e in got["reads"]] == ["unreadable", "fail", "pass"]
+        assert [e["at"] for e in got["reads"]] == [iso(1000), iso(1030), iso(1060)]
+        store = A._store_for(ADJ)
+        assert {e["command"] for e in got["reads"]} == {f"the {store} reader's stored value"}
+        assert [e["words"].rsplit(": ", 1)[1] for e in got["reads"]] == [
+            "not read since the change", "still there", "gone"]
+        assert all(e["read_id"] == "" for e in got["reads"]), "a store, never a device read"
+        from modules.nsot import reads
+        assert "3 reads of" in reads.reads_words(got) and "about 30 s apart" in \
+            reads.reads_words(got)
 
     def test_still_down_at_the_bound_is_present(self):
         clock = {"t": 1000.0}

@@ -305,13 +305,18 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
     store asked to read now, then read until every symptom is gone or its bound passes. *state*
     is ``none`` (no symptom to read), ``gone``, ``present`` or ``unreadable`` (a store that
     could not be read, or not read since the change, within the bound: neither a pass nor a
-    fail)."""
+    fail). ``reads`` is every read it made, in order, as the act's ``symptom`` step keeps them
+    (`reads.read_entry`: when, the store asked, gone, still there or unreadable), so the
+    heal's own record says "5 reads, 30 s apart, each still down" (the operator, 2026-11-11);
+    a reader's store is no device read, so each names no run of the reads store."""
     from modules import reader_job
+    from modules.nsot import reads as reads_store
 
     wanted = symptom_triggers(triggers)
     if not wanted:
-        return {"state": "none", "checks": [],
+        return {"state": "none", "checks": [], "reads": [],
                 "words": "the incident named no symptom beyond the configuration"}
+    kept = {"reads": []}
     read = read or reader_job.read_cached
 
     def ask(store):
@@ -336,17 +341,24 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
                      judge(t, got.get("doc"), network, device, since))
             checks.append({"trigger": t.get("words") or t.get("kind"), "store": store,
                            "state": state, "asked": asked[store]})
+            reads_store.keep_read(kept, reads_store.read_entry(
+                f"the {store} reader's stored value", {"gone": "pass", "present": "fail"}.get(
+                    state, "unreadable"),
+                f"{t.get('words') or t.get('kind')}: "
+                + {"gone": "gone", "present": "still there",
+                   "stale": "not read since the change"}.get(state, state),
+                at=_iso(clock())))
         states = {c["state"] for c in checks}
         if states == {"gone"}:
-            return {"state": "gone", "checks": checks,
+            return {"state": "gone", "checks": checks, "reads": kept["reads"],
                     "words": f"the symptom is gone ({len(checks)} read again)"}
         if clock() >= deadline:
             if "present" in states:
                 left = [c["trigger"] for c in checks if c["state"] == "present"]
-                return {"state": "present", "checks": checks,
+                return {"state": "present", "checks": checks, "reads": kept["reads"],
                         "words": f"the symptom is still there after {bound} s: {left[0]}"}
             why = [c for c in checks if c["state"] != "gone"][0]
-            return {"state": "unreadable", "checks": checks,
+            return {"state": "unreadable", "checks": checks, "reads": kept["reads"],
                     "words": (f"the symptom could not be read again within {bound} s "
                               f"({why['store']}: {why['state']}"
                               + ("" if why["asked"] else ", no reader for it runs here")
@@ -589,6 +601,10 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     # read while the job runs (`op_progress.attach`), and what the step log keeps at its end.
     step, begin = live_steps(steps, STEPS, decision["id"], STEP_LABELS, device)
 
+    def symptom_reads(s):
+        """The symptom's reads, under its step (`read_symptom`'s ``reads``); none, no key."""
+        return {"reads": list(s["reads"])} if s.get("reads") else {}
+
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
         try:
@@ -724,7 +740,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             return {"rollback": "", "record": record}
         s = src.symptom(device, inc.get("triggers") or [], applied_at["t"])
         record["symptom"] = {"state": s["state"], "words": s["words"]}
-        step("symptom", s["state"], s["words"])
+        step("symptom", s["state"], s["words"], **symptom_reads(s))
         if s["state"] == "present":
             return {"rollback": (f"removing the feature did not clear its symptom ({s['words']}), "
                                  "so its lines were put back (N13)"), "record": record}
@@ -759,7 +775,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
         begin("symptom", "reading the symptom again, until it is gone or its bound passes",
               wait_s=symptom_bound(inc.get("triggers") or []), bound=True)
         s = src.symptom(device, inc.get("triggers") or [], applied_at["t"])
-        step("symptom", s["state"], s["words"])
+        step("symptom", s["state"], s["words"], **symptom_reads(s))
         return s
 
     return _judge(device, r, report, src, via, step, finish, symptom, begin=begin)
@@ -774,7 +790,8 @@ def symptom_bound(triggers: list) -> int:
 def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
                device: str = ""):
     """``(step, begin)`` over *steps*, a run's own list: `step(name, result, words)` records a
-    step as before; `begin(name, words, wait_s=None, bound=False)` records one that takes time
+    step as before (*more* kept on it: the reads a step made, `reads.read_entry`);
+    `begin(name, words, wait_s=None, bound=False)` records one that takes time
     as ``running`` the moment it starts (with ``began``, and its declared wait: a fixed length,
     or with *bound* the longest it waits), and that step's own `step` then replaces it, keeping
     when it began. So the recorded list ends as it always did, and while the run goes on its
@@ -794,9 +811,9 @@ def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
                           **({"wait_s": wait_s, "wait_bound": bool(bound)} if wait_s else {})))
         op_progress.moved()
 
-    def step(name, result, words):
-        ended = {"step": name, "result": result, "words": redact_text(words),
-                 "at": _iso(time.time())}
+    def step(name, result, words, **more):
+        ended = dict({"step": name, "result": result, "words": redact_text(words),
+                      "at": _iso(time.time())}, **more)
         last = steps[-1] if steps else {}
         if last.get("step") == name and last.get("result") == "running" and last.get("began"):
             # The step `begin` opened: ended in place, with when it began and what it waited.

@@ -28,17 +28,29 @@ A run, in order, and nothing out of it:
    page opens with that request's answer, and a record the job wrote first could arrive after
    the page asked for it.
 
+**A read an operation or a heal makes as part of its own run is that run's** (`part`,
+`within`; the operator, 2026-11-11: a telemetry re-subscribe's 52 verify reads were each kept
+and drawn as a Show commands run of the person's). It is asked, masked, capped, kept and
+expired here exactly as any other read (one read path, one store), and its record says whose
+it is: ``part_of`` names the run (its kind, its id, the step that asked, where its record is
+kept) and ``by`` is the run's kind, never ``person``. Such a read is not a run of its own on
+History, in Show commands' recent runs or on a device's Ask the device list (`runs` with
+``part=False``): it is reached from the run's record, which lists each read under the step
+that made it (`read_entry`, `keep_read`) and names this store's run by its id.
+
 Retention (R2): answers are kept `reads_retention_days`, then MOVED to the network's S3/MinIO
 archive (`expire`), never deleted; who, when and what are kept for good. Where no archive is
 configured the answers stay, and `expire` says why (measured on the host 2026-10-08: none
 configured, the SDK not installed).
 """
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
 
@@ -126,8 +138,14 @@ def matches(command: str, words: tuple) -> bool:
 #: (NSOT_READS.md section 11). A person: all of them. The agent: `verify /md5` only, a read of
 #: a file; a line in a device's log and the session's settings are a person's to send. A
 #: diagnosis runbook (`modules/heal/diagnose.py`, HEAL_TO_INTENT 19.3): none, reads only.
+#: An operation's own reads (`OPERATION`) and self-healing's (`heal`): none, reads only.
 EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",),
-          "diagnosis": (), "ai_analysis": ()}
+          "diagnosis": (), "ai_analysis": (), "operation": (), "heal": ()}
+
+#: The kind (`run`'s *by*) of a read an operation a person started makes as part of its own
+#: run: the operation asked, not the person, and the run it belongs to (``part_of``) names
+#: the person as its actor.
+OPERATION = "operation"
 
 #: The caller kinds whose reads sign in with the device's read-only account, never the deploy
 #: account, and never escalate (no `enable`): the AI analysis's reads (H28; HEAL_TO_INTENT
@@ -312,8 +330,12 @@ def annotate(list_name: str, run_id: str, key: str, value) -> dict:
 
 
 def actor_words(record: dict) -> str:
-    """Who ran it, as History says it: a person, the agent for a person, or a diagnosis for
-    the person or the heal that ran it."""
+    """Who ran it, as History says it: a person, the agent for a person, a diagnosis for the
+    person or the heal that ran it, or an operation's own reads for the person who started
+    it."""
+    if record.get("by") == OPERATION:
+        kind = (record.get("part_of") or {}).get("kind") or "an operation"
+        return f"{kind}'s own reads, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "agent":
         return f"the agent, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "diagnosis":
@@ -336,10 +358,14 @@ def get(list_name: str, run_id: str):
 
 
 def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50,
-         data_dir: str = "") -> dict:
+         data_dir: str = "", part: bool = None) -> dict:
     """``{"runs": [...newest first], "unreadable": [names]}``: an unreadable file is named,
     never skipped in silence (a subset says so). *data_dir* is the network's directory when the
-    caller holds its ref (History): read from it, nothing is created."""
+    caller holds its ref (History): read from it, nothing is created. *part* False keeps only
+    the runs that are no operation's or heal's (what History, Show commands' recent runs and
+    Ask the device list); True only those that are one's (``part_of``); None, every run
+    (retention, a stored answer looked up). The filter is applied before *limit* counts, so an
+    operation's reads never crowd a person's runs out of the newest N."""
     out, bad = [], []
     folder = os.path.join(data_dir, "reads") if data_dir else _dir(list_name)
     try:
@@ -358,6 +384,8 @@ def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50,
         if device and device not in (r.get("devices") or []):
             continue
         if actor and actor != r.get("actor"):
+            continue
+        if part is not None and bool(r.get("part_of")) != part:
             continue
         out.append(r)
         if len(out) >= limit:
@@ -406,16 +434,130 @@ def new_id(now: float = None) -> str:
 
 def begun(list_name: str, run_id: str, hosts: list, commands: list, actor: str, *,
           by: str = "person", purpose: str = "", reason: str = "", drivers: dict = None,
-          started: float = None) -> dict:
+          started: float = None, part_of: dict = None) -> dict:
     """A run's record at its start: who, when, the network, the commands and the devices,
     nothing read yet (`state` ``running``, no result). The one shape `run` fills in and
-    `start` writes before its job exists."""
-    return {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
-            "reason": (reason or "").strip(),
-            "started_at": time.time() if started is None else started, "finished_at": None,
-            "state": "running", "commands": list(commands), "devices": list(hosts),
-            "results": {}, "refused": "", "drivers": dict(drivers or {}),
-            "retention": {"days": retention_days(list_name), "archived": None}}
+    `start` writes before its job exists. *part_of* (`part`) is kept only on a read an
+    operation or a heal made: a person's own run carries no such field."""
+    record = {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
+              "reason": (reason or "").strip(),
+              "started_at": time.time() if started is None else started, "finished_at": None,
+              "state": "running", "commands": list(commands), "devices": list(hosts),
+              "results": {}, "refused": "", "drivers": dict(drivers or {}),
+              "retention": {"days": retention_days(list_name), "archived": None}}
+    if part_of:
+        record["part_of"] = dict(part_of)
+    return record
+
+
+# --------------------------------------------------------------------------- a run's own reads
+
+def part(kind: str, run_id: str, step: str = "", record: str = "") -> dict:
+    """Whose a read is, when an operation or a heal made it: the run's *kind* in its own words
+    ("telemetry re-subscribe", "port bounce", "diagnosis"), the run's id, the *step* that
+    asked, and the *record* that run is kept in ("privileged", "heal steps"), where a person
+    reaches the read from."""
+    return {"kind": str(kind or ""), "id": str(run_id or ""), "step": str(step or ""),
+            "record": str(record or "")}
+
+
+_within = threading.local()
+
+
+@contextlib.contextmanager
+def within(kind: str, run_id: str, step: str = "", record: str = ""):
+    """``with within(...) as mine``: every read this thread makes inside the block is that
+    run's (`run` keeps *mine* as the read's ``part_of``), whichever function asks it, so a read
+    added to an operation later is the operation's without being told. *mine* is `part`'s
+    dict: the operation moves ``mine["step"]`` as its steps go. `run` reads it in the thread
+    that calls `run`, so a run of several devices is the run's too; a caller that asks from a
+    fan-out's own worker threads (a diagnosis's rounds) is not inside the block there."""
+    mine = part(kind, run_id, step, record)
+    before = getattr(_within, "stack", ())
+    _within.stack = before + (mine,)
+    try:
+        yield mine
+    finally:
+        _within.stack = before
+
+
+def _part_now():
+    stack = getattr(_within, "stack", ())
+    return stack[-1] if stack else None
+
+
+#: A step's reads kept in its run's record, and each one's words. The largest designed: a
+#: telemetry re-subscribe's verify reads three sources every 10 s for at most 290 s, 30 rounds
+#: and 90 reads; 120 is a third over it. Each entry is short (when, what was asked in at most
+#: 120 characters, its result, what it found in at most 200, the read's id): 250 to 300
+#: bytes as the record is written (measured 2026-11-11 on the tests' runs: a verify that
+#: waits out its bound, 90 entries, 22,472 bytes; one of 7 entries, 2,076 bytes), at most
+#: about 530, so a step's reads stay under 64 KiB and the whole answer is kept once, here in
+#: the reads store, by reference. Past the bound the first read is kept, then the newest,
+#: and the step counts what it dropped (``reads_dropped``).
+STEP_READS_MAX = 120
+ENTRY_WORDS_MAX = 200
+#: A read's result in its run's record: it found what its step asks for; it was read and
+#: did not; or the read (or what it is compared with) could not be read, which neither
+#: passes nor fails.
+READ_RESULTS = ("pass", "fail", "unreadable")
+
+
+def read_entry(command: str, result: str, words: str, *, at: str, read_id: str = "",
+               **more) -> dict:
+    """One read in its run's record: ``{"at", "command", "result", "words", "read_id"}``.
+    *at* is when it was read, UTC to the second (``2026-11-11T16:38:25Z``). *command* is what
+    was asked (a device command, or a source in words: "Prometheus: …");
+    *result* one of `READ_RESULTS`; *words* what it found, in the operation's own words (the
+    caller masks them), cut at `ENTRY_WORDS_MAX` and saying so; *read_id* this store's run
+    holding the masked answer, or ``""`` for a read that is not a device's through this
+    engine."""
+    if result not in READ_RESULTS:
+        raise ValueError(f"a read's result is one of {READ_RESULTS}, not {result!r}")
+    words = str(words or "")
+    if len(words) > ENTRY_WORDS_MAX:
+        words = words[:ENTRY_WORDS_MAX - 1] + "…"
+    return dict({"at": at, "command": str(command or "")[:120], "result": result,
+                 "words": words, "read_id": str(read_id or "")}, **more)
+
+
+def keep_read(step: dict, entry: dict) -> dict:
+    """Add *entry* (`read_entry`) to *step*'s ``reads``, in order, bounded
+    (`STEP_READS_MAX`). Returns *step*."""
+    kept = step.setdefault("reads", [])
+    kept.append(entry)
+    if len(kept) > STEP_READS_MAX:
+        del kept[1]
+        step["reads_dropped"] = int(step.get("reads_dropped") or 0) + 1
+    return step
+
+
+def reads_words(step: dict) -> str:
+    """A step's reads in one line, per thing asked: "26 reads of `show …`, about 13 s apart:
+    25 fail, 1 pass; the last: …". ``""`` for a step that made none."""
+    import calendar
+    by_command = {}
+    for e in (step or {}).get("reads") or []:
+        if isinstance(e, dict):         # a diagnosis's step lists its reads' references
+            by_command.setdefault(e.get("command") or "", []).append(e)
+    said = []
+    for command, entries in by_command.items():
+        times = []
+        for e in entries:
+            try:
+                times.append(calendar.timegm(time.strptime(e.get("at") or "",
+                                                           "%Y-%m-%dT%H:%M:%SZ")))
+            except ValueError:
+                pass
+        gap = (f", about {round((times[-1] - times[0]) / (len(times) - 1))} s apart"
+               if len(times) == len(entries) > 1 and times[-1] > times[0] else "")
+        counts = ", ".join(f"{n} {r}" for r in READ_RESULTS
+                           for n in [sum(1 for e in entries if e.get("result") == r)] if n)
+        n = len(entries)
+        said.append(f"{n} read{'s' if n != 1 else ''} of `{command}`{gap}: {counts}; the last: "
+                    f"{entries[-1].get('words') or 'nothing said'}")
+    dropped = int((step or {}).get("reads_dropped") or 0)
+    return "; ".join(said) + (f" ({dropped} more not kept)" if dropped and said else "")
 
 
 def begin(list_name: str, run_id: str, hosts: list, commands: list, actor: str, **kw) -> dict:
@@ -469,6 +611,9 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
         reason: str = "", drivers: dict = None, inline: bool = False) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
+    Asked by a thread that is `within` a run, the read is that run's: kept with ``part_of``,
+    and never ``by`` a person (a read an operation asks is the operation's, `OPERATION`,
+    judged by its own, smaller, allowlist; a heal's keeps its own kind).
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
     called with each device's outcome as it lands. *session* (tests) replaces
     ``connection.with_temp_connection``. *drivers* (``{host: netmiko driver}``) opens those
@@ -485,8 +630,11 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     started = time.time()
     run_id = run_id or new_id(started)
+    part_of = _part_now()
+    if part_of and by == "person":
+        by = OPERATION
     record = begun(list_name, run_id, hosts, commands, actor, by=by, purpose=purpose,
-                   reason=reason, drivers=drivers, started=started)
+                   reason=reason, drivers=drivers, started=started, part_of=part_of)
     why = (refusal(commands, len(hosts), by, reason)
            or ("" if hosts else "Refused: no device to ask."))
     if why:

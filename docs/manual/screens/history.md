@@ -89,6 +89,11 @@ Open a line for the full record underneath. It shows:
   the answer** on that call. **Open pass 1's call**, **Open pass 2's call** and **Open the read
   on History › Reads** open the two calls and the read itself. A **Show commands** row of such a
   read says whom each device signed in as;
+- for a **Show commands** row, a run a person (or the agent, for a person) asked. A read an
+  operation or a heal made as part of its own run is not a row: it is in that operation's
+  record, and the operation's row says its reads in a line for each step, counted
+  ([How Show commands works](show-commands#an-operations-reads)). A read kept before that
+  rule (2026-11-11) stays the row it was recorded as, its detail saying what it was for;
 - for a **self-healing** incident that changed a device (a heal back to intent, or an action
   such as a bounce), **Download the change record (.md)** saves Mercury's change record for it,
   masked, as a Markdown file ([How self-healing works](heal#records)); a dry run

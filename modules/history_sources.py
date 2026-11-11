@@ -1877,10 +1877,14 @@ def reveals(ctx):
 
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
-    commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
+    commands, the devices, and each one's outcome. Its answers stay on the run's own page.
+    A read an operation or a heal made as part of its own run (``part_of``, `reads.within`)
+    is no row here: it is listed in that run's record, under the step that made it
+    (the operator, 2026-11-11). A read kept before that rule carries no such field and stays a
+    row, as it was recorded."""
     from modules.nsot import reads
     got = reads.runs(ctx["ref"].name, device=ctx["device"], limit=ctx["limit"],
-                     data_dir=getattr(ctx["ref"], "data_dir", ""))
+                     data_dir=getattr(ctx["ref"], "data_dir", ""), part=False)
     errors = ([f"{len(got['unreadable'])} Show commands record(s) could not be read: "
                f"{', '.join(got['unreadable'][:5])}"] if got["unreadable"] else [])
     events = []
@@ -1923,6 +1927,20 @@ def show_commands(ctx):
     return _out(events, errors)
 
 
+def _run_reads(steps) -> list:
+    """An operation's own reads, as its record keeps them under each step (`reads.keep_read`):
+    one line a step, counted, never a row a read (the operator, 2026-11-11). The answers stay
+    in the reads store, each named by its id in the run's record."""
+    from modules.nsot import reads
+    from modules.redact import redact_text
+    out = []
+    for s in steps or []:
+        words = reads.reads_words(s) if isinstance(s, dict) else ""
+        if words:
+            out.append((f"Reads, {s.get('step') or 'a step'}", redact_text(words)))
+    return out
+
+
 def privileged(ctx):
     """Each Tier 2 run (Run a privileged command…, modules/nsot/privileged.py): who, why, the
     command, and its verdict. Its kept before-state stays in the record."""
@@ -1951,7 +1969,8 @@ def privileged(ctx):
                              detail=r.get("reason", ""), outcome=outcome,
                              record=[("Run", r.get("id")), ("Reason", r.get("reason")),
                                      ("Verify", (r.get("verify") or {}).get("words")),
-                                     ("Why", r.get("why")), ("Verified by", how)]))
+                                     ("Why", r.get("why")), ("Verified by", how)]
+                             + _run_reads(r.get("steps"))))
     return _out(events, errors)
 
 
@@ -2378,8 +2397,13 @@ def heal(ctx):
         cr = rec.get("change_record") or {}
         journal = rec.get("journal") or {}
         pol = e.get("policy") or {}
-        steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
-                 for i, s in enumerate(e["steps"], 1)]
+        # A step's own reads (a decision's fresh reads, an act's reads of the symptom) follow
+        # its words in one line, counted (`reads.reads_words`; the operator, 2026-11-11).
+        from modules.nsot import reads as reads_store
+        steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}"
+                  + (f". Reads: {m(said)}" if said else ""))
+                 for i, s in enumerate(e["steps"], 1)
+                 for said in [reads_store.reads_words(s)]]
         # C2817 (the mocks' History lines): an entry its decision ended leads with what
         # happened and what Mercury did or would do, in plain words; an act's end, an action
         # and a record written before the words were kept, as before.

@@ -472,6 +472,44 @@ def consider(src, diag=None):
     return got, decisions.decisions(NET)
 
 
+class TestTheDecisionsOwnReads:
+    def test_the_fresh_reads_are_the_decisions_never_show_commands_runs(
+            self, stores, measured, monkeypatch):
+        """Through the REAL sources' read and the real reads engine (the operator,
+        2026-11-11): the reads name the incident and the step, are listed under the
+        decision's ``fresh`` step in the step log, and are no rows on History."""
+        from modules import history_sources as HS
+        from modules import reads_page
+        from modules.heal import steplog
+        from modules.nsot import listref, reads
+        src = Src()
+
+        class Conn:
+            def answer(self, command):
+                return src.answers[command]
+
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path=None: [dict(DEV)])
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda dev, fn: fn(Conn()))
+        src.read = S().Sources(NET).read
+        got, rows = consider(src)
+        assert rows[-1]["outcome"] == "would_heal", rows[-1]["words"]
+        (kept,) = reads.runs(NET)["runs"]
+        assert kept["by"] == "heal" and kept["part_of"] == {
+            "kind": "session clear", "id": "hi-1", "step": "fresh", "record": "heal steps"}
+        ctx = {"ref": listref.resolve(NET), "device": "", "limit": 50, "since": None,
+               "members": None}
+        assert HS.show_commands(ctx)["events"] == []
+        assert reads_page.recent_runs(NET)["rows"] == []
+        (row,) = [r for r in steplog.read(NET)["rows"] if r["row"] == "decision"]
+        (step,) = [s for s in row["steps"] if s["step"] == "fresh"]
+        assert [e["command"] for e in step["reads"]] == kept["commands"] == [
+            f"show ip bgp neighbors {PEER}", f"show ip route {MANAGER}"]
+        assert {e["read_id"] for e in step["reads"]} == {kept["id"]}
+        assert {e["result"] for e in step["reads"]} == {"pass"}
+
+
 class TestTheDecision:
     def test_no_clear_chosen_records_nothing(self, stores, measured):
         bounce = {"hypotheses": [dict(diagnosis()["hypotheses"][0], rule="down_admin_up",

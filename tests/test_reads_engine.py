@@ -263,3 +263,137 @@ class TestRetention:
         from modules.nsot import reads
         _run(["r1"], ["show ip interface"])
         assert reads.expire("Lab", archive=lambda k, d: None) == {"moved": 0, "kept": 0, "why": ""}
+
+
+# ── A read that is part of a run (the operator, 2026-11-11) ─────────────────────────────────
+
+RUN_OF = ("telemetry re-subscribe", "20261111T163825000000Z-" + "a" * 32, "verify", "privileged")
+
+
+class TestAReadThatIsPartOfARun:
+    def test_within_a_run_the_read_names_it_and_is_never_a_persons(self, lab):
+        from modules.nsot import reads
+        with reads.within(*RUN_OF) as mine:
+            r, _ = _run(["r2"], ["show ip interface"], inline=True)
+            mine["step"] = "before"
+            again, _ = _run(["r2"], ["show ip interface"], inline=True)
+        after, _ = _run(["r2"], ["show ip interface"])
+        kind, run_id, _step, record = RUN_OF
+        assert reads.get("Lab", r["id"])["part_of"] == {"kind": kind, "id": run_id,
+                                                         "step": "verify", "record": record}
+        assert again["part_of"]["step"] == "before", "the step moves with the operation"
+        assert r["by"] == reads.OPERATION and r["actor"] == "op@example.invalid"
+        assert reads.actor_words(r) == f"{kind}'s own reads, for op@example.invalid"
+        assert after["by"] == "person" and "part_of" not in after, "the block is over"
+
+    def test_a_heals_read_keeps_its_own_kind_and_a_fleet_read_is_the_runs_too(self, lab):
+        """Only a person's kind is replaced: self-healing's reads stay ``heal``. A run of
+        several devices, read in the engine's own threads, is the run's as well."""
+        from modules.nsot import reads
+        with reads.within("port bounce", "hi-1", "fresh", "heal steps"):
+            r, _ = _run(["r1", "r2"], ["show ip interface"], by="heal")
+        assert r["by"] == "heal" and r["part_of"]["id"] == "hi-1"
+        assert sorted(r["results"]) == ["r1", "r2"] and r["summary"]["words"] == "2 answered"
+        assert reads.actor_words(r) == "self-healing's action reads, for op@example.invalid"
+
+    def test_a_block_that_raises_leaves_the_thread_outside_it(self, lab):
+        from modules.nsot import reads
+        with pytest.raises(RuntimeError):
+            with reads.within(*RUN_OF):
+                raise RuntimeError("the operation failed")
+        r, _ = _run(["r2"], ["show ip interface"])
+        assert r["by"] == "person" and "part_of" not in r
+
+    def test_only_a_persons_runs_are_listed_and_never_crowded_out(self, lab):
+        """History, Show commands' recent runs and Ask the device ask for the runs that are no
+        operation's (`part=False`); the filter comes before the newest-N cut."""
+        from modules.nsot import reads
+        mine, _ = _run(["r2"], ["show ip interface"])
+        with reads.within(*RUN_OF):
+            theirs = [_run(["r2"], ["show ip interface"], inline=True)[0]["id"]
+                      for _ in range(5)]
+        assert [r["id"] for r in reads.runs("Lab", part=False, limit=3)["runs"]] == [mine["id"]]
+        assert [r["id"] for r in reads.runs("Lab", part=True)["runs"]] == theirs[::-1]
+        assert len(reads.runs("Lab")["runs"]) == 6, "retention and lookups still see every run"
+
+    def test_its_answer_is_masked_capped_and_kept_as_any_other(self, lab):
+        from modules.nsot import reads
+        person, _ = _run(["r2"], ["show running-config"])
+        with reads.within(*RUN_OF):
+            theirs, _ = _run(["r2"], ["show running-config"], inline=True)
+        a, b = (reads.get("Lab", x["id"])["results"]["r2"]["answers"][0] for x in (person, theirs))
+        assert "password 0 admin" not in b["answer"] and "community public" not in b["answer"]
+        assert a["answer"] == b["answer"] and a["sha256"] == b["sha256"] and not b["cut"]
+        assert theirs["retention"] == person["retention"]
+
+    @pytest.mark.parametrize("command", ["reload", "configure terminal", "terminal length 0",
+                                         "send log 6 a test line"])
+    def test_it_is_refused_off_the_allowlist_and_has_no_persons_extras(self, lab, command):
+        """An operation's read is judged by the allowlist whole, and by a smaller one than a
+        person's: Tier 1's extras (a session setting, a log line) are a person's to send."""
+        from modules.nsot import reads
+        s = Session()
+        with reads.within(*RUN_OF), pytest.raises(reads.Refused) as e:
+            reads.run("Lab", ["r2"], [command], "op@example.invalid", session=s, inline=True)
+        assert "REFUSED" in str(e.value) and s.sent == []
+        (r,) = reads.runs("Lab")["runs"]
+        assert r["state"] == "refused" and r["by"] == reads.OPERATION and r["part_of"]["id"]
+        assert reads.EXTRAS[reads.OPERATION] == () and reads.EXTRAS["heal"] == ()
+
+    def test_old_answers_of_a_runs_reads_expire_as_any_other(self, lab):
+        from modules.nsot import reads
+        with reads.within(*RUN_OF):
+            r, _ = _run(["r1"], ["show ip interface"], inline=True)
+        r["finished_at"] -= 31 * 86400
+        reads._write("Lab", r)
+        put = {}
+        got = reads.expire("Lab", archive=lambda key, data: put.__setitem__(key, data))
+        assert got == {"moved": 1, "kept": 0, "why": ""} and list(put) == [
+            f"reads/Lab/{r['id']}.json"]
+        assert reads.get("Lab", r["id"])["part_of"]["id"] == RUN_OF[1]
+
+
+class TestARunsRecordOfItsReads:
+    def _entry(self, n, result="fail", words="Connecting"):
+        from modules.nsot import reads
+        at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(1_794_250_000 + 13 * n))
+        return reads.read_entry("show telemetry ietf subscription 102 receiver", result, words,
+                                at=at, read_id=f"id-{n}")
+
+    def test_an_entry_is_short_and_says_when_what_and_how_it_went(self):
+        from modules.nsot import reads
+        e = self._entry(0)
+        assert e == {"at": "2026-11-09T18:46:40Z", "result": "fail", "words": "Connecting",
+                     "command": "show telemetry ietf subscription 102 receiver",
+                     "read_id": "id-0"}
+        long = reads.read_entry("show clock", "pass", "x" * 500, at=e["at"])
+        assert len(long["words"]) == reads.ENTRY_WORDS_MAX and long["words"].endswith("…")
+        assert long["read_id"] == ""
+        with pytest.raises(ValueError):
+            reads.read_entry("show clock", "ok", "", at=e["at"])
+
+    def test_a_steps_reads_are_bounded_keeping_the_first_and_the_newest(self):
+        from modules.nsot import reads
+        step = {"step": "verify"}
+        for n in range(reads.STEP_READS_MAX + 10):
+            reads.keep_read(step, self._entry(n))
+        ids = [e["read_id"] for e in step["reads"]]
+        assert len(ids) == reads.STEP_READS_MAX == 120 and step["reads_dropped"] == 10
+        assert ids[0] == "id-0" and ids[1] == "id-11" and ids[-1] == "id-129"
+
+    def test_the_reads_are_said_in_one_line(self):
+        from modules.nsot import reads
+        step = {"step": "verify"}
+        for n in range(25):
+            reads.keep_read(step, self._entry(n))
+        reads.keep_read(step, self._entry(25, "pass", "Connected on connection 985"))
+        assert reads.reads_words(step) == (
+            "26 reads of `show telemetry ietf subscription 102 receiver`, about 13 s apart: "
+            "1 pass, 25 fail; the last: Connected on connection 985")
+        assert reads.reads_words({"step": "hold"}) == ""
+        # Two reads in one second are counted, and no interval is made up for them.
+        same = {"reads": [self._entry(0, "pass", "read"), self._entry(0, "pass", "read")]}
+        assert reads.reads_words(same) == (
+            "2 reads of `show telemetry ietf subscription 102 receiver`: 2 pass; the last: read")
+        # A diagnosis's step lists its reads' references, which are not entries.
+        assert reads.reads_words({"reads": ["read:x:r2:show clock"]}) == ""

@@ -192,7 +192,9 @@ class Sources:
         return bounce.manager_toward(address)
 
     def read(self, host: str, commands: list) -> dict:
-        """``{command: answer}`` for the commands answered, ``{"_why": why}`` when none was."""
+        """``{command: answer}`` for the commands answered, ``{"_why": why}`` when none was;
+        ``_run`` is the reads store's run that holds the masked answers (the decision's
+        ``fresh`` step names each read by it, `bounce.fresh_reads`)."""
         from modules.nsot import reads
 
         try:
@@ -203,7 +205,8 @@ class Sources:
         r = (rec.get("results") or {}).get(host) or {}
         got = {a["command"]: a.get("answer") or "" for a in r.get("answers") or []
                if a.get("state") == "answered"}
-        return got or {"_why": r.get("why") or r.get("state") or "not read"}
+        return dict(got or {"_why": r.get("why") or r.get("state") or "not read"},
+                    _run=rec.get("id", ""))
 
     def session(self, dev: dict, work):
         """*work(conn)* on a new session to *dev* (`connection.with_temp_connection`)."""
@@ -299,8 +302,8 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
             "steps": [{"step": "choose", "result": "ok", "words": pick.get("words") or ""}],
             "phase": "stops"}
 
-    def passed(name, words, then):
-        base["steps"].append({"step": name, "result": "ok", "words": words})
+    def passed(name, words, then, **more):
+        base["steps"].append(dict({"step": name, "result": "ok", "words": words}, **more))
         base["phase"] = then
 
     def stop(g, phase=None):
@@ -357,9 +360,16 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
     rcmd = actions.route_command(manager) if manager and variant == "hard" else ""
     if rcmd:
         cmds.append(rcmd)
-    got = src.read(device, cmds)
+    # The decision's own reads (`reads.within`): kept in the reads store naming the incident
+    # and this step, listed under it in the step log, never Show commands runs of their own
+    # (the operator, 2026-11-11).
+    from modules.heal.bounce import RECORD, fresh_reads
+    from modules.nsot import reads
+    with reads.within("session clear", incident_id, "fresh", RECORD):
+        got = src.read(device, cmds)
     passed("fresh", (f"{device}: {len([c for c in cmds if c in got])} of {len(cmds)} read(s)"
-                     + (f" ({got['_why']})" if "_why" in got else "")), "guards")
+                     + (f" ({got['_why']})" if "_why" in got else "")), "guards",
+           reads=fresh_reads([(device, cmds, got)], _iso(now)))
     fresh = privileged.bgp_session(got.get(rd["session"], ""))
     # The first of the two reads is the diagnosis's: its rule fires only on a session it read
     # not Established (a hard clear's) or Established (a soft clear's).

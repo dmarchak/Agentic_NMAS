@@ -44,6 +44,35 @@ else is refused before any device is asked, naming its tier and where to go inst
    (`reads_retention_days`, 30 unless changed), then moved to the network's S3/MinIO archive;
    who, when and what stay for good. With no archive configured the answers stay here.
 
+## A read an operation makes is the operation's {#an-operations-reads}
+
+An operation or a heal that reads a device as part of its own run asks through this same way:
+the same command policy (without a person's extras: no session setting, no log line), the same
+hold, mask, cap, store and retention. Its read is kept naming the run it belongs to (the
+operation, the run's id and the step that asked), and it is recorded as the operation's own
+read for the person who started the operation, never as a run that person made here.
+
+Such a read is not a row of its own. History's Show commands rows, **Recent runs** on Show
+commands and **Recent reads** on a device's Ask the device tab show the runs a person (or the
+agent, for a person) asked, and nothing else. An operation's reads are in the operation's own record,
+under the step that made them: each read with when it was asked, what was asked, whether it
+passed, was read and did not, or could not be read, and what it found in a line. The answer
+itself stays here, masked, and the record names it. History's row of the operation says the
+reads of each step in one line, counted ("26 reads, about 13 s apart: 1 pass, 25 fail"). A
+step keeps at most 120 reads, each line at most 200 characters; past that it keeps the first
+and the newest and says how many it dropped.
+
+Today this holds for [Re-subscribe a telemetry stream](telemetry-resubscribe) (its reads
+before and its verify) and for self-healing's port bounce and BGP session clear (the reads
+their decision makes, [How self-healing works](heal)). A diagnosis's reads, a path trace's,
+the controller app deploy's host reads, a privileged command's preview and the AI analysis's
+reads are still runs of their own on History, each naming what it was for.
+
+A read an operation made before this was built (2026-11-11) was kept as a Show commands run
+of the person who started the operation, and nothing in it names the operation's run. History
+shows such a row as it was recorded: its detail line says what it was for ("telemetry
+re-subscribe: subscription 102's receiver"). Mercury does not guess which run it belonged to.
+
 ## The command policy: what runs here {#tiers}
 
 Every command is in one of three tiers, decided by a list of what is allowed, never by a list of

@@ -341,7 +341,9 @@ a device another operation holds is not read (the card says who holds it; run it
 that ends), and while a read holds it, a deploy is refused naming the read.
 
 **Recent reads** lists the device's latest runs, yours and others' (and the agent's, for the
-person it acted for), each with its outcome; **Open** draws one again.
+person it acted for), each with its outcome; **Open** draws one again. A read an operation or
+a heal made as part of its own run is not listed here: it is in that operation's record
+([How Show commands works](show-commands#an-operations-reads)).
 **Compare with the last answer** shows the lines that changed since the device last answered the same command.
 
 Nothing here changes the device: there is no configuration mode and no free-form session. Every

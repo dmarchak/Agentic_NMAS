@@ -127,8 +127,8 @@ why.
 4. `started`: the run is recorded before anything is sent, saying it changes configuration, so
    self-healing reads the device's own configuration lines during it as Mercury's, never as a
    change from outside.
-5. `before`: each receiver's state and connection (through the reads engine, on History ›
-   Reads), the collector's sessions from the device, and the running configuration.
+5. `before`: each receiver's state and connection (through the reads engine, as the run's own
+   read), the collector's sessions from the device, and the running configuration.
 6. `remove`: each ticked receiver is removed, one send each, in the card's order. After each,
    the configuration is read back, and it must differ from before by exactly the receiver
    lines removed so far. A removal that changed nothing, took more than its line, or could
@@ -150,6 +150,11 @@ why.
    - **the collector:** a new session from the device on the stream's port, receiving data.
      A session that was there before and still stands, receiving nothing, is flagged
      **stale half-open**: a flag, not a failure.
+
+   The three are read again every 10 s until each passes or the 290 s end. Every read goes
+   into the run's record under this step as it is made: when, what was asked, whether it
+   passed, was read and did not, or could not be read, and what it found. The record is
+   written after each round, so a run still going shows the reads made so far.
 10. `rollback`: when the removals stop part-way, every receiver already removed is still added
     back. A receiver that did not come back after the re-add and its one retry is the danger
     state "<device>'s receiver for <id> is removed", in the result and the record, and the
@@ -166,7 +171,9 @@ nothing done that the run has not recorded. Each step's column says it in two to
 step's full words, as listed above, are on hover. Under them, **Now: <step>** names the step
 it is in, with the run's own words; at the wait it counts down ("6 s left of 10 s") from when
 the wait began and the 10 s the run declared, and when the time is up it says so and waits for
-the run's next step. The card moves by itself at each step. In the top bar's **In progress**
+the run's next step. At each verify it counts down the longest the verify waits ("up to 290 s:
+212 s left"); the verify ends sooner when all three checks pass. The card moves by itself at
+each step, and at each round of a verify's reads. In the top bar's **In progress**
 list the run is one row, **Re-subscribe telemetry**, whose words are the step it is in ("Wait
 10 s · step 7 of 11"), never "starting" or "started". A step that reads draws, while it runs,
 the newest read of each check and one line saying how many reads it has made.
@@ -179,6 +186,22 @@ marked **not reached**. Whether each receiver is in place is then not known from
 read the device's configuration first. **Open the card again…** draws the card afresh, a read
 that sends nothing: it leads with Re-add the receiver for each receiver the run removed and did
 not put back.
+
+## Where the run's reads are kept {#reads}
+
+The run reads the device many times: once for each subscription before, then every 10 s in the
+verify. Each of those reads belongs to the run. It goes through the reads engine, so it is
+checked against the command policy, masked and kept as any read is, and it is kept naming this
+run and the step that asked. It is recorded as the re-subscribe's own read, for you: the run's
+record names you as the person who ran it, and each read names the run.
+
+None of them is a Show commands row on History, and none is in Show commands' recent runs or
+in the device's recent reads on Ask the device. They are in the run's one record, under `before` and
+`verify`, in order. History's row of the run says them in a line for each step ("26 reads,
+about 13 s apart: 1 pass, 25 fail; the last: ..."). The reads of Prometheus and of the
+collector's sessions are listed the same way; they are not device reads, so they name no
+stored answer. [How Show commands works](show-commands#an-operations-reads) has the rule and
+what History does with reads kept before it.
 
 ## What it ends with
 

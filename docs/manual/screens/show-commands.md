@@ -77,4 +77,6 @@ many lines had been sent and had arrived, and offers **Test again**.
 ## Recent runs {#recent-runs}
 
 The network's latest runs, each with who ran it, the commands, how many devices, and the outcome;
-open one to read its answers again.
+open one to read its answers again. These are the runs a person asked (or the agent, for a
+person). A read an operation or a heal made as part of its own run is not listed here: it is
+in that operation's record ([How Show commands works](show-commands#an-operations-reads)).
