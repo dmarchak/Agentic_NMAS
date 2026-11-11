@@ -655,24 +655,43 @@ def _cap(text: str, limit: int) -> tuple:
     return (text, False) if len(text) <= limit else (text[:limit - 1].rstrip() + "…", True)
 
 
+def evidence_id(entry) -> str:
+    """The id an evidence *entry* cites: its leading token, up to the first whitespace ("" for
+    a blank one). A whole snapshot line, ``<id> <the fact's words>``, cites its id; an id
+    alone is itself. Nothing here says the id exists: `check` holds it to the collection."""
+    whole = str(entry if entry is not None else "").strip()
+    return whole.split(None, 1)[0] if whole else ""
+
+
 def check(answer: NetworkAnalysis, ids: set) -> dict:
     """The model's *answer* held to the snapshot's evidence *ids*: ``{"findings", "dropped",
     "dropped_words", "removed_ids", "capped"}``. An id the snapshot does not hold is removed
     (counted in *removed_ids*); a finding left citing none is dropped, as is a blank one or one
-    past `MAX_FINDINGS` (each counted in *dropped*, said in *dropped_words*); lengths capped."""
-    kept, removed, capped = [], 0, 0
+    past `MAX_FINDINGS` (each counted in *dropped*, said in *dropped_words*); lengths capped.
+
+    **An evidence entry's id is its leading token** (up to the first whitespace): a model that
+    cites a whole snapshot line, ``<id> <the fact's words>``, cited that id (the Lab 9 sitting,
+    2026-11-10: every entry of an answer was a whole line, and both findings were dropped).
+    The id must still be one the collection holds, EXACTLY: a made-up id is removed, and so
+    is the leading token of a line when the collection holds no such id. Each entry cut to its
+    id is recorded: a finding's ``trimmed`` lists them, *trimmed_ids* counts them."""
+    kept, removed, capped, trimmed_n = [], 0, 0, 0
     dropped = {"uncited": 0, "unknown_only": 0, "blank": 0, "over_limit": 0}
     found = list(answer.findings)
     dropped["over_limit"] = max(0, len(found) - MAX_FINDINGS)
     for f in found[:MAX_FINDINGS]:
-        cited = []
+        cited, trimmed = [], []
         for e in f.evidence:
-            e = str(e).strip()
+            whole = str(e).strip()
+            e = evidence_id(whole)
             if e and e not in cited:
                 cited.append(e)
+                if e != whole:
+                    trimmed.append(e)
         known = [e for e in cited if e in ids][:MAX_EVIDENCE]
         unknown = [e for e in cited if e not in ids]
         removed += len(unknown)
+        trimmed_n += len(trimmed)
         finding, a = _cap(f.finding, MAX_FINDING_CHARS)
         why, b = _cap(f.why, MAX_WHY_CHARS)
         if not finding:
@@ -686,7 +705,7 @@ def check(answer: NetworkAnalysis, ids: set) -> dict:
             raise ValueError(f"severity {severity!r} is not one of {SEVERITIES}")
         capped += a + b
         kept.append({"severity": severity, "finding": finding, "why": why,
-                     "evidence": known, "removed": unknown})
+                     "evidence": known, "removed": unknown, "trimmed": trimmed})
     kept.sort(key=lambda x: -SEVERITIES.index(x["severity"]))
     n = sum(dropped.values())
     said = (("uncited", "cited nothing"),
@@ -694,7 +713,17 @@ def check(answer: NetworkAnalysis, ids: set) -> dict:
             ("blank", "said nothing"), ("over_limit", f"past the first {MAX_FINDINGS}"))
     parts = [f"{dropped[k]} {words}" for k, words in said if dropped[k]]
     return {"findings": kept, "dropped": n, "dropped_by": dropped,
-            "dropped_words": "; ".join(parts), "removed_ids": removed, "capped": capped}
+            "dropped_words": "; ".join(parts), "removed_ids": removed, "capped": capped,
+            "trimmed_ids": trimmed_n}
+
+
+def trimmed_words(checked: dict) -> str:
+    """How many evidence entries the check cut to their id, in words, or "" for none."""
+    n = int((checked or {}).get("trimmed_ids") or 0)
+    if not n:
+        return ""
+    return (f"{n} evidence entr{'y' if n == 1 else 'ies'} cited as a whole line, cut to "
+            f"{'its' if n == 1 else 'their'} id")
 
 
 def _refused(network: str, snap_id: str, actor: str, error: str, detail: str, **extra) -> dict:
@@ -724,7 +753,9 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
     if out["ok"]:
         calls.record_use(out["call_id"], f"shown: {len(out['findings'])} findings, "
                          f"{out['dropped']} dropped by the check", actor=actor,
-                         detail=out["dropped_words"], links=links)
+                         detail="; ".join(w for w in (out["dropped_words"],
+                                                      trimmed_words(out)) if w),
+                         links=links)
     if out.get("refused_before"):
         out.pop("refused_before")
         return out

@@ -135,7 +135,7 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html
-Templates sha256: `71b9a54445635b26f6a9bcd0d4d2d0b6c86cd57a8d5385de1d4cd095f1249159`
+Templates sha256: `f9d47fc90b95e69f7d3179823af50395f3516483215d79bcfa7aa22b62f5b8d5`
 Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
 docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
 of a registered app (the badge "a new version", The folder as the registered version's content
@@ -237,6 +237,17 @@ Send posting to SDN › Policies' confirm with the policy carried beside the ask
 response's and a re-apply's card draw exactly as before; no other region moves. Compared by
 reading the templates, with no new shot (the templates before hashed
 `2be1dcca70c54bf8cb1c854fc300a977f85076c3a05dba42f861aa19c2ccec1e`).
+
+Hashed again 2026-11-11 for the Lab 9 sitting's B1 failure (the operator's words, 2026-11-10: "on
+the findings card's check line, beside 'N were dropped', add e.g. 'M evidence entries were whole
+snapshot lines; their ids were kept'"; board lab9-sdn I): `_sdn_analyse.html` and
+`_sdn_analyse_tools.html` each gain one clause at the end of the findings card's check line
+("; 4 evidence entries were whole snapshot lines; their ids were kept") and one faint line under
+a finding's evidence ("1 cited as a whole snapshot line; its id kept", the ids on hover), both
+drawn only when the check cut an entry to its id (`analyst.check`'s `trimmed_ids` and a finding's
+`trimmed`). With none cut, which is every state the board draws, both cards draw exactly as
+before; no other region moves. Compared by reading the templates, with no new shot (the
+templates before hashed `71b9a54445635b26f6a9bcd0d4d2d0b6c86cd57a8d5385de1d4cd095f1249159`).
 
 **Compared 2026-11-08 ~06:1x UTC for P6 (C2677): SDN › Apps**, beside the operator's signed board
 `docs/boards/controller-app-deploy.html` (artboards A to L, signed 2026-11-07; copied into the

@@ -417,7 +417,12 @@ class NetworkAnalysisReads(StrictModel):
 
 
 def _cites(answer) -> list:
-    return [str(e) for f in getattr(answer, "findings", None) or [] for e in f.evidence]
+    """Every id the answer cites, each entry as its id (`analyst.evidence_id`: a whole line
+    cites its leading id), so the loop holds a read cited as a whole line, ``read:<n> <its
+    words>``, to the same rule as one cited by its id: it ran and was sent, or the answer
+    does not stand."""
+    return [AN.evidence_id(e) for f in getattr(answer, "findings", None) or []
+            for e in f.evidence]
 
 
 def _no_whole_refusal(answer, *, read_ids) -> str:

@@ -303,6 +303,48 @@ def test_the_check_drops_what_cites_nothing_the_snapshot_holds_and_counts_it(wor
     assert use["use"] == "shown: 2 findings, 2 dropped by the check"
 
 
+def test_an_entry_cited_as_a_whole_line_is_cut_to_its_id_which_must_still_exist(world):
+    """The Lab 9 sitting, 2026-11-10: the model cited each evidence entry as the WHOLE
+    snapshot line ("<id> <the fact's words>"), every one failed the exact-id check, and both
+    findings were dropped. The id is the entry's leading token; it is kept only when the
+    collection holds exactly that id, and each entry cut is recorded."""
+    snap = snap_of(world)
+    port = f"port:ctl-1:{OVS3}:3"
+    line = next(ln for ln in AN.facts(snap).splitlines() if ln.startswith(port + " "))
+    assert line != port and line.split(None, 1)[0] == port, "a real line of the facts sent"
+    world.answer = answer(
+        finding([line, f"\t{port}\twith a tab"], "high", "Whole lines, one id"),
+        finding([port], "medium", "The id alone"),
+        finding(["port:made:up"], "critical", "A made-up id"),
+        finding(["port:made:up and words after it"], "critical", "A made-up id in a line"),
+        finding([f"{port}x LINK_DOWN", line], "low", "One real line, one near miss"))
+    r = analyse(world, snap)
+    assert r["ok"]
+    got = {f["finding"]: f for f in r["findings"]}
+    assert sorted(got) == ["One real line, one near miss", "The id alone", "Whole lines, one id"]
+    # Whole lines are trimmed and kept, once, as the id; the id alone is not marked trimmed.
+    assert got["Whole lines, one id"]["evidence"] == [port]
+    assert got["Whole lines, one id"]["trimmed"] == [port]
+    assert got["The id alone"]["evidence"] == [port] and got["The id alone"]["trimmed"] == []
+    # A trimmed id the collection does not hold is removed; the finding stands on the real one.
+    near = got["One real line, one near miss"]
+    assert near["evidence"] == [port] and near["removed"] == [f"{port}x"]
+    assert sorted(near["trimmed"]) == [port, f"{port}x"]
+    # A made-up id is dropped, bare or leading a line.
+    assert r["dropped"] == 2 and r["dropped_by"]["unknown_only"] == 2
+    assert r["removed_ids"] == 3 and r["trimmed_ids"] == 4
+    kept = AN.analysis(NET, r["id"])
+    assert kept["findings"] == r["findings"] and kept["trimmed_ids"] == 4
+    (use,) = calls.uses()[r["call_id"]]
+    assert use["use"] == "shown: 3 findings, 2 dropped by the check"
+    assert "4 evidence entries cited as a whole line, cut to their id" in use["detail"]
+    # The check itself, by hand: nothing is matched by resemblance.
+    direct = AN.check(AN.NetworkAnalysis.model_validate_json(json.dumps(answer(
+        finding([f"{port} "]), finding([port.upper() + " x"])))), {port})
+    assert [f["evidence"] for f in direct["findings"]] == [[port]]
+    assert direct["findings"][0]["trimmed"] == [] and direct["dropped_by"]["unknown_only"] == 1
+
+
 @pytest.mark.parametrize("raw, words", [
     ("the network looks fine", "the answer is not sdn_analyse.v1"),
     (json.dumps({"findings": [{"severity": "severe", "finding": "f", "why": "w",
