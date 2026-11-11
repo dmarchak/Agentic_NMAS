@@ -395,6 +395,9 @@ def device(name):
            "rekey": _rekey_held(dev),
            # An observe-only device or a host is offered no change (C2606, C2608).
            "changes": _changes_offered(dev),
+           # A run holds the device now: every row that would change it is greyed, with the
+           # run (the operator, 2026-11-11); read from the hold the server refuses by.
+           "held": _held_now(ref, dev),
            # Verify again is offered only while the last reload ended not verified (C2280).
            "verify_again": _verify_again_offered(ref, dev),
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
@@ -543,6 +546,7 @@ def actions_menu(name):
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
                                    tab=_back(request.args), block=_block_state(ref, dev),
                                    rekey=_rekey_held(dev), changes=_changes_offered(dev),
+                                   held=_held_now(ref, dev),
                                    verify_again=_verify_again_offered(ref, dev)))
 
 
@@ -713,8 +717,11 @@ def _attention_trigger():
     by time. Both fragments draw this string; neither keeps its own (the operator,
     2026-10-02: the count's hand-kept list lacked keys the page heard)."""
     from modules.attention import ATTENTION_KEYS, DUE_EVENT
-    return {"attention_trigger": ", ".join(f"nmas:{k} from:body"
-                                           for k in ATTENTION_KEYS + (DUE_EVENT,))}
+    from modules.in_flight import HELD_KEYS
+    # And a hold's start and end (`HELD_KEYS`): a row's action greys while a run holds its
+    # device and returns when the run ends, without a reload.
+    keys = ATTENTION_KEYS + tuple(k for k in HELD_KEYS if k not in ATTENTION_KEYS)
+    return {"attention_trigger": ", ".join(f"nmas:{k} from:body" for k in keys + (DUE_EVENT,))}
 
 
 @bp.app_context_processor
@@ -2091,6 +2098,16 @@ def restore_job_card(name, job):
 # ---------------------------------------------------------------------------
 # Revert and Retry, the two ways out of a rollback (7.3; the device-actions canvas, board 11)
 # ---------------------------------------------------------------------------
+
+def _held_now(ref, dev):
+    """What holds the device now (`in_flight.held_action`), or None: the Actions menu greys
+    each row that would change it, saying "running since <time>, by <who>" with a link to the
+    run, from the same hold the server refuses by."""
+    from modules import in_flight
+    from routes.operations import viewer_key
+
+    return in_flight.held_action(ref.name, dev.get("hostname", ""), viewer_key())
+
 
 def _changes_offered(dev) -> dict:
     """C2606, C2608: ``{"offered", "state", "why", "host"}``: whether the Actions menu offers

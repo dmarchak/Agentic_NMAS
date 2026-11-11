@@ -1356,6 +1356,11 @@ button.menu-item[disabled]:hover { background: none; }
 .run-line-partial > strong, .run-line-unreadable > strong { color: var(--warn); }
 .run-at { color: var(--ink-3); }
 .run-trail > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+/* A held device's actions (the operator, 2026-11-11): the Actions menu's note naming the run
+   that holds the device, and a Needs attention row's action drawn as that run. */
+.menu-held { color: var(--warn); }
+.menu-held a { font-weight: 600; }
+.att-held { font-size: 13px; }
 @media (max-width: 640px) {
   .run-row, .run-final { grid-template-columns: 1fr; gap: 6px; }
   .run-el { text-align: left; }

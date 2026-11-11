@@ -15,7 +15,13 @@ operations on the device.
 Everything is under **Actions**, one menu, Plan a deploy first: Plan a deploy, Capture, Seed
 intent, Restore from, Remove lines (Mode B),
 Revert intent, Retry rolled-back change, Rotate credential, Persist, Run a privileged command,
-Reload and Retire. **An observe-only device** (NetBox's rendered config context sets
+Reload and Retire. **While a run holds the device** (a deploy, a heal, a rotation, a
+re-subscribe, anything that takes it), the menu says so under its first note, "<device> is
+held: <run> running since <time>, by <who>", with **Open the run**, which opens the page on
+that run's card; every row that would change the device is greyed and reads "Not offered: <run>
+running since <time>, by <who>" on hover, because the server refuses a second operation on a
+held device, by name, and never queues it. **Check drift now** and **Diagnose** stay offered.
+The rows return by themselves when the run ends. **An observe-only device** (NetBox's rendered config context sets
 `mercury.management` to `observe`) is read, captured and drift-reported, and offered nothing
 that changes it: the menu's note names the state and where NetBox set it ("observe (the
 device's local config context)"), and Plan a deploy, Restore from, Remove lines (Mode B),

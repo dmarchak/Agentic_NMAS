@@ -14,8 +14,15 @@
 {%- set sources = a.sources or [] -%}
 {#- The row's first action today (board NA-R's decision 5), on its one line: it works without
     opening the row. Its full set, with each How does this work?, is under What to do. -#}
+{#- A run holds the device a row's action would change (the operator, 2026-11-11;
+    `in_flight.mark_held`, read from the hold the server refuses by): the action is not
+    offered, the line says what runs, since when and by whom, and links to the run. -#}
+{%- macro held_line(r) -%}
+<span class="att-held muted" role="status" data-held="{{ r.held.device }}" title="{{ r.held.words }}: one operation per device at a time">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span><a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.held.device, list=r.held.list) }}">Open the run</a>
+{%- endmacro -%}
 {%- macro primary(r, nets) -%}
-{%- if r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
+{%- if r.held %}{{ held_line(r) }}
+{%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
 {#- Board H, artboard D and E: a proposal's Review the fix… opens the row to its card (nmas_v2.js
     `citeClicked`, `a.att-jump`: every section holding the card opened, the card focused). -#}
 {%- elif r.action.open == 'heal_proposal' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_proposal" href="#heal-prop-{{ r.action.decision }}">Review the fix…</a>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
@@ -117,7 +124,8 @@
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
         {#- Each `open` an action can carry has its own control, and each control lands on what
             it names (C372: "Open on today's page" opened a page and nothing on it). -#}
-        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
+        {%- if r.held %}{{ held_line(r) }}
+        {%- elif r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
         {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_apply_page" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>{{ how('monitoring-templates', compact=True, op='the apply') }}
         {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_propose" href="{{ url_for('v2.monitoring_profile', propose=1) }}">Propose on Profile…</a>{{ how('monitoring-templates', compact=True, op='the proposal') }}
         {%- elif r.action.open == 'template_bring' %}<a class="btn btn-small btn-outline" data-op="bring-template" data-next-acts="template_bring" href="{{ url_for('templates_v2.page', list=r.action.list, bring=r.action.path) }}">Bring in the shipped version…</a>{{ how('bring-template', compact=True, op='bringing in a shipped template') }}

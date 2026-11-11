@@ -1465,6 +1465,31 @@ def _in_progress(client, _lab, mp):
     assert r.status_code == 200 and "ip-chip" in r.get_data(as_text=True), r.status_code
 
 
+def _held_actions(client, _lab, _mp):
+    """The Actions menu while a run holds r3 (the operator, 2026-11-11; `in_flight.held_action`):
+    every changing row greyed with the run, the note naming it; and a hold that cannot be
+    read, said as held (planted for this provider alone, then undone). The walk's pages ask
+    for the menu with nothing held."""
+    import pytest
+
+    from modules.nsot import device_ops
+
+    with device_ops.hold("Lab", "r3", "rotate", "operator@example.com"):
+        r = client.get("/v2/device/r3/actions?list=Lab", headers={"HX-Request": "true"})
+    assert r.status_code == 200 and "r3 is held: Rotate credential running since" \
+        in r.get_data(as_text=True), r.status_code
+
+    def unreadable(network, host):
+        raise device_ops.HoldsUnreadable("/locks/r3.lock", PermissionError(13, "denied"))
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(device_ops, "holder", unreadable)
+        r = client.get("/v2/device/r3/actions?list=Lab", headers={"HX-Request": "true"})
+        assert "it is treated as held" in r.get_data(as_text=True), r.status_code
+    finally:
+        mp.undo()
+
+
 def _pending(client, lab, _mp):
     """A device pending onboarding (C1193's page and fragment): recorded the way Create records
     it (`manifest.upsert_device(pending=True)`), so the product's own `find_pending` finds it;
@@ -4165,7 +4190,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _attention_withheld,
                    _attention_quiet_period,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose,
-                   _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
+                   _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,

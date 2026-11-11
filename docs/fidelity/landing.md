@@ -35,7 +35,21 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `aeefc80da2b2d0f7510c64fa2a85b40d35ea660f048dad0ba98077bb638b1345`
+Templates sha256: `8dc969d036f434576a2ac665d0a3c0f84c1aac1f0b4c67b46df31516ad3c21fe`
+
+**Hashed again 2026-11-11 for a held device's actions** (the operator, that day: "While a
+device is held by a run, its actions must be disabled, saying 'running since <time>, by
+<who>', with a link to the run."). `_attention.html` gains a macro, `held_line`, and one
+branch in each of the two places a row's action is drawn (its one line, and What to do): a row
+whose action opens an operation on a device a run holds now (`in_flight.mark_held`, read per
+request from the hold the server refuses by) draws "<run> running since <time>, by <who>" and
+**Open the run** in the action's place, and its action again once the hold ends (the list
+also listens for `device_holds` and `in_progress`). A row whose device is not held is drawn as
+compared; nothing else in the row moves. Board NA-R draws no held device: **deviation**,
+logged in STANDING_APPROVAL_LOG ("Landing: a row's action is drawn as the run while a run
+holds its device"). Compared by the template diff and the rows tests/test_held_actions.py
+draws, not a new shot. Templates sha256 before:
+`aeefc80da2b2d0f7510c64fa2a85b40d35ea660f048dad0ba98077bb638b1345`.
 
 **Hashed again 2026-11-11 for the operator's request of that day** ("Every operation and heal
 ends with a visible outcome on its card and under 'Finished' (success / partial / failed, with

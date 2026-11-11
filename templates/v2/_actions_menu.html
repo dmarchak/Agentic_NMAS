@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, how -%}
+{%- from "v2/_macros.html" import icon, info, how, clock -%}
 {#- The device page's Actions menu (boards 8 to 12), its own fragment (C507): what it
     offers (Revert and Retry only while a rollback block stands) is read when it is drawn,
     and the page re-reads it on every key that changes that (`device.html`'s container), so
@@ -11,6 +11,17 @@
     <div class="menu" role="menu" x-show="isOpen" x-cloak>
       {%- set changes = changes or {'offered': True, 'state': '', 'why': '', 'host': False} %}
       <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.{% if changes.state %} <span data-management="{{ 'host' if changes.host else 'observe' }}">{{ device.hostname }} is {{ changes.state }}: nothing that changes it is offered. Retire… is offered: it sends nothing to {{ device.hostname }}, and changes {{ brand.short }}'s records and, where NetBox writes are on, NetBox's record of it.</span>{% endif %}</p>
+      {#- A run holds the device (the operator, 2026-11-11; `in_flight.held_action`, the hold
+          the server refuses by): every row that would change it is greyed, each saying why on
+          hover and to a reader, and the note names the run and links to it. Reads stay
+          offered. The menu reads again when the run ends (`device_holds`, `in_progress`). -#}
+      {%- if held %}
+      <p class="menu-note menu-held" role="status" data-held="{{ device.hostname }}">{{ icon('warn', 14) }} {{ device.hostname }} is held: {% if held.unread %}{{ held.words }}.{% else %}{{ held.name }} running since {{ clock(held.since) }}, by {{ held.by }}.{% endif %} Nothing that changes {{ device.hostname }} is offered until it ends; reads stay offered. <a href="{{ url_for('device_v2.device', name=device.hostname) }}">Open the run</a></p>
+      {%- set changes = {'offered': False, 'state': changes.state, 'why': held.words, 'host': changes.host} %}
+      {%- set block = {'blocked': False, 'why': held.words} %}
+      {%- set rekey = {'held': False, 'why': held.words} %}
+      {%- set verify_again = {'offered': False, 'why': held.words} %}
+      {%- endif %}
       {#- A row built on v2 draws its card in place of the tab; its href opens the page with
           the card for a browser without script. C2606, C2608: on an observe-only device or a
           host a changing row is drawn greyed, saying why, as Revert and Retry are. -#}
@@ -21,7 +32,7 @@
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Plan a deploy…<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
       {%- endif %}
       {% for label, op, words in [('Capture', 'capture', 'capture'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
-      {%- if changes.offered or (op != 'restore' and not changes.host) %}
+      {%- if not held and (changes.offered or (op != 'restore' and not changes.host)) %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
       {%- else %}
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">{{ label }}<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
@@ -58,7 +69,11 @@
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Run a privileged command…<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
       {%- endif %}
       {#- Reload (P.14, cutover blocker 6): its card reads the device and judges six gates. -#}
+      {%- if held %}
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.words }}">Reload…<span class="sr-only"> (not offered: {{ held.words }})</span></span></div>
+      {%- else %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload') }}" hx-get="{{ url_for('device_v2.reload_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Reload…</a>{{ how('reload', compact=True, op='reload') }}</div>
+      {%- endif %}
       {#- Verify again (C2280): offered only while the device's last reload ended not verified,
           as its Needs attention row offers it; else it says why. -#}
       {%- if verify_again and verify_again.offered %}
@@ -80,6 +95,10 @@
       <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ rekey.why }}">Re-key…<span class="sr-only"> (not offered: {{ rekey.why }})</span></span></div>
       {%- endif %}
       <div class="menu-rule"></div>
+      {%- if held %}
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.words }}">Retire…<span class="sr-only"> (not offered: {{ held.words }})</span></span></div>
+      {%- else %}
       <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close" title="Sends nothing to {{ device.hostname }}: takes it out of management in {{ brand.short }}'s records and, where NetBox writes are on, in NetBox's record of it. Its preview lists every change, and what survives and where, before anything is done.">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
+      {%- endif %}
     </div>
   </div>

@@ -23,6 +23,15 @@ a reason; and the button, named for the work, **Re-subscribe <device>'s telemetr
 busy on itself until the card answers in place. It is offered only for a device found in
 exactly one network.
 
+**While a run holds the device**, nothing here offers a second one. The row's action, on its
+line and under What to do, reads "<run> running since <time>, by <who>" with **Open the run**,
+which opens the device's page on that run's card. The card opened while a re-subscribe of the
+device is going (a refresh, a second tab, another person) draws that run, never the offer
+again; held by any other operation, it draws the program and, in the button's place, "Not
+offered while <device> is held: <run> running since <time>, by <who>. One operation per device
+at a time." The action and the button return by themselves when the run ends. The server
+refuses a second operation on a held device whatever a page drew: the page reads the same hold.
+
 Above the card, the opened row says what Mercury's own records hold about the loss, with no
 AI ([A lost telemetry stream, opened](needs-attention#a-lost-telemetry-stream)): how long the
 device has sent nothing; **Seen before on <device>**, when a past loss on it matches, with how

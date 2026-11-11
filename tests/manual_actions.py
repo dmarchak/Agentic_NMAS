@@ -190,6 +190,11 @@ NOT_AN_OPERATION = {
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     # C2336: Check drift now's card.
     ("_drift_check.html", "Close"): "puts the tab back that the card replaced, a read",
+    # A held device's action drawn as the run that holds it (the operator, 2026-11-11).
+    ("_attention.html", "Open the run"): "opens the held device's page, which draws the "
+                                         "run's card: a read",
+    ("_resubscribe.html", "Open the run"): "opens the held device's page, which draws the "
+                                           "run's card: a read",
     # A run's card the device's page reopens (the operator, 2026-11-11: `heal.run_card`).
     ("_heal_run.html", "Close"): "puts the tab back that the heal's card replaced, a read",
     ("_resubscribe.html", "Close"): "puts the tab back that the run's card replaced, a read",

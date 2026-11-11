@@ -386,3 +386,18 @@ def reopened_record(network: str, host: str, viewer: str, now: float = None):
     return (record_card_for(network, host, rec["id"]),
             {"actor": rec.get("actor"), "state": "done", "started_at": started,
              "finished_at": rec.get("finished_at") or started})
+
+
+def running_resubscribe(network: str, host: str):
+    """The re-subscribe running on *host* now, ``{"job", "run"}`` (its run's id once its
+    record is written, else ``""``), or None: the card opened without a run names this one,
+    so a page refreshed mid-run draws the run, never a fresh offer (the operator,
+    2026-11-11)."""
+    from modules.nsot import capture_job
+
+    job = capture_job.for_device(network, host, RESUB_CARD)
+    if not job or job["state"] != "running":
+        return None
+    rec = next((r for r in _records(network, (job.get("started_at") or 0) - 1)
+                if r.get("device") == host), None)
+    return {"job": job["job"], "run": (rec or {}).get("id") or ""}

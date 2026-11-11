@@ -275,7 +275,8 @@ SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-reques
 
 
 class TestInARealBrowser:
-    def _open(self, served):
+    def _menu(self, served):
+        """The device's page with its Actions menu open."""
         b = served["b"]
         b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
         b.go(served["srv"].url("/v2/device/r2"))
@@ -285,6 +286,10 @@ class TestInARealBrowser:
         b.click('button[aria-haspopup="menu"]')
         b.wait_for("var m=document.querySelector('.page-actions [role=menu]'); "
                    "return m && m.offsetParent", 5)
+        return b
+
+    def _open(self, served):
+        b = self._menu(served)
         b.click('a[role="menuitem"][data-op="rotate"]')
         return b
 
@@ -299,11 +304,19 @@ class TestInARealBrowser:
 
     def test_a_held_card_reads_again_when_the_hold_is_released(self, served):
         """The signed mockup's promise, end to end: refused while a deploy holds r2, the card
-        reads again on its own when the hold ends, and offers the confirm."""
+        reads again on its own when the hold ends, and offers the confirm.
+
+        The premise corrected (C3096, the operator, 2026-11-11: "While a device is held by a
+        run, its actions must be disabled"): this test took the hold and THEN opened the menu
+        and pressed Rotate credential…; a menu drawn while r2 is held no longer offers that
+        row. The path that remains is a menu drawn before the hold began (a hold taken with no
+        job announces nothing at its start, C3094): the menu is opened, the hold is taken, and
+        Rotate credential… is pressed. Every assertion is as it was."""
         from modules.nsot import device_ops
+        b = self._menu(served)
         device_ops.acquire("Lab", "r2", "deploy", "alex@example.invalid")
         try:
-            b = self._open(served)
+            b.click('a[role="menuitem"][data-op="rotate"]')
             b.wait_for(f"return {CARD} && {CARD}.textContent.indexOf('alex@example.invalid')"
                        f" >= 0 && {SETTLED}", 15)
             assert not b.js(f"return !!{CARD}.querySelector('.op-confirm')")

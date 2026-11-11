@@ -126,7 +126,17 @@ def _attention() -> dict:
 
     # Rows quote their sources' own words: masked on the way out. One computation serves every
     # tab until a change is announced (C1262).
-    return mask_payload(needs_attention_shared())
+    a = mask_payload(needs_attention_shared())
+    # A row whose action would change a device a run holds NOW draws it disabled, with the
+    # run (the operator, 2026-11-11): read for this request from the holds themselves, never
+    # kept with the shared computation, which a hold's start does not announce.
+    from modules import in_flight
+    from routes.operations import viewer_key
+    try:
+        in_flight.mark_held(a.get("rows") or [], viewer_key())
+    except Exception as exc:                          # noqa: BLE001 (the server still refuses)
+        log.warning("v2: which rows' devices are held could not be read: %s", exc)
+    return a
 
 
 def _recent() -> dict:

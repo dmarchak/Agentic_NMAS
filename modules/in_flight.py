@@ -145,6 +145,11 @@ OPERATION_NAMES = {
     # A run named by its CARD (`RUN_CARDS`): a heal's hold is a deploy's, and a re-subscribe's
     # its own operation, but the run a person looks for is the heal or the re-subscribe.
     "heal_run": "Self-healing", "resubscribe": "Re-subscribe telemetry",
+    # The holds self-healing's operations take (`resubscribe.OPERATION`, `READD_OPERATION`;
+    # board H's bounce and clear), named as a person reads them.
+    "telemetry re-subscribe": "Re-subscribe telemetry",
+    "telemetry receiver re-add": "Re-add the receiver",
+    "port bounce": "Port bounce", "session clear": "BGP session clear",
 }
 #: The cards whose row is named by the card, never by the hold's operation (`heal.run_card`).
 RUN_CARDS = ("heal_run", "resubscribe")
@@ -354,3 +359,97 @@ def chip(networks, viewer: str, now: float = None) -> dict:
         f"{len(unread)} network(s) unread" if unread else "") if w)
     return {"running": running, "finished": finished, "unread": unread, "counts": counts,
             "level": level, "words": words, "shown": bool(running or finished or unread)}
+
+
+# ---------------------------------------------------------------------------
+# A held device's actions (the operator, 2026-11-11: "While the run is in progress, a page
+# refresh offers 'Re-subscribe <device>'s telemetry' again. While a device is held by a run, its
+# actions must be disabled, saying 'running since <time>, by <who>', with a link to the run.")
+# ---------------------------------------------------------------------------
+
+#: The actions menu's and the Needs attention list's extra keys: a job started or ended
+#: (`in_progress`, the hold's start as the page hears it) and a hold released
+#: (`device_holds`), so an action greys and returns without a reload.
+HELD_KEYS = ("device_holds", "in_progress")
+#: A Needs attention action that opens a device-changing operation names its device; these
+#: open a read or a page that changes no device, and stay offered while the device is held.
+NOT_HELD_OPENS = ("heal_mark", "heal_halt")
+
+
+def _held_words(holder: dict, viewer: str, job: dict = None) -> dict:
+    """One hold as an action's refusal draws it: what runs (the run's own name when a job
+    this server holds says its card, else the hold's operation), since when and by whom, in
+    the words "running since <time>, by <who>" (UTC here, for a hover and a reader; the page
+    draws ``since`` in the viewer's zone)."""
+    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(holder.get("started") or 0))
+    card = (job or {}).get("card")
+    named = card if card in RUN_CARDS else holder.get("operation", "")
+    name = OPERATION_NAMES.get(named, holder.get("operation") or "An operation")
+    who = _who(holder.get("actor", ""), viewer)
+    return {"name": name, "since": started, "by": who,
+            "words": f"{name} running since {_clock(started)}, by {who}"}
+
+
+def held_action(list_name: str, hostname: str, viewer: str = ""):
+    """What holds *hostname* now, for a control that would change it, or None: read from the
+    SAME hold the server refuses by (`device_ops.holder`: one owner, no second flag), so the
+    page greys exactly what would be refused. A hold that cannot be read is held, in words
+    (C988: never "nobody holds it")."""
+    from modules.nsot import capture_job, device_ops
+
+    try:
+        holder = device_ops.holder(list_name, hostname)
+    except OSError as exc:
+        return {"name": "Its hold", "since": "", "by": "", "unread": str(exc),
+                "words": f"its hold could not be read ({exc}): it is treated as held"}
+    if not holder:
+        return None
+    job = capture_job.for_device(list_name, hostname)
+    job = job if job and job["state"] == "running" else None
+    return _held_words(holder, viewer, job)
+
+
+def _row_networks(row: dict, device: str) -> list:
+    """The networks a Needs attention row names for *device*: the row's ``networks`` is keyed
+    by DEVICE, each value the networks that hold a device of that name
+    (`attention._with_networks`). It is no per-network store, so it is read by the device's
+    name, entry by entry."""
+    for name, nets in (row.get("networks") or {}).items():
+        if name == device:
+            return list(nets or [])
+    return []
+
+
+def mark_held(rows: list, viewer: str = "") -> list:
+    """Each Needs attention row whose action opens an operation on a device a run holds now
+    carries ``held`` (`held_action`'s words, with the device's network): its action is drawn
+    disabled, with a link to the run. One read of what is held per network the rows name
+    (`device_ops.held`: the devices held, never one probe per row or per fleet device). A
+    network whose holds cannot be read marks nothing: the server still refuses."""
+    from modules.nsot import capture_job, device_ops
+
+    wanted = {}
+    for r in rows:
+        r.pop("held", None)                           # this request's reading, never a kept one
+        a = r.get("action") or {}
+        device = a.get("device")
+        if not device or not a.get("open") or a.get("open") in NOT_HELD_OPENS:
+            continue
+        nets = _row_networks(r, device)
+        network = a.get("list") or (nets[0] if len(nets) == 1 else "")
+        if network:
+            wanted.setdefault(network, []).append((r, device))
+    for network, pairs in wanted.items():
+        try:
+            holds = {h.get("device"): h for h in device_ops.held(network)}
+        except OSError as exc:
+            log.warning("in_flight: %s's holds could not be read for Needs attention: %s",
+                        network, exc)
+            continue
+        for r, device in pairs:
+            if device in holds:
+                job = capture_job.for_device(network, device)
+                job = job if job and job["state"] == "running" else None
+                r["held"] = dict(_held_words(holds[device], viewer, job), device=device,
+                                 list=network)
+    return rows

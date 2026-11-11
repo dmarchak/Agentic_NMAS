@@ -12,7 +12,10 @@ The landing page answers one question: does anything need you?
   severity, and when an operation such as a Reload is running, says how many of its expected
   effects are held for it, linked to its card: they are never rows here.
 - **One line per item:** its severity, what it is, how long ago it began, and its first action
-  (**Open <device>**, or its own page), which works without opening the item. Press the line to
+  (**Open <device>**, or its own page), which works without opening the item. While a run holds
+  the device an item's action would change, the action is not offered: in its place the line
+  reads "<run> running since <time>, by <who>" with **Open the run**, which opens the device's
+  page on that run's card; the action returns by itself when the run ends. Press the line to
   open it: **What to do** comes first (every action with its How does this work?, how it
   clears, and **Acknowledge…** for an event), then why: for an item a Grafana alert raised,
   **Explain**, the same answer Monitoring › Alerts keeps for that alert's evidence (opening the

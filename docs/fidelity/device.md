@@ -119,7 +119,25 @@ with no new shot (tests/test_board_shots.py draws no observe-only device); one d
 logged; the regions "Retire: what it does" and "Actions menu: Retire…'s own words" below.
 Templates sha256 before:
 `b5ba864e07ec64d0e41b26d8650f1e7914d58ffc3cfd69d0191e5ad31ae2bf38`.
-Templates sha256: `1446343d05a0120b023505e25335e77b4d5fe5d97fa2aa0e8a831a9e0536567f`
+
+**Hashed again 2026-11-11 for the operator's request of that day** ("While the run is in
+progress, a page refresh offers 'Re-subscribe r7's telemetry' again. While a device is held by
+a run, its actions must be disabled, saying 'running since <time>, by <who>', with a link to
+the run."). `_actions_menu.html`: while a run holds the device (`in_flight.held_action`, the
+hold the server refuses by), a second note under the menu's first says "<device> is held:
+<run> running since <time>, by <who>. Nothing that changes <device> is offered until it ends;
+reads stay offered." with **Open the run**, and every row that would change the device (Plan a
+deploy, Capture, Seed intent, Restore from, Remove lines, Revert, Retry, Rotate, Persist, Run a
+privileged command, Reload, Verify again, Re-key, Retire) is drawn greyed as an observe-only
+device's rows are, "Not offered: <run> running since <time>, by <who>" on hover and to a
+reader; Check drift now and Diagnose stay offered. With nothing held the menu is as compared.
+`device.html`: the menu's container also listens for `in_progress` (a job's start), so the
+rows grey and return without a reload; nothing drawn moved. Boards 8 to 12 draw no held
+device: **deviation**, logged in STANDING_APPROVAL_LOG ("Device: the Actions menu greys every
+changing row while a run holds the device"). Compared by the template diff and the menu
+tests/test_held_actions.py draws, not a new shot. Templates sha256 before:
+`1446343d05a0120b023505e25335e77b4d5fe5d97fa2aa0e8a831a9e0536567f`.
+Templates sha256: `e5b302368775fadbc20a282051698820047a780a5f325a737f3ef7a95e6ee774`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it

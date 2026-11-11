@@ -129,6 +129,15 @@ def card(ref, dev, args, **answer) -> dict:
          "reason": str(args.get("reason") or "")[:300], "bound_s": R.VERIFY_BOUND_S,
          "wait_s": R.WAIT_S, "outcome_words": dict(R.OUTCOME_WORDS)}
     c.update(answer)
+    if not c["run"] and not c["error"]:
+        # Opened with no run named while one runs on this device (a refresh, a second tab,
+        # another person): that run, never a fresh offer.
+        going = run_card.running_resubscribe(ref.name, host)
+        if going is not None:
+            c.update(run=going["run"], job=going["job"])
+            if not going["run"]:
+                c["state"] = "running"
+                return c
     if c["run"]:
         # Running, or its result: the outcome first, each subscription's checks, and the
         # steps taken on THE stepper, from the record History keeps whole (`run_card`).
@@ -140,6 +149,13 @@ def card(ref, dev, args, **answer) -> dict:
     last = run_card.last_view(ref.name, host)
     if last is not None:
         c["last"] = last
+    # Another run holds the device: the buttons are not offered, and say which run, since when
+    # and by whom, from the hold the confirm would be refused by (`in_flight.held_action`).
+    from modules import in_flight
+    from routes.operations import viewer_key
+    held = in_flight.held_action(ref.name, host, viewer_key())
+    if held:
+        c["held"] = held
     src = R.Sources(ref.name)                         # committed intent read once
     whole = R.plan(ref.name, host, subs, sources=src)
     c["choices"], refused = (_choices(R, ref.name, host, whole, src) if whole["ok"]

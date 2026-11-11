@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how, badge -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge, clock -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Re-subscribe a lost telemetry stream (C2838; routes/resubscribe_v2.card,
     modules/heal/resubscribe.py), drawn in the lost stream's Needs attention row by
@@ -66,7 +66,9 @@
   {%- for x in c.removed or [] %}
   {%- set rid = cid ~ '-readd-' ~ x.sub %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }}'s receiver for {{ x.sub }} is removed.</strong> A re-subscribe removed it and it has not been added back, so subscription {{ x.sub }} sends nothing until it is. Re-add the receiver adds intent's receiver line back, holding {{ c.host }}, then checks the stream as a re-subscribe does.</p></div>
-  {%- if x.hash %}
+  {%- if x.hash and c.held %}
+  <p class="small" data-held="{{ c.host }}">Re-add the receiver is not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list) }}">Open the run</a></p>
+  {%- elif x.hash %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to
       (the re-add's own, its whole program). -#}
   <div class="att-action" id="{{ rid }}"><input type="hidden" name="sub" value="{{ x.sub }}"><input type="hidden" name="subs" value="{{ c.subs | join(',') }}">
@@ -113,7 +115,11 @@
   {%- endif %}
   <label class="heal-field" for="{{ cid }}-why">Reason (recorded with each receiver's removal)<input id="{{ cid }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ c.reason or '' }}"></label>
   </div>
-  {%- if p.ok %}
+  {%- if p.ok and c.held %}
+  {#- Another run holds the device (the operator, 2026-11-11): the confirm is not offered, and
+      says which run, since when and by whom, with a link to it. -#}
+  <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=c.host, list=c.list) }}">Open the run</a></div>
+  {%- elif p.ok %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to, the
       selection's (the whole program drawn above, in its order); each ticked subscription's own
       hash goes with it from the form. -#}
