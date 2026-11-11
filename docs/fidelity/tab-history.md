@@ -20,7 +20,15 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `cb6b6a2f9c5896acdd040474fa33560425c04a23bcfeb333f3592598defc3a7c`
+Templates sha256: `53a8b6f37937d8cddee580ff3b58e06d8c06ee1aca170e39e89459561bfb98e7`
+
+Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10), by the
+template diff: the region and its reading are history.md's of the same date (one template,
+`_timeline.html`, draws both): an OpenFlow configuration's opened row draws what it was built
+from and each value before → after. A switch of the inventory is now such a row's device, so
+its own History tab draws its configurations, where it drew none. No other region of this tab
+moved. Templates sha256 before:
+`cb6b6a2f9c5896acdd040474fa33560425c04a23bcfeb333f3592598defc3a7c`.
 
 Compared again 2026-11-09 (C2773), by the template diff: the regions and verdicts are
 history.md's of the same date (one template, `_timeline.html`, draws both): a self-healing row

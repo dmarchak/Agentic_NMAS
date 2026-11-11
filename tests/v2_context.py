@@ -3584,7 +3584,9 @@ def _sdn_switches(client, _lab, _mp):
     Arista capture to confirm against: the tab and its region (every group, the unknown
     datapath, a template's captures), the templates card's preview and a refused one, the
     configure preview (a switch planned, one on a draft template) and its result (one verified,
-    one rolled back) and a refused confirm, the empty slot and Verify now's answer. The plans
+    one rolled back, each with what it was built from and each value before and after) and a
+    refused confirm, the empty slot and Verify now's answer; and History's SDN rows, where the
+    verified configuration's record keeps its source and its changes. The plans
     and applies are the operation's answers as recorded (`openflow_config.plan` and `apply`
     replaced: no switch is reached here; tests/test_openflow_vendor.py runs them for real)."""
     import pytest
@@ -3611,9 +3613,18 @@ def _sdn_switches(client, _lab, _mp):
             "state": "ok", "value_at": "2026-11-10T03:00:00Z", "failed": "",
             "value": {"controllers": [{"name": "lab-controller", "switches": [
                 {"dpid": d} for d in (2214744208935, 3, 999)]}]}})
+        # What a plan was built from and what it changes, as `openflow_config` keeps them.
+        source = {"export_sha256": sha, "export_commit": "a1b2c3d4e5" * 4, "origins": [
+            {"value": "controller", "is": "192.0.2.1:6653",
+             "from": "NetBox Service 'openflow' on controller (its device's primary IPv4 "
+                     "address)"},
+            {"value": "ports", "is": "Ethernet18, Ethernet19",
+             "from": "interfaces tagged openflow"}]}
+        changes = [{"value": "enabled", "before": "no", "after": "yes"}]
         rows = [{"kind": "operation", "id": "ofcfg-1", "at": "2026-11-10T02:10:00Z",
                  "actor": "op@example.com", "outcome": "verified", "export_sha256": sha,
-                 "dpid_hex": "00000203a90ab627", "verify": {"checks": [
+                 "dpid_hex": "00000203a90ab627", "sent": [{"lines": 2}], "source": source,
+                 "changes": changes, "verify": {"seconds": 2.1, "checks": [
                      {"name": "x", "state": "pass", "words": "reads as the program sets it"}]},
                  "response": {"kind": "openflow_config", "device": "arista-sw1"}},
                 {"kind": "operation", "id": "ofcfg-2", "at": "2026-11-10T02:12:00Z",
@@ -3647,6 +3658,7 @@ def _sdn_switches(client, _lab, _mp):
                     "family": "Arista EOS", "program": ["openflow", "   no shutdown"],
                     "lines": [], "undo": ["no openflow"], "hash": "a" * 64,
                     "export_sha256": sha, "different": ["enabled: wanted True"],
+                    "changes": changes, "source": source,
                     "unchanged": False, "defaults": ["openflow.fail_mode secure"],
                     "excluded": ["Management1 is the management interface (mgmt_only): "
                                  "excluded from OpenFlow"], "version": "4.17.0F",
@@ -3663,7 +3675,11 @@ def _sdn_switches(client, _lab, _mp):
             return {"outcome": "verified" if ok else "rolled_back", "id": f"ofcfg-{device}",
                     "error": "" if ok else "Verify failed: not in the switch list",
                     "sent": [{"lines": 2}], "saved": False, "save_words": OC.NOT_SAVED,
-                    "verify": {"checks": [{"name": "x", "state": "pass" if ok else "fail",
+                    "plan": {"program": ["openflow", "   no shutdown"], "unchanged": False,
+                             "changes": changes, "source": source},
+                    "verify": {"seconds": 2.1, "at": "2026-11-10T02:10:00Z",
+                               "dpid": "00000203a90ab627",
+                               "checks": [{"name": "x", "state": "pass" if ok else "fail",
                                            "words": "the read-back"}]},
                     "rollback": {} if ok else {"ran": True, "ok": True,
                                                "words": "reads as it did before"},
@@ -3674,9 +3690,15 @@ def _sdn_switches(client, _lab, _mp):
         done = client.post(f"{base}/configure/confirm", data={
             "list": "Lab", "hash": SP.batch_hash([{"device": d, "hash": h} for d, h in pairs]),
             "plan": [f"{d}={h}" for d, h in pairs]}).get_data(as_text=True)
-        assert "Configured 1 of 2" in done
+        assert "Configured 1 of 2" in done and "Built from" in done
         assert client.post(f"{base}/configure/confirm", data={
             "list": "Lab", "hash": "0" * 64, "plan": ["arista-sw1=" + "a" * 64]}).status_code == 409
+        # History's row for the verified configuration: its source and its changes drawn. Two
+        # kinds chosen, so the rows are these alone and the page's states are otherwise the
+        # walk's (it filters by no single kind, and no row of its store carries a mark).
+        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy")\
+            .get_data(as_text=True)
+        assert "OpenFlow configuration on arista-sw1" in history and "Built from" in history
         assert client.get(f"{base}/slot?card=template").status_code == 200
         assert client.post(f"{base}/verify", data={"list": "Lab"}).status_code == 409
     finally:

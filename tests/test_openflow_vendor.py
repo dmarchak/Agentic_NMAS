@@ -543,6 +543,38 @@ class TestTheParsersReadTheUndoForms:
         assert gone["untagged"]["1"] == ["1", "2", "3", "4"] and gone["untagged"]["200"] == []
 
 
+class TestWhatAProgramChanges:
+    """`openflow_state.changes`: the plan's own comparison (`compare`), said value by value
+    as before and after, for the result card and the record."""
+
+    def test_each_value_the_switch_holds_otherwise_is_a_row_before_and_after(self):
+        have = S.eos("hostname x\nopenflow\n   controller tcp:192.0.2.9:6633\n")
+        want = S.eos("\n".join(["interface Ethernet18", "   no lldp transmit",
+                                "   no lldp receive", "openflow",
+                                "   controller tcp:192.0.2.1:6653",
+                                "   bind interface Ethernet18", "   no shutdown"]))
+        assert S.changes(want, have) == [
+            {"value": "bound", "before": "none", "after": "Ethernet18"},
+            {"value": "controllers", "before": "tcp:192.0.2.9:6633",
+             "after": "tcp:192.0.2.1:6653"},
+            {"value": "enabled", "before": "no", "after": "yes"},
+            {"value": "lldp off", "before": "none", "after": "Ethernet18"}]
+        # The same comparison in `differences`' sentences, one for one.
+        different, unread = S.differences(want, have)
+        assert len(different) == 4 and unread == []
+        assert "controllers: wanted tcp:192.0.2.1:6653, the switch has tcp:192.0.2.9:6633" \
+            in different
+        assert S.changes(want, want) == []
+
+    def test_a_value_the_switch_does_not_hold_reads_none_before_each_leaf_its_own_row(self):
+        want = {"instances": {"lab9": {"version": "1.3", "member_vlans": ["200"]}},
+                "enabled": True}
+        assert S.changes(want, {"enabled": True}) == [
+            {"value": "instances lab9 member vlans", "before": "none", "after": "200"},
+            {"value": "instances lab9 version", "before": "none", "after": "1.3"}]
+        assert S.differences(want, {"enabled": True}) == ([], ["instances"])
+
+
 class TestTheShapes:
     @pytest.mark.parametrize("template,host,capture", [
         ("arista_eos", "arista-sw1", "arista-sw1.txt"),

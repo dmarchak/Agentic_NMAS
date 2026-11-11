@@ -32,7 +32,20 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `60731557c955c921ab33af47b25fe04cbc045737f5ef508178c4711cb660dc55`
+Templates sha256: `c5934949831ac771dec940997d03f4533f00c2d1078d7ebe01bc8287a43fb728`
+
+Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10: "The
+History record's Device column says 'fleet' instead of the switch", "the History 'What' column
+readable", and the configure's record "must name its source and each value's origin ... and
+give before -> after for each changed value"), by the template diff and new shots of
+tests/test_sdn_switches_v2.py's and tests/test_dhcp_steer_v2.py's records at 1280 and 1920,
+before and after: one region moved, an opened row's body in `_timeline.html`. An OpenFlow
+configuration's row draws, above its detail, what it was built from (`_sdn_built_from.html`:
+the NSOT export and its commit as links, each value with where it came from) and a list of
+each value before → after; no board draws an SDN row, so there is no board region to compare
+it with, and every other row is as it was (both blocks are drawn only for a row that carries
+them). The Device and What columns' words changed in the data, not the template. Templates
+sha256 before: `60731557c955c921ab33af47b25fe04cbc045737f5ef508178c4711cb660dc55`.
 
 Compared again 2026-11-10 (Lab 9 B5, board lab9-sdn H), by the template diff: History's tabs
 gain a fourth, **Export**, after Baselines, and `_history_body.html` draws its body

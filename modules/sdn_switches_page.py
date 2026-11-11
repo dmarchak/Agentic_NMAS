@@ -280,7 +280,10 @@ def configure_preview(network: str, devices: list, *, session=None) -> dict:
                  "family": p.get("family", ""),
                  "program": p.get("program") or [],
                  "undo": p.get("undo") or "", "hash": p.get("hash", ""),
-                 "different": p.get("different") or [], "unchanged": p.get("unchanged"),
+                 # Each value the program changes, before and after, and where each value it
+                 # was built from came from: the plan's own (`openflow_config` module).
+                 "changes": p.get("changes") or [], "unchanged": p.get("unchanged"),
+                 "built": OC.built_from(network, p.get("source")),
                  "defaults": p.get("defaults") or [], "excluded": p.get("excluded") or [],
                  "version": p.get("version", "")}
         if p.get("export_sha256"):
@@ -314,14 +317,39 @@ def configure_apply(network: str, pairs: list, confirmed: str, *, actor: str,
     for device, h in pairs:
         out = OC.apply(network, device, h, actor=actor, actor_verified=actor_verified,
                        session=session, driver=driver)
-        results.append({"device": device, "outcome": out.get("outcome", "refused"),
-                        "error": out.get("error", ""), "id": out.get("id", ""),
-                        "sent": out.get("sent") or [],
-                        "verify": (out.get("verify") or {}).get("checks") or [],
-                        "rollback": out.get("rollback") or {},
-                        "saved": out.get("saved"), "save_words": out.get("save_words", ""),
-                        "recorded": (out.get("record") or {}).get("ok", False)})
+        results.append(result_row(network, device, out))
     ok = sum(1 for r in results if r["outcome"] == "verified")
     level = "ok" if ok == len(results) else ("danger" if ok == 0 else "warn")
     return {"state_card": "result", "network": network, "results": results, "ok": ok,
             "level": level, "total": len(results)}
+
+
+def result_row(network: str, device: str, out: dict) -> dict:
+    """One switch's row of the result card from its apply's answer *out*
+    (`openflow_config.apply`): what was sent (in words, and the lines themselves), each value
+    before and after, Verify's checks with how long they took, the outcome, and what the plan
+    was built from. ``as_intended``: the plan found nothing to change and nothing was sent.
+    The changes are drawn only when something was sent: a refused run changed nothing."""
+    from modules.sdn import openflow_config as OC
+
+    plan = out.get("plan") or {}
+    sent = out.get("sent") or []
+    verify = out.get("verify") or {}
+    checks = verify.get("checks") or []
+    # The lines as they were sent: a vendor switch's program, Open vSwitch's one command.
+    lines = [s["command"] for s in sent if s.get("command")] or \
+        (list(plan.get("program") or []) if sent else [])
+    return {"device": device, "outcome": out.get("outcome", "refused"),
+            "error": out.get("error", ""), "id": out.get("id", ""),
+            "sent_words": OC.sent_words(sent), "sent_lines": lines,
+            "as_intended": bool(plan.get("unchanged")) and not sent
+            and out.get("outcome") in ("verified", "unverified"),
+            "changes": list(plan.get("changes") or []) if sent else [],
+            "built": OC.built_from(network, plan.get("source")),
+            "verify": checks,
+            "verify_passed": sum(1 for c in checks if c.get("state") == "pass"),
+            "verify_seconds": verify.get("seconds"), "verify_at": verify.get("at", ""),
+            "dpid": verify.get("dpid") or "",
+            "rollback": out.get("rollback") or {},
+            "saved": out.get("saved"), "save_words": out.get("save_words", ""),
+            "recorded": (out.get("record") or {}).get("ok", False)}

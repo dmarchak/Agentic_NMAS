@@ -12,8 +12,32 @@ rolled-back configuration recorded) and tests/v2_context.py's `_sdn_switches` pr
 card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of this record
 (the register row the main thread names for it).
 
-Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html
-Templates sha256: `ce67305bca404038213e1ee253f4a7e3c401472529a40d5e7016ab9c9580d738`
+Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html, templates/v2/_sdn_built_from.html
+Templates sha256: `af9ed77a948772cfbc22345db884f7a9d1f5595869c51e787235979697e4cc33`
+Hashed again 2026-11-11 for the operator's sitting on the lab's hardware (2026-11-10: "The
+configure result table shows headings and no rows. It must list each switch: what was sent,
+before -> after per value, Verify's time, outcome; 'already as intended, nothing sent' where
+nothing changed", and the result card "must name its source and each value's origin"). Two
+regions moved, both in `_sdn_of_config.html`, and one template joined the list
+(`_sdn_built_from.html`, the source sentence the cards and History share). **The result card:**
+the table is Switch, Sent, Before → after, Verify, Outcome, a table body per switch; Sent is
+the line count or "1 transaction" with the lines under "What was sent", or "already as
+intended, nothing sent"; Verify is how many checks passed, how long they took and when, each
+check's words with the operation's id and the datapath under "Details for the record"; under
+each switch a row saying what its program was built from (the NSOT export and its commit as
+links, then each value with where it came from). **The preview card:** each switch's "Differs
+now" line is a Changes row (each value before → after) and a Values row (the same source
+sentence); a switch already as intended says so in one sentence that holds for Open vSwitch
+too. Board A's result card draws four columns and no source: the built card is ahead of the
+board by the operator's own words, so the board's revision is the operator's to ask for, and no
+approval-log line is claimed here. Compared from new shots at 1280 and 1920 of
+tests/test_sdn_switches_v2.py's lab (four switches: one sent 12 lines, one as intended, one
+Open vSwitch transaction, one rolled back), before and after, and by reading the templates;
+no other region moved (the templates before hashed
+`ce67305bca404038213e1ee253f4a7e3c401472529a40d5e7016ab9c9580d738`). The large empty block the
+"Paused while you review this" note stood in, and the table's inner scroll, were the
+stylesheet's (`.held-note`'s flex basis in a column card), not a template's.
+
 Hashed again 2026-11-10 for Lab 9 Objective B2 (board lab9-sdn E): `_sdn_tabs.html` gains
 Policies between Apps and Responses (docs/fidelity/sdn-policies.md); the tab row is otherwise as
 compared, and no other region moves (the templates before hashed
@@ -36,6 +60,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | IPv6 | not drawn | "Arista EOS and ArubaOS-Switch take an IPv4 controller only…" under the bar | **deviation** (log: Board lab9-sdn A built, 8) |
 | The templates card | ovs, arista_eos, aruba_os_switch confirmed; hp_comware draft with Confirm against a capture… disabled and why | every template that renders, its switches, its status (confirmed by, when, against which capture; or draft and why), the capture picker and Confirm against a capture… in its row, or disabled saying what to read first; "How does this work?" in the head | **deviation** (log: Board lab9-sdn A built, 7) |
 | Confirm a template | the capture's select, the template's cited lines beside the capture's sections, the sentence, Confirm <template>, Cancel | the capture named with its hash, the template's lines each with why and its citations beside the capture's whole masked answer, the same sentence, Confirm <template> (busy on itself), Cancel | **deviation** (log: Board lab9-sdn A built, 7) |
-| The preview card | "Configure OpenFlow on 2 switches", the export's short hash, each switch's program, Verify, Undo, Hash, Configure 2 switches, Cancel, How does this work? | the same parts; each program in its template's own forms, its release, what differs, defaults, what is left out, its own hash; Not sent with why; Verify's 12 s; the undo folded | **deviation** (log: Board lab9-sdn A built, 5) |
-| The result card | "Configured 1 of 2" partial, Switch, Sent, Verify, Outcome; "one commit, two receipts"; Open the record, Back to Switches | the same table and controls; "one record per switch" and that nothing was saved; a rollback's words beside its outcome | **deviation** (log: Board lab9-sdn A built, 6) |
+| The preview card | "Configure OpenFlow on 2 switches", the export's short hash, each switch's program, Verify, Undo, Hash, Configure 2 switches, Cancel, How does this work? | the same parts; each program in its template's own forms, each value it changes (before → after), the values it was built from with where each came from, its release, defaults, what is left out, its own hash; Not sent with why; Verify's 12 s; the undo folded | **deviation** (log: Board lab9-sdn A built, 5) |
+| The result card | "Configured 1 of 2" partial, Switch, Sent, Verify, Outcome; "one commit, two receipts"; Open the record, Back to Switches | the same controls; the table Switch, Sent (or "already as intended, nothing sent"), Before → after, Verify (checks passed, how long, when), Outcome, and under each switch what it was built from; "one record per switch" and that nothing was saved; a rollback's words beside its outcome | **deviation** (log: Board lab9-sdn A built, 6) |
 | The callouts | yellow dashed notes | not page text | **same** |

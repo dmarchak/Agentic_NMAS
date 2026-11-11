@@ -34,20 +34,25 @@ AOS-CX templates are rendered and never sent.
    hashes), and the switch is held, across every Mercury process, for the send.
 7. `send`: the lines go in one configuration set (one OVSDB transaction on Open vSwitch). The
    session carries only the template's line shapes while the switch is held: no save, no other
-   line.
+   line. A switch already as intended is sent nothing: for a vendor switch its running
+   configuration's OpenFlow layer is already the program's, and for an Open vSwitch bridge
+   every one of Verify's checks of the bridge already passes before the send. Verify still
+   runs.
 8. `verify`: the running configuration is read back and its OpenFlow layer must be the
    program's; then the controller's switch list must hold the switch's datapath id within six
    reads two seconds apart.
 9. `rollback`: on a line the switch refused or a failed check, the undo is sent and the switch
    read again; the result says whether it reads as it did before.
-10. `record`: the run is kept in the network's SDN operation record, and History shows it as
-    "OpenFlow configuration on <switch>".
+10. `record`: the run is kept in the network's SDN operation record, with what it was built
+    from and each value it changed, and History shows it as "OpenFlow configuration on
+    <switch>", the switch in its Device column.
 
 ## The preview {#preview}
 
 **Configure from NetBox…** previews the switches you ticked, or every one that is not connected
 as intended; **Preview the fix…** previews one. Each switch shows its release, its exact
-program, what differs now, the defaults used, any interface left out of OpenFlow (the management
+program, each value the program changes (before → after), the values it was built from and
+where each came from, the defaults used, any interface left out of OpenFlow (the management
 interface never is one), what Verify checks, its undo (folded) and its hash. A switch already as
 intended says so and sends nothing. A switch on a draft template, or whose plan was refused, is
 listed under **Not sent** with why. Reading the preview writes nothing.
@@ -65,9 +70,31 @@ every 30 seconds; the tab redraws when it has. It sends nothing to a switch.
 
 ## The result {#result}
 
-The card says how many were configured, and per switch what was sent, each check of Verify and
-the outcome: verified, rolled back (with whether it reads as before), or not configured with
-why. **Open the record** opens History; **Back to Switches** closes the card.
+The card says how many were configured, and lists every switch at full height:
+
+- **Sent**: how many lines, or one transaction, with the exact lines under *What was sent*; or
+  "already as intended, nothing sent" where nothing changed.
+- **Before → after**: each value the program changed, as the switch held it and as it holds
+  it now. A run that was rolled back says its changes were sent, then put back.
+- **Verify**: how many checks passed and how long Verify took, and when. Each check's own
+  words, the operation's id and the switch's datapath id are under *Details for the record*.
+- **Outcome**: verified, rolled back (with whether it reads as before), or not configured with
+  why.
+- Under each switch, **what its program was built from**: the committed NSOT export (a link
+  to its card on SDN › Apps) and the commit that wrote it (a link to that commit on History),
+  then each value with where it came from, as Mercury resolved it: the controller's address
+  and port from the NetBox Service `openflow` on its device (and whether the address is the
+  Service's own or its device's primary IPv4 or IPv6); the version, transport and fail mode
+  from the device's config context, or Mercury's default where the context gives none; the
+  instance; the datapath id from the custom field `openflow_datapath_id`, or read from the
+  switch where that is empty; the ports from the interfaces tagged `openflow`, and their
+  numbers. An NSOT export keeps a device's rendered config context, not which context object
+  supplied a key, so the context is not named.
+
+**Open the record** opens History, where each switch's row says the same: the switch in the
+Device column, what was sent and the outcome in one line, what it was built from and each value
+before and after when the row is opened, and its identifiers under *Details for the record*.
+**Back to Switches** closes the card.
 
 **Nothing is saved to the startup configuration.** Whether this operation saves is undecided,
 so the running configuration holds the change until the switch reloads, and the result says so.

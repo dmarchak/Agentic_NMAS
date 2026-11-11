@@ -361,36 +361,76 @@ def parse(name: str, text: str, interfaces: str = "") -> dict:
     raise Unparsable(f"no OpenFlow state parser for the {name} template")
 
 
-def differences(want, have, path: str = "") -> tuple:
-    """``(different, unread)``: each value of *want* the switch's *have* holds otherwise
-    (``"<path>: wanted <w>, the switch has <h>"``), and each it does not carry (its path).
-    Ports, controllers and other lists compare as sets."""
-    different, unread = [], []
+def compare(want, have, path: str = "") -> tuple:
+    """The one walk of a wanted model against a switch's: ``(different, unread)``, *different*
+    ``[(path, wanted words, held words)]`` for each value of *want* the switch's *have* holds
+    otherwise, *unread* ``[(path, the wanted value)]`` for each it does not carry. Ports,
+    controllers and other lists compare as sets. `differences` says these as sentences and
+    `changes` as before and after: two wordings of one comparison."""
     if have is UNREAD:
-        return different, [path or "(all)"]
+        return [], [(path or "(all)", want)]
     if isinstance(want, dict):
         if not isinstance(have, dict):
-            return [f"{path}: wanted {want}, the switch has {have}"], []
+            return [(path, f"{want}", f"{have}")], []
         if not want and have:
             # A program holding no controller or instance where the switch holds some.
-            return [f"{path}: wanted none, the switch has {', '.join(map(str, sorted(have)))}"], []
+            return [(path, "none", ", ".join(map(str, sorted(have))))], []
+        different, unread = [], []
         for key in sorted(want):
             sub = f"{path}.{key}" if path else str(key)
             if key not in have:
-                unread.append(sub)
+                unread.append((sub, want[key]))
                 continue
-            d, u = differences(want[key], have[key], sub)
+            d, u = compare(want[key], have[key], sub)
             different += d
             unread += u
         return different, unread
     if isinstance(want, list) and isinstance(have, list):
         if sorted(map(str, want)) != sorted(map(str, have)):
-            different.append(f"{path}: wanted {', '.join(map(str, want)) or 'none'}, the "
-                             f"switch has {', '.join(map(str, have)) or 'none'}")
-        return different, unread
+            return [(path, ", ".join(map(str, want)) or "none",
+                     ", ".join(map(str, have)) or "none")], []
+        return [], []
     if want != have:
-        different.append(f"{path}: wanted {want}, the switch has {have}")
-    return different, unread
+        return [(path, f"{want}", f"{have}")], []
+    return [], []
+
+
+def differences(want, have, path: str = "") -> tuple:
+    """``(different, unread)``: each value of *want* the switch's *have* holds otherwise
+    (``"<path>: wanted <w>, the switch has <h>"``), and each it does not carry (its path).
+    Ports, controllers and other lists compare as sets (`compare`)."""
+    different, unread = compare(want, have, path)
+    return ([f"{p}: wanted {w}, the switch has {h}" for p, w, h in different],
+            [p for p, _want in unread])
+
+
+def _leaves(value, path: str) -> list:
+    """``[(path, words)]``: each value a wanted model holds under *path*."""
+    if isinstance(value, dict):
+        return [leaf for key in sorted(value)
+                for leaf in _leaves(value[key], f"{path}.{key}" if path else str(key))]
+    if isinstance(value, list):
+        return [(path, ", ".join(map(str, value)) or "none")]
+    return [(path, f"{value}")]
+
+
+def _said(words: str) -> str:
+    """A model's value as a person reads it: a flag as yes or no."""
+    return {"True": "yes", "False": "no"}.get(words, words)
+
+
+def changes(want, have) -> list:
+    """What a program changes on a switch, value by value: ``[{"value", "before", "after"}]``
+    from the same comparison as `differences` (`compare`). A value the switch's configuration
+    does not hold at all reads ``none`` before (a running configuration is the whole text), and
+    each value under it is its own row; a model's path is said in words (``lldp_off`` as "lldp
+    off", ``instances.lab9.version`` as "instances lab9 version")."""
+    different, unread = compare(want, have)
+    rows = [(p, h, w) for p, w, h in different]
+    for path, value in unread:
+        rows += [(p, "none", w) for p, w in _leaves(value, path)]
+    return [{"value": p.replace("_", " ").replace(".", " "), "before": _said(b),
+             "after": _said(a)} for p, b, a in sorted(rows)]
 
 
 def bind_changed(want: dict, have: dict) -> bool:

@@ -1,0 +1,9 @@
+{#- What an OpenFlow configuration was built from, said one way on SDN › Switches' preview and
+    result cards and on its History record (the operator, 2026-11-10: "built from NSOT export
+    a3df3d6 (commit aa4431a): controller … from NetBox Service 'openflow' on …; version 1.3 …
+    from config context …; ports … from interfaces tagged openflow"). `b` is
+    `openflow_config.built_from`'s answer: the export and its commit are links (an identifier
+    is never bare text: the export opens its card on SDN › Apps, the commit its row on
+    History), and each clause says a value and where it came from, as it was resolved
+    (`openflow_values.origin_words`). -#}
+Built from <a href="{{ url_for('sdn_v2.apps', list=b.network) }}#nsot-export" title="The committed NSOT export, sha256:{{ b.export_sha256 }}">NSOT export <span class="mono">{{ b.export_sha256[:7] }}</span></a>{% if b.export_commit %} (<a href="{{ url_for('v2.history_page', commit=b.export_commit, since='', list=b.network) }}" title="The commit that wrote it, {{ b.export_commit }}">commit <span class="mono">{{ b.export_commit[:7] }}</span></a>){% endif %}{% if b.clauses %}: {{ b.clauses | join('; ') }}{% endif %}

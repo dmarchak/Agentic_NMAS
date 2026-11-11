@@ -30,6 +30,15 @@ One operation, its stages in order (`STEPS`):
 8. **record**: the operation's whole run in the network's SDN operation record
    (`openflow_config.record`, ``response.kind`` ``openflow_config``), which History reads.
 
+**A bridge already as intended** (the operator, 2026-11-10: a result says "already as intended,
+nothing sent" where nothing changed): the plan asks Verify's own checks of the bridge
+(`bridge_checks`) of the bridge as it is BEFORE; when every one passes, the plan is
+``unchanged``, its ``changes`` are empty, and the apply sends no transaction and verifies (the
+bridge read back, then the controller's switch list), as a vendor switch's does; a controller
+that does not list it ends ``unverified``, with nothing to put back. A check that fails before
+is one row of ``changes`` (``{"value", "before", "after"}``), so what the result calls changed
+is exactly what Verify will check.
+
 No save: OVSDB persists by itself (ovs-vsctl(8)). Nothing here writes a flow: the controller
 does that (LAB9_SDN_GAP, the one controller path).
 """
@@ -176,7 +185,7 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
            "status": T.status(network, TEMPLATE), "lines": [], "program": [], "undo": "",
            "before": None, "hash": "", "citations": T.load(TEMPLATE)["citations"],
            "excluded": [], "export_sha256": "", "family": "Open vSwitch", "steps": STEPS,
-           "unchanged": False}
+           "unchanged": False, "source": openflow_config.source_of({}), "changes": []}
     dev = _inventory(network, device)
     if dev is None:
         out["error"] = f"{device} is not a device of {network}"
@@ -192,6 +201,7 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
     out["excluded"] = list(out["values"].get("excluded") or [])
     # C2777: the export the values were read from, in the hash.
     out["export_sha256"] = str(out["values"].get("nsot.export_sha256") or "")
+    out["source"] = openflow_config.source_of(got)
     if not got.get("ok"):
         out["error"] = got.get("error") or "the NSOT export's values could not be read"
         return out
@@ -235,6 +245,11 @@ def plan(network: str, device: str, *, values=None, session=None) -> dict:
         out["error"] = f"{device}'s bridge could not be read: {before['error']}"
         return out
     out["before"] = before
+    # Verify's own checks, asked of the bridge as it is now: each one that fails is a value
+    # this program changes, and none failing is a bridge already as intended.
+    out["changes"] = [{"value": c["value"], "before": c["have"], "after": c["want"]}
+                      for c in bridge_checks(before, bridge, T.derived(v)) if not c["ok"]]
+    out["unchanged"] = not out["changes"]
     out["undo"] = undo_of(bridge, before, v)
     why = ovs.write_refusal(out["undo"])
     if why:
@@ -257,37 +272,67 @@ def _connection_name(network: str, values: dict, given: str = "") -> str:
         raise Refused(str(exc)) from exc
 
 
-def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
-    """The checks after the send: ``{"ok", "checks": [{"name", "state", "words"}], "dpid"}``."""
-    after = read_bridge(ask, bridge, ports=list(values.get("ports") or []))
+def bridge_checks(state: dict, bridge: str, values: dict) -> list:
+    """What the bridge must read as, each asked of *state* (`read_bridge`'s answer; *values*
+    `openflow_templates.derived`'s): ``[{"name", "ok", "words", "value", "have", "want"}]``.
+    Verify asks them of the bridge after the send (``name``, ``ok``, ``words``); the plan asks
+    the same of the bridge before, and a check that fails there is a value the program changes
+    (``value``, from ``have`` to ``want``). One list, so what a result calls changed is what
+    Verify checks."""
+    def check(name, ok, words, value, have, want):
+        return {"name": name, "ok": bool(ok), "words": words, "value": value,
+                "have": have or "none", "want": want or "none"}
+
     want_target = f"tcp:{values.get('controller.host')}:{values.get('controller.port')}"
     proto = {"1.0": "OpenFlow10", "1.3": "OpenFlow13"}.get(values.get("openflow.version"))
+    want_ports = list(values.get("ports") or [])
+    held = list(state["ports"])
     checks = [
-        ("the bridge exists", after["exists"], f"{bridge} in list-br"),
-        ("its controller", after["controllers"] == [want_target],
-         f"get-controller {after['controllers'] or 'none'}, wanted {want_target}"),
-        ("its OpenFlow version", after["protocols"] == [proto],
-         f"protocols {after['protocols'] or 'none'}, wanted {proto}"),
-        ("its fail mode", after["fail_mode"] == values.get("openflow.fail_mode"),
-         f"fail mode {after['fail_mode'] or 'none'}, wanted {values.get('openflow.fail_mode')}"),
-        ("its OpenFlow ports", set(values.get("ports") or []) <= set(after["ports"]),
-         f"ports {', '.join(after['ports']) or 'none'}, wanted "
-         f"{', '.join(values.get('ports') or [])}"),
+        check("the bridge exists", state["exists"], f"{bridge} in list-br",
+              "bridge", bridge if state["exists"] else "", bridge),
+        check("its controller", state["controllers"] == [want_target],
+              f"get-controller {state['controllers'] or 'none'}, wanted {want_target}",
+              "controller", ", ".join(state["controllers"]), want_target),
+        check("its OpenFlow version", state["protocols"] == [proto],
+              f"protocols {state['protocols'] or 'none'}, wanted {proto}",
+              "OpenFlow version", ", ".join(state["protocols"]), proto),
+        check("its fail mode", state["fail_mode"] == values.get("openflow.fail_mode"),
+              f"fail mode {state['fail_mode'] or 'none'}, wanted "
+              f"{values.get('openflow.fail_mode')}",
+              "fail mode", state["fail_mode"], values.get("openflow.fail_mode")),
+        check("its OpenFlow ports", set(want_ports) <= set(held),
+              f"ports {', '.join(held) or 'none'}, wanted {', '.join(want_ports)}",
+              "ports", ", ".join(held),
+              # The program adds ports and takes none away: what the bridge holds, then its.
+              ", ".join(held + [p for p in want_ports if p not in held])),
     ]
     if values.get("openflow.datapath_id"):
-        checks.append(("its datapath id", after["datapath_id"] == values["openflow.datapath_id"],
-                       f"datapath_id {after['datapath_id'] or 'none'}, wanted "
-                       f"{values['openflow.datapath_id']}"))
+        checks.append(check(
+            "its datapath id", state["datapath_id"] == values["openflow.datapath_id"],
+            f"datapath_id {state['datapath_id'] or 'none'}, wanted "
+            f"{values['openflow.datapath_id']}",
+            "datapath id", state["datapath_id"], values["openflow.datapath_id"]))
     numbers = values.get("port.openflow_port") or {}
     if numbers:
         # Each port's OpenFlow number as OVS gave it, against NetBox's (C2603): a request OVS
         # could not honour (the number taken) leaves the port numbered otherwise.
-        given = after.get("ofport") or {}
+        given = state.get("ofport") or {}
         wrong = sorted(p for p, n in numbers.items() if given.get(p) != n)
-        checks.append(("its OpenFlow port numbers", not wrong,
-                       ", ".join(f"{p} is {given.get(p) or 'unnumbered'}, wanted {numbers[p]}"
-                                 for p in wrong) or
-                       ", ".join(f"{p} {n}" for p, n in sorted(numbers.items()))))
+        checks.append(check(
+            "its OpenFlow port numbers", not wrong,
+            ", ".join(f"{p} is {given.get(p) or 'unnumbered'}, wanted {numbers[p]}"
+                      for p in wrong) or
+            ", ".join(f"{p} {n}" for p, n in sorted(numbers.items())),
+            "OpenFlow port numbers",
+            ", ".join(f"{p} {given.get(p) or 'unnumbered'}" for p in wrong),
+            ", ".join(f"{p} {numbers[p]}" for p in wrong)))
+    return checks
+
+
+def verify(ask, bridge: str, values: dict, drv, *, sleep=time.sleep) -> dict:
+    """The checks after the send: ``{"ok", "checks": [{"name", "state", "words"}], "dpid"}``."""
+    after = read_bridge(ask, bridge, ports=list(values.get("ports") or []))
+    checks = [(c["name"], c["ok"], c["words"]) for c in bridge_checks(after, bridge, values)]
     out = {"ok": False, "checks": [{"name": n, "state": "pass" if ok else "fail", "words": w}
                                    for n, ok, w in checks], "dpid": after["datapath_id"]}
     if not all(ok for _n, ok, _w in checks):
@@ -305,8 +350,9 @@ def apply(network: str, device: str, confirmed_hash: str, *, actor: str,
           connection: str = "", sleep=time.sleep, now=time.time) -> dict:
     """Apply the previewed configuration as *actor*, bound to *confirmed_hash*. ``{"ok",
     "error", "at", "outcome", "id", "hash", "plan", "sent", "verify", "rollback", "record"}``;
-    ``outcome`` one of ``refused``, ``verified``, ``rolled_back``, ``rollback_failed``.
-    *driver* (tests) replaces `connections.driver_for`."""
+    ``outcome`` one of ``refused``, ``verified``, ``rolled_back``, ``rollback_failed``, and for
+    a bridge already as intended (nothing sent) whose controller does not list it,
+    ``unverified``. *driver* (tests) replaces `connections.driver_for`."""
     from modules.nsot import device_ops
     from modules.sdn import openflow_templates as T
 
@@ -361,20 +407,32 @@ def apply(network: str, device: str, confirmed_hash: str, *, actor: str,
             def run(conn):
                 def ask(c):
                     return conn.send_command_timing(c, read_timeout=30) or ""
-                out["at"] = "send"
-                answer = ask(p["program"][0])
-                out["sent"] = [{"command": p["program"][0], "answer": answer[:400]}]
-                failed = _failed(answer)
-                if failed:
-                    out["error"] = f"the server refused the transaction: {failed}"
+                if p["unchanged"]:
+                    # Already as intended (every check of the bridge passed before): nothing
+                    # is sent, and Verify still reads the bridge and the controller's list.
+                    out["sent"] = []
                 else:
+                    out["at"] = "send"
+                    answer = ask(p["program"][0])
+                    out["sent"] = [{"command": p["program"][0], "answer": answer[:400]}]
+                    failed = _failed(answer)
+                    if failed:
+                        out["error"] = f"the server refused the transaction: {failed}"
+                if not out["error"]:
                     out["at"] = "verify"
-                    out["verify"] = verify(ask, bridge, vals, drv, sleep=sleep)
+                    began = now()
+                    out["verify"] = openflow_config.timed(
+                        verify(ask, bridge, vals, drv, sleep=sleep), began, now())
                     if out["verify"]["ok"]:
                         out["outcome"], out["ok"] = "verified", True
                         return
                     out["error"] = "Verify failed: " + "; ".join(
                         c["words"] for c in out["verify"]["checks"] if c["state"] == "fail")
+                if not out["sent"]:
+                    # Nothing was sent, so nothing is put back: the bridge is configured and
+                    # the controller does not list it.
+                    out["outcome"] = "unverified"
+                    return
                 out["at"] = "rollback"
                 undone = ask(p["undo"])
                 back = read_bridge(ask, bridge)
@@ -420,6 +478,8 @@ def _record(network, p, out, *, actor, actor_verified, connection, started, ende
            "sent": out["sent"], "verify": out["verify"], "rollback": out["rollback"],
            "outcome": out["outcome"], "error": out["error"], "mode": "hitl",
            "export_sha256": p.get("export_sha256", ""),
+           "source": p.get("source") or openflow_config.source_of({}),
+           "changes": p.get("changes") or [],
            "response": {"kind": "openflow_config", "device": p["device"], "template": TEMPLATE,
                         "template_capture": status.get("capture", "")},
            "actor": actor, "actor_verified": actor_verified}

@@ -11,6 +11,7 @@ printed forms (ovs-vsctl(8)); the controller is a fake driver's switch list. Net
 """
 
 import os
+import re
 
 import pytest
 
@@ -277,6 +278,47 @@ class TestValuesFromNetBox:
         assert got["ok"], got["error"]
         assert got["values"]["switch.address"] == "2001:db8::21"
         assert got["values"]["controller.address"] == "2001:db8::10"
+
+    def test_each_value_carries_where_it_came_from_as_it_was_resolved(self):
+        """The origins, IPv4 and IPv6: the controller with its Service and WHICH address was
+        taken; a value the config context gives against one it does not; the instance; the
+        datapath id named, never printed; the ports and their numbers."""
+        got = V.from_netbox(_device(cf={"openflow_instance": "br0",
+                                        "openflow_datapath_id": "0000AABBCCDDEE01"}),
+                            [IFACES[0], _iface("eth1", num=1), _iface("eth2", num=2)],
+                            [_service()], CTL)
+        assert got["ok"], got["error"]
+        said = V.origin_words(got["origins"])
+        assert said == [
+            "controller 192.0.2.10:6653 from NetBox Service 'openflow' on ctl1 (its device's "
+            "primary IPv4 address)",
+            "version 1.3 from the device's config context (key openflow)",
+            "transport tcp, fail_mode secure from Mercury's default (the config context gives "
+            "none)",
+            "instance br0 from custom field openflow_instance",
+            "DPID from custom field openflow_datapath_id",
+            "ports eth1, eth2 from interfaces tagged openflow",
+            "OpenFlow port numbers eth1 1, eth2 2 from each interface's custom field "
+            "openflow_port",
+            "OpenFlow VLAN 20 from the untagged VLAN of the interfaces tagged openflow"]
+        assert "0000aabbccddee01" not in " ".join(said)
+        six = V.from_netbox(
+            _device(ip4=None, ip6="2001:db8::21/64",
+                    ctx={"version": "1.0", "transport": "tcp", "fail_mode": "standalone",
+                         "instance": "br6"}, cf={}),
+            [_iface("eth1")], [_service(addr="2001:db8::10/64")], {})
+        assert six["ok"], six["error"]
+        assert V.origin_words(six["origins"])[:4] == [
+            "controller [2001:db8::10]:6653 from NetBox Service 'openflow' on ctl1 (the "
+            "Service's own IP address)",
+            "version 1.0, transport tcp, fail_mode standalone, instance br6 from the device's "
+            "config context (key openflow)",
+            "DPID read from the switch itself (the custom field openflow_datapath_id is empty)",
+            "ports eth1 from interfaces tagged openflow"]
+        # A Service with no address of its own on a device with only an IPv6 primary.
+        only6 = V.service_target(_service(), {"primary_ip6": {"address": "2001:db8::10/64"}})
+        assert only6 == {"port": "6653", "address": "2001:db8::10",
+                         "address_from": "its device's primary IPv6 address"}
 
     def test_two_controllers_need_the_config_context_to_name_one(self):
         two = [_service("ctl1"), _service("ctl2")]
@@ -769,6 +811,55 @@ class TestOvsEndToEnd:
         assert out["outcome"] == "refused" and p["hash"][:12] in out["error"]
         assert not any("add-br" in c for c in fake.sent)
 
+    @pytest.mark.parametrize("host,values,target", [
+        ("srv1", V4, "tcp:192.0.2.10:6653"), ("srv6", V6, "tcp:[2001:db8::10]:6653")],
+        ids=("ipv4", "ipv6"))
+    def test_a_bridge_already_as_intended_sends_nothing_and_verifies(self, ovs_op, host,
+                                                                    values, target):
+        """The first plan says each value it changes, before and after; once applied, the
+        next plan changes nothing, and its apply sends no transaction and still verifies."""
+        fake = FakeOvs()
+        ctl = Controller(lambda: [int(fake.dpid, 16)] if "br0" in fake.bridges else [])
+        kw = dict(actor="op@example.invalid", actor_verified="access-assertion",
+                  values=_ok(values), driver=_driver(ctl), sleep=lambda s: None)
+        first = O.plan(LIST, host, values=_ok(values), session=Server(fake))
+        assert not first["unchanged"]
+        assert first["changes"] == [
+            {"value": "bridge", "before": "none", "after": "br0"},
+            {"value": "controller", "before": "none", "after": target},
+            {"value": "OpenFlow version", "before": "none", "after": "OpenFlow13"},
+            {"value": "fail mode", "before": "none", "after": "secure"},
+            {"value": "ports", "before": "none", "after": "eth1, eth2"},
+            {"value": "OpenFlow port numbers", "before": "eth1 unnumbered, eth2 unnumbered",
+             "after": "eth1 1, eth2 2"}]
+        assert O.apply(LIST, host, first["hash"], session=Server(fake), **kw)["outcome"] == \
+            "verified"
+        writes = [c for c in fake.sent if ovs.write_refusal(c) == ""]
+        assert len(writes) == 1 and ovs_op[0]["changes"] == first["changes"]
+        again = O.plan(LIST, host, values=_ok(values), session=Server(fake))
+        assert again["ok"] and again["unchanged"] and again["changes"] == []
+        del fake.sent[:]
+        out = O.apply(LIST, host, again["hash"], session=Server(fake), **kw)
+        assert out["outcome"] == "verified" and out["sent"] == [], out["error"]
+        assert [c for c in fake.sent if ovs.write_refusal(c) == ""] == [], \
+            "a bridge already as intended is sent nothing"
+        assert [c["state"] for c in out["verify"]["checks"]] == ["pass"] * 7
+        assert ovs_op[1]["sent"] == [] and ovs_op[1]["changes"] == []
+        # One the controller does not list: nothing was sent, so nothing is put back.
+        gone = O.apply(LIST, host, again["hash"], session=Server(fake),
+                       **dict(kw, driver=_driver(Controller(lambda: []))))
+        assert gone["outcome"] == "unverified" and gone["sent"] == []
+        assert not gone["rollback"]["ran"] and "br0" in fake.bridges
+
+    def test_a_bridge_one_value_off_changes_that_value_alone(self, ovs_op):
+        fake = FakeOvs({"br0": {"controllers": ["tcp:192.0.2.10:6653"], "fail_mode": "standalone",
+                                "protocols": ["OpenFlow13"], "ports": ["eth1", "eth2"],
+                                "other": {}}}, requests={"eth1": "1", "eth2": "2"})
+        p = O.plan(LIST, "srv1", values=_ok(), session=Server(fake))
+        assert p["ok"] and not p["unchanged"]
+        assert p["changes"] == [{"value": "fail mode", "before": "standalone",
+                                 "after": "secure"}]
+
     def test_a_switch_the_controller_never_lists_is_rolled_back(self, ovs_op):
         before = {"br0": {"controllers": ["tcp:192.0.2.99:6633"], "fail_mode": "standalone",
                           "protocols": ["OpenFlow10"], "ports": ["eth1"], "other": {}}}
@@ -845,16 +936,81 @@ class TestOvsEndToEnd:
         assert not p["ok"] and "NetBox" in p["error"] and server.opened == []
 
     def test_the_record_is_drawn_on_history_as_an_openflow_configuration(self, net):
+        """The operator, 2026-11-10: the row names its switch in the Device column, never
+        "fleet", and its What is one readable line; the datapath id is the record's detail."""
         from modules.sdn import flow_intent
         flow_intent.record_operation(LIST, {"id": "ofcfg-1", "actor": "op@example.invalid",
                                             "at": "2026-11-05T04:00:00Z", "outcome": "verified",
                                             "dpid_hex": "0000aabbccddee01",
+                                            "sent": [{"command": PROGRAM_V4, "answer": ""}],
                                             "response": {"kind": "openflow_config",
                                                          "device": "srv1"}})
+        flow_intent.record_operation(LIST, {"id": "ofcfg-2", "actor": "op@example.invalid",
+                                            "at": "2026-11-05T04:05:00Z", "sent": [],
+                                            "outcome": "rolled_back", "dpid_hex": "",
+                                            "response": {"kind": "openflow_config",
+                                                         "device": "srv6"}})
         from modules import history_sources as H
         from modules.nsot import listref
         ctx = {"device": "", "ref": listref.resolve(LIST), "limit": 50,
-               "since": None, "until": None}
-        (event,) = H.sdn_operations(ctx)["events"]
-        assert event["what"] == ("SDN openflow configuration on srv1 (datapath "
-                                 "0000aabbccddee01): verified")
+               "since": None, "until": None, "members": {"srv1", "srv6", "r1"}}
+        event, other = H.sdn_operations(ctx)["events"]
+        assert event["what"] == "OpenFlow configuration on srv1: 1 transaction sent, verified"
+        assert event["devices"] == ["srv1"] and event["record_closed"]
+        assert ("Datapath", "0000aabbccddee01") in event["record"]
+        assert other["what"] == "OpenFlow configuration on srv6: rolled back"
+        assert other["devices"] == ["srv6"]
+        assert H.devices_words(event["devices"], event.get("subject", "")) == "srv1"
+        # The switch's own History draws its rows, and no other switch's.
+        mine = H.sdn_operations(dict(ctx, device="srv6"))["events"]
+        assert [e["what"] for e in mine] == [other["what"]]
+
+    def test_a_flow_operation_names_its_switch_from_the_networks_stored_state(self, net,
+                                                                              monkeypatch):
+        """A flow change's record keeps a datapath id; its row says the switch's name, from
+        the committed export's openflow_datapath_id, or from the datapath an OpenFlow
+        configuration read off its switch. A switch NetBox names that is not in the
+        inventory is the row's subject; a datapath nothing names stays the network's row."""
+        from modules import history_sources as H
+        from modules.nsot import listref
+        from modules.sdn import flow_intent
+
+        def op(n, dpid, **kw):
+            flow_intent.record_operation(LIST, dict({
+                "id": f"sdnop-{n}", "actor": "op@example.invalid", "outcome": "verified",
+                "at": f"2026-11-05T04:0{n}:00Z", "dpid_hex": dpid, "response": {},
+                "words": [f"Add a flow on {dpid}: table 0, priority 300."],
+                "sent": [{"role": "add_flow"}, {"role": "add_flow"}]}, **kw))
+        op(1, "0000000000000004")
+        op(2, "0000000000000009", response={"kind": "dhcp-steering", "operation_kind": "steer"},
+           sent=[{"role": "remove_flow"}])
+        op(3, "00000000000000ff", outcome="rolled_back", error="Verify failed: not in the table")
+        flow_intent.record_operation(LIST, {
+            "id": "ofcfg-9", "actor": "op@example.invalid", "at": "2026-11-05T03:00:00Z",
+            "outcome": "verified", "dpid_hex": "0000000000000009", "sent": [],
+            "response": {"kind": "openflow_config", "device": "srv1"}})
+        export = {"sha256": "e" * 64, "body": {"devices": [
+            {"name": "edge-sw", "custom_fields": {"openflow_datapath_id": "0000000000000004"}},
+            {"name": "plain", "custom_fields": {}}]}}
+        monkeypatch.setattr("modules.nsot.export.read_in", lambda repo, rev="HEAD", network="": {
+            "ok": True, "export": export, "sha256": export["sha256"], "error": ""})
+        monkeypatch.setattr("modules.nsot.repo.has_repository", lambda repo: True)
+        assert V.datapath_names(export) == {"0000000000000004": "edge-sw"}
+        ctx = {"device": "", "ref": listref.resolve(LIST), "limit": 50,
+               "since": None, "until": None, "members": {"srv1", "srv6", "r1"}}
+        by = {e["record"][0][1]: e for e in H.sdn_operations(ctx)["events"]}
+        named, steered, unknown = by["sdnop-1"], by["sdnop-2"], by["sdnop-3"]
+        assert named["what"] == "Flow change on edge-sw: 2 flows added, verified"
+        assert named["devices"] == [] and named["subject"] == "edge-sw"
+        assert H.devices_words(named["devices"], named["subject"]) == "edge-sw"
+        assert named["detail"] == "Add a flow on edge-sw: table 0, priority 300."
+        assert steered["what"] == "DHCP steering on srv1: 1 flow removed, verified"
+        assert steered["devices"] == ["srv1"]
+        assert unknown["what"] == ("Flow change on a switch no stored read names: 2 flows "
+                                   "added, rolled back")
+        assert unknown["devices"] == [] and "subject" not in unknown
+        # Why a run ended as it did is in the row, not only under its record's details.
+        assert unknown["detail"].endswith("; Verify failed: not in the table")
+        assert H.devices_words(unknown["devices"]) == "fleet"
+        for e in (named, steered, unknown):
+            assert not re.search(r"[0-9a-f]{12,}", e["what"]), e["what"]
