@@ -397,6 +397,21 @@ def datapath_names(export: dict) -> dict:
     return out
 
 
+def port_numbers(export: dict) -> dict:
+    """``{(device name, interface name): OpenFlow port number}`` for every interface of *export*
+    tagged ``openflow`` whose custom field ``openflow_port`` gives a number (the same tag and
+    field `from_netbox` reads for ``port.openflow_port``): one pass over the export's
+    interfaces, nothing read per device, for a reader that has a cable's far end and wants
+    the switch port it is (the SDN trace's ends, Topology's hosts)."""
+    out = {}
+    for i in (export.get("body") or {}).get("interfaces") or []:
+        number = str((i.get("custom_fields") or {}).get("openflow_port") or "")
+        if TAG in (i.get("tags") or []) and number.isdigit() and i.get("device") \
+                and i.get("name"):
+            out[(str(i["device"]), str(i["name"]))] = int(number)
+    return out
+
+
 def from_export(export: dict, device_name: str) -> dict:
     """*device_name*'s values from a committed NSOT export (`modules/nsot/export.py`'s document),
     with no NetBox read: the export's records put back in NetBox's shapes and read by

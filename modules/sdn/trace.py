@@ -56,6 +56,19 @@ read, or a read older than its promise, is said, never walked as current.
 address or by MAC, and the packet is ICMPv4's or ICMPv6's echo request, or TCP or UDP to a
 port, in the addresses' own family. ARP and IPv6 neighbour discovery are not traced: a
 packet's destination MAC is the controller's host table's, as if already resolved.
+
+**The ends are `known.resolve`'s** (`modules/sdn/known.py`, C3013): a host a controller lists,
+by address or MAC; with NetBox's view handed in (*netbox*, the committed NSOT export's), also
+by its NetBox NAME or a NetBox address, matched to the controller's host by its interface's
+MAC, or, where the controller has learnt none, placed where NetBox cables it, said so.
+**A destination that is only an address** (one no controller and no NetBox interface holds)
+is traced too: the packet is the source's, to that address, and the walk says how it ends: a
+flow drops it, the table-miss takes it (to the controller, or dropped, as the table says), it
+leaves by a port with nothing listed behind it, or it reaches a host a controller lists.
+Nobody knows that address's MAC, and the answer says what was assumed (`ASSUMED`): the
+packet carries `known.UNKNOWN_MAC`, so a flow that names a destination MAC does not take it.
+A real host would first ask for the address (ARP, or IPv6 neighbour discovery), and where the
+address is beyond a gateway it would send the packet to the gateway's MAC: neither is traced.
 """
 
 import collections
@@ -67,8 +80,25 @@ import re
 log = logging.getLogger(__name__)
 
 #: How a branch ends.
-OUTCOMES = ("delivered", "elsewhere", "leaves", "to_controller", "local", "dropped",
+OUTCOMES = ("delivered", "elsewhere", "to_host", "leaves", "to_controller", "local", "dropped",
             "no_match", "loop", "unknown", "not_read")
+#: How a branch ends, each a state of its own (`ending`): an outcome, with a drop said by
+#: what dropped it and the controller said by whether the table-miss sent it there.
+ENDINGS = {"delivered": "Delivered", "elsewhere": "Sent to another host's port",
+           "to_host": "Reaches a listed host", "leaves": "Leaves the fabric",
+           "table_miss_controller": "Table-miss, sent to the controller",
+           "to_controller": "Sent to the controller", "local": "Sent to the switch itself",
+           "dropped_by_flow": "Dropped by a flow",
+           "table_miss_dropped": "Table-miss, dropped", "dropped": "Dropped",
+           "loop": "A loop", "unknown": "Cannot tell", "not_read": "Cannot tell"}
+#: What an address-only destination's answer says was assumed ({address}, {mac} and {netbox}
+#: filled in: *netbox* says NetBox holds none either, only where its view was read).
+ASSUMED = ("no controller lists a host with {address}{netbox}, so its MAC is "
+           "not known: the packet is traced with the destination MAC {mac} (the \"not known\" "
+           "value an ARP request carries), which a flow naming a destination MAC does not "
+           "take. A host would first ask for the address (ARP, or IPv6 neighbour discovery), "
+           "and would send a packet for an address beyond its gateway to the gateway's MAC: "
+           "neither is traced")
 #: The answer's state, leading with what to act on.
 STATES = ("delivered", "not_delivered", "cannot_tell")
 #: The outcomes that leave the trace unable to say where the packet went.
@@ -102,9 +132,9 @@ _PIPELINE = frozenset({"in_port", "in_phy_port", "metadata"})
 
 class Refused(ValueError):
     """A trace that cannot start, in words naming what it compared. *places* are the hosts an
-    address was found at when it was found at more than one (each a `find_host` host), so a
-    screen can offer each one's MAC; *end* is which end they answer (``source`` or
-    ``destination``)."""
+    end was found at when it was found at more than one (each with its ``mac`` and its
+    ``words``, `known.resolve`'s), so a screen can offer each one's MAC; *end* is which end
+    they answer (``source`` or ``destination``)."""
 
     def __init__(self, words, places=(), end=""):
         super().__init__(words)
@@ -184,35 +214,6 @@ def host_words(h: dict) -> str:
     return f"{named} ({h.get('mac', '')}) on {T.switch_key(h['dpid'])} {port}"
 
 
-def find_host(controllers: list, text: str) -> tuple:
-    """``(controller, host)`` for *text*, an IPv4 or IPv6 address or a MAC, among the hosts the
-    controllers list on an edge port. Raises `Refused` naming what was looked for and what was
-    found: nothing, or more than one place."""
-    text = str(text or "").strip()
-    addr = _address(text)
-    mac = text.lower() if _MAC.match(text.lower()) else ""
-    if addr is None and not mac:
-        raise Refused(f"{text!r} is not an IPv4 or IPv6 address or a MAC")
-    found = []
-    listed = 0
-    for c in controllers:
-        for h in c["hosts"]:
-            listed += 1
-            have = {_address(a) for a in list(h.get("ipv4") or []) + list(h.get("ipv6") or [])}
-            if (addr is not None and addr in have) or (mac and h.get("mac") == mac):
-                found.append((c, h))
-    if not found:
-        raise Refused(f"no controller lists a host with {text} on an edge port "
-                      f"({listed} host{'s' if listed != 1 else ''} listed)")
-    places = {(c["name"], h["mac"], int(h["dpid"]), h["port_no"]) for c, h in found}
-    if len(places) > 1:
-        said = " and ".join(sorted(host_words(h) for _c, h in found))
-        raise Refused(f"{text} is listed at {len(places)} places: {said}; the controller keeps "
-                      "a host until it restarts, so one may be old: give its MAC",
-                      places=sorted((h for _c, h in found), key=host_words))
-    return found[0]
-
-
 def _family_address(h: dict, version: int, text: str):
     from modules.sdn import topology as T
 
@@ -227,9 +228,11 @@ def _family_address(h: dict, version: int, text: str):
 
 def packet_of(src: dict, dst: dict, src_text: str, dst_text: str, protocol: str = "icmp",
               port=None) -> dict:
-    """The packet traced from host *src* to host *dst* (each `find_host`'s), as the exact
-    values of the fields a flow may match, untagged. Its family is the one the addresses given
-    name (both must agree), else IPv4 where both hosts have one, else IPv6. Raises `Refused`."""
+    """The packet traced from host *src* to *dst* (each `known.resolve`'s end; *dst* a host, or
+    an address-only destination, whose MAC is `known.UNKNOWN_MAC`), as the exact values of the
+    fields a flow may match, untagged. Its family is the one the addresses given name (both
+    must agree), else IPv4 where both ends have one, else IPv6. Raises `Refused`."""
+    from modules.sdn.known import end_words
     protocol = str(protocol or "icmp").strip().lower()
     if protocol not in PROTOCOLS:
         raise Refused(f"the protocol is one of {', '.join(PROTOCOLS)}, not {protocol!r}")
@@ -250,13 +253,15 @@ def packet_of(src: dict, dst: dict, src_text: str, dst_text: str, protocol: str 
     versions = given[:1] or [v for v in (4, 6)
                              if _family_address(src, v, "") and _family_address(dst, v, "")][:1]
     if not versions:
-        raise Refused(f"{host_words(src)} and {host_words(dst)} share no address family the "
+        raise Refused(f"{end_words(src)} and {end_words(dst)} share no address family the "
                       "controller lists, so no IP packet can be traced between them")
     v = versions[0]
     a, b = _family_address(src, v, src_text), _family_address(dst, v, dst_text)
     for h, got in ((src, a), (dst, b)):
         if got is None:
-            raise Refused(f"the controller lists no global IPv{v} address for {host_words(h)}")
+            who = ("neither the controller nor NetBox lists a" if h.get("netbox_addresses")
+                   or h.get("name") else "the controller lists no")
+            raise Refused(f"{who} global IPv{v} address for {end_words(h)}")
     pkt = {"eth_src": src["mac"], "eth_dst": dst["mac"], "vlan_vid": OFPVID_NONE,
            "eth_type": 0x0800 if v == 4 else 0x86DD, "ip_dscp": 0, "ip_ecn": 0}
     pkt.update({"ipv4_src": a, "ipv4_dst": b} if v == 4 else
@@ -307,13 +312,25 @@ def _ref(f: dict) -> str:
             f"the flow at priority {f.get('priority', 0)} in table {f.get('table_id', 0)}")
 
 
+def is_miss(f: dict) -> bool:
+    """Whether flow *f* is its table's table-miss entry: every match field wildcarded and
+    priority 0 (OpenFlow 1.3.5 5.4: "identified by its match and its priority")."""
+    return not (f.get("match") or {}) and not (f.get("priority") or 0)
+
+
+def _named(f: dict) -> str:
+    """`_ref`'s words, and the flow's evidence id where the read gives it one (a kept
+    snapshot's flows carry one; the SDN reader's stored flows do not)."""
+    return f"{_ref(f)}, {f['id']}" if f.get("id") else _ref(f)
+
+
 def _taken(f: dict) -> dict:
     from modules.sdn.flow_intent import action_words
 
     return {"id": f.get("id", ""), "table_id": f.get("table_id", 0),
             "priority": f.get("priority", 0), "cookie": f.get("cookie", 0),
             "owner": f.get("owner", ""), "match": dict(f.get("match") or {}),
-            "actions": list(f.get("actions") or []),
+            "actions": list(f.get("actions") or []), "miss": is_miss(f),
             "words": f"{_ref(f)}: {action_words(f.get('actions') or [])}"}
 
 
@@ -401,8 +418,9 @@ def through_switch(sw: dict, in_port, packet: dict) -> dict:
             emits.append((p, sent, flow, back))
         return ""
 
-    def done(outcome, words):
-        return {"flows": taken, "emits": emits, "notes": notes, "end": (outcome, words)}
+    def done(outcome, words, **flags):
+        return {"flows": taken, "emits": emits, "notes": notes, "end": (outcome, words),
+                "flags": flags}
 
     while True:
         flow, why = select(flows, table, pkt)
@@ -410,7 +428,7 @@ def through_switch(sw: dict, in_port, packet: dict) -> dict:
             return done("unknown", why)
         if flow is None:
             return done("no_match", f"no flow in table {table} takes it, and with no table-miss "
-                                    "entry OpenFlow 1.3.5 5.4 drops it by default")
+                                    "entry OpenFlow 1.3.5 5.4 drops it by default", miss=True)
         taken.append(_taken(flow))
         apply, write, clear, metadata, goto = [], None, False, None, None
         for a in flow.get("actions") or []:
@@ -474,9 +492,12 @@ def through_switch(sw: dict, in_port, packet: dict) -> dict:
         if why:
             return done("unknown", why)
     if not emits:
-        return done("dropped", f"{_ref(taken[-1])} sends it nowhere "
-                               "(no output), so the switch drops it")
-    return {"flows": taken, "emits": emits, "notes": notes, "end": None}
+        last = taken[-1]
+        return done("dropped", f"{_named(last)} sends it nowhere "
+                               "(no output), so the switch drops it"
+                    + (": the table-miss entry, no flow above it taking the packet"
+                       if is_miss(last) else ""), by_flow=True, miss=is_miss(last))
+    return {"flows": taken, "emits": emits, "notes": notes, "end": None, "flags": {}}
 
 
 def _unread(a: dict) -> str:
@@ -493,13 +514,30 @@ def _port_name(sw, port) -> str:
     return str(((sw or {}).get("ports") or {}).get(port, "")) if isinstance(port, int) else ""
 
 
-def walk(controller: dict, packet: dict, start: tuple, destination: tuple) -> dict:
+def ending(branch: dict) -> str:
+    """A branch's ending, one of `ENDINGS`' keys: its outcome, a drop said by what dropped it
+    (a flow, or the table's default) and the controller by whether the table-miss entry sent
+    the packet there."""
+    outcome = branch["outcome"]
+    if outcome == "no_match":
+        return "table_miss_dropped"
+    if outcome == "to_controller":
+        return "table_miss_controller" if branch.get("miss") else "to_controller"
+    if outcome == "dropped" and branch.get("by_flow"):
+        return "table_miss_dropped" if branch.get("miss") else "dropped_by_flow"
+    return outcome
+
+
+def walk(controller: dict, packet: dict, start: tuple, destination: tuple = None) -> dict:
     """The packet's branches from *start* ``(dpid, port)`` through *controller*'s fabric
-    (`fabric`'s), *destination* ``(dpid, port)`` the destination host's port:
-    ``{"branches": [{"outcome", "words", "hops": [hop]}], "more": the branches past
-    MAX_BRANCHES}``. A hop is ``{"dpid", "dpid_hex", "name", "in_port", "in_port_name",
-    "out_port", "out_port_name", "flows", "notes"}``; the last hop of a branch that ends inside
-    a switch has no out port. A (switch, port, packet) reached twice is a loop."""
+    (`fabric`'s), *destination* ``(dpid, port)`` the destination host's port, or None for a
+    destination that is only an address (no port is its own: a host's port it leaves by is
+    ``to_host``): ``{"branches": [{"outcome", "words", "hops": [hop], "miss", "by_flow"}],
+    "more": the branches past MAX_BRANCHES}``; *miss* when the table-miss decided (its entry,
+    or the default with none), *by_flow* when a flow with no output dropped it. A hop is
+    ``{"dpid", "dpid_hex", "name", "in_port", "in_port_name", "out_port", "out_port_name",
+    "flows", "notes"}``; the last hop of a branch that ends inside a switch has no out port.
+    A (switch, port, packet) reached twice is a loop."""
     from modules.sdn.drivers.base import dpid_hex
 
     switches, links = controller["switches"], controller["links"]
@@ -510,12 +548,13 @@ def walk(controller: dict, packet: dict, start: tuple, destination: tuple) -> di
     seen = set()
     queue = collections.deque([(start[0], start[1], packet, [])])
 
-    def end(hops, outcome, words):
+    def end(hops, outcome, words, miss=False, by_flow=False):
         nonlocal more
         if len(branches) >= MAX_BRANCHES:
             more += 1
             return
-        branches.append({"outcome": outcome, "words": words, "hops": hops})
+        branches.append({"outcome": outcome, "words": words, "hops": hops, "miss": bool(miss),
+                         "by_flow": bool(by_flow)})
 
     while queue:
         dpid, in_port, pkt, hops = queue.popleft()
@@ -537,22 +576,26 @@ def walk(controller: dict, packet: dict, start: tuple, destination: tuple) -> di
         got = through_switch(sw, in_port, pkt)
         hop.update(flows=got["flows"], notes=got["notes"])
         if got["end"]:
-            end(hops + [hop], *got["end"])
-        for port, out_pkt, _flow, back in got["emits"]:
+            end(hops + [hop], *got["end"], **got.get("flags") or {})
+        for port, out_pkt, flow, back in got["emits"]:
             h = dict(hop, out_port=port, out_port_name=_port_name(sw, port))
             path = hops + [h]
             out = f"{dpid_hex(dpid)} port {port}"
             if port == "CONTROLLER":
-                end(path, "to_controller", f"{dpid_hex(dpid)} sends it to the controller, which "
-                                           "decides what to do with it (and may install a flow "
-                                           "for it): the trace follows no packet the controller "
-                                           "handles")
+                miss = is_miss(flow)
+                end(path, "to_controller",
+                    (f"no flow of {dpid_hex(dpid)} names this packet: its table-miss entry "
+                     f"(priority 0, every field wildcarded, table {flow.get('table_id', 0)}) "
+                     "sends it to the controller, which " if miss else
+                     f"{dpid_hex(dpid)} sends it to the controller, which ")
+                    + "decides what to do with it (and may install a flow for it): the trace "
+                      "follows no packet the controller handles", miss=miss)
             elif port == "LOCAL":
                 end(path, "local", f"{dpid_hex(dpid)} sends it to its own local port")
             elif back:
                 end(path, "dropped", f"{out} is the port it came in by, and OpenFlow sends a "
                                      "packet back out its ingress port only by IN_PORT")
-            elif (dpid, port) == tuple(destination):
+            elif destination is not None and (dpid, port) == tuple(destination):
                 end(path, "delivered", f"{out} is the destination's port")
             elif (dpid, port) in links:
                 nxt = links[(dpid, port)]
@@ -561,6 +604,11 @@ def walk(controller: dict, packet: dict, start: tuple, destination: tuple) -> di
                 end(path, "dropped", f"{out} is not a port the controller lists for the switch, "
                                      "and an output to a port that does not exist is dropped "
                                      "(OpenFlow 1.3.5 5.10)")
+            elif at.get((dpid, port)) and destination is None:
+                end(path, "to_host", f"it leaves by {out}, where the controller lists "
+                                     + " and ".join(host_words(x) for x in at[(dpid, port)])
+                                     + ": the flows carry it to that host's port, though no "
+                                       "controller lists the destination address there")
             elif at.get((dpid, port)):
                 end(path, "elsewhere", f"it leaves by {out}, where the controller lists "
                                        + " and ".join(host_words(x) for x in at[(dpid, port)])
@@ -580,50 +628,82 @@ def _hops_words(hops: list) -> str:
 
 
 def trace(network: str, source: str, destination: str, *, protocol: str = "icmp", port=None,
-          cached=None, now: float = None) -> dict:
-    """Where a packet from *source* to *destination* (each an IPv4 or IPv6 address or a MAC the
-    controller lists as a host) goes through *network*'s OpenFlow fabric, from the stored read.
-    ``{"ok", "error", "state" (one of `STATES`), "words", "controller", "read_at", "current",
-    "read_why", "source", "destination", "packet", "branches", "more", "dpids"}``; *dpids* the
-    delivered branch's switches in order. A refusal is ``ok`` False with *error* naming why.
-    Read-only: it asks no controller and writes nothing."""
+          cached=None, now: float = None, netbox: dict = None) -> dict:
+    """Where a packet from *source* to *destination* goes through *network*'s OpenFlow fabric,
+    from the stored read. Each end is an IPv4 or IPv6 address or a MAC a controller lists as a
+    host, or, with NetBox's view handed in (*netbox*, `known.read`'s), a NetBox name or
+    address; a destination may also be an address nothing lists (the module's "A destination
+    that is only an address"). ``{"ok", "error", "state" (one of `STATES`), "words",
+    "controller", "read_at", "current", "read_why", "source", "destination", "packet",
+    "branches", "more", "dpids", "ending", "address_only", "assumed", "notes"}``; *dpids* the
+    delivered branch's switches in order; *ending* the leading branch's (`ending`); *assumed*
+    what an address-only destination's packet assumes, in words; *notes* how a name or a NetBox
+    address was resolved. A refusal is ``ok`` False with *error* naming why. Read-only: it asks
+    no controller and writes nothing."""
     return over(fabric(network, cached=cached, now=now), network, source, destination,
-                protocol=protocol, port=port)
+                protocol=protocol, port=port, netbox=netbox)
 
 
 def over(fab: dict, network: str, source: str, destination: str, *, protocol: str = "icmp",
-         port=None) -> dict:
+         port=None, netbox: dict = None) -> dict:
     """`trace`'s answer over a fabric already in `fabric`'s shape: the stored read's
     (`trace`), or a kept snapshot's (`modules/ai/sdn_analyst_tools.sealed_fabric`, B4's trace
-    tool, which never reads anything live). One walk and one answer for both."""
+    tool, which never reads anything live). One walk and one answer for both. *netbox* is
+    NetBox's view (`known.read`'s shape), else the fabric's own ``netbox`` (a kept snapshot's),
+    else none."""
+    from modules.sdn import known
+
+    nb = netbox if netbox is not None else fab.get("netbox")
+    names = known.labels_of(fab.get("controllers"), nb)
     try:
         if fab["state"] != "read":
             raise Refused(f"the controller's topology is not read: {fab['why']}")
         if not fab["controllers"]:
             raise Refused("no controller connection of this network reads a topology")
         try:
-            sc, src = find_host(fab["controllers"], source)
+            src = known.resolve(fab["controllers"], source, nb, "source")
         except Refused as exc:
             raise Refused(str(exc), exc.places, "source") from None
         try:
-            dc, dst = find_host(fab["controllers"], destination)
+            dst = known.resolve(fab["controllers"], destination, nb, "destination")
         except Refused as exc:
             raise Refused(str(exc), exc.places, "destination") from None
-        if sc["name"] != dc["name"]:
-            raise Refused(f"the source is on {sc['name']}'s fabric and the destination on "
-                          f"{dc['name']}'s: a trace stays inside one controller's fabric")
-        if (src["mac"], src["dpid"], src["port_no"]) == (dst["mac"], dst["dpid"], dst["port_no"]):
-            raise Refused(f"the source and the destination are the same host, {host_words(src)}")
+        sc = next(c for c in fab["controllers"] if c["name"] == src["controller"])
+        lone = bool(dst.get("address_only"))
+        if not lone and src["controller"] != dst["controller"]:
+            raise Refused(f"the source is on {src['controller']}'s fabric and the destination "
+                          f"on {dst['controller']}'s: a trace stays inside one controller's "
+                          "fabric")
+        if not lone and (src["mac"], src["dpid"], src["port_no"]) == (
+                dst["mac"], dst["dpid"], dst["port_no"]):
+            raise Refused("the source and the destination are the same host, "
+                          f"{known.end_words(src, names)}")
         pkt = packet_of(src, dst, source, destination, protocol, port)
     except Refused as exc:
         return {"ok": False, "error": str(exc), "state": "", "branches": [],
-                "places": [dict(h, words=host_words(h)) for h in exc.places], "end": exc.end}
+                "places": [{"mac": p["mac"], "words": p["words"]} for p in exc.places],
+                "end": exc.end}
     got = walk(sc, pkt, (int(src["dpid"]), src["port_no"]),
-               (int(dst["dpid"]), dst["port_no"]))
+               None if lone else (int(dst["dpid"]), dst["port_no"]))
     branches = got["branches"]
     outcomes = [b["outcome"] for b in branches]
     delivered = [b for b in branches if b["outcome"] == "delivered"]
-    if delivered:
+    lead = None
+    if lone:
+        # No port is the destination's: the answer leads with how the packet ends, the first
+        # branch the trace cannot follow before any it can (never a known ending over a doubt).
+        unsure = got["more"] or any(o in UNSURE for o in outcomes)
+        state = "cannot_tell" if unsure else "not_delivered"
+        lead = next((b for b in branches if b["outcome"] in UNSURE), None) if unsure else None
+        lead = lead or (branches[0] if branches else None)
+        if lead is None:
+            words = f"Cannot tell: {got['more']} branches past the {MAX_BRANCHES} drawn"
+        else:
+            words = f"{ENDINGS[ending(lead)]}: {lead['words']} ({_hops_words(lead['hops'])})"
+            others = len(branches) - 1 + got["more"]
+            if others:
+                words += f"; and {others} other cop{'y' if others == 1 else 'ies'} of it"
+    elif delivered:
         state = "delivered"
         b = delivered[0]
         words = f"Delivered: {_hops_words(b['hops'])}"
@@ -643,12 +723,20 @@ def over(fab: dict, network: str, source: str, destination: str, *, protocol: st
         state = "not_delivered"
         b = branches[0]
         words = f"Not delivered: {b['words']} ({_hops_words(b['hops'])})"
+    if not lone:
+        lead = b
     current = sc["state"] == "read"
     if not current:
         words += f" (as last read at {sc['read_at'] or 'an unknown time'}: {sc['why']})"
+    assumed = ASSUMED.format(
+        address=dst["address"], mac=dst["mac"],
+        netbox=(" and NetBox records no interface with it"
+                if (nb or {}).get("state") == "read" else "")) if lone else ""
     return {"ok": True, "error": "", "state": state, "words": words, "network": network,
             "controller": sc["name"], "read_at": sc["read_at"], "current": current,
-            "read_why": sc["why"], "source": dict(src, words=host_words(src)),
-            "destination": dict(dst, words=host_words(dst)), "packet": pkt,
+            "read_why": sc["why"], "source": dict(src, words=known.end_words(src, names)),
+            "destination": dict(dst, words=known.end_words(dst, names)), "packet": pkt,
             "branches": branches, "more": got["more"],
+            "ending": ending(lead) if lead else "unknown", "address_only": lone,
+            "assumed": assumed, "notes": [e["note"] for e in (src, dst) if e.get("note")],
             "dpids": [h["dpid_hex"] for h in delivered[0]["hops"]] if delivered else []}

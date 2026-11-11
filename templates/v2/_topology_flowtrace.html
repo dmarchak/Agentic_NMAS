@@ -22,15 +22,20 @@
   {{- layer_switch(t) }}
   {%- if f.read_at %}<span class="faint small topo-of-read">{{ f.controller }}'s tables, read {{ stamp(f.read_at) }}</span>{% endif %}
   <span class="topo-of-q">
-  <label class="topo-of-field" for="topo-src{{ sfx }}">From<input id="topo-src{{ sfx }}" name="src" type="text" value="{{ t.s.src }}" list="topo-of-hosts{{ sfx }}" autocomplete="off" spellcheck="false" placeholder="an address, MAC or name"></label>
-  <label class="topo-of-field" for="topo-dst{{ sfx }}">to<input id="topo-dst{{ sfx }}" name="dst" type="text" value="{{ t.s.dst }}" list="topo-of-hosts{{ sfx }}" autocomplete="off" spellcheck="false" placeholder="an address, MAC or name"></label>
+  {#- What Mercury knows is chosen, never typed (the charter; C3013): From is a choice of the
+      hosts Mercury knows, nothing chosen until a person chooses; to is a combo box of the
+      same hosts that also takes an address nothing lists. A From asked in a link that is no
+      choice (an address no controller lists) stays, said as such, so the form sends back
+      what was asked. -#}
+  <label class="topo-of-field" for="topo-src{{ sfx }}">From<select id="topo-src{{ sfx }}" name="src" class="topo-of-host"><option value=""{% if not f.choices.picked and not f.choices.typed %} selected{% endif %}>Choose a host…</option>{% if f.choices.typed %}<option value="{{ f.choices.typed }}" selected>{{ f.choices.typed }} (not a host Mercury knows)</option>{% endif %}{% for o in f.choices.options %}<option value="{{ o.value }}"{% if o.value == f.choices.picked %} selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></label>
+  <label class="topo-of-field" for="topo-dst{{ sfx }}">to<input id="topo-dst{{ sfx }}" name="dst" type="text" value="{{ t.s.dst }}" list="topo-of-hosts{{ sfx }}" autocomplete="off" spellcheck="false" placeholder="a host, or any address"></label>
   <label class="topo-of-field" for="topo-proto{{ sfx }}">Protocol<select id="topo-proto{{ sfx }}" name="proto" x-model="proto">{% for k, w in (('icmp', 'ICMP echo'), ('tcp', 'TCP'), ('udp', 'UDP')) %}<option value="{{ k }}"{% if t.s.proto == k %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
   <label class="topo-of-field" for="topo-dport{{ sfx }}">Port<input id="topo-dport{{ sfx }}" name="dport" type="text" inputmode="numeric" class="topo-of-port" value="{{ t.s.dport if t.s.proto != 'icmp' }}" placeholder="{{ 'no port' if t.s.proto == 'icmp' else '1 to 65535' }}"{% if t.s.proto == 'icmp' %} disabled{% endif %} x-bind:disabled="noPort" x-bind:placeholder="portHint"></label>
   <span class="op-act"><button type="submit" class="btn btn-small{{ ' btn-primary' if cls == 'topo-popform' }}" data-op="sdn-trace" hx-disabled-elt="this"><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('sdn-trace', compact=(cls != 'topo-popform'), op='a flow-table trace') }}</span>
   </span>
-  <datalist id="topo-of-hosts{{ sfx }}">{% for h in f.suggest.hosts %}<option value="{{ h.value }}" label="{{ h.words }}"></option>{% endfor %}</datalist>
+  <datalist id="topo-of-hosts{{ sfx }}">{% for h in f.choices.suggest.hosts %}<option value="{{ h.value }}" label="{{ h.words }}"></option>{% endfor %}</datalist>
   {%- if cls == 'topo-popform' %}
-  <p class="hint topo-of-hint">An IPv4 or IPv6 address or a MAC, as {{ f.controller or 'the controller' }} lists its hosts{% if f.suggest.of %} ({{ f.suggest.hosts | length }} of {{ f.suggest.of }} suggested; any may be typed){% endif %}, or an end host's name as NetBox records it. The packet is the one a host sends: an ICMP echo, or TCP or UDP from port 49152 to the port given, untagged.</p>
+  <p class="hint topo-of-hint">From is one of the {{ f.choices.options | length }} host{{ 's' if f.choices.options | length != 1 }} Mercury knows: each host {{ f.controller or 'the controller' }} lists on an edge port, by its NetBox name where NetBox names it, and each NetBox cables to a switch port. to is one of the same{% if f.choices.suggest.of %} ({{ f.choices.suggest.hosts | length }} of {{ f.choices.suggest.of }} suggested; any may be typed){% endif %}, or an IPv4 or IPv6 address, a MAC or a NetBox name typed in; an address nothing lists is followed until a flow drops it, the table-miss takes it, or it leaves by a port. {{ f.netbox_words }}. The packet is the one a host sends: an ICMP echo, or TCP or UDP from port 49152 to the port given, untagged.</p>
   {%- endif %}
 </form>
 {%- endmacro -%}
@@ -92,6 +97,9 @@
   <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ f.controller }} has not been read since {{ stamp(f.read_at) }}: {{ f.read_why }}. This is where the packet went through the tables as they were then; the switches may hold other flows now. <a href="{{ url_for('sdn_v2.page', list=t.list) }}">SDN › Controllers</a></p></div>
   {%- endif %}
   {%- for n in f.notes %}<p class="small muted topo-of-note">{{ n }}.</p>{% endfor %}
+  {%- if f.address_only %}
+  <div class="notice" role="note" id="topo-of-assumed"><p><strong>Followed to an address, not to a host:</strong> {{ f.assumed }}. The answer says how the packet ends: a flow drops it, the table-miss takes it, it leaves by a port with nothing listed behind it, or it reaches a listed host's port.</p></div>
+  {%- endif %}
   <p class="small muted">From {{ f.from_words }} to {{ f.to_words }} · through {{ f.controller }}'s flow tables, read {{ stamp(f.read_at) }}</p>
   {%- if f.many %}
   <div class="topo-of-sum" aria-label="The branches by ending">
@@ -125,12 +133,13 @@
   {%- if f.way_notes %}
   <div class="notice" role="note"><p><strong>Noted on the way, not modelled:</strong> {{ f.way_notes | join('; ') }}.</p></div>
   {%- endif %}
-  <details class="topo-of-packet" data-keep="topo-of-packet"><summary class="small">The packet traced: {{ f.proto }}, {{ f.family }}, from {{ t.s.src }}{% if f.source_port %} port {{ f.source_port }}{% endif %} to {{ t.s.dst }}{% if t.s.proto != 'icmp' %} port {{ t.s.dport }}{% endif %}, untagged</summary>
-    <dl class="topo-of-kv">{% for k, v in f.packet_lines %}<dt>{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}<dt>Where the MACs come from</dt><dd>{{ f.controller }}'s host table, as if ARP had already resolved them (ARP and IPv6 neighbour discovery are not traced)</dd></dl>
+  <details class="topo-of-packet" data-keep="topo-of-packet"><summary class="small">The packet traced: {{ f.proto }}, {{ f.family }}, from {{ f.packet_from }}{% if f.source_port %} port {{ f.source_port }}{% endif %} to {{ f.packet_to }}{% if t.s.proto != 'icmp' %} port {{ t.s.dport }}{% endif %}, untagged</summary>
+    <dl class="topo-of-kv">{% for k, v in f.packet_lines %}<dt>{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}<dt>Where the MACs come from</dt><dd>{{ f.mac_words }} (ARP and IPv6 neighbour discovery are not traced)</dd></dl>
   </details>
   <p class="faint small">Walked through {{ f.controller }}'s tables as the SDN reader stored them, {{ stamp(f.read_at) }}; nothing was asked of the controller or any switch, and no traffic was sent. The answer redraws as each new read arrives. On the map: {{ 'the path drawn on, each switch on it ringed' if f.trace_state == 'delivered' else 'the branch drawn to the switch where it ends' }}. <a href="{{ url_for('sdn_v2.page', list=t.list) }}">SDN › Controllers</a></p>
   <div class="topo-trace-acts">
-    {{- of_link(t, {'src': t.s.dst, 'dst': t.s.src}, 'Trace the reverse') }}
+    {#- No reverse from an address nothing lists: a trace starts at a host Mercury knows. -#}
+    {%- if not f.address_only %}{{ of_link(t, {'src': t.s.dst, 'dst': t.s.src}, 'Trace the reverse') }}{% endif %}
     <button type="button" class="btn btn-small" data-op="sdn-trace" x-data="copy" data-label="Copy the hops" data-copy="{{ f.words }}" x-on:click="copy" x-text="label">Copy the hops</button>{{ how('sdn-trace', compact=True, op='a flow-table trace') }}
     {{- of_link(t, {'src': '', 'dst': '', 'dport': '', 'proto': 'icmp'}, 'Clear the path') }}
   </div>

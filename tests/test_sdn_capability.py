@@ -154,6 +154,23 @@ def test_read_keeps_the_matrix_and_absent_and_unreadable_are_apart(networks,  # 
         is None
 
 
+def test_the_matrix_names_a_switch_as_netbox_names_it_by_its_datapath_id(networks,  # noqa: F811
+                                                                         monkeypatch):
+    """C3010: the switch describes itself as of-eos-1; NetBox's device with datapath id 1 is
+    leaf-1, so the matrix's row is leaf-1; the stored row keeps what the switch said, and with
+    NetBox naming none the row is the switch's own description."""
+    from modules.sdn import known
+    monkeypatch.setattr(CL, "_connections", lambda n: {
+        "state": "ok", "error": "", "connections": [{"name": "lab-controller"}]})
+    assert CAP.read(NET, driver=_driver_of(_no_meters_switch()), now=1_790_000_000.0)["ok"]
+    monkeypatch.setattr(known, "read", lambda network: dict(known.NOT_ASKED, state="read",
+                                                            names={1: "leaf-1"}))
+    assert CAP.view(NET)["rows"][0]["name"] == "leaf-1"
+    assert CAP.row_for(NET, "lab-controller", 1)["name"] == "of-eos-1"
+    monkeypatch.setattr(known, "read", lambda network: dict(known.NOT_ASKED))
+    assert CAP.view(NET)["rows"][0]["name"] == "of-eos-1"
+
+
 def test_read_again_on_responses_reads_the_matrix_and_draws_it(networks,  # noqa: F811
                                                                 monkeypatch):
     """Board F's matrix: absent, it says not read yet; Read again pressed reads every switch

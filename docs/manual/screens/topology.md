@@ -11,7 +11,9 @@ never reads a device while you look; the header says how old the read is, and th
 by itself when a reader reads something new. Until the topology reader has read, when its store
 cannot be read, when Prometheus is not configured, or when the network was not in its last read,
 the page says which and draws no map; when its last read failed, it draws the last good read and
-says when it was.
+says when it was. One exception: with Prometheus not configured, a network that has an SDN
+controller connection still draws its controller's layer, and says in place that the routed
+map is not drawn (see [From an SDN controller](#controller)).
 
 An interface's address is its static one in committed intent. An interface that says
 `ip address dhcp` on a device onboarded with a DHCP or ZTP address has the address its lease
@@ -178,20 +180,27 @@ of a network are kept; a link to an older one says it is no longer kept.
 On a network with a controller layer (see [From an SDN controller](#controller)), Path… asks
 which **Layer** to follow: **Routing (CEF)** is the trace above; **Flow tables (OpenFlow)**
 walks a packet through the flow tables the controller reported. On a network with switches and
-no routing devices there is no Layer switch: Path… is the flow-table trace. **From** and **to**
-take an IPv4 or IPv6 address or a MAC, as the controller lists its hosts (the first 20 are
-suggested; any may be typed), or an end host's name as NetBox records it; **Protocol** is an
-ICMP echo, TCP or UDP, and **Port** the destination port for TCP or UDP. **Trace the path** is
-busy on itself until the answer arrives; any viewer may trace, because it reads only the stored
-value and changes nothing.
+no routing devices there is no Layer switch: Path… is the flow-table trace. **From** is a
+choice of the hosts Mercury knows: each host the controller lists, by its NetBox name where
+NetBox names it (then its MAC and its address; a host NetBox does not name by its switch and
+port), and each host NetBox cables to a switch port that the controller has not learnt;
+nothing is chosen until a person chooses. **to** takes one of the same hosts (the first 20 are
+suggested; any may be typed) or an IPv4 or IPv6 address, a MAC or a NetBox name typed in: an
+address nothing lists is followed to how its packet ends. **Protocol** is an ICMP echo, TCP or
+UDP, and **Port** the destination port for TCP or UDP. **Trace the path** is busy on itself
+until the answer arrives; any viewer may trace, because it reads only the stored value and
+changes nothing.
 
-The card names each switch by its DPID with the port the packet came in by and the port it left
-by, the flow that decided each hop, and how it ended, in its colour: green only for delivered,
-red for a packet stopped short or sent where it was not meant to go, amber where the trace
-cannot follow, grey where the fabric's knowledge ends. A read older than its promise is said
-above the answer and never green. **Trace the reverse**, **Copy the hops** and **Clear the
-path** sit under it; SDN › Flows' **Trace a packet…** opens this form. Switching Layer keeps
-nothing typed on the other side. How it works: [A flow-table trace](sdn-trace).
+The card names each switch (by its NetBox name, matched by datapath id, where NetBox gives one)
+and its DPID with the port the packet came in by and the port it left by, the flow that decided
+each hop, and how it ended, in its colour: green only for delivered, red for a packet stopped
+short, dropped by a flow or by the table-miss, or sent where it was not meant to go, amber
+where the trace cannot follow or the table-miss sends it to the controller, grey where the
+fabric's knowledge ends. A read older than its promise is said above the answer and never
+green. **Trace the reverse**, **Copy the hops** and **Clear the path** sit under it (no
+reverse from an address nothing lists); SDN › Flows' **Trace a packet…** opens this form.
+Switching Layer keeps nothing typed on the other side. How it works: [A flow-table
+trace](sdn-trace).
 
 ## Take out a device (what-if) {#what-if}
 
@@ -219,9 +228,21 @@ never asks a controller itself, and the endpoint layer takes the hosts from the 
 read.
 
 - **A switch the controller programs** is drawn with its own symbol, in the controller's
-  colour, keyed by its DPID, never by its name: under the name it reports, `of:…0001 · via
-  controller`. Its card on hover gives the whole DPID, the controller that discovered it, when
-  it was read, and how many ports it has.
+  colour, keyed by its DPID: under its name, `of:…0001 · via controller`. Its name is NetBox's,
+  matched by the device's `openflow_datapath_id` in the network's committed NSOT export
+  ([Commit a network's NSOT export](nsot-export)); with no NetBox device for that DPID, the
+  description the switch gives of itself where it gives one (never the placeholder `None`);
+  else its DPID's short form. Its card on hover gives the whole DPID, the controller that
+  discovered it, when it was read, how many ports it has, and what it calls itself when
+  NetBox names it otherwise.
+- **One node per device.** A switch whose NetBox device is one of the network's managed
+  devices is drawn once, as that device: the device's node carries the controller's links,
+  hosts and DPID. It is never a DPID node beside the same device. A switch NetBox does not
+  name, or whose device the network does not manage, stays its own node.
+- **With Prometheus not configured**, this layer is still drawn: the switches, their links
+  and the hosts, with **Path…** on their flow tables, and a notice saying the routed map is
+  not drawn (no LLDP link, no routing neighbourship and no device's state is read). A network
+  with no controller connection says, as before, that there is nothing to draw.
 - **Each link says where it came from**: `LLDP`, `controller`, or `LLDP + controller`. On the
   map (with Labels on) as a chip on the link, in its card on hover (the **Source** row, naming
   the controller connection and each end's port name), in Needs attention and in the Devices
@@ -244,9 +265,13 @@ read.
   blank map. Mercury is drawn reading it: a dashed line in the controller's colour labelled
   `northbound REST`, its card naming the address and port of the connection.
 - **A host is one node per MAC on its switch port**, holding every address the controller
-  learned for it, IPv4 beside IPv6. It is labelled by its global IPv4 address, else its global
-  IPv6 address, else `host on <switch> port <n>`; a link-local address (`fe80::…`) is never the
-  label. Its card lists the MAC and every address, the link-local ones marked. The same MAC
+  learned for it, IPv4 beside IPv6. It is named by its NetBox device where NetBox knows it:
+  the device or end host whose interface holds its MAC, else the one device NetBox cables to
+  its switch port when that port holds that one host (its card says which: `NetBox: <device>
+  <interface>, by its MAC`, or `by its cable`). A host NetBox does not name is labelled by its
+  global IPv4 address, else its global IPv6 address, else `host on <switch> port <n>`; a
+  link-local address (`fe80::…`) is never the label. Its card lists the MAC and every
+  address, the link-local ones marked. The same MAC
   listed on two ports is two nodes, each card saying where else it is listed. The header and
   the strip count hosts, never addresses.
 - **A host is drawn only when its switch is in the same read.** The controller may still list
@@ -280,8 +305,16 @@ intent can see is not drawn.
 
 ## Islands {#islands}
 
-An island is a part of the fleet no link joins to the rest, each with why (not polled, no LLDP
-neighbour, connected only among themselves), tagged on the map and listed under weak points.
+An island is a part of the fleet no link joins to the rest, each with why (not polled now, no
+LLDP neighbour, connected only among themselves), tagged on the map and listed under weak
+points. An island is measured: its LLDP was read and reaches nobody, or a controller or a
+neighbour reports it apart.
+
+**Not scraped is not an island.** A managed device that no LLDP target of Prometheus scrapes
+at all, and that no neighbour's LLDP and no controller names, was never measured. It is tagged
+**not scraped** (grey) and listed under **Not scraped**, closed, below the weak points; it is
+not counted with the islands, the weak points or the critical devices, and it cannot be marked
+expected, because nothing says it is apart.
 
 An island cabled apart **on purpose** (a device on its own management segment, say) can be
 marked: **Mark as expected…** asks why, and **Mark <device> as expected** records it; it needs a verified person and is recorded on History

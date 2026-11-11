@@ -183,17 +183,34 @@ def sealed_fabric(snap: dict) -> dict:
                            "ipv6": list(h.get("ipv6") or []), "dpid": at[0],
                            "dpid_hex": h["dpid_hex"], "port_no": at[1],
                            "port_name": h.get("port_name") or ""})
-    return {"state": "read", "why": "", "controllers": list(by_conn.values())}
+    return {"state": "read", "why": "", "controllers": list(by_conn.values()),
+            "netbox": sealed_netbox(snap)}
+
+
+def sealed_netbox(snap: dict):
+    """NetBox's view as the snapshot keeps it (`analyst.build_snapshot`'s ``netbox``), in
+    `sdn.known.read`'s shape, or None for a snapshot kept without one: the trace tool's ends by
+    NetBox name or address come from the seal, never from a live read (C2950, C3013)."""
+    kept = snap.get("netbox")
+    if not kept:
+        return None
+    return {"state": "read", "why": "", "sha": kept.get("sha") or "",
+            "rows": list(kept.get("rows") or []),
+            "names": {int(d, 16): n for d, n in (kept.get("names") or {}).items()},
+            "hosts": kept.get("hosts"), "devices": kept.get("devices") or 0}
 
 
 def trace_answer(snap: dict, src: str, dst: str, proto: str = "icmp", port=None) -> dict:
     """The trace tool: `trace.over` on `sealed_fabric(snap)`, answered short for the model:
-    ``{"state", "words", "source", "destination", "family", "branches": [{"outcome", "words",
-    "hops": [{"switch", "in", "out", "flows"}]}], "more", "evidence", "partial"}``, or
+    ``{"state", "ending", "words", "source", "destination", "family", "branches": [{"outcome",
+    "words", "hops": [{"switch", "in", "out", "flows"}]}], "more", "evidence", "partial"}``, or
     ``{"refused": why}``. *evidence* is every snapshot id the walk passed (each hop's deciding
     flows, its ports' and rates' ids, the links crossed); *partial* each switch walked whose
     table the snapshot holds only part of, which a flow it does not hold could decide
-    otherwise."""
+    otherwise. The ends are the walk's own (`sdn.known.resolve`): a host the snapshot lists,
+    one named as NetBox names it where the snapshot keeps NetBox's view, and, for *dst*, an
+    address nothing lists, followed to how it ends (*ending*), with what that assumes
+    (``assumed``) and how a name was resolved (``notes``) said."""
     from modules.sdn import trace as TR
 
     fab = sealed_fabric(snap)
@@ -244,12 +261,17 @@ def trace_answer(snap: dict, src: str, dst: str, proto: str = "icmp", port=None)
                   + " (the flows the snapshot holds): a flow it does not hold may decide "
                   "otherwise")
     pkt = got.get("packet") or {}
-    return {"state": got["state"], "words": words,
-            "source": got["source"]["words"], "destination": got["destination"]["words"],
-            "family": 6 if "ipv6_src" in pkt else 4, "proto": proto, "port": port,
-            "branches": branches[:TRACE_BRANCHES_SENT],
-            "more": max(0, len(branches) - TRACE_BRANCHES_SENT) + (got.get("more") or 0),
-            "evidence": evidence, "partial": partial}
+    out = {"state": got["state"], "ending": got.get("ending") or "", "words": words,
+           "source": got["source"]["words"], "destination": got["destination"]["words"],
+           "family": 6 if "ipv6_src" in pkt else 4, "proto": proto, "port": port,
+           "branches": branches[:TRACE_BRANCHES_SENT],
+           "more": max(0, len(branches) - TRACE_BRANCHES_SENT) + (got.get("more") or 0),
+           "evidence": evidence, "partial": partial}
+    if got.get("assumed"):
+        out["assumed"] = got["assumed"]
+    if got.get("notes"):
+        out["notes"] = list(got["notes"])
+    return out
 
 
 def _flow_short(f: dict) -> dict:
@@ -354,6 +376,10 @@ def _port_listed(args: dict, scope) -> str:
 
 
 def _host_listed(value, scope) -> str:
+    """Whether *value* (an address, a MAC or a NetBox name) is a host the snapshot knows: one
+    its host table lists, or, where the snapshot keeps NetBox's view, one of its interfaces by
+    name, address or MAC. The trace's own resolution (`sdn.known.resolve`) then says where it
+    is, or refuses naming why."""
     snap = scope["snapshot"]
     if "hosts" not in snap:
         return ("the snapshot holds no host table (kept before the collection read hosts), so "
@@ -368,7 +394,29 @@ def _host_listed(value, scope) -> str:
                     return ""
             except ValueError:
                 continue
-    return f"{value} is no host the snapshot lists ({len(hosts)} hosts listed)"
+    kept = snap.get("netbox") or {}
+    for r in kept.get("rows") or []:
+        if value in (r.get("mac"), *(r.get("ipv4") or []), *(r.get("ipv6") or [])) \
+                or str(r.get("name") or "").lower() == str(value).lower():
+            return ""
+    said = f"{value} is no host the snapshot lists ({len(hosts)} hosts listed)"
+    if kept:
+        said += (f", and none NetBox names in the NSOT export it keeps ({kept.get('sha')}: "
+                 f"{len(kept.get('rows') or [])} interfaces)")
+    return said
+
+
+def _destination_known(value, scope) -> str:
+    """A trace's *dst*: a host the snapshot knows (`_host_listed`), or any IPv4 or IPv6
+    address, which the walk follows to how it ends (a drop, the table-miss, a port)."""
+    why = _host_listed(value, scope)
+    if not why or "holds no host table" in why:
+        return why
+    try:
+        ipaddress.ip_address(str(value))
+    except ValueError:
+        return why
+    return ""
 
 
 def _trace_args(args: dict, scope) -> str:
@@ -385,8 +433,12 @@ def _trace_args(args: dict, scope) -> str:
 DPID = RL.Text(r"[0-9a-f]{16}", "a switch's datapath id, 16 lower-case hex digits", 16)
 SWITCH_PORT = RL.AnyOf((RL.Integer(0, 0xFFFFFF00, "a port number"),
                         RL.Text(r"LOCAL", "LOCAL", 5)), "a port number, or LOCAL")
-HOST = RL.AnyOf((RL.Address(), RL.Mac()),
-                "a host's IPv4 or IPv6 address, or its MAC in lower-case colon form")
+#: A host as a trace takes it: an address, a MAC, or the name NetBox gives it (one token, no
+#: colon, so a MAC in another form is never read as a name).
+HOST = RL.AnyOf((RL.Address(), RL.Mac(),
+                 RL.Text(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", "a NetBox name", 64)),
+                "a host's IPv4 or IPv6 address, or its MAC in lower-case colon form, or its "
+                "NetBox name")
 
 #: The closed set: each read answered from the sealed snapshot (``seal``), the topology class.
 SEALED = RL.ReadFamily(
@@ -394,7 +446,7 @@ SEALED = RL.ReadFamily(
     words="the SDN analyst's reads, each answered from the kept snapshot it analyses",
     operations=(
         RL.Operation("trace", {"src": RL.Arg(HOST, against=_host_listed),
-                               "dst": RL.Arg(HOST, against=_host_listed),
+                               "dst": RL.Arg(HOST, against=_destination_known),
                                "proto": RL.Arg(RL.Text(r"icmp|tcp|udp", "icmp, tcp or udp", 4)),
                                "port": RL.Arg(RL.Integer(1, 65535, "a port from 1 to 65535"),
                                               required=False)},
@@ -473,14 +525,30 @@ def loop_for(version: int = None):
 
 def hosts_text(snap: dict) -> str:
     """The hosts a trace can take, one a line (the trace's own domain; never an evidence id)."""
+    from modules.sdn import known
+
     hosts = snap.get("hosts")
     if hosts is None:
         return "none: this snapshot holds no host table, so the trace cannot be asked for\n"
+    kept = snap.get("netbox") or {}
+    owner = known.host_names(kept.get("rows"))
     lines = [f"host {h.get('mac')} on switch {h.get('dpid_hex')} port {h.get('port_no')}"
              + (f" ({h['port_name']})" if h.get("port_name") else "")
              + (f", IPv4 {' '.join(h['ipv4'])}" if h.get("ipv4") else "")
              + (f", IPv6 {' '.join(h['ipv6'])}" if h.get("ipv6") else "")
+             + (f", NetBox name {owner[h['mac']][0]}" if h.get("mac") in owner else "")
              for h in hosts]
+    # Where the snapshot keeps NetBox's view (C2950): each interface NetBox cables to a switch
+    # port that the controller has not learnt is a host a trace can take too, by its name.
+    learnt = {h.get("mac") for h in hosts}
+    for r in kept.get("rows") or []:
+        if r.get("mac") and r["mac"] not in learnt and r.get("dpid") is not None \
+                and r.get("port_no") is not None:
+            lines.append(f"host {r['mac']} on switch {r['dpid']:016x} port {r['port_no']}, "
+                         f"NetBox name {r['name']}"
+                         + (f", IPv4 {' '.join(r['ipv4'])}" if r.get("ipv4") else "")
+                         + (f", IPv6 {' '.join(r['ipv6'])}" if r.get("ipv6") else "")
+                         + ", placed by NetBox's cable (the controller has not learnt it)")
     return "\n".join(lines or ["none listed"]) + "\n"
 
 

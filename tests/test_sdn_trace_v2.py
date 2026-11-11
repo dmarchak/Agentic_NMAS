@@ -417,10 +417,23 @@ def test_a_walk_that_raises_is_drawn_as_failed_never_a_500(web, monkeypatch):
 
 # ───────────────────────────────────────────────────────────────────────────── a name
 
-def _export(hosts):
+def _export(hosts, devices=(), interfaces=(), cables=()):
+    """A committed NSOT export's read (`export.read_in`'s answer) in the export's own body
+    shape (`modules/nsot/export.py`): its end *hosts*, and, for the cases that need them, its
+    *devices*, their *interfaces* and the *cables*."""
     return {"ok": True, "sha256": "ab" * 32, "error": "",
-            "export": {"sha256": "ab" * 32, "body": {"devices": [], "interfaces": [],
-                                                     "hosts": hosts}}}
+            "export": {"sha256": "ab" * 32, "body": {"devices": list(devices),
+                                                     "interfaces": list(interfaces),
+                                                     "cables": list(cables), "hosts": hosts}}}
+
+
+def netbox_answers(mp, export):
+    """NetBox's view of the network is *export* (`_export`'s), answered where the page reads
+    it: `sdn.known.read`, the network's committed NSOT export. Each read is noted."""
+    from modules.sdn import known
+    asked = []
+    mp.setattr(known, "read", lambda network: asked.append(network) or known.shaped(export))
+    return asked
 
 
 H1_EXPORT = [{"name": "h1", "id": 9, "site": "lab", "status": "active", "role": "host",
@@ -428,10 +441,18 @@ H1_EXPORT = [{"name": "h1", "id": 9, "site": "lab", "status": "active", "role": 
               "interfaces": [{"name": "eth0", "mac": H1,
                               "ip_addresses": ["192.0.2.1/24", "2001:db8:8::1/64"],
                               "attached": ["s1", "s1-eth1"]}]}]
+#: The capture's s1 (DPID 1) as a NetBox device named leaf-1: its custom field
+#: ``openflow_datapath_id``, and its port 2 (the capture's s1-eth2) tagged ``openflow`` with
+#: its ``openflow_port``, as the Lab 9 records hold a switch
+#: (tests/fixtures/nsot_export/lab9_records.json).
+LEAF1 = [{"name": "leaf-1", "id": 1, "custom_fields": {"openflow_datapath_id": DPID1},
+          "tags": []}]
+LEAF1_PORT2 = [{"device": "leaf-1", "name": "Ethernet2", "tags": ["openflow"],
+                "custom_fields": {"openflow_port": 2}, "ip_addresses": []}]
 
 
 def test_an_end_host_named_as_netbox_records_it_is_traced_by_its_mac(web, monkeypatch):
-    monkeypatch.setattr("modules.nsot.export.read", lambda network: _export(H1_EXPORT))
+    netbox_answers(monkeypatch, _export(H1_EXPORT))
     card = _card(_map(web, "&src=h1&dst=2001:db8:8::3"))
     assert "h1 to 2001:db8:8::3, ICMPv6 echo: delivered through 2 switches" in card
     assert (f"h1 is {H1} (eth0, cabled to s1 s1-eth1) by NetBox's end hosts, in the NSOT export "
@@ -446,16 +467,220 @@ def test_an_end_host_named_as_netbox_records_it_is_traced_by_its_mac(web, monkey
      "was built before end hosts were recorded"),
 ])
 def test_a_name_no_source_answers_is_refused_naming_both(web, monkeypatch, export, words):
-    monkeypatch.setattr("modules.nsot.export.read", lambda network: export)
+    netbox_answers(monkeypatch, export)
     card = _card(_map(web, "&src=h9&dst=192.0.2.3"))
     assert "'h9' is not an IPv4 or IPv6 address or a MAC" in card and words in card
 
 
 def test_an_address_never_reads_the_export(web, monkeypatch):
+    """An address a controller lists is that controller's host, whatever NetBox records with
+    the same address: the export is read once a view, for the choices' names, in the
+    network's own repository (never resolved by name, `export.read`), and it never decides an
+    end a controller lists."""
     def refuse(network):
-        raise AssertionError("an address read the NSOT export")
+        raise AssertionError("the view resolved the network's export by its name")
     monkeypatch.setattr("modules.nsot.export.read", refuse)
-    _card(_map(web, "&src=192.0.2.1&dst=192.0.2.3"))
+    other = [dict(H1_EXPORT[0], name="nb-only", interfaces=[dict(
+        H1_EXPORT[0]["interfaces"][0], mac="02:00:00:00:00:77", attached=None)])]
+    asked = netbox_answers(monkeypatch, _export(other))
+    card = _card(_map(web, "&src=192.0.2.1&dst=192.0.2.3"))
+    assert asked == ["Lab"], "one read of NetBox's view a view"
+    assert f"From 192.0.2.1 ({H1}) on s1 port 1 (s1-eth1) to 192.0.2.3 ({H3})" in card
+    assert "02:00:00:00:00:77" not in card and "nb-only" not in card
+
+
+# ───────────────────────────────────────────────────────────────────────────── chosen, never typed
+
+def _from(html, sfx=""):
+    """From's choice in the form *sfx*: ``[(value, selected, words)]`` for each option."""
+    select = re.search(rf'<select id="topo-src{sfx}" name="src" class="topo-of-host">(.*?)'
+                       r'</select>', html, re.S)
+    assert select, "From is not a choice"
+    return [(v, bool(sel), html_mod.unescape(w)) for v, sel, w in re.findall(
+        r'<option value="([^"]*)"( selected)?>(.*?)</option>', select.group(1), re.S)]
+
+
+def test_from_is_a_choice_of_the_hosts_mercury_knows_and_to_a_combo_box(web, monkeypatch):
+    """The capture's six hosts, h1 named by NetBox (its MAC on an end host's interface): the
+    NetBox name first, then the MAC, then the address; a host NetBox does not name by its
+    switch and port. Nothing is chosen until a person chooses. to stays a text box with the
+    same hosts suggested, h1 by its name."""
+    netbox_answers(monkeypatch, _export(H1_EXPORT))
+    html = _map(web)
+    options = _from(html)
+    assert options[0] == ("", True, "Choose a host…")
+    assert options[1] == (H1, False, f"h1 · {H1} · 192.0.2.1 · on s1 port 1 (s1-eth1)")
+    assert ("00:00:00:00:00:02", False,
+            "s1 port 2 (s1-eth2) · 00:00:00:00:00:02 · 192.0.2.2") in options
+    assert len(options) == 7 and sum(sel for _v, sel, _w in options) == 1
+    assert re.search(r'<input id="topo-dst" name="dst" type="text" value="" '
+                     r'list="topo-of-hosts"', html)
+    offered = re.findall(r'<datalist id="topo-of-hosts">(.*?)</datalist>', html, re.S)[0]
+    assert re.search(rf'<option value="h1" label="h1 · {H1} · 192.0.2.1 · on s1 port 1 '
+                     r'\(s1-eth1\)">', html_mod.unescape(offered))
+    assert "NetBox's names are from Lab's committed NSOT export (abababababab)" in \
+        html_mod.unescape(html)
+
+
+def test_a_from_chosen_is_drawn_by_its_netbox_name_and_stays_chosen(web, monkeypatch):
+    netbox_answers(monkeypatch, _export(H1_EXPORT))
+    html = _map(web, f"&src={H1}&dst=2001:db8:8::3")
+    card = _card(html)
+    assert "h1 to 2001:db8:8::3, ICMPv6 echo: delivered through 2 switches" in card
+    assert f"From h1, 2001:db8:8::1 ({H1}) on s1 port 1 (s1-eth1) to" in card
+    assert [v for v, sel, _w in _from(html, "-c") if sel] == [H1]
+    assert "from h1 to 2001:db8:8::3, untagged" in card
+
+
+def test_a_from_no_choice_answers_is_kept_and_said_as_such(web):
+    html = _map(web, "&src=192.0.2.99&dst=192.0.2.3")
+    assert ("192.0.2.99", True, "192.0.2.99 (not a host Mercury knows)") in _from(html, "-c")
+    assert "no controller lists a host with 192.0.2.99 on an edge port" in _card(html)
+    assert "From is empty: choose the source host" in _card(_map(web, "&dst=192.0.2.3"))
+
+
+DEVICE = [{"device": "edge-1", "name": "Gi0/1", "mac": H1, "tags": [], "custom_fields": {},
+           "ip_addresses": ["192.0.2.201/24", "2001:db8:8::c9/64"]}]
+
+
+@pytest.mark.parametrize("src,dst,echo", [("edge-1", "192.0.2.4", "ICMP echo"),
+                                          ("192.0.2.201", "192.0.2.4", "ICMP echo"),
+                                          ("2001:db8:8::c9", "2001:db8:8::4", "ICMPv6 echo")])
+def test_a_netbox_device_s_name_or_address_is_the_host_the_controller_lists_by_mac(
+        web, monkeypatch, src, dst, echo):
+    """A NetBox device that is no end host (the operator's router): its interface's MAC is the
+    one the controller lists on s1 port 1, so its name, and an address only NetBox records
+    for it, are that host. The packet carries the address NetBox gives."""
+    netbox_answers(monkeypatch, _export([], interfaces=DEVICE))
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert f"{src} to {dst}, {echo}:" in card and "Path: not traced" not in card
+    assert (f"edge-1 is {H1} (Gi0/1) by NetBox's devices, in the NSOT export "
+            f"{'ab' * 6}.") in card
+    address = "2001:db8:8::c9" if ":" in dst else ("192.0.2.201" if "." in src
+                                                   else "192.0.2.1")
+    assert f"From edge-1, {address} ({H1}) on s1 port 1 (s1-eth1) to" in card
+    assert _strip(card)[0][1].startswith(f"s1 {DPID1} · in 1 s1-eth1")
+
+
+def _forgetting(mac):
+    def edit(topo):
+        topo["hosts"] = [h for h in topo["hosts"] if h["mac"] != mac]
+    return edit
+
+
+H2_EXPORT = [{"name": "h2", "id": 10, "site": "lab", "status": "active", "role": "host",
+              "tags": ["mercury-end-host"],
+              "interfaces": [{"name": "eth0", "mac": "00:00:00:00:00:02",
+                              "ip_addresses": ["192.0.2.2/24", "2001:db8:8::2/64"],
+                              "attached": ["leaf-1", "Ethernet2"]}]}]
+
+
+@pytest.mark.parametrize("dst,address", [("192.0.2.4", "192.0.2.2"),
+                                         ("2001:db8:8::4", "2001:db8:8::2")])
+def test_a_host_the_controller_has_not_learnt_starts_where_netbox_cables_it(
+        web, monkeypatch, dst, address):
+    """h2 taken out of Ryu's host table (the edit): the controller lists no host with its MAC,
+    so its MAC, its place (leaf-1 Ethernet2, DPID 1's port 2) and its address are NetBox's,
+    said so; the switch is drawn by its NetBox name, matched by datapath id."""
+    web["store"] = fresh(topo_edit=_forgetting("00:00:00:00:00:02"))
+    netbox_answers(monkeypatch, _export(H2_EXPORT, devices=LEAF1, interfaces=LEAF1_PORT2))
+    html = _map(web, f"&src=h2&dst={dst}")
+    card = _card(html)
+    assert f"h2 to {dst}," in card and "Path: not traced" not in card
+    assert ("lab has not learnt h2 (00:00:00:00:00:02): its place, leaf-1 Ethernet2 (port 2), "
+            "and its addresses are NetBox's") in card
+    assert (f"From h2, {address} (00:00:00:00:00:02) on leaf-1 port 2 (s1-eth2), by NetBox's "
+            "cable to") in card
+    assert _strip(card)[0][1].startswith(f"leaf-1 {DPID1} · in 2 s1-eth2 → out 3 s1-eth3")
+    chosen = [w for _v, sel, w in _from(html, "-c") if sel]
+    assert chosen == [f"h2 · 00:00:00:00:00:02 · 192.0.2.2 · on leaf-1 port 2, by NetBox's "
+                      "cable (not learnt by the controller)"]
+
+
+def test_a_name_with_two_interfaces_a_controller_lists_is_refused_offering_each(web, monkeypatch):
+    two = [dict(H1_EXPORT[0], name="dual", interfaces=[
+        H1_EXPORT[0]["interfaces"][0],
+        dict(H1_EXPORT[0]["interfaces"][0], name="eth1", mac="00:00:00:00:00:02")])]
+    netbox_answers(monkeypatch, _export(two))
+    card = _card(_map(web, "&src=dual&dst=192.0.2.4"))
+    assert (f"NetBox's end host dual (the NSOT export {'ab' * 6}) has 2 interfaces a controller "
+            f"lists: dual eth0 ({H1}) and dual eth1 (00:00:00:00:00:02): give the one to "
+            "trace") in card
+    links = re.findall(r'data-op="sdn-trace" href="[^"]+"[^>]*>Trace from ([0-9a-f:]+)</a>', card)
+    assert sorted(links) == [H1, "00:00:00:00:00:02"]
+
+
+# ───────────────────────────────────────────────────────────────────────────── an address only
+
+def _for(field, dst, actions):
+    return lambda fs: fs + [{"priority": 100, "cookie": 0, "idle_timeout": 0, "hard_timeout": 0,
+                             "byte_count": 0, "duration_sec": 1, "duration_nsec": 0,
+                             "packet_count": 0, "length": 96, "flags": 0, "table_id": 0,
+                             "match": {field: dst}, "actions": actions}]
+
+
+ONLY = [("192.0.2.1", "192.0.2.99", "nw_dst", "ICMP echo"),
+        ("2001:db8:8::1", "2001:db8:8::99", "ipv6_dst", "ICMPv6 echo")]
+
+
+@pytest.mark.parametrize("src,dst,field,echo", ONLY)
+def test_a_to_that_is_only_an_address_is_followed_to_the_table_miss(web, src, dst, field, echo):
+    """An address nothing answers (the Lab 9 sitting's step 4): never "not traced". The
+    capture's s1 holds no flow for it, so its table-miss sends it to the controller, amber,
+    the assumption about its MAC said above the hops."""
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert "Path: not traced" not in card
+    assert (f"{src} to {dst}, {echo}: no flow matched at s1: the table-miss sends it to the "
+            "controller") in card
+    assert 'badge badge-warn">table-miss: to the controller<' in card
+    assert (f"<strong>Followed to an address, not to a host:</strong> no controller lists a "
+            f"host with {dst}, so its MAC is not known") in card
+    assert "the destination MAC 00:00:00:00:00:00" in card
+    assert f"to {dst}, an address no controller lists · through lab's flow tables" in card
+    assert _strip(card) == [("topo-of-stopped", f"s1 {DPID1} · in 1 s1-eth1 → out CONTROLLER")]
+    assert "its table-miss entry (priority 0, every field wildcarded, table 0)" in card
+    assert "eth_dst=00:00:00:00:00:00" in card
+    assert "Trace the reverse" not in card and "Clear the path" in card
+    assert 'badge badge-ok">' not in card
+
+
+@pytest.mark.parametrize("src,dst,field,echo", ONLY)
+def test_a_to_dropped_by_a_priority_100_flow_is_red_and_names_the_flow(web, src, dst, field,
+                                                                         echo):
+    web["store"] = fresh(s1=with_flows(S1, 1, _for(field, dst, [])))
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert f"{src} to {dst}, {echo}: dropped by a flow at s1" in card
+    assert 'badge badge-danger">dropped by a flow<' in card
+    # The flow is named by its priority and by its evidence id (the stored read's).
+    assert re.search(r"the flow at priority 100 in table 0 \(cookie 0x0\), "
+                     rf"flow:lab:{DPID1}:t0:p100:[0-9a-f]+ sends it nowhere \(no output\)", card)
+    assert "table 0 · priority 100 · cookie 0" in card and "topo-of-end-danger" in card
+    assert _strip(card) == [("topo-of-stopped", f"s1 {DPID1} · in 1 s1-eth1, no out port")]
+
+
+@pytest.mark.parametrize("src,dst,field,echo", ONLY)
+def test_a_to_that_leaves_by_a_port_or_reaches_a_listed_host_is_each_its_own_state(
+        web, src, dst, field, echo):
+    web["store"] = fresh(s1=with_flows(S1, 1, _for(field, dst, ["OUTPUT:2"])),
+                         topo_edit=_forgetting("00:00:00:00:00:02"))
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert f"{src} to {dst}, {echo}: leaves the fabric at s1" in card
+    assert 'badge badge-neutral">leaves the fabric<' in card
+    assert f"it leaves the fabric by {DPID1} port 2, where the controller lists no link" in card
+    web["store"] = fresh(s1=with_flows(S1, 1, _for(field, dst, ["OUTPUT:2"])))
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert f"{src} to {dst}, {echo}: reaches a listed host's port at s1" in card
+    assert 'badge badge-neutral">to a listed host<' in card
+    assert "192.0.2.2 (00:00:00:00:00:02)" in card and 'badge badge-ok">' not in card
+
+
+@pytest.mark.parametrize("src,dst,field,echo", ONLY)
+def test_the_table_miss_dropping_it_is_red_and_said_as_the_table_miss(web, src, dst, field, echo):
+    web["store"] = fresh(s1=with_flows(S1, 1, lambda fs: [f for f in fs if f["priority"] != 0]))
+    card = _card(_map(web, f"&src={src}&dst={dst}"))
+    assert f"{src} to {dst}, {echo}: no flow matched at s1: the table-miss drops it" in card
+    assert 'badge badge-danger">table-miss: dropped<' in card
+    assert "no flow in table 0 takes it" in card
 
 
 # ───────────────────────────────────────────────────────────────────────────── a read
@@ -504,7 +729,8 @@ SHOTS = os.environ.get("NMAS_SDN_TRACE_SHOTS", "")
 
 def test_the_trace_pressed_in_a_browser(web):
     """A real browser at 1440 and 390: Path… opens on the Flow tables layer from SDN › Flows'
-    address; Port is off for ICMP and on once TCP is chosen; From, to, TCP and port 80 typed
+    address; Port is off for ICMP and on once TCP is chosen; From chosen from the hosts Mercury
+    knows (nothing chosen before), to typed, TCP and port 80 given
     and Trace the path pressed: the card is drawn in place with both DPIDs and their ports, the
     page's address now carries the question, and the map rings both switches. Then Trace the
     reverse is pressed and its answer drawn. (NMAS_SDN_TRACE_SHOTS names a folder to keep the
@@ -533,7 +759,15 @@ def test_the_trace_pressed_in_a_browser(web):
                         ".placeholder") == "1 to 65535"
             if SHOTS:
                 b.screenshot(os.path.join(SHOTS, f"sdn-trace-form-{width}.png"))
-            b.type(f"#topo-src{sfx}", "2001:db8:8::1")
+            # From is a choice (C3013): h1 chosen from the hosts Mercury knows, by its option;
+            # to is typed, as an address.
+            assert b.js(f"return document.querySelector('#topo-src{sfx}').value") == "", \
+                "nothing is chosen until a person chooses"
+            b.js(f"var s = document.querySelector('#topo-src{sfx}'); s.value = '{H1}'; "
+                 "s.dispatchEvent(new Event('change', {bubbles: true}));")
+            assert b.js(f"var s = document.querySelector('#topo-src{sfx}'); "
+                        "return s.options[s.selectedIndex].textContent").endswith(
+                            f"{H1} · 192.0.2.1"), "h1's option is the one chosen"
             b.type(f"#topo-dst{sfx}", "2001:db8:8::3")
             b.type(f"#topo-dport{sfx}", "80")
             b.click(f"{form} button[type=submit]")

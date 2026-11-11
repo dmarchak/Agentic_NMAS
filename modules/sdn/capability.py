@@ -284,8 +284,14 @@ def view(network: str) -> dict:
     """Board F's matrix for SDN › Responses, from the store (no controller call): ``{"state",
     "error", "read_at", "rows", "total"}``, each row a switch's with its connection; the
     switches with a column none or not read first, at most `ROWS_DRAWN`."""
+    from modules.sdn import known
+
     got = stored(network)
-    rows = [dict({k: v for k, v in r.items() if k != "dpid"}, connection=c.get("connection"))
+    # C3010: a switch's row is named as NetBox names it, matched by datapath id (one read for
+    # the matrix), else by the description it gives of itself where it gives one.
+    names = known.names_for(network)
+    rows = [dict({k: v for k, v in r.items() if k != "dpid"}, connection=c.get("connection"),
+                 name=known.drawn_name(r.get("dpid_hex"), names, r.get("name")))
             for c in got["controllers"] for r in c.get("switches") or []]
     rows.sort(key=lambda r: (all((r.get(k) or {}).get("state") == "yes" for k in COLUMNS),
                              r.get("name") or "", r.get("dpid_hex") or ""))

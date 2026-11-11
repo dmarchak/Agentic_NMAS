@@ -16,13 +16,17 @@ same snapshot, the card compares them. Nothing is sent to a switch.
 2. `first`: one recorded, capped AI call as the person who pressed the button, on its own task
    (Haiku 5.5, the same model as Analyse this network). It sends the same facts and prompt,
    with two additions: the reads it may ask for, and the hosts the controller learned (the
-   only places a trace can start or end). The model answers, and may ask for up to three
+   places a trace can start), each with its NetBox name where the snapshot keeps NetBox's
+   view of the fabric (the network's committed NSOT export as it was at the collection, sealed
+   with the snapshot and never in the facts). The model answers, and may ask for up to three
    reads, each with why it asks.
 3. `check_reads`: each read asked for is held to the closed set: `trace`, `switch_flows`,
    `port_stats` and `link_state`, nothing else. Its arguments are parsed by their shape (an
-   IPv4 or IPv6 address or a MAC, a switch's 16 hex digits, a port) and compared with what the
-   snapshot holds: a switch it does not hold, a port that switch does not list, or a host its
-   host table does not list is refused, naming what it compared. A fourth read is refused.
+   IPv4 or IPv6 address, a MAC or a NetBox name; a switch's 16 hex digits; a port) and
+   compared with what the snapshot holds: a switch it does not hold, a port that switch does
+   not list, or a trace's source that is no host its host table lists and none NetBox names in
+   it, is refused, naming what it compared. A trace's destination may also be an address no
+   host has: the walk follows it to how it ends. A fourth read is refused.
 4. `reads`: each allowed read is answered from the snapshot alone, never a live read. The
    trace walks the snapshot's own flow tables by OpenFlow's rules, as
    [A flow-table trace](sdn-trace) does, and says how the packet ends and which evidence ids

@@ -31,6 +31,13 @@ driver. Every expected DPID, port and port name is read off the captures by hand
   a field whose prerequisite the packet lacks does not match. A stale read is said.
 - **Refusals** name what was compared: an unknown host, one listed twice, two families, a
   missing or stray port, the same host, no controller. Each IPv4 case has its IPv6 case.
+- **A destination that is only an address** (C3013): one no controller lists is followed, from
+  the known source, to how it ends, each ending a state of its own: s1's table-miss sending it
+  to the controller (the capture as it is); a priority-100 flow for the address dropping it;
+  the table-miss dropping it (no entry, or an entry with no output); an output to a port with
+  nothing behind it, named; an output that leads to a listed host, named. Its destination MAC
+  is the "not known" value, and the answer says what that assumes. A listed destination's
+  answer is as before, its ending now saying the table-miss.
 - **Read-only:** the stored value is unchanged and nothing else is read; a fabric's work grows
   with its hops, and a flood past the bound is counted.
 """
@@ -390,6 +397,127 @@ def test_a_network_with_no_controller_is_refused():
     got = TR.trace("Lab", "192.0.2.1", "192.0.2.3", cached={"state": "not_configured",
                                                             "why": "no connection"}, now=NOW)
     assert not got["ok"] and "not read" in got["error"]
+
+
+# ───────────────────────────────────────────────────────────────────────────── an address only
+
+#: A destination no controller lists (C3013), each family's: the source h1, and the Ryu match
+#: field a flow names that destination by.
+ONLY = [("192.0.2.1", "192.0.2.99", "nw_dst"), ("2001:db8:8::1", "2001:db8:8::99", "ipv6_dst")]
+UNKNOWN_MAC = "00:00:00:00:00:00"
+
+
+def _for(field, dst, actions, priority=100):
+    """An edit adding one flow at *priority* for the destination address *dst*, in Ryu's own
+    spelling: a minimal edit of the captured table, made where it is used."""
+    return lambda fs: fs + [dict(_RYU_FLOW, priority=priority, match={field: dst},
+                                 actions=actions)]
+
+
+def _forgetting(mac):
+    def edit(topo):
+        topo["hosts"] = [h for h in topo["hosts"] if h["mac"] != mac]
+    return edit
+
+
+@pytest.mark.parametrize("src,dst,field", ONLY)
+def test_an_address_no_controller_lists_is_followed_to_s1_s_table_miss(src, dst, field):
+    """s1's captured table holds L2 flows for h1 to h3 and h2 to h4 and its table-miss entry:
+    nothing names a packet for an address no host has, so the table-miss sends it to the
+    controller, said as the table-miss and never as "not traced"."""
+    got = run(src, dst)
+    assert got["ok"], got.get("error")
+    assert got["address_only"] and got["state"] == "not_delivered"
+    assert got["ending"] == "table_miss_controller"
+    (b,) = got["branches"]
+    assert b["outcome"] == "to_controller" and b["miss"] and not b["by_flow"]
+    assert path(got) == [(DPID1, 1, "s1-eth1", "CONTROLLER", "")]
+    assert [(f["priority"], f["match"]) for f in b["hops"][0]["flows"]] == [(0, {})]
+    pkt = got["packet"]
+    assert pkt["eth_src"] == H1 and pkt["eth_dst"] == UNKNOWN_MAC
+    assert pkt["ipv4_dst" if "." in dst else "ipv6_dst"] == dst
+    assert got["words"].startswith("Table-miss, sent to the controller: no flow of "
+                                   f"{DPID1} names this packet: its table-miss entry")
+    assert f"no controller lists a host with {dst}" in got["assumed"]
+    assert UNKNOWN_MAC in got["assumed"] and "gateway" in got["assumed"]
+    assert got["destination"]["words"] == f"{dst} (an address no controller lists)"
+    assert got["dpids"] == []
+
+
+@pytest.mark.parametrize("src,dst,field", ONLY)
+def test_a_priority_100_drop_for_the_address_ends_it_dropped_by_that_flow(src, dst, field):
+    got = run(src, dst, cached(s1=with_flows(S1, 1, _for(field, dst, []))))
+    assert got["ok"], got.get("error")
+    (b,) = got["branches"]
+    assert got["ending"] == "dropped_by_flow"
+    assert b["outcome"] == "dropped" and b["by_flow"] and not b["miss"]
+    assert [(f["priority"], f["actions"]) for f in b["hops"][0]["flows"]] == [(100, [])]
+    assert b["hops"][0]["out_port"] is None
+    assert got["words"].startswith("Dropped by a flow: the flow at priority 100 in table 0")
+    assert "sends it nowhere (no output), so the switch drops it" in b["words"]
+    # Named by its evidence id as well as its priority (the stored read gives each flow one).
+    ident = b["hops"][0]["flows"][0]["id"]
+    assert ident.startswith(f"flow:lab:{DPID1}:t0:p100:") and f", {ident} sends" in b["words"]
+
+
+@pytest.mark.parametrize("src,dst,field", ONLY)
+def test_the_table_miss_drops_the_address_with_no_entry_and_with_one_that_drops(src, dst, field):
+    """OpenFlow 1.3.5 5.4: with no table-miss entry the packet is dropped by default; a
+    table-miss entry with no output drops it too. Each is the table-miss dropping it, never a
+    flow's drop for the address."""
+    none = run(src, dst, cached(s1=with_flows(S1, 1, lambda fs: [f for f in fs
+                                                                 if f["priority"] != 0])))
+    assert none["ok"], none.get("error")
+    assert none["ending"] == "table_miss_dropped"
+    assert none["branches"][0]["outcome"] == "no_match" and "5.4" in none["words"]
+    assert none["words"].startswith("Table-miss, dropped: no flow in table 0 takes it")
+    entry = run(src, dst, cached(s1=with_flows(S1, 1, replacing({}, []))))
+    (b,) = entry["branches"]
+    assert entry["ending"] == "table_miss_dropped" and b["miss"] and b["by_flow"]
+    assert "the table-miss entry, no flow above it taking the packet" in b["words"]
+
+
+@pytest.mark.parametrize("src,dst,field", ONLY)
+def test_an_output_to_a_port_with_nothing_behind_it_leaves_the_fabric_naming_it(src, dst, field):
+    """The capture's s1 port 2 with h2 taken out of Ryu's host table (the edit): a port the
+    controller lists, with no link and no host on it."""
+    store = cached(s1=with_flows(S1, 1, _for(field, dst, ["OUTPUT:2"])),
+                   topo_edit=_forgetting(H2))
+    got = run(src, dst, store)
+    assert got["ok"], got.get("error")
+    (b,) = got["branches"]
+    assert got["ending"] == "leaves" and b["outcome"] == "leaves"
+    assert path(got) == [(DPID1, 1, "s1-eth1", 2, "s1-eth2")]
+    assert b["words"] == (f"it leaves the fabric by {DPID1} port 2, where the controller lists "
+                          "no link and no host")
+    assert got["words"].startswith("Leaves the fabric: ")
+
+
+@pytest.mark.parametrize("src,dst,field", ONLY)
+def test_an_output_that_leads_to_a_listed_host_says_which_host(src, dst, field):
+    got = run(src, dst, cached(s1=with_flows(S1, 1, _for(field, dst, ["OUTPUT:2"]))))
+    assert got["ok"], got.get("error")
+    (b,) = got["branches"]
+    assert got["ending"] == "to_host" and b["outcome"] == "to_host"
+    assert path(got) == [(DPID1, 1, "s1-eth1", 2, "s1-eth2")]
+    assert f"192.0.2.2 ({H2})" in b["words"] and "that host's port" in b["words"]
+    assert got["words"].startswith("Reaches a listed host: ")
+    assert got["state"] == "not_delivered", "never delivered: no port is the address's own"
+
+
+@pytest.mark.parametrize("src,dst", [("192.0.2.2", "192.0.2.4"),
+                                     ("2001:db8:8::2", "2001:db8:8::4")])
+def test_a_listed_destination_s_table_miss_is_said_as_the_table_miss(src, dst):
+    """A destination the controller lists keeps its answer (not delivered, to the controller);
+    the ending now says the table-miss sent it there, apart from a flow that outputs to the
+    controller by name."""
+    got = run(src, dst)
+    assert got["state"] == "not_delivered" and got["words"].startswith("Not delivered: ")
+    assert got.get("ending") == "table_miss_controller" and not got["address_only"]
+    assert got["branches"][0]["miss"]
+    named = run(src, dst, cached(s2=with_flows(S2, 2, lambda fs: fs + [dict(
+        _RYU_FLOW, priority=2, match={"in_port": 3}, actions=["OUTPUT:CONTROLLER"])])))
+    assert named["ending"] == "to_controller" and not named["branches"][0]["miss"]
 
 
 # ───────────────────────────────────────────────────────────────────────────── read-only, scale

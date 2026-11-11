@@ -59,6 +59,9 @@
 {%- elif t.state == 'not_read' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ t.list }} was not in the reader's last read (read {{ stamp(t.value_at) }}): a network created since is read within a minute.</p></div>
 {%- else %}
+{#- C1928: no Prometheus, and a controller connection: the controller's layer is drawn, and the
+    routed map is said not to be, in place. -#}
+{%- if t.no_prometheus %}<div class="notice notice-warn" role="status" id="topo-no-prometheus">{{ icon('info', 16) }}<p><strong>The routed map is not drawn: Prometheus is not configured.</strong> No LLDP link, no routing neighbourship and no device's state is read (Settings › Prometheus), so each managed device is "not scraped", never an island. What is drawn is the controller's layer, from the SDN reader: its switches, their links and the hosts it learned; Path… traces through their flow tables.</p></div>{% endif %}
 {%- if t.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ t.failed }}); this is its last good read, {{ stamp(t.value_at) }}.</p></div>{% endif %}
 {%- for e in t.errors %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ e }}</p></div>{% endfor %}
 {#- S14 (board F): a network with an SDN controller says each source of the map, the
@@ -372,6 +375,16 @@
     <div class="topo-ent topo-weak"><span class="mono">{{ w.device }} {{ badge('expected', 'neutral') }}</span><span class="topo-what">{{ w.why }}. Declared apart on purpose: {{ w.expected.reason }} ({{ w.expected.by }}, {{ stamp(w.expected.at) }}).</span>
       <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.device }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span></form>
     </div>
+    {%- endfor %}
+  </details>
+  {%- endif %}
+  {#- C3010: never measured is not cut off. A managed device no LLDP target scrapes is listed
+      here, closed (a fleet's worth is one line until opened), and never counted above. -#}
+  {%- if at.groups.unscraped %}
+  <details class="topo-grp" data-keep="topo-att-unscraped">
+    <summary>{{ t.group_words.unscraped }} ({{ at.groups.unscraped | length }}): not measured, so not counted as islands</summary>
+    {%- for w in at.groups.unscraped %}
+    <div class="topo-ent topo-weak"><span class="mono">{{ w.device }} {{ badge('not scraped', 'neutral') }}</span><span class="topo-what">{{ w.why }}.</span></div>
     {%- endfor %}
   </details>
   {%- endif %}
