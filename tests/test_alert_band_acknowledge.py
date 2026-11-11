@@ -193,6 +193,49 @@ class TestTheStuckAcknowledgeC533:
         assert ACK.within_band({"band": 3.7, "value": None}, {})["in_band"] is None
 
 
+def test_the_reasons_box_takes_the_focus_once_it_is_drawn_never_before():
+    """C3092: the Acknowledge form's box was asked to take the focus in a timer that raced the
+    timer Alpine shows the form in; measured with a real browser (2026-11-11), in 4 of 16 opens
+    the focus was asked of a box not yet shown, which takes none (the browser test of the form
+    failed those runs, and a person had to click the box). `focusWhenShown` asks only a box
+    that is shown, asks again one deferred call at a time while it is not, and gives up after
+    its bound. Driven here with a box and a queue of the test's own, so the order is exact."""
+    from tests.test_device_v2 import _eval
+
+    def run(script):
+        return json.loads(_eval("nmas_v2.js", "NMAS_V2", "focusWhenShown ? (function () {"
+                                " var q = [], log = [], F = window.NMAS_V2.focusWhenShown,"
+                                " box = {offsetParent: null, focus: function () {"
+                                " log.push('focus, shown ' + !!box.offsetParent); }};"
+                                " function later(f) { q.push(f); }"
+                                " function step() { q.shift()(); }"
+                                + script + " return log; })() : 0"))
+
+    # Asked before the form is shown: no focus is asked of the hidden box; it is asked again
+    # after each deferred call, and takes the focus on the first one that finds it shown.
+    assert run("F(box, 5, later); log.push('waiting ' + q.length);"
+               " step(); log.push('waiting ' + q.length);"
+               " box.offsetParent = {}; step(); log.push('waiting ' + q.length);") == [
+        "waiting 1", "waiting 1", "focus, shown true", "waiting 0"]
+    # Already shown: the focus at once, nothing deferred.
+    assert run("box.offsetParent = {}; F(box, 5, later); log.push('waiting ' + q.length);") == [
+        "focus, shown true", "waiting 0"]
+    # Never shown: asked its bound of times and no more, and no focus is asked of a hidden box.
+    assert run("F(box, 2, later); step(); step(); log.push('waiting ' + q.length);") == [
+        "waiting 0"]
+    # No box, or one that cannot take a focus: nothing happens, nothing is deferred.
+    assert run("F(null, 5, later); F({offsetParent: {}}, 5, later);"
+               " log.push('waiting ' + q.length);") == ["waiting 0"]
+    # The bound is a small whole number the page hands it, and the form's open uses it.
+    tries = json.loads(_eval("nmas_v2.js", "NMAS_V2", "FOCUS_TRIES"))
+    assert isinstance(tries, int) and 2 <= tries <= 50, tries
+    from tests.test_device_v2 import _js
+    script = _js("nmas_v2.js")
+    opened = script[script.index("A.data('acknowledge'"):]
+    opened = opened[opened.index("open: function () {"):opened.index("cancel: function ()")]
+    assert "focusWhenShown(box, FOCUS_TRIES);" in opened and "setTimeout" not in opened, opened
+
+
 def test_the_button_is_never_left_busy_with_nothing_said():
     """The Acknowledge form's answer (`ackAnswer`, run in the shipped script): a refusal frees
     it and says why; recorded-and-hidden frees it AT ONCE, closed, saying "Acknowledged." and

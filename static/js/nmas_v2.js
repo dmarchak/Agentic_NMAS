@@ -142,6 +142,24 @@
      says so. */
   var ACK_BOUND_MS = 6000;
 
+  /* The focus a form's box takes once it is DRAWN (C3092). Alpine shows an `x-show` element in
+     a timer of its own, so a focus asked in one timer raced it: measured with a real browser,
+     2026-11-11, in 4 of 16 opens of the Acknowledge form the focus was asked of a box not yet
+     shown, which takes no focus, and the person had to click the box. The box is asked again,
+     one timer at a time, until it is shown, at most FOCUS_TRIES times (the show is one timer
+     away, so the second ask finds it; the bound is for a form that never shows). *later*
+     defers one call (the page's own timer by default; a test hands its own). */
+  var FOCUS_TRIES = 20;
+  function focusWhenShown(box, tries, later) {
+    if (!box || !box.focus) return;
+    if (box.offsetParent) { box.focus(); return; }
+    if (tries > 0) {
+      (later || function (f) { root.setTimeout(f, 0); })(function () {
+        focusWhenShown(box, tries - 1, later);
+      });
+    }
+  }
+
   /* PURE: the Acknowledge form when no answer came within *ms*: the button freed and the
      form closed (its reason no longer holds the list's redraw), saying honestly that whether
      it was recorded is not known and that the list's next redraw shows it. */
@@ -1974,7 +1992,7 @@
         open: function () {
           var box = this.$root.querySelector('input[name="why"]');
           this.isOpen = true; this.said = ''; this.note = '';
-          if (box && box.focus) root.setTimeout(function () { box.focus(); }, 0);
+          focusWhenShown(box, FOCUS_TRIES);
         },
         cancel: function () { if (this.busy) return; this.isOpen = false; this.said = ''; },
         send: function () {
@@ -2344,6 +2362,7 @@
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
+                  focusWhenShown: focusWhenShown, FOCUS_TRIES: FOCUS_TRIES,
                   badgeDoubt: badgeDoubt, staleNote: staleNote, missedKeys: missedKeys,
                   inFlightKeys: inFlightKeys,
                   stallBody: stallBody,
