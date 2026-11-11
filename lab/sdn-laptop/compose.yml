@@ -2,6 +2,11 @@
 # the same versions, as the NMAS host's netbox-docker stack (read from the host 2026-11-05).
 # Bound to loopback only. Its secrets come from secrets.env, which `kit init` generates owner-only
 # in the kit's own folder. Nobody types or reads them: they are NetBox's internal keys.
+#
+# The kit's Prometheus too (the operator's work order after the Lab 9 sitting, 2026-11-10:
+# "Prometheus as part of the kit (started and stopped by ./kit, pinned v2.53.0, loopback)"),
+# so Topology has one to ask. One Compose project: `kit start` brings both up, `kit stop`
+# stops both. The project keeps its name, because NetBox's volumes are named by it.
 name: nmas-sdn-lab-netbox
 
 x-netbox: &netbox
@@ -51,8 +56,22 @@ services:
     volumes:
       - netbox-valkey:/data
     restart: unless-stopped
+  # Published on loopback only, as NetBox is (kit_net_check.py's `listen` judges what listens,
+  # in the preflight). Its configuration is the kit's own file beside this one, read-only
+  # (KIT_FILES is the folder `kit` runs from); its data is a volume of this project, emptied
+  # by `kit reset` with NetBox's. The container is named, so `kit start` can tell its own
+  # from one started by hand under that name, which it refuses and never removes.
+  prometheus:
+    image: docker.io/prom/prometheus:v2.53.0
+    container_name: kit-prometheus
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    volumes:
+      - ${KIT_FILES:?KIT_FILES is unset}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
 
 volumes:
   netbox-media:
   netbox-postgres:
   netbox-valkey:
+  prometheus-data:

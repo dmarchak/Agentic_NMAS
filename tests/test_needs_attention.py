@@ -456,6 +456,48 @@ class TestDriftAsASource:
         assert not any("r1" in r["devices"] for r in res["rows"])
         assert "checked 2 of 4" in res["checked"] and "manual" in res["checked"]
 
+    def test_devices_outside_config_drift_are_its_finding_never_rows(self):
+        """The operator, 2026-11-10 (the Lab 9 kit's "was not checked for drift" rows): a
+        device the drift check can compare with nothing is said under What was checked, how
+        many and why, each reason once; nothing is wrong, so there is no row."""
+        golden = "Arista EOS (driver arista_eos): Mercury keeps a golden only for a platform"
+        last = {"ok": True, "checked": 1, "inventory": 1, "drifted_devices": [], "skipped": [],
+                "errors": [], "triggered_by": "scheduled", "excluded": [
+                    {"hostname": "sw-b", "kind": "no_golden_platform", "reason": golden},
+                    {"hostname": "ctl", "kind": "host", "reason": "a host: not in config drift"},
+                    {"hostname": "sw-a", "kind": "no_golden_platform", "reason": golden}]}
+        res = A.drift_source(_status(last_run=last, last_ts=NOW - 600), now=NOW)
+        assert res["rows"] == [] and res["state"] == "read"
+        assert ("checked 1 of 1, triggered by scheduled; 3 devices not in config drift, never "
+                f"checked: sw-a, sw-b ({golden}); ctl (a host: not in config drift)") \
+            in res["checked"], res["checked"]
+
+    def test_a_large_fleets_excluded_devices_are_counted_not_listed(self):
+        hosts = [{"hostname": f"h{i:03d}", "kind": "host",
+                  "reason": "a host: not in config drift"} for i in range(900)]
+        last = {"ok": True, "checked": 0, "inventory": 0, "drifted_devices": [], "skipped": [],
+                "errors": [], "excluded": hosts}
+        res = A.drift_source(_status(last_run=last, last_ts=NOW - 600), now=NOW)
+        assert ("900 devices not in config drift, never checked: h000, h001, h002, h003, h004 "
+                "and 895 more (a host: not in config drift)") in res["checked"]
+        assert "h005" not in res["checked"] and res["rows"] == []
+
+    def test_an_observe_only_device_with_no_golden_is_asked_for_a_capture_alone(self):
+        """Save… also writes the startup configuration, which observe refuses: the row of an
+        observe-only device names Capture and nothing Mercury would refuse."""
+        last = {"ok": True, "checked": 0, "inventory": 2, "drifted_devices": [], "errors": [],
+                "skipped": [{"hostname": "sw2960", "reason": "no golden config saved",
+                             "observe": True},
+                            {"hostname": "r1", "reason": "no golden config saved"}]}
+        res = A.drift_source(_status(last_run=last, last_ts=NOW - 600), now=NOW)
+        rows = {r["id"].split(":", 2)[2]: r for r in res["rows"]}
+        observe = rows["skipped:sw2960"]["action"]["label"]
+        assert observe == ("Capture it from its device page (Actions › Capture): sw2960 is "
+                           "observe-only, so the capture records what it holds as its golden "
+                           "and changes nothing on it")
+        assert "Save…" not in observe and "Save…" in rows["skipped:r1"]["action"]["label"]
+        assert rows["skipped:sw2960"]["level"] == rows["skipped:r1"]["level"] == "warning"
+
     def test_the_value_is_dated_by_the_run_not_by_the_read(self):
         last = {"ok": True, "inventory": 1, "checked": 1, "clean": 1,
                 "drifted_devices": [], "skipped": [], "errors": [],

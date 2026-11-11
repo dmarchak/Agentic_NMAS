@@ -1235,17 +1235,30 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
                                     "where the file is kept")})
         last = (exports.get("by_list") or {}).get(list_name)
         if not last:
-            rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "unknown",
-                         "max_age_minutes": 0,
+            # ABSENT, in its own words, never "unknown" (the operator, 2026-11-10, on the Lab 9
+            # kit's "breakglass:lab9 could not be checked"): the export log WAS read and holds
+            # no export of this network, which is `breakglass.currency`'s "never", the state
+            # the Credentials page draws as "none exported". An export log that cannot be
+            # read is the "unknown" above, and stays it. The row names what is missing and the
+            # screen that makes it: Credentials, Export the record….
+            n = len(now_digests)
+            rows.append({"unit": f"breakglass:{list_name}", "what": what, "list": list_name,
+                         "state": "breakglass_never", "max_age_minutes": 0,
+                         "headline": (f"No break-glass record has been exported for "
+                                      f"{list_name}"),
                          "action": {"label": "Export the break-glass record to establish the "
-                                             "baseline its currency is tracked against",
+                                             "baseline its currency is tracked against: on "
+                                             "Credentials, Export the record…",
                                     "open": "breakglass_export", "list": list_name,
                                     "command": export_cmd.replace("<list>", list_name)},
                          "detail": (f"no break-glass export of {list_name} is logged on this "
-                                    f"host ({bg.EXPORT_LOG} began 2026-09-28), so nothing says "
-                                    "whether the record holds the credentials in use; compare "
-                                    "one by hand with `nmas-breakglass verify <record> --against "
-                                    "<digests>`, or export again")})
+                                    f"host ({bg.EXPORT_LOG} began 2026-09-28), so no record "
+                                    f"kept off it holds the credential{'' if n == 1 else 's'} "
+                                    f"Mercury holds for its {n} device{'' if n == 1 else 's'}: "
+                                    "if Mercury's credential store or its key is lost, nothing "
+                                    "recovers them. A record exported before that log began is "
+                                    "not in it: compare one by hand with `nmas-breakglass "
+                                    "verify <record> --against <digests>`, or export again")})
             continue
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("at", 0)))
         # What the host can know, by how the export left (the operator,

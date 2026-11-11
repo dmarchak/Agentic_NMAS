@@ -111,7 +111,8 @@ class TestTheComposeFile:
 
         doc = yaml.safe_load(open(os.path.join(ROOT, "lab", "sdn-laptop", "compose.yml"),
                                   encoding="utf-8"))
-        assert set(doc["services"]) == {"netbox", "netbox-worker", "postgres", "valkey"}
+        assert set(doc["services"]) == {"netbox", "netbox-worker", "postgres", "valkey",
+                                        "prometheus"}
         for name in ("netbox", "postgres", "valkey"):
             env = doc["services"][name]["env_file"]
             assert env == ["${KIT_HOME:?KIT_HOME is unset}/netbox/secrets.env"], name
@@ -123,6 +124,330 @@ class TestTheComposeFile:
                                   encoding="utf-8"))
         ports = [p for s in doc["services"].values() for p in s.get("ports", [])]
         assert ports and all(p.startswith("127.0.0.1:") for p in ports), ports
+
+    def test_prometheus_is_published_on_loopback_only(self):
+        ports = _compose()["services"]["prometheus"]["ports"]
+        assert ports == ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+
+
+def _compose():
+    import yaml
+
+    return yaml.safe_load(open(os.path.join(ROOT, "lab", "sdn-laptop", "compose.yml"),
+                               encoding="utf-8"))
+
+
+def _wide_ports(doc) -> list:
+    """Each ``(service, port)`` of a Compose document published anywhere but 127.0.0.1 or
+    [::1]: a port with no host address is published on every address."""
+    return [(name, p) for name, svc in sorted(doc["services"].items())
+            for p in svc.get("ports", [])
+            if not (p.startswith("127.0.0.1:") or p.startswith("[::1]:"))]
+
+
+def _fake_docker(tmp_path, body):
+    """A `docker` on PATH that answers as *body* (a shell script's lines): no container is
+    run, and every call is appended to ``calls`` beside it."""
+    fake = tmp_path / "bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "docker").write_text("#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/calls\"\n"
+                                 + body + "\n")
+    (fake / "docker").chmod(0o755)
+    return fake
+
+
+def _kit_home(tmp_path, env_lines=("PIN_SHA=0000000",)):
+    home = tmp_path / "kit"
+    (home / "run").mkdir(parents=True, exist_ok=True)
+    (home / "kit.env").write_text("\n".join(env_lines) + "\n")
+    return home
+
+
+def _settings_init(data, **env):
+    """`kit_settings.py init` as the kit runs it, a child process on its own data folder."""
+    base = {k: v for k, v in os.environ.items() if k != "PROMETHEUS_PORT"}
+    base["NMAS_DATA_DIR"] = str(data)
+    return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                        "kit_settings.py"), "init"],
+                          cwd=ROOT, capture_output=True, text=True, env=dict(base, **env))
+
+
+class TestTheKitsPrometheus:
+    """The operator's work order after the Lab 9 sitting (2026-11-10): "Prometheus as part of
+    the kit (started and stopped by ./kit, pinned v2.53.0, loopback)". Held on the kit's files,
+    no container run: Docker is a stand-in on PATH that records what the kit asked of it."""
+
+    KIT = os.path.join(ROOT, "lab", "sdn-laptop", "kit")
+    NAME, PROJECT = "kit-prometheus", "nmas-sdn-lab-netbox"
+
+    def _kit(self, tmp_path, docker, *args, env_lines=("PIN_SHA=0000000",)):
+        home = _kit_home(tmp_path, env_lines)
+        fake = _fake_docker(tmp_path, docker)
+        r = subprocess.run(["bash", self.KIT, *args], capture_output=True, text=True,
+                           env=dict(os.environ, KIT_HOME=str(home),
+                                    PATH=f"{fake}:{os.environ['PATH']}"))
+        calls = (fake / "calls").read_text() if (fake / "calls").exists() else ""
+        return r, calls
+
+    def test_the_image_is_pinned_as_the_others_are(self):
+        doc = _compose()
+        assert doc["services"]["prometheus"]["image"] == "docker.io/prom/prometheus:v2.53.0"
+        for name, svc in doc["services"].items():
+            image = svc["image"]
+            assert image.startswith("docker.io/") and ":" in image.rsplit("/", 1)[-1], name
+            assert not image.endswith(":latest"), name
+
+    def test_its_configuration_is_the_kits_file_read_only_and_its_data_a_volume(self):
+        doc = _compose()
+        svc = doc["services"]["prometheus"]
+        assert svc["volumes"] == [
+            "${KIT_FILES:?KIT_FILES is unset}/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+            "prometheus-data:/prometheus"]
+        assert "prometheus-data" in doc["volumes"]
+        src = open(self.KIT, encoding="utf-8").read()
+        assert 'KIT_FILES="$HERE"' in src and "export KIT_FILES" in src
+        assert os.path.isfile(os.path.join(ROOT, "lab", "sdn-laptop", "prometheus.yml"))
+
+    def test_it_scrapes_nothing_and_says_why(self):
+        import yaml
+
+        path = os.path.join(ROOT, "lab", "sdn-laptop", "prometheus.yml")
+        doc = yaml.safe_load(open(path, encoding="utf-8"))
+        assert doc["scrape_configs"] == [], "no target is invented"
+        assert not any(k in doc for k in ("remote_write", "remote_read", "alerting",
+                                          "rule_files")), "nothing leaves the laptop"
+        assert "It scrapes NOTHING, on purpose" in open(path, encoding="utf-8").read()
+
+    def test_the_kits_names_are_the_compose_files(self):
+        doc = _compose()
+        src = open(self.KIT, encoding="utf-8").read()
+        assert doc["name"] == self.PROJECT and f"PROJECT={self.PROJECT}\n" in src
+        assert doc["services"]["prometheus"]["container_name"] == self.NAME
+        assert f"PROM={self.NAME}\n" in src
+
+    def test_start_stop_and_reset_are_the_one_compose_project(self):
+        src = open(self.KIT, encoding="utf-8").read()
+        start = src[src.index("cmd_start() {"):src.index("cmd_stop() {")]
+        stop = src[src.index("cmd_stop() {"):src.index("cmd_status() {")]
+        # Asked before anything is changed: the guard and the identity exception come after.
+        assert start.index("prom_not_ours") < start.index("guard_on") \
+            < start.index("exception-on") < start.index('"${COMPOSE[@]}" up -d')
+        assert "prometheus: started as $PROM on 127.0.0.1:$PROMETHEUS_PORT" in start
+        assert '"${COMPOSE[@]}" stop' in stop and "netbox and prometheus: stopped" in stop
+        # Nothing removes a container by name: the one `rm` is in the refusal's words.
+        assert src.count("docker rm") == 1 and "Remove that one yourself" in src
+        assert "docker rm" in src[src.index("prom_not_ours() {"):src.index("guard_on() {")]
+
+    def test_a_container_of_that_name_the_kit_did_not_make_is_refused_and_kept(self, tmp_path):
+        """The operator's hand-run one: no Compose label. The kit names it and the one command
+        that removes it, and asks Docker nothing but that one read."""
+        r, calls = self._kit(tmp_path, 'echo ""', "prometheus-check")
+        assert r.returncode == 1
+        assert ("kit: refused to start: a container named kit-prometheus exists that this kit "
+                "did not make (its Compose project label is 'none', the kit's is "
+                "'nmas-sdn-lab-netbox')") in r.stderr
+        assert "removes nothing it did not make" in r.stderr
+        assert r.stderr.rstrip().endswith("then start again: docker rm -f kit-prometheus")
+        assert calls.splitlines() == [
+            'container inspect -f {{ index .Config.Labels "com.docker.compose.project" }} '
+            "kit-prometheus"], "one read, and no rm, stop or run"
+
+    def test_another_projects_container_of_that_name_is_refused_naming_its_project(
+            self, tmp_path):
+        r, _calls = self._kit(tmp_path, "echo someone-elses", "prometheus-check")
+        assert r.returncode == 1 and "label is 'someone-elses'" in r.stderr
+
+    def test_the_kits_own_container_and_no_container_both_pass(self, tmp_path):
+        r, _calls = self._kit(tmp_path, f"echo {self.PROJECT}", "prometheus-check")
+        assert r.returncode == 0, r.stderr
+        assert "prometheus: no container named kit-prometheus but the kit's own" in r.stdout
+        r, _calls = self._kit(tmp_path, "exit 1", "prometheus-check")     # no such container
+        assert r.returncode == 0, r.stderr
+
+    @pytest.mark.parametrize("stack,line", [
+        ("netbox running\nprometheus running\n",
+         "prometheus: running (kit-prometheus, 127.0.0.1:9090)"),
+        ("netbox running\nprometheus exited\n",
+         "prometheus: exited (kit-prometheus, 127.0.0.1:9090)"),
+        ("netbox running\n",
+         "prometheus: not created (kit start makes it) (kit-prometheus, 127.0.0.1:9090)"),
+    ])
+    def test_status_shows_it_by_name_and_where_it_is_published(self, tmp_path, stack, line):
+        (tmp_path / "stack").write_text(stack)
+        r, calls = self._kit(tmp_path, f'cat "{tmp_path}/stack"', "status")
+        assert r.returncode == 0, r.stderr
+        assert line in r.stdout.splitlines()
+        assert "netbox stack: netbox running" in r.stdout.splitlines()
+        assert not [ln for ln in r.stdout.splitlines() if ln.startswith("netbox stack: prom")]
+        assert " ps -a --format {{.Service}} {{.State}}" in calls
+
+    def test_status_takes_the_port_from_kit_env(self, tmp_path):
+        (tmp_path / "stack").write_text("prometheus running\n")
+        r, _calls = self._kit(tmp_path, f'cat "{tmp_path}/stack"', "status",
+                              env_lines=("PIN_SHA=0000000", "PROMETHEUS_PORT=9191"))
+        assert "prometheus: running (kit-prometheus, 127.0.0.1:9191)" in r.stdout
+
+    def test_a_new_kit_env_names_its_port_and_an_old_one_takes_the_default(self):
+        src = open(self.KIT, encoding="utf-8").read()
+        init = src[src.index("cmd_init() {"):src.index("ensure_code_repo() {")]
+        assert "\nPROMETHEUS_PORT=9090\n" in init
+        assert '"${PROMETHEUS_PORT:=9090}"' in src and "export PROMETHEUS_PORT" in src
+
+    def test_the_preflight_asks_it_and_judges_what_listens_on_its_port(self):
+        src = open(os.path.join(ROOT, "lab", "sdn-laptop", "kit_preflight.sh"),
+                   encoding="utf-8").read()
+        assert 'http://127.0.0.1:$PROMETHEUS_PORT/-/ready' in src
+        assert 'loopback_only Prometheus "$PROMETHEUS_PORT"' in src
+        assert 'loopback_only Mercury "$MERCURY_PORT"' in src
+        body = src[src.index("loopback_only() {"):src.index("loopback_only Mercury")]
+        assert 'ss -ltnH "sport = :$2"' in body and "kit_net_check.py\" listen" in body
+
+
+class TestInitSetsTheKitsPrometheus:
+    """`kit init` and `kit repin` write the kit's own Prometheus's URL into the installation's
+    settings through Mercury's write path, when the key is absent: Topology has it with no
+    hand step, and a URL set in Settings is kept. Run as the kit runs it."""
+
+    def _line(self, r):
+        return next(ln for ln in r.stdout.splitlines() if ln.startswith("installation settings"))
+
+    def test_a_fresh_kit_is_given_the_loopback_url_on_the_kits_port(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = _settings_init(data, PROMETHEUS_PORT="9191")
+        assert r.returncode == 0, r.stderr
+        settings = json.loads((data / "user_settings.json").read_text())
+        assert settings["prometheus_url"] == "http://127.0.0.1:9191"
+        assert "prometheus_url" in self._line(r).split("; kept ", 1)[0]
+
+    def test_the_default_port_is_composes(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = _settings_init(data)
+        assert r.returncode == 0, r.stderr
+        url = json.loads((data / "user_settings.json").read_text())["prometheus_url"]
+        port = _compose()["services"]["prometheus"]["ports"][0]
+        assert url == "http://127.0.0.1:9090" and port == "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+
+    def test_a_url_set_before_is_kept(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "user_settings.json").write_text(json.dumps(
+            {"prometheus_url": "http://[::1]:9099"}))
+        r = _settings_init(data)
+        assert r.returncode == 0, r.stderr
+        settings = json.loads((data / "user_settings.json").read_text())
+        assert settings["prometheus_url"] == "http://[::1]:9099"
+        assert "prometheus_url" in self._line(r).split("; kept ", 1)[1]
+
+    def test_the_kit_hands_its_port_to_the_settings_init(self):
+        src = open(os.path.join(ROOT, "lab", "sdn-laptop", "kit"), encoding="utf-8").read()
+        in_wt = src[src.index("in_wt() {"):src.index("nmas_names() {")]
+        assert 'PROMETHEUS_PORT="$PROMETHEUS_PORT"' in in_wt
+
+
+class TestEveryServiceListensOnLoopbackOnly:
+    """The kit's loopback rule ("Kit stays loopback-only; nothing is exposed to teammates"),
+    judged on what LISTENS on a service's port (`kit_net_check.judge_listen`, the preflight's
+    "Mercury on loopback only" and "Prometheus on loopback only"). The fixtures are `ss -ltnH
+    "sport = :<port>"`'s own answers (iproute2 6.19.0, 2026-11-11) for four listeners started
+    in a private user and network namespace (`unshare -rn`): 127.0.0.1:9090, 0.0.0.0:9091, a
+    dual-stack wildcard on 9092 and [::1]:9093, unedited.
+
+    The accept set is exactly the one the preflight's line had before `judge_listen` judged
+    it, 127.0.0.1 and [::1] as `ss` writes them (the operator: "Don't weaken or bypass the
+    check"): an address that is also loopback and is neither is refused too."""
+
+    FIX = os.path.join(ROOT, "tests", "fixtures", "ss")
+
+    @pytest.fixture
+    def net(self):
+        return _load("kit_net_check", "lab/sdn-laptop/kit_net_check.py")
+
+    def _f(self, name):
+        return open(os.path.join(self.FIX, name), encoding="utf-8").read()
+
+    @pytest.mark.parametrize("name,port,said", [("loopback4.txt", "9090", "127.0.0.1"),
+                                                ("loopback6.txt", "9093", "[::1]")])
+    def test_a_loopback_listener_passes_in_either_family(self, net, name, port, said):
+        assert net.judge_listen(self._f(name), port) == (True, said)
+
+    @pytest.mark.parametrize("name,port,wide", [("wide4.txt", "9091", "0.0.0.0"),
+                                                ("wide-dual.txt", "9092", "*")])
+    def test_a_wider_binding_is_refused_naming_it(self, net, name, port, wide):
+        ok, words = net.judge_listen(self._f(name), port)
+        assert not ok
+        assert words == (f"listening on {wide}: {wide} is not 127.0.0.1 or [::1], so port "
+                         f"{port} is not known to listen on loopback only")
+
+    def test_one_wide_listener_beside_a_loopback_one_still_fails(self, net):
+        """Docker publishing on every address is a listener per family: one loopback line
+        beside it must not carry the port."""
+        both = self._f("loopback4.txt") + self._f("wide4.txt").replace(":9091", ":9090")
+        ok, words = net.judge_listen(both, "9090")
+        assert not ok and words.startswith("listening on 0.0.0.0 127.0.0.1: 0.0.0.0 is not")
+
+    @pytest.mark.parametrize("address", ["192.0.2.7", "[2001:db8::7]", "[::]"])
+    def test_a_lan_address_of_either_family_and_the_ipv6_wildcard_fail(self, net, address):
+        planted = self._f("loopback4.txt").replace("127.0.0.1:9090", f"{address}:9090")
+        ok, words = net.judge_listen(planted, "9090")
+        assert not ok and f"{address} is not 127.0.0.1 or [::1]" in words
+
+    @pytest.mark.parametrize("address", ["127.0.0.2", "127.1.2.3", "[::1%lo]", "::1",
+                                         "[::ffff:127.0.0.1]", "localhost"])
+    def test_another_loopback_address_is_refused_as_the_old_check_refused_it(self, net,
+                                                                             address):
+        """Each is, or names, a loopback address, and none is 127.0.0.1 or [::1] as `ss`
+        writes them: the preflight's pattern before `judge_listen` refused each, so this
+        does. The accept set is the operator's, never widened here."""
+        import re
+
+        planted = self._f("loopback4.txt").replace("127.0.0.1:9090", f"{address}:9090")
+        ok, words = net.judge_listen(planted, "9090")
+        assert (ok, words) == (False, f"listening on {address}: {address} is not 127.0.0.1 or "
+                                      "[::1], so port 9090 is not known to listen on loopback "
+                                      "only")
+        # The line it replaced, as kit_preflight.sh had it at 6a7d61f1: a FAIL when it matches.
+        old = re.compile(r"^(127\.0\.0\.1|\[::1\]| )+$")
+        assert not old.match(f"{address} "), "the old check refused it too"
+
+    def test_the_accept_set_is_the_old_patterns_two_addresses_and_no_more(self, net):
+        import re
+
+        old = re.compile(r"^(127\.0\.0\.1|\[::1\]| )+$")
+        assert net.ACCEPTED == ("127.0.0.1", "[::1]")
+        assert all(old.match(f"{a} ") for a in net.ACCEPTED)
+        both = self._f("loopback4.txt") + self._f("loopback6.txt").replace(":9093", ":9090")
+        assert net.judge_listen(both, "9090") == (True, "127.0.0.1 [::1]")
+
+    def test_nothing_listening_fails_too(self, net):
+        assert net.judge_listen("", "9090") == (False, "nothing listens on port 9090")
+
+    def test_the_preflights_line_for_a_wide_prometheus_is_a_fail(self):
+        """The script as the preflight runs it: a planted wider binding, and the refusal."""
+        r = subprocess.run(
+            ["python3", "-I", os.path.join(ROOT, "lab", "sdn-laptop", "kit_net_check.py"),
+             "listen"], capture_output=True, text=True,
+            env=dict(os.environ, LISTEN=self._f("wide4.txt"), PORT="9091", LABEL="Prometheus"))
+        assert r.returncode == 1
+        assert r.stdout.strip() == ("FAIL Prometheus on loopback only: listening on 0.0.0.0: "
+                                    "0.0.0.0 is not 127.0.0.1 or [::1], so port 9091 is not "
+                                    "known to listen on loopback only")
+
+    def test_the_preflights_line_for_mercury_on_loopback_passes(self):
+        r = subprocess.run(
+            ["python3", "-I", os.path.join(ROOT, "lab", "sdn-laptop", "kit_net_check.py"),
+             "listen"], capture_output=True, text=True,
+            env=dict(os.environ, LISTEN=self._f("loopback4.txt"), PORT="9090", LABEL="Mercury"))
+        assert r.returncode == 0 and r.stdout.strip() == "PASS Mercury on loopback only: 127.0.0.1"
+
+    def test_a_compose_port_published_wider_is_refused_by_the_files_own_check(self):
+        """The same rule on the file: a planted wider publication of Prometheus's port."""
+        doc = _compose()
+        assert _wide_ports(doc) == []
+        for wide in ("9090:9090", "0.0.0.0:9090:9090", "[::]:9090:9090", "192.0.2.7:9090:9090"):
+            doc["services"]["prometheus"]["ports"] = [wide]
+            assert _wide_ports(doc) == [("prometheus", wide)], wide
 
 
 class TestTheForwardingGuard:

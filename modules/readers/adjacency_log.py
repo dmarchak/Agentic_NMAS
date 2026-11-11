@@ -52,6 +52,15 @@ C2327), so a group is STILL LOGGED while its newest line is within `QUIET_SECOND
 
 **Nothing reaches a device.** Two Loki queries per read, one per question. A page returned
 full is refused as partial (rule 5), and the last good value is kept.
+
+**No Loki configured is a state, never a failed read** (the operator, 2026-11-10, on the Lab 9
+kit: "reader:adjacency-log … marked CRITICAL (severity by impact)"). With no Loki URL set the
+read raised (`NoSyslogJob`: "Loki could not be asked which job holds the devices' syslog: Not
+configured"), so on an installation that has no Loki the reader never succeeded, and job
+health drew it critical for ever. It now answers ``{"configured": False}`` with nothing read,
+as the other Loki readers do (`logs_tail`, `logs_summary`), and Needs attention says once,
+under What was checked, that no Loki is configured and what one would show. A Loki that IS
+configured and does not answer still raises, and is the failure it was.
 """
 
 import ipaddress
@@ -254,9 +263,19 @@ def key(list_name: str, device: str, protocol: str, neighbor: str) -> str:
     return f"{list_name}|{device}|{protocol}|{neighbor}"
 
 
-def read(clock=time.time, ask=None, population=None, job=None) -> dict:
+def _loki_configured() -> bool:
+    """Whether a Loki is configured at all (its URL set): the reader's own question, asked
+    before anything is asked of Loki."""
+    from modules.integrations.loki import LokiIntegration
+
+    return LokiIntegration().is_configured()
+
+
+def read(clock=time.time, ask=None, population=None, job=None, configured=None) -> dict:
     """``{"configured", "adjacencies", "lines", "devices", "window_days", "duplicates",
-    "duplicate_lines", "duplicate_window_seconds", "quiet_seconds", "read_at"}``. *adjacencies*
+    "duplicate_lines", "duplicate_window_seconds", "quiet_seconds", "read_at"}``. *configured*
+    is False, with nothing read, when no Loki is configured (*configured* stands in for that
+    question in a test; a test's *ask* is a Loki). *adjacencies*
     is ``{key: {list, device, protocol, neighbor, interface, drops, by_day, band}}``: *drops*
     the last day's, newest first, each ``{at, epoch, reason}``; *by_day* the count per UTC day
     over the window; *band* its highest. Only adjacencies with a drop in the window are listed.
@@ -270,6 +289,11 @@ def read(clock=time.time, ask=None, population=None, job=None) -> dict:
            "devices": len({d for _n, d in pop}), "window_days": WINDOW_DAYS,
            "duplicates": {}, "duplicate_lines": 0, "duplicate_window_seconds": DUP_WINDOW_SECONDS,
            "quiet_seconds": QUIET_SECONDS, "read_at": now}
+    if configured is None:
+        configured = ask is not None or _loki_configured()
+    if not configured:
+        # A state, never a failure: nothing is asked, and nothing is claimed read.
+        return dict(out, configured=False)
     if not pop:
         return out
     selector = job if job is not None else job_matcher()

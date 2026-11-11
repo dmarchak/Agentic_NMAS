@@ -157,8 +157,10 @@ class TestJobHealthTracksIt:
         assert r["state"] == "ok" and "3 of 3 device(s) current" in r["detail"]
 
     def test_no_export_logged_is_unknown_and_says_how_to_settle_it(self):
+        """The name is from when no export logged read "unknown"; it is ABSENT, in its own
+        state (the operator, 2026-11-10: the kit's "breakglass:lab9 could not be checked")."""
         (r,) = self._rows({"state": "absent", "by_list": {}}, {"default": _now_digests()})
-        assert r["state"] == "unknown" and "--against" in r["detail"]
+        assert r["state"] == "breakglass_never" and "--against" in r["detail"]
         assert r["action"]["label"].startswith("Export the break-glass record to establish "
                                                "the baseline")
         assert r["action"]["open"] == "breakglass_export" and r["action"]["list"] == "default", \
@@ -172,6 +174,49 @@ class TestJobHealthTracksIt:
 
     def test_no_devices_is_no_row(self):
         assert self._rows({"state": "absent", "by_list": {}}, {"default": {}}) == []
+
+    @pytest.mark.parametrize("exports", [{"state": "absent", "by_list": {}},
+                                         {"state": "ok", "by_list": {"another": {"at": 1.0}}}])
+    def test_absent_is_said_as_never_exported_naming_the_network_and_its_devices(self, exports):
+        """No log at all, and a log holding only another network's export: both read, and
+        neither holds one of this network. Never "could not be checked"."""
+        (r,) = self._rows(exports, {"default": _now_digests()})
+        assert (r["unit"], r["state"], r["list"]) == ("breakglass:default", "breakglass_never",
+                                                      "default")
+        assert r["headline"] == "No break-glass record has been exported for default"
+        assert "holds the credentials Mercury holds for its 3 devices" in r["detail"]
+        assert "nothing recovers them" in r["detail"]
+        assert r["action"]["label"].endswith("on Credentials, Export the record…")
+        assert r["action"]["open"] == "breakglass_export"
+
+    def test_absent_and_unreadable_are_two_states_with_two_sets_of_words(self):
+        (absent,) = self._rows({"state": "absent", "by_list": {}}, {"default": _now_digests()})
+        (unread,) = self._rows({"state": "unreadable", "by_list": {}, "error": "bad"},
+                               {"default": _now_digests()})
+        assert (absent["state"], unread["state"]) == ("breakglass_never", "unknown")
+        assert "is unreadable" in unread["detail"] and "unreadable" not in absent["detail"]
+        assert "headline" not in unread and "action" not in unread
+
+    def test_needs_attention_draws_never_exported_as_a_warning_with_its_action(self):
+        """The row a person reads: what is missing, never "could not be checked", a warning
+        as the Credentials page draws the same state, and the action that opens the export.
+        An unreadable log stays the unknown it was."""
+        from modules import attention as A
+
+        absent = self._rows({"state": "absent", "by_list": {}}, {"default": _now_digests()})
+        unread = self._rows({"state": "unreadable", "by_list": {}, "error": "bad"},
+                            {"default": _now_digests()})
+        res = A.job_health_source(health=lambda: {"jobs": absent + unread})
+        rows = {r["id"]: r for r in res["rows"]}
+        never = rows["job_health:breakglass:default"]
+        assert never["what"] == "No break-glass record has been exported for default"
+        assert never["level"] == "warning" and "could not be checked" not in never["what"]
+        assert never["action"]["open"] == "breakglass_export"
+        assert never["action"]["list"] == "default"
+        assert never["operands"]["list"] == "default"
+        assert A._JOB_STATES["breakglass_never"][1] == "warning"
+        assert rows["job_health:breakglass"]["what"] == "breakglass could not be checked"
+        assert rows["job_health:breakglass"]["level"] == "unknown"
 
     def test_needs_attention_draws_the_stale_state_loud_and_named(self):
         from modules.attention import _JOB_STATES

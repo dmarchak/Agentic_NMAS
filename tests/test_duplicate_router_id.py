@@ -240,6 +240,15 @@ class TestR8Verify:
         doc = _cached(_read(BOTH), R6_AT + 60)["doc"]
         assert act.judge(self.TRIGGER, doc, "Branch", "r6", since=R4_AT - 30) == "gone"
 
+    def test_a_value_read_with_no_loki_configured_is_neither_gone_nor_present(self):
+        """The reader's value with no Loki configured holds no line because none was read
+        (`AL.read`, ``configured`` False): the verify waits, and never passes on it."""
+        value = AL.read(clock=lambda: R6_AT + 60, population=[("Lab", "r4"), ("Lab", "r6")],
+                        configured=False)
+        doc = _cached(value, R6_AT + 60)["doc"]
+        assert value["configured"] is False and value["duplicates"] == {}
+        assert act.judge(self.TRIGGER, doc, "Lab", "r6", since=R4_AT - 30) == "stale"
+
     def test_the_verify_fires_still_logged_at_its_bound(self):
         clock = {"t": R6_AT + 10}
 

@@ -4,7 +4,7 @@
 # nothing on the laptop, the lab or Mercury. Exit status: the number of FAILs.
 set -u
 : "${KIT_HOME:?}" "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}" "${OPENFLOW_PORT:=6653}"
-: "${CONTROLLER_REST_PORT:=8080}" "${LAB_IF:=}" "${CONTROLLER_ADDR:=}"
+: "${CONTROLLER_REST_PORT:=8080}" "${LAB_IF:=}" "${CONTROLLER_ADDR:=}" "${PROMETHEUS_PORT:=9090}"
 fails=0
 line() {                                    # line PASS|FAIL name detail
   printf '%s %s%s\n' "$1" "$2" "${3:+: $3}"
@@ -31,10 +31,23 @@ except ValueError: print("no answer"); raise SystemExit
 print("ready" if b.get("ready") is True else ("no ready field (a commit before C2465)" if "ready" not in b else "not ready: " + str(b.get("not_ready"))))' 2>/dev/null)
 if [ "$ready" = ready ]; then line PASS "Mercury ready" "/health ready on 127.0.0.1:$MERCURY_PORT"
 else line FAIL "Mercury ready" "${ready:-no answer} on 127.0.0.1:$MERCURY_PORT"; fi
-listen=$(ss -ltnH "sport = :$MERCURY_PORT" 2>/dev/null | awk '{print $4}' | sed 's/:[0-9]*$//' | sort -u | tr '\n' ' ')
-if [ -z "$listen" ]; then line FAIL "Mercury on loopback only" "nothing listens on port $MERCURY_PORT"
-elif printf '%s' "$listen" | grep -qvE '^(127\.0\.0\.1|\[::1\]| )+$'; then line FAIL "Mercury on loopback only" "listening on $listen"
-else line PASS "Mercury on loopback only" "$listen"; fi
+loopback_only() {   # loopback_only NAME PORT: kit_net_check.py's `listen` line, as this script's
+  # The kit's loopback rule ("nothing is exposed to teammates"), judged on what LISTENS on the
+  # port now (`ss`), whoever published it: every listening address must be exactly 127.0.0.1
+  # or [::1], the set this line accepted before kit_net_check.py judged it, and nothing wider.
+  local got; got=$(LISTEN=$(ss -ltnH "sport = :$2" 2>/dev/null) PORT="$2" LABEL="$1" \
+    python3 -I "$(dirname "$0")/kit_net_check.py" listen)
+  case "$got" in PASS*) line PASS "${got#PASS }" ;; *) line FAIL "${got#FAIL }" ;; esac
+}
+loopback_only Mercury "$MERCURY_PORT"
+
+# 3b. The kit's Prometheus (compose.yml, pinned v2.53.0) answers on loopback, and is published
+#     on loopback only: anything listening but 127.0.0.1 or [::1] (0.0.0.0, [::], a LAN
+#     address, another 127.x address) is a FAIL naming it.
+code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$PROMETHEUS_PORT/-/ready" 2>/dev/null)
+if [ "$code" = 200 ]; then line PASS "Prometheus answers" "127.0.0.1:$PROMETHEUS_PORT/-/ready 200"
+else line FAIL "Prometheus answers" "127.0.0.1:$PROMETHEUS_PORT/-/ready gave ${code:-no answer} (kit start brings it up)"; fi
+loopback_only Prometheus "$PROMETHEUS_PORT"
 
 # 4. The controller (the lab's controller server, reached over the lab leg)
 if [ -z "$CONTROLLER_ADDR" ]; then line FAIL "controller reachable" "CONTROLLER_ADDR is not set in $KIT_HOME/kit.env"

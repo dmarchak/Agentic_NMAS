@@ -264,6 +264,10 @@ def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> 
     if float(good.get("read_started") or 0) <= float(since):
         return "stale"
     value = good.get("value") or {}
+    if trigger["kind"] == "duplicate_router_id" and value.get("configured") is False:
+        # The adjacency-log reader's value with no Loki configured holds no line because none
+        # was read: neither a pass nor a fail, so never "gone".
+        return "stale"
     if trigger["kind"] == "alert":
         present = alert_firing(value, device, trigger.get("rule") or "",
                                trigger.get("interface") or "")

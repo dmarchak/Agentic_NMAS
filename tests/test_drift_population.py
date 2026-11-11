@@ -158,3 +158,108 @@ class TestNoDeviceFallsThroughSilently:
         r = fleet["module"].run_drift_check("test")
         assert [e["hostname"] for e in r["errors"]] == ["r1"]
         assert r["checked"] + len(r["skipped"]) + len(r["errors"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Devices outside config drift's population (the Lab 9 kit's rows, 2026-11-10)
+# ---------------------------------------------------------------------------
+
+def _row(name, ip, device_type, **more):
+    return dict({"hostname": name, "ip": ip, "username": "u", "password": "p",
+                 "device_type": device_type}, **more)
+
+
+#: The kit's kinds of device, addresses of both families: two IOS devices (one observe-only),
+#: neither with a golden; a switch of each discovery driver's family; an Open vSwitch server;
+#: the controller's host; a device with no login; and one whose platform nothing names.
+MIXED = [
+    _row("r1", "192.0.2.1", "cisco_ios"),
+    _row("sw2960", "192.0.2.2", "cisco_ios", _management="observe"),
+    _row("sw-a", "192.0.2.3", "arista_eos"),
+    _row("sw-h", "2001:db8::4", "hp_procurve"),
+    _row("ovs1", "192.0.2.5", "ovs_linux"),
+    _row("ctl", "2001:db8::6", "linux", role="host"),
+    _row("gone", "192.0.2.7", "cisco_ios", _login="no credentials resolve for it"),
+    _row("box", "192.0.2.8", "some_other_driver"),
+]
+
+
+@pytest.fixture
+def mixed(monkeypatch):
+    from modules import drift_check
+
+    asked = []
+    monkeypatch.setattr("modules.device.get_current_device_list", lambda: ("lab9", "lab9.csv"))
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda path: list(MIXED))
+    monkeypatch.setattr("modules.goldens._golden_record",
+                        lambda ip, list_name="": {"text": None, "path": "", "commit": "",
+                                                  "source": "", "refused": ""})
+    monkeypatch.setattr("modules.connection.get_persistent_connection",
+                        lambda dev, pool, lock: asked.append(dev["hostname"]) or dev["ip"])
+    monkeypatch.setattr("modules.commands.run_device_command", lambda conn, cmd: "")
+    monkeypatch.setattr("modules.approval_queue.add_approval", lambda **kw: {"ok": True})
+    return {"module": drift_check, "asked": asked}
+
+
+class TestDevicesOutsideConfigDrift:
+    """The operator, 2026-11-10, on the Lab 9 kit: "drift-check rows for never-checked
+    devices". An Arista or ProCurve switch and an Open vSwitch server each read "was not
+    checked for drift: no golden config saved", a warning whose action was Capture; Mercury
+    keeps a golden only for a platform it parses (`repo.save_golden` refuses another, C452), so
+    the row named an action Mercury refuses. Such a device is outside config drift's
+    population, named with its reason in the run's record, as a host and a device with no
+    login already were; a device that can be captured keeps its row."""
+
+    def test_a_device_whose_platform_has_no_golden_is_excluded_by_name_never_skipped(
+            self, mixed):
+        r = mixed["module"].run_drift_check("test")
+        excluded = {e["hostname"]: e for e in r["excluded"]}
+        assert sorted(excluded) == ["ctl", "gone", "ovs1", "sw-a", "sw-h"]
+        assert {h: e["kind"] for h, e in excluded.items()} == {
+            "ctl": "host", "gone": "no_login", "ovs1": "no_golden_platform",
+            "sw-a": "no_golden_platform", "sw-h": "no_golden_platform"}
+        assert excluded["sw-a"]["reason"] == (
+            "Arista EOS (driver arista_eos): Mercury keeps a golden only for a platform whose "
+            "configuration it parses (cisco_ios, cisco_iosxe), so there is none to compare it "
+            "with")
+        assert excluded["sw-h"]["reason"].startswith("HP ProCurve / ArubaOS-Switch (driver "
+                                                     "hp_procurve)")
+        assert excluded["ovs1"]["reason"].startswith("Open vSwitch (driver ovs_linux)")
+        assert excluded["ctl"]["reason"] == "a host: not in config drift"
+        assert excluded["gone"]["reason"] == "no credentials resolve for it"
+
+    def test_what_can_be_captured_stays_a_skipped_device_and_nothing_is_asked_of_the_rest(
+            self, mixed):
+        r = mixed["module"].run_drift_check("test")
+        skipped = {s["hostname"]: s for s in r["skipped"]}
+        assert sorted(skipped) == ["box", "r1", "sw2960"], "each can be given a golden or a name"
+        assert all(s["reason"] == "no golden config saved" for s in skipped.values())
+        assert skipped["sw2960"].get("observe") is True and "observe" not in skipped["r1"]
+        assert r["inventory"] == 3 and r["checked"] == 0
+        assert r["checked"] + len(r["skipped"]) + len(r["errors"]) == r["inventory"]
+        assert mixed["asked"] == [], "no session is opened to a device with nothing to compare"
+        assert "Not in config drift: " in r["summary"] and "sw-a (Arista EOS" in r["summary"]
+
+    def test_a_dialect_named_for_a_discovery_driver_is_in_the_population(self):
+        from modules import drift_check as D
+
+        assert D.not_in_config_drift(_row("x", "192.0.2.9", "arista_eos",
+                                          platform="cisco_ios")) == {}
+        assert D.not_in_config_drift(_row("r1", "2001:db8::9", "cisco_ios")) == {}
+        assert D.not_in_config_drift(_row("box", "192.0.2.8", "some_other_driver")) == {}
+        assert D.not_in_config_drift(_row("a", "192.0.2.3", "arista_eos"))["kind"] == \
+            D.OUTSIDE_NO_GOLDEN
+
+    def test_its_device_page_says_it_is_never_checked_never_unchanged(self, mixed, monkeypatch):
+        """A device outside the population was compared with nothing: its Since last capture
+        row must not read "unchanged at the last run"."""
+        from modules import device_page
+
+        r = mixed["module"].run_drift_check("test")
+        monkeypatch.setattr(device_page, "_drift_last", lambda ref: dict(r, timestamp="t"))
+        for host, begins in (("sw-a", "Arista EOS (driver arista_eos)"),
+                             ("ctl", "a host: not in config drift")):
+            row = device_page.drift_row(None, host)
+            assert row["state"] == "unknown", row
+            assert row["text"].startswith(f"not in config drift, never checked: {begins}")
+        assert device_page.drift_row(None, "r1")["text"] == "skipped by the last run"

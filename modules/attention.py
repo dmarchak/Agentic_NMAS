@@ -1026,6 +1026,10 @@ _JOB_STATES = {
                          "danger"),
     "breakglass_not_intact": ("break-glass record's last download did not arrive intact",
                               "danger"),
+    # No export of the network is logged (`breakglass.currency`'s "never"): known, and a thing
+    # to do, so never "could not be checked" (the operator, 2026-11-10). A warning, as the
+    # Credentials page draws the same state ("none exported").
+    "breakglass_never": ("has no break-glass record: none has been exported", "warning"),
     "breakglass_drill_overdue": ("break-glass record has not been opened offline for 90 days",
                                  "warning"),
     # The Update button's root-owned updater (docs/UPDATE.md).
@@ -1339,6 +1343,35 @@ _DRIFT_HOME = "/v2/settings/installation?tab=diagnostics"
 _CHECK_NOW = "Run a drift check with Check now in Settings › Installation › Diagnostics"
 
 
+#: How many devices a group of the drift check's "not in config drift" line names before it
+#: counts the rest (built for large fleets: a line, never a list of nine hundred hosts).
+OUTSIDE_NAMED = 5
+
+
+def _outside_drift_words(excluded: list) -> str:
+    """The drift run's devices that are outside config drift's population
+    (`drift_check.not_in_config_drift`), as its finding under What was checked: how many are
+    never checked, then each reason once with the devices it covers. "" when there is none.
+    A fact nobody acts on (a host has no golden; Mercury keeps none for an Arista switch's
+    platform) is the source's finding, never a row (the operator, 2026-11-10, on the Lab 9
+    kit's "was not checked for drift" rows)."""
+    groups = {}
+    for e in excluded or []:
+        if isinstance(e, dict) and e.get("hostname"):
+            groups.setdefault(e.get("reason") or "no reason recorded", []).append(e["hostname"])
+    if not groups:
+        return ""
+    parts = []
+    for why, names in sorted(groups.items(), key=lambda g: (-len(g[1]), g[0])):
+        names = sorted(names)
+        more = len(names) - OUTSIDE_NAMED
+        parts.append(", ".join(names[:OUTSIDE_NAMED])
+                     + (f" and {more} more" if more > 0 else "") + f" ({why})")
+    n = sum(len(v) for v in groups.values())
+    return (f"{n} device{'' if n == 1 else 's'} not in config drift, never checked: "
+            + "; ".join(parts))
+
+
 def drift_source(status=None, now=None, presence=None) -> dict:
     """The LAST drift run for the list on screen, from its stored record
     (section 0a: nothing re-checks a device to draw this page). Every device
@@ -1405,6 +1438,7 @@ def drift_source(status=None, now=None, presence=None) -> dict:
             {"label": _CHECK_NOW, "href": _DRIFT_HOME}, "warning",
             since=last_ts + DRIFT_STALE_INTERVALS * interval)
     coverage = f"checked {last.get('checked', 0)} of {last.get('inventory', 0)}"
+    outside = _outside_drift_words(last.get("excluded"))
     # C2824: what self-healing holds about each changed device, read once for the run's rows.
     cases = _drift_cases(lst) if last.get("drifted_devices") else {}
     for d in last.get("drifted_devices") or []:
@@ -1438,6 +1472,13 @@ def drift_source(status=None, now=None, presence=None) -> dict:
         no_golden = d.get("reason") == "no golden config saved"
         add(f"skipped:{d['hostname']}", f"{d['hostname']} was not checked for drift",
             d.get("reason") or "no reason recorded",
+            # An observe-only device's first golden is a capture and nothing else: Save…
+            # also writes its startup configuration, which observe refuses.
+            {"label": f"Capture it from its device page (Actions › Capture): {d['hostname']} "
+                      "is observe-only, so the capture records what it holds as its golden "
+                      "and changes nothing on it",
+             "href": "/v2/devices?" + urlencode({"state": "no_golden", "list": lst})}
+            if no_golden and d.get("observe") else
             # C1153: v2's way, never today's index's no-golden capture scope. Devices filtered
             # to the state "no golden" lists every device without one; ticked, Actions › Save
             # records each as golden (and saves it to startup).
@@ -1482,6 +1523,7 @@ def drift_source(status=None, now=None, presence=None) -> dict:
                          held=held_for,
                          checked=f"list {lst}, the run of {_iso(last_ts) or 'an unrecorded time'}: "
                                  f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}"
+                                 + (f"; {outside}" if outside else "")
                                  + (f"; not read during a planned operation, read again by the "
                                     f"next run: {'; '.join(explained_drift)}"
                                     if explained_drift else ""))
@@ -5495,6 +5537,16 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                              error=f"not read yet: {why}")
     v = good.get("value") or {}
     value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if v.get("configured") is False:
+        # No Loki at all (the operator, 2026-11-10: the kit's reader drawn critical): said
+        # once, here, with what a Loki would show, as the restarts and adjacencies sources say
+        # "no Prometheus configured". Never a row: nothing is wrong with what is configured.
+        return source_result("adjacency_log", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise,
+                             reader="adjacency-log",
+                             checked="no Loki configured: an adjacency that drops and comes "
+                                     "back between two scrapes, and a duplicate router-id, "
+                                     "are only in the devices' logs, so neither can be seen")
     try:
         planned = restarts.planned_rows() if planned is None else planned
     except RuntimeError as exc:

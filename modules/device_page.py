@@ -314,6 +314,14 @@ def drift_row(ref, host: str, taken_in: str = "") -> dict:
                                    else f"{d.get('diff_lines')} line(s)")
                for d in last.get("drifted_devices") or []}
     skipped = [s if isinstance(s, str) else (s or {}).get("hostname") for s in last.get("skipped") or []]
+    # A device outside config drift's population (`drift_check.not_in_config_drift`: a host, a
+    # device with no login, a platform Mercury keeps no golden for) was never compared with
+    # anything, so it is never "unchanged": it says why it is not checked.
+    outside = {e.get("hostname"): e.get("reason") or "no reason recorded"
+               for e in last.get("excluded") or [] if isinstance(e, dict)}
+    if host in outside:
+        return {"name": name, "state": "unknown", "at": last.get("timestamp"),
+                "text": f"not in config drift, never checked: {outside[host]}"}
     if host in drifted:
         return {"name": name, "state": "warn", "at": last.get("timestamp"), "open": True,
                 "text": f"changed: differs from its golden by {drifted[host]}"}

@@ -173,8 +173,10 @@ tool holds now, list by list, using the same salted digests, and no value moves:
 - A device whose credential changed since the export, or that joined the list since, is a
   danger row on [Needs attention](needs-attention): the record cannot recover it. Its action
   opens this export.
-- A list with no export logged is a row saying nothing establishes whether the record is
-  current, with the same action.
+- A list with no export logged is a warning row, "No break-glass record has been exported for
+  <network>": no record kept off the host holds its devices' credentials. Its action is the
+  same, this export. An export log that cannot be read is a different row, "could not be
+  checked", because then whether a record exists is not known.
 - A newest download the browser found not intact is a row asking you to delete the file you
   saved and export again, with the same action.
 - When every device is current, the row says so and asks you to verify the copy you keep,

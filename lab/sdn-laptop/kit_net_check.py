@@ -1,4 +1,4 @@
-"""The preflight's two network checks for the dual-homed laptop (the operator, 2026-11-05;
+"""The preflight's network checks for the dual-homed laptop (the operator, 2026-11-05;
 docs/LAB9_LAPTOP_RUN.md section 7):
 
 1. **The lab profile:** the NetworkManager profile (`LAB_PROFILE`, "lab9") is bound to the lab
@@ -7,9 +7,18 @@ docs/LAB9_LAPTOP_RUN.md section 7):
 2. **The default route stays on the Wi-Fi** (`WIFI_IF`): every IPv4 and IPv6 default route
    names it, and none names the lab interface.
 
-    python3 -I kit_net_check.py profile|routes
+3. **A service of the kit listens on loopback only** (the kit's rule: "Kit stays loopback-only;
+   nothing is exposed to teammates"): every address that listens on its port is exactly
+   `127.0.0.1` or `[::1]`, as `ss` writes them. That is the set the preflight's own line
+   accepted before this file judged it (the operator: "Don't weaken or bypass the check"),
+   and nothing wider: a wildcard (`0.0.0.0`, `[::]`, `*`), a LAN address, another 127.x
+   address, a scoped `[::1%lo]`, a name or anything unparsed is a FAIL naming it. Mercury's
+   port and the kit's Prometheus's are each judged so.
+
+    python3 -I kit_net_check.py profile|routes|listen
 
 The raw outputs come in the environment (the preflight runs the commands):
+- `LISTEN`: `ss -ltnH "sport = :<port>"`, with `PORT` (the port) and `LABEL` (the service);
 - `NM_PROFILE`: `nmcli -g connection.interface-name,ipv4.never-default,ipv6.never-default,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns connection show <profile>`;
 - `NM_ACTIVE`: `nmcli -t -f NAME,DEVICE connection show --active`;
 - `CARRIER`: `1` when the lab interface has carrier;
@@ -77,6 +86,38 @@ def judge_routes(route4: str, route6: str, wifi_if: str, lab_if: str) -> tuple:
                                             "default route"))
 
 
+def _listening(ss_out: str) -> list:
+    """Each local address `ss -ltnH` lists, without its port: the fourth column
+    (``State Recv-Q Send-Q Local-Address:Port Peer-Address:Port``), as `ss` wrote it."""
+    out = []
+    for line in (ss_out or "").splitlines():
+        words = line.split()
+        if len(words) >= 4 and ":" in words[3]:
+            out.append(words[3].rsplit(":", 1)[0])
+    return sorted(set(out))
+
+
+#: The only addresses a kit service may listen on, exactly as `ss` writes them: the set the
+#: preflight's "Mercury on loopback only" accepted before this file judged it (its pattern,
+#: ``^(127\.0\.0\.1|\[::1\]| )+$``). Compared whole, never parsed: another address that is
+#: also loopback (127.0.0.2, a scoped ``[::1%lo]``) is not in it, and the set is not this
+#: file's to grow.
+ACCEPTED = ("127.0.0.1", "[::1]")
+
+
+def judge_listen(ss_out: str, port: str) -> tuple:
+    """``(ok, words)`` for what listens on *port*: every address one of `ACCEPTED`."""
+    found = _listening(ss_out)
+    if not found:
+        return False, f"nothing listens on port {port}"
+    other = [a for a in found if a not in ACCEPTED]
+    if other:
+        return False, (f"listening on {' '.join(found)}: {', '.join(other)} "
+                       f"{'is' if len(other) == 1 else 'are'} not {' or '.join(ACCEPTED)}, so "
+                       f"port {port} is not known to listen on loopback only")
+    return True, " ".join(found)
+
+
 if __name__ == "__main__":
     e = os.environ.get
     what = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -88,6 +129,9 @@ if __name__ == "__main__":
         ok, words = judge_routes(e("ROUTE4", ""), e("ROUTE6", ""), e("WIFI_IF", ""),
                                  e("LAB_IF", ""))
         label = "default route stays on the Wi-Fi"
+    elif what == "listen":
+        ok, words = judge_listen(e("LISTEN", ""), e("PORT", ""))
+        label = f"{e('LABEL', 'the service')} on loopback only"
     else:
         sys.exit(__doc__)
     print(f"{'PASS' if ok else 'FAIL'} {label}: {words}")

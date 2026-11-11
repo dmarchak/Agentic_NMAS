@@ -555,6 +555,44 @@ def check_device(list_name: str, hostname: str, by: str) -> dict:
             "skipped": bool(skipped)}
 
 
+#: The kinds of device outside config drift's population (`not_in_config_drift`).
+OUTSIDE_HOST, OUTSIDE_NO_LOGIN, OUTSIDE_NO_GOLDEN = "host", "no_login", "no_golden_platform"
+
+
+def not_in_config_drift(dev: dict) -> dict:
+    """``{"kind", "reason"}`` when *dev* is outside config drift's population, else ``{}``.
+    Each is named in the run's record (``excluded``) and never checked, so none is a "not
+    checked" row with nothing a person could do about it:
+    - a host (C2608: its role's kind is host; no golden, and its own service drift is
+      controller management's);
+    - a device in its "no login" state (C2607: unreadable, counted by its network's Needs
+      attention row);
+    - a device Mercury reads with a discovery driver and whose platform is no config dialect
+      (`discovery.DRIVERS`: Arista EOS, ProCurve, Comware, Open vSwitch; the Lab 9 kit's
+      Needs attention, the operator, 2026-11-10: each read "was not checked for drift: no
+      golden config saved", with Capture as its action). `repo.save_golden` refuses a golden
+      for a platform that is no dialect (C452), so there is no golden to capture and nothing
+      to compare: the row named an action Mercury refuses.
+    A device whose platform is simply unknown (no dialect and no discovery driver) stays in the
+    population: its "no golden" row stands, since naming its platform is a thing to do."""
+    from modules import discovery
+    from modules.inventory.management import is_host
+    from modules.nsot.platform import DIALECTS, is_dialect, platform_for_device
+
+    if is_host(dev):
+        return {"kind": OUTSIDE_HOST, "reason": "a host: not in config drift"}
+    if dev.get("_login"):
+        return {"kind": OUTSIDE_NO_LOGIN, "reason": dev["_login"]}
+    driver = str(dev.get("device_type") or "").strip().lower()
+    if discovery.is_driver(driver) and not is_dialect(platform_for_device(dev)):
+        return {"kind": OUTSIDE_NO_GOLDEN,
+                "reason": (f"{discovery.DRIVERS[driver]['family']} (driver {driver}): Mercury "
+                           "keeps a golden only for a platform whose configuration it parses "
+                           f"({', '.join(sorted(DIALECTS))}), so there is none to compare it "
+                           "with")}
+    return {}
+
+
 def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
                      only: str = "") -> dict:
     """Check every device in the inventory for config drift (*only*: that one device).
@@ -601,14 +639,16 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         devices = [d for d in devices if d.get("hostname") == only]
         if not devices:
             return _result(ok=False, summary=f"{only} is not in {list_name}'s inventory")
-    # Not in config drift's population, each named (C2608, C2607): a host (its role's kind is
-    # host: no golden, its own service drift is controller management's), and a device in its
-    # "no login" state (unreadable, counted by its network's Needs attention row).
-    from modules.inventory.management import is_host
+    # Not in config drift's population, each named with its kind (`not_in_config_drift`).
+    from modules.inventory.management import is_observe
+    outside = [(d, not_in_config_drift(d)) for d in devices]
     excluded = [{"hostname": d.get("hostname") or d.get("ip") or "(unnamed)",
-                 "reason": "a host: not in config drift" if is_host(d) else d["_login"]}
-                for d in devices if is_host(d) or d.get("_login")]
-    devices = [d for d in devices if not (is_host(d) or d.get("_login"))]
+                 "kind": why["kind"], "reason": why["reason"]} for d, why in outside if why]
+    devices = [d for d, why in outside if not why]
+    # An observe-only device with no golden is still asked for one: a capture is the one
+    # thing Mercury records of it (`inventory.management.MAY_HOLD`), and its row says so.
+    observe_only = {d.get("hostname") or d.get("ip") or "(unnamed)"
+                    for d in devices if is_observe(d)}
     if not devices:
         log.info("drift_check: inventory is empty — nothing to check")
         return _result(summary="Inventory is empty — nothing to check" if not excluded else
@@ -802,7 +842,9 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "",
         checked         = checked,
         drifted         = len(drifted_list),
         clean           = len(clean_list),
-        skipped         = [{"hostname": h, "reason": r} for h, r in skip_list],
+        skipped         = [{"hostname": h, "reason": r,
+                            **({"observe": True} if h in observe_only else {})}
+                           for h, r in skip_list],
         errors          = [{"hostname": h, "reason": r} for h, r in error_list],
         drifted_devices = [{"hostname": h, "diff_lines": n, **differing.get(h, {})}
                            for h, n in drifted_list],

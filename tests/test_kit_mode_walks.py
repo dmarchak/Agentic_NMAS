@@ -96,9 +96,10 @@ PW = "walk every write on the kit 73"
 KIND = "local-account"
 ORIGIN = "http://localhost"
 SIGN_IN = "/v2/settings/installation/local-account/sign-in"
-#: The kit's settings that name its own services (its NetBox and its port): each walk's fake
-#: back-end stands in for them, so they are the two of the kit's values not written here.
-ITS_OWN_SERVICES = ("netbox_url", "flask_port")
+#: The kit's settings that name its own services (its NetBox, its port and its Prometheus):
+#: each walk's fake back-end stands in for them, so they are the three of the kit's values
+#: not written here.
+ITS_OWN_SERVICES = ("netbox_url", "flask_port", "prometheus_url")
 
 BY_ITSELF = "refused by the operation itself"
 AT_ITS_GATE = "refused at its gate"

@@ -216,12 +216,16 @@ def test_the_headline_counts_and_names():
     # images=[] and settings=[]: this test is about the systemd jobs' count;
     # the Proxmox image rows, the settings rows and the SSH-session rows
     # (C97), the running-version row, the reader rows (test_reader_job.py) and
-    # the updater's install row (test_update_button.py) have their own tests.
+    # the updater's install row (test_update_button.py) have their own tests. startup=[]
+    # too (C3066): the startup-check rows are read from the shared test store's
+    # startup_check.json, and a result left there by another test of the same worker made
+    # this headline "5 of 6 job(s) ok; not ok: startup-check" (CI run 1607); their own tests
+    # are tests/test_c53_device_stage.py's `TestTheRows`.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], sessions=[], version=[], readers=[], updater=[])
+                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], sessions=[], version=[], readers=[], updater=[])
+                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[])
     assert h["headline"].startswith("0 of") and J.JOBS[0]["unit"] in h["headline"]
 
 

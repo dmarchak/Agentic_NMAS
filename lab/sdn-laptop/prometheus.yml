@@ -1,0 +1,17 @@
+# The laptop kit's Prometheus (lab/sdn-laptop/compose.yml, docs/LAB9_LAPTOP_RUN.md): mounted
+# read-only into the container `kit start` brings up, published on 127.0.0.1 only.
+#
+# It scrapes NOTHING, on purpose. A target here is something the kit itself runs on loopback
+# and that serves metrics, and nothing the kit runs does:
+# - Mercury serves no /metrics;
+# - the kit's NetBox has its metrics off (netbox-docker's default; compose.yml sets none);
+# - Prometheus's own metrics are about Prometheus, never the lab: scraped, they would be a
+#   target Mercury's inventory does not hold.
+# So Mercury has a Prometheus to ask (Topology no longer says "Prometheus is not configured"),
+# and every device reads "not scraped" until a target for it is added here. A target is added
+# when the kit runs something that serves metrics for the lab's devices (an SNMP exporter, a
+# telemetry receiver); none is invented.
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+scrape_configs: []

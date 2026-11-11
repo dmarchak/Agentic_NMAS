@@ -20,6 +20,11 @@ network, and its Check now and Turn off or Turn on act on that row's network.
    it. Sent: nothing. Recorded: nothing. The inventory,
    not the golden store, is what is checked, so a device without a golden is named instead of
    being absent. An empty inventory ends the run with "Inventory is empty, nothing to check".
+   Three kinds of device are outside config drift and are named with their reason, never
+   read: a host (a Linux server Mercury manages services on has no golden); a device with no
+   login; and a device whose platform Mercury keeps no golden for (an Arista or ProCurve
+   switch, an Open vSwitch server: Mercury keeps a golden only for a platform whose
+   configuration it parses). See [the buckets](#buckets).
 2. **Set aside what cannot be checked.** Read: whether the device is stale, and its golden as
    committed in git. Sent: nothing. Recorded: the device and its reason in the run's
    "not checked" list. Three reasons: no longer in NetBox for this list (a stale device of a
@@ -62,6 +67,12 @@ Every device in the inventory ends the run in one of these:
 - **Not checked**: stale, golden refused, or no golden, each with its reason.
 - **Unreachable**: the read failed or could not be trusted, with the reason. The device may
   have answered: a refused read is listed here too, so read the reason.
+
+A device outside config drift (a host, a device with no login, a platform with no golden) is
+in none of them and is not counted in M below: the summary names it after "Not in config
+drift", and Needs attention says how many there are and why under What was checked, never as
+a row, because there is nothing to compare and nothing for a person to do. Its page's Since
+last capture row reads "not in config drift, never checked" with the reason.
 
 The summary always states the coverage, "checked N of M", where N counts clean and drifted
 devices and M is the inventory. "All 7 checked device(s) clean (checked 7 of 9)" is a
@@ -121,7 +132,10 @@ the device page (see [Two ways to resolve drift](drift#resolve)).
 - **Needs attention** draws one row per device the last run did not clear: drifted (danger,
   with a queued item folded into it), not checked (warning, with what to do), unreachable
   (unknown). It also draws the checker's own state: switched off, never run, a failed run, or
-  a last run older than two intervals.
+  a last run older than two intervals. A device with no golden is asked for a capture; an
+  observe-only one is asked for a capture alone, since Save also writes its startup
+  configuration, which observe refuses. The devices outside config drift are one sentence
+  under What was checked.
 - **The device page's Overview** shows the Drift row for that device from the same stored run.
 - **The Drift checks card** (Settings › Installation › Diagnostics) shows each network's last
   run, its summary with the coverage on hover, the next run and the schedule.

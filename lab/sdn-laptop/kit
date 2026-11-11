@@ -5,9 +5,9 @@
 #   kit init SHA       the kit folder, the worktree at SHA, NetBox's secrets, images, settings
 #   kit repin SHA      the worktree moved to SHA (a fix on lab9-live), Mercury stopped first;
 #                      then the settings init again, adding only what is missing
-#   kit start [--reveal]  the check, the identity exception, NetBox, Mercury (loopback only);
-#                      --reveal opens reveal too, for the S1 sitting only (C2897)
-#   kit stop           the identity gates restored (recorded), Mercury and NetBox stopped
+#   kit start [--reveal]  the check, the identity exception, NetBox, Prometheus, Mercury
+#                      (loopback only); --reveal opens reveal too, for the S1 sitting only (C2897)
+#   kit stop           the identity gates restored (recorded), Mercury, NetBox and Prometheus stopped
 #   kit status         what runs, the pinned sha, the last identity exception
 #   kit preflight      one PASS/FAIL line per check (kit_preflight.sh)
 #   kit check          the settings check alone (kit_check.py)
@@ -17,18 +17,26 @@
 #
 # KIT_HOME (default ~/nmas-sdn-lab) holds everything: kit.env, data/ (NMAS_DATA_DIR), netbox/,
 # mercury/ (the worktree), run/ (pid and log), code/lab9.git (lab9's code repository, bare).
-# Nothing is written to the main checkout.
+# Nothing is written to the main checkout. NetBox's and Prometheus's data are volumes of the
+# kit's one Compose project (compose.yml); Prometheus's configuration is prometheus.yml here.
 set -euo pipefail
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 REPO="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir | sed 's#/\.git$##')"
 KIT_HOME="${KIT_HOME:-$HOME/nmas-sdn-lab}"
 export KIT_HOME
+# The folder compose.yml mounts Prometheus's configuration from: this script's own.
+KIT_FILES="$HERE"
+export KIT_FILES
 ENV="$KIT_HOME/kit.env"
 PY="${KIT_PYTHON:-$HOME/.local/share/nmas-py312/bin/python}"
 WT="$KIT_HOME/mercury"
 DATA="$KIT_HOME/data"
 RUN="$KIT_HOME/run"
 COMPOSE=(docker compose -f "$HERE/compose.yml" --project-directory "$KIT_HOME/netbox")
+# The Compose project (compose.yml's `name`) and the name its Prometheus container is given
+# there: how `kit start` tells the kit's own Prometheus from one started by hand.
+PROJECT=nmas-sdn-lab-netbox
+PROM=kit-prometheus
 # The identity exception's longest life (option (c), C2520): the sitting, never past 14 hours.
 EXCEPTION_HOURS=14
 
@@ -37,11 +45,14 @@ load() {
   [ -f "$ENV" ] || die "no $ENV: run 'kit init <sha>' first"
   # shellcheck disable=SC1090
   set -a; . "$ENV"; set +a
-  : "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}"
+  : "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}" "${PROMETHEUS_PORT:=9090}"
+  # Exported for compose.yml's port and the preflight: a kit.env from before the kit ran
+  # Prometheus names no port, and takes this one.
+  export PROMETHEUS_PORT
 }
 in_wt() {        # in_wt CMD...: run Mercury's code from the worktree, on the kit's data only
   (cd "$WT" && env NMAS_DATA_DIR="$DATA" MERCURY_PORT="$MERCURY_PORT" NETBOX_PORT="$NETBOX_PORT" \
-    PYTHONDONTWRITEBYTECODE=1 "$@")
+    PROMETHEUS_PORT="$PROMETHEUS_PORT" PYTHONDONTWRITEBYTECODE=1 "$@")
 }
 nmas_names() {   # the NMAS host's LAN address and tunnel name, for the check, never printed
   KIT_NMAS_LAN="$("$REPO/scripts/nmas-host" nmas --field lan 2>/dev/null || true)"
@@ -51,6 +62,19 @@ nmas_names() {   # the NMAS host's LAN address and tunnel name, for the check, n
 UNIT=nmas-sdn-kit-mercury
 pid_alive() { systemctl --user is-active --quiet "$UNIT"; }
 klog() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$RUN/kit.log"; echo "$*"; }
+
+prom_not_ours() {   # refuse a container named kit-prometheus that this kit's Compose did not make
+  # The operator's hand-run one (after the Lab 9 sitting, 2026-11-10) holds the name and the
+  # port, so the kit's own could not start. The kit adopts no stray and deletes nothing it did
+  # not make: it refuses, naming the container and the one command that removes it. Asked
+  # before anything is changed (the guard, the identity exception), so a refusal leaves the
+  # laptop as it was. `docker container inspect` fails when there is no such container (the
+  # ordinary case), or when Docker is not up, which Compose says itself a few lines on.
+  local label
+  label=$(docker container inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$PROM" 2>/dev/null) || return 0
+  [ "$label" = "$PROJECT" ] && return 0
+  die "refused to start: a container named $PROM exists that this kit did not make (its Compose project label is '${label:-none}', the kit's is '$PROJECT'). The kit starts its own Prometheus under that name on 127.0.0.1:$PROMETHEUS_PORT, and removes nothing it did not make. Remove that one yourself, then start again: docker rm -f $PROM"
+}
 
 guard_on() {     # the lab9guard nftables table: nothing forwarded to or from LAB_IF
   [ -n "${LAB_IF:-}" ] || die "LAB_IF is not set in $ENV: name the lab interface first"
@@ -100,6 +124,7 @@ LAB_PROFILE=lab9
 CONTROLLER_ADDR=
 OPENFLOW_PORT=6653
 CONTROLLER_REST_PORT=8080
+PROMETHEUS_PORT=9090
 EOF
   sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
   chmod 0600 "$ENV"
@@ -113,7 +138,7 @@ EOF
   cmd_ensure_pepper
   load
   "${COMPOSE[@]}" pull -q
-  echo "netbox: images pulled"
+  echo "netbox and prometheus: images pulled"
   ensure_code_repo
   in_wt "$PY" "$HERE/kit_settings.py" init
   echo "kit: initialised at $sha in $KIT_HOME; fill LAB_IF and CONTROLLER_ADDR in $ENV at the lab"
@@ -184,6 +209,7 @@ cmd_start() {
   [ -z "$(git -C "$WT" status --porcelain -- . ':!.nmas-lab-kit')" ] || die "$WT is not clean"
   pid_alive && die "Mercury already runs (pid $(cat "$RUN/mercury.pid"))"
   cmd_check || die "refused to start: the settings check failed (above)"
+  prom_not_ours
   guard_on
   in_wt "$PY" "$HERE/kit_settings.py" last-exception
   local until; until=$(date -u -d "+$EXCEPTION_HOURS hours" +%Y-%m-%dT%H:%MZ)
@@ -198,7 +224,10 @@ cmd_start() {
     --setenv=KIT_HOME="$KIT_HOME" "$HERE/kit" stop \
     && echo "identity exception: the kit's stop is scheduled at $until (nmas-sdn-kit-expiry.timer)" \
     || die "the expiry timer could not be scheduled, so the exception is not started"
+  # NetBox and Prometheus, one Compose project. An image not yet on the laptop (a kit made
+  # before the kit ran Prometheus has not pulled it) is pulled here, which needs the Wi-Fi.
   "${COMPOSE[@]}" up -d
+  echo "prometheus: started as $PROM on 127.0.0.1:$PROMETHEUS_PORT (it scrapes nothing: prometheus.yml says why)"
   # Mercury runs as a transient user unit: detached from this shell (a backgrounded child kept
   # `kit start` waiting on it, 2026-11-05), stopped by its unit's identity, never a pattern.
   systemd-run --user --quiet --unit="$UNIT" --working-directory="$WT" \
@@ -231,7 +260,7 @@ cmd_stop() {
   fi
   systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
   rm -f "$RUN/mercury.pid"
-  "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
+  "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox and prometheus: stopped" || true
   guard_off
 }
 
@@ -239,7 +268,13 @@ cmd_status() {
   load
   echo "kit: $KIT_HOME, pinned at ${PIN_SHA:-?} ($(git -C "$WT" log -1 --format=%h 2>/dev/null || echo 'no worktree'))"
   pid_alive && echo "mercury: running, pid $(cat "$RUN/mercury.pid")" || echo "mercury: not running"
-  "${COMPOSE[@]}" ps --format '{{.Service}} {{.State}}' 2>/dev/null | sed 's/^/netbox stack: /' || true
+  # Every service of the kit's Compose project, stopped ones too (`-a`): NetBox's stack, then
+  # Prometheus by its container's name and where it is published, said when it was never made.
+  local stack prom
+  stack=$("${COMPOSE[@]}" ps -a --format '{{.Service}} {{.State}}' 2>/dev/null || true)
+  printf '%s\n' "$stack" | sed -e '/^prometheus /d' -e '/^$/d' -e 's/^/netbox stack: /'
+  prom=$(printf '%s\n' "$stack" | sed -n 's/^prometheus //p' | head -1)
+  echo "prometheus: ${prom:-not created (kit start makes it)} ($PROM, 127.0.0.1:$PROMETHEUS_PORT)"
   [ -d "$WT" ] && in_wt "$PY" "$HERE/kit_settings.py" last-exception || true
 }
 
@@ -273,7 +308,7 @@ cmd_netbox_admin() {
 
 cmd_reset() {
   load
-  echo "This deletes $DATA (the kit's Mercury data) and the kit's NetBox volumes."
+  echo "This deletes $DATA (the kit's Mercury data) and the kit's NetBox and Prometheus volumes."
   echo "The main checkout, the NMAS host and the lab are untouched. Type RESET to go on:"
   read -r answer
   [ "$answer" = RESET ] || die "not reset"
@@ -290,6 +325,7 @@ case "${1:-}" in
   _after-repin) cmd_after_repin ;;
   ensure-pepper) cmd_ensure_pepper ;;
   ensure-code-repo) ensure_code_repo ;;
+  prometheus-check) load; prom_not_ours; echo "prometheus: no container named $PROM but the kit's own" ;;
   netbox-writes-on) shift; load; [ $# -gt 0 ] || die 'usage: kit netbox-writes-on "<reason>"'
     in_wt "$PY" "$HERE/kit_settings.py" netbox-writes-on "$@" ;;
   start) REVEAL=""; [ "${2:-}" = "--reveal" ] && REVEAL=1; cmd_start ;;

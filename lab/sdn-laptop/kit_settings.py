@@ -4,8 +4,9 @@ Run by `kit` from the kit's pinned worktree, with NMAS_DATA_DIR naming the kit's
 never the checkout's. Prints names and states, never a value that could be a secret.
 
     kit_settings.py init                  the installation's settings that are missing
-                                          (installation_kind laptop_kit among them; a stored
-                                          one is kept), the lab9 network if missing, made the
+                                          (installation_kind laptop_kit and the kit's own
+                                          Prometheus's URL among them; a stored one is
+                                          kept), the lab9 network if missing, made the
                                           installation's current one if none was set, and
                                           lab9's code repository (the kit's bare one) if
                                           none is set; run again by `kit repin`
@@ -59,6 +60,8 @@ def _reveal_allowed(now=None) -> bool:
     return now < cap
 PORT = os.environ.get("MERCURY_PORT", "5080")
 NETBOX = f"http://127.0.0.1:{os.environ.get('NETBOX_PORT', '8001')}"
+#: The kit's own Prometheus (compose.yml's `prometheus`, published on loopback only).
+PROMETHEUS = f"http://127.0.0.1:{os.environ.get('PROMETHEUS_PORT', '9090')}"
 INSTALLATION = {
     "flask_host": "127.0.0.1",
     "flask_port": int(PORT),
@@ -68,6 +71,12 @@ INSTALLATION = {
     "ai_background": {},
     "records_db_host": "",
     "netbox_url": NETBOX,
+    # The operator's work order after the Lab 9 sitting (2026-11-10: Topology said "Prometheus
+    # is not configured", and the URL was then set by hand): the kit runs a Prometheus, so
+    # the installation's layer names it, which every network takes unless it sets its own
+    # (modules/settings_scope.py's `prometheus` group). Added only when the key is absent, as
+    # every value here: a URL set in Settings is kept.
+    "prometheus_url": PROMETHEUS,
     # C2521: Needs attention marks the server's own checks (its systemd units, updater, local
     # CI, GitHub, Proxmox, monitoring stack, host steps) "not applicable on a laptop kit".
     "installation_kind": "laptop_kit",

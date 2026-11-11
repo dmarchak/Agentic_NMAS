@@ -167,6 +167,10 @@ last day, the last time and the reason the device gave.
   Every drop to its expiry is covered, inside the band or not. The acknowledged list shows the
   expiry, and a drop after it brings the row back.
 - With no drop for a day, the row clears.
+- With no Loki configured there is no log to read. What was checked says so once, "no Loki
+  configured", with what a Loki would show, and nothing about it is a row: not the source, and
+  not its reader under job health. A Loki that is configured and stops answering is still a
+  row, as critical as before.
 
 **A duplicate router-id.** Two routers given one OSPF router-id overwrite each other's routes:
 adjacencies flap and what is behind them becomes unreachable, and only the devices' own log

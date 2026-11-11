@@ -177,6 +177,85 @@ class TestNeedsAttention:
         assert any("not read yet" in r["cause"] for r in res["rows"]), res["rows"]
 
 
+class TestNoLokiConfigured:
+    """The operator, 2026-11-10, on the Lab 9 kit (no Loki): "reader:adjacency-log … marked
+    CRITICAL (severity by impact)". With no Loki URL the read raised (`NoSyslogJob`, "Loki
+    could not be asked which job holds the devices' syslog: Not configured"; measured on a
+    scratch store 2026-11-11), so the reader never succeeded and job health drew it critical.
+    No Loki is a state: the read answers ``configured`` False with nothing asked, the reader
+    is ok, and Needs attention says it once under What was checked. A Loki that IS configured
+    and does not answer is the failure it was."""
+
+    POP = [("Lab", "r1"), ("Lab", "r2")]
+
+    def _unconfigured(self, monkeypatch):
+        """No Loki URL is stored in the run's own data folder, so the reader's real question
+        answers no; the syslog job's matcher and Loki's client fail if either is asked."""
+        from modules import device_logs
+        from modules.integrations.loki import LokiIntegration
+
+        def never(*a, **k):
+            raise AssertionError("Loki was asked with none configured")
+
+        assert LokiIntegration().is_configured() is False, "this run's store holds no Loki URL"
+        monkeypatch.setattr(device_logs, "job_matcher", never)
+        monkeypatch.setattr(LokiIntegration, "_get", never)
+
+    def test_the_read_answers_not_configured_and_asks_nothing(self, monkeypatch):
+        self._unconfigured(monkeypatch)
+        v = AL.read(clock=lambda: NOW, population=self.POP)
+        assert v["configured"] is False
+        assert (v["adjacencies"], v["duplicates"], v["lines"], v["duplicate_lines"]) == (
+            {}, {}, 0, 0)
+        assert v["devices"] == 2 and v["read_at"] == NOW
+
+    def test_a_loki_given_or_configured_is_read_as_before(self):
+        v = AL.read(clock=lambda: NOW, population=[("Lab", "r1")], job='job="syslog"',
+                    ask=lambda q, s, e: [(_ns(NOW - 600), OSPF_DOWN)], configured=None)
+        assert v["configured"] is True and len(v["adjacencies"]) == 1
+
+    def _run(self, monkeypatch, tmp_path, read):
+        import dataclasses
+
+        from modules import config
+
+        monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+        reader = dataclasses.replace(AL.READER, read=read)
+        doc = reader_job.run_once(reader)
+        (row,) = reader_job.health_rows(population=[reader])
+        return doc, row
+
+    def test_the_reader_is_ok_with_no_loki_and_failing_with_one_that_does_not_answer(
+            self, monkeypatch, tmp_path):
+        self._unconfigured(monkeypatch)
+        doc, row = self._run(monkeypatch, tmp_path,
+                             lambda: AL.read(clock=lambda: NOW, population=self.POP))
+        assert doc["last_attempt"]["ok"] is True, doc["last_attempt"]
+        assert (row["unit"], row["state"]) == ("reader:adjacency-log", "ok")
+
+        def down(q, s, e):
+            raise RuntimeError("Loki could not be asked: Could not connect")
+
+        doc, row = self._run(monkeypatch, tmp_path / "configured",
+                             lambda: AL.read(clock=lambda: NOW, population=self.POP,
+                                             job='job="syslog"', ask=down))
+        assert doc["last_attempt"]["ok"] is False
+        assert row["state"] == "never_succeeded", "configured and not answering: a failure"
+        assert A._JOB_STATES[row["state"]][1] == "danger", "its severity is as it was"
+
+    def test_needs_attention_says_it_once_under_what_was_checked_and_raises_nothing(
+            self, monkeypatch):
+        self._unconfigured(monkeypatch)
+        value = AL.read(clock=lambda: NOW, population=self.POP)
+        res = A.adjacency_log_source(cached=_cached(value), planned=[],
+                                     receipts=lambda ln, dev: [])
+        assert res["state"] == "read" and res["rows"] == []
+        assert res["checked"] == ("no Loki configured: an adjacency that drops and comes back "
+                                  "between two scrapes, and a duplicate router-id, are only in "
+                                  "the devices' logs, so neither can be seen")
+        assert res["reader"] == "adjacency-log" and res["stale_after_seconds"] == 300
+
+
 class TestAcknowledgedWithinItsBand:
     @pytest.fixture
     def world(self, tmp_path, monkeypatch):

@@ -17,6 +17,7 @@ A separate Mercury installation on the laptop:
 | Mercury's code | `~/nmas-sdn-lab/mercury/`, a git worktree detached at the pinned sha | never the main working tree; `kit start` refuses a worktree that is not clean |
 | Mercury's data | `~/nmas-sdn-lab/data/` (`NMAS_DATA_DIR`): its own settings, credential key and credentials | nothing is read from or written to the checkout's `data/` |
 | NetBox | Docker Compose, `lab/sdn-laptop/compose.yml`, project `nmas-sdn-lab-netbox`, on 127.0.0.1:8001 | its own volumes; its internal secrets generated owner-only in `~/nmas-sdn-lab/netbox/secrets.env`, never printed |
+| Prometheus | the same Compose project, the container `kit-prometheus`, image `docker.io/prom/prometheus:v2.53.0`, on 127.0.0.1:9090 (`PROMETHEUS_PORT` in `kit.env`) | published on loopback only; its configuration is `lab/sdn-laptop/prometheus.yml`, mounted read-only; its data is its own volume. It scrapes nothing (the file says why) |
 | The network list | `lab9`, created by `kit init` | no git remote: `kit check` refuses one |
 | lab9's code repository | `~/nmas-sdn-lab/code/lab9.git`, bare and empty on branch `main`, made by `kit init` (and `kit repin`) when absent, and set as lab9's code repository when lab9 has none | apps reach it only through Mercury: SDN › Apps, **Add an app as a Draft…** (the operator's decision of 2026-11-10); who may publish is left to you, on the Code repository card |
 | The run | `~/nmas-sdn-lab/run/` (pid, log, the exception's expiry) | Mercury on 127.0.0.1:5080 only |
@@ -32,6 +33,13 @@ A separate Mercury installation on the laptop:
     `data/lab_hosts.json` through `scripts/nmas-host --field`. It prints key names, never values.
   - It also refuses a Mercury bound off loopback, a NetBox that is not the kit's own, and a
     missing host name (it cannot rule out what it was not given).
+- **`kit start` refuses a container named `kit-prometheus` that the kit did not make** (one
+  started by hand, or another Compose project's). It names the container, its Compose project
+  label and the kit's own, and the one command that removes it, `docker rm -f kit-prometheus`.
+  - It removes nothing itself and adopts nothing.
+  - It asks before anything is changed, so a refusal leaves lab9guard and the identity gates as
+    they were.
+  - `kit prometheus-check` asks the same question alone.
 - **`nmas-deploy` refuses to run from this installation:** `kit init` writes `.nmas-lab-kit` in
   the worktree's root, and `scripts/nmas-deploy` refuses any run from a checkout holding it, or
   aimed at one (`LAB_KIT_MARKER`, tests/test_lab_sdn_laptop_kit.py).
@@ -48,13 +56,47 @@ on `lab9-live` is run by `kit repin <sha>` (section 6).
 | Mercury | the laptop, 127.0.0.1:5080 | **required** | — |
 | The SDN controller | **the lab's controller server**, not the laptop. The lab's hardware list names a controller server (LAB9_SDN_GAP.md, "The hardware"), and the OVS servers reach it out of band (Part A, A1). Mercury reaches its REST API over the lab leg | every SDN read and write (A2 to A6, B2, B3): through the driver's northbound calls (LAB9_SDN_GAP.md A6) | the SDN screens say the controller cannot be asked |
 | Grafana | optional, not in the kit | the Monitoring page and the device Monitoring tab | they say Grafana is not configured |
-| Prometheus | optional, not in the kit | interface rates and the telemetry-driven checks | those checks say not configured |
+| Prometheus | the laptop (the kit's Compose), 127.0.0.1:9090, started and stopped by `kit` (the operator's work order after the Lab 9 sitting, 2026-11-10). `kit init` and `kit repin` set Mercury's Prometheus URL to it when none is stored | Topology, interface rates and the telemetry-driven checks have a Prometheus to ask | Topology says Prometheus is not configured, as it did at the sitting. With it, and nothing scraped, every device reads "not scraped" until a target for it is added to `lab/sdn-laptop/prometheus.yml` |
 | Loki | optional, not in the kit | the Logs tab, syslog-driven restart detection and the log checks | those say not configured |
 | PostgreSQL records | not used | — | every records store stays on its files (`records_db_host` empty) |
 | Kea, ZTP | not used | — | off (LAB9_SDN_GAP.md 2.3: not needed for this lab) |
 
-Discovery and onboarding need NetBox, Mercury and SSH to the switches, and none of the optional
-three.
+Discovery and onboarding need NetBox, Mercury and SSH to the switches, and neither Grafana nor
+Loki, nor anything scraped by Prometheus.
+
+**Prometheus in the kit:**
+- **Pinned:** `docker.io/prom/prometheus:v2.53.0`, as the other images are pinned by tag.
+- **Loopback only:** Compose publishes it on 127.0.0.1 alone. The preflight's "Prometheus on
+  loopback only" judges what listens on its port (`ss`), whoever published it. It passes only
+  when every listening address is exactly `127.0.0.1` or `[::1]`, and fails naming any other:
+  a wildcard, a LAN address of either family, and also another 127.x address or a scoped
+  `[::1%lo]` (`lab/sdn-laptop/kit_net_check.py`, `listen`). "Mercury on loopback only" is
+  judged by the same code, and accepts exactly what its line accepted before: those two
+  addresses and nothing wider.
+- **It scrapes nothing.** Nothing the kit runs serves metrics for the lab's devices: Mercury
+  serves none, the kit's NetBox has its metrics off, and Prometheus's own would be a target
+  Mercury's inventory does not hold. A target is added to `prometheus.yml` when the kit runs
+  something that serves metrics for the lab.
+- **Mercury's setting:** `prometheus_url` in the installation's settings, written by the
+  settings init through Mercury's own write path when the key is absent. A URL already stored
+  is kept, and init says which by name. A network that sets its own Prometheus uses its own.
+- **Not yet run on the laptop.** The kit's files are tested without a container
+  (tests/test_lab_sdn_laptop_kit.py); the first `kit start` after the repin is the first real
+  run, and `kit preflight` then says whether Prometheus answers and where it listens.
+
+**Once, at the repin that brings this in.** The Prometheus started by hand after the sitting
+holds the name and the port. Remove it first, or `kit start` refuses, naming it:
+
+    kit stop
+    docker rm -f kit-prometheus
+    kit repin <sha>
+    kit start
+    sudo -v && kit preflight
+
+The repin's settings init prints `prometheus_url` under "added", or under "kept" when a URL
+was stored before (one set in Settings by hand: check there that it is
+`http://127.0.0.1:9090`). The first `kit start` pulls the image if the laptop does not hold it,
+which needs the Wi-Fi.
 
 **The NMAS host's own checks are marked, not raised (C2521).** `kit init` writes
 `installation_kind: laptop_kit` and makes `lab9` the installation's current network, so Mercury
@@ -79,6 +121,22 @@ unreadable because a fresh Default has no repository). On any installation those
 line each, "no devices yet" (tests/test_no_devices_yet.py), until the network's first device.
 The one row left is the empty `kea_ztp_fragment` guard: ZTP is off for this lab, and the guard
 stays a row because a kit could use ZTP.
+
+**Three kinds of row seen on the kit after the Lab 9 sitting (the operator, 2026-11-10), on any
+installation now:**
+- **A device the drift check can compare with nothing is no row.** An Arista or ProCurve
+  switch and an Open vSwitch server each read "was not checked for drift: no golden config
+  saved", with Capture as the action, and Mercury keeps no golden for those platforms. They
+  are outside config drift, as a host is: Needs attention says how many and why under What was
+  checked. A device that can be captured keeps its row, and an observe-only one is asked for a
+  capture alone. The rows of a run stored before this go at lab9's next drift check (Settings ›
+  Installation › Diagnostics, Check now).
+- **No Loki configured is not a failing reader.** The reader of adjacencies logged down
+  answers "not configured" and is ok; What was checked says "no Loki configured" once. A Loki
+  that is configured and stops answering is still a critical row.
+- **A network with no break-glass export says so.** "No break-glass record has been exported
+  for lab9", a warning whose action opens the export on Credentials, in place of "could not be
+  checked". Exporting needs a verified person: the kit's break-glass gate stays on.
 
 **`kit repin` runs the settings init again, and init only adds.** A setting is written only
 when its key is absent from the stored settings file, so a value already set (NetBox's URL,
@@ -135,16 +193,17 @@ made it. `init` itself runs from the main checkout's `lab/sdn-laptop/kit`.
 
 | Command | What it does |
 |---|---|
-| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets (its v2-token pepper among them, by `kit ensure-pepper`), the images pulled, the installation's settings (`installation_kind: laptop_kit` among them, C2521) and the `lab9` network, made the installation's current one (section 2) |
+| `kit init <sha>` | the kit folder (owner-only), the worktree at `<sha>`, the marker, `kit.env`, NetBox's internal secrets (its v2-token pepper among them, by `kit ensure-pepper`), the images pulled (NetBox's and Prometheus's), the installation's settings (`installation_kind: laptop_kit`, C2521, and the kit's own Prometheus's URL among them) and the `lab9` network, made the installation's current one (section 2) |
 | `kit ensure-pepper` | NetBox's v2-token pepper (`API_TOKEN_PEPPER_1`, which the image turns into `API_TOKEN_PEPPERS = {1: …}`, as the NMAS host's netbox-docker does) added to `secrets.env` once, 64 hex characters, owner-only, never printed, never replaced (a new one would void every v2 token issued); it takes effect at the next `kit start` |
 | `kit netbox-admin` | NetBox's superuser; **the operator types its passphrase** |
-| `kit start` | the check (refuses on any finding), lab9guard installed on `LAB_IF` (sudo asks; refuses if `LAB_IF` is unset or absent), the last exception said, the exception on with its timer, NetBox up, Mercury started as the user unit `nmas-sdn-kit-mercury`, then waits up to 100 s for `/health` ready |
-| `kit preflight` | section 7's lines (lab9guard read by `sudo -n`: run `sudo -v` first), the safety lines and the settings check, one PASS or FAIL each |
-| `kit status` | the pinned sha, what runs, the last exception record |
-| `kit stop` | the gates restored and recorded, the timer cancelled, Mercury's unit stopped, NetBox stopped, lab9guard removed (sudo asks; an unattended stop leaves it in place and logs so) |
+| `kit start` | the check (refuses on any finding), a container named `kit-prometheus` that the kit did not make refused (section 1), lab9guard installed on `LAB_IF` (sudo asks; refuses if `LAB_IF` is unset or absent), the last exception said, the exception on with its timer, NetBox and Prometheus up (one Compose project), Mercury started as the user unit `nmas-sdn-kit-mercury`, then waits up to 100 s for `/health` ready |
+| `kit preflight` | section 7's lines (lab9guard read by `sudo -n`: run `sudo -v` first), "Prometheus answers" (`/-/ready` on loopback) and "Prometheus on loopback only" beside Mercury's, the safety lines and the settings check, one PASS or FAIL each |
+| `kit status` | the pinned sha, what runs (NetBox's stack, then `prometheus: <state> (kit-prometheus, 127.0.0.1:<port>)`, or "not created" before the first start), the last exception record |
+| `kit stop` | the gates restored and recorded, the timer cancelled, Mercury's unit stopped, NetBox and Prometheus stopped, lab9guard removed (sudo asks; an unattended stop leaves it in place and logs so) |
+| `kit prometheus-check` | whether a container named `kit-prometheus` exists that the kit did not make: the refusal `kit start` would give, or one line saying there is none |
 | `kit repin <sha>` | the worktree moved to `<sha>` (Mercury stopped first, the worktree clean), kit.env's `PIN_SHA` alone changed, then the settings init again: it adds what is missing and keeps every stored value (section 2) |
 | `kit check` | the settings check alone |
-| `kit reset` | asks for `RESET`, stops, then deletes the kit's data folder and NetBox's volumes. The main checkout, the NMAS host and the lab are untouched. `kit init` writes the settings and `lab9` again |
+| `kit reset` | asks for `RESET`, stops, then deletes the kit's data folder and NetBox's and Prometheus's volumes. The main checkout, the NMAS host and the lab are untouched. `kit init` writes the settings and `lab9` again |
 
 **NetBox's API token:** the operator creates it in NetBox (the user menu, API Tokens) and enters
 it in Mercury at Settings › Installation › Connections › NetBox connection (API token,
