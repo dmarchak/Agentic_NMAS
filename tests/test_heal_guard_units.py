@@ -108,9 +108,11 @@ class TestGuard12TheProgramsSize:
         units = [unit("add", ["interface GigabitEthernet0/1"]),
                  unit("add", ["interface GigabitEthernet0/2"]),
                  unit("add", ["interface GigabitEthernet0/2", "service-policy"])]
-        got = G.g12_size(units, 50, 1)
-        assert got["operands"] == {"sections": 2, "heal_max_units": 1}
-        assert got["words"] == "the heal spans 2 sections, more than 1: never a partial heal"
+        # The whole answer (run 73's mutants 48 and 55 to 57: which guard, and its outcome).
+        assert G.g12_size(units, 50, 1) == {
+            "guard": 12, "name": "the program's size", "outcome": "cant_fix",
+            "words": "the heal spans 2 sections, more than 1: never a partial heal",
+            "operands": {"sections": 2, "heal_max_units": 1}, "until": None}
         assert G.g12_size(units, 50, 2) is None
 
     def test_a_stanza_with_no_chain_is_its_own_first_line(self):
