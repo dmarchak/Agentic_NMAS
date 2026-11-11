@@ -79,6 +79,25 @@ class TestTheRange:
         assert sha[:12] in p.stderr and "deploy/controller/mercury-ryu-apply" in p.stderr
         assert "Host-Step-None" in p.stderr
 
+    def test_the_collector_s_close_helper_with_nothing_said_is_refused_by_name(self, repo):
+        """C3078: the collector's close helper is installed root-owned on Mercury's host, so a
+        change to it is not live until a person runs its install step."""
+        sha = _commit(repo, "deploy/collector/mercury-collector-close", "change the root helper")
+        p = _run(repo, "--range", "HEAD~1..HEAD")
+        assert p.returncode == 1
+        assert sha[:12] in p.stderr and "deploy/collector/mercury-collector-close" in p.stderr
+        assert "Host-Step-None" in p.stderr
+
+    @pytest.mark.parametrize("trailer", [
+        "Host-Step: run the collector's close install step again, from the release",
+        "Host-Step-None: installed on no host yet, so the first install installs this version"])
+    def test_the_collector_s_close_helper_with_a_step_or_none_said_passes(self, repo, trailer):
+        """The trailer is what passes it: the same change with nothing said is refused."""
+        _commit(repo, "deploy/collector/mercury-collector-close", "change")
+        assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 1
+        _commit(repo, "deploy/collector/mercury-collector-close", f"change\n\n{trailer}")
+        assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
+
     @pytest.mark.parametrize("path", ["deploy/update/nmas-update", "deploy/systemd/x.service",
                                       "deploy/postgres/docker-compose.yml", "scripts/nmas-deploy"])
     def test_a_step_said_passes(self, repo, path):

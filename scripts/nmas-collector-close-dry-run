@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Ask the collector's close helper what it WOULD close, and close nothing (C3078).
+
+    scripts/nmas-collector-close-dry-run <peer address> <peer port>
+
+Run on Mercury's host as Mercury's own user, after the helper is installed
+(scripts/host-steps/c3078-collector-close-install.sh). It writes one dry-run request for the
+established session from <peer address>:<peer port> to the helper's configured listener, runs
+the helper as Mercury does (`sudo -n /usr/local/sbin/mercury-collector-close`, no argument),
+and prints the helper's code, its exit code and its words: `would_close` when exactly that one
+session is there, else the refusal a real request would get (`no_match`, `refused_peer`, ...),
+or that the helper is not installed. A dry run never runs `ss -K`: this command cannot close a
+session, and takes no option that would.
+
+Exit 0: the helper would close exactly one session; 1: anything else, said.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 2 or any(a in ("-h", "--help") for a in argv):
+        print(__doc__.strip())
+        return 0 if any(a in ("-h", "--help") for a in argv) else 1
+    import time
+
+    from modules.heal import collector_close
+
+    got = collector_close.request(argv[0], argv[1], dry_run=True,
+                                  run_id=f"dry-run-{int(time.time())}-{os.getpid()}")
+    print(f"{got['code']} (exit {got['exit']}) at {got['at']}: {got['words']}")
+    return 0 if got["ok"] and got["code"] == "would_close" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

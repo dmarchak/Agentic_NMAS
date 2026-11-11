@@ -50,6 +50,10 @@ HOST_STEP_PATHS = (
     # on the controller host as /usr/local/sbin/mercury-ryu-apply
     # (scripts/host-steps/p6-controller-apply-install.sh).
     "deploy/controller/",
+    # The collector's close helper (C3078), installed root-owned on Mercury's host as
+    # /usr/local/sbin/mercury-collector-close
+    # (scripts/host-steps/c3078-collector-close-install.sh).
+    "deploy/collector/",
 )
 
 #: The host-installed paths a check can answer for (modules/host_steps.py CHECKS; the

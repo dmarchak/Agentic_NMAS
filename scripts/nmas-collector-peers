@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""The peers the collector's close helper may close, from committed intent (C3078). READ-ONLY.
+
+    scripts/nmas-collector-peers <listener address>:<port> > <peers file>
+
+Run on Mercury's host as Mercury's own user. It prints one IPv4 address a line and nothing
+else: each address a telemetry session to that listener can come from, by every network's
+committed intent (`modules.heal.collector_close.peers`: the devices whose subscriptions'
+receiver is the listener; the `source-address` a subscription declares, else each IPv4 address
+of the device's interfaces). What it left out, and why, goes to the error stream, per device.
+
+The file is the install step's third argument
+(scripts/host-steps/c3078-collector-close-install.sh), which writes the list into the helper's
+root-owned configuration. Mercury itself can never change that list: after a device's telemetry
+is added, removed or re-addressed, run this and the install step again.
+
+Exit 0: at least one address printed; 1: the listener is not <IPv4 address>:<port> (an IPv6
+listener is not served yet, said by name); 2: a network's committed intent could not be read,
+so nothing is printed (a list missing its devices would look complete); 3: no device's
+telemetry targets that listener.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1 or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0 if argv[:1] in (["-h"], ["--help"]) else 1
+    from modules.heal import collector_close
+
+    got = collector_close.peers(argv[0])
+    for note in got["notes"]:
+        print(note, file=sys.stderr)
+    if not got["ok"]:
+        print(f"FAILED: {got['error']}", file=sys.stderr)
+        return 2 if got["failed"] == "intent" else 1
+    if not got["peers"]:
+        print(f"FAILED: no device's committed telemetry targets {argv[0]}", file=sys.stderr)
+        return 3
+    for address in got["peers"]:
+        print(address)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

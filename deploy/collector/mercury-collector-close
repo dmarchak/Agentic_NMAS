@@ -1,0 +1,870 @@
+#!/usr/bin/python3 -I
+"""THE COLLECTOR'S CLOSE HELPER: the root half of closing ONE telemetry session the collector
+still holds after its device gave it up (C3078; the operator's approval and conditions of
+2026-11-11).
+
+**Why it exists.** A device's dial-out telemetry stream stopped while the collector on
+Mercury's host still held the stream's TCP session ESTABLISHED: no data for well over an hour,
+keepalives still acknowledged, and the device's own connection "Disconnecting". The device
+cannot connect again until the collector's socket is closed. Closing another process's socket
+is the kernel's SOCK_DESTROY (`ss -K`), which needs root, and Mercury runs as an ordinary user.
+
+Installed ROOT-OWNED, 0755, as /usr/local/sbin/mercury-collector-close by
+scripts/host-steps/c3078-collector-close-install.sh, which a person runs. It is never run from
+the repository. The one sudoers line (`<service user> ALL=(root) NOPASSWD:
+/usr/local/sbin/mercury-collector-close ""`) lets Mercury's user run it with NO argument and
+nothing else; given any argument it refuses. The interpreter line's `-I` leaves every PYTHON*
+variable and the user's own packages unread.
+
+It treats what Mercury's user wrote as a REQUEST, never an instruction, and takes nothing from
+it but one peer address, one peer port, a request id and whether this is a dry run. What may be
+closed is the CONFIGURATION's, which only root writes:
+
+1. **The configuration**, CONFIG_PATH (/etc/mercury/collector-close.conf: under /etc as a
+   host's configuration is, in a folder of its own so the folder's owner is this helper's to
+   check): a regular file, never a link, owned by root, mode 0644, in a folder root owns that
+   neither its group nor others can write; JSON of exactly the keys `listener` ({"address",
+   "port"}: the one address and port the collector listens on), `peers` (the addresses whose
+   sessions may be closed), `service_user` (whose request is taken), `request` and `outcome`
+   (the two paths) and `ss` (the `ss` executable, found when installed). An unknown key, a key
+   named twice, or a value of another shape is refused; so is 0.0.0.0 as the listener or a
+   peer, which a filter can read as every address. The outcome's folder is root's and not
+   writable by anyone else; `ss` is a regular file of root's, not a link.
+2. **The request**, the configuration's one `request` path, in a folder the service user
+   owns: opened WITHOUT following a link, then judged by the open file itself: a regular file,
+   owned by the service user, at most MAX_REQUEST_BYTES, written at most MAX_AGE_S (120 s) ago
+   and not dated more than FUTURE_SKEW_S (5 s) ahead (the file's time and this clock are one
+   host's, so a later time is a clock that stepped or a time set by hand; 5 s is far above a
+   filesystem's timestamp grain). It is removed once read, so a request is acted on once.
+   Exactly {"id", "peer", "port", "dry_run"}: `id` Mercury's run id; `peer` an IPv4 address
+   written canonically (four numbers 0 to 255, no leading zero, nothing around it) that IS one
+   of the configuration's peers, compared whole; `port` a string of digits, 1 to 65535, no
+   sign, space or leading zero; `dry_run` true or false. An IPv6 peer is refused by name: it
+   is not served yet. A request cannot name a listener.
+3. **The find**: `ss -H -4 -t -n state established src <listener address> and sport =
+   :<listener port> and dst <peer> and dport = :<port>` (`list_argv`), its rows read by column
+   (local end third, peer fourth, each compared whole). Exactly one row, and that row the
+   requested session: none is "no established session" (it may have closed already); two or
+   more are refused by their count; a row that is not the requested session (another local
+   end, another peer) or a line that is not a row means the filter did not hold, and nothing
+   is closed, because the close runs with the same filter. With none listed, the same filter
+   is read once more without `-4`: a session `ss` then lists belongs to an IPv6 socket (a
+   dual-stack listener), which is refused by name.
+4. **The close**: `ss -H -4 -t -n -K state established` and the same filter (`close_argv`), the
+   executable by the configuration's absolute path, in a fixed environment (`ENV`: nothing
+   inherited). Then it READS BACK with the find: gone is success; still listed GONE_BOUND_S
+   after the close is a failure saying so.
+5. **A dry run** (`"dry_run": true`) does 1 to 3 and stops: `ss -K` is not run, and the
+   outcome says what would have been closed, or the refusal it would have given.
+6. **The outcome**, one line of JSON: {"id", "ok", "exit", "code", "words", "dry_run",
+   "tuple": {"local", "peer"}, "listed", "request_written", "started", "finished"}. Written to
+   the configuration's `outcome` path (0644, a new file renamed into place, never through a
+   link), printed, and logged to the journal under the tag mercury-collector-close, refusals
+   included. It holds no more of the request than the one value a refusal is about, cut to
+   SHOWN_MAX characters and made printable.
+
+**Exit codes** (`EXITS`; the outcome's `exit` and `code` say the same):
+    0   closed, or would_close (a dry run that found exactly the one session)
+    20  no_request        no request file
+    21  refused_symlink   the request is a symbolic link
+    22  refused_owner     the request or its folder is not the service user's
+    23  refused_file      the request is not a regular file
+    24  refused_size      the request is larger than a request may be
+    25  refused_stale     the request is older than 120 s, or dated ahead of the clock
+    30  refused_shape     not JSON, or not exactly the four keys, or dry_run not true/false
+    31  refused_id        the request's id is not a run id
+    32  refused_peer      the peer is not a canonical IPv4 address, or not in the list
+    33  refused_ipv6      an IPv6 peer, or a session an IPv6 socket holds: not served yet
+    34  refused_port      the port is not digits, 1 to 65535
+    35  refused_listener  the request names a listener, or `ss` listed another local end
+    40  no_match          no established session from the peer to the listener
+    41  many_matches      more than one
+    42  filter_not_held   `ss` listed a session of another peer
+    43  ss_unread         `ss` printed a line that is not a row
+    44  ss_failed         `ss` could not be run, or exited non-zero
+    50  not_gone          the close ran and the session is still listed
+    51  close_unread      the close ran and the read-back could not be read
+    64  refused_argument  an argument was given
+    70  error             an exception: nothing more is known
+    75  busy              another run holds the lock
+    77  not_root          not run as root
+    78  config_refused    the configuration is absent or not as rule 1 says
+It never exits 1: that is sudo's own refusal, which Mercury tells apart.
+
+**The install step's read (`render`).** The host step loads this file from the release, as the
+person running it and never through sudo's one line, and calls `render(<service user>,
+<listener address>:<port>, <ss>)` with the peers on its input, one address a line: the
+configuration's text by this file's own rules (`check_config`), or the refusal. So what the
+install writes is what this helper accepts.
+"""
+
+import errno
+import fcntl
+import ipaddress
+import json
+import os
+import pwd
+import re
+import stat
+import subprocess
+import sys
+import syslog
+import time
+
+INSTALLED = "/usr/local/sbin/mercury-collector-close"
+CONFIG_PATH = "/etc/mercury/collector-close.conf"
+#: Where the install step puts the two files the configuration names: the outcome in a folder
+#: of root's, the request in a folder of the service user's inside it.
+OUTCOME_PATH = "/var/lib/mercury-collector-close/outcome.json"
+REQUEST_PATH = "/var/lib/mercury-collector-close/request/request.json"
+TAG = "mercury-collector-close"
+#: The account that owns the configuration and the outcome's folder, and that this runs as.
+#: A test names its own (no test runs as root).
+ROOT_UID = 0
+REQUIRE_ROOT = True
+
+#: The operator's condition: a request older than 120 s is refused.
+MAX_AGE_S = 120
+FUTURE_SKEW_S = 5
+MAX_REQUEST_BYTES = 1024
+MAX_CONFIG_BYTES = 1024 * 1024
+MAX_PEERS = 65536
+#: How much of one refused value an outcome shows.
+SHOWN_MAX = 40
+#: `ss` listed one filtered session in 7 to 15 ms on the development laptop (2026-11-11, a
+#: private network namespace of twelve sockets), and the stream diagnosis bounds the same read
+#: at 5 s (`diagnose_stream.SS_TIMEOUT_S`): a hung `ss` is named, never waited on.
+SS_TIMEOUT_S = 5
+#: How long after `ss -K` the session may still be listed. REASONED, not measured (no close
+#: has been run yet, C3078): the kernel's SOCK_DESTROY aborts the socket before `ss -K`
+#: returns, so the first read-back is expected to find it gone; 2 s is eight reads at 0.25 s,
+#: on the monotonic clock. The first real close's `closed` words carry the time it took.
+GONE_BOUND_S = 2.0
+GONE_POLL_S = 0.25
+GONE_BOUND_WHY = ("reasoned, not measured: the kernel aborts the socket before `ss -K` "
+                  "returns, so the first read-back is expected to find it gone")
+#: The whole environment `ss` is given: nothing of the caller's (no PATH, LD_*, PYTHON*, IFS).
+ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
+
+EXITS = {"closed": 0, "would_close": 0, "no_request": 20, "refused_symlink": 21,
+         "refused_owner": 22, "refused_file": 23, "refused_size": 24, "refused_stale": 25,
+         "refused_shape": 30, "refused_id": 31, "refused_peer": 32, "refused_ipv6": 33,
+         "refused_port": 34, "refused_listener": 35, "no_match": 40, "many_matches": 41,
+         "filter_not_held": 42, "ss_unread": 43, "ss_failed": 44, "not_gone": 50,
+         "close_unread": 51, "refused_argument": 64, "error": 70, "busy": 75, "not_root": 77,
+         "config_refused": 78}
+#: The codes of a run whose close was sent: every other refusal ends "Nothing was closed".
+CLOSE_SENT = ("not_gone", "close_unread")
+
+_OCTET = r"(?:0|[1-9][0-9]{0,2})"
+IPV4 = re.compile(r"\A" + _OCTET + r"(?:\." + _OCTET + r"){3}\Z")
+PORT = re.compile(r"\A[1-9][0-9]{0,4}\Z")
+RUN_ID = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+USER = re.compile(r"\A[a-z_][a-z0-9_-]{0,31}\Z")
+PATH = re.compile(r"\A/[A-Za-z0-9._/-]{1,255}\Z")
+#: Never a listener or a peer: a filter naming it can match every address.
+EVERY_ADDRESS = "0.0.0.0"
+CONFIG_KEYS = ("listener", "outcome", "peers", "request", "service_user", "ss")
+REQUEST_KEYS = ("dry_run", "id", "peer", "port")
+JSON_KINDS = {str: "a string", bool: "true or false", int: "a number", float: "a number",
+              list: "a list", dict: "an object", type(None): "null"}
+
+
+class Refused(Exception):
+    """Refused: *code* is one of `EXITS`, the message the whole reason."""
+
+    def __init__(self, code, words):
+        Exception.__init__(self, words)
+        self.code = code
+
+
+# ---------------------------------------------------------------------------
+# The seams a test stands in for: the clocks, the sleep, the one program run
+# ---------------------------------------------------------------------------
+
+def now():
+    return time.time()
+
+
+def monotonic():
+    return time.monotonic()
+
+
+def sleep(seconds):
+    time.sleep(seconds)
+
+
+def run(argv):
+    """``(exit, output, error words)`` of *argv*, run in `ENV` with no input; exit None when
+    it could not be run or did not end within SS_TIMEOUT_S."""
+    try:
+        proc = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, universal_newlines=True, env=ENV,
+                              timeout=SS_TIMEOUT_S, close_fds=True)
+    except subprocess.TimeoutExpired:
+        return None, "", "it did not end within {} s".format(SS_TIMEOUT_S)
+    except OSError as exc:
+        return None, "", exc.strerror or type(exc).__name__
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def iso(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+# ---------------------------------------------------------------------------
+# Words
+# ---------------------------------------------------------------------------
+
+def shown(value):
+    """One refused value as an outcome may show it: what kind of JSON value it is when it is
+    not a string, else the string made printable (anything outside ASCII's printable range a
+    `?`) and cut to SHOWN_MAX characters, in quotes."""
+    if not isinstance(value, str):
+        return JSON_KINDS.get(type(value), "a value of another kind")
+    text = "".join(c if " " <= c <= "~" else "?" for c in value[:SHOWN_MAX])
+    cut = " (cut from {} characters)".format(len(value)) if len(value) > SHOWN_MAX else ""
+    return '"{}"{}'.format(text, cut)
+
+
+def owner_words(uid):
+    try:
+        return "{} (uid {})".format(pwd.getpwuid(uid).pw_name, uid)
+    except KeyError:
+        return "uid {}".format(uid)
+
+
+def kind_words(mode):
+    for test, name in ((stat.S_ISDIR, "a directory"), (stat.S_ISLNK, "a symbolic link"),
+                       (stat.S_ISFIFO, "a FIFO"), (stat.S_ISSOCK, "a socket"),
+                       (stat.S_ISCHR, "a character device"), (stat.S_ISBLK, "a block device"),
+                       (stat.S_ISREG, "a regular file")):
+        if test(mode):
+            return name
+    return "a file of another kind"
+
+
+def mode_words(mode):
+    return "{} ({})".format(stat.filemode(mode), oct(stat.S_IMODE(mode)))
+
+
+def is_ipv4(value):
+    """Whether *value* is an IPv4 address written canonically: a string of four numbers 0 to
+    255 joined by dots, no leading zero, nothing before or after."""
+    return isinstance(value, str) and bool(IPV4.match(value)) \
+        and all(int(part) <= 255 for part in value.split("."))
+
+
+def is_ipv6(value):
+    try:
+        ipaddress.IPv6Address(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _strict_json(raw, what, code):
+    def no_duplicates(pairs):
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise Refused(code, "{} names the key {} twice".format(what, shown(key)))
+            out[key] = value
+        return out
+
+    def no_constant(name):
+        raise ValueError(name)
+
+    try:
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicates,
+                          parse_constant=no_constant)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise Refused(code, "{} is not JSON in UTF-8".format(what))
+
+
+def _read_all(fd, limit):
+    """Up to *limit* + 1 bytes of the open file *fd*."""
+    data = b""
+    while len(data) <= limit:
+        chunk = os.read(fd, limit + 1 - len(data))
+        if not chunk:
+            break
+        data += chunk
+    return data
+
+
+# ---------------------------------------------------------------------------
+# 1: the configuration, root's
+# ---------------------------------------------------------------------------
+
+def _config(words):
+    return Refused("config_refused", words)
+
+
+def _root_folder(folder, what):
+    """Refuse unless *folder* is a real directory of root's that no one else can write."""
+    try:
+        st = os.lstat(folder)
+    except OSError as exc:
+        raise _config("{} {} cannot be read ({})".format(what, folder, exc.strerror))
+    if not stat.S_ISDIR(st.st_mode):
+        raise _config("{} {} is {}, not a directory".format(what, folder,
+                                                            kind_words(st.st_mode)))
+    if st.st_uid != ROOT_UID:
+        raise _config("{} {} is owned by {}, not by {}".format(
+            what, folder, owner_words(st.st_uid), owner_words(ROOT_UID)))
+    if st.st_mode & 0o022:
+        raise _config("{} {} is mode {}, writable by its group or by others".format(
+            what, folder, mode_words(st.st_mode)))
+
+
+def read_config():
+    """The configuration's bytes (rule 1's file checks)."""
+    _root_folder(os.path.dirname(CONFIG_PATH), "the configuration's folder")
+    try:
+        fd = os.open(CONFIG_PATH, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            raise _config("no configuration: {} does not exist (the install step writes it)"
+                          .format(CONFIG_PATH))
+        if exc.errno == errno.ELOOP:
+            raise _config("the configuration {} is a symbolic link, not a regular file"
+                          .format(CONFIG_PATH))
+        raise _config("the configuration {} could not be opened ({})".format(
+            CONFIG_PATH, exc.strerror))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise _config("the configuration {} is {}, not a regular file".format(
+                CONFIG_PATH, kind_words(st.st_mode)))
+        if st.st_uid != ROOT_UID:
+            raise _config("the configuration {} is owned by {}, not by {}".format(
+                CONFIG_PATH, owner_words(st.st_uid), owner_words(ROOT_UID)))
+        if stat.S_IMODE(st.st_mode) != 0o644:
+            raise _config("the configuration {} is mode {}, not 0644 (written by root alone, "
+                          "read by all)".format(CONFIG_PATH, mode_words(st.st_mode)))
+        if st.st_size > MAX_CONFIG_BYTES:
+            raise _config("the configuration {} is {} bytes, more than {}".format(
+                CONFIG_PATH, st.st_size, MAX_CONFIG_BYTES))
+        raw = _read_all(fd, MAX_CONFIG_BYTES)
+    finally:
+        os.close(fd)
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise _config("the configuration {} is more than {} bytes".format(
+            CONFIG_PATH, MAX_CONFIG_BYTES))
+    return raw
+
+
+def _path(doc, key):
+    value = doc[key]
+    if not isinstance(value, str) or not PATH.match(value) or os.path.normpath(value) != value:
+        raise _config("the configuration's {} is {}, not one absolute path written plainly "
+                      "({})".format(key, shown(value), PATH.pattern))
+    return value
+
+
+def check_config(doc):
+    """The configuration's exact shape; returns it. The install step's `render` and every run
+    hold a configuration to the same rules."""
+    if not isinstance(doc, dict):
+        raise _config("the configuration is {}, not an object".format(shown(doc)))
+    unknown = sorted(set(doc) - set(CONFIG_KEYS))
+    if unknown:
+        raise _config("the configuration names the key {}, which is not one of {}".format(
+            shown(unknown[0]), ", ".join(CONFIG_KEYS)))
+    missing = [k for k in CONFIG_KEYS if k not in doc]
+    if missing:
+        raise _config("the configuration lacks the key {}".format(missing[0]))
+    listener = doc["listener"]
+    if not isinstance(listener, dict) or sorted(listener) != ["address", "port"]:
+        raise _config("the configuration's listener is not an object of exactly address and "
+                      "port")
+    if not is_ipv4(listener["address"]):
+        if isinstance(listener["address"], str) and is_ipv6(listener["address"]):
+            raise _config("the configuration's listener address {} is an IPv6 address: an "
+                          "IPv6 listener is not served by this helper yet".format(
+                              shown(listener["address"])))
+        raise _config("the configuration's listener address {} is not an IPv4 address "
+                      "written canonically".format(shown(listener["address"])))
+    if listener["address"] == EVERY_ADDRESS:
+        raise _config("the configuration's listener address is {}, every address: the "
+                      "listener is the one address the devices' receivers name".format(
+                          EVERY_ADDRESS))
+    port = listener["port"]
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise _config("the configuration's listener port is {}, not a whole number from 1 to "
+                      "65535".format(port if type(port) is int else shown(port)))
+    peers = doc["peers"]
+    if not isinstance(peers, list) or not 1 <= len(peers) <= MAX_PEERS:
+        raise _config("the configuration's peers is not a list of 1 to {} addresses".format(
+            MAX_PEERS))
+    for i, peer in enumerate(peers):
+        if not is_ipv4(peer):
+            if isinstance(peer, str) and is_ipv6(peer):
+                raise _config("the configuration's peer {} ({}) is an IPv6 address: an IPv6 "
+                              "peer is not served by this helper yet".format(i + 1,
+                                                                             shown(peer)))
+            raise _config("the configuration's peer {} ({}) is not an IPv4 address written "
+                          "canonically".format(i + 1, shown(peer)))
+        if peer == EVERY_ADDRESS:
+            raise _config("the configuration's peer {} is {}, every address: a peer is one "
+                          "device's address".format(i + 1, EVERY_ADDRESS))
+    user = doc["service_user"]
+    if not isinstance(user, str) or not USER.match(user):
+        raise _config("the configuration's service_user {} is not an account's name ({})"
+                      .format(shown(user), USER.pattern))
+    if user == "root":
+        raise _config("the configuration's service_user is root: a request is an ordinary "
+                      "account's, never root's own")
+    request, outcome, ss = _path(doc, "request"), _path(doc, "outcome"), _path(doc, "ss")
+    if os.path.dirname(request) == os.path.dirname(outcome):
+        raise _config("the configuration's request and outcome are both in {}: the request's "
+                      "folder is the service user's and the outcome's is root's".format(
+                          os.path.dirname(request)))
+    return {"listener": {"address": listener["address"], "port": port}, "peers": list(peers),
+            "service_user": user, "request": request, "outcome": outcome, "ss": ss}
+
+
+def check_host(cfg):
+    """What the configuration names, on this host: the service user's account (returned), the
+    outcome's folder root's alone, and `ss` a regular file of root's that no one else can
+    write."""
+    try:
+        account = pwd.getpwnam(cfg["service_user"])
+    except KeyError:
+        raise _config("the configuration's service_user {} is not an account on this host"
+                      .format(cfg["service_user"]))
+    if account.pw_uid == 0:
+        raise _config("the configuration's service_user {} is uid 0: a request is an "
+                      "ordinary account's, never root's own".format(cfg["service_user"]))
+    _root_folder(os.path.dirname(cfg["outcome"]), "the outcome's folder")
+    try:
+        st = os.lstat(cfg["ss"])
+    except OSError as exc:
+        raise _config("the configuration's ss {} cannot be read ({})".format(cfg["ss"],
+                                                                             exc.strerror))
+    if not stat.S_ISREG(st.st_mode):
+        raise _config("the configuration's ss {} is {}, not a regular file".format(
+            cfg["ss"], kind_words(st.st_mode)))
+    if st.st_uid != ROOT_UID or st.st_mode & 0o022 or not st.st_mode & 0o100:
+        raise _config("the configuration's ss {} is owned by {} with mode {}, not a program "
+                      "of {}'s that no one else can write".format(
+                          cfg["ss"], owner_words(st.st_uid), mode_words(st.st_mode),
+                          owner_words(ROOT_UID)))
+    return account
+
+
+# ---------------------------------------------------------------------------
+# 2: the request, the service user's
+# ---------------------------------------------------------------------------
+
+def read_request(path, account):
+    """``(bytes, written)``: the request's bytes and the time it was written, opened without
+    following a link and judged by the open file (rule 2's file checks); removed once read."""
+    folder, name = os.path.split(path)
+    try:
+        dfd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            raise Refused("no_request", "no request: {} does not exist".format(folder))
+        # A link there is ELOOP, or ENOTDIR when the kernel judges O_DIRECTORY first: the
+        # words come from what is there, the refusal from the open that did not follow it.
+        try:
+            kind = kind_words(os.lstat(folder).st_mode)
+        except OSError:
+            kind = "unreadable ({})".format(exc.strerror)
+        if kind == "a symbolic link":
+            raise Refused("refused_symlink", "the request's folder {} is a symbolic link: it "
+                          "was not followed".format(folder))
+        raise Refused("refused_file", "the request's folder {} is {}, not a directory it "
+                      "could open ({})".format(folder, kind, exc.strerror))
+    try:
+        dst = os.fstat(dfd)
+        if dst.st_uid != account.pw_uid:
+            raise Refused("refused_owner", "the request's folder {} is owned by {}, not by "
+                          "the service user {}".format(folder, owner_words(dst.st_uid),
+                                                       owner_words(account.pw_uid)))
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                raise Refused("no_request", "no request: {} does not exist".format(path))
+            if exc.errno == errno.ELOOP:
+                raise Refused("refused_symlink", "the request {} is a symbolic link, not a "
+                              "regular file: it was not followed".format(path))
+            raise Refused("refused_file", "the request {} could not be opened ({})".format(
+                path, exc.strerror))
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise Refused("refused_file", "the request {} is {}, not a regular file"
+                              .format(path, kind_words(st.st_mode)))
+            if st.st_uid != account.pw_uid:
+                raise Refused("refused_owner", "the request {} is owned by {}, not by the "
+                              "service user {}".format(path, owner_words(st.st_uid),
+                                                       owner_words(account.pw_uid)))
+            if st.st_size > MAX_REQUEST_BYTES:
+                raise Refused("refused_size", "the request {} is {} bytes, more than the {} "
+                              "a request may be".format(path, st.st_size, MAX_REQUEST_BYTES))
+            read_at = now()
+            age = read_at - st.st_mtime
+            if age > MAX_AGE_S:
+                raise Refused("refused_stale", "the request {} was written {} and read {}, "
+                              "{} s later: older than the {} s a request may be".format(
+                                  path, iso(st.st_mtime), iso(read_at), int(age), MAX_AGE_S))
+            if age < -FUTURE_SKEW_S:
+                raise Refused("refused_stale", "the request {} is dated {}, {} s after it "
+                              "was read ({}): more than the {} s a clock may differ".format(
+                                  path, iso(st.st_mtime), int(-age), iso(read_at),
+                                  FUTURE_SKEW_S))
+            raw = _read_all(fd, MAX_REQUEST_BYTES)
+        finally:
+            os.close(fd)
+        try:
+            os.unlink(name, dir_fd=dfd)
+        except OSError:
+            pass
+    finally:
+        os.close(dfd)
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise Refused("refused_size", "the request {} is more than the {} bytes a request "
+                      "may be".format(path, MAX_REQUEST_BYTES))
+    return raw, st.st_mtime
+
+
+def parse_request(raw, cfg, out):
+    """Rule 2's content checks; ``{"id", "peer", "port", "dry_run"}``, the port a number.
+    *out* (the outcome) takes the id and the dry run as soon as each is known good, so a
+    refusal after them carries them."""
+    local = "{}:{}".format(cfg["listener"]["address"], cfg["listener"]["port"])
+    doc = _strict_json(raw, "the request", "refused_shape")
+    if not isinstance(doc, dict):
+        raise Refused("refused_shape", "the request is {}, not an object of exactly the keys "
+                      "{}".format(shown(doc), ", ".join(REQUEST_KEYS)))
+    if "listener" in doc:
+        raise Refused("refused_listener", "the request names a listener, and a request "
+                      "cannot: the listener is the configuration's, {}".format(local))
+    unknown = sorted(set(doc) - set(REQUEST_KEYS))
+    if unknown:
+        raise Refused("refused_shape", "the request names the key {}, which is not one of {}"
+                      .format(shown(unknown[0]), ", ".join(REQUEST_KEYS)))
+    missing = [k for k in REQUEST_KEYS if k not in doc]
+    if missing:
+        raise Refused("refused_shape", "the request lacks the key {}".format(missing[0]))
+    rid = doc["id"]
+    if not isinstance(rid, str) or not RUN_ID.match(rid):
+        raise Refused("refused_id", "the request's id {} is not a run id ({})".format(
+            shown(rid), RUN_ID.pattern))
+    out["id"] = rid
+    if type(doc["dry_run"]) is not bool:
+        raise Refused("refused_shape", "the request's dry_run is {}, not true or false"
+                      .format(shown(doc["dry_run"])))
+    out["dry_run"] = doc["dry_run"]
+    peer = doc["peer"]
+    if not is_ipv4(peer):
+        if isinstance(peer, str) and is_ipv6(peer):
+            raise Refused("refused_ipv6", "the request's peer {} is an IPv6 address: an IPv6 "
+                          "peer is not served by this helper yet".format(shown(peer)))
+        raise Refused("refused_peer", "the request's peer {} is not an IPv4 address written "
+                      "canonically (four numbers 0 to 255 joined by dots, no leading zero, "
+                      "nothing around it)".format(shown(peer)))
+    if peer not in cfg["peers"]:
+        raise Refused("refused_peer", "the request's peer {} is not one of the {} peers the "
+                      "configuration lists ({}): only a session from a listed peer is closed"
+                      .format(peer, len(cfg["peers"]), CONFIG_PATH))
+    port = doc["port"]
+    if not isinstance(port, str) or not PORT.match(port):
+        raise Refused("refused_port", "the request's port {} is not a string of digits from "
+                      "1 to 65535 (no sign, space or leading zero)".format(shown(port)))
+    if int(port) > 65535:
+        raise Refused("refused_port", "the request's port {} is more than 65535".format(port))
+    return {"id": rid, "peer": peer, "port": int(port), "dry_run": doc["dry_run"]}
+
+
+# ---------------------------------------------------------------------------
+# 3 and 4: find, close, read back
+# ---------------------------------------------------------------------------
+
+def filter_words(cfg, request):
+    """The one session, as `ss`'s filter: all four of its ends."""
+    return ["src", cfg["listener"]["address"], "and", "sport", "=",
+            ":{}".format(cfg["listener"]["port"]), "and", "dst", request["peer"], "and",
+            "dport", "=", ":{}".format(request["port"])]
+
+
+def list_argv(cfg, request, ipv4_only=True):
+    return [cfg["ss"], "-H"] + (["-4"] if ipv4_only else []) \
+        + ["-t", "-n", "state", "established"] + filter_words(cfg, request)
+
+
+def close_argv(cfg, request):
+    return [cfg["ss"], "-H", "-4", "-t", "-n", "-K", "state", "established"] \
+        + filter_words(cfg, request)
+
+
+def said(argv):
+    return "`{}`".format(" ".join(argv))
+
+
+def parse_rows(text):
+    """``[(local, peer)]``: each row `ss -H -t -n state established` printed, by column:
+    ``Recv-Q Send-Q Local-Address:Port Peer-Address:Port``. A line of any other shape is
+    refused, never skipped."""
+    rows = []
+    for line in (text or "").splitlines():
+        words = line.split()
+        if not words:
+            continue
+        if len(words) != 4 or not words[0].isdigit() or not words[1].isdigit():
+            raise Refused("ss_unread", "`ss` printed a line that is not a row of four "
+                          "columns (Recv-Q, Send-Q, local end, peer): {}".format(shown(line)))
+        rows.append((words[2], words[3]))
+    return rows
+
+
+def listed(argv):
+    """The rows *argv* (a find) lists."""
+    rc, text, err = run(argv)
+    if rc is None:
+        raise Refused("ss_failed", "{} could not be run: {}".format(said(argv), err))
+    if rc != 0:
+        raise Refused("ss_failed", "{} exited {}: {}".format(
+            said(argv), rc, shown((err or "").strip() or "it said nothing")))
+    return parse_rows(text)
+
+
+def matches(rows, local, peer):
+    """How many of *rows* are the requested session; a row that is anything else means the
+    filter did not hold, and is refused: the close runs with the same filter."""
+    for row_local, row_peer in rows:
+        if row_local != local:
+            raise Refused("refused_listener", "`ss` listed a session whose local end is {}, "
+                          "not the configured listener {}, though the filter named the "
+                          "listener alone: a close with that filter could close a session "
+                          "that is not the listener's".format(shown(row_local), local))
+        if row_peer != peer:
+            raise Refused("filter_not_held", "`ss` listed a session whose peer is {}, not "
+                          "the requested {}, though the filter named that peer alone: a "
+                          "close with that filter could close another peer's session".format(
+                              shown(row_peer), peer))
+    return len(rows)
+
+
+def find(cfg, request, local, peer):
+    """Rule 3: how many established sessions are the requested one, by `ss`."""
+    count = matches(listed(list_argv(cfg, request)), local, peer)
+    if count == 0:
+        other = [r for r in listed(list_argv(cfg, request, ipv4_only=False))
+                 if r != (local, peer)]
+        if other:
+            raise Refused("refused_ipv6", "the session from {} to {} is held by an IPv6 "
+                          "socket (a dual-stack listener: `ss` prints its local end {}): an "
+                          "IPv6 socket is not served by this helper yet".format(
+                              peer, local, shown(other[0][0])))
+    return count
+
+
+def close(cfg, request, local, peer):
+    """Rule 4: the close, then the read-back; the outcome's ok, code and words."""
+    argv = close_argv(cfg, request)
+    rc, _text, err = run(argv)
+    sent = monotonic()
+    ran = "ran (exit {})".format(rc) if rc is not None else "could not be run ({})".format(err)
+    reads = 0
+    while True:
+        reads += 1
+        try:
+            left = matches(listed(list_argv(cfg, request)), local, peer)
+        except Refused as exc:
+            raise Refused("close_unread", "{} {}, and the read-back could not be read ({}): "
+                          "whether the session from {} to {} is gone is not known".format(
+                              said(argv), ran, exc, peer, local))
+        waited = monotonic() - sent
+        if left == 0:
+            return {"ok": True, "code": "closed", "words": (
+                "closed the established session from {} to {}: one was listed before {}, "
+                "which {}, and none {:.1f} s after it ({} read{})".format(
+                    peer, local, said(argv), ran, waited, reads, "" if reads == 1 else "s"))}
+        if waited >= GONE_BOUND_S:
+            raise Refused("not_gone", "{} {}, and the session from {} to {} is still listed "
+                          "{:.1f} s after it ({} reads, one every {} s; the bound is {} s, "
+                          "{}). It was not closed".format(
+                              said(argv), ran, peer, local, waited, reads, GONE_POLL_S,
+                              GONE_BOUND_S, GONE_BOUND_WHY))
+        sleep(GONE_POLL_S)
+
+
+# ---------------------------------------------------------------------------
+# 6: the outcome, and the journal
+# ---------------------------------------------------------------------------
+
+def write_outcome(path, outcome):
+    """The outcome at *path*, 0644: a new file (never an existing one, never through a link)
+    renamed into place, so a reader sees the last outcome or this one, whole."""
+    line = (json.dumps(outcome, sort_keys=True) + "\n").encode("utf-8")
+    tmp = path + ".new"
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    try:
+        os.write(fd, line)
+        os.fchmod(fd, 0o644)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)
+
+
+def journal(outcome):
+    """The outcome's line in the journal, tagged `TAG`: a notice when ok, a warning when
+    not. True when it was handed to syslog."""
+    try:
+        syslog.openlog(TAG, syslog.LOG_PID, syslog.LOG_AUTHPRIV)
+        syslog.syslog(syslog.LOG_NOTICE if outcome.get("ok") else syslog.LOG_WARNING,
+                      json.dumps(outcome, sort_keys=True))
+        syslog.closelog()
+    except Exception:                                   # noqa: BLE001 (said in the outcome)
+        return False
+    return True
+
+
+def take_lock(outcome_path):
+    path = os.path.join(os.path.dirname(outcome_path), "lock")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise Refused("busy", "another run holds {}".format(path))
+    return fd
+
+
+# ---------------------------------------------------------------------------
+# The run
+# ---------------------------------------------------------------------------
+
+def close_one(argv, out, held):
+    """One run, rules 1 to 5, filling the outcome *out*; *held* takes the outcome's path and
+    the lock once this run has them."""
+    if argv:
+        raise Refused("refused_argument", "{} takes no argument and was given {}: its one "
+                      "request is the file its configuration names".format(TAG, len(argv)))
+    if REQUIRE_ROOT and os.geteuid() != 0:
+        raise Refused("not_root", "it runs as root, through its one sudoers line, and was "
+                      "run as uid {}".format(os.geteuid()))
+    cfg = check_config(_strict_json(read_config(), "the configuration", "config_refused"))
+    account = check_host(cfg)
+    local = "{}:{}".format(cfg["listener"]["address"], cfg["listener"]["port"])
+    out["tuple"]["local"] = local
+    held["lock"] = take_lock(cfg["outcome"])
+    held["outcome"] = cfg["outcome"]
+    raw, written = read_request(cfg["request"], account)
+    out["request_written"] = iso(written)
+    request = parse_request(raw, cfg, out)
+    peer = "{}:{}".format(request["peer"], request["port"])
+    out["tuple"]["peer"] = peer
+    count = find(cfg, request, local, peer)
+    out["listed"] = count
+    if count == 0:
+        raise Refused("no_match", "no established session from {} to {}: it may have closed "
+                      "already".format(peer, local))
+    if count != 1:
+        raise Refused("many_matches", "{} established sessions from {} to {} are listed, and "
+                      "exactly 1 is what this helper closes".format(count, peer, local))
+    if request["dry_run"]:
+        out.update(ok=True, code="would_close", words=(
+            "dry run: would close the one established session from {} to {} with {}. "
+            "Nothing was closed".format(peer, local, said(close_argv(cfg, request)))))
+        return
+    out.update(close(cfg, request, local, peer))
+
+
+def main(argv):
+    started = now()
+    out = {"id": "", "ok": False, "code": "error", "words": "", "dry_run": None,
+           "tuple": {"local": None, "peer": None}, "listed": None, "request_written": None}
+    held = {"lock": None, "outcome": None}
+    try:
+        close_one(argv, out, held)
+    except Refused as exc:
+        words = str(exc) if exc.code in CLOSE_SENT else "{}. Nothing was closed".format(exc)
+        out.update(ok=False, code=exc.code,
+                   words=("dry run: " if out["dry_run"] else "") + words)
+    except Exception as exc:                            # noqa: BLE001 (said, then exit 70)
+        out.update(ok=False, code="error", words="{}: {}".format(
+            type(exc).__name__, shown(str(exc))))
+    out.update(exit=EXITS[out["code"]], started=iso(started), finished=iso(now()))
+    try:
+        if held["outcome"] is None:
+            out["outcome_not_written"] = "this run did not get as far as holding its lock"
+        else:
+            write_outcome(held["outcome"], out)
+    except OSError as exc:
+        out["outcome_not_written"] = exc.strerror or type(exc).__name__
+    finally:
+        if held["lock"] is not None:
+            os.close(held["lock"])
+    if not journal(out):
+        out["journal_not_written"] = "syslog did not take the line"
+    try:
+        print(json.dumps(out, sort_keys=True))
+        sys.stdout.flush()
+    except OSError:                 # nobody reads it: the outcome file and the journal hold it
+        pass
+    return out["exit"]
+
+
+# ---------------------------------------------------------------------------
+# The install step's read
+# ---------------------------------------------------------------------------
+
+def config_text(service_user, listener, peers_text, ss):
+    """The configuration the install step writes: *listener* ``<address>:<port>``,
+    *peers_text* one address a line, held to `check_config`. Raises Refused."""
+    address, sep, port = str(listener).rpartition(":")
+    if address.startswith("[") or is_ipv6(address):
+        raise _config("the listener {} is an IPv6 address: an IPv6 listener is not served by "
+                      "this helper yet".format(shown(listener)))
+    if not sep or not PORT.match(port) or int(port) > 65535:
+        raise _config("the listener {} is not <IPv4 address>:<port 1 to 65535>".format(
+            shown(listener)))
+    lines = (peers_text or "").splitlines()
+    for i, line in enumerate(lines):
+        if not is_ipv4(line):
+            raise _config("line {} of the peers, {}, is not an IPv4 address written "
+                          "canonically, one a line and nothing else{}".format(
+                              i + 1, shown(line),
+                              " (an IPv6 peer is not served by this helper yet)"
+                              if is_ipv6(line) else ""))
+    peers = sorted(set(lines), key=lambda a: tuple(int(p) for p in a.split(".")))
+    if not peers:
+        raise _config("the peers are empty: a helper with no peer listed refuses every "
+                      "request, so nothing is installed")
+    cfg = check_config({"listener": {"address": address, "port": int(port)}, "peers": peers,
+                        "service_user": service_user, "request": REQUEST_PATH,
+                        "outcome": OUTCOME_PATH, "ss": ss})
+    return json.dumps(cfg, indent=1, sort_keys=True) + "\n"
+
+
+def render(argv, peers_text=None):
+    """The install step's entry: ``render([<service user>, <listener>, <ss>])`` with the
+    peers on the input prints the configuration and returns 0, or prints ``REFUSED: <why>``
+    and returns 1. It changes nothing."""
+    if len(argv) != 3:
+        print("REFUSED: render takes the service user, the listener and ss, and was given "
+              "{} values".format(len(argv)))
+        return 1
+    try:
+        text = config_text(argv[0], argv[1],
+                           sys.stdin.read() if peers_text is None else peers_text, argv[2])
+    except Refused as exc:
+        print("REFUSED: {}".format(exc))
+        return 1
+    sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

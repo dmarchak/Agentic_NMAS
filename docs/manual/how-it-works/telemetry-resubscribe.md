@@ -208,3 +208,123 @@ that was refused, does not hide it.
 6. `re-add`: the receiver added back, once more if it did not land.
 7. `verify`: the three checks, as above.
 8. `record`: the outcome, on History.
+
+## Closing the collector's session (not built into the operation yet) {#collector-close}
+
+A stream can stay lost because the collector on Mercury's host still holds the old session:
+established, receiving nothing, while the device's own side reads "Disconnecting". The device
+cannot dial again until the collector's side is closed. Closing another program's session is
+the kernel's own operation (`ss -K`) and needs root, and Mercury runs as an ordinary account.
+So the close is one small root-owned helper, `mercury-collector-close`, which Mercury may run
+through one sudoers line, with no argument, and which closes nothing but one session from a
+listed device to the collector's own listener.
+
+**What is built, and what is not.** The helper, its install step and a dry run exist. The
+operation above does not use them yet: no screen and no job closes a session, and a stale
+half-open session is still only flagged. Until that is built, the dry run below is the only
+thing that runs the helper, and a dry run closes nothing.
+
+### Who installs it
+
+A person, once, on Mercury's host, as their own account with sudo, from this release. Two
+commands. The first is run as the account Mercury runs as, and writes the list of devices
+whose sessions may be closed:
+
+`scripts/nmas-collector-peers <listener address>:<port> > <peers file>`
+
+`<listener address>:<port>` is the address and port the collector listens on, as the devices'
+receivers name it. The command reads every network's committed intent and prints one address a
+line: for each device whose telemetry is sent to that listener, the `source-address` its
+subscription declares, or else each IPv4 address of its interfaces. What it leaves out it
+says, per device. The second command installs:
+
+`bash <release>/scripts/host-steps/c3078-collector-close-install.sh <service user> <listener address>:<port> <peers file>`
+
+`<service user>` is the account Mercury runs as. The step:
+
+- **Checks first, and changes nothing until every check passes**, each failed check saying
+  what it wanted and what it got: the release holds the helper; `ss` is root's program and can
+  close a session; the kernel allows it, where its configuration can be read (said when it
+  cannot); the account exists; the collector listens on that address and port on an IPv4
+  socket; every line of the peers file is an IPv4 address, and there is at least one; what is
+  already installed is as this step leaves it; the sudoers file is absent or holds exactly the
+  one line, and `visudo -c` accepts every sudoers file.
+- **Then installs three files**: the helper at `/usr/local/sbin/mercury-collector-close`
+  (root's, mode 0755); its configuration at `/etc/mercury/collector-close.conf` (root's, mode
+  0644), which names the listener, the peers, the account and the path of `ss`; and
+  `/etc/sudoers.d/mercury-collector-close` (mode 0440), one line, checked by `visudo` before it
+  is put in place: `<service user> ALL=(root) NOPASSWD: /usr/local/sbin/mercury-collector-close ""`.
+  It also makes `/var/lib/mercury-collector-close` (root's, where the helper writes its
+  outcome) and its `request` folder (the account's, where Mercury writes a request).
+- **Then proves the copy** with two dry runs as that account: one for a listed device, which
+  the helper answers `no_match` or `would_close`, and one for an address that is not listed,
+  which it refuses. Each answer is printed.
+- **Restarts nothing and closes nothing.**
+
+Mercury cannot change the list of peers: only this step, run by a person, writes it. After a
+device's telemetry is added, removed or moved to another address, run both commands again;
+until then the helper refuses that device's address.
+
+### What the helper refuses
+
+Mercury's request is one file with four values: a run id, the device's address, the device's
+port, and whether it is a dry run. The helper takes nothing else from it. It refuses, saying
+what it compared and both values:
+
+- any argument on its command line;
+- a configuration that is not root's, mode 0644, in a folder only root can write, or that
+  holds anything but the keys it knows;
+- a request that is a symbolic link (it is never followed), that is not a regular file, that
+  another account owns, that is larger than 1024 bytes, that was written more than 120 s
+  ago, or that is dated more than 5 s ahead of the clock;
+- an address that is not an IPv4 address written plainly (four numbers, no leading zero,
+  nothing around it), or that is not in the configuration's list;
+- a port that is not digits from 1 to 65535;
+- a request that names a listener: the listener is the configuration's alone;
+- anything but exactly one established session from that address and port to the listener.
+  None is "it may have closed already"; two or more are refused by their count; and a
+  session of any other listener or device in `ss`'s answer refuses the whole run.
+
+An IPv6 device address, an IPv6 listener, and a session held by an IPv6 socket (a collector
+listening on every address of both families holds its IPv4 sessions that way) are not served
+yet. Each is refused saying so, never as "no session".
+
+When it does close, it runs `ss -K` once, naming all four ends of the session, and then reads
+the sessions again: the session gone is the success, and a session still listed 2 s later is
+a failure that says so. Every run, refused or not, is one line in the host's journal under
+`mercury-collector-close`, and the same line is the outcome Mercury reads.
+
+### Its answers
+
+Each answer has a short code and an exit code:
+
+- 0: `closed`, or `would_close` for a dry run that found exactly the one session;
+- 20: `no_request`; 21: `refused_symlink`; 22: `refused_owner`; 23: `refused_file`; 24:
+  `refused_size`; 25: `refused_stale`;
+- 30: `refused_shape`; 31: `refused_id`; 32: `refused_peer`; 33: `refused_ipv6`; 34:
+  `refused_port`; 35: `refused_listener`;
+- 40: `no_match`; 41: `many_matches`; 42: `filter_not_held`; 43: `ss_unread`; 44:
+  `ss_failed`;
+- 50: `not_gone` (the close ran and the session is still there); 51: `close_unread` (the
+  close ran and the sessions could not be read again);
+- 64: `refused_argument`; 70: `error`; 75: `busy` (another run is in progress); 77:
+  `not_root`; 78: `config_refused`.
+
+It never exits 1: that is sudo's own refusal, which Mercury reports as the helper not being
+installed for its account, with the install step to run.
+
+### The dry run
+
+`scripts/nmas-collector-close-dry-run <device address> <device port>`
+
+Run as the account Mercury runs as. It asks the helper what it would do for that session and
+prints the answer: `would_close` when exactly that one session is there, or the refusal a
+real request would get. A dry run makes every check and the read of the sessions, and never
+runs `ss -K`. This command has no option that closes.
+
+### The undo
+
+`sudo rm /usr/local/sbin/mercury-collector-close /etc/mercury/collector-close.conf /etc/sudoers.d/mercury-collector-close`
+
+With the three files gone nothing can run the helper. `/var/lib/mercury-collector-close`
+holds only the last outcome.

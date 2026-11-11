@@ -24,8 +24,11 @@ log = logging.getLogger(__name__)
 RENDERED = ("deploy/systemd/",)
 #: Installed root-owned by their host step, compared with this release by nothing yet: Mercury's
 #: records database's compose file and init script (/opt/mercury-postgres/, P4-1). The database
-#: itself is measured by the records settings' Test, not by a drift row.
-BY_HAND = ("deploy/postgres/",)
+#: itself is measured by the records settings' Test, not by a drift row. And the collector's
+#: close helper (C3078; /usr/local/sbin/mercury-collector-close,
+#: scripts/host-steps/c3078-collector-close-install.sh), which the install step compares with
+#: the release when it runs and nothing compares afterwards.
+BY_HAND = ("deploy/postgres/", "deploy/collector/")
 #: Installed root-owned on ANOTHER host by its host step, never on Mercury's: the SDN
 #: controller's root apply script and its drop-in (P6, C2672; /usr/local/sbin/mercury-ryu-apply,
 #: scripts/host-steps/p6-controller-apply-install.sh). Compared with this release by nothing
