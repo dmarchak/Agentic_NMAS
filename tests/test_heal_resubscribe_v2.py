@@ -439,16 +439,29 @@ def test_a_tick_changed_draws_the_card_again_and_the_button_sends_it_in_a_real_b
         try:
             b.go(srv.url("/v2/help/telemetry-resubscribe"))
             b.wait_for("return !!window.htmx && !!document.body", 15)
-            b.js("var d = document.createElement('div'); d.id = 'resub-r2';"
-                 " document.body.appendChild(d);"
-                 f" htmx.ajax('GET', '{BASE}?list={NET}&subs=101,102',"
-                 " {target: '#resub-r2', swap: 'outerHTML'}); return 1")
-            b.wait_for(f"return {label} === \"Re-subscribe r2's telemetry (101, 102)\"", 15)
-            b.click('#resub-r2 input[name="sub"][value="101"]')
-            b.wait_for(f"return {label} === \"Re-subscribe r2's telemetry (102)\"", 15)
+            b.js("window.__settled = 0; document.addEventListener('htmx:afterSettle',"
+                 " function () { window.__settled++; }); return 1")
+
+            def drawn(act, subs):
+                """*act* done, and the card it draws SETTLED: htmx gives a swapped-in control
+                its trigger in the settle step, 20 ms after the swap, so a tick made on a
+                card whose label is already drawn can be one the page does not hear yet."""
+                b.js("window.__settled = 0; return 1")
+                act()
+                b.wait_for("return window.__settled > 0 && "
+                           f"{label} === \"Re-subscribe r2's telemetry ({subs})\"", 15)
+
+            def tick():
+                b.click('#resub-r2 input[name="sub"][value="101"]')
+
+            drawn(lambda: b.js(
+                "var d = document.createElement('div'); d.id = 'resub-r2';"
+                " document.body.appendChild(d);"
+                f" htmx.ajax('GET', '{BASE}?list={NET}&subs=101,102',"
+                " {target: '#resub-r2', swap: 'outerHTML'}); return 1"), "101, 102")
+            drawn(tick, "102")
             one = b.js(f"return {text}")
-            b.click('#resub-r2 input[name="sub"][value="101"]')
-            b.wait_for(f"return {label} === \"Re-subscribe r2's telemetry (101, 102)\"", 15)
+            drawn(tick, "101, 102")
             both = b.js(f"return {text}")
             b.type("#resub-r2-why", REASON)
             b.click('#resub-r2 button[data-op="telemetry-resubscribe"]')
