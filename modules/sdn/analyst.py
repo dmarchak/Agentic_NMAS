@@ -297,14 +297,19 @@ def _flow_row(f: dict) -> dict:
 
 
 def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = None,
-                   names: dict = None) -> dict:
+                   names: dict = None, netbox: dict = None) -> dict:
     """*collected* (`collect_threat_data(..., links=True)`'s answer) in the analyst's shape:
     ``{"id", "network", "collected_at", "interval_s", "by", "state", "error", "calls",
     "switches", "links", "unread", "subset", "hash"}``. Each switch row holds its ``ports`` (port
     descriptions, ``port:`` ids), ``rates`` (``rate:``), ``flows`` (``flow:``, at most
     `FLOWS_PER_SWITCH`, the busiest by packets) and ``drops`` (``drop:``, every one). *previous*
     is the network's last snapshot: a link it holds that this collection did not discover is kept,
-    "not discovered now". Masked, then sealed (`_digest`)."""
+    "not discovered now". *netbox* is NetBox's view of the fabric at the collection
+    (`sdn.known.read`'s): where it was read, the snapshot keeps it (``netbox``: the export's
+    hash, each switch's name by datapath id, and the interfaces a trace's end can be named by),
+    so B4's trace tool resolves a NetBox name from the seal and never from a live read (C2950,
+    C3013); a snapshot kept without one has no ``netbox`` key. Masked, then sealed
+    (`_digest`)."""
     from modules import redact
 
     names = names or {}
@@ -404,6 +409,15 @@ def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = N
         # kept only when the collection read them; never in the facts B1's call sends.
         snap["hosts"] = sorted(hosts, key=lambda h: (h["connection"], str(h["dpid_hex"]),
                                                      str(h["port_no"]), h["mac"]))
+    if (netbox or {}).get("state") == "read":
+        # NetBox's names as the export held them at the collection, sealed with the rest: the
+        # trace tool's ends by name (never in the facts B1's call sends).
+        snap["netbox"] = {
+            "sha": netbox.get("sha") or "",
+            "names": {f"{int(d):016x}": n for d, n in sorted((netbox.get("names") or {}).items())},
+            "rows": sorted((dict(r) for r in netbox.get("rows") or []),
+                           key=lambda r: (r["name"], r["interface"])),
+            "hosts": netbox.get("hosts"), "devices": netbox.get("devices") or 0}
     snap = redact.egress_payload(snap)
     digest = _digest(snap)
     snap["id"] = "snap-" + digest[:16]
@@ -586,8 +600,9 @@ def collect_job(network: str, *, actor: str, interval: float = COLLECT_INTERVAL,
             _keep_failure(network, out["error"], actor, now())
             return out
         _read_hosts(network, collected, driver)
+        from modules.sdn import known
         snap = build_snapshot(network, collected, by=actor, previous=latest_snapshot(network),
-                              names=_names(network))
+                              names=_names(network), netbox=known.read(network))
         save_snapshot(network, snap)
         out.update(ok=True, snapshot=snap)
         return out

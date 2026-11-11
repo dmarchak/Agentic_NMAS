@@ -272,6 +272,24 @@ class TestFlows:
         assert re.search(r'<details class="sdn-sw" data-keep="sw-0000000000000001" open>', html)
         assert "s1 · lab-controller" in text
 
+    def test_a_switch_is_named_as_netbox_names_it_by_its_datapath_id(self, lab, monkeypatch):
+        """C3010: the captured switch describes itself as s1; NetBox's device with datapath id
+        1 is leaf-1, so Flows draws leaf-1 (and still finds it by what it calls itself); with
+        NetBox naming none it stays s1."""
+        from modules.sdn import known
+        store_read()
+        asked = []
+        monkeypatch.setattr(known, "read", lambda network: asked.append(network) or dict(
+            known.NOT_ASKED, state="read", names={1: "leaf-1"}))
+        _r, html = get(lab, "/v2/sdn/flows")
+        text = words(html)
+        assert asked == ["Default"], "NetBox's names are read once for the page, not per switch"
+        assert "leaf-1 · lab-controller" in text and "s1 · lab-controller" not in text
+        _r, found = get(lab, "/v2/sdn/flows?q=s1")
+        assert "leaf-1 · lab-controller" in words(found)
+        monkeypatch.setattr(known, "read", lambda network: dict(known.NOT_ASKED))
+        assert "s1 · lab-controller" in words(get(lab, "/v2/sdn/flows")[1])
+
     def test_the_controller_s_own_hidden_by_default_and_shown_when_asked(self, lab):
         store_read()
         _r, html = get(lab, "/v2/sdn/flows")

@@ -703,7 +703,7 @@ def analyse(nodes: list, links: list) -> dict:
 def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict,
                   expected: dict = None, previous: dict = None, now: str = "",
                   at_here: list = None, before_links: dict = None, rip: dict = None,
-                  sdn: dict = None) -> dict:
+                  sdn: dict = None, netbox: dict = None, scraped: bool = True) -> dict:
     """One network's graph, every layer and its analysis. *hosts* is the inventory (the
     population: a managed device the graph lacks is still a node, drawn apart with why).
     *expected* is the network's declared islands (``{device: {reason, by, at}}``); *previous*
@@ -716,7 +716,15 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     switches become nodes keyed by DPID, its links physical links naming their source, a
     managed device's LLDP neighbour named by a DPID one hybrid link to that switch's port, and
     its hosts and the controller itself drawn beside them (`overlay` links, outside every
-    analysis); what each controller gave is ``sdn``, for the coverage header."""
+    analysis); what each controller gave is ``sdn``, for the coverage header. *netbox* is
+    NetBox's view of that fabric (`sdn.known.read`'s), for its names (`_controller_layer`).
+
+    **Not scraped is not an island** (C3010): an island is a device MEASURED as cut off. A
+    managed device no LLDP target scrapes at all (and no neighbour's LLDP and no controller
+    names) has no measurement, so it is left out of the physical layer's islands, weak points
+    and criticality and listed apart (the analysis' ``not_scraped``), its node marked
+    ``not_scraped``. *scraped* False says Prometheus is not configured at all (C1928): every
+    managed device is then not scraped, and the graph says so (``routed`` False)."""
     managed = set(hosts)
     polled = {h for h in hosts if (up.get(h) or {}).get("lldp") == 1}
     answering = {h for h in hosts if any(v == 1 for v in (up.get(h) or {}).values())}
@@ -729,7 +737,7 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     for o in others:
         nodes[o] = {"managed": False, "role": "", "polled": False, "answering": False,
                     "lldp_read": False}
-    sdn_said = _controller_layer(sdn, hosts, managed, results, nodes, phys)
+    sdn_said = _controller_layer(sdn, hosts, managed, results, nodes, phys, netbox)
     layers = {"physical": phys}
     layers.update(routing_links(intents, hosts, results, up))
     layers.update(rip_links(intents, hosts, rip or {}))
@@ -796,9 +804,18 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
             # host had joined them, hiding r6's island and naming itself a weak point). A
             # controller's hosts and the controller itself (S14's overlay) forward nothing
             # either.
-            a = analyse([n for n in names if n != MANAGER],
-                        [l for l in links if not l.get("manager") and not l.get("overlay")])
+            carrying = [l for l in links if not l.get("manager") and not l.get("overlay")]
+            # C3010: a managed device with no LLDP series at all, that no link names and no
+            # controller reads, was never measured: "not scraped", never an island.
+            linked = {e for l in carrying for e in (l["a"], l["b"])}
+            unscraped = sorted(n for n in names if nodes[n].get("managed")
+                               and not nodes[n].get("lldp_read") and not nodes[n].get("sdn")
+                               and n not in linked)
+            for n in unscraped:
+                nodes[n]["not_scraped"] = True
+            a = analyse([n for n in names if n != MANAGER and n not in unscraped], carrying)
             a.update(mercury_reach(links, nodes))
+            a["not_scraped"] = unscraped
         else:
             a = analyse(names, links)
         # An island is of the FLEET: an outside peer cut off is not one of ours.
@@ -836,25 +853,45 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     out = {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
     if sdn_said is not None:
         out["sdn"] = sdn_said
+    if not scraped:
+        out["routed"] = False
     return out
 
 
-def _controller_layer(sdn, hosts, managed, results, nodes, phys):
+def _controller_layer(sdn, hosts, managed, results, nodes, phys, netbox=None):
     """S14's controller layer into *nodes* and *phys*, in place (`network_graph`'s *sdn*):
     ``{"state", "why", "controllers": [said], "hosts", "hosts_drawn"}``, or None when the
     network has no controller connection. Each controller's switches are nodes keyed by DPID,
     its links physical links naming their source; a managed device's LLDP neighbour whose
     chassis id is a DPID is one hybrid link (its device end's state its `ifOperStatus`); the
     controller and the hosts it learned are drawn with dotted `overlay` links (hosts only up
-    to `sdn.topology.HOSTS_DRAWN_UP_TO`)."""
+    to `sdn.topology.HOSTS_DRAWN_UP_TO`).
+
+    *netbox* is NetBox's view of the fabric (`sdn.known.read`'s, the network's committed NSOT
+    export; C3010): a switch is named by its NetBox name, matched by datapath id, never by the
+    description it gives of itself where NetBox names it; a switch whose NetBox device is one
+    of this network's managed devices is that device's ONE node (`_merge_by_dpid`), never a
+    second node beside it; and a learnt host is named by the NetBox device whose interface
+    holds its MAC, else by the one device NetBox cables to its port."""
+    from modules.sdn import known
     from modules.sdn import topology as SDN
 
     if not sdn or sdn.get("state") == "none":
         return None
     controllers = sdn.get("controllers") or []
     got = SDN.layer(controllers)
+    nb_names = (netbox or {}).get("names") or {}
     for key, node in got["nodes"].items():
+        # The name a switch is drawn by: NetBox's by datapath id, else its own description
+        # where it gives one (never a placeholder), else its DPID's short form (the page's).
+        s = node["sdn"]
+        s["reported"] = s.get("label", "")
+        s["netbox"] = known.switch_name(s["dpid"], nb_names)
+        s["label"] = s["netbox"] or known.described(s["reported"])
         nodes.setdefault(key, node)
+    switch_label = {key: node["sdn"]["label"] or SDN.short(key)
+                    for key, node in got["nodes"].items()}
+    _name_hosts(got["hosts"], netbox, switch_label)
     hybrid, seen_only = SDN.hybrid_links(
         SDN.lldp_chassis({h: results.get(h, {}) for h in hosts}), managed, got["nodes"])
     for key, node in seen_only.items():
@@ -909,15 +946,101 @@ def _controller_layer(sdn, hosts, managed, results, nodes, phys):
                                    "port_name": h.get("port_name", ""), "label": h["label"],
                                    "switch": h["switch"], "switch_label": h["switch_label"],
                                    "port": SDN.port_words(h["port_no"]),
+                                   "netbox": h.get("netbox", ""),
                                    "elsewhere": h["elsewhere"]}}
             phys.append({"a": h["switch"], "port_a": SDN.port_words(h["port_no"]),
                          "b": key, "port_b": "", "kind": "host", "overlay": True,
                          "state": "up" if h["state"] == "read" else "unknown",
                          "sources": [f"controller ({h['controller']})"], "reported_by": [],
                          "down_at": []})
-    return {"state": sdn.get("state", ""), "why": sdn.get("why", ""),
+    merged = _merge_by_dpid(nodes, phys, managed, nb_names)
+    said = {"state": sdn.get("state", ""), "why": sdn.get("why", ""),
             "controllers": SDN.said(controllers), "hosts": len(got["hosts"]),
             "hosts_drawn": drawn, "orphans": dict(got["orphans"])}
+    if netbox is not None:
+        # What NetBox's names are from, for the page: read (the export's hash), absent or
+        # unreadable (with why), each its own state; and how many switches are one node with
+        # their managed device.
+        said["netbox"] = {"state": netbox.get("state", ""), "why": netbox.get("why", ""),
+                          "sha": netbox.get("sha", ""), "merged": merged}
+    return said
+
+
+def _name_hosts(hosts: list, netbox, switch_label: dict) -> None:
+    """Each of a controller's *hosts* (`sdn.topology.layer`'s) named as NetBox names it, in
+    place (C3010): by the device whose interface holds its MAC, else by the one device NetBox
+    cables to its switch port when the port holds that one host; ``netbox`` says which
+    ("<device> <interface>, by its MAC" or "... by its cable"), "" when NetBox names none.
+    A host NetBox does not name keeps its address, or "host on <switch> port <n>", the switch
+    by the name it is drawn by (*switch_label*). One pass over the hosts and the rows."""
+    from modules.sdn import known
+    from modules.sdn import topology as SDN
+
+    rows = (netbox or {}).get("rows") or []
+    by_mac = known.host_names(rows)
+    by_port, on_port = {}, {}
+    for r in rows:
+        if not r["mac"] and r["dpid"] is not None and r["port_no"] is not None:
+            by_port.setdefault((r["dpid"], r["port_no"]), []).append(r)
+    for h in hosts:
+        on_port[(int(h["dpid"]), h["port_no"])] = on_port.get((int(h["dpid"]), h["port_no"]),
+                                                              0) + 1
+    where = {}
+    for h in hosts:
+        at = (int(h["dpid"]), h["port_no"])
+        h["switch_label"] = switch_label.get(h["switch"]) or h["switch_label"]
+        h["netbox"] = ""
+        if h["mac"] in by_mac:
+            name, iface = by_mac[h["mac"]]
+            h.update(label=name, netbox=f"{name} {iface}, by its MAC")
+        elif len(by_port.get(at) or []) == 1 and on_port[at] == 1:
+            r = by_port[at][0]
+            h.update(label=r["name"], netbox=f"{r['name']} {r['interface']}, by its cable to "
+                                             f"{r['switch']} {r['switch_interface']}")
+        else:
+            h["label"] = SDN.host_label(h, h["switch_label"])
+        where.setdefault(h["mac"], []).append(f"{h['switch_label']} {SDN.port_words(h['port_no'])}")
+    for h in hosts:
+        here_ = f"{h['switch_label']} {SDN.port_words(h['port_no'])}"
+        h["elsewhere"] = [w for w in where[h["mac"]] if w != here_]
+
+
+def _merge_by_dpid(nodes: dict, phys: list, managed: set, nb_names: dict) -> int:
+    """One node per device (C3010): a controller's switch whose NetBox device (matched by its
+    datapath id, *nb_names*) is one of this network's managed devices is folded into that
+    device's node, in place: the managed node takes the switch's ``sdn`` (with ``key``, the
+    DPID key it was, for a reader that has only the DPID), every link, control link and host
+    of the switch is the device's, and the DPID's own node is gone. Returns how many were
+    merged. A switch NetBox does not name, or whose device this network does not manage,
+    stays its own node, keyed by DPID."""
+    from modules.sdn import topology as SDN
+
+    alias = {}
+    for key, node in list(nodes.items()):
+        s = node.get("sdn") or {}
+        name = nb_names.get(s.get("dpid")) if SDN.is_switch(key) else None
+        if name and name in managed and name in nodes and name != key:
+            alias[key] = name
+    for key, name in alias.items():
+        gone = nodes.pop(key)
+        mine = nodes[name]
+        mine["sdn"] = dict(gone["sdn"], key=key)
+        mine["role"] = mine.get("role") or gone.get("role", "")
+        # The controller reads it: it answers by that measurement where no scrape says so.
+        mine["answering"] = bool(mine.get("answering") or gone.get("answering"))
+    if not alias:
+        return 0
+    for l in phys:
+        for end in ("a", "b"):
+            if l[end] in alias:
+                l[end] = alias[l[end]]
+        if l.get("ends_detail"):
+            l["ends_detail"] = {alias.get(k, k): v for k, v in l["ends_detail"].items()}
+    for node in nodes.values():
+        h = node.get("host")
+        if h and h.get("switch") in alias:
+            h["switch"] = alias[h["switch"]]
+    return len(alias)
 
 
 def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:
@@ -998,10 +1121,11 @@ def rip_answer(clock=time.time) -> tuple:
 
 
 def read(source=None, population=None, clock=time.time, previous=None, expected=None,
-         at_here=None, rip=None, sdn=None) -> dict:
+         at_here=None, rip=None, sdn=None, netbox=None) -> dict:
     """Every network's graph (`network_graph`). *sdn* is ``sdn(network, now) ->`` the
     network's controller topology (`sdn.topology.stored`, the SDN reader's stored value), a
-    test's in place of the store's."""
+    test's in place of the store's; *netbox* is ``netbox(network) ->`` NetBox's view of a
+    network that has a controller layer (`sdn.known.read`), a test's in place of the read."""
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
     from modules.nsot import listref
@@ -1011,7 +1135,9 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
     configured, results, up = (source or (lambda: IG.merged("prometheus",
                                                             prometheus_series)))()
     if not configured:
-        return {"configured": False, "networks": {}, "errors": []}
+        # C1928: with no Prometheus there is no routed map, and a network's controller layer
+        # (the SDN reader's stored value, which needs no Prometheus) is still read and drawn.
+        return _controllers_only(population or lists, sdn or SDN.stored, clock, netbox)
     rip_lists, rip_error = (rip or rip_answer)(clock)
     if previous is None:
         got = reader_job.read_cached(READER_NAME)
@@ -1042,14 +1168,57 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
                             for layer, links in (was.get("layers") or {}).items()}
         # Keyed by the network's one id (C1903), never its display name: a reader of this
         # value finds it through `network_of`, by either spelling.
+        topo = _sdn_of(sdn or SDN.stored, list_name, clock(), errors)
         networks[listref.network_id(ref)] = network_graph(
             hosts, roles, intents, results, up, expected=declared.get("islands") or {},
             previous=before, now=now, at_here=here() if at_here is None else at_here,
             before_links=before_links, rip=listref.keyed(rip_lists, ref) or {},
-            sdn=_sdn_of(sdn or SDN.stored, list_name, clock(), errors))
+            sdn=topo, netbox=_netbox_of(netbox, list_name, topo, errors))
     if rip_error:
         errors.append(rip_error)
     return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
+
+
+def _controllers_only(population, sdn, clock, netbox=None) -> dict:
+    """`read`'s value with no Prometheus configured (C1928): ``configured`` False, and the
+    graph of each network that has a controller connection, drawn from the SDN reader's stored
+    value alone: its switches, links and hosts, its managed devices not scraped, no routing
+    layer and no intended neighbour (nothing was measured to hold intent against), ``routed``
+    False. A network with no controller connection has no graph, as before; with none at all
+    the value is the one a reader of it has always had."""
+    from modules.nsot import listref
+
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
+    networks, errors = {}, []
+    for list_name, ref, hosts in population():
+        topo = _sdn_of(sdn, list_name, clock(), errors)
+        if not topo or topo.get("state") == "none":
+            continue
+        networks[listref.network_id(ref)] = network_graph(
+            hosts, {}, {}, {}, {}, expected={}, previous=None, now=now, at_here=[],
+            sdn=topo, netbox=_netbox_of(netbox, list_name, topo, errors), scraped=False)
+    if not networks:
+        return {"configured": False, "networks": {}, "errors": []}
+    return {"configured": False, "networks": networks, "errors": errors, "read_at": now}
+
+
+def _netbox_of(fn, list_name: str, topo, errors: list):
+    """NetBox's view of *list_name*'s fabric (`sdn.known.read`: its committed NSOT export), or
+    None for a network with no controller layer (nothing is read for it). *fn* is a test's in
+    place of the read. A view that cannot be read is said in the read's errors, and the layer
+    is drawn without NetBox's names (absent and unreadable stay apart in the value)."""
+    if not topo or topo.get("state") == "none":
+        return None
+    from modules.sdn import known
+
+    try:
+        got = (fn or known.read)(list_name)
+    except Exception as exc:                         # noqa: BLE001 (said as the read's error)
+        got = dict(known.NOT_ASKED, state="unreadable", why=f"{type(exc).__name__}: {exc}")
+    if got.get("state") == "unreadable":
+        errors.append(f"{list_name}: NetBox's names for the controller layer could not be read "
+                      f"({got.get('why')})")
+    return got
 
 
 READER_NAME = "topology-graph"
@@ -1094,7 +1263,9 @@ READER = reader_job.register(reader_job.Reader(
                "lldpRemChassisId, lldpLocPortDesc and up (the whole fleet, per configuration)",
                "this host: each list's committed host_vars at HEAD",
                "the SDN reader's stored value: each controller's topology (switches, links, "
-               "hosts), never a controller call"),
+               "hosts), never a controller call",
+               "this host: a network's committed NSOT export, where it has a controller layer, "
+               "for NetBox's names of the controller's switches and hosts"),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("the LLDP and routing jobs' scrape interval (60 s since 2026-10-01): a "
                     "faster read only re-reads the same sample"),

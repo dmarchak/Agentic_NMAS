@@ -346,6 +346,9 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
               "controller_own": 0, "unauthorised": 0, "missing": 0,
               "meters": 0, "unclassified": 0}
     supported = known = 0
+    # NetBox's names for the switches, read once for the page (the committed NSOT export).
+    from modules.sdn import known as fabric_names
+    nb_names = fabric_names.names_for(network)
     for c in conns:
         for sw in c.get("switches") or []:
             counts["switches"] += 1
@@ -374,11 +377,14 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
             lost = [_lost_row(x, reapply.answered_by(x, judged)) for x in found]
             wrong = bool(n["unauthorised"] or n["mercury_differs"] or n["missing"] or lost
                          or sw.get("state") != "ok" or c.get("state") == "not_answering")
-            named = f"{sw.get('dpid_hex')} {sw.get('name') or ''}".lower()
+            # C3010: a switch is drawn by its NetBox name, matched by datapath id, else by the
+            # description it gives of itself where it gives one (never "None"), else its DPID.
+            name = fabric_names.drawn_name(sw.get("dpid_hex"), nb_names, sw.get("name"))
+            named = f"{sw.get('dpid_hex')} {name} {sw.get('name') or ''}".lower()
             if s["q"] and not shown and not shown_records and s["q"].lower() not in named:
                 continue
             out["switches"].append({
-                "dpid_hex": sw.get("dpid_hex"), "name": sw.get("name") or "",
+                "dpid_hex": sw.get("dpid_hex"), "name": name,
                 "controller": c["name"], "controller_state": c.get("state"),
                 "state": sw.get("state"), "error": sw.get("error", ""), "n": n,
                 "total": len(flows), "flows": shown, "records": shown_records, "lost": lost,

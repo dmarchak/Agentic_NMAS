@@ -2028,6 +2028,9 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink);
   width: 190px; max-width: 100%; }
 .topo-of-field select { width: auto; }
+/* From's choice of a known host (C3013): its options are long (name, MAC, address, place), so
+   the closed control keeps the To field's width and the list opens as wide as it needs. */
+.topo-of-field select.topo-of-host { width: 190px; }
 .topo-of-field input.topo-of-port { width: 80px; }
 .topo-of-field input:disabled { background: var(--surface-2); color: var(--ink-3); }
 .topo-of-hint { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--ink-2); }
@@ -2060,7 +2063,7 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   .topo-of-layer .topo-wide-only { display: none; }
   .topo-of-layer .topo-narrow-only { display: inline; }
   .topo-of-narrow { display: flex; }
-  .topo-of-field input { width: 100%; }
+  .topo-of-field input, .topo-of-field select.topo-of-host { width: 100%; }
   .topo-of-field { flex: 1 1 140px; }
   .topo-of-kv { grid-template-columns: 1fr; }
 }
@@ -2104,6 +2107,8 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .topo-tag rect { fill: var(--warn); }
 .topo-tag.topo-tag-isl rect { fill: var(--danger); }
 .topo-tag.topo-tag-apart rect { fill: var(--ink-3); }
+/* C3010: not scraped is not an island: grey, as a fact with nothing measured behind it. */
+.topo-tag.topo-tag-unscraped rect { fill: var(--ink-3); }
 .topo-tag text { fill: var(--on-danger); font-size: 10.5px; font-weight: 600; }
 .topo-losttag { fill: var(--danger); font-size: 11px; font-weight: 600; text-anchor: middle; }
 /* A device under a planned operation (board PS): amber and dashed, its state under its name. */

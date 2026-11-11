@@ -1392,22 +1392,24 @@ def path_trace():
 
 def sdn_trace():
     return svg(500, (
-        "A flow-table trace: an end given by name is looked up among NetBox's end hosts in the "
-        "network's committed NSOT export and traced by its MAC; the SDN reader's stored read "
-        "is read once; each end is found among the hosts the controller lists, or refused with "
-        "nothing asked; the packet is built, ICMP echo or TCP or UDP to a port, in the "
-        "addresses' family; it is walked through each switch's flow tables by OpenFlow 1.3.5's "
-        "rules, switch to switch along the links the controller reports; each branch ends in "
-        "one named outcome, and Topology draws the switches with their DPIDs and ports. "
+        "A flow-table trace: NetBox's names are read once from the network's committed NSOT "
+        "export, for the hosts From offers and for an end given by name; the SDN reader's "
+        "stored read is read once; each end is found among the hosts the controller lists, by "
+        "address, by MAC or by its NetBox interface's MAC, or refused with nothing asked, and "
+        "a destination that is only an address is followed too; the packet is built, ICMP "
+        "echo or TCP or UDP to a port, in the addresses' family; it is walked through each "
+        "switch's flow tables by OpenFlow 1.3.5's rules, switch to switch along the links "
+        "the controller reports; each branch ends in one named outcome, and Topology draws "
+        "the switches with their DPIDs and ports. "
         "Nothing is asked of the controller or any switch."), [
         lanes(20, 494, right="THE STORED READ"),
-        doc("box", 14, 40, 186, 36, "The ends, by name", "NetBox's end hosts, if named"),
+        doc("box", 14, 40, 186, 36, "NetBox's names", "the committed NSOT export"),
         num(14, 40, 1),
-        t(14, 92, "an address or MAC as given", "sm"),
+        t(14, 92, "the hosts to choose from", "sm"),
         store(262, 110, 118, 60, "The SDN reader", "tables, links, hosts"),
         *rows([(130, "read", 2, "Read once", "the stored value")]),
         doc("box", 14, 170, 186, 36, "Each end found", "the controller's hosts"), num(14, 170, 3),
-        t(14, 222, "refused: nothing asked", "sm"),
+        t(14, 222, "or an address only, followed", "sm"),
         doc("box", 14, 240, 186, 36, "The packet built", "ICMP, TCP or UDP"), num(14, 240, 4),
         band(292, 92, "The walk · OpenFlow 1.3.5"),
         *rows([(330, None, 5, "Switch by switch", "each table's flows, in order"),

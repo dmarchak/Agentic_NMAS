@@ -463,3 +463,258 @@ def test_a_network_with_no_controller_has_no_strip_and_no_source_chips(tmp_path,
         os.remove(reader_job.store_path("topology-graph"))
     assert 'class="topo-cov' not in html and "topo-st-src" not in html
     assert 'href="#ti-sdn-switch"' not in html and "<dt>Source</dt>" not in html
+
+
+# ─────────────────────────────────────────────────────────── NetBox's names, one node a device
+# C3010 and C1928 (the Lab 9 sitting, 2026-11-11): the captured fabric again (DPIDs 1 and 2,
+# their link on port 3, h1 on DPID 1's port 1, h2 on its port 2, h3 and a host Ryu kept on
+# DPID 2's port 1, h4 on its port 2), with NetBox's view of it in the committed export's own
+# body shape (`modules/nsot/export.py`; a switch as tests/fixtures/nsot_export/lab9_records.json
+# holds one: its custom field ``openflow_datapath_id``, each OpenFlow port tagged ``openflow``
+# with its ``openflow_port``), read by the real `sdn.known.shaped`.
+
+def _netbox(devices=("leaf-1", "leaf-2"), interfaces=(), hosts=(), cables=(), first=1):
+    """NetBox's view: *devices* are switches, the first with datapath id *first*, the next
+    one more."""
+    from modules.sdn import known
+
+    body = {"devices": [{"name": name, "id": n, "tags": [],
+                         "custom_fields": {"openflow_datapath_id": f"{n:016x}"}}
+                        for n, name in enumerate(devices, first)],
+            "interfaces": [{"device": name, "name": f"Ethernet{p}", "tags": ["openflow"],
+                            "custom_fields": {"openflow_port": p}, "ip_addresses": []}
+                           for name in devices for p in (1, 2, 3)] + list(interfaces),
+            "cables": list(cables), "hosts": list(hosts)}
+    return known.shaped({"ok": True, "sha256": "ab" * 32, "error": "",
+                         "export": {"sha256": "ab" * 32, "body": body}})
+
+
+def _fabric(hosts, **kw):
+    """The captured fabric's graph for a network managing *hosts*, nothing scraped."""
+    return T.network_graph(list(hosts), {}, {}, {}, {},
+                           sdn={"state": "read", "controllers": [_controller()]}, **kw)
+
+
+def test_a_switch_netbox_names_is_its_managed_device_s_one_node():
+    """The operator's kit: each switch is a managed NetBox device AND a DPID the controller
+    reports. Matched by NetBox's ``openflow_datapath_id``, it is one node: the device's, with
+    the switch's links, hosts and DPID; never a DPID node beside an "island"."""
+    g = _fabric(["leaf-1", "leaf-2"], netbox=_netbox())
+    nodes = g["nodes"]
+    assert "of:0000000000000001" not in nodes and "of:0000000000000002" not in nodes
+    one = nodes["leaf-1"]
+    assert one["managed"] and one["sdn"]["dpid"] == 1 and one["sdn"]["controller"] == "c1"
+    assert one["sdn"]["key"] == "of:0000000000000001" and one["answering"]
+    (link,) = [l for l in g["layers"]["physical"] if l["kind"] == "controller"]
+    assert {(link["a"], link["port_a"]), (link["b"], link["port_b"])} == {
+        ("leaf-1", "port 3"), ("leaf-2", "port 3")}
+    assert set(link["ends_detail"]) == {"leaf-1", "leaf-2"}
+    assert sorted(l["b"] for l in g["layers"]["physical"] if l["kind"] == "control") == [
+        "leaf-1", "leaf-2"]
+    assert nodes["host:00:00:00:00:00:04@0000000000000002/2"]["host"]["switch"] == "leaf-2"
+    assert {l["a"] for l in g["layers"]["physical"] if l["kind"] == "host"} == {"leaf-1",
+                                                                                 "leaf-2"}
+    an = g["analysis"]["physical"]
+    assert an["islands"] == [] and an["not_scraped"] == [] and an["main"] == ["leaf-1", "leaf-2"]
+    assert g["sdn"]["netbox"] == {"state": "read", "why": "", "sha": "abababababab",
+                                  "merged": 2}
+    # Without NetBox's view the two stay apart, as two nodes each; and a switch whose NetBox
+    # device this network does not manage keeps its own node, named by NetBox.
+    apart = _fabric(["leaf-1", "leaf-2"])
+    assert {"of:0000000000000001", "leaf-1"} <= set(apart["nodes"])
+    other = _fabric(["leaf-1"], netbox=_netbox())
+    assert other["nodes"]["of:0000000000000002"]["sdn"]["label"] == "leaf-2"
+    assert "leaf-2" not in other["nodes"] and other["sdn"]["netbox"]["merged"] == 1
+
+
+def test_a_switch_is_drawn_by_its_netbox_name_and_never_by_a_placeholder():
+    """DPID 1 describes itself as "None" (Open vSwitch's placeholder) and DPID 2 with a made-up
+    label; NetBox names only DPID 2. The page draws DPID 2 by NetBox's name and DPID 1 by its
+    DPID, never "None"."""
+    from modules import topology_page as TP
+
+    c = dict(_controller(), names={1: "None", 2: "made-up"})
+    g = T.network_graph([], {}, {}, {}, {}, sdn={"state": "read", "controllers": [c]},
+                        netbox=_netbox(devices=("leaf-2",), first=2))
+    one, two = g["nodes"]["of:0000000000000001"], g["nodes"]["of:0000000000000002"]
+    assert (one["sdn"]["label"], one["sdn"]["reported"], one["sdn"]["netbox"]) == ("", "None", "")
+    assert (two["sdn"]["label"], two["sdn"]["reported"]) == ("leaf-2", "made-up")
+    assert TP.label("of:0000000000000001", g["nodes"]) == "of:…0001"
+    assert TP.label("of:0000000000000002", g["nodes"]) == "leaf-2"
+    h4 = g["nodes"]["host:00:00:00:00:00:04@0000000000000002/2"]["host"]
+    assert h4["switch_label"] == "leaf-2"
+    # With no NetBox name, a description the switch does give is kept; "None" never is.
+    plain = T.network_graph([], {}, {}, {}, {}, sdn={"state": "read", "controllers": [c]})
+    assert plain["nodes"]["of:0000000000000002"]["sdn"]["label"] == "made-up"
+    assert plain["nodes"]["of:0000000000000001"]["sdn"]["label"] == ""
+
+
+def test_a_learnt_host_is_named_by_its_netbox_device():
+    """h1's MAC is an end host's interface in NetBox; h4's port (leaf-2 Ethernet2) is where
+    NetBox cables a device it records no MAC for, and h4 is the one host there; leaf-2
+    Ethernet1 is cabled too, and holds two hosts, so its cable names neither."""
+    view = _netbox(
+        hosts=[{"name": "h1", "id": 9, "interfaces": [{
+            "name": "eth0", "mac": "00:00:00:00:00:01",
+            "ip_addresses": ["192.0.2.1/24", "2001:db8:8::1/64"], "attached": None}]}],
+        cables=[{"a": [["leaf-2", "Ethernet2"]], "b": [["edge-rtr", "Gi0/0"]]},
+                {"a": [["leaf-2", "Ethernet1"]], "b": [["other-rtr", "Gi0/1"]]}])
+    nodes = _fabric([], netbox=view)["nodes"]
+
+    def host(mac, at):
+        return nodes[f"host:{mac}@{at}"]["host"]
+    h1 = host("00:00:00:00:00:01", "0000000000000001/1")
+    assert (h1["label"], h1["netbox"]) == ("h1", "h1 eth0, by its MAC")
+    h4 = host("00:00:00:00:00:04", "0000000000000002/2")
+    assert (h4["label"], h4["netbox"]) == (
+        "edge-rtr", "edge-rtr Gi0/0, by its cable to leaf-2 Ethernet2")
+    h3 = host("00:00:00:00:00:03", "0000000000000002/1")
+    assert (h3["label"], h3["netbox"]) == ("192.0.2.3", ""), "two hosts on the port: no guess"
+    h2 = host("00:00:00:00:00:02", "0000000000000001/2")
+    assert (h2["label"], h2["netbox"]) == ("192.0.2.2", "")
+    kept = host("12:da:aa:70:da:9f", "0000000000000001/1")
+    assert kept["label"] == "host on leaf-1 port 1", "the switch by its NetBox name"
+    from modules import topology_page as TP
+    assert "NetBox: h1 eth0, by its MAC" in TP.host_lines(h1)
+
+
+def test_a_device_no_target_scrapes_is_not_scraped_and_a_measured_island_stays_one():
+    """The captured fleet (r6 measured apart: its LLDP is read and reaches nobody) and one more
+    managed device no target scrapes at all: r6 stays the island; the other is "not scraped",
+    listed apart, never an island, a weak point or a critical device."""
+    from tests.test_topology_graph import MANAGED, _capture, _intents
+    res, up = _capture()
+    g = T.network_graph(MANAGED + ["zz-new"], {}, _intents(), res, up)
+    an = g["analysis"]["physical"]
+    assert an["islands"] == [["r6"]] and an["not_scraped"] == ["zz-new"]
+    assert g["nodes"]["zz-new"]["not_scraped"] and "not_scraped" not in g["nodes"]["r6"]
+    assert "zz-new" not in an["island_why"] and "zz-new" not in an["main"]
+    assert "zz-new" not in {s["device"] for s in an["spof"]} | {
+        c["device"] for c in an["critical"]}
+
+
+def _ref():
+    from modules.nsot.listref import ListRef
+    nowhere = os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-such-repo")
+    return ListRef(name="Lab", slug="lab", data_dir=nowhere, repo_dir=nowhere,
+                   csv_path=os.path.join(nowhere, "devices.csv"))
+
+
+def test_with_no_prometheus_a_network_s_controller_layer_is_still_read():
+    """C1928: Prometheus not configured. A network with a controller connection is read from
+    the SDN reader's stored value alone, said as not routed; one with none has no graph, and
+    with no network at all the value is what it always was."""
+    got = T.read(source=lambda: (False, {}, {}), clock=lambda: 0,
+                 population=lambda: [("Lab", _ref(), ["leaf-1", "leaf-2", "zz-new"])],
+                 sdn=lambda network, now: {"state": "read", "controllers": [_controller()]},
+                 netbox=lambda network: _netbox())
+    assert got["configured"] is False and set(got["networks"]) == {"lab"}
+    net = got["networks"]["lab"]
+    assert net["routed"] is False and net["sdn"]["controllers"][0]["switches"] == 2
+    assert net["nodes"]["leaf-1"]["sdn"]["dpid"] == 1, "one node a device, with no Prometheus"
+    an = net["analysis"]["physical"]
+    assert an["islands"] == [] and an["not_scraped"] == ["zz-new"]
+    assert all(net["layers"][layer] == [] for layer in T.ROUTING)
+    none = T.read(source=lambda: (False, {}, {}), clock=lambda: 0,
+                  population=lambda: [("Lab", _ref(), ["r1"])],
+                  sdn=lambda network, now: {"state": "none", "why": "", "controllers": []},
+                  netbox=lambda network: pytest.fail("no controller layer: NetBox is not read"))
+    assert none == {"configured": False, "networks": {}, "errors": []}
+
+
+def test_netbox_s_view_that_cannot_be_read_is_said_and_the_layer_still_drawn():
+    def boom(network):
+        raise OSError("the repository is locked")
+    got = T.read(source=lambda: (False, {}, {}), clock=lambda: 0,
+                 population=lambda: [("Lab", _ref(), ["leaf-1"])],
+                 sdn=lambda network, now: {"state": "read", "controllers": [_controller()]},
+                 netbox=boom)
+    assert got["errors"] == ["Lab: NetBox's names for the controller layer could not be read "
+                             "(OSError: the repository is locked)"]
+    net = got["networks"]["lab"]
+    assert net["sdn"]["netbox"]["state"] == "unreadable"
+    assert "of:0000000000000001" in net["nodes"] and net["nodes"]["leaf-1"]["not_scraped"]
+
+
+@pytest.fixture
+def kit(tmp_path, monkeypatch):
+    """Lab's Topology page over a store a test fills (`_kit_value`), removed afterwards."""
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.topology_expected._path",
+                        lambda name: str(tmp_path / "lab" / "topology_expected.json"))
+    import app as A
+    from modules import reader_job
+    yield {"client": A.app.test_client()}
+    if os.path.exists(reader_job.store_path("topology-graph")):
+        os.remove(reader_job.store_path("topology-graph"))
+
+
+def _kit_value():
+    """Lab as the kit was: no Prometheus, a controller connection, each switch a managed
+    NetBox device, one more managed device nothing reads: the Topology reader's own value for
+    it (`read`)."""
+    value = T.read(source=lambda: (False, {}, {}), clock=lambda: READ_EPOCH,
+                   population=lambda: [("Lab", _ref(), ["leaf-1", "leaf-2", "zz-new"])],
+                   sdn=lambda network, now: {"state": "read", "controllers": [_controller()]},
+                   netbox=lambda network: _netbox())
+    value["networks"] = {"Lab": value["networks"]["lab"]}
+    return value
+
+
+def test_with_no_prometheus_the_page_draws_the_controller_s_layer_and_says_so(kit, monkeypatch):
+    from tests import test_sdn_trace_v2 as V
+    from tests.test_topology_v2 import _store
+    _store(_kit_value())
+    box = {"store": V.fresh(), "asked": []}
+    V.answering(monkeypatch, box)
+    html = _map(kit)
+    # The page is the reader's stored value: the flow layer's form reads the SDN reader's
+    # store once for the network, and nothing else is asked (no per-device work a view).
+    assert box["asked"] == ["Lab"]
+    assert "so there is nothing to draw" not in html
+    notice = re.search(r'<div class="notice notice-warn" role="status" id="topo-no-prometheus">'
+                       r'.*?</div>', html, re.S).group(0)
+    assert "The routed map is not drawn: Prometheus is not configured." in notice
+    assert "What is drawn is the controller" in notice
+    # One node a switch, by its NetBox name, its DPID on its second line.
+    assert re.search(r'class="topo-n topo-c-sdn[^"]*" data-node="leaf-1"', html)
+    assert 'data-node="of:0000000000000001"' not in html
+    assert re.search(r'<text class="topo-sdnline"[^>]*>of:…0001 · via controller</text>', html)
+    strip = re.search(r'<div class="topo-cov small".*?</div>', html, re.S).group(0)
+    assert "LLDP: not read (Prometheus is not configured)" in strip
+    assert ("NetBox&#39;s names · the NSOT export abababababab · 2 switches drawn as their "
+            "managed device") in strip
+    # Not scraped is said, apart, and is no island.
+    assert re.search(r'<g class="topo-tag topo-tag-unscraped"><title>Not scraped: ', html)
+    assert "topo-tag-isl" not in html
+    group = re.search(r'<details class="topo-grp" data-keep="topo-att-unscraped">.*?</details>',
+                      html, re.S).group(0)
+    assert "Not scraped (1): not measured, so not counted as islands" in group
+    assert "zz-new" in group and "leaf-1" not in group
+    # Path… is offered, on the flow tables (the only layer there is).
+    assert '<form id="topo-of-form"' in html and "Trace the path" in html
+    # A network with neither Prometheus nor a controller says what it always said.
+    _store({"configured": False, "networks": {}, "errors": []})
+    html = _map(kit)
+    assert "Prometheus is not configured, so there is nothing to draw" in html
+    assert "topo-no-prometheus" not in html and "topo-of-form" not in html
+
+
+def test_a_trace_lights_a_switch_drawn_as_its_managed_device(kit, monkeypatch):
+    """The flow trace names a switch by its DPID; on the map that switch is its managed
+    device's one node, and the trace's path rings that node (the captured IPv6 path from h1 to
+    h3, tests/test_sdn_trace.py's)."""
+    from tests import test_sdn_trace_v2 as V
+    from tests.test_topology_v2 import _store
+    _store(_kit_value())
+    box = {"store": V.fresh(), "asked": []}
+    V.answering(monkeypatch, box)
+    html = _map(kit, "&layer=of&src=2001:db8:8::1&dst=2001:db8:8::3")
+    assert box["asked"] == ["Lab"], "the trace and the map share one read of the SDN store"
+    assert "delivered through 2 switches" in html
+    for name in ("leaf-1", "leaf-2"):
+        assert re.search(r'class="topo-n topo-c-sdn[^"]*topo-onpath topo-onpath-on[^"]*" '
+                         rf'data-node="{name}"', html), name
+    assert "topo-pathglow topo-path-on" in html

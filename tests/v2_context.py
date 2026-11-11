@@ -3101,6 +3101,7 @@ def _sdn_trace(client, _lab, _mp):
     network with its controller layer), the SDN reader's store answering the captured fabric
     (`fresh()`): the form with its suggestions, IPv6 TCP delivered with every hop's pipeline,
     an address listed at two places (each MAC offered), an end host named from the NSOT export,
+    a destination that is only an address, a From no choice answers,
     and the nine-switch flooded chain (`chain_fabric`: the folded middle, the summary and the
     groups). The Topology store it replaced is put back; patches undone."""
     import pytest
@@ -3131,12 +3132,24 @@ def _sdn_trace(client, _lab, _mp):
         assert "Trace to " in client.get(f"{q}&src=192.0.2.1&dst=192.0.2.3").get_data(
             as_text=True)
         box["store"] = V.fresh()
-        mp.setattr("modules.nsot.export.read", lambda network: V._export(V.H1_EXPORT))
+        V.netbox_answers(mp, V._export(V.H1_EXPORT))
         assert "end hosts, in the NSOT export" in client.get(f"{q}&src=h1&dst=192.0.2.3").get_data(
             as_text=True)
+        # C3013: a destination that is only an address (the notice saying what its packet
+        # assumes), and a From no choice answers (kept as an option, said as such).
+        assert "Followed to an address" in client.get(
+            f"{q}&src=192.0.2.1&dst=192.0.2.99").get_data(as_text=True)
+        assert "not a host Mercury knows" in client.get(
+            f"{q}&src=192.0.2.99&dst=192.0.2.3").get_data(as_text=True)
         mp.setattr(TR, "fabric", lambda network, cached=None, now=None: V.chain_fabric(9))
         assert "Hops 3 to 7" in client.get(f"{q}&src=192.0.2.1&dst=192.0.2.3").get_data(
             as_text=True)
+        # C1928 and C3010: no Prometheus and a controller connection (the controller's layer
+        # drawn, the routed map said not to be), a managed device not scraped (its group).
+        from tests import test_sdn_topology as ST
+        _store(ST._kit_value())
+        html = client.get("/v2/topology/map?list=Lab").get_data(as_text=True)
+        assert "The routed map is not drawn" in html and "Not scraped (1)" in html
     finally:
         mp.undo()
         if before is None:

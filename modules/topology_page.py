@@ -82,7 +82,10 @@ LINE_WORDS = {"ok": "as intended", "warn": "not as intended",
               "bad": "down, or a neighbour missing", "unread": "not read"}
 GROUP_WORDS = {"bad": "Down, or an intended neighbour missing",
                "warn": "Up, not as intended", "unread": "Not read",
-               "weak": "Weak points", "apart": "Apart on purpose"}
+               "weak": "Weak points", "apart": "Apart on purpose",
+               # C3010: a managed device no LLDP target scrapes was never measured, so it is
+               # listed apart and never counted with the islands.
+               "unscraped": "Not scraped"}
 
 
 def stored() -> dict:
@@ -494,6 +497,9 @@ def host_lines(h: dict) -> list:
     IPv6, a link-local one marked; where else the same MAC is listed, said, never merged."""
     from modules.sdn import topology as SDN
     lines = [f"MAC {h.get('mac', '')}"]
+    if h.get("netbox"):
+        # C3010: named as NetBox names it, saying how the match was made.
+        lines.append(f"NetBox: {h['netbox']}")
     for family, word in (("ipv4", "IPv4"), ("ipv6", "IPv6")):
         for a in h.get(family) or []:
             lines.append(f"{word} {a}" + ("" if SDN.is_global(a) else " (link-local)"))
@@ -650,7 +656,16 @@ def _weak(an: dict, phys: list, accepted: dict = None) -> list:
                         "title": d, "why": (an.get("island_why") or {}).get(d, ""),
                         "expected": st.get("expected"), "since": st.get("since", ""),
                         "became": st.get("became", False)})
+    # C3010: never measured is not cut off. Listed apart, tagged "not scraped", never counted
+    # with the islands or the weak points.
+    for d in an.get("not_scraped") or []:
+        out.append({"kind": "unscraped", "device": d, "title": d, "why": NOT_SCRAPED_WHY})
     return out
+
+
+#: Why a device is "not scraped", in the words its tag and its list entry carry.
+NOT_SCRAPED_WHY = ("no LLDP target of Prometheus scrapes it and no neighbour or controller "
+                   "names it, so whether it is connected was not measured: it is not an island")
 
 
 def what_if(phys: list, nodes: dict, out: str) -> dict:
@@ -711,10 +726,15 @@ def view(list_name: str, values) -> dict:
     if st["state"] != "ok":
         return out
     value = st["value"]
-    if not value.get("configured"):
-        out["state"] = "not_configured"
-        return out
     net = network_of(value, list_name)
+    if not value.get("configured"):
+        # C1928: with no Prometheus a network that has a controller connection still draws
+        # its controller's layer (and its Path… on the flow tables), saying in place that the
+        # routed map is not drawn; a network with none says what it always said.
+        if net is None or not net.get("sdn"):
+            out["state"] = "not_configured"
+            return out
+        out["no_prometheus"] = True
     if net is None:
         out["state"] = "not_read"
         return out
@@ -729,7 +749,9 @@ def view(list_name: str, values) -> dict:
     # S14: a network with a controller layer says each source in a strip above the map, and
     # labels every link by its source (Labels on).
     out["sdn"] = net.get("sdn")
-    out["coverage"] = _coverage(list_name, net, st["value_at"]) if net.get("sdn") else []
+    out["coverage"] = (_coverage(list_name, net, st["value_at"],
+                                 scraped=not out.get("no_prometheus"))
+                       if net.get("sdn") else [])
     if net.get("sdn"):
         for l in links:
             if not l.get("overlay") and not l.get("routing_only"):
@@ -771,6 +793,15 @@ def view(list_name: str, values) -> dict:
     if out["layer"] == "of":
         from modules import sdn_trace_page
         out["flow"] = sdn_trace_page.view(list_name, s)
+        # C3010: a switch drawn as its managed device's one node is lit by that node: the
+        # trace names it by its DPID's key (`sdn.topology.switch_key`).
+        alias = {v["sdn"]["key"]: k for k, v in nodes.items() if (v.get("sdn") or {}).get("key")}
+        lit = out["flow"].get("lit")
+        if alias and lit:
+            out["flow"]["lit"] = {
+                "nodes": {alias.get(k, k): v for k, v in (lit.get("nodes") or {}).items()},
+                "edges": {"|".join(sorted(alias.get(e, e) for e in k.split("|"))): v
+                          for k, v in (lit.get("edges") or {}).items()}}
     if s["trace"]:
         out["trace"] = trace_view(list_name, s["trace"], phys, nodes)
     if s["out"]:
@@ -801,7 +832,7 @@ def drawn(v: dict) -> dict:
         out["arranged"] = {k: val for k, val in out["arranged"].items() if k != "positions"}
     if isinstance(out.get("sdn"), dict):
         out["sdn"] = {k: val for k, val in out["sdn"].items()
-                      if k not in ("controllers", "orphans")}
+                      if k not in ("controllers", "orphans", "netbox")}
     if isinstance(out.get("svg"), dict):
         out["svg"] = dict(out["svg"], links=[link(l) for l in out["svg"].get("links") or []])
     att = out.get("attention")
@@ -815,16 +846,34 @@ def drawn(v: dict) -> dict:
     return out
 
 
-def _coverage(list_name: str, net: dict, value_at: str, now: float = None) -> list:
+def _coverage(list_name: str, net: dict, value_at: str, now: float = None,
+              scraped: bool = True) -> list:
     """The strip above the map in a network with a controller layer (board F): one chip per
-    source, ``[{"text", "cls"}]``: LLDP (the Topology reader's read), each controller (read, or
-    couldn't read with why, its switches as last read with their age), and the endpoint
-    layer's hosts from a controller."""
+    source, ``[{"text", "cls"}]``: LLDP (the Topology reader's read; "not read" when
+    Prometheus is not configured, *scraped* False), each controller (read, or couldn't read
+    with why, its switches as last read with their age), NetBox's names for the controller's
+    switches and hosts (the committed NSOT export's, absent or unreadable said apart; C3010),
+    and the endpoint layer's hosts from a controller."""
     from modules import endpoints as E
     from modules.sdn import topology as SDN
 
     sdn = net.get("sdn") or {}
-    chips = [{"text": f"LLDP · the Topology reader, read {value_at}", "cls": ""}]
+    chips = [{"text": f"LLDP · the Topology reader, read {value_at}", "cls": ""} if scraped
+             else {"text": "LLDP: not read (Prometheus is not configured)", "cls": "warn"}]
+    nb = sdn.get("netbox")
+    if nb:
+        if nb.get("state") == "read":
+            n = nb.get("merged", 0)
+            chips.append({"text": f"NetBox's names · the NSOT export {nb.get('sha', '')}"
+                                  + (f" · {n} switch{'es' if n != 1 else ''} drawn as "
+                                     f"{'their' if n != 1 else 'its'} managed device"
+                                     if n else ""), "cls": ""})
+        elif nb.get("state") == "unreadable":
+            chips.append({"text": f"NetBox's names: couldn't read: {nb.get('why', '')}",
+                          "cls": "warn"})
+        else:
+            chips.append({"text": "NetBox's names: none (no NSOT export is committed), so a "
+                                  "switch is named by itself or by its DPID", "cls": ""})
     if sdn.get("state") == "could not read":
         chips.append({"text": f"controllers: couldn't read: {sdn.get('why', '')}",
                       "cls": "warn"})
@@ -853,7 +902,7 @@ def _attention(links: list, weak: list, s: dict) -> dict:
     """The board's "Needs attention on the map": each link that is not as intended, grouped by
     its line style, with what is wrong and since when; then the weak points. Filtered by the
     group asked and the text typed; the counts are always the whole."""
-    groups = {"bad": [], "warn": [], "unread": [], "weak": [], "apart": []}
+    groups = {"bad": [], "warn": [], "unread": [], "weak": [], "apart": [], "unscraped": []}
     for l in links:
         if l["cls"] == "ok" or l.get("overlay"):
             continue
@@ -867,7 +916,8 @@ def _attention(links: list, weak: list, s: dict) -> dict:
     for w in weak:
         # C1487: an accepted weak point stays in the weak points' group, drawn "Accepted", and
         # is counted apart: it is not something to look at.
-        groups["apart" if w["kind"] == "apart" else "weak"].append(w)
+        # C3010: a device not scraped is listed apart too: never a weak point, never counted.
+        groups[w["kind"] if w["kind"] in ("apart", "unscraped") else "weak"].append(w)
     counts = {k: len(v) for k, v in groups.items()}
     counts["accepted"] = sum(1 for w in groups["weak"] if w["kind"] == "accepted")
     counts["weak"] -= counts["accepted"]
@@ -878,7 +928,8 @@ def _attention(links: list, weak: list, s: dict) -> dict:
         text = " ".join(str(e.get(k) or "") for k in ("title", "what", "words", "why", "device"))
         return not needle or needle in text.lower()
 
-    shown = {k: [e for e in v if keep(e)] if s["show"] in ("all", k) or k == "apart" else []
+    shown = {k: [e for e in v if keep(e)] if s["show"] in ("all", k)
+             or k in ("apart", "unscraped") else []
              for k, v in groups.items()}
     return {"groups": shown, "counts": counts,
             "filtered": bool(needle) or s["show"] != "all"}
@@ -1010,6 +1061,10 @@ def _tags(weak: list) -> dict:
             tags.setdefault(w["device"], []).append({
                 "text": "apart", "cls": "apart",
                 "words": f"Apart on purpose: {(w.get('expected') or {}).get('reason', '')}"})
+        elif w["kind"] == "unscraped":
+            tags.setdefault(w["device"], []).append({
+                "text": "not scraped", "cls": "unscraped",
+                "words": f"Not scraped: {w['why']}"})
     return tags
 
 
@@ -1306,7 +1361,11 @@ def _sdn_words(name: str, n: dict) -> dict:
         title += f" (not read now: {sdn.get('why', '')})"
     if sdn.get("ports"):
         title += f" · {sdn['ports']} ports"
-    return {"line": f"{SDN.short(name)} · via {'controller' if sdn.get('controller') else 'LLDP'}",
+    # A switch drawn as its managed device's node (C3010) keeps its DPID on its second line.
+    key = sdn.get("key") or name
+    if sdn.get("reported") and sdn.get("netbox"):
+        title += f" · it describes itself as {sdn['reported']}"
+    return {"line": f"{SDN.short(key)} · via {'controller' if sdn.get('controller') else 'LLDP'}",
             "title": title}
 
 

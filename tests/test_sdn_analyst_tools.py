@@ -20,7 +20,16 @@ turn from a script.
 - **The comparison** with B1's answer on the same snapshot: found, missed, false positives by the
   code's rule, calls and cost.
 - **The person trigger**, the topology class, and the route and its region.
+- **The ends the walk takes** (C3013, C2950): a destination that is only an address is
+  followed to how it ends (Open vSwitch 3's table-miss, or its drop flow), IPv4 and IPv6, and
+  its read is allowed; NetBox's view of the fabric (the Lab 9 records,
+  tests/fixtures/nsot_export/lab9_records.json, whose ovs1 is datapath 3, with one device added
+  where a case needs it) is kept with the snapshot, sealed, and never in B1's facts; a NetBox
+  name or address is the host the snapshot lists by its interface's MAC; a host the controller
+  has not learnt starts where NetBox cables it; a name whose cable ends where three hosts are
+  listed, with no MAC in NetBox, is refused naming each.
 """
+import copy
 import json
 import types
 from html import unescape
@@ -555,3 +564,187 @@ def test_the_trace_tool_s_recorded_answer_is_checked_again_against_the_reads_tha
     assert use["use"] == "checked again: 2 findings, 0 dropped by the check"
     final = "{}.v{}".format(*AN.SCHEMA_OF[AN.PROMPT[1]].__ai_schema__)
     assert f"the recorded answer read as {final}" in use["detail"]
+
+
+# ── the ends the walk takes: an address only, and NetBox's names (C3013, C2950) ───────────────
+
+#: An address no host of the capture has, each family's, traced from the planted source.
+NOWHERE = [("198.51.100.10", "198.51.100.77", 4), ("2001:db8::10", "2001:db8::77", 6)]
+
+
+def _nb_device(name, ident):
+    return {"id": ident, "name": name, "status": {"value": "active"}, "role": {"slug": "router"},
+            "site": {"id": 1, "slug": "lab"}, "custom_fields": {}, "tags": []}
+
+
+def _nb_iface(device, dev_id, name, ident, mac, addresses):
+    return {"id": ident, "device": {"id": dev_id, "name": device}, "name": name,
+            "type": {"value": "1000base-t"}, "enabled": True, "mgmt_only": False, "tags": [],
+            "custom_fields": {}, "primary_mac_address": {"mac_address": mac} if mac else None,
+            "ip_addresses": [{"address": a} for a in addresses]}
+
+
+def _nb_cable(a, b):
+    def end(e):
+        return [{"object": {"device": {"name": e[0]}, "name": e[1]}}]
+    return {"a_terminations": end(a), "b_terminations": end(b),
+            "status": {"value": "connected"}, "label": ""}
+
+
+def lab9_netbox(devices=(), interfaces=(), cables=()):
+    """NetBox's view of the fabric (`sdn.known.read`'s shape) from the Lab 9 records, the real
+    export's own build and parse: ovs1 is datapath 3 and ovs2 datapath 4 (the capture's Open
+    vSwitch 3 and 4), each port's ``openflow_port`` as Ryu numbered it (ovs1 eno4 is port 3).
+    A case adds, in NetBox's REST shapes, the one device it needs, its interface and its
+    cable: a minimal edit, made where it is used."""
+    from modules.nsot import export as X
+    from modules.sdn import known
+    from tests.test_openflow_golden import _records
+
+    records = copy.deepcopy(_records())
+    records["devices"] += list(devices)
+    records["interfaces"] += list(interfaces)
+    records["cables"] += list(cables)
+    doc = X.parse(X.document(NET, records["netbox_version"], records))
+    return known.shaped({"ok": True, "export": doc, "sha256": doc["sha256"]})
+
+
+def _router(mac="0A:00:00:00:00:10", addresses=("198.51.100.10/24", "198.51.100.11/24",
+                                                "2001:db8::10/64", "2001:db8::11/64")):
+    """A NetBox device that is no switch and no end host, its interface cabled to ovs1 eno4
+    (Open vSwitch 3's port 3, where the planted hosts are); *mac* its interface's primary MAC
+    as NetBox prints one (upper case), "" for none recorded."""
+    return {"devices": [_nb_device("edge-rtr", 90)],
+            "interfaces": [_nb_iface("edge-rtr", 90, "Gi0/0", 900, mac, addresses)],
+            "cables": [_nb_cable(("edge-rtr", "Gi0/0"), ("ovs1", "eno4"))]}
+
+
+def _with_netbox(monkeypatch, view):
+    from modules.sdn import known
+    monkeypatch.setattr(known, "read", lambda network: view)
+    snap, _s = collected_snapshot()
+    return snap
+
+
+@pytest.mark.parametrize("src,dst,family", NOWHERE)
+def test_an_address_the_snapshot_lists_no_host_for_is_followed_to_the_table_miss(
+        tw, src, dst, family):
+    """Open vSwitch 3 holds flows for 198.51.100.20 and 2001:db8::20 and its table-miss: a
+    packet for an address no host has is sent to the controller by the table-miss, said so,
+    with what its unknown MAC assumes; and the read is allowed, never refused as no host."""
+    snap, _s = collected_snapshot()
+    miss = next(f["id"] for f in flows_of(snap)["flows"] if not f["match"])
+    got = AT.trace_answer(snap, src, dst)
+    assert "refused" not in got, got
+    assert got["ending"] == "table_miss_controller" and got["family"] == family
+    assert got["destination"] == f"{dst} (an address no controller lists)"
+    assert got["branches"][0]["hops"] == [{"switch": OVS3, "in": 3, "out": "CONTROLLER",
+                                           "flows": [miss]}]
+    assert miss in got["evidence"] and "00:00:00:00:00:00" in got["assumed"]
+    assert got["words"].startswith("Table-miss, sent to the controller: ")
+    (verdict,) = RL.check(AT.SEALED, [ask("trace", src=src, dst=dst, proto="icmp")],
+                          network=NET, scope={"snapshot": snap})
+    assert verdict["verdict"] == "allowed", verdict
+    # A source must still be a host the snapshot knows, and a destination a host or an address.
+    (bad,) = RL.check(AT.SEALED, [ask("trace", src=dst, dst=src, proto="icmp")],
+                      network=NET, scope={"snapshot": snap})
+    assert bad["verdict"] == "refused" and f"{dst} is no host the snapshot lists" in bad["reason"]
+
+
+def test_a_drop_flow_decides_a_trace_to_an_address_and_is_named_by_its_id(tw):
+    snap, _s = collected_snapshot()
+    (drop,) = flows_of(snap)["drops"]
+    got = AT.trace_answer(snap, "198.51.100.250", "198.51.100.77")
+    assert "refused" not in got, got
+    assert got["ending"] == "dropped_by_flow" and got["branches"][0]["outcome"] == "dropped"
+    assert got["words"].startswith("Dropped by a flow: the flow at priority 500 in table 0")
+    assert f", {drop['id']} sends it nowhere (no output)" in got["words"]
+    assert drop["id"] in got["evidence"]
+
+
+def test_the_collection_keeps_netbox_s_view_sealed_and_b1_never_sends_it(tw, monkeypatch):
+    plain, _s = collected_snapshot()
+    assert "netbox" not in plain, "no committed export: nothing of NetBox is kept"
+    snap = _with_netbox(monkeypatch, lab9_netbox(**_router()))
+    kept = snap["netbox"]
+    assert kept["names"] == {OVS3: "ovs1", OVS4: "ovs2"}
+    (row,) = [r for r in kept["rows"] if r["name"] == "edge-rtr"]
+    assert (row["mac"], row["dpid"], row["port_no"], row["switch"], row["switch_interface"]) == (
+        "0a:00:00:00:00:10", 3, 3, "ovs1", "eno4")
+    assert row["ipv4"] == ["198.51.100.10", "198.51.100.11"]
+    assert row["ipv6"] == ["2001:db8::10", "2001:db8::11"]
+    assert AN.intact(snap) and snap["id"] != plain["id"]
+    assert "edge-rtr" not in AN.facts(snap), "B1's facts never send NetBox's names"
+    line = next(x for x in AT.hosts_text(snap).splitlines() if "0a:00:00:00:00:10" in x)
+    assert line.endswith("NetBox name edge-rtr")
+    assert AT.sealed_fabric(snap)["netbox"]["names"] == {3: "ovs1", 4: "ovs2"}
+    assert AT.sealed_fabric(plain)["netbox"] is None
+
+
+@pytest.mark.parametrize("src,dst,address", [
+    ("edge-rtr", "198.51.100.20", "198.51.100.10"),
+    ("198.51.100.11", "198.51.100.20", "198.51.100.11"),
+    ("2001:db8::11", "2001:db8::20", "2001:db8::11")])
+def test_a_netbox_name_or_address_is_the_host_the_snapshot_lists_by_mac(
+        tw, monkeypatch, src, dst, address):
+    """The planted host 0a:00:00:00:00:10 is, in NetBox, edge-rtr's Gi0/0, cabled to ovs1 eno4:
+    its name, and an address only NetBox records for it (.11, ::11), are that host on Open
+    vSwitch 3's port 3; the answer says which source answered, and the switch is named as
+    NetBox names it."""
+    snap = _with_netbox(monkeypatch, lab9_netbox(**_router()))
+    (verdict,) = RL.check(AT.SEALED, [ask("trace", src=src, dst=dst, proto="icmp")],
+                          network=NET, scope={"snapshot": snap})
+    assert verdict["verdict"] == "allowed", verdict
+    got = AT.trace_answer(snap, src, dst)
+    assert "refused" not in got, got
+    assert got["source"].startswith("edge-rtr, 198.51.100.10 (0a:00:00:00:00:10) on ovs1 port 3")
+    assert got["notes"] == [
+        "edge-rtr is 0a:00:00:00:00:10 (Gi0/0, cabled to ovs1 eno4) by NetBox's devices, in "
+        f"the NSOT export {snap['netbox']['sha']}"]
+    assert got["branches"][0]["hops"][0] == {
+        "switch": OVS3, "in": 3, "out": 2,
+        "flows": [next(f["id"] for f in flows_of(snap)["flows"]
+                       if f["match"].get("ipv4_dst" if "." in dst else "ipv6_dst") == dst)]}
+    from modules.sdn import trace as TR
+    whole = TR.over(AT.sealed_fabric(snap), NET, src, dst)
+    assert whole["packet"]["ipv4_src" if "." in dst else "ipv6_src"] == address
+    assert whole["source"]["learnt"] and whole["source"]["name"] == "edge-rtr"
+
+
+@pytest.mark.parametrize("dst,address", [("198.51.100.20", "198.51.100.88"),
+                                         ("2001:db8::20", "2001:db8::88")])
+def test_a_host_the_controller_has_not_learnt_starts_where_netbox_cables_it(
+        tw, monkeypatch, dst, address):
+    """A MAC the host table does not list: NetBox's interface gives the MAC, the addresses and
+    the place (ovs1 eno4, datapath 3's port 3), and the answer says the place is NetBox's."""
+    view = lab9_netbox(**_router(mac="0A:00:00:00:00:88",
+                                 addresses=("198.51.100.88/24", "2001:db8::88/64")))
+    snap = _with_netbox(monkeypatch, view)
+    from modules.sdn import trace as TR
+    got = TR.over(AT.sealed_fabric(snap), NET, "edge-rtr", dst)
+    assert got["ok"], got.get("error")
+    src = got["source"]
+    assert (src["mac"], src["dpid"], src["port_no"], src["learnt"]) == (
+        "0a:00:00:00:00:88", 3, 3, False)
+    assert got["packet"]["eth_src"] == "0a:00:00:00:00:88"
+    assert got["packet"]["ipv4_src" if "." in dst else "ipv6_src"] == address
+    assert got["notes"][0].startswith(
+        "ctl-1 has not learnt edge-rtr (0a:00:00:00:00:88): its place, ovs1 eno4 (port 3), and "
+        "its addresses are NetBox's")
+    assert src["words"].endswith("on ovs1 port 3 (eno4), by NetBox's cable")
+    assert [h["dpid_hex"] for h in got["branches"][0]["hops"]][0] == OVS3
+    assert any("NetBox name edge-rtr" in x and "placed by NetBox's cable" in x
+               for x in AT.hosts_text(snap).splitlines())
+
+
+def test_a_name_netbox_gives_no_mac_for_is_refused_naming_each_host_on_its_port(tw, monkeypatch):
+    """NetBox cables edge-rtr to ovs1 eno4 and records no MAC: three hosts are listed on that
+    port, so the name is refused naming each, never one guessed."""
+    snap = _with_netbox(monkeypatch, lab9_netbox(**_router(mac="", addresses=())))
+    got = AT.trace_answer(snap, "edge-rtr", "198.51.100.20")
+    assert got["refused"].startswith(
+        f"NetBox (the NSOT export {snap['netbox']['sha']}) records no MAC for edge-rtr, and 3 "
+        "hosts are listed where its cable ends: ")
+    for mac in ("0a:00:00:00:00:10", "0a:00:00:00:00:20", "0a:00:00:00:00:fa"):
+        assert mac in got["refused"]
+    assert got["refused"].endswith(": give the one to trace")

@@ -543,6 +543,12 @@ vendor's name. The loop reads it when it starts, and **Read again** reads it now
 answers three reads: its description, its meter features and its table features. **Not read**
 and **none** are different: a switch that did not answer is never shown as lacking a feature.
 
+Each row, and each switch on **Flows**, is named as NetBox names the switch: the device whose
+`openflow_datapath_id` is the switch's DPID, in the network's committed NSOT export. A switch
+NetBox does not name is drawn by the description it gives of itself where it gives one (never
+the placeholder `None`), else by its DPID. Flows' search still finds a switch by what it calls
+itself.
+
 - **OpenFlow**: 1.3 or later where it answers table features; 1.0 where the controller says its
   version does not support the request.
 - **Tables**: how many tables its table features list.
