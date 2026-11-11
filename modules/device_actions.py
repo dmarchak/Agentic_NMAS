@@ -344,6 +344,9 @@ JOB_STEPPERS = {
     "reload": ("modules.nsot.reload_op", "STEPS", None),
     # Adopt (board G): each step noted once it ends.
     "adopt": ("modules.nsot.adopt", "STEPPER", None),
+    "heal_run": ("a self-healing run: its own recorded steps, the act's, drawn on the one "
+                 "stepper from the run's record once it ends (`run_stepper.from_record`, "
+                 "`heal.run_card`); while it applies, the deploy's stages are its hold's"),
     "diagnose": ("one job: the runbook's reads, each device held for the diagnosis only while "
                  "its reads run (DiagnosisLock), noting no step to the device hold; its card "
                  "waits on nmas:diagnosis and draws every step, read and hypothesis once the "
@@ -1082,7 +1085,7 @@ def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict
 
 #: The cards a device's page reopens for its job (C537 (3)): each built as its own job route
 #: builds it, so the reopened card is the card.
-REOPENS = ("rotate", "deploy", "restore", "reload", "diagnose")
+REOPENS = ("rotate", "deploy", "restore", "reload", "diagnose", "heal_run", "resubscribe")
 
 
 def job_card(ref, host: str, card: str, job_id: str) -> dict:
@@ -1102,6 +1105,12 @@ def job_card(ref, host: str, card: str, job_id: str) -> dict:
     if card == "diagnose":
         from modules.heal import diagnose_page
         return diagnose_page.job_card(ref.name, host, job_id)
+    if card == "heal_run":
+        from modules.heal import run_card
+        return run_card.heal_card(ref.name, host, job_id)
+    if card == "resubscribe":
+        from modules.heal import run_card
+        return run_card.resubscribe_job_card(ref.name, host, job_id)
     raise ValueError(f"no card reopens a {card!r} job (REOPENS: {', '.join(REOPENS)})")
 
 

@@ -35,7 +35,20 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `99803edad84391646e26be2eb567997783534c563c3cf45f7b3503205507599b`
+Templates sha256: `aeefc80da2b2d0f7510c64fa2a85b40d35ea660f048dad0ba98077bb638b1345`
+
+**Hashed again 2026-11-11 for the operator's request of that day** ("Every operation and heal
+ends with a visible outcome on its card and under 'Finished' (success / partial / failed, with
+the steps taken)"; Lab 10's item (b), "when it can't, notify an engineer with the steps
+taken"). `_attention.html` gains one line, in an opened row's **Why this happened**, after the
+cause: a self-healing can't-fix row (`attention._heal_cant_fix_rows`, `steps_taken`) draws
+**The steps taken** on the one stepper (`_run_stepper.html`): the decision's steps, the one it
+stopped at first, each with its state in words. No other row carries `steps_taken`, so no
+other row moves; the steps stay under Details for the record as well. Board NA-R keeps a
+record's steps under Details only: **deviation**, logged in STANDING_APPROVAL_LOG ("Landing: a
+self-healing can't-fix row, opened, draws The steps taken"). Compared by the template diff and
+the row tests/test_run_outcomes.py reads, not a new shot. Templates sha256 before:
+`99803edad84391646e26be2eb567997783534c563c3cf45f7b3503205507599b`.
 
 **Hashed again 2026-11-11 for the fix-it path** (board recurring-fixes, text only, self-signed
 under the Phase 7 mode 2026-11-10: its step 1, the notification, and step 2's fallback, built

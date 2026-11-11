@@ -88,11 +88,11 @@ def merge(holds: list, ops: list, jobs: list) -> list:
         if key in held:
             out[index[key]].update(job=job["job"], card=job["card"])
         elif job:
+            said = CARD_WORDS.get(job["card"]) or OPERATION_WORDS.get(job["card"], job["card"])
             rest.append(dict(op, device=job["device"], list=job["list"], operation=job["card"],
-                             words=OPERATION_WORDS.get(job["card"], job["card"]),
+                             words=said,
                              job=job["job"], card=job["card"], stalled=False,
-                             text=f"{job['device']} is being "
-                                  f"{OPERATION_WORDS.get(job['card'], job['card'])} by "
+                             text=f"{job['device']} is being {said} by "
                                   f"{op.get('actor') or 'unknown'}: {op.get('step_words', '')}"))
         else:
             rest.append(op)
@@ -142,7 +142,16 @@ OPERATION_NAMES = {
     "console onboard": "Out-of-band onboarding",
     # P6: the controller app deploy's one hold (`management.HOST_DEPLOY`), on its host.
     "controller app deploy": "Controller app deploy",
+    # A run named by its CARD (`RUN_CARDS`): a heal's hold is a deploy's, and a re-subscribe's
+    # its own operation, but the run a person looks for is the heal or the re-subscribe.
+    "heal_run": "Self-healing", "resubscribe": "Re-subscribe telemetry",
 }
+#: The cards whose row is named by the card, never by the hold's operation (`heal.run_card`).
+RUN_CARDS = ("heal_run", "resubscribe")
+#: Such a card's run, in the words of "is being …" (`merge`'s row for a job with no hold).
+CARD_WORDS = {"heal_run": "healed by self-healing",
+              "resubscribe": "re-subscribed (its telemetry receivers removed and added "
+                                 "back)"}
 
 #: A console run's hold -> its run's declared stepper steps (each run's own table). A console
 #: run's device may have no page yet (it is being onboarded), so its row opens the run's own
@@ -199,9 +208,9 @@ def running_row(row: dict, viewer: str) -> dict:
     about), the operation's name, the step, who, since when, its network, and whether the
     device's page reopens its card. An operation holding no device has no page to open."""
     if row.get("list"):                               # a device's row (`merge` names its list)
+        named = row.get("card") if row.get("card") in RUN_CARDS else row.get("operation", "")
         return {"device": row.get("device", ""), "list": row.get("list", ""),
-                "name": OPERATION_NAMES.get(row.get("operation", ""),
-                                            row.get("operation") or "An operation"),
+                "name": OPERATION_NAMES.get(named, row.get("operation") or "An operation"),
                 "step": _step(row), "who": _who(row.get("actor", ""), viewer),
                 "since": _clock(row.get("started", "")), "card": bool(row.get("job")),
                 "page": True, "stalled": bool(row.get("stalled")),
@@ -291,7 +300,10 @@ def finished_row(job: dict, viewer: str) -> dict:
     return {"device": job["device"], "list": job["list"], "card": job["card"],
             "name": OPERATION_NAMES.get(job["card"], job["card"]), "level": level,
             "outcome": OUTCOMES[level], "words": words, "at": _clock(at),
-            "who": _who(job.get("actor", ""), viewer)}
+            "who": _who(job.get("actor", ""), viewer),
+            # A run that keeps a record (`heal.run_card`): its id, and how many steps it took.
+            "run": c["run"] if isinstance(c.get("run"), str) else "",
+            "steps": len((c.get("steps") or {}).get("trail") or [])}
 
 
 def chip(networks, viewer: str, now: float = None) -> dict:
@@ -319,6 +331,17 @@ def chip(networks, viewer: str, now: float = None) -> dict:
     unread += unread_pending
     finished = [f for f in (finished_row(j, viewer) for j in jobs
                             if j["state"] != "running" and viewer not in j["opened"]) if f]
+    # A run whose job this server no longer holds, from its RECORD (the operator, 2026-11-11:
+    # a run that ended "disappeared from 'running' with NO outcome shown ... and nothing under
+    # 'Finished, not opened yet'"): for the person who started it, until they open it.
+    from modules.heal import run_card
+    finished = [f for f in finished if not (f.get("run") and run_card.opened(f["run"], viewer))]
+    have = {f["run"] for f in finished if f.get("run")}
+    for name in networks:
+        try:
+            finished += run_card.finished_records(name, viewer, now, have)
+        except Exception as exc:                      # noqa: BLE001
+            unread.append((name, f"its finished runs: {type(exc).__name__}: {exc}"))
     counts = {k: sum(1 for f in finished if f["outcome"] == k) for k in OUTCOMES.values()}
     # Red wins; then a partial; then anything running; green only when all is done and clean.
     level = ("danger" if counts["failed"] or unread else "warn" if counts["partial"]

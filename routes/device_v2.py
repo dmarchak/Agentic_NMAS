@@ -446,12 +446,16 @@ def _reopened(ref, dev, back, card: str = "", after: float = None):
     host = dev.get("hostname", "")
     job = capture_job.for_device(ref.name, host, card)
     if job is None:
-        return None
+        # No job kept here (it ended long ago, or Mercury restarted): a run whose RECORD says
+        # it ended, that the person looking started and has not opened (`heal.run_card`).
+        return _reopened_record(ref, dev, back) if not card and after is None else None
     viewer = viewer_key()
     done = job["state"] != "running"
     if done and ((job["finished_at"] or 0) < after if after is not None
                  else viewer in job["opened"]):
-        return None
+        # The device's newest job is one this person has opened: an older run they started
+        # and have not opened may still be known by its record.
+        return _reopened_record(ref, dev, back) if not card and after is None else None
     c = device_actions.job_card(ref, host, job["card"], job["job"])
     if c.get("state") == "unknown":
         return None
@@ -459,6 +463,42 @@ def _reopened(ref, dev, back, card: str = "", after: float = None):
              reopened=device_actions.reopened_words(job, viewer))
     if done:
         capture_job.mark_opened(job["job"], viewer)
+        _run_opened(c, viewer)
+    return c
+
+
+def _run_opened(c: dict, viewer: str) -> None:
+    """A card drawn for a run that keeps a record (a re-subscribe's ``run``): the person
+    looking has opened that record's outcome too, so Finished does not list it again from
+    the record once its job is forgotten."""
+    from modules.heal import run_card
+
+    if isinstance(c.get("run"), str) and c["run"] and c.get("state") == "result":
+        run_card.mark_opened(c["run"], viewer)
+
+
+def _reopened_record(ref, dev, back):
+    """The card of a run known only by its record (`run_card.unopened_record`): one the
+    person looking started, that ended inside the day, and that they have not opened; drawn
+    as its job's card would be, saying it was reopened, and marked opened. None otherwise."""
+    from modules import device_actions
+    from modules.heal import run_card
+    from routes.operations import viewer_key
+
+    host, viewer = dev.get("hostname", ""), viewer_key()
+    if not viewer:
+        return None
+    try:
+        found = run_card.reopened_record(ref.name, host, viewer)
+    except Exception as exc:                          # noqa: BLE001 (the tab is drawn as usual)
+        log.warning("device_v2: %s's finished runs could not be read: %s", host, exc)
+        return None
+    if found is None:
+        return None
+    c, as_job = found
+    c.update(back=back, ip=dev.get("ip", ""),
+             reopened=device_actions.reopened_words(as_job, viewer))
+    run_card.mark_opened(c["run"], viewer)
     return c
 
 
@@ -471,7 +511,24 @@ def _opened(c: dict) -> dict:
     if c.get("job") and c.get("state") not in ("unknown", "rotating", "deploying",
                                                 "restoring", "reloading", "reading"):
         capture_job.mark_opened(c["job"], viewer_key())
+        _run_opened(c, viewer_key())
     return c
+
+
+@bp.route("/device/<name>/heal/job/<job>", methods=["GET"])
+def heal_run_job_card(name, job):
+    """A self-healing run's card for its job (`heal.run_card.heal_card`): running, its outcome
+    with the steps taken, or why there is none. Re-read when the job ends (`in_progress`) and
+    on each step (`device_progress`). A READ."""
+    from modules.heal import run_card
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = run_card.heal_card(ref.name, dev.get("hostname", ""), job)
+    c.update(back=_back(request.args))
+    return _strict(render_template("v2/_heal_run.html", c=_opened(c)))
 
 
 @bp.route("/device/<name>/actions", methods=["GET"])

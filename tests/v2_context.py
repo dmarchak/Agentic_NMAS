@@ -3509,6 +3509,7 @@ def _resubscribe(client, _lab, _mp):
     # a host.
     mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
     had = set(_os.listdir(folder)) if _os.path.isdir(folder) else set()
+    jobs_before = set(capture_job._jobs)
 
     def lab_src(**kw):
         src = T.Src(**kw)
@@ -3575,6 +3576,62 @@ def _resubscribe(client, _lab, _mp):
         if _os.path.isdir(folder):
             for name in set(_os.listdir(folder)) - had:
                 _os.remove(_os.path.join(folder, name))
+        # Its jobs are forgotten with its records: a kept one would reopen its card on r3's
+        # page, and list it in the In progress chip, for every provider after this one.
+        for kept in set(capture_job._jobs) - jobs_before:
+            capture_job._jobs.pop(kept, None)
+
+
+def _heal_run(client, _lab, _mp):
+    """A self-healing run's card on r3's page (`heal.run_card`, the operator, 2026-11-11), in
+    each state its own route draws (the page's reopening of it is tests/test_run_outcomes.py's):
+    running (its job held by this provider), its outcome with the steps taken (a real act's
+    recorded result,
+    tests/fixtures/heal_run/rolled_back.json: edge-b's heal of an added route, rolled back,
+    captured from tests/test_heal_act.py's act), a job that raised, and one this server does
+    not hold. Its jobs are forgotten after."""
+    import json as _json
+    import os as _os
+    import threading
+
+    from modules.nsot import capture_job
+
+    with open(_os.path.join(_os.path.dirname(__file__), "fixtures", "heal_run",
+                            "rolled_back.json"), encoding="utf-8") as fh:
+        result = _json.load(fh)
+    gate = threading.Event()
+    before = set(capture_job._jobs)
+
+    def start(work):
+        return capture_job.start("Lab", "healing r3", "admin@example.com", work, kind="heal",
+                                 device="r3", card="heal_run")
+
+    def waits(_job):
+        gate.wait(10)
+        return {"ok": True, "result": result}
+
+    def raises(_job):
+        raise RuntimeError("the session closed")
+
+    try:
+        job = start(waits)
+        url = f"/v2/device/r3/heal/job/{job}?back=overview&list=Lab"
+        going = client.get(url).get_data(as_text=True)
+        assert "Self-healing is running on r3" in going, going[:300]
+        gate.set()
+        assert capture_job.wait(job, 10)
+        done = client.get(url).get_data(as_text=True)
+        assert "The steps taken" in done and 'data-lead="apply"' in done, done[:300]
+        bad = start(raises)
+        assert capture_job.wait(bad, 10)
+        raised = client.get(f"/v2/device/r3/heal/job/{bad}?back=overview&list=Lab")
+        assert "Its job raised" in raised.get_data(as_text=True), raised.status_code
+        gone = client.get(f"/v2/device/r3/heal/job/{'0' * 32}?back=overview&list=Lab")
+        assert "Not known here" in gone.get_data(as_text=True), gone.status_code
+    finally:
+        gate.set()
+        for kept in set(capture_job._jobs) - before:
+            capture_job._jobs.pop(kept, None)
 
 
 def _heal_proposal(client, _lab, _mp):
@@ -4116,7 +4173,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal, _resubscribe,
+                   _heal_proposal, _resubscribe, _heal_run,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,

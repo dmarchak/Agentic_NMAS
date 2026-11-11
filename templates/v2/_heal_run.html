@@ -1,0 +1,44 @@
+{%- from "v2/_macros.html" import badge, clock, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- A self-healing run's card on its device's page (modules/heal/run_card.heal_card; the
+    operator, 2026-11-11: "every operation and heal ends with a visible outcome on its card
+    and under 'Finished' (success / partial / failed, with the steps taken)"). The page
+    reopens it while the heal's job runs and, once it ended, until each person has opened it
+    (C537); the In progress list's row opens it. Running, it waits for the job's end
+    (`in_progress`) and each step (`device_progress`). Ended, the outcome leads, its level
+    never green over a partial or a failure, with the steps the run recorded drawn by THE
+    stepper (the failed step first), and where the whole record is kept. Close puts back the
+    tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button() -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">Close</button>
+{%- endmacro -%}
+{%- if c.state == 'running' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.heal_run_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:in_progress from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Self-healing is running on {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('heal', 'act') }}</div></div>
+  <div class="op-part"><h3>Where it is</h3><div>
+    {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+    <p class="op-wait">Started {{ clock(c.started) }}, as {{ c.actor }}. It holds {{ c.host }} while it applies and verifies. Its outcome and the steps it took are drawn here when it ends; this page can close: the In progress chip in the top bar keeps the run in front of you, and its outcome until you open it.</p></div></div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Self-healing on {{ c.host }} {{ badge(c.words, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('heal', 'act') }}{{ close_button() }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p data-outcome="{{ c.outcome }}">{{ c.summary }}</p>
+    <p class="small muted">Started {{ clock(c.started) }}, as {{ c.actor }}; ended {{ clock(c.finished) }}. Written by Mercury from its own record: no AI.</p></div></div>
+  <div class="op-part"><h3>The steps taken</h3><div>{{ run_stepper(c.steps) }}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>The decision, the program it sent and every step are kept on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Self-healing on {{ c.host }} {{ badge('Its job raised' if c.state == 'failed' else 'Not known here', 'danger' if c.state == 'failed' else 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('heal', 'act') }}{{ close_button() }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'failed' %}The heal's job raised before it recorded an outcome: {{ c.error }}. What it reached is on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>, and Needs attention raises it as an interrupted heal.
+  {%- else %}This server has no record of that run's job: it ended more than 30 minutes ago, or Mercury restarted. Its outcome and every step are on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>.{% endif %}</p></div></div>
+</section>
+{%- endif %}

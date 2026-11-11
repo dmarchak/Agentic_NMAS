@@ -230,6 +230,7 @@
             hypothesis labelled as one; then what Mercury did or would do. -#}
         {%- if r.heal_cause %}{{ heal_cause(r.heal_cause) }}{% endif %}
         <p class="att-cause">{{ r.cause }}</p>
+        {%- if r.steps_taken %}{% from "v2/_run_stepper.html" import run_stepper %}{{ run_stepper(r.steps_taken) }}{% endif %}
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
       </div>
       {#- Board H's amendment, H17 (19.3, artboards J and L): Mercury's diagnosis attached to

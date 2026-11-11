@@ -1158,5 +1158,9 @@ def start(network: str, device: str, subs, *, actor: str, actor_verified: str, p
                                                          reason=reason, readd=readd,
                                                          run_id=run_id)["id"]},
                             kind="telemetry re-subscribe", announce_keys=ANNOUNCE_KEYS,
-                            announcer=ANNOUNCER)
+                            announcer=ANNOUNCER,
+                            # Its device and its card (the operator, 2026-11-11): the run is
+                            # listed under Finished with its outcome until each person opens
+                            # it, and the device's page reopens its card (`run_card`).
+                            device=device, card="resubscribe")
     return {"job": job, "run": run_id}

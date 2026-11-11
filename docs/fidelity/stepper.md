@@ -48,7 +48,24 @@ template only what it draws). The row's name is drawn unlinked, as a non-device 
 is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
 new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `8b51e27c3aaee9e3d0ac8931411e3d0d3fd42364e585fa3944ebd28bf85fa5e9`
+Templates sha256: `a27b07c753dc627a9888e391591c24b779dd0f6c4012f169e25fb9cad993778f`
+
+**Hashed again 2026-11-11 for the operator's request of that day** ("a long operation shows a
+stepper, with the current step, each step done, failed or pending, live waits with a countdown,
+and each verify read as it happens, like sending configs"; "Every operation and heal ends with
+a visible outcome on its card and under 'Finished' (success / partial / failed, with the steps
+taken)"). The model gains a run drawn from its own recorded steps (`from_record`,
+`record_card`, `current_words`) and the macro two regions UNDER the rows, drawn only for such
+a card: the step to read first (a failed step in red, else the running one with what is left
+of its declared wait, with its own words and each read it made) and **The steps taken**
+(every step as recorded, its state in words, its time; open once the run ended). A step also
+says its state in words to a screen reader, and a step the run passed without needing is drawn
+muted ("not needed in this run"). Nothing the boards draw moved: the bar, the counts, a row,
+its marks and its steps are laid out as before, so every verdict below stands. Neither new
+region is on SaveProgress or StepperPhone: **deviation**, logged in STANDING_APPROVAL_LOG ("The
+one stepper draws a run from its own recorded steps"). Compared by the template diff and the
+pages tests/test_run_outcomes.py draws, not a new shot. Templates sha256 before:
+`8b51e27c3aaee9e3d0ac8931411e3d0d3fd42364e585fa3944ebd28bf85fa5e9`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

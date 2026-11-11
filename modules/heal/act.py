@@ -850,9 +850,12 @@ def start(network: str, decision: dict, sources=None) -> str:
         finally:
             interrupted.release(network, decision["id"])
 
+    # Its card (the operator, 2026-11-11: "every operation and heal ends with a visible
+    # outcome on its card and under 'Finished'"): the device's page reopens it, and the In
+    # progress list keeps its outcome until each person opens it (`heal.run_card`).
     return capture_job.start(network, f"healing {decision['device']}", setter, work, kind=KIND,
                              announce_keys=DONE_KEYS, announcer=ANNOUNCER,
-                             device=decision["device"])
+                             device=decision["device"], card="heal_run")
 
 
 def run(network: str, *, now: float = None, starter=None, by: str = "heal to intent") -> dict:

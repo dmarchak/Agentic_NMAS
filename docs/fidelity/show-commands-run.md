@@ -31,7 +31,15 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `82918556235cb9624d35f4bcf872dc189b1829127b7710cb95046da9571077db`
+Templates sha256: `04b001ddeb8a8a59e7900aaeca459c89380f5cd353dc294f9a192fccb1cfad95`
+
+**Hashed again 2026-11-11 for the operator's request of that day**, for `_run_stepper.html`
+alone ("a long operation shows a stepper, with the current step, each step done, failed or
+pending, live waits with a countdown, and each verify read as it happens"): the macro gains two
+regions drawn only for a run that hands it its own recorded steps (the step to read first, and
+The steps taken; docs/fidelity/stepper.md). This page draws the stepper's bar and counts
+(`run_summary`), which did not change, so no region here moved and every verdict stands.
+Templates sha256 before: `82918556235cb9624d35f4bcf872dc189b1829127b7710cb95046da9571077db`.
 
 Compared again 2026-10-17 (C1023) after Group again (`_sc_result.html`) and Test again and "Test (device)
 again" (`_lp_result.html`) became busy on themselves while their request is out

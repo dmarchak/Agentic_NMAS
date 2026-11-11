@@ -47,7 +47,21 @@ after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In p
 compared by reading the diff, with no new shot (the templates then hashed
 `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `91825ece62deac298aab68538f922efbd1804a937f050db1604671b3cbf75cef`
+Templates sha256: `49241666d3bfd9117c63bad30b7aa46eda4d5acc0c3d2b69f7ec8f233c7189a0`
+
+**Hashed again 2026-11-11 for the operator's request of that day**, after a re-subscribe of r7
+that "disappeared from 'running' with NO outcome shown, the row unchanged, and nothing under
+'Finished, not opened yet'" ("Every operation and heal ends with a visible outcome on its card
+and under 'Finished' (success / partial / failed, with the steps taken)"). `_in_progress.html`
+gains one phrase on a finished row's small line, "· N steps recorded", drawn only for a run
+that keeps its steps (a self-healing run, a telemetry re-subscribe); the rows themselves, the
+chip and its counts are laid out as before. What the list holds changed in the model, not the
+template: such a run is one running row named for the run, and is listed under Finished (a
+re-subscribe also from its record, after a restart). The step count is not on boards A and B:
+**deviation**, logged in STANDING_APPROVAL_LOG ("In progress chip: a self-healing run and a
+telemetry re-subscribe are listed"). Compared by the template diff and the list
+tests/test_run_outcomes.py draws, not a new shot. Templates sha256 before:
+`91825ece62deac298aab68538f922efbd1804a937f050db1604671b3cbf75cef`.
 
 **Compared again 2026-11-03 ~01:3x UTC, P7's top bar measured** (test_v2_layout_in_a_browser's
 top bar at 320 to 1280 px, every item at its widest): with the word, Assistant ran the bar 64 px

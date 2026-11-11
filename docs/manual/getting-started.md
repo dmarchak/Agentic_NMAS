@@ -77,7 +77,11 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   one failed operation makes the chip red, a partial one amber, and it is green only when every
   finished one is clean. **Open the result** opens the device's page on that result. Once you
   have seen a result (on its card, or on the device's page), the chip stops listing it for you,
-  and only for you: someone else who has not seen it still has it on their chip.
+  and only for you: someone else who has not seen it still has it on their chip. A
+  **self-healing run** is listed the same way, as **Self-healing**, for every person until each
+  has opened it, since no person started it; a **telemetry re-subscribe** as **Re-subscribe
+  telemetry**. Each says how many steps the run recorded, and its result opens with the outcome
+  first and **The steps taken** under it.
 - **Unread**: the tool could not read what runs in a network. That is not the same as nothing
   running there, and the chip says which network and why.
 
@@ -85,7 +89,10 @@ The chip reads again the moment an operation starts or finishes, at each step, a
 device is released, over the live connection; it never asks on a timer. A finished result is
 kept for 30 minutes, in the running app's memory: after that, or after the app restarts, it is
 in History (All recent operations), and a state an operation left behind (a rotation not yet
-persisted) is a Needs attention row.
+persisted) is a Needs attention row. A **re-subscribe** is also listed from its record: the
+person who started it has it under **Finished, not opened yet** for a day after it started,
+until they open it, whether or not Mercury restarted in between. What was opened is remembered
+in the running app's memory, so after a restart a run of the last day is listed once more.
 
 A device's page opened while that device has an operation running, or one finished you have
 not seen, opens THAT card in place of its tab, wherever you came from: the chip, a bookmark or

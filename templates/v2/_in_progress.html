@@ -49,7 +49,7 @@
     {%- for f in ip.finished %}
     <div class="ip-row">
       <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
-        <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}</small></span>
+        <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
       <a class="btn btn-small" href="{{ url_for('device_v2.device', name=f.device, list=f.list) }}">Open the result</a>
     </div>
     {%- else %}

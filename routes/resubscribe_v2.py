@@ -120,7 +120,7 @@ def card(ref, dev, args, **answer) -> dict:
     ticks a redraw carries: the program, its hash and the button are drawn for exactly the
     ticked subscriptions, in the card's order, so the confirm sends what was drawn."""
     from modules.heal import resubscribe as R
-    from modules.nsot import capture_job, privileged
+    from modules.heal import run_card
 
     host = dev["hostname"]
     subs = _subs(args.get("subs", ""))
@@ -130,20 +130,16 @@ def card(ref, dev, args, **answer) -> dict:
          "wait_s": R.WAIT_S, "outcome_words": dict(R.OUTCOME_WORDS)}
     c.update(answer)
     if c["run"]:
-        j = capture_job.get(c["job"]) if c["job"] else None
-        rec = privileged.get(ref.name, c["run"])
-        if rec is None or (rec.get("state") == "running" and (j is None or
-                                                             j["state"] == "running")):
-            c["state"] = "running"
-        else:
-            # What the result draws, of the record History keeps whole (its steps, sessions
-            # and program are read there).
-            c.update(state="result", record=dict(
-                {k: rec.get(k) for k in ("state", "outcome", "why", "actor", "at", "reason",
-                                         "hash")},
-                subscriptions=[{k: s.get(k) for k in ("sub", "outcome", "verify", "stale")}
-                               for s in rec.get("subscriptions") or []]))
+        # Running, or its result: the outcome first, each subscription's checks, and the
+        # steps taken on THE stepper, from the record History keeps whole (`run_card`).
+        c.update(run_card.resubscribe_view(ref.name, host, c["run"], c["job"]))
         return c
+    # The device's last run, when it ended inside the day (`run_card.FINISHED_KEEP_S`): its
+    # outcome and the steps it took lead the card, so a run that ended while nobody watched
+    # (or before Mercury restarted) is read where it was started (the operator, 2026-11-11).
+    last = run_card.last_view(ref.name, host)
+    if last is not None:
+        c["last"] = last
     src = R.Sources(ref.name)                         # committed intent read once
     whole = R.plan(ref.name, host, subs, sources=src)
     c["choices"], refused = (_choices(R, ref.name, host, whole, src) if whole["ok"]
@@ -176,8 +172,26 @@ def card(ref, dev, args, **answer) -> dict:
 
 
 def _draw(ref, dev, args, code=200, **answer):
-    return _strict(render_template("v2/_resubscribe.html", c=card(ref, dev, args, **answer)),
-                   code)
+    c = card(ref, dev, args, **answer)
+    _seen(c)
+    return _strict(render_template("v2/_resubscribe.html", c=c), code)
+
+
+def _seen(c: dict) -> None:
+    """The person looking has read a run's outcome on this card (its result, or the last run
+    the card leads with), so the In progress list's Finished stops listing that run for them:
+    kept in memory beside the job's own mark (`capture_job.mark_opened`, `run_card`)."""
+    from modules.heal import run_card
+    from modules.nsot import capture_job
+    from routes.operations import viewer_key
+
+    viewer = viewer_key()
+    if c.get("state") == "result" and c.get("run"):
+        run_card.mark_opened(c["run"], viewer)
+        if c.get("job"):
+            capture_job.mark_opened(c["job"], viewer)
+    elif c.get("last"):
+        run_card.mark_opened(c["last"]["run"], viewer)
 
 
 @bp.route("/device/<name>/resubscribe", methods=["GET"])

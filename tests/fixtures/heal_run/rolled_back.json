@@ -1,0 +1,62 @@
+{
+ "decision": "hd-39c86f9f5d9c",
+ "device": "edge-b",
+ "outcome": "rolled_back",
+ "sent": true,
+ "steps": [
+  {
+   "result": "ok",
+   "step": "take",
+   "words": "taken by heal to intent (policy set by admin@example.com)"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "ok",
+   "step": "stops",
+   "words": "AUTO on a network marked lab, the policy decided under, nothing held"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "ok",
+   "step": "read",
+   "words": "edge-b read again"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "ok",
+   "step": "plan",
+   "words": "the program recomputed from the read: 1 line(s), hash 28fbf29a4f2f8f3b, the decision's"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "ok",
+   "step": "authorise",
+   "words": "1 removal(s), each with the policy's words as its stated reason"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "running",
+   "step": "apply",
+   "words": "as the policy set by admin@example.com, holding edge-b"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "failed",
+   "step": "intent",
+   "words": "1 unit(s) not at intent: an added line (Tier 1): remove 1 line(s) in the global configuration"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "failed",
+   "step": "apply",
+   "words": "1 healed unit(s) not at intent after the change (an added line (Tier 1): remove 1 line(s) in the global configuration), so what landed was undone"
+  },
+  {
+   "at": "2026-11-11T17:22:47Z",
+   "result": "rolled_back",
+   "step": "record",
+   "words": "rolled back: 1 healed unit(s) not at intent after the change (an added line (Tier 1): remove 1 line(s) in the global configuration), so what landed was undone; the rollback: restored"
+  }
+ ],
+ "words": "1 healed unit(s) not at intent after the change (an added line (Tier 1): remove 1 line(s) in the global configuration), so what landed was undone; the rollback: restored"
+}

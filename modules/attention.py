@@ -6293,6 +6293,11 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
                           "steps": [f"{s.get('step')}: {s.get('result')}: {s.get('words')}"
                                     for s in steps]})
         r["heal_cause"] = SAID.drawn(e.get("cause"))
+        # The steps taken, on THE stepper, the step it stopped at leading (the operator,
+        # 2026-11-11: an outcome "with the steps taken"; Lab 10's "notify an engineer with the
+        # steps taken": the notice carries the same steps, `heal_notice.facts`).
+        from modules.heal import run_card
+        r["steps_taken"] = run_card.steps_card(host, e)
         r["likely"] = likely
         r["ack_placeholder"] = "The cause, if you know it (recorded with your name)"
         r["heal_analysis"] = {"network": lst, "incident": e["incident"]}

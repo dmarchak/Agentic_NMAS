@@ -18,7 +18,9 @@ The landing page answers one question: does anything need you?
   **Explain**, the same answer Monitoring › Alerts keeps for that alert's evidence (opening the
   item asks the model nothing; with no answer kept, Explain is offered behind its cost); for
   anything Mercury found itself, **Why this happened**, written by Mercury from its own record
-  with no AI. Then the **Details**: the alerts, the devices with their networks, since when and
+  with no AI. A self-healing can't-fix draws **The steps taken** there too, on the one stepper:
+  each step Mercury took, done, failed or not reached, the step it stopped at first with its
+  own words ([Self-healing](heal#act)). Then the **Details**: the alerts, the devices with their networks, since when and
   which source, and last **Details for the record**, closed until you open it: the record's
   ids, hashes and steps, its times in UTC. A time a self-healing item names (when a change was
   made, when a symptom began) is drawn in your browser's time zone, with UTC on hover.

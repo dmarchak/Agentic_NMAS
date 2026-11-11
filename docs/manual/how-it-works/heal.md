@@ -166,6 +166,23 @@ A failed verify rolls back what landed, and **halts** the network's healing unti
 lifts it ([Lift the halt](heal-proposal#halt)). A configuration healed whose symptom remains is
 amber, "symptom remains", never green.
 
+**Where a run's outcome is read.** While a heal runs, the top bar's **In progress** chip lists
+it as one row, **Self-healing**, on its device, and the device's page opens the run's card in
+place of its tab. When it ends, the chip keeps it under **Finished, not opened yet** for every
+person until each has opened it (nobody started it, so it is everybody's to read), and the
+device's page opens its card: the outcome first (green only for healed; amber for a heal partly
+shown or whose symptom remains; red for nothing sent, a rollback or a failure), then **The
+steps taken**: the eleven steps above on one stepper, each done, failed, not reached or not
+needed, the failed step first with its own words, and every step as it was recorded with its
+time. The card is kept for 30 minutes in the running app's memory; after that the same steps
+are on the device's History.
+
+A **can't-fix** is a decision, not a run: nothing ran, so nothing is listed as finished. Its
+outcome is its Needs attention row, which stays until a person acknowledges it or a later heal
+ends healed; opened, the row draws **The steps taken** on the same stepper (the decision's
+steps, the one it stopped at first), and the team's notice carries each step and its result
+([Notifications](notifications)).
+
 ## The records {#records}
 
 Every incident is one row on **History**, kind Self-healing, its line the newest outcome with

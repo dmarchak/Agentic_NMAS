@@ -166,6 +166,23 @@ partial:
 - **The receiver was not removed; nothing changed**, or **the configuration is not as before**:
   each says what the read-back showed.
 
+**Where the outcome is read.** A run that ended always leaves its outcome in three places, so
+it is never lost by leaving the page, refreshing it, or Mercury restarting:
+
+- **On the card**, in place: the outcome first, each subscription's three checks, then **The
+  steps taken**: the steps above on one stepper, each done, failed, not reached or not needed,
+  the failed step first with what it read (each verify with its own device, stream and collector
+  checks), and every step as it was recorded with its time. A run that did not end clean offers
+  the next action under it: **Re-add the receiver for <id>…** when it left one removed, else
+  **Preview a re-subscribe again…**; both draw the card again and send nothing.
+- **On the lost stream's row**: the card opened again within a day leads with **The last
+  run**, who ran it, how it ended and the steps it took, above the offer to run it again.
+- **In the top bar's In progress chip**: one row while it runs, **Re-subscribe telemetry** on
+  its device, and when it ends an entry under **Finished, not opened yet** for the person who
+  started it, with its outcome and how many steps it recorded, until they open it. **Open the
+  result** opens the device's page on the run's card. The entry is read from the run's record,
+  so it is still there after Mercury restarts, for a day after the run started.
+
 ## Re-add the receiver {#re-add-the-receiver}
 
 When a run left a receiver removed, the card leads with it, in danger, and offers **Re-add the

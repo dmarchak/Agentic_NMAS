@@ -1,4 +1,5 @@
-{%- from "v2/_macros.html" import icon, stamp, how -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Re-subscribe a lost telemetry stream (C2838; routes/resubscribe_v2.card,
     modules/heal/resubscribe.py), drawn in the lost stream's Needs attention row by
     templates/v2/_attention.html when the row is opened, and again by each post with its answer
@@ -11,16 +12,32 @@
     receiver a run left removed leads, in danger, with Re-add the receiver, one for each. The
     reason and the ticks sit outside any form, so Enter submits nothing; each button sends them
     by hx-include. Started, running or answered, the card holds a live redraw of the list
-    (`data-holds-live`) until Show it now. -#}
+    (`data-holds-live`) until Show it now. A run that ended always leaves its outcome here (the
+    operator, 2026-11-11): the result leads with it, never green over a partial, then the
+    steps the run recorded on THE stepper (the failed step first) and the next action; and the
+    card opened again within the day leads with the device's last run the same way (`c.last`),
+    so the outcome is read on the row whoever looks, a restart or a refresh between. A
+    device's page reopens the card for a run still going, or ended and not yet opened
+    (`heal.run_card`, C537): there it is `framed` as the page's cards are, a heading with the
+    outcome and Close, which puts back the tab it replaced. -#}
 {%- set cid = 'resub-' ~ (c.host | replace('.', '-')) -%}
 {%- set p = c.plan or {} -%}
 {%- set W = c.outcome_words or {} -%}
+{%- if c.framed %}
+<section class="op-card{% if c.state == 'result' %} op-{{ c.level }}{% elif c.state == 'failed' %} op-danger{% endif %}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Re-subscribe {{ c.host }}'s telemetry{% if c.state == 'result' %} {{ badge(c.words, c.level) }}{% elif c.state == 'failed' %} {{ badge('Its job raised', 'danger') }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('telemetry-resubscribe') }}<button type="button" class="btn" hx-get="{{ url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) }}" hx-target="#tab-body" hx-swap="innerHTML">Close</button></div></div>
+  <div class="op-part"><h3>{{ 'Where it is' if c.state == 'running' else 'What happened' }}</h3><div>
+{%- endif %}
 <div class="heal-prop resub" id="{{ cid }}"{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}
   {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(','), run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
-{%- if c.error %}
+{%- if c.state == 'failed' %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>The run's job raised:</strong> {{ c.raised }}. What it sent is in its record, on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>; read {{ c.host }}'s configuration before anything else.</p></div>
+{%- elif c.error %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not sent:</strong> {{ c.error }}</p></div>
 {%- endif %}
-{%- if c.state == 'running' %}
+{%- if c.state == 'failed' %}
+{%- elif c.state == 'running' %}
   <p><strong>Re-subscribing on {{ c.host }}.</strong> {{ c.host }} is held: {% if c.subs|length > 1 %}every chosen receiver is removed, {{ c.wait_s }} s pass, each is added back, then for each one the device, the stream and the collector are read for up to {{ c.bound_s }} s{% else %}the receiver is removed, {{ c.wait_s }} s pass, it is added back, then the device, the stream and the collector are read for up to {{ c.bound_s }} s{% endif %}. This answer updates when the run ends.</p>
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
@@ -33,8 +50,19 @@
       {%- for f in s.stale or [] %}<li class="warn-text">Flagged: {{ f }}</li>{% endfor %}
     </ul></details>
   {%- endfor %}
+  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
   <p class="small">Recorded by {{ r.actor }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
+  {%- if not ok %}
+  {#- The next action: the card again, which leads with Re-add the receiver for each one a
+      run left removed, and else offers the re-subscribe once more. A read: nothing is sent. -#}
+  <div class="att-action"><span class="op-act"><button type="button" class="btn btn-small" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(',')) }}" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">{% if c.left_removed %}Re-add the receiver for {{ c.left_removed | join(', ') }}…{% else %}Preview a re-subscribe again…{% endif %}</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', 're-add-the-receiver' if c.left_removed else '', compact=True, op='Re-add the receiver' if c.left_removed else 'a re-subscribe') }}</span></div>
+  {%- endif %}
 {%- else %}
+  {%- if c.last %}
+  {%- set L = c.last %}
+  <div class="notice notice-{{ {'ok': 'muted', 'warn': 'warning'}.get(L.level, 'danger') }} set-result" role="{{ 'status' if L.level == 'ok' else 'alert' }}" data-last-run="{{ L.run }}">{{ icon('tick' if L.level == 'ok' else 'warn', 16) }}<p><strong>The last run, {{ stamp(L.at) }}, by {{ L.actor or 'nobody recorded' }}: {{ L.words }}.</strong> {{ L.why }}</p></div>
+  {{ run_stepper(L.steps) }}
+  {%- endif %}
   {%- for x in c.removed or [] %}
   {%- set rid = cid ~ '-readd-' ~ x.sub %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }}'s receiver for {{ x.sub }} is removed.</strong> A re-subscribe removed it and it has not been added back, so subscription {{ x.sub }} sends nothing until it is. Re-add the receiver adds intent's receiver line back, holding {{ c.host }}, then checks the stream as a re-subscribe does.</p></div>
@@ -96,3 +124,7 @@
   {%- endif %}
 {%- endif %}
 </div>
+{%- if c.framed %}
+  </div></div>
+</section>
+{%- endif %}
