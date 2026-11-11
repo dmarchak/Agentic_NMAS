@@ -5,7 +5,7 @@ incident's evidence. **It advises only.**
 - **Nothing in the heal loop reads it.** Detect, decide, act, verify and record never import
   this module or read an analysis (tests/test_heal_analysis_never_read.py parses
   `modules/heal/`). Only the notifier (`modules/heal_notice.py`) and the pages draw it. No fix
-  is ever chosen or run from AI text.
+  runs from AI text (section 12's rule, held by tests/test_ai_fix_rule.py).
 - **A background call under CLAUDE.md's "AI cost safety" rules** (PHASE8_PLAN 18.3): its
   trigger is named, ``triggers.background("heal_analysis", <job>, <network>, "heal_incident",
   <incident id>)``; its finding is the deterministic one, the heal loop stopped at can't fix

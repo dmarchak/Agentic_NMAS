@@ -245,16 +245,23 @@ scan of the v2 forms against the lists Mercury holds, with a backlog that only s
 
 ## The fix-it path
 
-**The target flow for every Needs attention item (the operator, 2026-11-10).** It is the
-yardstick for recurring issues and saved fixes now, and for the ease-of-use review after the labs.
+**The target flow for every Needs attention item (the operator, 2026-11-10; steps 2 to 8 as he
+amended them on 2026-11-11).** It is the yardstick for recurring issues and saved fixes now, and
+for the ease-of-use review after the labs.
+
+**The rule the steps rest on** (docs/HEAL_TO_INTENT.md, section 12): No fix runs from AI text.
+The AI may propose one operation from Mercury's catalog, with its parameters; code validates it
+against intent and the guards, and a person approves it before it runs. The AI never composes
+commands, never runs anything itself, and never retries on its own.
 1. **The notification:** the person sees it in plain words: what, where, and whether it needs
    them.
-2. **Explain:** they press Explain.
-3. **The proposal:** the AI explains, cites similar past incidents, and proposes a fix in Mercury
-   operations.
+2. **The user asks the AI to troubleshoot (Explain).**
+3. **The proposal:** the AI reads the device, its logs and its history through read-only tools,
+   says whether this has been seen before, and proposes ONE fix as a Mercury operation, shown as
+   that operation's preview with its hash.
 4. **The approval:** they approve the fix. This is approval only; there is no self-healing choice
    here.
-5. **The run:** Mercury runs the approved operations.
+5. **The run:** Mercury runs the approved operation: the device held, each step shown, a record.
 6. **The verification:** Mercury verifies, and reports back before anything is saved:
    - a. the device is in the state the fix intended;
    - b. the original symptom has cleared;
@@ -263,16 +270,29 @@ yardstick for recurring issues and saved fixes now, and for the ease-of-use revi
      the outcome checks that apply (reach, untouched, datapath) pass. Anything undecidable is
      shown as "can't tell".
 
-   Then, on the same screen, the result is in plain words with the choice: "Add this fix to
-   self-healing: apply alone next time / propose to me next time / don't save".
-   - If (a), (b) or (c) failed, no save is offered: go to step 8.
-   - If anything reads "can't tell", "apply alone" is not offered, only "propose to me" or "don't
+   - **It passed:** on the same screen, the result is in plain words with the choice: "Add this
+     fix to self-healing: apply alone next time / propose to me next time / don't save". If
+     anything reads "can't tell", "apply alone" is not offered, only "propose to me" or "don't
      save", with what couldn't be checked.
+   - **It failed** ((a), (b) or (c)): STOP. No save is offered and nothing is retried. Mercury
+     shows what it tried, what it found and the cost so far, then offers three choices and no
+     other:
+     - **Retry with more information:** the person adds their own context; the AI plans again
+       from step 3 with that and the failed attempt's evidence. The retry's estimated cost and
+       the incident's running total are shown before it is pressed; at the per-incident cap it
+       is refused, and only Cancel and Hand over remain. Every attempt's fix needs the person's
+       approval, and a proposal that already failed in this incident is flagged, never silently
+       proposed again.
+     - **Cancel:** nothing more runs; the incident stays open; the attempts stay recorded.
+     - **Hand over:** step 8.
+
+     Never an automatic retry.
 7. **The save:** a fix is saved only on the person's choice in step 6. The record keeps the
    verification it was based on.
-8. **A failed step:** if any step fails, the item says which step, why, what Mercury already
-   undid, and what the person can do next, as a button where one exists. No dead ends, and no
-   "see History".
+8. **The hand-over, and any failed step:** a hand-over is a write-up for an engineer of what was
+   tried, what is known and the next steps. And if any step fails, the item says which step,
+   why, what Mercury already undid, and what the person can do next, as a button where one
+   exists. No dead ends, and no "see History".
 
 **Cost:** each Needs attention kind is built and tested against the eight steps, with a browser
 walk per kind's worked example. **Prevents:** a fix that ends with no proof it worked or did no

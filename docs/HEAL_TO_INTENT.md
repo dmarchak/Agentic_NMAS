@@ -697,10 +697,23 @@ analysis: a hypothesis and a recommended next step, cited from the evidence. **I
 only.**
 - **Nothing in the heal loop reads its output.** Detect, decide, act, verify and record never
   import or read the analysis.
-- **No fix is ever chosen or run from AI text.**
-- **Mechanised:** a test parses `modules/heal/` and refuses any reference from the loop's
-  modules to `modules.ai` or to the incident's `analysis` field. Only the notifier and the
-  pages draw it.
+- **No fix runs from AI text.** The AI may propose one operation from Mercury's catalog, with
+  its parameters; code validates it against intent and the guards, and a person approves it
+  before it runs. The AI never composes commands, never runs anything itself, and never retries
+  on its own. (The operator's words, 2026-11-11, replacing "No fix is ever chosen or run from AI
+  text".)
+- **A saved fix is the operation a person saved from a verified run, never the AI's words.**
+  (The operator, 2026-11-11.)
+- **Mechanised:** a test (tests/test_heal_analysis_never_read.py) parses `modules/heal/` and
+  refuses any reference from the loop's modules to `modules.ai` or to the incident's
+  `analysis` field. Only the notifier and the pages draw it. The fix rule is held by
+  tests/test_ai_fix_rule.py: an AI answer becomes a proposal only through one door
+  (`modules/ai/fix_proposal.py`), which takes exactly one operation of the catalog
+  (`modules/heal/catalog.py`) with the parameters its schema names, returns that operation's
+  own preview and hash, and refuses and records any other shape; each catalog operation's
+  run refuses without the previewed hash and a verified person; no module of `modules/ai/`
+  references a function that sends, holds a device or starts an operation; and no run is
+  called from a loop or a failure's handler.
 
 **A background AI call under CLAUDE.md's "AI cost safety" rules** (PHASE8_PLAN 18.3):
 - **Its trigger is named:** `triggers.background("heal_analysis", job, network,
@@ -2018,7 +2031,7 @@ replaces the first draft's TM Forum placement):
 | L2, parsing and correlation | the output is parsed and events are correlated | **has** | the parsers (`modules/nsot/parsers/`, `platform_reads.json`); the network model (`modules/network_model.py`); the evidence pack correlating alerts, logs, neighbours and changes (`modules/evidence_pack.py`); the blast-radius fold (`modules/nsot/blast_radius.py`); attribution and one row per cause (PHASE8_PLAN 20.2, 20.5) |
 | L3, rules-based diagnosis: runbooks as code | stored, deterministic runbooks find the cause | **the gap: item 1 fills it** | no runbook exists today. The nearest are the path trace (forwarding only, IPv4, `modules/path_trace.py`), the drift check and intent match (configuration comparisons), and Explain (AI, advisory, not rules). H14 to H18 build the two runbooks |
 | L4, approved or automated remediation | the fix is applied, with a person's approval or automatically | **approved: has; automated: board H, being built** | approved: the deploy pipeline (preview, confirm by hash, verify, rollback: `modules/pipeline.py`), restore, Mode B removal, privileged commands (`modules/nsot/privileged.py`), Reload. Automated: the heal policy (H1, built: `modules/heal/policy.py`) and the loop (H2 to H6), on networks marked lab only (C2009's guard); item 2's actions |
-| L5, AI-assisted | AI helps analyse and propose | **has, in beta** | Explain (`modules/ai/explain.py`), Ask in words, Change it in words; the can't-fix analysis (H8) and its read loop (item 3). Advisory only: no fix is chosen or run from AI text (section 12) |
+| L5, AI-assisted | AI helps analyse and propose | **has, in beta** | Explain (`modules/ai/explain.py`), Ask in words, Change it in words; the can't-fix analysis (H8) and its read loop (item 3). Advisory only: no fix runs from AI text (section 12) |
 
 **So Mercury has L0 to L2, approved L4, and L5 in beta. L3, rules-based diagnosis, is the gap
 the lecture's ladder exposes,** and item 1 fills it. That is why item 1 is never cut (19.8).
