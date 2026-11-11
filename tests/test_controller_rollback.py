@@ -391,11 +391,14 @@ def test_rollback_failed_only_follows_a_rollback_that_was_tried(tmp_path):
 
 def test_the_window_covers_the_command_s_wait_and_the_post_check_twice_over():
     got = channel.window()
+    # The post-check is two bounds, one after the other (2026-11-11): Ryu's start, then every
+    # switch back after Ryu answers; the window covers both.
     one = (connection.CONNECT_TIMEOUT_S + transport.command_bound_s()
-           + post_check.bound()["seconds"])
+           + post_check.ryu_bound()["seconds"] + post_check.bound()["seconds"])
     assert got["seconds"] == channel.window_seconds() == int(round(2 * one))
     assert got["seconds"] >= 2 * (transport.command_bound_s() + post_check.bound()["seconds"])
     for part in (f"{connection.CONNECT_TIMEOUT_S} s", f"{transport.command_bound_s():.0f} s",
+                 f"Ryu's start bound of {post_check.ryu_bound()['seconds']} s",
                  f"{post_check.bound()['seconds']} s", "staging transfer has no bound"):
         assert part in got["words"], part
 

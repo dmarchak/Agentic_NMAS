@@ -38,6 +38,7 @@ by its recomputed hash.
 import hashlib
 import json
 import logging
+import math
 import os
 import posixpath
 import re
@@ -47,9 +48,11 @@ log = logging.getLogger(__name__)
 #: One part of a staged file's relative path below <name>/<version>: printable, no slash, no
 #: space (refusing by resemblance is safe: a part outside it is refused, never quoted whole).
 PART = re.compile(r"^[A-Za-z0-9_.+-]{1,128}$")
-#: How long the one command's answer is waited for. NOT MEASURED (S1, 2026-11-10, measures the
-#: controller's restart): about 2.5 times the script's own restart bound, `UP_BOUND_S`, itself a
-#: placeholder; named in the refusal it fires in.
+#: How long the one command's answer is waited for, on Mercury's own clock from the moment the
+#: command is sent: 2.5 times the script's own restart bound, `UP_BOUND_S` (75 s, itself 2.5
+#: times the 30 s measured for Ryu's start at the controller's reboot test of 2026-11-11), so
+#: the script's own bound fires first and its outcome says why; named in the refusal it fires
+#: in. The command's own time is not measured apart from the unit's.
 COMMAND_BOUND_FACTOR = 2.5
 
 
@@ -76,7 +79,9 @@ def outcome_path() -> str:
 
 
 def command_bound_s() -> float:
-    return COMMAND_BOUND_FACTOR * _script().UP_BOUND_S
+    """The one command's wait in whole seconds, taken up: a bound that is a fraction of a
+    second is drawn rounded, and the window's parts must add up to what it declares."""
+    return float(math.ceil(COMMAND_BOUND_FACTOR * _script().UP_BOUND_S))
 
 
 def staging_refusal(path, kind: str = "file") -> str:
@@ -445,8 +450,9 @@ def _partway(result: dict, exc: Exception) -> str:
              "controller")
     if result["step"] == "command":
         words += (f"; whether the script ran is not known: its outcome is in {outcome_path()}, "
-                  f"waited for {command_bound_s():.0f} s ({COMMAND_BOUND_FACTOR} times the "
-                  "script's restart bound, a placeholder, not measured)")
+                  f"waited for {command_bound_s():.0f} s from the moment the command was sent "
+                  f"({COMMAND_BOUND_FACTOR} times the script's restart bound of "
+                  f"{_script().UP_BOUND_S} s, which is {_script().UP_BOUND_SOURCE})")
     return words
 
 

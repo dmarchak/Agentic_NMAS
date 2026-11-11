@@ -1,14 +1,21 @@
 """A controller deploy's post-check, its rollback, and drift (the SDN platform design revision 6,
 section 10 H: "Planned restart", "Drift"; P6).
 
-**The bound (`bound`).** A Ryu deploy is a restart, so every switch reconnects. The post-check
-waits for every expected switch, every expected link and every enabled app's `/health`, within
-2.5 times the slowest switch's measured reconnect (CLAUDE.md: "Bounds are about 2.5x a measured
-time"). **That
-reconnect is NOT measured yet:** S1 (2026-11-10) reads every switch's reconnect after a controller
-restart, the HP's 60 s backoff included. Until then `RECONNECT` holds the operator's figure,
-90 s, marked unmeasured, and every result and refusal that names the bound names that it is a
-placeholder. When S1's four times are written down, `RECONNECT` takes the slowest, measured.
+**The two bounds (`ryu_bound`, `bound`), both measured (CLAUDE.md: "Bounds are about 2.5x a
+measured time, written beside it").** A Ryu deploy is a restart, so Ryu starts and every switch
+reconnects. At the controller's reboot test of 2026-11-11 Ryu answered within 30 s of its
+process starting, and every switch and link was back 21 s after Ryu answered. So the post-check
+waits in two parts, each on MERCURY'S OWN CLOCK, never a time read on the controller (whose
+wall clock is wrong after a boot until NTP corrects it, C2982, C2983):
+- **Ryu answers** (`ryu_bound`, 75 s: 2.5 times `RYU_START`'s 30 s), counted from the moment
+  the post-check starts, which is the moment the apply's outcome was read back. Ryu has
+  answered when a read of the switches answers (`answered`);
+- **every expected switch, link and enabled app's `/health` is back** (`bound`, 55 s: 2.5 times
+  `RECONNECT`'s 21 s is 52.5 s, taken up to a whole number of reads), counted from the moment
+  Mercury first saw Ryu answer.
+A bound that fires names which it was, what was read and how many times, what it waited for,
+and the measurement it comes from. The measurement is of a reboot; a restart's own times are
+in each deploy's receipt (`after_restart`).
 
 **The post-check (`evaluate`, `wait`).** Each poll reads the controller (the caller's `read`):
 the connected switches (DPIDs), the links (each an unordered pair of switch ports) and each
@@ -32,9 +39,10 @@ the time between the outcome and the first read. Those times still read short by
 outcome does not report: the `systemctl restart` call's own time (the script starts its clock
 when the call returns) and the outcome's way back (its write and the session's read). With no
 origin (no outcome, or one without `up_after_s`, as when the unit did not come up) the result
-says the restart's time is not known and counts from its first read, never silently. The bound
-still runs on the post-check's own time, as before. `deploy` takes each origin from the apply
-that restarted the unit (the deploy's, then the rollback's), read the moment its outcome came
+says the restart's time is not known and counts from its first read, never silently. Both
+bounds run on the post-check's own time: the origin places what is drawn, never what is
+bounded (the outcome's `up_after_s` is a time read on the controller). `deploy` takes each
+origin from the apply that restarted the unit (the deploy's, then the rollback's), read the moment its outcome came
 back.
 
 **The deploy (`deploy`)**, with the channel injected (the transport is not built): declare the
@@ -61,28 +69,63 @@ systemd holds, and says so.
 """
 
 import logging
+import math
 import time
 
 from modules.sdn.drivers.base import HEALTH_ANSWERED, HEALTH_NO_ANSWER, HEALTH_UNREADABLE
 
 log = logging.getLogger(__name__)
 
-#: The slowest switch's reconnect after a controller restart. A PLACEHOLDER until S1 measures it.
-RECONNECT = {"seconds": 90, "measured": False,
-             "source": ("the operator's figure, not measured: S1 (2026-11-10) measures every "
-                        "switch's reconnect after a controller restart, the HP's 60 s backoff "
-                        "included, and the slowest of the four times replaces it")}
+#: The measurement both bounds come from, in words every result that names a bound carries.
+MEASURED_AT = "the controller's reboot test of 2026-11-11"
+#: Ryu's start: how long after its process started Ryu answered. MEASURED: within 30 s.
+RYU_START = {"seconds": 30, "measured": True,
+             "source": f"Ryu answered within 30 s of its process starting, at {MEASURED_AT}"}
+#: The switches' return: how long after Ryu answered every switch and link was back.
+#: MEASURED: 21 s, all five switches and ten links.
+RECONNECT = {"seconds": 21, "measured": True,
+             "source": (f"every switch and link was back 21 s after Ryu answered, at "
+                        f"{MEASURED_AT}")}
 FACTOR = 2.5
 POLL_S = 5.0
 
 
+def _whole_reads(seconds: float) -> int:
+    """*seconds* taken up to a whole number of the post-check's reads (`POLL_S`): the bound is
+    only ever looked at after a read, so a bound between two reads fires at the later one."""
+    return int(math.ceil(seconds / POLL_S) * POLL_S)
+
+
+def ryu_bound() -> dict:
+    """``{"seconds", "measured", "source", "words"}``: how long Ryu has to answer, counted on
+    Mercury's clock from the moment the apply's outcome was read back."""
+    seconds = _whole_reads(FACTOR * RYU_START["seconds"])
+    return {"seconds": seconds, "measured": RYU_START["measured"], "source": RYU_START["source"],
+            "words": (f"{seconds} s from the moment the apply's outcome was read back, "
+                      f"{FACTOR} times the {RYU_START['seconds']} s measured "
+                      f"({RYU_START['source']})")}
+
+
 def bound() -> dict:
-    """``{"seconds", "measured", "source", "words"}``: the post-check's bound."""
-    seconds = int(round(FACTOR * RECONNECT["seconds"]))
-    kind = "measured" if RECONNECT["measured"] else "a placeholder"
+    """``{"seconds", "measured", "source", "words"}``: the post-check's bound, how long every
+    expected switch, link and app's /health has to be back, counted on Mercury's clock from the
+    moment it first saw Ryu answer."""
+    exact = FACTOR * RECONNECT["seconds"]
+    seconds = _whole_reads(exact)
     return {"seconds": seconds, "measured": RECONNECT["measured"], "source": RECONNECT["source"],
-            "words": (f"{seconds} s, {FACTOR} times the slowest switch's reconnect of "
-                      f"{RECONNECT['seconds']} s ({kind}: {RECONNECT['source']})")}
+            "words": (f"{seconds} s after Ryu first answers, {FACTOR} times the "
+                      f"{RECONNECT['seconds']} s measured ({exact:g} s, taken up to a whole "
+                      f"{POLL_S:g} s read; {RECONNECT['source']})")}
+
+
+def limit_s() -> int:
+    """The longest a post-check runs: Ryu's start bound, then the switches' return bound."""
+    return ryu_bound()["seconds"] + bound()["seconds"]
+
+
+def answered(observed: dict) -> bool:
+    """Whether Ryu answered this read: its switch list was read (whatever it holds)."""
+    return bool(((observed or {}).get("switches") or {}).get("ok"))
 
 
 def _pair(link: dict) -> frozenset:
@@ -230,12 +273,17 @@ def restart_origin(outcome, *, read_at) -> dict:
 
 def wait(read, expected: dict, *, restart=None, clock=time.monotonic, sleep=time.sleep,
          poll_s: float = POLL_S) -> dict:
-    """Poll *read()* until `evaluate` passes or the bound passes. *restart*: `restart_origin`'s
+    """Poll *read()* until `evaluate` passes or a bound passes. *restart*: `restart_origin`'s
     answer, on this *clock*; None is "not known". ``{"ok", "polls", "elapsed_s", "bound",
-    "last", "origin", "came_back": {dpid: seconds after the first read}, "after_restart":
-    {dpid: seconds after the restart} or None, "after_restart_s", "words"}``: the times drawn
-    are *after_restart*'s; with the origin unknown it is None and the words say so."""
-    limit = bound()
+    "ryu_bound", "fired": "" | "ryu" | "switches", "ryu_answered_s", "last", "origin",
+    "came_back": {dpid: seconds after the first read}, "after_restart": {dpid: seconds after
+    the restart} or None, "after_restart_s", "words"}``: the times drawn are *after_restart*'s;
+    with the origin unknown it is None and the words say so.
+
+    Two bounds, both on *clock* (Mercury's own, the module's docstring): until a read of the
+    switches answers, Ryu's start bound (`ryu_bound`), counted from this call's start; from
+    the first read that answers (*ryu_answered_s*), the switches' return bound (`bound`)."""
+    limit, ryu_limit = bound(), ryu_bound()
     origin = restart if isinstance(restart, dict) else {}
     known = origin.get("known") is True and _number(origin.get("at")) is not None
     if not known:
@@ -243,6 +291,7 @@ def wait(read, expected: dict, *, restart=None, clock=time.monotonic, sleep=time
                   "words": origin.get("words") or ("the restart's time is not known: no "
                                                    "restart origin was given")}
     start, polls, came_back, after, last = clock(), 0, {}, ({} if known else None), None
+    first_answer = None
     while True:
         polls += 1
         observed = read()
@@ -250,6 +299,8 @@ def wait(read, expected: dict, *, restart=None, clock=time.monotonic, sleep=time
         at = clock()
         elapsed = at - start
         since = at - origin["at"] if known else None
+        if first_answer is None and answered(observed):
+            first_answer = elapsed
         sw = observed.get("switches") or {}
         if sw.get("ok"):
             for s in sw.get("switches") or []:
@@ -260,7 +311,9 @@ def wait(read, expected: dict, *, restart=None, clock=time.monotonic, sleep=time
         own = round(elapsed, 1)
         restart_words = (f"{round(since, 1)} s after the restart" if known else
                          f"counted from its first read: {origin['words']}")
-        out = {"polls": polls, "elapsed_s": own, "bound": limit, "last": last,
+        out = {"polls": polls, "elapsed_s": own, "bound": limit, "ryu_bound": ryu_limit,
+               "fired": "", "last": last,
+               "ryu_answered_s": None if first_answer is None else round(first_answer, 1),
                "origin": origin, "came_back": came_back, "after_restart": after,
                "after_restart_s": round(since, 1) if known else None}
         if last["ok"]:
@@ -271,12 +324,22 @@ def wait(read, expected: dict, *, restart=None, clock=time.monotonic, sleep=time
             return dict(out, ok=True, words=(
                 f"every expected switch, link and app's /health was {back}; the bound is "
                 f"{limit['words']}"))
-        if elapsed >= limit["seconds"]:
-            return dict(out, ok=False, words=(
+        if first_answer is None:
+            if elapsed >= ryu_limit["seconds"]:
+                said = (observed.get("switches") or {}).get("error") or "no answer"
+                return dict(out, ok=False, fired="ryu", words=(
+                    f"Ryu's start bound fired: Ryu did not answer within {own} s of the "
+                    f"apply's outcome being read back ({polls} reads of its switch list, the "
+                    f"last saying: {str(said)[:200]}; {restart_words}). The post-check waited "
+                    "for a read of the switches to answer, on its own time, and the bound is "
+                    f"{ryu_limit['words']}"))
+        elif elapsed - first_answer >= limit["seconds"]:
+            waited = round(elapsed - first_answer, 1)
+            return dict(out, ok=False, fired="switches", words=(
                 f"the post-check's bound fired after {own} s and {polls} reads of the "
-                f"switches, the links and every enabled app's /health ({restart_words}): "
-                f"{miss_words(last)}. The bound runs on the post-check's own time and is "
-                f"{limit['words']}"))
+                f"switches, the links and every enabled app's /health ({restart_words}), "
+                f"{waited} s after Ryu first answered: {miss_words(last)}. The bound runs on "
+                f"the post-check's own time and is {limit['words']}"))
         sleep(poll_s)
 
 
@@ -468,9 +531,12 @@ def _apply(channel, req: dict, step, what: str = "apply") -> dict:
         step(f"{what}: stage", ok=False, error=out["error"])
         return out
     got = channel.apply() or {}
+    # Each kept app file's sha256, as the apply script read it as root (the script's
+    # `check_kept`): what Ryu loaded that Mercury does not manage, on record.
+    kept = {"kept_files": got["kept_files"]} if got.get("kept_files") else {}
     step(what, ok=bool(got.get("ok")), main_pid_before=got.get("main_pid_before"),
          main_pid_after=got.get("main_pid_after"),
-         error=got.get("refused") or got.get("error") or "")
+         error=got.get("refused") or got.get("error") or "", **kept)
     return got
 
 

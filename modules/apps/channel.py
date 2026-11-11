@@ -34,7 +34,25 @@ expects. It refuses, each refusal naming the comparison and both operands:
 - an app's start-time config holding anything Mercury's redaction masks
   (`config_secret_refusal`, decision K9: no secret ever goes in a config file);
 - an expected switch with no DPID, an expected link that is not a pair of switch ports, or a
-  recorded previous request the script would refuse (a rollback target that could not run).
+  recorded previous request the script would refuse (a rollback target that could not run);
+- the unit's own command line not carriable as it is (an argument that is not one plain word,
+  more than one ExecStart, a drop-in read after Mercury's that sets ExecStart), or a drop-in
+  after that would drop, widen or change Ryu's REST bind, drop a flag, or stop loading an app
+  the unit loads now (`carried_refusals`), naming both values.
+
+**The unit's own arguments are carried (`kept`; C2675, C2985).** A controller is taken as it
+is: the command line its unit runs without Mercury's drop-in (the script's `unit_command`, from
+`systemctl cat`) is read, and what of it is not Mercury's to manage rides in the request as
+``keep`` (the script's `keep_from`): Ryu's REST bind (`--wsapi-host`, `--wsapi-port`), every
+other flag, and every app the unit loads that Mercury does not manage. The apply script reads
+the same from the unit itself, as root, and refuses a request whose ``keep`` differs, so the
+kept arguments are the unit's, never the request's. The drop-in after carries them, the plan
+says each in words (``kept``: REST's bind, each app "kept: ..., not managed by Mercury" or
+"replaced" by an app of the same name in the set), and REST is never bound wider than the unit
+has it: a bind to every address is rendered only when the unit already has one, and the plan
+says so. `carried_refusals` then compares what systemd holds NOW (`systemctl show`, a second
+read) with the drop-in after, so nothing the unit runs is dropped without a word. A unit whose
+own files hold no ExecStart in the read carries nothing, and that check still stands.
 
 **An app's start-time config (decision K9; C2707)** is compiled by Mercury (not here: the plan
 takes it per app, compiled by `modules/apps/app_config.compile_set`, which the caller,
@@ -75,6 +93,7 @@ import functools
 import hashlib
 import importlib.machinery
 import importlib.util
+import ipaddress
 import json
 import logging
 import os
@@ -314,17 +333,21 @@ def _app_entry(a: dict) -> dict:
     return entry
 
 
-def request(apps, listen: dict, sdk_sha256: str = "") -> dict:
+def request(apps, listen: dict, sdk_sha256: str = "", keep=None) -> dict:
     """The request the script reads, normalised by the script's own parser (so its hash is the
     script's): *apps* in load order, each ``{"name", "version", "sha256"}`` and, for an app
     with a start-time config (decision K9), its ``config_sha256`` (`config_bytes`'s sha256).
     An app with no config carries no key, so a request with no config is the shape it always
     was, and hashes the same. *sdk_sha256*, the staged app SDK's hash (`stage_sdk`; C2852),
-    rides as ``"sdk": {"sha256"}``; with none, no key."""
+    rides as ``"sdk": {"sha256"}``; with none, no key. *keep*, what of the unit's own command
+    line is carried (the script's `keep_from`; `kept`), rides as ``"keep"``; with none, no
+    key."""
     doc = {"apps": [_app_entry(a) for a in apps],
            "listen": {"host": listen.get("host"), "port": listen.get("port")}}
     if sdk_sha256:
         doc["sdk"] = {"sha256": sdk_sha256}
+    if keep:
+        doc["keep"] = keep
     body = json.dumps(doc, sort_keys=True).encode("utf-8")
     try:
         return script().parse_request(body)
@@ -416,6 +439,165 @@ def render_dropin(req: dict, ryu_manager: str) -> str:
     """The drop-in the script writes for *req* (the script's own render)."""
     s = script()
     return s.render_dropin(req, ryu_manager, s.RYU_USER, s.APPS_ROOT)
+
+
+# ── the unit's own arguments, carried (C2675, C2985) ──────────────────────────────────────────
+
+def _is_wildcard(host) -> bool:
+    """Whether *host* binds every address of its family (0.0.0.0, ::, or another spelling)."""
+    try:
+        return ipaddress.ip_address(str(host)).is_unspecified
+    except ValueError:
+        return False
+
+
+def bind_words(rest: dict) -> str:
+    """Where Ryu's REST is bound for the unit's ``--wsapi-host`` and ``--wsapi-port`` in
+    *rest* (each only when named), in words: "192.0.2.1, port 8080"."""
+    host, port = (rest or {}).get("host"), (rest or {}).get("port")
+    where = ("every address of the controller (no --wsapi-host)" if not host else
+             f"every address of the controller ({host})" if _is_wildcard(host) else host)
+    return where + (f", port {port}" if port else
+                    f", Ryu's own port ({script().REST_DEFAULT_PORT})")
+
+
+def _managed(word: str) -> bool:
+    """Whether *word* of a command line is one of Mercury's managed app files:
+    ``/opt/ryu-apps/<name>/<version>/<name>.py``."""
+    s = script()
+    prefix = s.APPS_ROOT.rstrip("/") + "/"
+    parts = word[len(prefix):].split("/") if word.startswith(prefix) else []
+    return (len(parts) == 3 and parts[2] == parts[0] + ".py" and bool(s.NAME.match(parts[0]))
+            and bool(s.VERSION.match(parts[1])))
+
+
+def kept(cat_text, unit: str, versions: dict, listen: dict) -> dict:
+    """What of *unit*'s own command line the deploy carries, read from `systemctl cat`'s answer
+    *cat_text* by the script's own functions, and how the plan says it. *versions*: ``{name:
+    version}`` of the set's apps; *listen*: the request's OpenFlow listen.
+
+    ``{"refusals", "keep", "program", "read", "rest", "rest_words", "flags", "flag_words",
+    "apps": [{"app", "state": "kept"|"replaced", "words"}], "note", "listen_words"}``: *keep*
+    is the request's ``keep`` or None; *read* is false when the answer held no ExecStart
+    outside Mercury's drop-in (nothing is carried, said); every app the unit loads that
+    Mercury does not manage is one line, "kept: ..., not managed by Mercury" or "replaced: ..."
+    by the set's app of the same name, never dropped without one."""
+    s = script()
+    out = {"refusals": [], "keep": None, "program": "", "read": False, "rest": {},
+           "rest_words": "", "flags": [], "flag_words": "", "apps": [], "note": "",
+           "listen_words": ""}
+    try:
+        own = s.unit_command(cat_text, unit)
+        keep, own_listen = s.keep_from(own["argv"]) if own["argv"] else (None, {})
+    except s.Refused as exc:
+        out["refusals"].append(f"{unit}'s own command line cannot be carried as it is: {exc}. "
+                               "Nothing is staged")
+        return out
+    if own["later"]:
+        out["refusals"].append(
+            f"{', '.join(own['later'])} sets ExecStart and is read after {s.DROPIN_NAME}, so "
+            f"Mercury's drop-in would not be the command line {unit} runs. Nothing is staged")
+    if own["argv"] is None:
+        out["rest_words"] = (f"{unit}'s own files held no ExecStart in the read (`systemctl "
+                             f"cat {unit}`), so nothing is carried from them")
+        return out
+    keep = keep or {}
+    rest = keep.get("rest") or {}
+    host = rest.get("host")
+    carried = " and ".join(([f"--wsapi-host {host}"] if host else [])
+                           + ([f"--wsapi-port {rest['port']}"] if "port" in rest else []))
+    if host and _is_wildcard(host):
+        rest_words = (f"Ryu's REST answers on EVERY address of the controller: {unit} already "
+                      f"binds it to {host} (its own --wsapi-host), and the deploy keeps that as "
+                      f"it is and widens nothing; the drop-in carries {carried}")
+    elif host:
+        rest_words = (f"Ryu's REST stays bound to {bind_words(rest)}, as {unit} has it: the "
+                      f"drop-in carries {carried}")
+    else:
+        rest_words = (f"Ryu's REST answers on {bind_words(rest)}: {unit} names no --wsapi-host, "
+                      "and the deploy adds none"
+                      + (f"; the drop-in carries {carried}" if carried else ""))
+    apps = []
+    for app in keep.get("apps") or []:
+        if s.superseded(app, set(versions)):
+            name = os.path.basename(app)[:-3]
+            apps.append({"app": app, "state": "replaced", "words": (
+                f"replaced: {app} is no longer loaded; Mercury's {name} {versions[name]} takes "
+                "its place (the file stays on the controller)")})
+        elif app.endswith(".py"):
+            apps.append({"app": app, "state": "kept", "words": (
+                f"kept: {app}, loaded from {os.path.dirname(app)}, not managed by Mercury")})
+        else:
+            apps.append({"app": app, "state": "kept", "words": (
+                f"kept: {app}, a module {unit} loads, not managed by Mercury")})
+    flags = list(keep.get("flags") or [])
+    unit_host, unit_port = own_listen.get("host"), own_listen.get("port")
+    want = f"{listen.get('host')} port {listen.get('port')}"
+    if unit_host is None:
+        listen_words = (f"{unit} names no --ofp-listen-host (every address); the drop-in listens "
+                        f"for OpenFlow on {want} only, NetBox's openflow Service")
+    elif (str(unit_host), str(unit_port or "")) != (str(listen.get("host")),
+                                                    str(listen.get("port"))):
+        listen_words = (f"{unit} listens for OpenFlow on {unit_host} port "
+                        f"{unit_port or 'unnamed'} today; the drop-in listens on {want}, "
+                        "NetBox's openflow Service")
+    else:
+        listen_words = ""
+    return dict(out, keep=keep or None, program=own["argv"][0], read=True, rest=rest,
+                rest_words=rest_words, flags=flags,
+                flag_words=(f"kept: {' '.join(flags)}, as {unit} has "
+                            f"{'them' if len(flags) != 1 else 'it'}" if flags else ""),
+                apps=apps, listen_words=listen_words,
+                note=("A kept app is not Mercury's: it is not read, tested or versioned, its "
+                      "OpenFlow versions are not in the conformance check, and it loads before "
+                      "the set's apps, in the unit's order. The apply script reads each kept "
+                      "file as root and records its sha256 in the receipt. Deploying an app of "
+                      "the same name through Mercury replaces it" if apps else ""))
+
+
+def carried_refusals(unit: str, argv, req: dict) -> list:
+    """Why the drop-in after for *req* would drop, widen or change something *unit* runs NOW
+    (*argv*: the command line systemd holds, `systemctl show`), each naming both values; []
+    when everything it runs that is not Mercury's to manage is carried, or replaced by an app
+    of the set. A second read against the first: the request's ``keep`` comes from the unit's
+    own files (`kept`), this from what runs."""
+    s = script()
+    try:
+        now, _listen = s.keep_from(list(argv))
+        now = now or {}
+    except s.Refused as exc:
+        return [f"{unit}'s command line as systemd holds it now (`systemctl show -p ExecStart "
+                f"{unit}`) cannot be read whole: {exc}. Whether the deploy would drop one of "
+                "its arguments cannot be told, so nothing is staged"]
+    after = req.get("keep") or {}
+    out = []
+    now_rest, after_rest = now.get("rest") or {}, after.get("rest") or {}
+    if now_rest != after_rest:
+        verb = ("drop" if now_rest.get("host") and not after_rest.get("host") else
+                "widen" if _is_wildcard(after_rest.get("host"))
+                and not _is_wildcard(now_rest.get("host")) and now_rest.get("host") else
+                "change")
+        out.append(f"the deploy would {verb} Ryu's REST bind: {unit} binds it to "
+                   f"{bind_words(now_rest)} now (`systemctl show`), and the drop-in after would "
+                   f"bind it to {bind_words(after_rest)} (what the unit's own files name, "
+                   "`systemctl cat`). REST is unauthenticated and writes flows, so nothing is "
+                   "staged")
+    gone = [f for f in now.get("flags") or [] if f not in (after.get("flags") or [])]
+    if gone:
+        out.append(f"the deploy would drop {' '.join(gone)} from {unit}'s command line: it "
+                   "runs with it now (`systemctl show`), and the drop-in after would not carry "
+                   "it (the unit's own files, `systemctl cat`, do not name it). Nothing is "
+                   "staged")
+    names = {a["name"] for a in req.get("apps") or []}
+    loaded = s.kept_apps(req)
+    for app in now.get("apps") or []:
+        if _managed(app) or app in loaded or s.superseded(app, names):
+            continue
+        out.append(f"the deploy would stop loading {app}, which {unit} loads now (`systemctl "
+                   "show`): the drop-in after would not carry it (the unit's own files, "
+                   "`systemctl cat`, do not name it) and no app of the set replaces it. "
+                   "Nothing is staged")
+    return out
 
 
 # ── the plan ──────────────────────────────────────────────────────────────────────────────────
@@ -592,9 +774,12 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
         ordered = manifests
     conf = conformance.check(ordered, switches)
     refusals += [f"conformance: {p}" for p in conf["problems"]]
+    # What of the unit's own command line is carried (C2675, C2985), from its own files.
+    carried = kept(host.get("cat"), unit, {m.name: m.version for m in ordered}, listen)
+    refusals += carried.pop("refusals")
     out = {"ok": False, "network": network, "controller": controller, "unit": unit,
            "refusals": refusals, "conformance": conf, "user_now": shown["user"],
-           "folder": folder}
+           "folder": folder, "kept": carried}
     if refusals:
         return out
     staged = {item["manifest"].name: item["staged"] for item in enabled}
@@ -605,10 +790,19 @@ def plan(*, network: str, controller: str, unit: str, enabled, host: dict, liste
                      .hexdigest()} if m.name in configs else {}))
             for m in ordered]
     try:
-        req = request(apps, listen, sdk["sha256"] if sdk else "")
+        req = request(apps, listen, sdk["sha256"] if sdk else "", keep=carried["keep"])
     except ChannelRefused as exc:
         return dict(out, refusals=[str(exc)])
     ryu_manager = shown["exec_path"] or shown["argv"][0]
+    if carried["program"] and carried["program"] != ryu_manager:
+        return dict(out, refusals=[
+            f"{unit}'s own files run {carried['program']} (`systemctl cat`), and systemd holds "
+            f"{ryu_manager} now (`systemctl show`): which ryu-manager the drop-in would start "
+            "cannot be told, so nothing is staged"])
+    # The second read against the first: nothing the unit runs now is dropped without a word.
+    why = carried_refusals(unit, shown["argv"], req)
+    if why:
+        return dict(out, refusals=why)
     after = render_dropin(req, ryu_manager)
     before = dropin_before(host.get("cat"), unit)
     try:
@@ -708,7 +902,8 @@ def window() -> dict:
       bound, `UP_BOUND_S`), which holds the script's whole run: its checks, the drop-in's
       write, the restart and its wait for the unit, so the unit's up bound is counted inside
       it and not again;
-    - the post-check's bound (`post_check.bound`).
+    - the post-check's two bounds, one after the other: Ryu's start (`post_check.ryu_bound`),
+      then every switch, link and /health back after Ryu answers (`post_check.bound`).
     The staging transfer itself has no bound of its own (an SFTP write waits as long as the
     session stays open), so it is named in the words and not counted; nothing here is a new
     figure, each part is its constant's."""
@@ -718,16 +913,18 @@ def window() -> dict:
     up = script().UP_BOUND_S
     parts = {"session": int(connection.CONNECT_TIMEOUT_S),
              "command": int(round(transport.command_bound_s())),
+             "ryu": int(post_check.ryu_bound()["seconds"]),
              "post_check": int(post_check.bound()["seconds"])}
     one = sum(parts.values())
     seconds = 2 * one
     words = (f"{seconds} s: twice (the deploy, then room for its rollback) the session's "
              f"opening bound of {parts['session']} s, the apply command's wait of "
              f"{parts['command']} s ({transport.COMMAND_BOUND_FACTOR} times the script's "
-             f"restart bound of {up} s, which it holds: the unit's wait is inside it) and the "
-             f"post-check's bound of {parts['post_check']} s. The script's restart bound and "
-             "the post-check's are placeholders until S1 measures them; the staging transfer "
-             "has no bound of its own and is not counted")
+             f"restart bound of {up} s, which it holds: the unit's wait is inside it), Ryu's "
+             f"start bound of {parts['ryu']} s and the post-check's bound of "
+             f"{parts['post_check']} s after Ryu answers. The restart bounds are 2.5 times "
+             f"what {post_check.MEASURED_AT} measured; the staging transfer has no bound of "
+             "its own and is not counted")
     return {"seconds": seconds, "words": words, "parts": parts}
 
 

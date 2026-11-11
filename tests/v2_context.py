@@ -2577,6 +2577,16 @@ def _sdn_apps(client, _lab, _mp):
         mp.setattr(deploy_op, "SOURCES", CompiledSources(Path(root) / "compiled", [HP, OVS]))
         assert "start-time config, staged to" in client.post(
             "/v2/sdn/apps/preview", data=dict(form, set="quirky=1.0.0")).get_data(as_text=True)
+        # A preview on a controller taken as it is (C2985, C2675): its unit binds REST to one
+        # address, carries a flag of its own and loads two apps Mercury does not manage, so
+        # what is kept, what is replaced and the REST bind are drawn.
+        from tests.test_controller_keep import KeptSources
+
+        kept = KeptSources(Path(root) / "kept")
+        kept.line = kept.line.replace(" --observe-links ", " --observe-links --verbose ")
+        mp.setattr(deploy_op, "SOURCES", kept)
+        assert "not managed by Mercury" in client.post(
+            "/v2/sdn/apps/preview", data=form).get_data(as_text=True)
         mp.setattr(deploy_op, "SOURCES", src)
         html = client.post("/v2/sdn/apps/preview", data=form).get_data(as_text=True)
         fields = {m.group(1): unescape(m.group(2)) for m in re.finditer(

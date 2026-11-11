@@ -163,7 +163,8 @@ def test_user_ryu_and_a_folder_the_deploy_account_owns_plans_the_deploy(tmp_path
     assert got["request"]["apps"][0]["name"] == "of_versions"
     assert got["window"] == {"devices": ["ctl"], "unreachable": ["sw-a"],
                              "seconds": channel.window_seconds()}
-    assert "placeholder" in got["reconnect"]["words"] and got["reconnect"]["switches"] == ["sw-a"]
+    assert "2.5 times the 21 s measured" in got["reconnect"]["words"]
+    assert got["reconnect"]["measured"] is True and got["reconnect"]["switches"] == ["sw-a"]
     assert len(got["plan_sha256"]) == 64 and got["files"]["of_versions"]
 
 
@@ -320,7 +321,12 @@ def test_the_post_check_s_bound_fires_naming_what_it_read_and_that_it_is_a_place
     got = post_check.wait(lambda: SWITCH_2_DOWN, EXPECTED, clock=clock, sleep=clock.sleep)
     assert got["ok"] is False and got["elapsed_s"] >= post_check.bound()["seconds"]
     assert "switches not back: 2" in got["words"] and f"{got['polls']} reads" in got["words"]
-    assert "a placeholder" in got["words"] and "S1 (2026-11-10)" in got["words"]
+    # The premise corrected (2026-11-11): the bound is measured, no longer a placeholder. It
+    # names the measurement it is 2.5 times, and that it counts from Ryu's first answer.
+    assert got["fired"] == "switches" and got["bound"]["measured"] is True
+    assert "2.5 times the 21 s measured" in got["words"]
+    assert "the controller's reboot test of 2026-11-11" in got["words"]
+    assert f"{post_check.bound()['seconds']}.0 s after Ryu first answered" in got["words"]
 
 
 def test_an_unreadable_read_never_passes_a_poll():

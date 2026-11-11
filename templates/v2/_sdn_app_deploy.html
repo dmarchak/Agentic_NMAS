@@ -32,7 +32,10 @@
     <dt>Controller</dt><dd>{{ d.controller }}{% if d.dev.ip %}, reached at <span class="mono">{{ d.dev.ip }}</span>{% endif %} as the deploy account <span class="mono">{{ d.account }}</span>; host kind, driver {{ d.dev.device_type or '?' }}</dd>
     <dt>Unit</dt><dd><span class="mono">{{ d.unit }}</span>, User <span class="mono">{{ d.user_now }}</span>{% if d.read_at %} (read {{ stamp(d.read_at) }}: <span class="mono">systemctl show -p User -p ExecStart</span>){% endif %}</dd>
     <dt>App folder</dt><dd><span class="mono">{{ d.apps_root }}</span> <span class="mono">{{ d.folder.owner }}:{{ d.folder.group }} {{ d.folder.mode }}</span> <span class="faint">(<span class="mono">ls -la</span>)</span> · the deploy account can stage, and the unit does not run as root</dd>
-    <dt>Listen</dt><dd><span class="mono">{{ d.listen.host }}</span> TCP {{ d.listen.port }}</dd>
+    <dt>Listen</dt><dd><span class="mono">{{ d.listen.host }}</span> TCP {{ d.listen.port }}{% if d.kept.listen_words %} <span class="faint">({{ d.kept.listen_words }})</span>{% endif %}</dd>
+    {%- if d.kept.rest_words %}
+    <dt>REST</dt><dd>{{ d.kept.rest_words }}</dd>
+    {%- endif %}
   </dl>
   <h4>The set, in load order</h4>
   <div class="table-wrap"><table class="table">
@@ -44,6 +47,18 @@
     <tr><td>{{ d.rows | length + 1 }}, {{ d.rows | length + 2 }}</td><td colspan="4" class="muted">Ryu's own <span class="mono">ryu.app.ofctl_rest</span> and <span class="mono">ryu.app.rest_topology</span> (Mercury's reads), always last</td></tr>
     </tbody>
   </table></div>
+  {%- if d.kept.apps or d.kept.flag_words %}
+  <h4>From the unit's own command line, carried as it is</h4>
+  <ul class="small">
+    {%- for a in d.kept.apps %}
+    <li>{{ badge('replaced' if a.state == 'replaced' else 'kept', 'warn' if a.state == 'replaced' else 'muted') }} {{ a.words }}</li>
+    {%- endfor %}
+    {%- if d.kept.flag_words %}
+    <li>{{ badge('kept', 'muted') }} {{ d.kept.flag_words }}</li>
+    {%- endif %}
+  </ul>
+  {%- if d.kept.note %}<p class="small muted">{{ d.kept.note }}.</p>{% endif %}
+  {%- endif %}
   {%- for nf in d.new_files %}
   <h4>{{ nf.app }} {{ nf.version }}'s files, staged to <span class="mono">{{ d.apps_root }}/{{ nf.app }}/{{ nf.version }}/</span></h4>
   <div class="table-wrap"><table class="table">
@@ -82,7 +97,7 @@
 <div class="apps-cols">
 <section class="apps-sec" aria-label="The restart and the post-check">
   <h4>The restart, and what must come back</h4>
-  <p class="small">The apply script restarts <span class="mono">{{ d.unit }}</span> and judges it by identity: a new MainPID, active, User <span class="mono">ryu</span>, within <strong>{{ d.up_bound }} s</strong> {{ badge('placeholder', 'warn', title='UP_BOUND_S in the apply script: not measured; the unit\'s restart is timed to active at S1 or S3 (C2687)') }}. Then the post-check waits, within <strong>{{ d.bound.seconds }} s</strong> {{ badge('placeholder' if not d.bound.measured else 'measured', 'warn' if not d.bound.measured else 'ok', title=d.bound.words) }}, for all of these:</p>
+  <p class="small">The apply script restarts <span class="mono">{{ d.unit }}</span> and judges it by identity: a new MainPID, active, User <span class="mono">ryu</span>, within <strong>{{ d.up_bound }} s</strong> {{ badge('measured', 'ok', title=d.up_bound_words) }}. Then the post-check waits on {{ brand.short }}'s own clock: for Ryu to answer, within <strong>{{ d.ryu_bound.seconds }} s</strong> of the apply's outcome being read back {{ badge('measured', 'ok', title=d.ryu_bound.words) }}, then, within <strong>{{ d.bound.seconds }} s</strong> after Ryu first answers {{ badge('placeholder' if not d.bound.measured else 'measured', 'warn' if not d.bound.measured else 'ok', title=d.bound.words) }}, for all of these:</p>
   <div class="table-wrap"><table class="table">
     <thead><tr><th scope="col">Expected</th><th scope="col">Back when</th></tr></thead>
     <tbody>

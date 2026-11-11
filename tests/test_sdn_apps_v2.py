@@ -163,7 +163,11 @@ def test_the_preview_draws_the_plan_and_one_confirm_naming_the_work(apps):
     assert "Deploy to ctl: of_versions None → 1.0.0" not in html
     assert "The set, in load order" in html and "<strong>1.0.0</strong> added" in html
     assert "The drop-in, before and after" in html and 'class="apps-add"' in html
-    assert "placeholder" in html and "Planned-restart window" in html
+    # The premise corrected (2026-11-11): the bounds are measured, and drawn as the two they
+    # are, each naming where it is counted from; no bound is a placeholder now.
+    assert "placeholder" not in html and "Planned-restart window" in html
+    assert "<strong>75 s</strong> of the apply's outcome being read back" in unescape(html)
+    assert "<strong>55 s</strong> after Ryu first answers" in html
     f = fields(html)
     assert len(f["hash"]) == 64 and json.loads(f["parts"])["the request"]
     assert ("Deploy of_versions 1.0.0 and restart ctl, with no rollback" in html)

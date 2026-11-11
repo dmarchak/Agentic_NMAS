@@ -375,6 +375,7 @@ def plan_card(plan: dict, redeploy: bool = False) -> dict:
     rec = plan.get("record") or {}
     dev, folder = plan.get("dev") or {}, plan.get("folder") or {}
     listen = plan.get("listen") or {}
+    kept, ryu = plan.get("kept") or {}, post_check.ryu_bound()
     return {
         "state": "nothing" if nothing else "preview", "network": plan.get("network"),
         "controller": ctl, "unit": plan.get("unit"),
@@ -401,9 +402,19 @@ def plan_card(plan: dict, redeploy: bool = False) -> dict:
                         "count": len(names)},
         "dropin_path": f"{s.DROPIN_ROOT}/{plan.get('unit')}.d/{s.DROPIN_NAME}",
         "dropin": _dropin_lines(plan.get("dropin_before"), plan.get("dropin_after")),
-        "up_bound": s.UP_BOUND_S,
+        "up_bound": s.UP_BOUND_S, "up_bound_words": s.UP_BOUND_SOURCE,
+        "ryu_bound": {"seconds": ryu["seconds"], "words": ryu["words"]},
         "bound": {"seconds": bound["seconds"], "measured": bound["measured"],
                   "words": bound["words"]},
+        # What of the unit's own command line the drop-in carries (`channel.kept`; C2675,
+        # C2985): REST's bind in words, each app the unit loads that Mercury does not manage
+        # ("kept: ..." or "replaced: ..."), its other flags, and where the OpenFlow listen moves.
+        "kept": {"rest_words": kept.get("rest_words", ""),
+                 "listen_words": kept.get("listen_words", ""),
+                 "flag_words": kept.get("flag_words", ""),
+                 "apps": [{"state": a.get("state"), "words": a.get("words", "")}
+                          for a in kept.get("apps") or []],
+                 "note": kept.get("note", "")},
         "expected_switches": [{"name": names.get(d) or "?", "dpid": d}
                               for d in plan["expected"]["switches"]],
         "expected_links": [post_check._link_words(x) for x in plan["expected"]["links"]],  # noqa: SLF001

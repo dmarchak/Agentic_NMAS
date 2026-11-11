@@ -632,9 +632,13 @@ def receipt_from(plan: dict, done: dict, *, actor: str, actor_verified: str, con
         "post_check": _summary(done.get("post_check")),
         "rollback_target": done.get("rollback_target", ""),
         "rollback_post_check": _summary(done.get("rollback_post_check")),
-        "bounds": {"post_check": post_check.bound(),
-                   "unit_up_s": {"seconds": s.UP_BOUND_S, "measured": False,
-                                 "source": "UP_BOUND_S in the apply script, a placeholder"}},
+        "bounds": {"post_check": post_check.bound(), "ryu_start": post_check.ryu_bound(),
+                   "unit_up_s": {"seconds": s.UP_BOUND_S, "measured": True,
+                                 "source": f"UP_BOUND_S in the apply script: {s.UP_BOUND_SOURCE}"}},
+        # What of the unit's own command line the drop-in carried, as the plan said it (the
+        # request's ``keep`` is in ``request``); each kept file's sha256, read by the apply
+        # script as root, is in its step (``steps``: ``kept_files``).
+        "kept": plan.get("kept") or {},
     }
 
 

@@ -526,7 +526,11 @@ def test_a_command_that_fails_says_whether_the_script_ran_is_not_known(tmp_path)
         got = transport.send(_open(), _plan(tmp_path), ip=ADDRESSES[0])
     assert got["ok"] is False and got["step"] == "command" and got["command_sent"] is True
     assert "whether the script ran is not known" in got["error"]
-    assert "a placeholder, not measured" in got["error"]
+    # The premise corrected (2026-11-11): the script's restart bound is measured, and the
+    # command's wait names what it is 2.5 times and where it is counted from.
+    assert "from the moment the command was sent" in got["error"]
+    assert "2.5 times the script's restart bound of 75 s" in got["error"]
+    assert "2.5 times the 30 s within which Ryu answered" in got["error"]
 
 
 def test_not_held_is_refused_before_anything_is_sent(tmp_path):

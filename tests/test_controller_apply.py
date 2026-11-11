@@ -33,18 +33,34 @@ _names = itertools.count()
 
 
 class Systemctl:
-    """`systemctl` as the script calls it: `show -p ...`, `daemon-reload`, `restart`. A restart
-    starts a new MainPID and takes its User from the script's drop-in, as systemd would."""
+    """`systemctl` as the script calls it: `show -p ...`, `cat`, `daemon-reload`, `restart`. A
+    restart starts a new MainPID and takes its User from the script's drop-in, as systemd
+    would. `cat` answers as systemd does: the unit's own file (*unit_file*), then every drop-in
+    in name order, each under its `# <path>` line: the planted ones (*dropins*) and
+    mercury.conf as it is on disk."""
 
     def __init__(self, m, user="ryu", comes_up=True):
         self.m, self.calls, self.comes_up = m, [], comes_up
         self.props = {"User": user, "MainPID": "100", "ActiveState": "active"}
+        self.unit_file = f"[Service]\nExecStart={MANAGER}\n"
+        self.dropins = {}
+
+    def cat(self) -> str:
+        folder = os.path.join(self.m.DROPIN_ROOT, UNIT + ".d")
+        texts = dict(self.dropins)
+        mine = os.path.join(folder, "mercury.conf")
+        if os.path.exists(mine):
+            texts["mercury.conf"] = open(mine).read()
+        return f"# /lib/systemd/system/{UNIT}\n{self.unit_file}" + "".join(
+            f"\n# {folder}/{name}\n{texts[name]}" for name in sorted(texts))
 
     def __call__(self, *args):
         self.calls.append(args)
         if args[0] == "show":
             names = [args[i + 1] for i, a in enumerate(args) if a == "-p"]
             return 0, "".join(f"{n}={self.props.get(n, '')}\n" for n in names), ""
+        if args[0] == "cat":
+            return 0, self.cat(), ""
         if args[0] == "restart":
             path = os.path.join(self.m.DROPIN_ROOT, UNIT + ".d", "mercury.conf")
             users = [line[5:] for line in open(path).read().splitlines()
@@ -143,7 +159,9 @@ def test_a_request_renders_the_one_drop_in_keeps_the_previous_and_restarts_by_id
         f"ExecStart={MANAGER} --observe-links --ofp-listen-host 192.0.2.10 "
         f"--ofp-tcp-listen-port 6653 {folder} ryu.app.ofctl_rest ryu.app.rest_topology"]
     assert open(os.path.join(m.DROPIN_ROOT, UNIT + ".d", "mercury.conf.prev")).read() == BEFORE
-    assert [c[0] for c in m.systemctl.calls if c[0] != "show"] == ["daemon-reload", "restart"]
+    # It reads the unit (`show`, and `cat` for the unit's own command line), then acts.
+    assert [c[0] for c in m.systemctl.calls if c[0] != "show"] == ["cat", "daemon-reload",
+                                                                   "restart"]
     assert not os.path.exists(req), "a request is applied once: it is removed once read"
     history = open(os.path.join(m.OUTCOME_DIR, "history.jsonl")).read().splitlines()
     assert len(history) == 1 and json.loads(history[0])["request_sha256"] == out["request_sha256"]
@@ -164,7 +182,8 @@ def test_a_unit_that_does_not_come_back_is_a_failed_outcome_naming_the_bound(tmp
     m, _, _ = ready(tmp_path, comes_up=False)
     out = run(m)
     assert out["ok"] is False and out["step"] == "wait"
-    assert "a placeholder, not measured" in out["error"] and "ActiveState failed" in out["error"]
+    assert "2.5 times the 30 s within which Ryu answered" in out["error"]
+    assert "monotonic clock" in out["error"] and "ActiveState failed" in out["error"]
     assert out["main_pid_after"] == "101", "it reads the unit's identity, not the exit code"
 
 
@@ -429,7 +448,11 @@ def test_the_host_step_renders_exactly_the_script_s_placeholder_lines():
     assert 's|^RYU_MANAGER = \\"@RYU_MANAGER@\\"$|' in step
     assert 'mercury ALL=(root) NOPASSWD: /usr/local/sbin/mercury-ryu-apply ""' in step
     installs = [line for line in step.splitlines() if "sudo install " in line]
-    assert "WORK=$(mktemp -d)" in step and len(installs) == 3
+    # Four since 2026-11-11: the script, the sudoers line when its file is absent (so the
+    # operator edits no file by hand), the first drop-in, and the folder's hand-over.
+    assert "WORK=$(mktemp -d)" in step and len(installs) == 4
+    assert 'sudo install -o root -g root -m 0440 "$WORK/mercury-ryu-apply.sudoers" ' \
+           '"$SUDOERS_FILE"' in step
     assert not [line for line in installs if "*" in line or "?" in line], \
         "files are installed by name, never a glob"
 

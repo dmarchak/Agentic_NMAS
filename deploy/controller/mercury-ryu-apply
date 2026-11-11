@@ -47,14 +47,32 @@ The apply, step by step:
   then carries ``Environment=PYTHONPATH=`` that folder, so every app imports the confirmed SDK;
   an app named mercury_app is refused (it would shadow it);
 - 4. listen.host parses as an IPv4 or IPv6 address and listen.port is in 1024 to 65535;
+- 4b. THE UNIT'S OWN ARGUMENTS ARE CARRIED (C2675, C2985): the command line the unit runs
+  without Mercury's drop-in (`unit_command`: the ExecStart `systemctl cat` shows in the unit
+  file and every drop-in read before mercury.conf) is read by this script, as root, and what of
+  it is not Mercury's to manage is kept (`keep_from`): Ryu's REST bind (`--wsapi-host`,
+  `--wsapi-port`), every other flag, and every app the unit loads that Mercury does not manage
+  (a file by its absolute path, or a module). A request names what it carries as ``"keep"``
+  beside apps and listen (a request without it keeps its hash and its render), and the script
+  COMPARES that with what it read: a difference is refused naming both, so the kept arguments
+  are never taken from the request, only confirmed by it. An argument that is not one plain
+  word (quoted, escaped, or expanded by systemd) is refused by its position, a drop-in read
+  after mercury.conf that sets ExecStart is refused by name (Mercury's would not be the command
+  line that runs), and a kept app's file that is not there is refused before anything is
+  written. A kept file an app of the request replaces (the same name) is left out, by rule;
 - 5. it renders the ONE drop-in, DROPIN_ROOT/<unit>.d/mercury.conf: `User=` RYU_USER, an empty
-  `ExecStart=`, then RYU_MANAGER with the fixed flags, the listen address, the apps' files in
-  order, then BUILTIN_APPS (`render_dropin`; Mercury previews the same text);
+  `ExecStart=`, then RYU_MANAGER with the fixed flags, the listen address, the kept REST bind
+  and flags, the kept apps, the request's apps' files in order, then BUILTIN_APPS
+  (`render_dropin`; Mercury previews the same text). REST's bind is the unit's own or none:
+  the script never writes one the unit did not have, so it cannot widen it;
 - 6. writes it atomically, keeping the previous one as mercury.conf.prev;
 - 7. runs `systemctl daemon-reload`, then restarts the unit;
 - 8. judges success by IDENTITY: the unit's MainPID changed, it is active, and its User is
-  RYU_USER, within UP_BOUND_S;
-- 9. writes the outcome to OUTCOME_DIR/outcome.json (0644) and appends it to history.jsonl.
+  RYU_USER, within UP_BOUND_S, counted on this script's MONOTONIC clock (C2983: the
+  controller's wall clock steps when NTP corrects it after a boot, C2982, and a bound on it
+  would read years elapsed);
+- 9. writes the outcome to OUTCOME_DIR/outcome.json (0644) and appends it to history.jsonl. Its
+  ``started`` and ``finished`` are the controller's wall clock, a record and never a bound.
 
 The put-back puts the drop-in before Mercury's last apply back, which that apply kept as
 mercury.conf.prev (step 6). It does NOT remove mercury.conf: on S3's layout the drop-in before
@@ -74,11 +92,18 @@ nor `step` (an exception before mercury.conf was replaced) changed no drop-in; a
 `step` (daemon-reload, restart, wait, after-write or running) wrote the new drop-in, and every
 failure past that write carries its step, so Mercury's rollback undoes what landed.
 
-It never runs anything from APPS_ROOT as root, never takes a path or a command from the request,
+It never runs anything from APPS_ROOT as root, never takes a path or a command from the request
+(a kept argument is the unit's own, read by this script and only compared with the request's),
 and never rolls back by itself: a rollback is Mercury's second request (the previous set, or the
 put-back), and mercury.conf.prev is also the break-glass. Written for the controller's Python
 3.5 (Ubuntu 16.04.5): no f-strings, no variable annotations, nothing newer than 3.5
 (tests/test_controller_apply.py checks it with Mercury's Python 3.5 check).
+
+**The host step's read (`unit_read`).** scripts/host-steps/p6-controller-apply-install.sh loads
+this file from the release, as the operator and never through sudo's one line, and calls
+`unit_read(<unit>)`: the same `unit_command` and `keep_from`, so what the install accepts is
+what a deploy carries. It prints the unit's ryu-manager, where Ryu's REST answers on the host
+itself, and each kept app's file, or the refusal, and changes nothing.
 """
 
 import errno
@@ -114,13 +139,37 @@ FIXED_FLAGS = ("--observe-links",)
 #: Ryu's own apps, loaded after the managed ones: Mercury's reads (`/stats/...`,
 #: `/v1.0/topology/...`) are theirs.
 BUILTIN_APPS = ("ryu.app.ofctl_rest", "ryu.app.rest_topology")
-#: How long the restarted unit has to be active with a new MainPID. NOT MEASURED: S1 (Nov 10)
-#: measures the controller's restart; until then 60 s, about 2.5 times the 25 s the operator
-#: expects of a Ryu start (a placeholder, named in every outcome it fires in).
-UP_BOUND_S = 60
-UP_BOUND_SOURCE = ("a placeholder, not measured: S1 (2026-11-10) measures the controller's "
-                   "restart")
+#: How long the restarted unit has to be active with a new MainPID: 75 s, 2.5 times 30 s.
+#: MEASURED at the controller's reboot test of 2026-11-11: Ryu answered within 30 s of its
+#: process starting, and the unit is active sooner than Ryu answers, so 30 s is the outer
+#: figure. Counted on the monotonic clock (C2983), and named in every outcome it fires in.
+UP_BOUND_S = 75
+UP_BOUND_SOURCE = ("2.5 times the 30 s within which Ryu answered after its process started, "
+                   "measured at the controller's reboot test of 2026-11-11; counted on this "
+                   "script's monotonic clock, never the controller's wall clock")
 POLL_S = 1.0
+#: One argument of the unit's own command line that is carried: a plain word (no space, quote,
+#: backslash, `$` or `%`, which systemd would unquote or expand), so a carried argument is one
+#: word of the rendered ExecStart exactly as the unit holds it.
+TOKEN = re.compile(r"^[A-Za-z0-9_@+=:,./-]{1,255}$")
+#: An app the unit loads that Mercury does not manage: a file by its absolute path, or a
+#: module by its dotted name (ryu-manager takes either).
+APP_FILE = re.compile(r"^/[A-Za-z0-9_@+=:,./-]{0,250}[A-Za-z0-9_]\.py$")
+APP_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+EXEC_LINE = re.compile(r"^\s*ExecStart\s*=(.*)$")
+UNIT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}\.service$")
+#: Ryu's REST bind, the unit's own (C2675): carried as the unit has it, never written when the
+#: unit names none.
+REST_FLAGS = {"--wsapi-host": "host", "--wsapi-port": "port"}
+#: The OpenFlow listen flags are the request's (``listen``: NetBox's openflow Service).
+LISTEN_FLAGS = {"--ofp-listen-host": "host", "--ofp-tcp-listen-port": "port"}
+#: A bind to every address of the host, in either family.
+WILDCARDS = ("0.0.0.0", "::")
+#: Where Ryu's REST answers when the unit names no port, and on the host itself when it names
+#: no address (`unit_read`, for the host step's own check).
+REST_DEFAULT_PORT = 8080
+LOOPBACK = {4: "127.0.0.1", 6: "::1"}
+MAX_KEEP = 64
 MAX_BYTES = 64 * 1024
 MAX_APPS = 32
 NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
@@ -324,10 +373,12 @@ def parse_request(raw):
         raise Refused("the request is not JSON in UTF-8")
     if isinstance(doc, dict) and "kind" in doc:
         return parse_put_back(doc)
-    if not isinstance(doc, dict) or sorted(doc) not in (["apps", "listen"],
-                                                        ["apps", "listen", "sdk"]):
+    if not isinstance(doc, dict) or set(("apps", "listen")) - set(doc) \
+            or set(doc) - set(("apps", "listen", "sdk", "keep")):
         raise Refused("the request is not an object of exactly the keys apps and listen (and "
-                      "sdk, for a set given the app SDK)")
+                      "sdk, for a set given the app SDK, and keep, for a unit whose own "
+                      "arguments are carried)")
+    keep = check_keep(doc["keep"]) if "keep" in doc else None
     sdk = None
     if "sdk" in doc:
         sdk = doc["sdk"]
@@ -373,7 +424,297 @@ def parse_request(raw):
     out = {"apps": [dict(a) for a in apps], "listen": {"host": host, "port": port}}
     if sdk is not None:
         out["sdk"] = {"sha256": sdk["sha256"]}
+    if keep is not None:
+        out["keep"] = keep
     return out
+
+
+# ---------------------------------------------------------------------------
+# 4b: the unit's own command line, and what of it is carried (C2675, C2985)
+# ---------------------------------------------------------------------------
+
+def unit_command(cat_text, unit):
+    """The command line *unit* runs without Mercury's drop-in, from `systemctl cat <unit>`'s
+    answer *cat_text*: ``{"argv": [words] or None, "file", "later": [files]}``. *argv* is the
+    one ExecStart left by the unit file and every drop-in read BEFORE mercury.conf (an empty
+    ``ExecStart=`` resets, as systemd reads it; a trailing backslash continues the line), None
+    when the answer holds none; *file* is the file that set it; *later* names each file read
+    AFTER mercury.conf that sets ExecStart, which would run in place of Mercury's. Refuses more
+    than one ExecStart, an argument that is not one plain word (`TOKEN`) by its position,
+    never its text, and a command that does not start with an absolute path."""
+    mine = "# {}/{}.d/{}".format(DROPIN_ROOT, unit, DROPIN_NAME)
+    lines = str(cat_text or "").splitlines()
+    found, later, current, in_mine, past_mine, i = [], [], "", False, False, 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if line.startswith("# /"):
+            past_mine = past_mine or in_mine
+            in_mine = line.strip() == mine
+            current = line[2:].strip()
+            continue
+        m = EXEC_LINE.match(line)
+        if not m:
+            continue
+        value = m.group(1).strip()
+        while value.endswith("\\") and i < len(lines):
+            value = (value[:-1] + " " + lines[i]).strip()
+            i += 1
+        if in_mine:
+            continue
+        if past_mine:
+            if current not in later:
+                later.append(current)
+        elif not value:
+            found = []
+        else:
+            found.append((value, current))
+    if not found:
+        return {"argv": None, "file": "", "later": later}
+    if len(found) > 1:
+        raise Refused("{} sets ExecStart {} times outside {} ({}): which command line it runs "
+                      "cannot be told".format(unit, len(found), DROPIN_NAME, ", ".join(
+                          sorted(set(f or "its unit file" for _, f in found)))))
+    value, where = found[0]
+    argv = value.split()
+    for n, word in enumerate(argv):
+        if not TOKEN.match(word):
+            raise Refused("argument {} of {}'s ExecStart ({}) is not one plain word (letters, "
+                          "digits and _ @ + = : , . / -): a quoted, escaped or expanded "
+                          "argument cannot be carried as it is".format(
+                              n, unit, where or "its unit file"))
+    if not argv[0].startswith("/"):
+        raise Refused("{}'s ExecStart ({}) does not start with a program's absolute path"
+                      .format(unit, where or "its unit file"))
+    return {"argv": argv, "file": where, "later": later}
+
+
+def _is_app(word):
+    """Whether *word* reads as an app wherever it stands: a file ending .py, or a dotted
+    module name. (A bare word after a flag is that flag's value.)"""
+    return word.endswith(".py") or ("." in word and bool(APP_MODULE.match(word)))
+
+
+def keep_from(argv):
+    """``(keep, listen)`` for the unit's own command line *argv* (`unit_command`'s): *keep* is
+    what a deploy carries, in the request's shape (`check_keep`), or None when the unit has
+    nothing but Mercury's own; *listen* is the OpenFlow listen the unit names (``{"host",
+    "port"}``, each only when given), which is the request's to set. Carried: Ryu's REST bind
+    (`REST_FLAGS`), every other flag with the word after it when that word is neither a flag
+    nor an app, and every app but Ryu's built-ins (which every render loads). The fixed flags
+    are every render's. Refuses, by position, a flag given twice or with no value and a word
+    that is none of these."""
+    rest, listen, flags, apps, i = {}, {}, [], [], 1
+    while i < len(argv):
+        at, word = i, argv[i]
+        i += 1
+        name, eq, value = word.partition("=")
+        if name in REST_FLAGS or name in LISTEN_FLAGS:
+            if not eq:
+                if i >= len(argv):
+                    raise Refused("{} is the unit's last argument and has no value".format(name))
+                value = argv[i]
+                i += 1
+            into = rest if name in REST_FLAGS else listen
+            key = REST_FLAGS.get(name) or LISTEN_FLAGS[name]
+            if key in into:
+                raise Refused("{} is given twice in the unit's command line".format(name))
+            into[key] = value
+        elif word in FIXED_FLAGS or word in BUILTIN_APPS:
+            continue
+        elif word.startswith("-"):
+            flags.append(word)
+            if not eq and i < len(argv) and not argv[i].startswith("-") \
+                    and not _is_app(argv[i]):
+                flags.append(argv[i])
+                i += 1
+        elif word.endswith(".py") or APP_MODULE.match(word):
+            if word in apps:
+                raise Refused("argument {} of the unit's command line loads an app it "
+                              "already loads".format(at))
+            apps.append(word)
+        else:
+            raise Refused("argument {} of the unit's command line is neither a flag, an app's "
+                          "file ending .py nor a module's name".format(at))
+    keep = {}
+    if rest:
+        if "port" in rest:
+            if not rest["port"].isdigit():
+                raise Refused("the unit's --wsapi-port is not a whole number")
+            rest["port"] = int(rest["port"])
+        keep["rest"] = rest
+    if flags:
+        keep["flags"] = flags
+    if apps:
+        keep["apps"] = apps
+    return (check_keep(keep) if keep else None), listen
+
+
+def check_keep(keep):
+    """The request's ``keep`` in its exact shape, each field named, never its value:
+    ``{"rest": {"host", "port"}, "flags": [words], "apps": [files and modules]}``, each key
+    only when the unit has it. REST's host is one plain word that parses as an IPv4 or IPv6
+    address (a name is not carried: refusing by resemblance is safe), kept as the unit writes
+    it; its port a whole number from 1 to 65535; a flag one plain word; an app a file by its
+    absolute path ending .py or a module's name, never one of Ryu's built-ins and never
+    twice."""
+    if not isinstance(keep, dict) or not keep or set(keep) - set(("rest", "flags", "apps")):
+        raise Refused("keep is not an object of rest, flags and apps (each only when the unit "
+                      "has it)")
+    out = {}
+    if "rest" in keep:
+        rest = keep["rest"]
+        if not isinstance(rest, dict) or not rest or set(rest) - set(("host", "port")):
+            raise Refused("keep.rest is not an object of host and port (each only when the "
+                          "unit names it)")
+        got = {}
+        if "host" in rest:
+            host = rest["host"]
+            if not isinstance(host, str) or not TOKEN.match(host):
+                raise Refused("keep.rest.host is not one plain word")
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                raise Refused("keep.rest.host (the unit's --wsapi-host) does not parse as an "
+                              "IPv4 or IPv6 address; a name is not carried")
+            got["host"] = host
+        if "port" in rest:
+            port = rest["port"]
+            if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+                raise Refused("keep.rest.port (the unit's --wsapi-port) is not a whole number "
+                              "from 1 to 65535")
+            got["port"] = port
+        out["rest"] = got
+    for key in ("flags", "apps"):
+        if key not in keep:
+            continue
+        words = keep[key]
+        if not isinstance(words, list) or not words or len(words) > MAX_KEEP:
+            raise Refused("keep.{} is not a list of 1 to {} words".format(key, MAX_KEEP))
+        for n, word in enumerate(words):
+            where = "keep.{}[{}]".format(key, n)
+            if not isinstance(word, str) or not TOKEN.match(word):
+                raise Refused("{} is not one plain word".format(where))
+            if key == "apps":
+                if not (APP_FILE.match(word) if word.endswith(".py")
+                        else APP_MODULE.match(word)):
+                    raise Refused("{} is neither a file by its absolute path ending .py nor a "
+                                  "module's name".format(where))
+                if word in BUILTIN_APPS:
+                    raise Refused("{} is one of Ryu's own apps every drop-in loads, never a "
+                                  "kept one".format(where))
+                if word in words[:n]:
+                    raise Refused("{} names an app listed before it".format(where))
+        out[key] = list(words)
+    return out
+
+
+def superseded(app, names):
+    """Whether the kept *app* is a file an app of the request replaces: one of *names* is its
+    file's name without .py. (Two apps of one name cannot load in one ryu-manager.)"""
+    return app.endswith(".py") and os.path.basename(app)[:-3] in names
+
+
+def kept_apps(request):
+    """The kept apps the drop-in loads: the request's ``keep.apps`` in the unit's order,
+    without each file an app of the request replaces (`superseded`)."""
+    names = set(a["name"] for a in request["apps"])
+    return [a for a in (request.get("keep") or {}).get("apps") or []
+            if not superseded(a, names)]
+
+
+def rest_url(rest):
+    """Where Ryu's REST answers ON THE HOST ITSELF for the kept bind *rest* (``{"host",
+    "port"}``, each only when the unit names it): the address it is bound to, loopback of the
+    same family when it is bound to every address, IPv4 loopback when the unit names none
+    (Ryu's default binds every IPv4 address); an IPv6 address bracketed, as a URL must."""
+    host = rest.get("host")
+    if host is None:
+        host = LOOPBACK[4]
+    else:
+        ip = ipaddress.ip_address(host)
+        if ip.is_unspecified:
+            host = LOOPBACK[ip.version]
+        if ip.version == 6:
+            host = "[{}]".format(host)
+    return "http://{}:{}".format(host, rest.get("port", REST_DEFAULT_PORT))
+
+
+def read_unit(unit):
+    """``(argv, keep, listen)`` for *unit* as systemd holds it now (`systemctl cat`), each
+    refusal naming what was read: no answer, a drop-in read after Mercury's that sets
+    ExecStart, or no ExecStart at all."""
+    rc, out, err = systemctl("cat", unit)
+    if rc != 0:
+        raise Refused("systemctl cat {} answered {} ({}): the unit's own command line cannot "
+                      "be read, so nothing was done".format(unit, rc, (err or "").strip()[:120]))
+    got = unit_command(out, unit)
+    if got["later"]:
+        raise Refused("{} sets ExecStart and is read after {}: Mercury's drop-in would not be "
+                      "the command line {} runs, so nothing was done".format(
+                          ", ".join(got["later"]), DROPIN_NAME, unit))
+    if got["argv"] is None:
+        raise Refused("systemctl cat {} shows no ExecStart outside {}: what the unit runs "
+                      "without Mercury's drop-in cannot be told, so nothing was done".format(
+                          unit, DROPIN_NAME))
+    keep, listen = keep_from(got["argv"])
+    return got["argv"], keep, listen
+
+
+def _keep_words(keep):
+    return "nothing" if keep is None else json.dumps(keep, sort_keys=True)[:400]
+
+
+def check_kept(request):
+    """Step 4b: the request's ``keep`` against what this script reads of the unit's own
+    command line, naming both when they differ, and each kept app's file read, so one that is
+    not there refuses before anything is written. ``[{"path", "sha256"}]`` for the kept files
+    the drop-in loads: the outcome records what Ryu loaded that Mercury does not manage."""
+    argv, mine, _listen = read_unit(RYU_UNIT)
+    if argv[0] != RYU_MANAGER:
+        raise Refused("{}'s own ExecStart runs {}, and this script was installed for {}: "
+                      "install it again with the host step, so nothing was done".format(
+                          RYU_UNIT, argv[0], RYU_MANAGER))
+    theirs = request.get("keep")
+    if mine != theirs:
+        raise Refused("the request carries {} of {}'s own command line, and this script reads "
+                      "{} there: what the plan kept is not what the unit has, so nothing was "
+                      "written".format(_keep_words(theirs), RYU_UNIT, _keep_words(mine)))
+    out = []
+    for app in kept_apps(request):
+        if not app.endswith(".py"):
+            continue
+        try:
+            with open(app, "rb") as fh:
+                data = fh.read()
+        except (IOError, OSError) as exc:
+            raise Refused("the kept app {} cannot be read ({}): Ryu would not start with it, "
+                          "so nothing was written".format(app, exc.strerror))
+        out.append({"path": app, "sha256": hashlib.sha256(data).hexdigest()})
+    return out
+
+
+def unit_read(argv):
+    """The host step's read (the module's docstring): for the one unit *argv* names, print
+    ``manager=`` its ryu-manager, ``rest=`` where Ryu's REST answers on the host itself
+    (`rest_url`), ``app=`` each kept app's file and ``kept=`` what a deploy carries, and
+    return 0; or print ``REFUSED: `` and why, and return 1. It reads `systemctl cat` and
+    changes nothing."""
+    try:
+        if len(argv) != 1 or not UNIT_NAME.match(argv[0]):
+            raise Refused("the unit's read takes one unit's name, <name>.service")
+        command, keep, _listen = read_unit(argv[0])
+    except Refused as exc:
+        print("REFUSED: {}".format(exc))
+        return 1
+    keep = keep or {}
+    print("manager={}".format(command[0]))
+    print("rest={}".format(rest_url(keep.get("rest") or {})))
+    for app in keep.get("apps") or []:
+        if app.endswith(".py"):
+            print("app={}".format(app))
+    print("kept={}".format(json.dumps(keep, sort_keys=True)))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -568,9 +909,18 @@ def render_dropin(request, ryu_manager, ryu_user, apps_root):
     modules/apps/channel.render_dropin, held equal by a test)."""
     files = [os.path.join(apps_root, a["name"], a["version"], a["name"] + ".py")
              for a in request["apps"]]
+    # What the unit's own command line had that is not Mercury's to manage (step 4b): REST's
+    # bind as the unit names it (never one it did not have), its other flags, and the apps it
+    # loads that no app of the request replaces. A request with no keep renders as it always
+    # did, byte for byte.
+    keep = request.get("keep") or {}
+    rest = keep.get("rest") or {}
+    bind = ((["--wsapi-host", rest["host"]] if "host" in rest else [])
+            + (["--wsapi-port", str(rest["port"])] if "port" in rest else []))
     command = ([ryu_manager] + list(FIXED_FLAGS)
                + ["--ofp-listen-host", request["listen"]["host"],
                   "--ofp-tcp-listen-port", str(request["listen"]["port"])]
+               + bind + list(keep.get("flags") or []) + kept_apps(request)
                + files + list(BUILTIN_APPS))
     # The app SDK on the apps' import path (C2852, option A); a request naming none renders as
     # it always did, byte for byte.
@@ -616,14 +966,16 @@ def restart(before):
     """Steps 7 and 8: daemon-reload, restart, and success by identity within UP_BOUND_S.
     *before* is the MainPID read before the drop-in was written. A read of the unit that
     systemctl does not answer during the wait is a poll that read nothing, never a refusal:
-    the drop-in is written and the unit restarted by then."""
+    the drop-in is written and the unit restarted by then. The bound and ``up_after_s`` are
+    counted on the monotonic clock from the moment `systemctl restart` returned (C2983): the
+    wall clock steps when NTP corrects it, and a bound on it would then read years."""
     rc, _, err = systemctl("daemon-reload")
     if rc != 0:
         return {"ok": False, "step": "daemon-reload", "error": "systemctl daemon-reload "
                 "answered {} ({})".format(rc, (err or "").strip()[:200]), "main_pid_before":
                 before}
     rc, _, err = systemctl("restart", RYU_UNIT)
-    started = time.time()
+    started = time.monotonic()
     if rc != 0:
         return {"ok": False, "step": "restart", "error": "systemctl restart {} answered {} ({})"
                 .format(RYU_UNIT, rc, (err or "").strip()[:200]), "main_pid_before": before}
@@ -639,13 +991,14 @@ def restart(before):
                 and props.get("User") == RYU_USER:
             return {"ok": True, "step": "running", "main_pid_before": before,
                     "main_pid_after": pid, "active_state": "active", "user": RYU_USER,
-                    "up_after_s": round(time.time() - started, 1)}
-        if time.time() - started >= UP_BOUND_S:
+                    "up_after_s": round(time.monotonic() - started, 1)}
+        if time.monotonic() - started >= UP_BOUND_S:
             return {"ok": False, "step": "wait", "main_pid_before": before,
                     "main_pid_after": pid, "active_state": props.get("ActiveState", ""),
                     "user": props.get("User", ""),
-                    "error": "{} was not active with a new MainPID and User={} within {} s ({}); "
-                             "read {} times: MainPID {} (before {}), ActiveState {}, User {}"
+                    "error": "{} was not active with a new MainPID and User={} within {} s of "
+                             "`systemctl restart` returning ({}); `systemctl show` read {} "
+                             "times: MainPID {} (before {}), ActiveState {}, User {}"
                              .format(RYU_UNIT, RYU_USER, UP_BOUND_S, UP_BOUND_SOURCE, polls,
                                      pid or "none", before or "none",
                                      props.get("ActiveState") or "none",
@@ -700,6 +1053,7 @@ def apply(argv):
         return put_back(request, user)
     files = check_folders(request, account)
     sdk = check_sdk(request, account)
+    kept_files = check_kept(request)
     text = render_dropin(request, RYU_MANAGER, RYU_USER, os.path.realpath(APPS_ROOT))
     before = unit_properties("MainPID").get("MainPID", "")
     path, kept = write_dropin(text)
@@ -710,6 +1064,9 @@ def apply(argv):
                    "prev_kept": kept, "user_before": user})
     if sdk is not None:
         result["sdk"] = sdk
+    if "keep" in request:
+        result["keep"] = request["keep"]
+        result["kept_files"] = kept_files
     return result
 
 

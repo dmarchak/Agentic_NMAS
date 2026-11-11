@@ -15,9 +15,11 @@ back and, if they don't, puts the set before back. You start it on [SDN › Apps
    pinned commit into a folder of its own and checks its hash against the Published pin,
    compiles each app's start-time config from what its manifest declares (each expected
    switch's tables, placed from its platform profile), checks conformance for every expected
-   switch, and renders the drop-in the apply script will
-   write. A refusal names what it compared, and nothing is staged on the controller. The
-   preview removes what it staged here before it answers.
+   switch, reads what the unit's own command line has that is not Mercury's to manage (its
+   REST bind, its other flags, the apps it loads: [what is kept](#kept)), and renders the
+   drop-in the apply script will write, carrying them. A refusal names what it compared, and
+   nothing is staged on the controller. The preview removes what it staged here before it
+   answers.
 2. `confirm`: you confirm as yourself, a verified person; the button names the work ("Deploy
    switch_quirks 1.3.0 and restart ctl-1"), a first deploy's missing rollback ("… with no
    rollback") and what the post-check expects to recover ("… expecting dns_blacklist's /health
@@ -28,7 +30,7 @@ back and, if they don't, puts the set before back. You start it on [SDN › Apps
    window, and says what moved, both hashes.
 4. `window`: a planned-restart window is recorded for the controller, its switches expected to
    drop, before anything is sent. Its length is twice the session's opening bound, the apply
-   command's wait and the post-check's bound (room for a rollback). Inside it the controller's
+   command's wait and the post-check's two bounds (room for a rollback). Inside it the controller's
    restart is planned, not unplanned, and its switches' drops are its expected effect; it ends
    when the post-check passes, or at once when nothing restarted, and otherwise runs to its end.
 5. `stage`: the files go over SFTP as the deploy account, only into
@@ -37,11 +39,15 @@ back and, if they don't, puts the set before back. You start it on [SDN › Apps
    request is written last. Nothing is deleted on the controller.
 6. `command`: `sudo -n /usr/local/sbin/mercury-ryu-apply`, with no argument: the only thing the
    deploy account may run as root. The script checks the request and every folder's hash
-   again, writes the drop-in (keeping the one before as `mercury.conf.prev`), restarts the unit
-   and judges it by identity: a new MainPID, active, User `ryu`. Its outcome is read back.
-7. `post-check`: every expected switch (by its DPID in the controller's switch list), every
-   link NetBox cables between OpenFlow ports, and every enabled app's /health, within a bound
-   shown with where it comes from. Each switch's time is counted from the restart.
+   again, reads the unit's own command line itself and refuses a request that keeps anything
+   else of it, writes the drop-in (keeping the one before as `mercury.conf.prev`), restarts
+   the unit and judges it by identity: a new MainPID, active, User `ryu`, within 75 s on its
+   own steady clock. Its outcome is read back.
+7. `post-check`: first Ryu must answer, within 75 s of the outcome being read back; then
+   every expected switch (by its DPID in the controller's switch list), every link NetBox
+   cables between OpenFlow ports, and every enabled app's /health, within 55 s of Ryu's first
+   answer. Both run on Mercury's own clock ([the bounds](#bounds)). Each switch's time is
+   counted from the restart.
 8. `rollback`: on a miss, or an apply that failed after the new drop-in was written, Mercury
    applies the request the controller ran before by its record, staged again from its pins, and
    checks again. On a first deploy it sends the second request kind instead, which puts the
@@ -63,10 +69,15 @@ again, use the redeploy (below).
 **Preview a deploy…** (on the controller's card) and "Preview deploying <version>…" (on an
 app's page) open the plan in place. Everything you confirm is in one card:
 - **The target**: the controller, its unit and User as read, the app folder's owner and mode,
-  and where it listens.
+  where it listens for OpenFlow, and where Ryu's REST is bound, in words: the address the unit
+  names, kept as it is, or that it answers on every address when the unit names none or
+  already binds every address.
 - **The set, in load order**: each app with its version, its pin (commit and content hash) and
   its files; the app that changes marked, and its files listed. Ryu's own `ofctl_rest` and
   `rest_topology` always load last.
+- **From the unit's own command line, carried as it is**, when the unit has anything Mercury
+  does not manage: each app it loads, "kept: … not managed by Mercury" or "replaced: …" by the
+  set's app of the same name, and its other flags ([what is kept](#kept)).
 - **Each app's start-time config**, when it has one: where it is staged, whether it is new,
   changed or the same as the controller's record, its hash (in the request, so the confirm
   binds it), each switch's tables and the platform profile they were placed from (table 0 where
@@ -88,7 +99,83 @@ folder it cannot stage into, a User or command line that cannot be read, a requi
 from the set, a version that is not Published or whose staged hash is not its pin, a switch that
 cannot connect, a config that holds a secret, a config that cannot be compiled (a switch no
 platform profile covers, a table no role fits, or a value the app's schema refuses, each named),
-or Mercury's record of the set that cannot be read.
+Mercury's record of the set that cannot be read, a unit's own command line that cannot be
+carried as it is, or a drop-in that would drop, widen or change Ryu's REST bind or stop loading
+something the unit loads now ([what is kept](#kept)).
+
+## A controller as it is: what is kept {#kept}
+
+Mercury takes a controller as it finds it. Its unit may already bind Ryu's REST to one address
+and load apps of its own, put there before Mercury managed it. Nothing of that is dropped
+without a word, and nothing is edited by hand first.
+
+- **What is read.** The command line the unit runs without Mercury's drop-in: the `ExecStart`
+  its unit file and its other drop-ins leave (`systemctl cat`, one of the host's three reads).
+- **What is Mercury's.** The set's apps, Ryu's own `ofctl_rest` and `rest_topology`,
+  `--observe-links`, and the OpenFlow listen address and port, which are NetBox's `openflow`
+  Service's. When the unit listens elsewhere today, the plan says both.
+- **What is kept.** Everything else, in the unit's order: Ryu's REST bind (`--wsapi-host`,
+  `--wsapi-port`), every other flag, and every app the unit loads. A kept app is drawn as
+  "kept: <its file>, loaded from <its folder>, not managed by Mercury": it is not read, tested
+  or versioned by Mercury, its OpenFlow versions are not in the conformance check, and it loads
+  before the set's apps. The apply script reads each kept file as root when it applies and
+  records its hash in the receipt, so a change to one shows between two receipts.
+- **Adopting a kept app.** Deploy an app of the same name through Mercury (add it as a Draft,
+  run its tests, publish it, preview its deploy). The plan then draws the file as "replaced":
+  it is no longer loaded, Mercury's version takes its place, and the file stays on the
+  controller. Two apps of one name cannot load in one controller, so there is no state with
+  both.
+- **REST's bind is never widened.** The drop-in carries the address and port the unit names
+  and nothing else. A unit that names none gets none. A bind to every address (`0.0.0.0` or
+  `::`) is written only when the unit already has it, and the plan says so in words. Mercury's
+  own reads of Ryu's REST go to the address the network's controller connection names, never
+  an assumed one, so that connection must name an address REST is bound to.
+- **Two reads, compared.** What is kept comes from the unit's own files. The plan then
+  compares the drop-in it would write with the command line systemd holds now (`systemctl
+  show`), and refuses, naming both values, if the deploy would drop, widen or change the REST
+  bind, drop a flag, or stop loading an app that nothing in the set replaces. The apply script
+  makes the first read again itself, as root, and refuses a request whose kept arguments
+  differ from the unit's.
+- **What is refused, by name.** An argument that is not one plain word (quoted, escaped, or
+  expanded by systemd), named by its position; a REST address that is a name, not an IPv4 or
+  IPv6 address; more than one `ExecStart`; a drop-in read after `mercury.conf` that sets
+  `ExecStart`, since Mercury's would not be the one that runs.
+
+Not built: removing a kept app that nothing replaces (a deploy never drops one), and taking a
+kept app's file into the code repository as it is; an app enters the repository as a Draft, by
+a person.
+
+## Installing the apply script, once {#install}
+
+The deploy's one privileged command is a script installed on the controller host, root-owned.
+Installing it is the one step a person makes on the controller, once per controller, as their
+own account with sudo, from a copy of this release:
+
+`bash <release>/scripts/host-steps/p6-controller-apply-install.sh <unit>`
+
+`<unit>` is the systemd unit Ryu runs as, the controller's `openflow.unit` (the controller's
+card on [SDN › Apps](sdn#apps) names it). It takes the controller as it is and edits no file by
+hand before or after:
+
+- **Before it changes anything** it checks, and stops at the first that fails, saying what it
+  wanted and what it got: the accounts `mercury` and `ryu` exist; the sudoers file is absent or
+  holds exactly the one line; the unit's command line can be carried whole (the same read the
+  deploy makes); the `ryu` account can read every app the unit loads; Ryu lists its switches at
+  the address its REST is bound to; and the unit already runs as `ryu`, or the run was told it
+  may restart it.
+- **Then** it installs the script, the sudoers line when its file is absent, and a first
+  drop-in that sets `User=ryu` and nothing else. A unit that already runs as `ryu` is not
+  restarted. One that does not is restarted only when `restart` follows the unit's name. Its
+  planned-restart window is declared first, and no screen declares one for a host step yet (a
+  gap: only a deploy and a device's Reload declare their own). Ryu must then answer within
+  75 s and every switch it listed before must be back within 55 s of that answer, or the
+  drop-in is taken out again.
+- **Last**, with `User=ryu` read back, it hands `/opt/ryu-apps` to the deploy account. Apps the
+  unit loads from that folder stay where they are and are kept by every deploy.
+- **Run again** it changes nothing that is already in place: a `mercury.conf` that is there (a
+  deploy's) is left as it is.
+
+Everything after it is this operation: preview, confirm, apply, post-check, rollback, record.
 
 ## Where each fact comes from {#sources}
 
@@ -182,9 +269,20 @@ refused confirm or a deploy that failed before the drop-in was written changes n
 row stays. Receipts that cannot be read are a row of their own: until they are repaired, a
 deploy is refused.
 
-## The bounds
+## The bounds {#bounds}
 
-Both are about 2.5 times a measured time. Until they are measured, each is marked a placeholder
-wherever it appears, and the receipt keeps that.
+Each is about 2.5 times a measured time, and each is counted on a clock that cannot jump: a
+controller's wall clock can be years wrong after a boot until NTP corrects it, so no bound
+uses a time read on the controller.
+
+| Bound | How long | Measured | Counted from, on whose clock |
+|---|---|---|---|
+| The unit is active again | 75 s | Ryu answered within 30 s of its process starting | the restart call returning, on the apply script's steady clock |
+| Ryu answers | 75 s | the same 30 s | the apply's outcome being read back, on Mercury's clock |
+| Every switch, link and /health is back | 55 s | every switch and link was back 21 s after Ryu answered (52.5 s, taken up to a whole 5 s read) | Ryu's first answer, as Mercury saw it |
+
+The measurement is a controller reboot (2026-11-11). A bound that fires says which it was,
+what it read and how many times, what it waited for, and this measurement; the deploy then
+rolls back. Each deploy's receipt keeps every switch's own time after the restart.
 
 See also: [SDN › Apps](sdn#apps) · [Change an SDN switch's flows](sdn-flows).
