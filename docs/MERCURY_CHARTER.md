@@ -213,6 +213,36 @@ known recovery was a console sequence, C2838).
 **The test, beside the industry need:** a fix a person is told to make is a Mercury operation,
 or its step names the register row for the operation still missing.
 
+## What Mercury knows is chosen, never typed
+
+**A standing design rule (the operator, 2026-11-10), beside "Human-facing means human-readable".**
+Any field asking for something Mercury already knows is a selection, not free text: a dropdown,
+or a searchable picker when the list is long.
+
+- **What Mercury knows:** platform slugs, credential profile slugs, devices, interfaces, DPIDs,
+  controllers, templates, captures, end hosts and the hosts a controller lists (by name, MAC
+  and IP), networks, roles, tags, apps and their versions.
+- **Where a field must also accept a value Mercury cannot know** (a trace's To address, a new
+  name), it is a combo box: the known values are offered as the person types, free text is
+  allowed, and the typed value is checked, with a refusal that names its reason ("not a host
+  any controller lists").
+- **Each option shows what the person recognises:** the NetBox name first, then the MAC, the IP
+  or the DPID. Never a bare id.
+- **A picker's default is the value that fits the question asked,** never merely the newest
+  item of any kind (a capture picker offers the captures of the command the template needs).
+
+**Cost:** a picker and its list per field, and a search where the list is long. **Prevents:** a
+person typing what Mercury holds and being refused for a spelling, and a field that takes none
+of the names a person knows a thing by (the Lab 9 sitting, 2026-11-10: the credential profile's
+slug typed as free text; a trace's From that took neither the router's name nor its IP, although
+the controller listed its MAC on a switch port; a capture picker that defaulted to the newest
+capture of any command).
+
+**The test, beside the industry need:** on every form, a field whose answer is in a list Mercury
+holds is a selection from that list, or a combo box that offers it; the review walks each form
+with this question, and a free-text field for a known value is a finding. To be checked by a
+scan of the v2 forms against the lists Mercury holds, with a backlog that only shrinks.
+
 ## The fix-it path
 
 **The target flow for every Needs attention item (the operator, 2026-11-10).** It is the
