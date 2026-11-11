@@ -389,14 +389,29 @@ class TestHelpIsNotTheImportCheck:
         assert "ModuleNotFoundError" in done.stderr
 
 
-def test_every_script_starts_when_run_bare():
+def test_every_script_starts_when_run_bare(tmp_path):
     """Runnable, and kept for what it *does* catch: a syntax error, a broken
     argparse, a module-level statement that raises. Not the import check —
-    see `TestHelpIsNotTheImportCheck`."""
+    see `TestHelpIsNotTheImportCheck`.
+
+    Each script runs against a store of its OWN (C3066): a script that acts on --help wrote
+    into the store every test of the worker shares (nmas-startup-check ran its whole check
+    and left startup_check.json there, which a job-health test of the same worker then read:
+    CI run 1607). The shared store is as it was afterwards."""
     import subprocess
     import sys
 
+    from modules import config
+
+    def shared():
+        return sorted((name, os.stat(os.path.join(config.DATA_DIR, name)).st_mtime_ns)
+                      for name in os.listdir(config.DATA_DIR))
+
+    before = shared()
+    own = tmp_path / "data"
+    own.mkdir()
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["NMAS_DATA_DIR"] = str(own)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     broken = []
     for path in _scripts():
@@ -412,6 +427,7 @@ def test_every_script_starts_when_run_bare():
                          done.stderr.splitlines()[-1] if done.stderr else "?")
             broken.append(f"{os.path.basename(path)}: {first.strip()}")
     assert not broken, "scripts that do not start: " + "; ".join(broken)
+    assert shared() == before, "a script run for its --help changed the shared test store"
 
 
 def test_the_bootstrap_check_accepts_BOTH_spellings():

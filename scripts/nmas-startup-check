@@ -26,6 +26,12 @@ adopt(__name__)
 
 
 def main(argv=None) -> int:
+    # --help says what this does and reads no device (C3066): it took no argument at all, so
+    # `nmas-startup-check --help` ran the whole check, a session to every device, and wrote
+    # its result.
+    if any(a in ("-h", "--help") for a in (sys.argv[1:] if argv is None else argv)):
+        print(__doc__.strip())
+        return 0
     from modules.nsot.startup_check import brief, run_check
 
     out = run_check()

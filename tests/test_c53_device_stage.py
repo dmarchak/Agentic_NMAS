@@ -263,6 +263,22 @@ class TestTheJob:
                                 lambda c=counts: {"devices": [], "counts": c})
             assert mod.main() == code
 
+    def test_help_says_what_it_does_and_checks_nothing(self, monkeypatch, capsys):
+        """C3066: `--help` ran the whole check (the script took no argument at all)."""
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "nmas-startup-check")
+        loader = importlib.machinery.SourceFileLoader("nmas_startup_check_help", path)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+
+        def never(*a, **k):
+            raise AssertionError("--help ran the check")
+
+        monkeypatch.setattr(startup_check, "run_check", never)
+        for flag in ("--help", "-h"):
+            assert mod.main([flag]) == 0
+            assert "READ-ONLY: two show commands per device" in capsys.readouterr().out
+
 
 class TestTheRows:
     def _rows(self, res, now=1000.0):
