@@ -22,10 +22,16 @@ in order (`CLI_STEPS`):
 3. **render**: `openflow_state.render_against`, which decides ``state.bind_changed`` (the EOS
    agent's restart, C2599) from the switch's model. A program that would leave the switch still
    differing from intent (the template only adds) is refused here, naming what would remain.
+   An EOS switch's bound set is sent in ONE `bind interface` line (C2996: whether EOS adds a
+   line's interfaces to the set or replaces the set is not measured), and the configuration
+   after the program is read both ways (`openflow_state.after`): a set that does not hold
+   every interface the switch binds now differs under one reading and is a removal under the
+   other, so it is refused either way.
 4. **undo**: the vendor driver's lines putting back exactly what the program changes, checked
-   by parsing the configuration as it would be after the program and the undo: it must read as
-   it did before, or nothing is sent. Every program and undo line is one of the template's
-   shapes (`openflow_cli.SHAPES`), the only configuration the session carries.
+   by parsing the configuration as it would be after the program and the undo, under every
+   reading: it must read as it did before, or nothing is sent. Every program and undo line is
+   one of the template's shapes (`openflow_cli.SHAPES`), the only configuration the session
+   carries.
 5. **hash** (`plan_hash`): over the network, the switch, the template, the program, the undo,
    the parsed before and the export's SHA-256.
 6. **hold**, **send**: refused unless the template is CONFIRMED on the network
@@ -36,7 +42,10 @@ in order (`CLI_STEPS`):
 7. **verify**: the running configuration read back and parsed, its OpenFlow layer compared
    with the program's (no difference); then the switch's datapath id (NetBox's when given, else
    the switch's own `show openflow`) in the controller's switch list (`seen_by_controller`,
-   shared with Open vSwitch's).
+   shared with Open vSwitch's); then, on EOS, the agent's own bound interfaces read back
+   (`agent_reads_back`, C2779: `show openflow`'s list under ``Bind mode:``) and compared as a
+   set with the program's: a difference fails, naming both sets; an answer that cannot be read
+   neither passes nor fails (``unverified``: what was sent stays, said, nothing rolled back).
 8. **rollback**: on a refused line or a failed check, the undo is sent and the configuration
    read again: the result says whether its OpenFlow layer reads as it did before.
 9. **record**: the run in the network's SDN operation record (`record`, shared with Open
@@ -202,7 +211,9 @@ def _cli_plan(network, device, dev, name, *, values=None, session=None) -> dict:
            "undo": [], "before": None, "hash": "", "citations": T.load(name)["citations"],
            "excluded": [], "takes": [], "different": [], "unchanged": False, "version": "",
            "profile": "", "export_sha256": "", "steps": CLI_STEPS, "source": source_of({}),
-           "changes": []}
+           "changes": [],
+           # What Verify checks on this family beyond the two every vendor switch gets.
+           "verify_also": list(getattr(drv, "VERIFY_ALSO", ()))}
     got = values if values is not None else values_from_export(network, device)
     out["values"], out["defaults"] = dict(got.get("values") or {}), list(got.get("defaults") or [])
     out["excluded"] = list(out["values"].get("excluded") or [])
@@ -254,13 +265,31 @@ def _cli_plan(network, device, dev, name, *, values=None, session=None) -> dict:
     out["changes"] = S.changes(r["want"], before)
     out["before"] = before
     program = list(rendered["program"])
-    after = S.parse(name, read["running"] + "\n" + "\n".join(program))
-    left, missing = S.differences(r["want"], after)
-    left += [f"{u}: still none" for u in missing]
-    if left:
+    # The configuration after the program, under each way the platform may read a line not
+    # measured (EOS's `bind interface`, C2996): it must be intent's under every one.
+    readings = []
+    for how, after in S.after(name, read["running"], program):
+        left, missing = S.differences(r["want"], after)
+        readings.append((how, left + [f"{u}: still none" for u in missing]))
+    # Each difference once, in order; one that holds under some readings only says which, and
+    # under the others the program would have removed what the switch holds.
+    said, removes = [], []
+    for item in dict.fromkeys(x for _how, left in readings for x in left):
+        under = [how for how, left in readings if item in left]
+        if len(under) == len(readings):
+            said.append(item)
+        else:
+            said.append(f"{item}, {' and '.join(under)}")
+            removes += [how for how, left in readings if item not in left
+                        and how not in removes]
+    if said:
         out["error"] = (f"after this program {device} would still differ from intent "
-                        f"({'; '.join(left)}): the {name} template adds and never removes what "
-                        "the switch holds beyond NetBox's values, so nothing is sent")
+                        f"({'; '.join(said)}): the {name} template adds and never removes what "
+                        "the switch holds beyond NetBox's values"
+                        + (f" ({' and '.join(removes)}, this program would remove it, and "
+                           "which of the two this release does is not measured)"
+                           if removes else "")
+                        + ", so nothing is sent")
         return out
     out["at"] = "undo"
     undo, why = drv.undo(before, r["want"], v)
@@ -272,12 +301,13 @@ def _cli_plan(network, device, dev, name, *, values=None, session=None) -> dict:
     if why:
         out["error"] = f"the rendered lines are not of their shapes: {why}"
         return out
-    back = S.parse(name, "\n".join([read["running"]] + program + undo))
-    d, u = S.differences(before, back)
-    if d or u:
-        out["error"] = (f"the undo would not put {device} back as it is ({'; '.join(d + u)}), "
-                        "so nothing is sent")
-        return out
+    for how, back in S.after(name, read["running"], program + undo):
+        d, u = S.differences(before, back)
+        if d or u:
+            out["error"] = (f"the undo would not put {device} back as it is "
+                            f"({'; '.join(d + u)})" + (f", {how}" if how else "")
+                            + ", so nothing is sent")
+            return out
     out["undo"] = undo
     out["unchanged"] = not out["different"]
     out["at"] = "hash"
@@ -362,8 +392,9 @@ def apply(network: str, device: str, confirmed_hash: str, *, actor: str,
           connection: str = "", sleep=time.sleep, now=time.time) -> dict:
     """Apply *device*'s previewed configuration as *actor*, bound to *confirmed_hash*,
     dispatched on its template. ``outcome`` one of ``refused``, ``verified``, ``rolled_back``,
-    ``rollback_failed``, and for a switch already as intended (nothing sent) whose controller
-    does not list it, ``unverified``."""
+    ``rollback_failed``, and ``unverified``: a switch already as intended (nothing sent) whose
+    Verify failed, or one whose Verify could not read a check and failed none (an unreadable
+    read neither passes nor fails: what was sent stays and nothing is rolled back)."""
     dev = _inventory(network, device)
     name, why = template_for(dev) if dev else ("", f"{device} is not a device of {network}")
     if why:
@@ -448,11 +479,22 @@ def _cli_apply(network, device, dev, name, confirmed_hash, *, actor, actor_verif
                     if out["verify"]["ok"]:
                         out["outcome"], out["ok"] = "verified", True
                         return
-                    out["error"] = "Verify failed: " + "; ".join(
-                        c["words"] for c in out["verify"]["checks"] if c["state"] == "fail")
+                    failed = [c["words"] for c in out["verify"]["checks"]
+                              if c["state"] == "fail"]
+                    if not failed:
+                        # A check that could not be read neither passes nor fails: never
+                        # verified, and nothing is rolled back on it.
+                        out["outcome"] = "unverified"
+                        out["error"] = "Verify could not read: " + "; ".join(
+                            c["words"] for c in out["verify"]["checks"]
+                            if c["state"] == "unread") + (
+                                "; what was sent stays, and nothing was rolled back"
+                                if out["sent"] else "")
+                        return
+                    out["error"] = "Verify failed: " + "; ".join(failed)
                 if not out["sent"]:
                     # Already as intended, so nothing was sent and nothing is put back: the
-                    # switch is configured and the controller does not list it.
+                    # switch is configured and a check of it failed.
                     out["outcome"] = "unverified"
                     return
                 out["at"] = "rollback"
@@ -510,10 +552,45 @@ def roll_back_read(conn, name: str, p: dict, undone: str) -> dict:
                       + "; ".join(x for x in d + u + [openflow_cli.failed(undone)] if x)[:300])}
 
 
+def agent_reads_back(conn, drv, want: dict, *, sleep=time.sleep) -> dict:
+    """The check that an EOS switch's own OpenFlow agent holds the program's bound interfaces
+    (C2779; `drv.agent_check` over `show openflow`'s answer, `drv.AGENT_READ`, on EOS's capture
+    list): read up to `VERIFY_READS` times `VERIFY_PAUSE` apart on the one held session until
+    the set it lists is the program's (an agent the program restarted, C2599, is back within
+    seconds, as its controller session is). ``{"name", "state", "words"}``: ``pass``; ``fail``
+    naming both sets (intended, read) after the last read; ``unread`` when the last read could
+    not be made or parsed, which neither passes nor fails."""
+    from modules.utils import error_text
+    check = {}
+    for i in range(VERIFY_READS):
+        try:
+            # The literal, so the session-write scan reads it as the allowlisted read it is.
+            shown = conn.send_command("show openflow", read_timeout=60) or ""
+        except Exception as exc:                      # noqa: BLE001 (that read's failure)
+            check = {"name": drv.AGENT_CHECK, "state": "unread",
+                     "words": f"`{drv.AGENT_READ}` could not be read: {error_text(exc)}"[:300]}
+        else:
+            check = drv.agent_check(want, shown)
+        if check["state"] == "pass":
+            return check
+        if i < VERIFY_READS - 1:
+            sleep(VERIFY_PAUSE)
+    check["words"] += f" (after {VERIFY_READS} reads {VERIFY_PAUSE:g} s apart)"
+    return check
+
+
 def _verify(conn, name, drv, want, values, instance, ctl, *, sleep) -> dict:
-    """The checks after the send: the running configuration's OpenFlow layer, then the
-    controller's switch list. ``{"ok", "checks", "dpid"}``."""
+    """The checks after the send: the running configuration's OpenFlow layer, the controller's
+    switch list, and for a family with one (`drv.AGENT_READ`: EOS) its agent's own bound
+    interfaces (`agent_reads_back`). ``{"ok", "checks", "dpid"}``: ``ok`` only when every
+    check passed."""
     from modules.sdn import openflow_state as S
+    agent = getattr(drv, "AGENT_READ", "")
+
+    def unreached(why: str) -> None:
+        if agent:
+            checks.append({"name": drv.AGENT_CHECK, "state": "not_reached",
+                           "words": f"not read: {why}"})
     text = conn.send_command("show running-config", read_timeout=120) or ""
     try:
         d, u = S.differences(want, S.parse(name, text))
@@ -532,13 +609,20 @@ def _verify(conn, name, drv, want, values, instance, ctl, *, sleep) -> dict:
     if checks[0]["state"] != "pass":
         checks.append({"name": "the controller's switch list", "state": "not_reached",
                        "words": "not read: the switch did not read back as rendered"})
+        unreached("the switch did not read back as rendered")
         return out
     if not dpid:
         checks.append({"name": "the controller's switch list", "state": "fail",
                        "words": ("the switch names no datapath id and NetBox gives none "
                                  "(openflow_datapath_id), so the controller's list cannot be "
                                  "asked for it")})
+        unreached("the controller's switch list could not be asked")
         return out
     checks.append(seen_by_controller(ctl, dpid, sleep=sleep))
-    out["ok"] = checks[-1]["state"] == "pass"
+    if checks[-1]["state"] != "pass":
+        unreached("the controller does not list the switch")
+        return out
+    if agent:
+        checks.append(agent_reads_back(conn, drv, want, sleep=sleep))
+    out["ok"] = all(c["state"] == "pass" for c in checks)
     return out

@@ -154,6 +154,18 @@ class TestConfigureFromNetBox:
         assert row["outcome"] == "verified" and row["response"]["device"] == "arista-sw1"
         assert row["export_sha256"] == tab["sha"] and row["actor"]
 
+    def test_an_aristas_preview_holds_one_bind_line_and_names_the_read_back(self, tab,
+                                                                          monkeypatch):
+        """C2996, C2779: the preview shows the exact line, and what Verify reads back."""
+        _confirm(monkeypatch, "arista-sw1", "arista_eos")
+        sw = SwitchConn.at["192.0.2.2"] = Switch("arista-sw1.txt", running="hostname x\n")
+        html = unescape(tab["client"].post(f"{BASE}/configure/preview", data={
+            "list": LIST, "device": "arista-sw1"}).get_data(as_text=True))
+        assert html.count("   bind interface ") == 1 and "   bind interface Et18-19\n" in html
+        assert sw.sets == [] and not sw.saved, "a preview sends the switch nothing"
+        assert ("the controller's switch list holds its datapath id within 12 s; the switch's "
+                "own show openflow lists the program's bound interfaces</dd>") in html
+
     def test_a_switch_on_a_draft_template_is_previewed_as_not_sent(self, tab):
         sw = SwitchConn.at["192.0.2.2"] = Switch("arista-sw1.txt", running="hostname x\n")
         r = tab["client"].post(f"{BASE}/configure/preview",
@@ -214,12 +226,12 @@ class TestConfigureFromNetBox:
         assert sorted(rows) == ["arista-sw1", "arista-sw2"]
         sent = rows["arista-sw1"]
         # What was sent, and each value before and after.
-        assert "12 lines" in sent and "   controller tcp:192.0.2.1:6653" in sent
+        assert "11 lines" in sent and "   controller tcp:192.0.2.1:6653" in sent
         assert 'controllers</span>: none → tcp:192.0.2.1:6653' in sent
         assert 'bound</span>: none → Ethernet18, Ethernet19' in sent
         assert 'enabled</span>: no → yes' in sent
         # Verify, with how long it took, its checks' words under the record's details.
-        assert re.search(r"2 of 2 checks passed in \d+\.\d s", sent)
+        assert re.search(r"3 of 3 checks passed in \d+\.\d s", sent)
         assert "<summary>Details for the record</summary>" in sent
         # What it was built from: the export and its commit as links, each value's origin.
         commit = X.last_commit(LIST)["commit"]
@@ -264,7 +276,7 @@ class TestConfigureFromNetBox:
         summary = row.split("</summary>", 1)[0]
         assert re.search(r'<span class="hist-dev">\s*arista-sw1\s*</span>', summary), summary
         assert "fleet" not in summary
-        assert "OpenFlow configuration on arista-sw1: 12 lines sent, verified" in summary
+        assert "OpenFlow configuration on arista-sw1: 11 lines sent, verified" in summary
         # No identifier in the one line: the datapath sits under the record's details.
         dpid = f"{DPIDS['arista-sw1']:016x}"
         assert dpid not in summary
@@ -276,7 +288,7 @@ class TestConfigureFromNetBox:
         assert f"/v2/history?commit={commit}" in body
         assert "ports Ethernet18, Ethernet19 from interfaces tagged openflow" in body
         assert 'controllers</span>: none → tcp:192.0.2.1:6653' in body
-        assert re.search(r"Verify: 2 of 2 checks passed in \d+\.\d s", body)
+        assert re.search(r"Verify: 3 of 3 checks passed in \d+\.\d s", body)
         # The commit's link opens that commit's own row on History.
         linked = unescape(tab["client"].get(
             f"/v2/history?commit={commit}&since=&list={LIST}").get_data(as_text=True))
@@ -374,7 +386,7 @@ def test_a_held_preview_and_result_draw_every_row_and_the_note_as_one_thin_bar(t
     assert_drawn_whole(result, "the result")
     # The switch's row is inside the table's box, not behind its edge; and at this width the
     # table fits its card, its last column (the outcome) in view with no sideways scroll.
-    assert rows["row"] and "arista-sw1" in rows["words"] and "12 lines" in rows["words"]
+    assert rows["row"] and "arista-sw1" in rows["words"] and "11 lines" in rows["words"]
     assert rows["fits"], rows
     assert len(sw.sets) == 1, "the confirm pressed in the browser sent the program once"
 
@@ -402,7 +414,8 @@ class TestTheTemplatesCard:
                                                      "capture": name})
         html = unescape(r.get_data(as_text=True))
         assert r.status_code == 200 and "Confirm arista_eos against a capture" in html
-        assert "   bind interface {port}" in html and "openflow\n   no shutdown" in html
+        assert "   bind interface {ports.one_line}" in html
+        assert "openflow\n   no shutdown" in html
         f = _fields(r.get_data(as_text=True))
         assert f["template_sha256"] == [T.sha256("arista_eos")]
         done = c.post(f"{BASE}/template/confirm", data={k: v[0] for k, v in f.items()})

@@ -34,6 +34,12 @@ V4 = {"switch.name": "srv1", "switch.address": "192.0.2.21", "controller.address
                                                    "192.0.2.21"}, "vlans": {}},
       "openflow.vlan_members": {"eth1": "untagged", "eth2": "untagged"}}
 V6 = dict(V4, **{"switch.address": "2001:db8::21", "controller.address": "2001:db8::10"})
+#: V4 as an EOS switch names its interfaces: EOS has no eth1 (its ports are Ethernet<n>, as
+#: tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt lists them), and the arista_eos
+#: template sends the bound set in one line, written only for EOS's own names (C2996).
+EOS4 = dict(V4, ports=["Ethernet1", "Ethernet2"],
+            **{"port.openflow_port": {"Ethernet1": "1", "Ethernet2": "2"},
+               "openflow.vlan_members": {"Ethernet1": "untagged", "Ethernet2": "untagged"}})
 PROGRAM_V4 = ("sudo -n ovs-vsctl --may-exist add-br br0 -- set bridge br0 protocols=OpenFlow13"
               " -- set-fail-mode br0 secure -- set-controller br0 tcp:192.0.2.10:6653"
               " -- --may-exist add-port br0 eth1 -- --may-exist add-port br0 eth2"
@@ -78,6 +84,15 @@ class TestEveryTemplateCitesItsVendor:
         assert any("lists its own OpenFlow versions" in p for p in got), got
         assert any("is not <name>" in p for p in got), got
         assert any("eos-lldp-measured" in p and "evidence" in p for p in got), got
+
+    def test_a_port_set_no_writer_knows_or_a_one_line_value_with_none_is_a_problem(self):
+        """C2996: `{ports.one_line}` is written by the template's `port_set` writer only."""
+        t = T.load("arista_eos")
+        assert t["port_set"] == "eos_range" and T.problems(t) == []
+        t["port_set"] = "comma_list"
+        assert any("port_set 'comma_list' is not one of eos_range" in p for p in T.problems(t))
+        del t["port_set"]
+        assert any("{ports.one_line}" in p and "no port_set" in p for p in T.problems(t))
 
     def test_a_line_with_no_citation_or_an_undefined_one_is_a_problem(self):
         t = T.load("ovs")
@@ -125,16 +140,43 @@ class TestRenderingFromValues:
     def test_eos_417_renders_at_1_3_by_its_profile_m2(self):
         """M2 (C2598): EOS 4.17 offers 1.0 and 1.3 (the profile), so 1.3 renders; a version the
         profile does not offer is refused naming both."""
-        r = T.render("arista_eos", V4)
+        r = T.render("arista_eos", EOS4)
         assert r["ok"], r["error"]
         assert "   controller tcp:192.0.2.10:6653" in r["program"]
-        assert "   bind interface eth1" in r["program"] and r["profile"] == "arista_eos"
-        bad = T.render("arista_eos", dict(V4, **{"openflow.version": "1.4"}))
+        assert "   bind interface Et1-2" in r["program"] and r["profile"] == "arista_eos"
+        bad = T.render("arista_eos", dict(EOS4, **{"openflow.version": "1.4"}))
         assert not bad["ok"] and "offers OpenFlow 1.0, 1.3" in bad["error"]
         assert "version 1.4" in bad["error"] and bad["program"] == []
         cw = T.render("hp_comware", dict(V4, **{"openflow.version": "1.0",
                                                 "openflow.instance": "1"}))
         assert not cw["ok"] and "offers OpenFlow 1.3" in cw["error"]
+
+    def test_eos_sends_its_bound_set_in_one_line_or_refuses_naming_the_set(self):
+        """C2996: one `bind interface` line names every OpenFlow port, in a form an EOS switch
+        has been read to hold; any other set refuses the render, naming the ports, the forms
+        written and what is wrong with the set. No ports is said as `ports`, the input."""
+        r = T.render("arista_eos", EOS4)
+        assert [x for x in r["program"] if "bind interface" in x] == ["   bind interface Et1-2"]
+        (line,) = [x for x in r["lines"] if "bind interface" in x["text"]]
+        assert line["cite"] == ["eos-bind-interface", "eos-bind-set-measured"]
+        assert "in one line" in line["why"] and "{" not in line["why"]
+        one = T.render("arista_eos", dict(EOS4, ports=["Ethernet2"]))
+        assert one["ok"] and "   bind interface Ethernet2" in one["program"]
+        for ports, why in ((["Ethernet1", "Ethernet3"], "Ethernet2 is not among them"),
+                           (["Ethernet1/1", "Ethernet1/2"],
+                            "Ethernet1/1 is not named Ethernet<n>"),
+                           (["eth1", "eth2"], "'eth1' is not the name of one EOS interface")):
+            bad = T.render("arista_eos", dict(EOS4, ports=ports))
+            assert not bad["ok"] and bad["program"] == [] and bad["lines"] == []
+            assert bad["error"].startswith(
+                f"srv1's OpenFlow ports are {', '.join(ports)}, and the arista_eos template "
+                "sends them all in one `bind interface` line, which Mercury writes only as "
+                "one interface, or one unbroken range of Ethernet<n> interfaces")
+            assert f": {why}. How the platform writes any other set in one line has not " \
+                "been read from a switch, so nothing is rendered" in bad["error"]
+        none = T.render("arista_eos", dict(EOS4, ports=[]))
+        assert not none["ok"] and none["missing"] == ["ports"]
+        assert "ports.one_line" not in none["error"] and V.WHERE["ports"] in none["error"]
 
     def test_eos_refuses_an_ipv6_controller_naming_it(self):
         r = T.render("arista_eos", dict(V6, **{"openflow.version": "1.0"}))
@@ -163,20 +205,20 @@ class TestRenderingFromValues:
 
     def test_eos_turns_lldp_off_on_each_bound_port(self):
         """C2600: under each bound interface, no lldp transmit and no lldp receive."""
-        p = T.render("arista_eos", V4)["program"]
-        for port in ("eth1", "eth2"):
+        p = T.render("arista_eos", EOS4)["program"]
+        for port in ("Ethernet1", "Ethernet2"):
             i = p.index(f"interface {port}")
             assert p[i + 1:i + 3] == ["   no lldp transmit", "   no lldp receive"]
-        assert p.index("interface eth2") < p.index("openflow")
+        assert p.index("interface Ethernet2") < p.index("openflow")
 
     def test_eos_restarts_its_agent_only_on_a_bind_change(self):
         """C2599: `shutdown` before `no shutdown` when the bound ports differ from the
         switch's, never otherwise; with no state given, left out and said."""
-        changed = T.render("arista_eos", dict(V4, **{"state.bind_changed": True}))["program"]
+        changed = T.render("arista_eos", dict(EOS4, **{"state.bind_changed": True}))["program"]
         assert changed[-2:] == ["   shutdown", "   no shutdown"]
-        same = T.render("arista_eos", dict(V4, **{"state.bind_changed": False}))
+        same = T.render("arista_eos", dict(EOS4, **{"state.bind_changed": False}))
         assert "   shutdown" not in same["program"] and same["program"][-1] == "   no shutdown"
-        unknown = T.render("arista_eos", V4)
+        unknown = T.render("arista_eos", EOS4)
         assert "   shutdown" not in unknown["program"]
         assert any("'shutdown'" in n and "state" in n for n in unknown["notes"])
 
@@ -216,7 +258,7 @@ class TestRenderingFromValues:
     def test_a_selected_entry_is_used_and_a_wrong_platforms_is_refused(self):
         from modules.platforms import profile as P
         sel = P.select("arista_eos", "4.17.0F")
-        assert T.render("arista_eos", V4, selected=sel)["ok"]
+        assert T.render("arista_eos", EOS4, selected=sel)["ok"]
         wrong = T.render("arista_eos", V4, selected=P.select("ovs_linux", "3.3.4"))
         assert not wrong["ok"] and "ovs_linux" in wrong["error"] and "arista_eos" in wrong["error"]
         none = T.render("arista_eos", V4, selected=P.select("arista_eos", "4.31.0F"))

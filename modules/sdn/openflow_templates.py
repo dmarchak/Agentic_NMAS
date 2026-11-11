@@ -25,7 +25,10 @@ several program lines. ``when`` keeps a line only when its condition holds (a li
 them): ``<name>`` (the value is given), ``<name> == <word>`` or ``<word> in <name>``. A missing
 value refuses the render, naming it and where in NetBox it comes from
 (`openflow_values.WHERE`). A transport or IPv6 controller the template does not support
-refuses too, naming both.
+refuses too, naming both. ``{ports.one_line}`` is every OpenFlow port in one value, written by
+the template's ``port_set`` (`openflow_cli.PORT_SETS`; ``eos_range``: EOS's bound set in one
+`bind interface` line, C2996); a set its writer has no evidenced one-line form for refuses the
+render, naming the ports, the forms it writes and what is wrong with the set.
 
 **The platform profile decides what the release needs** (`modules/platforms/profile.py`): the
 OpenFlow versions the switch offers (a version outside them refuses, naming both; the template
@@ -151,6 +154,14 @@ def problems(t: dict) -> list:
             out.append(f"citation {k!r} does not say whether it was verified on the vendor's page")
     if t.get("support") == "unknown" and not t.get("support_why"):
         out.append("its support is unknown and it does not say why")
+    from modules.sdn import openflow_cli
+    uses = any("{ports.one_line}" in str(line.get("text") or "") for line in t.get("lines") or [])
+    if t.get("port_set") is not None and t["port_set"] not in openflow_cli.PORT_SETS:
+        out.append(f"its port_set {t['port_set']!r} is not one of "
+                   f"{', '.join(sorted(openflow_cli.PORT_SETS))}")
+    elif uses and t.get("port_set") is None:
+        out.append("a line reads {ports.one_line} and the template names no port_set to "
+                   "write it")
     return out
 
 
@@ -340,6 +351,27 @@ def takes(values: dict, entry: dict) -> tuple:
     return out, ""
 
 
+def port_set(t: dict, v: dict) -> tuple:
+    """``(text, "")``: every OpenFlow port of *v* as the one value ``{ports.one_line}``, by
+    template *t*'s ``port_set`` writer (`openflow_cli.PORT_SETS`); ``("", why)`` for a set the
+    writer has no evidenced one-line form for, naming the ports, the forms it writes and what
+    is wrong with this set. ``("", "")`` for a template with no ``port_set`` and for no ports
+    (said as the missing value ``ports``)."""
+    from modules.sdn import openflow_cli
+    ports = [str(p) for p in v.get("ports") or []]
+    if not t.get("port_set") or not ports:
+        return "", ""
+    write, line, forms = openflow_cli.PORT_SETS[t["port_set"]]
+    text, why = write(ports)
+    if why:
+        return "", (f"{v.get('switch.name') or 'the switch'}'s OpenFlow ports are "
+                    f"{', '.join(ports)}, and the {t.get('name')} template sends them all in "
+                    f"{line}, which Mercury writes only as {forms}: {why}. How the platform "
+                    "writes any other set in one line has not been read from a switch, so "
+                    "nothing is rendered")
+    return text, ""
+
+
 def render(name: str, values: dict, selected=None) -> dict:
     """Template *name* with *values*: ``{"ok", "lines": [{"text", "cite", "why"}], "program",
     "error", "missing", "notes", "profile"}``. ``program`` is what would be sent: for
@@ -389,6 +421,13 @@ def render(name: str, values: dict, selected=None) -> dict:
     if why:
         out["error"] = why
         return out
+    # Every port in one value, for a template that sends its port set in one line (C2996).
+    one_line, why = port_set(t, v)
+    if why:
+        out["error"] = why
+        return out
+    if one_line:
+        v["ports.one_line"] = one_line
     lines, missing = [], []
     for line in t["lines"]:
         held = [_holds(c, v) for c in _conditions(line)]
@@ -414,7 +453,8 @@ def render(name: str, values: dict, selected=None) -> dict:
                 else:
                     got = _lookup(v, key)
                 if got in (None, "", []):
-                    missing.append(key)
+                    # The one-line value is absent only when its input is: said as `ports`.
+                    missing.append("ports" if key == "ports.one_line" else key)
                     continue
                 text = text.replace("{" + key + "}", str(got))
                 reason = reason.replace("{" + key + "}", str(got))

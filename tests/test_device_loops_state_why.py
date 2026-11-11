@@ -63,6 +63,11 @@ SCANNED = {
     ("modules/pipeline.py", "_stage_rollback"): ("sequential", _ONE_RUN),
     ("modules/nsot/credential_rotation.py", "push_rotation"): (
         "one_device", "the rotation's commands on the one session it verifies on"),
+    ("modules/sdn/openflow_config.py", "agent_reads_back"): (
+        "one_device", "ONE switch's `show openflow` read again on its held session, up to "
+                      "`VERIFY_READS` times, until its OpenFlow agent lists the program's "
+                      "bound interfaces (C2779): a settle wait on one device, never a loop "
+                      "over devices"),
     ("modules/connection.py", "open_ssh"): (
         "one_device", "C698: one device's connect tried a second time when its SSH transport "
                       "never came up, holding the same session slot; never a loop over devices"),

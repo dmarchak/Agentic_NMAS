@@ -285,7 +285,10 @@ def configure_preview(network: str, devices: list, *, session=None) -> dict:
                  "changes": p.get("changes") or [], "unchanged": p.get("unchanged"),
                  "built": OC.built_from(network, p.get("source")),
                  "defaults": p.get("defaults") or [], "excluded": p.get("excluded") or [],
-                 "version": p.get("version", "")}
+                 "version": p.get("version", ""),
+                 # What Verify checks on this family beyond the two checks the card names
+                 # (an Arista's bound interfaces read back, C2779).
+                 "verify_also": p.get("verify_also") or []}
         if p.get("export_sha256"):
             exports.add(p["export_sha256"])
         if not p.get("ok"):

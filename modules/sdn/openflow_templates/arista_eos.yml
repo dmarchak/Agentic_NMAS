@@ -1,9 +1,15 @@
 # Arista EOS: LLDP off on each OpenFlow port, then OpenFlow mode, the controller, interface
-# binding and enabling. Configuration-mode lines, in order. DRAFT: no driver sends it yet
-# (arista_eos is a discovery driver, which refuses every write), and no line may be sent until
-# this network has confirmed the template. The OpenFlow versions are the platform profile's
+# binding and enabling. Configuration-mode lines, in order. A DRAFT on a network until that
+# network confirms it: no line is sent before (the vendor driver, modules/sdn/openflow_cli.py,
+# sends the confirmed template's lines while the switch is held, and the session refuses every
+# other write). The OpenFlow versions are the platform profile's
 # (EOS 4.17 offers 1.0 and 1.3, C2598; the 4.20.1F manual's 45.1 says 1.0); TCP only (45.2.3).
 # The management interface is left unbound, so it keeps normal forwarding.
+# The bound set goes in ONE `bind interface` line (`port_set: eos_range`, C2996): whether EOS
+# 4.17.0F adds a second line's interfaces to the set or replaces the set is not measured, and
+# one line naming the whole set is right either way. It is written only in a form an EOS
+# switch has been read to hold (one interface, or one unbroken range, Et18-19); any other set
+# is refused at the render (`openflow_cli.Eos.bind_set`).
 name: arista_eos
 family: Arista EOS
 drivers: [arista_eos]
@@ -11,6 +17,7 @@ form: cli
 transports: [tcp]
 ipv6_controller: false
 instance_shape: none
+port_set: eos_range
 lines:
   - text: "interface {port}\n   no lldp transmit\n   no lldp receive"
     each: ports
@@ -26,10 +33,9 @@ lines:
   - text: "   bind mode interface"
     cite: [eos-bind-mode]
     why: "OpenFlow takes whole interfaces, the ones bound below (input: the interfaces tagged openflow)."
-  - text: "   bind interface {port}"
-    each: ports
-    cite: [eos-bind-interface]
-    why: "{port} is an OpenFlow port of this switch (input: the interface's openflow tag)."
+  - text: "   bind interface {ports.one_line}"
+    cite: [eos-bind-interface, eos-bind-set-measured]
+    why: "Every OpenFlow port of this switch in one line, so the bound set is the same whether EOS adds a line's interfaces to its set or replaces the set with them (input: the interfaces tagged openflow)."
   - text: "   shutdown"
     when: ["profile.openflow.bind_change_requires == agent_restart", "state.bind_changed"]
     cite: [eos-restart-measured, eos-enable]
@@ -41,6 +47,12 @@ citations:
   eos-lldp-measured:
     measured: "C2600"
     what: "no lldp transmit and no lldp receive under each bound interface, accepted by EOS 4.17.0F, after which the controller's topology finds the links through those ports"
+    evidence: "tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt"
+    release: "EOS 4.17.0F"
+    read: "2026-11-06"
+  eos-bind-set-measured:
+    measured: "C2996"
+    what: "EOS 4.17.0F's own running configuration holds two neighbouring bound interfaces as one line naming their range, bind interface Et18-19 (arista-sw1) and bind interface Et17-18 (arista-sw2); whether a second bind interface line adds to the bound set or replaces it is not measured, so the whole set is sent in that one-line form"
     evidence: "tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt"
     release: "EOS 4.17.0F"
     read: "2026-11-06"

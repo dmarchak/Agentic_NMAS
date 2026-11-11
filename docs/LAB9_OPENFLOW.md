@@ -113,7 +113,7 @@ template with a problem is never rendered.
 | Template | Status | Lines | Citations (verified; measured) | What it covers |
 |---|---|---|---|---|
 | `ovs` (Open vSwitch) | draft until confirmed (section 3) | 7 | 9 (8; 1): ovs-vsctl(8) and ovs-vswitchd.conf.db(5), Open vSwitch 4.0.0; `ofport_request` measured in the container harness | the bridge, `protocols`, the datapath id when given, the fail mode, the controller (IPv4 or IPv6), the OpenFlow ports, and each port's number requested as NetBox's (`set interface <port> ofport_request=<openflow_port>`, C2603). All in one `sudo -n ovs-vsctl` transaction, which OVSDB keeps, so there is no save |
-| `arista_eos` | draft | 7 | 8 (6; 2): the EOS 4.20.1F User Guide, chapter 45; LLDP off and the restart measured on 4.17.0F | `no lldp transmit` and `no lldp receive` under each OpenFlow port (C2600), `openflow` mode, `controller tcp:<ip>:<port>`, `bind mode interface`, one `bind interface` per OpenFlow port, `shutdown` before `no shutdown` when the bound ports differ from the running agent's (C2599), `no shutdown`. The versions are the profile's (1.0 and 1.3 on 4.17, so the Aristas render at 1.3: M2). TCP only. The management interface is left unbound |
+| `arista_eos` | draft | 7 | 9 (6; 3): the EOS 4.20.1F User Guide, chapter 45; LLDP off, the restart and the bound set's one-line form measured on 4.17.0F | `no lldp transmit` and `no lldp receive` under each OpenFlow port (C2600), `openflow` mode, `controller tcp:<ip>:<port>`, `bind mode interface`, ONE `bind interface` line naming every OpenFlow port (C2996, below), `shutdown` before `no shutdown` when the bound ports differ from the running agent's (C2599), `no shutdown`. The versions are the profile's (1.0 and 1.3 on 4.17, so the Aristas render at 1.3: M2). TCP only. The management interface is left unbound |
 | `aruba_os_switch` | draft | 9 | 8 (6; 2): the ArubaOS-Switch OpenFlow v1.3 Administrator Guide for 16.03; the VLAN membership and LLDP measured on K.16.02 | each OpenFlow port untagged in the member VLAN (`vlan <v> untagged <port>`), `lldp admin-status <port> disable` (C2600), the controller on the management VLAN (`controller-interface vlan`), one instance with `member vlan`, `version 1.3` (as the lab's K.16.02 switch runs it; the default is 1.0), `connection-interruption-mode`, `enable`. The management VLAN cannot be a member. The one-line forms on K.16.02 are unconfirmed (C2590) |
 | `hp_comware` | draft | 5 | 5 (5; 0): H3C's Comware 7 OpenFlow command reference (R612x-6W103); no HPE-branded page could be read | a numbered instance, `classification vlan`, `controller <id> address ip|ipv6 <addr> port <p>`, `fail-open mode`, `active instance`. Comware has no version command; its profile (Comware 7.1, from the reference) offers 1.3 |
 | `aruba_aoscx` | **support UNKNOWN** | 0 | 0 | nothing renders. No AOS-CX document read on 2026-11-05 says whether AOS-CX supports OpenFlow |
@@ -124,6 +124,29 @@ OVS's `ovs-vsctl show` and interface list) and a rendered program parse into one
 template, and `render_against` decides `state.bind_changed` from the switch's model before
 rendering. Rendered from the Lab 9 export and its switches' own versions, all five switches
 render to exactly the OpenFlow layer their 2026-11-06 captures show (tests/test_openflow_golden.py).
+
+**An Arista's bound set goes in one line** (C2996; the operator, 2026-11-10; `port_set:
+eos_range`, `openflow_cli.Eos.bind_set`). Whether EOS 4.17.0F adds a second `bind interface`
+line's interfaces to its bound set or replaces the set with them is not measured, so the
+template sends every OpenFlow port in ONE line, which is right either way. The line is written
+only in a form an EOS switch has been read to hold:
+
+- one interface, by its full name (`bind interface Ethernet18`): the line the template
+  rendered for each port before, under its cited command entry (the EOS 4.20.1F guide's
+  `bind interface (OpenFlow)`). No capture holds a switch binding a single interface;
+- two or more Ethernet<n> interfaces with no gap between them, as EOS 4.17.0F's own running
+  configuration writes them: `bind interface Et18-19`
+  (tests/fixtures/lab9_captures/2026-11-06/arista-sw1.txt) and `bind interface Et17-18`
+  (arista-sw2.txt beside it).
+
+Any other set (a gap between the ports, Ethernet<n>/<m> breakout ports beside others, another
+kind of interface) is refused at the preview, naming the ports, the two forms and what is
+wrong with the set: how EOS writes it in one line (a comma list, several ranges) is in no
+capture and no cited document, and a guessed syntax is never sent. A set that does not hold
+every interface the switch binds now is refused too: if a line adds, the switch would still
+bind the extra one, and if a line replaces, the one line would remove it, which a merge never
+does. The plan reads the configuration after its program both ways
+(`openflow_state.after`) and holds only when both give intent's set.
 
 The traditional router's pieces belong to section 4 (piece 3): its DHCP pools and options for
 ZTP, and the inter-VLAN and management lines. The router is a Cisco IOS device Mercury already
@@ -209,10 +232,15 @@ template with a vendor driver (`arista_eos`, `aruba_os_switch`) runs these stage
    (a second controller on an Arista, say).
 4. **Undo:** the vendor driver's lines that put back exactly what the program changes, in the
    template's forms and their `no` forms (EOS: `no openflow` for a switch that had none, else
-   `no controller`, `no bind interface` and the restart; ArubaOS-Switch: the instance and
+   `no controller`, the bound set put back and the restart; ArubaOS-Switch: the instance and
    controller removed or put back, `lldp admin-status <port> tx_rx`, each port untagged again in
    the VLAN it was in). Checked by parsing the configuration as it would be after the program
-   and the undo: it must read as it does now, or nothing is sent.
+   and the undo: it must read as it does now, or nothing is sent. **EOS's bound set** is put
+   back by `no bind interface <the program's set>` and then, where the switch bound some
+   before, `bind interface <the set before>`, each in one line: the first line empties the
+   set and the second makes it the set before, whether EOS adds a line's interfaces or
+   replaces the set with them (C2996), and the check above is made under both readings. A
+   set bound before that has no one-line form Mercury writes refuses the plan.
 5. **Hash:** over the switch, the template, the program, the undo, the parsed before and the
    export's SHA-256.
 6. **Apply:** refused unless the template is confirmed (section 3); planned again and the hash
@@ -220,7 +248,14 @@ template with a vendor driver (`arista_eos`, `aruba_os_switch`) runs these stage
 7. **Verify:** the running configuration read back, its OpenFlow layer the program's; then the
    switch's datapath id (NetBox's `openflow_datapath_id` when given, else its own `show
    openflow` or `show openflow instance <name>`) in the controller's switch list, read as
-   section 4 reads it.
+   section 4 reads it. **On EOS, the bound set is then read back** (C2779): `show openflow`
+   (on EOS's capture list), the interfaces under its `Bind mode:` line, compared with the
+   program's as sets of full names (`Et18-19` is Ethernet18 and Ethernet19), read up to six
+   times two seconds apart, as the controller's list is. A set that differs fails Verify,
+   naming both ("bound interfaces: intended Ethernet18, Ethernet19; `show openflow` lists
+   Ethernet18"), and is rolled back. An answer that cannot be read for its list neither
+   passes nor fails: the outcome is `unverified`, what was sent stays, and nothing is rolled
+   back. The version the switch negotiated is not read back yet (C2779's other half).
 8. **Rollback** on a refused line or a failed check: the undo sent, the configuration read
    again, and whether its OpenFlow layer reads as before said.
 9. **Record:** the run in the SDN operation record, as section 4's.

@@ -25,7 +25,7 @@
     {%- if p.version %}<dt>Release</dt><dd>{{ p.version }}</dd>{% endif %}
     {%- if p.defaults %}<dt>Defaults used</dt><dd>{{ p.defaults | join('; ') }}</dd>{% endif %}
     {%- if p.excluded %}<dt>Left out</dt><dd>{{ p.excluded | join('; ') }}</dd>{% endif %}
-    <dt>Verify</dt><dd>the switch's read-back shows the program's OpenFlow layer; the controller's switch list holds its datapath id within {{ 6 * 2 }} s</dd>
+    <dt>Verify</dt><dd>the switch's read-back shows the program's OpenFlow layer; the controller's switch list holds its datapath id within {{ 6 * 2 }} s{% for w in p.verify_also %}; {{ w }}{% endfor %}</dd>
     <dt>Undo if Verify fails</dt><dd>{% if p.undo %}<details data-keep="of-undo-{{ p.device }}"><summary class="small">the before-state put back ({% if p.undo is string %}1 transaction{% else %}{{ p.undo | length }} lines{% endif %})</summary><pre class="mono small">{{ p.undo if p.undo is string else p.undo | join('\n') }}</pre></details>{% else %}nothing to put back{% endif %}</dd>
     <dt>Its hash</dt><dd class="mono">sha256:{{ p.hash[:8] }}…{{ p.hash[-4:] }}</dd>
   </dl>

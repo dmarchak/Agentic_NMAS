@@ -3808,6 +3808,8 @@ def _sdn_switches(client, _lab, _mp):
                     "unchanged": False, "defaults": ["openflow.fail_mode secure"],
                     "excluded": ["Management1 is the management interface (mgmt_only): "
                                  "excluded from OpenFlow"], "version": "4.17.0F",
+                    "verify_also": ["the switch's own show openflow lists the program's bound "
+                                    "interfaces"],
                     "values": {}, "status": {"status": "confirmed" if confirmed else "draft",
                                              "why": "" if confirmed else "Lab has not "
                                                                         "confirmed it"}}

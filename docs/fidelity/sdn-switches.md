@@ -13,7 +13,22 @@ card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of
 (the register row the main thread names for it).
 
 Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html, templates/v2/_sdn_built_from.html
-Templates sha256: `af9ed77a948772cfbc22345db884f7a9d1f5595869c51e787235979697e4cc33`
+Templates sha256: `b9770db2dc70c3145152fee00463f7a4e80d12096ab05b16315451ebf8e52bc0`
+Hashed again 2026-11-11 for C2996 and C2779 (the operator, 2026-11-10: "arista_eos renders ALL
+bound ports in ONE 'bind interface' line ... plus a read-back of the bound set (C2779)"). One
+region moved, in `_sdn_of_config.html`: **the preview card's Verify line** ends with what
+Verify checks on that switch's family beyond the two checks it always named, each from the
+plan (`verify_also`); for an Arista, "; the switch's own show openflow lists the program's
+bound interfaces". An Open vSwitch or ArubaOS-Switch plan carries none, and its line reads as
+it did. The result card is unmoved: an Arista's Verify now counts three checks where it counted
+two, and its program one `bind interface` line where it held one per port (11 lines for the
+lab's blank Arista, where the paragraph below says 12). Compared by reading the template and
+the HTML tests/test_sdn_switches_v2.py's lab renders
+(`test_an_aristas_preview_holds_one_bind_line_and_names_the_read_back`); no new shots were
+taken, and no approval-log line is claimed: the words follow the operator's decision, and the
+board's revision is the operator's to ask for (the templates before hashed
+`af9ed77a948772cfbc22345db884f7a9d1f5595869c51e787235979697e4cc33`).
+
 Hashed again 2026-11-11 for the operator's sitting on the lab's hardware (2026-11-10: "The
 configure result table shows headings and no rows. It must list each switch: what was sent,
 before -> after per value, Verify's time, outcome; 'already as intended, nothing sent' where

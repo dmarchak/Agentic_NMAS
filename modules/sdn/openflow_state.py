@@ -28,6 +28,13 @@ and a port untagged in a VLAN leaving the VLAN it was untagged in (a port is unt
 only). So the configuration as it would be after a program and its undo parses as the switch
 would hold it, and a plan checks its undo before anything is sent.
 
+**A line Mercury has not measured is read each way it may be read** (`after`, `READINGS`;
+C2996): whether EOS 4.17.0F ADDS a `bind interface` line's interfaces to its bound set or
+REPLACES the set with them is not measured, so the configuration as it would be after a program
+(and after its undo) is one model per reading, and a plan holds only when every reading gives
+the same answer. A switch's own configuration is read one way: every `bind interface` line it
+holds is bound.
+
 **Compared** by `differences(want, have)`: every value the wanted model holds, against the
 switch's (a wanted mapping that is empty where the switch's is not differs: no instance or
 controller rendered where the switch has one); a value the state read does not carry is listed apart as unread, never as equal or as
@@ -42,6 +49,13 @@ _EOS_SHORT = {"et": "Ethernet", "ethernet": "Ethernet", "ma": "Management",
               "management": "Management", "po": "Port-Channel", "port-channel": "Port-Channel"}
 _EOS_RANGE = re.compile(r"(?i)([a-z-]+?)((?:[0-9]+/)*)([0-9]+)(?:-([0-9]+))?\Z")
 UNREAD = "unread"
+#: How a sent `bind interface` line may be read (`eos`'s *bind_lines*).
+ADD, REPLACE = "add", "replace"
+#: template -> each way its platform may read a sent line Mercury has not measured, with the
+#: words a refusal says it in (`after`). EOS (C2996): the two readings of `bind interface`.
+READINGS = {"arista_eos": (
+    (ADD, "if EOS adds a `bind interface` line's interfaces to its bound set"),
+    (REPLACE, "if EOS replaces its bound set with a `bind interface` line's interfaces"))}
 
 
 class Unparsable(ValueError):
@@ -87,13 +101,21 @@ def expand_eos(text: str) -> list:
 
 # --------------------------------------------------------------------------- Arista EOS
 
-def eos(text: str) -> dict:
-    """The OpenFlow layer of EOS configuration *text* (`show running-config`, or a program)."""
+def eos(text: str, sent: str = "", bind_lines: str = ADD) -> dict:
+    """The OpenFlow layer of EOS configuration *text* (`show running-config`, or a program),
+    and then of the lines *sent* to a switch holding it (a program, a program and its undo),
+    entered from the top of configuration mode. A `bind interface` line of *text* adds its
+    interfaces to the bound set; one of *sent* adds them (*bind_lines* `ADD`) or replaces the
+    set with them (`REPLACE`): the two readings of C2996 (`after`)."""
     model = {"controllers": [], "bind_mode": "interface", "bound": [], "enabled": False,
              "lldp_off": []}
     block, iface, lldp = None, None, {}
     seen = False
-    for raw in str(text or "").splitlines():
+    held = str(text or "").splitlines()
+    for at, raw in enumerate(held + str(sent or "").splitlines()):
+        if at == len(held):
+            block, iface = None, None             # the sent lines start at the top
+        replaces = at >= len(held) and bind_lines == REPLACE
         line = raw.rstrip()
         if not line.strip() or line.strip().startswith("!"):
             continue
@@ -126,7 +148,7 @@ def eos(text: str) -> dict:
             elif words[:2] == ["bind", "mode"] and len(words) == 3:
                 model["bind_mode"] = words[2]
             elif words[:2] == ["bind", "interface"] and len(words) == 3:
-                model["bound"] += expand_eos(words[2])
+                model["bound"] = ([] if replaces else model["bound"]) + expand_eos(words[2])
             elif words[:3] == ["no", "bind", "interface"] and len(words) == 4:
                 gone = set(expand_eos(words[3]))
                 model["bound"] = [b for b in model["bound"] if b not in gone]
@@ -359,6 +381,16 @@ def parse(name: str, text: str, interfaces: str = "") -> dict:
     if name == "ovs":
         return ovs_show(text, interfaces)
     raise Unparsable(f"no OpenFlow state parser for the {name} template")
+
+
+def after(name: str, text: str, sent: list) -> list:
+    """``[(how, model)]``: the OpenFlow layer a switch whose configuration is *text* would
+    hold once the lines *sent* are taken, one model per way its platform may read a line
+    Mercury has not measured (`READINGS`), *how* that reading in a refusal's words; one model
+    and ``""`` for a platform read one way."""
+    if name == "arista_eos":
+        return [(how, eos(text, "\n".join(sent), mode)) for mode, how in READINGS[name]]
+    return [("", parse(name, "\n".join([text] + list(sent))))]
 
 
 def compare(want, have, path: str = "") -> tuple:

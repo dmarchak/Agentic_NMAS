@@ -23,10 +23,13 @@ AOS-CX templates are rendered and never sent.
 3. `render`: the switch's template is rendered against what it holds now, so an Arista whose
    bound ports change restarts its OpenFlow agent and one whose binding stays does not. A
    program that would leave the switch still differing from NetBox (a second controller the
-   template cannot remove, say) is refused, naming what would remain.
+   template cannot remove, say) is refused, naming what would remain. An Arista's OpenFlow
+   ports are all sent in one `bind interface` line ([why](#arista-bind)).
 4. `undo`: the lines that put back exactly what the program changes, and nothing else. Mercury
    checks them by parsing the configuration as it would be after the program and the undo: it
-   must read as it does now, or nothing is sent.
+   must read as it does now, or nothing is sent. On an Arista whose bound ports change, the
+   undo takes the program's ports out in one line and binds the ports it bound before in one
+   line.
 5. `hash`: over the switch, the template, the program, the undo, the parsed before and the
    export's hash. The preview shows the program, the undo and this hash.
 6. `hold`: once you confirm, the template must be confirmed on the network, the plan is made
@@ -40,7 +43,11 @@ AOS-CX templates are rendered and never sent.
    runs.
 8. `verify`: the running configuration is read back and its OpenFlow layer must be the
    program's; then the controller's switch list must hold the switch's datapath id within six
-   reads two seconds apart.
+   reads two seconds apart. On an Arista, Mercury then reads `show openflow` and compares the
+   interfaces its OpenFlow agent binds with the program's, within six reads two seconds apart:
+   a set that differs fails Verify, naming both sets (intended, and what `show openflow`
+   lists). If that answer cannot be read, the check neither passes nor fails: the outcome is
+   unverified, what was sent stays, and nothing is rolled back.
 9. `rollback`: on a line the switch refused or a failed check, the undo is sent and the switch
    read again; the result says whether it reads as it did before.
 10. `record`: the run is kept in the network's SDN operation record, with what it was built
@@ -78,8 +85,9 @@ The card says how many were configured, and lists every switch at full height:
   it now. A run that was rolled back says its changes were sent, then put back.
 - **Verify**: how many checks passed and how long Verify took, and when. Each check's own
   words, the operation's id and the switch's datapath id are under *Details for the record*.
-- **Outcome**: verified, rolled back (with whether it reads as before), or not configured with
-  why.
+- **Outcome**: verified, rolled back (with whether it reads as before), unverified (nothing
+  was sent and a check failed, or a check could not be read; what the switch holds stays), or
+  not configured with why.
 - Under each switch, **what its program was built from**: the committed NSOT export (a link
   to its card on SDN › Apps) and the commit that wrote it (a link to that commit on History),
   then each value with where it came from, as Mercury resolved it: the controller's address
@@ -98,6 +106,29 @@ before and after when the row is opened, and its identifiers under *Details for 
 
 **Nothing is saved to the startup configuration.** Whether this operation saves is undecided,
 so the running configuration holds the change until the switch reloads, and the result says so.
+
+## An Arista's bound ports, in one line {#arista-bind}
+
+An Arista's OpenFlow agent takes the interfaces its `bind interface` configuration names.
+Whether a second `bind interface` line adds its interfaces to that set or replaces the set has
+not been measured on the lab's release (EOS 4.17.0F), so Mercury sends every OpenFlow port in
+one line, which gives the same set either way: `bind interface Et18-19` for Ethernet18 and
+Ethernet19, the form the switch's own configuration holds, or `bind interface Ethernet18` for
+one port.
+
+- **Ports that are not one unbroken range are refused at the preview.** Ethernet18 and
+  Ethernet20, or breakout ports such as Ethernet1/1 beside others, have no one-line form
+  Mercury has read from a switch, and it does not guess one. The refusal names the ports, the
+  two forms it writes and what is wrong with the set (for example "Ethernet19 is not among
+  them"). It clears when the ports NetBox tags `openflow` are one port or neighbours and the
+  export is committed again (**Export from NetBox…** on [SDN › Apps](sdn#apps)).
+- **A port leaving the set is refused.** If NetBox no longer tags a port the switch binds,
+  the one line would either leave it bound or remove it, depending on how the switch reads
+  the line, and this operation never removes. The refusal names both sets.
+- **Verify reads the set back** from the switch's own `show openflow`, as step 8 says.
+
+A changed template is a draft again, so after an update that changes it, confirm it against a
+capture again before the next Configure.
 
 ## The templates, and confirming one {#templates}
 
