@@ -76,7 +76,7 @@ def data(tmp_path, monkeypatch):
     return tmp_path
 
 
-def fill(loki=None, now=NOW, reads=60):
+def fill(loki=None, now=NOW, reads=800):
     """Read every 5 s until every kind reaches back as far as it is kept (at most *reads*);
     returns the last value and how many reads it took."""
     loki = loki or FakeLoki()
@@ -136,7 +136,7 @@ class TestTheIncrementalFill:
         monkeypatch.setattr(T, "BACKFILL_LIMIT", 4)
         loki = FakeLoki()
         v = {}
-        for i in range(40):
+        for i in range(80):
             before = len(loki.asked)
             v = T.read("Lab", loki=loki, clock=lambda i=i: NOW + 5 * i, previous=v)
             # The lines, at most the heartbeats, and at most one older page.
@@ -160,6 +160,29 @@ class TestTheIncrementalFill:
                    and int(p["end"]) >= int(later * 1e9)]
         assert forward, loki.asked
         assert int(forward[0]["start"]) >= int((later - T.WINDOW_SECONDS) * 1e9), forward[0]
+
+    def test_an_older_page_spans_at_most_its_page_and_a_failed_one_keeps_the_read(self, data):
+        """C3330's second hotfix (the NMAS host, 2026-11-12 18:38 UTC): after the first hotfix the
+        read still failed every 20 s, because one older page asked from the 24 h floor (30 days
+        for the changes) to the oldest line held, which Loki could not answer in time, and that
+        page's failure failed the whole read, the lines going forward (detection's) with it."""
+        v1 = T.read("Lab", loki=FakeLoki(), clock=lambda: NOW, previous={})
+        loki = FakeLoki()
+        T.read("Lab", loki=loki, clock=lambda: NOW + 5, previous=v1)
+        older = [p for p in loki.asked if int(p["end"]) <= v1["buffer"]["lines"]["from"] + 1]
+        assert older, loki.asked
+        assert all(int(p["end"]) - int(p["start"]) <= (T.BACKFILL_PAGE_SECONDS + 1) * 1e9
+                   for p in older), older
+
+        class OlderFails(FakeLoki):
+            def ask(self, path, **p):
+                if int(p["end"]) <= v1["buffer"]["lines"]["from"] + 1:
+                    raise RuntimeError("Loki did not answer within 5 s (planted)")
+                return super().ask(path, **p)
+
+        v2 = T.read("Lab", loki=OlderFails(), clock=lambda: NOW + 5, previous=v1)
+        assert v2["configured"] and v2["lines"], "the lines going forward were kept"
+        assert v2["buffer"]["lines"]["to"] == int((NOW + 5) * 1e9)
 
     def test_a_read_that_returns_its_limit_going_forward_starts_again_from_its_oldest(
             self, data, monkeypatch):

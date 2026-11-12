@@ -168,7 +168,7 @@ def loki(monkeypatch):
     monkeypatch.setattr("modules.reader_job.read_cached_for",
                         lambda name, list_name: reader_job.read_cached(name))
     monkeypatch.setattr(sys.modules[__name__], "_FILL",
-                        [_Filler(state, lambda: fill_buffer(_now_after_corpus()))])
+                        [_Filler(state, lambda: fill_buffer(_now_after_corpus(), reads=800))])
     from modules import device_logs
     held = device_logs.held_changes
     monkeypatch.setattr(device_logs, "held_changes",

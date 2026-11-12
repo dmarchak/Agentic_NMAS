@@ -53,6 +53,10 @@ OVERLAP_SECONDS = 60
 BEATS_EVERY = 60
 #: One older page a read while the buffer fills back: every device at once, newest first.
 BACKFILL_LIMIT = 1000
+#: The most an older page spans (C3330's second hotfix): an hour, so a day's buffer fills over
+#: 24 reads (2 minutes at 5 s) with each query one Loki answers in time; a 3 h piece measured
+#: about 1.1 s on the host (2026-11-12 15:44 UTC), so an hour is about 0.4 s.
+BACKFILL_PAGE_SECONDS = 3600
 
 _WINDOW_KEYS = ("at", "ts", "dev", "sev", "mn", "text")
 _HELD_KEYS = ("ns", "at", "sev", "mn", "text", "devts", "unsync")
@@ -191,11 +195,24 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None) -> dict
             c = covers.get(kind)
             if not c or c["from"] <= floors[kind]:
                 continue
-            older, cut_o = _ask(loki, q[kind], floors[kind], c["from"] + 1, BACKFILL_LIMIT)
+            # One page of at most BACKFILL_PAGE_SECONDS (C3330's second hotfix, 2026-11-12):
+            # one page used to span the floor to the oldest held, up to 24 h (30 days for the
+            # changes), which Loki split into 3 h pieces at about 1.1 s each and could not
+            # answer within the client's timeout, failing every read after a restart.
+            lo = max(floors[kind], c["from"] - int(BACKFILL_PAGE_SECONDS * 1e9))
+            try:
+                older, cut_o = _ask(loki, q[kind], lo, c["from"] + 1, BACKFILL_LIMIT)
+            except Exception as exc:                  # noqa: BLE001 (said; the read stands)
+                # A failed older page never fails the read: the lines going forward, which
+                # self-healing's detection reads, are kept; the page is asked again next read.
+                log.warning("logs-tail: an older page of %s was not read (%s); the lines "
+                            "going forward are kept", kind, exc)
+                asked += 1
+                break
             asked += 1
             oldest = min((ns for ns, _l in older), default=None)
             c["from"] = (min(oldest, c["from"] - 1) if cut_o and oldest is not None
-                         else floors[kind])
+                         else lo)
             new[kind] += older
             break
     for kind, c in covers.items():

@@ -223,7 +223,9 @@ def page(lab, loki, tmp_path, monkeypatch):
     monkeypatch.setattr("modules.connection.open_ssh", no_session)
 
     def get(url):
-        fill_buffer(_now())
+        # Enough reads for the heartbeats' day to be paged back an hour a read after the lines'
+        # (C3330's second hotfix: one older page of at most an hour a read).
+        fill_buffer(_now(), reads=60)
         asked = len(loki["asked"])
         r = lab["client"].get(url)
         assert len(loki["asked"]) == asked, "the page asked Loki"
