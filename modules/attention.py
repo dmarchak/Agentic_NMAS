@@ -1015,6 +1015,14 @@ _JOB_STATES = {
     "waiting": ("is waiting for its dependency to answer", "unknown"),
     "not_installed": ("is not installed", "danger"),
     "stale": ("has not succeeded recently", "warning"),
+    # C3330: self-healing's own syslog read cannot read (its row names the network and since
+    # when), a span it could not scan when it read again, and a reader thread Mercury keeps
+    # starting again (reader_job's supervisor). Warnings, the operator's rule (2026-11-12):
+    # critical is a network outage; detection's blindness also reaches every team as a
+    # notice (modules/heal/blind_notice.py).
+    "blind": ("can't see configuration changes", "warning"),
+    "unscanned": ("did not scan a span of configuration changes", "warning"),
+    "restarting": ("keeps stopping, and Mercury keeps starting it again", "warning"),
     # A run that ended ok and found something for a person (C1791): never "failing", which
     # is the job not running; its findings are in the detail.
     "found": ("ran and found something to look at", "warning"),
@@ -1191,7 +1199,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
                                        f"{doc.get('interval_seconds') or 'few'} s)")
         try:
             jobs = [j for j in good["value"]["health"]["jobs"]
-                    if not str(j.get("unit", "")).startswith("reader:")]
+                    if not str(j.get("unit", "")).startswith(reader_job.LIVE_UNIT_PREFIXES)]
         except (KeyError, TypeError) as exc:
             return source_result("job_health", "Job health", read_at=started, took_ms=took,
                                  error=f"the stored value has no job rows ({type(exc).__name__})")

@@ -240,6 +240,17 @@ class Reader:
     read_for: Callable = None         # (list name) -> value; required with per_group
     #: Rule 14: the service whose start this reader waits out (a `Dependency`), if any.
     dependency: Dependency = None
+    #: (reader, read_cached's answer, now) -> its liveness rows, in place of the job-health
+    #: row rule 7 draws: a reader whose stopping is its own Needs attention row (self-healing's
+    #: detection, C3330), each unit under `LIVE_UNIT_PREFIXES`.
+    liveness: Callable = None
+    #: A page where what this reader holds is drawn with its age: its rows' action opens it
+    #: (C3330: the Logs pages say when the logs-tail's lines are held past its promise).
+    remedy_href: str = ""
+
+
+#: The units drawn live from `health_rows` (never from the job-health reader's stored copy).
+LIVE_UNIT_PREFIXES = ("reader:", "self-healing:")
 
 
 _REGISTRY: dict = {}
@@ -335,6 +346,7 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.topology_graph",
                            "modules.readers.logs_summary",
                            "modules.readers.logs_tail",
+                           "modules.heal.detect_read",
                            "modules.readers.loki_labels",
                            "modules.readers.dhcp",
                            "modules.readers.ztp_discovery",
@@ -622,6 +634,10 @@ CHANGE_ONLY = {
                   "it alive). A device's Logs tab, its drift row and Syslog by device draw the "
                   "buffer's read time as the page's copy holds it, at most one keepalive old, "
                   "and redraw when a line or a heartbeat arrives (C3166)"),
+    "heal-detect": ("it reads every 5 s for self-healing's detection, and no page draws its "
+                    "lines: it announces when it holds lines (so its steps run), caught up, "
+                    "fell behind or could not scan a span; its 300 s keepalive proves it alive "
+                    "and its liveness is its own Needs attention row (C3330)"),
     "loki-labels": ("it reads every 300 s and the logs builder draws its choices from it, the "
                     "read's time beside them: unchanged labels redraw nothing (its 1800 s "
                     "keepalive proves it alive; C3166)"),
@@ -971,6 +987,11 @@ def _each_configuration(population) -> list:
     return out
 
 
+def _href(reader: Reader) -> dict:
+    """The page a reader's row opens, when it names one (`remedy_href`)."""
+    return {"href": reader.remedy_href} if reader.remedy_href else {}
+
+
 def health_rows(now: float = None, population: list = None) -> list:
     """One job-health row per reader, decided from its store alone."""
     now = time.time() if now is None else now
@@ -980,6 +1001,19 @@ def health_rows(now: float = None, population: list = None) -> list:
         base = {"unit": unit, "what": r.what, "state": "ok",
                 "max_age_minutes": (r.interval_seconds * r.stale_after_intervals) // 60}
         got = read_cached(r.name)
+        if r.liveness is not None:
+            # Its own rows, never this reader row (C3330: self-healing's detection).
+            try:
+                rows.extend(r.liveness(r, got, now))
+            except Exception as exc:                    # noqa: BLE001 (said, never lost)
+                rows.append({**base, "unit": f"self-healing:{r.name}", "state": "unknown",
+                             "detail": (f"its liveness could not be judged: "
+                                        f"{type(exc).__name__}: {exc}")})
+            continue
+        restarts = restart_row(r, now)
+        if restarts is not None:
+            rows.append({**base, **restarts})
+            continue
         if got["state"] == "absent":
             rows.append({**base, "state": "not_run",
                          "detail": (f"it has never run here: {got['why']}. It runs in the app "
@@ -1010,7 +1044,8 @@ def health_rows(now: float = None, population: list = None) -> list:
                                     "reader has stopped. What it last stored is from "
                                     f"{good.get('value_at', 'never')}"),
                          "action": {"label": "Read the app log for this reader; its thread "
-                                             "has stopped, and a restart starts it again"}})
+                                             "has stopped, and a restart starts it again",
+                                    **_href(r)}})
             continue
         w = waiting(doc, now) if not attempt.get("ok") else None
         if w:
@@ -1034,7 +1069,7 @@ def health_rows(now: float = None, population: list = None) -> list:
                                     f"at {attempt.get('at')} failed: {attempt.get('error', '?')}. "
                                     + (f"The value shown is from {good['value_at']}"
                                        if good else "It has never read a value")),
-                         **({"action": {"label": r.remedy}} if r.remedy else {})})
+                         **({"action": {"label": r.remedy, **_href(r)}} if r.remedy else {})})
             continue
         rows.append({**base, "detail": (f"read at {good.get('value_at')} in "
                                         f"{good.get('took_ms')} ms, every {r.interval_seconds} s "
@@ -1065,6 +1100,177 @@ def _loop(reader: Reader, announce, stop=None) -> None:
         stop.wait(next_wait(reader, doc))
 
 
+# ---------------------------------------------------------------------------
+# The supervisor: a reader thread that STOPS is started again by Mercury itself (C3330)
+# ---------------------------------------------------------------------------
+#
+# A read that keeps failing is a live thread, and its job-health row says so (rule 7's
+# `failing`). A thread can still die: anything `_loop` does not catch (a BaseException that is
+# not an Exception, such as SystemExit raised in a read, or a fault in the loop itself) ends
+# it, and before this the reader's row read `stale` until a person restarted the app. The
+# supervisor looks at this process's own reader threads every `SUPERVISE_EVERY_SECONDS` and
+# starts a dead one again, on a backoff, recording each restart in History ("Mercury's
+# self-healing", the reader, why, the exception's type). It restarts only the threads in
+# `_threads` (this process's, started by `start`): never by pattern, never a process, never
+# anything outside Mercury.
+
+#: How often the threads are looked at: the shortest reader interval (5 s, logs-tail and
+#: detection), so a dead thread is started again within one of its own intervals. A look is
+#: one `is_alive()` per reader.
+SUPERVISE_EVERY_SECONDS = 5
+#: The restart backoff: the first restart at the next look, then rule 14's backoff (15 s
+#: doubling to 300 s, as Kubernetes restarts a container), so a thread that dies at once is
+#: started about 12 times an hour, never in a loop.
+RESTART_FIRST_SECONDS = BACKOFF_FIRST_SECONDS
+RESTART_CAP_SECONDS = BACKOFF_CAP_SECONDS
+#: A person's row only when it keeps stopping: this many restarts inside the window. One or
+#: two restarts in an hour are Mercury's to handle and History's to show; three is a thread
+#: that dies again after each restart (with the backoff, three within about 45 s of the first).
+RESTARTS_BEFORE_ROW = 3
+RESTART_WINDOW_SECONDS = 3600
+#: The restarts kept, newest last (one line each): every reader's restarts over days at most.
+RESTARTS_KEPT = 500
+RESTARTS_LOG = "reader_restarts.jsonl"
+#: Who a restart is recorded as (History's who).
+RESTART_DOER = "Mercury's self-healing"
+
+#: reader name -> what ended its thread: ``{"at", "type", "error"}`` (memory; the restart's why).
+_DEATHS: dict = {}
+_supervisor = {"thread": None}
+_RESTART_MU = threading.Lock()
+
+
+def _thread_body(reader: Reader, announce) -> None:
+    """A reader's thread: its loop, and what ended it when anything escapes (recorded for the
+    supervisor's restart, then the thread ends as it would have)."""
+    try:
+        _loop(reader, announce)
+    except BaseException as exc:                        # noqa: BLE001 (recorded, then ends)
+        _DEATHS[reader.name] = {"at": time.time(), "type": type(exc).__name__,
+                                "error": _redacted(str(exc))[:300]}
+        log.error("reader %s: its thread stopped: %s: %s", reader.name, type(exc).__name__, exc)
+
+
+def _spawn(reader: Reader, announce) -> threading.Thread:
+    t = threading.Thread(target=_thread_body, args=(reader, announce), daemon=True,
+                         name=f"reader:{reader.name}")
+    _threads[reader.name] = t
+    t.start()
+    return t
+
+
+def restarts_path() -> str:
+    return os.path.join(_config.DATA_DIR, RESTARTS_LOG)
+
+
+def restarts(since: float = None) -> dict:
+    """``{"rows", "error"}``: the restarts recorded, oldest first (each ``{"at", "reader",
+    "why", "type", "who", "attempt"}``), from *since* when given. An unreadable record is its
+    error, never no restarts."""
+    path = restarts_path()
+    if not os.path.exists(path):
+        return {"rows": [], "error": ""}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+    except (OSError, ValueError) as exc:
+        return {"rows": [], "error": f"{RESTARTS_LOG} could not be read ({type(exc).__name__})"}
+    if since is not None:
+        rows = [r for r in rows if float(r.get("at_ts") or 0) >= since]
+    return {"rows": rows, "error": ""}
+
+
+def _record_restart(row: dict) -> None:
+    """Append one restart, keeping the newest `RESTARTS_KEPT`, under the record's lock."""
+    path = restarts_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with _filestore.PathLock(path):
+        got = restarts()
+        rows = (got["rows"] if not got["error"] else []) + [row]
+        _filestore.write_atomic(path, "".join(json.dumps(r, sort_keys=True) + "\n"
+                                              for r in rows[-RESTARTS_KEPT:]))
+
+
+def _restart_delay(recent: int) -> int:
+    """Seconds after the last restart before the next: none for the first in the window."""
+    if recent <= 0:
+        return 0
+    return min(RESTART_FIRST_SECONDS * 2 ** min(recent - 1, 16), RESTART_CAP_SECONDS)
+
+
+def supervise_once(now: float = None, announce=None, spawn=None) -> list:
+    """Look at this process's reader threads once; start each dead one again when its backoff
+    allows, recording why. Returns the names restarted. Never raises."""
+    now = time.time() if now is None else now
+    spawn = spawn or _spawn
+    if _stop.is_set():
+        return []
+    out = []
+    with _RESTART_MU:
+        # A thread that ran and ended (its ident set): never one that was never started.
+        dead = [n for n, t in list(_threads.items())
+                if isinstance(t, threading.Thread) and t.ident is not None and not t.is_alive()]
+        if not dead:
+            return []
+        by_name = {r.name: r for r in readers()}
+        got = restarts(since=now - RESTART_WINDOW_SECONDS)
+        for name in dead:
+            reader = by_name.get(name)
+            if reader is None:
+                continue                                # unregistered since: not Mercury's now
+            mine = [r for r in got["rows"] if r.get("reader") == name]
+            last = max((float(r.get("at_ts") or 0) for r in mine), default=None)
+            if last is not None and now - last < _restart_delay(len(mine)):
+                continue
+            death = _DEATHS.pop(name, None) or {}
+            why = (f"its thread stopped: {death['type']}: {death['error']}" if death else
+                   "its thread was found stopped, with no exception recorded")
+            row = {"at": _iso(now), "at_ts": now, "reader": name, "why": why,
+                   "type": death.get("type", ""), "who": RESTART_DOER,
+                   "attempt": len(mine) + 1, "pid": os.getpid()}
+            try:
+                _record_restart(row)
+            except Exception as exc:                    # noqa: BLE001 (restarted all the same)
+                log.error("reader %s: its restart could not be recorded: %s", name, exc)
+            try:
+                spawn(reader, announce)
+            except Exception as exc:                    # noqa: BLE001 (tried again next look)
+                log.error("reader %s: its thread could not be started again: %s", name, exc)
+                continue
+            log.warning("reader %s: started again by Mercury (%s; restart %d in the last %d s)",
+                        name, why, len(mine) + 1, RESTART_WINDOW_SECONDS)
+            out.append(name)
+    return out
+
+
+def restart_row(reader: Reader, now: float):
+    """The reader's row when its thread keeps stopping (`RESTARTS_BEFORE_ROW` restarts within
+    `RESTART_WINDOW_SECONDS`), else None. Read from the record, so any process judges it."""
+    got = restarts(since=now - RESTART_WINDOW_SECONDS)
+    mine = [r for r in got["rows"] if r.get("reader") == reader.name]
+    if len(mine) < RESTARTS_BEFORE_ROW:
+        return None
+    last = mine[-1]
+    return {"state": "restarting", "since": float(mine[0].get("at_ts") or now),
+            "detail": (f"its thread stopped and Mercury started it again {len(mine)} times "
+                       f"in the last {RESTART_WINDOW_SECONDS // 60} minutes (a row from "
+                       f"{RESTARTS_BEFORE_ROW}); the last at {last.get('at')}: {last.get('why')}. "
+                       "History › Reader threads restarted holds each. Clears when it has "
+                       f"run {RESTART_WINDOW_SECONDS // 60} minutes with fewer than "
+                       f"{RESTARTS_BEFORE_ROW} restarts"),
+            "action": {"label": ("Read the app log for the exception that stops this reader's "
+                                 "thread: Mercury restarts it, and the cause is in its read"),
+                       "href": "/v2/history?kind=reader_restarts"}}
+
+
+def _supervise_loop(announce) -> None:
+    while not _stop.wait(SUPERVISE_EVERY_SECONDS):
+        try:
+            supervise_once(announce=announce)
+        except Exception as exc:                        # noqa: BLE001 (the next look tries)
+            log.error("readers: the supervisor's look failed: %s: %s", type(exc).__name__, exc)
+
+
 def start(announce=None) -> list:
     """Start every registered reader's thread once. Returns their names.
 
@@ -1081,7 +1287,7 @@ def start(announce=None) -> list:
     # Board H, H2: the heal triggers ride on the readers' stores ("check this device now").
     from modules.heal import triggers as heal_triggers
     heal_triggers.install()
-    # Board H, H19: the flap record (guard 13e) rides on the logs-tail reader's store.
+    # Board H, H19: the flap record (guard 13e) rides on self-healing's own syslog read.
     from modules.heal import flaps as heal_flaps
     heal_flaps.install()
     if _STARTED_AT is None:
@@ -1093,13 +1299,17 @@ def start(announce=None) -> list:
         t = _threads.get(r.name)
         if t is not None and t.is_alive():
             continue
-        t = threading.Thread(target=_loop, args=(r, announce), daemon=True,
-                             name=f"reader:{r.name}")
-        _threads[r.name] = t
-        t.start()
+        _spawn(r, announce)
         started.append(r.name)
     if started:
         log.info("readers started: %s", ", ".join(started))
+    sup = _supervisor["thread"]
+    if sup is None or not sup.is_alive():
+        # C3330: a reader thread that stops is started again by Mercury, on a backoff.
+        sup = threading.Thread(target=_supervise_loop, args=(announce,), daemon=True,
+                               name="readers:supervisor")
+        _supervisor["thread"] = sup
+        sup.start()
     return started
 
 

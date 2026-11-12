@@ -14,7 +14,16 @@ Shots: the operator's capture above; the board at 1440, rendered in the same hea
 (no shot test to run it).
 Compared 2026-10-17.
 Templates compared: templates/v2/_logs.html
-Templates sha256: `ed1e22fda5747fd2371d94ae7a0a4da70d8a279852521ae3fba9fdc908a7ca0f`
+Templates sha256: `4039133c6d781397ef4ae9f7617176982c949846203010d77540a7a879998cef`
+(2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
+a new shot: once the logs-tail reader's last good read is older than its promise (its interval
+times its stale factor, 15 s, as its job-health row judges it), the card's foot ("From Loki,
+held by Mercury's logs reader (read <age>) ...") is replaced in place by a warning notice,
+"Held lines are <age> old: the logs reader has stopped (<its last error>)", and the
+failed-refresh notice at the top is not drawn then (each fact once); a fresh buffer draws as
+before. The board draws no stale state: **deviation** (log: The Logs pages say when the held
+lines are past the reader's promise). Every other region as compared. Before:
+`ed1e22fda5747fd2371d94ae7a0a4da70d8a279852521ae3fba9fdc908a7ca0f`.)
 (2026-11-12, C3166 slice 2, by the template diff and the pages tests/test_logs_buffer.py draws,
 not a new shot: the tab draws the logs-tail reader's buffer, never Loki on the request; the
 card's foot names the reader and its read time ("From Loki, held by Mercury's logs reader (read

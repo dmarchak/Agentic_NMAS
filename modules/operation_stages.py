@@ -752,6 +752,9 @@ HISTORY = {
 #: and the break-glass export's reveal route. Each says which.
 WRITTEN_ELSEWHERE = {
     "interrupted": "a process that ended while it held the device (device_ops)",
+    "reader_restarts": "each reader thread Mercury started again after it stopped, written by "
+                       "the readers' supervisor in the app's own process "
+                       "(`reader_job.supervise_once`, C3330); no route writes it",
     "heal": "the self-healing step log (modules/heal/steplog.py), written by the heal's "
             "decision and its act, jobs the app starts itself (JOBS' heal_to_intent), and by "
             "the record of a heal whose job ended first (modules/heal/interrupted.py); no "

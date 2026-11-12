@@ -25,7 +25,11 @@ never a value of a setting, and it changes nothing.
   facts are Mercury's own (`modules.local_account.state`, `identity.is_configured`), the ones
   that decide whether a local sign-in is offered; any other combination is said, fact by fact,
   and is not OK. An installation that listens on loopback only and uses the local account
-  does not pass this option, and should not give it.
+  does not pass this option, and should not give it;
+- self-healing's detection read (`heal-detect`, C3330; the operator, 2026-11-12) has a good
+  read after the app's start, within `DETECTION_BOUND_SECONDS` (2 minutes) of it, for every
+  Loki configuration it reads: the check waits up to that bound for the first read, saying
+  so, and otherwise fails naming both times (the app's start and the last good read).
 
 Exit 0: SMOKE OK. 1: SMOKE FAILED, each failed line said. 2: usage.
 """
@@ -64,6 +68,10 @@ PAGES = ("/v2/", "/v2/devices", "/v2/history", "/v2/settings/installation?tab=no
 SERVICE = "flask-app"
 #: The one line that passes `--expect-local-account-off`, word for word (the operator's).
 LOCAL_ACCOUNT_OFF = "local account: off (setting off, access proxy configured, not loopback-only)"
+#: The operator's bound (2026-11-12): detection's first good read within 2 minutes of the start.
+DETECTION_BOUND_SECONDS = 120
+#: How often the wait asks the store again: detection reads every 5 s.
+DETECTION_POLL_SECONDS = 5
 
 
 def local_account_line(setting: bool, proxied: bool, loopback: bool) -> tuple:
@@ -123,6 +131,62 @@ def heal_lines(modes: dict, expected: dict) -> tuple:
     return ok, lines
 
 
+def _epoch(iso) -> float:
+    import calendar
+    import time
+    try:
+        return float(calendar.timegm(time.strptime(str(iso)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return None
+
+
+def detection_lines(started_at: str, reads, *, clock=None, sleep=None, say=None,
+                    bound: int = DETECTION_BOUND_SECONDS) -> tuple:
+    """``(ok, lines)``: whether every detection store holds a good read since *started_at*
+    (the app's start) no older than *bound* seconds, waiting for one until *bound* after the
+    start. *reads()* returns `detect_read.last_good_reads()`'s rows."""
+    import time
+    clock = clock or time.time
+    sleep = sleep or time.sleep
+    start = _epoch(started_at)
+    if start is None:
+        return False, ["detection: not judged (the health answer named no start time)"]
+    deadline, said, lines = start + bound, False, []
+    while True:
+        now = clock()
+        rows, late = reads(), []
+        for r in rows:
+            at = _epoch(r.get("value_at"))
+            if at is not None and r.get("configured") is False and at >= start:
+                continue                                # Loki not configured: nothing to read
+            if at is None or at < start or now - at > bound:
+                late.append((r, at))
+        if rows and not late:
+            for r in rows:
+                lines.append(f"detection: {r['store']} ({', '.join(r.get('networks') or [])}) "
+                             f"read at {r.get('value_at')}, since the start at {started_at}")
+            return True, lines
+        if now >= deadline:
+            if not rows:
+                return False, lines + ["detection: no detection store is registered"]
+            for r, at in late:
+                lines.append(f"detection: {r['store']} ({', '.join(r.get('networks') or [])}): "
+                             f"its last good read is {r.get('value_at') or 'none'}, and the app "
+                             f"started at {started_at}: no good read within {bound} s "
+                             f"(state {r.get('state')})")
+            return False, lines
+        if not said:
+            (say or lines.append)(f"detection: waiting up to {int(deadline - now)} s for its "
+                                  f"first good read since the start at {started_at}")
+            said = True
+        sleep(min(DETECTION_POLL_SECONDS, max(0.0, deadline - now)))
+
+
+def _detection() -> list:
+    from modules.heal import detect_read
+    return detect_read.last_good_reads()
+
+
 def page_lines(base: str, pages, fetch) -> tuple:
     """``(ok, lines)``: each page's status through *fetch* (``fetch(url) -> status``; an HTTP
     error's code, any other failure its type's name)."""
@@ -160,7 +224,8 @@ def _modes() -> dict:
 
 def run(want: str, *, base: str, expected_heal: dict, local_account_off: bool,
         health=_health, fetch=_fetch, journal=_journal, modes=_modes,
-        local_account=read_local_account, out=print) -> bool:
+        local_account=read_local_account, detection=_detection, clock=None, sleep=None,
+        out=print) -> bool:
     """The whole check; True for SMOKE OK. Each source is a parameter so the judgement is
     tested on its own."""
     ok = True
@@ -192,6 +257,14 @@ def run(want: str, *, base: str, expected_heal: dict, local_account_off: bool,
     for line in lines:
         out(line)
     ok = ok and heal_ok
+    try:
+        detect_ok, lines = detection_lines(str(h.get("started_at", "")), detection,
+                                           clock=clock, sleep=sleep, say=out)
+    except Exception as exc:                            # noqa: BLE001
+        detect_ok, lines = False, [f"detection: not read ({type(exc).__name__})"]
+    for line in lines:
+        out(line)
+    ok = ok and detect_ok
     facts = local_account()
     if "error" in facts:
         out(f"local account: not read ({facts['error']})")

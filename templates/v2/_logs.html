@@ -19,7 +19,7 @@
   {%- elif not g.errors and h.state == 'never' %}
   <p class="cov-head" role="status">{{ icon('info') }} Reading Loki: {{ brand.short }}'s logs reader has not read it yet. This tab fills itself when it has.</p>
   {%- elif not g.errors %}
-  {%- if h.failed %}
+  {%- if h.failed and not h.stale %}
   <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</p></div>
   {%- endif %}
   {%- if h.loading %}
@@ -52,5 +52,10 @@
   </div>
   {%- endif %}
   {%- endif %}
+  {%- if h.stale %}
+  {#- C3330: held past the reader's promise, said in place of the held-by line, never current. -#}
+  <div class="notice notice-warn" role="status" id="logs-held" data-held-stale>{{ icon('warn') }}<p>{{ h.stale }}.</p></div>
+  {%- else %}
   <p class="muted nb-limits">From Loki, held by {{ brand.short }}'s logs reader{% if h.value_at %} (read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}){% endif %}: the lines {{ device.hostname }} names itself in (its origin-id), as {{ brand.short }} received them. Nothing here opens a session to the device.</p>
+  {%- endif %}
 </section>

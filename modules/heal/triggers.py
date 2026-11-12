@@ -5,8 +5,9 @@ now", and none of them heals: it is sighted into the network's incidents
 
 **Where each is seen** (section 3's table), each on the reader that already reads the whole
 fleet once per interval, so a trigger adds no per-device work per request:
-- **a configuration change not from Mercury**: the `logs-tail` reader's lines (every 5 s,
-  masked on the way in), a ``CONFIG_I``, ``CONFIG_P`` or DMI ``CONFIG_I`` line
+- **a configuration change not from Mercury**: self-healing's own live read of the devices'
+  syslog (`heal-detect`, modules/heal/detect_read.py: every 5 s, only the lines detection
+  decides on, never a display reader's store: C3330), masked on the way in, a ``CONFIG_I``, ``CONFIG_P`` or DMI ``CONFIG_I`` line
   (`attribution.is_change`), judged by `attribution.attribute` (Mercury's hold, receipt or
   rotation at the line's receive time, never the account it names). Mercury's own lines are
   not triggers; the person the line names is kept to name them (N12);
@@ -51,7 +52,13 @@ import time
 log = logging.getLogger(__name__)
 
 #: The readers whose stores carry triggers (and the link set), each its step.
-READERS = ("logs-tail", "grafana-alerts", "adjacencies", "adjacency-log", "topology-graph")
+READERS = ("heal-detect", "grafana-alerts", "adjacencies", "adjacency-log", "topology-graph")
+#: Self-healing's own live read of the devices' syslog (modules/heal/detect_read.py, C3330):
+#: the configuration-change step's store, never a display reader's.
+SYSLOG_READER = "heal-detect"
+#: The store the configuration-change step read before C3330 (the logs-tail reader's): named
+#: only to resume from the cursor it left (`cursor_for`); nothing reads that store here.
+LEGACY_STORE = "logs-tail"
 #: The labels by which an alert names an interface.
 INTERFACE_LABELS = ("ifDescr", "ifName")
 CURSOR_DIR = "heal"
@@ -148,6 +155,25 @@ def _move(fn):
         if json.dumps(doc, sort_keys=True) != before:
             filestore.write_atomic(p, json.dumps(doc, indent=1, sort_keys=True))
     return out
+
+
+def legacy_store(store: str) -> str:
+    """The logs-tail store whose lines a syslog step read before C3330 (`LEGACY_STORE` under
+    *store*'s configuration), for a detection store; "" for any other."""
+    base, sep, rest = (store or "").partition("@")
+    return LEGACY_STORE + sep + rest if base == SYSLOG_READER else ""
+
+
+def cursor_for(store: str):
+    """The receive time of the last line this step processed from *store* (epoch seconds), or
+    None. A detection store with no cursor yet takes the one its configuration's logs-tail
+    store left (expand, then contract: C3330 moved detection off that store, and its first read
+    resumes where the step stopped)."""
+    got = _cursors().get("cursors") or {}
+    if store in got:
+        return float(got[store])
+    old = got.get(legacy_store(store)) if legacy_store(store) else None
+    return float(old) if old is not None else None
 
 
 def link_set(network: str) -> dict:
@@ -295,20 +321,21 @@ def far_ends(intents: dict, device: str, interface: str) -> list:
 
 # ── The steps ───────────────────────────────────────────────────────────────────────────────
 
-def from_logs_tail(store: str, value: dict, now: float = None) -> dict:
-    """The `logs-tail` step: each configuration-change line newer than the store's cursor."""
+def from_syslog(store: str, value: dict, now: float = None) -> dict:
+    """The configuration-change step, on self-healing's own read of the devices' syslog
+    (`SYSLOG_READER`, C3330): each configuration-change line newer than the store's cursor."""
     from modules.heal import attribution as AT
 
     now = time.time() if now is None else float(now)
     lines = sorted((value or {}).get("lines") or [], key=lambda l: float(l.get("ts") or 0))
-    seen = (_cursors().get("cursors") or {}).get(store)
+    seen = cursor_for(store)
     new = [l for l in lines if seen is None or float(l.get("ts") or 0) > float(seen)]
     if not new:
         return _counts()
     _move(lambda d: d.setdefault("cursors", {}).__setitem__(
         store, max(float(l.get("ts") or 0) for l in new)))
     ctx, counts, out = _Context(now), _counts(), []
-    allowed = _store_networks(store, "logs-tail")
+    allowed = _store_networks(store, SYSLOG_READER)
     for l in new:
         if not AT.is_change(l.get("mn"), l.get("text")):
             continue
@@ -688,6 +715,6 @@ def _deliver(ctx: _Context, out: list, counts: dict) -> dict:
     return counts
 
 
-STEPS = {"logs-tail": from_logs_tail, "grafana-alerts": from_alerts,
+STEPS = {"heal-detect": from_syslog, "grafana-alerts": from_alerts,
          "adjacencies": from_adjacencies, "adjacency-log": from_adjacency_log,
          "topology-graph": from_topology}

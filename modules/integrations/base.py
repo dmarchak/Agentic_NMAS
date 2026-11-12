@@ -51,6 +51,35 @@ def _refusal_words(r) -> str:
     return redact_text(words)[:DETAIL_LIMIT] if words else ""
 
 
+def timed_out(exc) -> bool:
+    """Whether *exc* (requests' exception) is a read or connect that ran out of time, read
+    through what requests wraps: a `requests.Timeout`, or a ConnectionError whose urllib3
+    MaxRetryError's reason (in its args, as requests passes it) or whose cause is a timeout.
+    A refused, reset or unreachable connection is not."""
+    import socket
+
+    from urllib3.exceptions import MaxRetryError, NewConnectionError
+    from urllib3.exceptions import TimeoutError as Urllib3Timeout
+
+    seen = 0
+    while exc is not None and seen < 8:
+        if isinstance(exc, NewConnectionError):
+            # Refused or unreachable: urllib3 2 derives it from ConnectTimeoutError.
+            return False
+        if isinstance(exc, (requests.exceptions.Timeout, Urllib3Timeout, socket.timeout,
+                            TimeoutError)):
+            return True
+        inner = exc.args[0] if getattr(exc, "args", None) else None
+        if isinstance(exc, MaxRetryError):
+            exc = exc.reason
+        elif isinstance(inner, MaxRetryError):
+            exc = inner.reason
+        else:
+            exc = exc.__cause__ or exc.__context__
+        seen += 1
+    return False
+
+
 class IntegrationClient:
     """Base class for an external-tool client.
 
@@ -159,10 +188,18 @@ class IntegrationClient:
             return {"ok": True, "status": r.status_code, "response": r}
         except requests.exceptions.SSLError as exc:
             return {"ok": False, "error": f"TLS error: {exc}"}
-        except requests.exceptions.ConnectionError:
-            return {"ok": False, "error": f"Could not connect to {self.url}"}
-        except requests.exceptions.Timeout:
-            return {"ok": False, "error": f"Timed out after {self.timeout}s"}
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+            # What happened, never a guess (C3330): a read that timed out reaches here as a
+            # ConnectionError when urllib3's Retry gave up on it (MaxRetryError's reason is
+            # the ReadTimeoutError), and "Could not connect" named the wrong cause while Loki
+            # listened and answered /ready. Nothing answered either way (`not_answering`, for
+            # reader_job's rule 14).
+            if timed_out(exc):
+                return {"ok": False, "not_answering": True, "timed_out": True,
+                        "error": f"{self.label} did not answer within {self.timeout:g} s "
+                                 f"({path.lstrip('/')})"}
+            return {"ok": False, "not_answering": True,
+                    "error": f"Could not connect to {self.url}"}
         except Exception as exc:                      # noqa: BLE001 - never raise into a handler
             log.warning("%s: unexpected error calling %s: %s", self.name, path, exc)
             return {"ok": False, "error": str(exc)}

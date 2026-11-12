@@ -87,8 +87,11 @@ def fill(loki=None, now=NOW, reads=800):
     return v
 
 
-def store(value, ok=True, error="", value_at="2026-10-01T10:21:00Z"):
-    """The reader's stored document, as `reader_job` writes it."""
+def store(value, ok=True, error="", value_at=None):
+    """The reader's stored document, as `reader_job` writes it: read at this run's time (C3330:
+    a page judges the held lines' age against the reader's promise, so a store dated weeks ago is
+    stale and says so)."""
+    value_at = value_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     path = reader_job.store_path(T.READER_NAME)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     doc = {"last_attempt": {"at": value_at, "ok": ok, "error": error}}
@@ -96,6 +99,7 @@ def store(value, ok=True, error="", value_at="2026-10-01T10:21:00Z"):
         doc["last_good"] = {"value": value, "value_at": value_at}
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh)
+    return value_at
 
 
 class TestTheIncrementalFill:
@@ -261,12 +265,12 @@ def page(lab, counted, tmp_path, monkeypatch):  # noqa: F811
 
 class TestNoPageAsksLoki:
     def test_the_logs_tab_draws_the_buffer_and_its_age(self, lab, page, monkeypatch):
-        store(fill())
+        read_at = store(fill())
         html = lab["client"].get("/v2/device/r3/logs").get_data(as_text=True)
         assert page == [], page
         assert re.search(r"\d+ heartbeat\(s\) in the last 24 h, the last <time", html), html
         assert "<code>%SEC_LOGIN-5-LOGIN_SUCCESS</code>" in html
-        assert 'data-age="2026-10-01T10:21:00Z"' in html and "held by Mercury" in html
+        assert f'data-age="{read_at}"' in html and "held by Mercury" in html
         assert "nmas:logs from:body" in html
 
     def test_before_the_first_read_it_says_reading_never_quiet(self, lab, page):

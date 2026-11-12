@@ -671,8 +671,10 @@ class TestScheduler:
         monkeypatch.setattr(R, "readers", lambda: [mine])
         monkeypatch.setattr(R, "threading", types.SimpleNamespace(Thread=Thread))
         monkeypatch.setattr(R, "_threads", {})
+        monkeypatch.setattr(R, "_supervisor", {"thread": None})
         assert R.start() == ["t-reader"]
-        assert seen == [True], "a reader thread was made before the integration package loaded"
+        # The reader's thread and the supervisor's (C3330), each made after the package loaded.
+        assert seen == [True, True], "a thread was made before the integration package loaded"
 
     def test_start_runs_each_reader_and_stop_ends_it(self, monkeypatch):
         """ONLY the test's own reader is started (C163, 2026-10-05): `start()` starts every

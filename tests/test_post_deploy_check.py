@@ -24,6 +24,8 @@ OFF = "local account: off (setting off, access proxy configured, not loopback-on
 SHA = "669017fc06"
 PROXY = {"cf_access_team_domain": "team.example.com", "cf_access_aud": "a" * 64,
          "cf_access_trusted_peers": "192.0.2.10"}
+#: The healthy answers' start, 2026-11-11T22:45:19Z, as epoch seconds.
+STARTED = 1794437119.0
 
 
 def _script():
@@ -57,6 +59,11 @@ def _answers(**over):
         "modes": lambda: {"Default": {"mode": "dry_run", "set": "dry_run", "state": "ok"},
                           "Lab": {"mode": "off", "set": "off", "state": "ok"}},
         "local_account": lambda: {"setting": False, "proxied": True, "loopback": False},
+        # C3330: self-healing's detection read, 6 s after the start, the check 41 s after it.
+        "detection": lambda: [{"store": "heal-detect", "value_at": "2026-11-11T22:45:25Z",
+                               "configured": True, "state": "ok", "networks": ["Default"]}],
+        "clock": lambda: STARTED + 41,
+        "sleep": lambda _s: None,
     }
     base.update(over)
     return base
@@ -211,3 +218,59 @@ class TestTheCommandLine:
             with pytest.raises(ValueError) as exc:
                 S.heal_expectations([bad])
             assert repr(bad) in str(exc.value)
+
+
+class TestDetectionsFirstRead:
+    """C3330 (the operator, 2026-11-12): the smoke check fails, naming both times, unless
+    self-healing's detection read has a good read since the app's start no older than 2
+    minutes, waiting up to that bound for the first, and saying so."""
+
+    @staticmethod
+    def _clock():
+        t = {"now": STARTED + 3}
+
+        def sleep(s):
+            t["now"] += s
+        return t, (lambda: t["now"]), sleep
+
+    @staticmethod
+    def _row(value_at, configured=True):
+        return {"store": "heal-detect", "value_at": value_at, "configured": configured,
+                "state": "ok", "networks": ["Default"]}
+
+    def test_it_waits_for_the_first_read_and_says_so(self):
+        t, clock, sleep = self._clock()
+        asked = []
+
+        def reads():
+            asked.append(t["now"])
+            # The first good read lands 30 s after the start.
+            return [self._row("2026-11-11T22:45:49Z" if t["now"] >= STARTED + 30 else
+                              "2026-11-11T22:40:00Z")]
+        ok, said = _run(detection=reads, clock=clock, sleep=sleep)
+        assert ok is True and said[-1] == "SMOKE OK"
+        assert any(s.startswith("detection: waiting up to 117 s for its first good read since "
+                                "the start at 2026-11-11T22:45:19Z") for s in said), said
+        assert any("read at 2026-11-11T22:45:49Z, since the start" in s for s in said), said
+        # Counted, never timed: every 5 s until the read, never past the bound.
+        assert len(asked) == 7 and max(asked) <= STARTED + S.DETECTION_BOUND_SECONDS
+
+    def test_no_read_since_the_start_fails_it_naming_both_times(self):
+        t, clock, sleep = self._clock()
+        ok, said = _run(detection=lambda: [self._row("2026-11-11T22:40:00Z")], clock=clock,
+                        sleep=sleep)
+        assert ok is False and said[-1] == "SMOKE FAILED"
+        line = next(s for s in said if "its last good read" in s)
+        assert ("its last good read is 2026-11-11T22:40:00Z, and the app started at "
+                "2026-11-11T22:45:19Z: no good read within 120 s") in line
+        assert t["now"] >= STARTED + S.DETECTION_BOUND_SECONDS
+
+    def test_a_read_since_the_start_that_has_gone_stale_fails_it(self):
+        ok, said = _run(detection=lambda: [self._row("2026-11-11T22:45:25Z")],
+                        clock=lambda: STARTED + 600)
+        assert ok is False and any("its last good read is 2026-11-11T22:45:25Z" in s
+                                   for s in said), said
+
+    def test_a_network_with_no_loki_has_nothing_to_read_and_passes(self):
+        ok, said = _run(detection=lambda: [self._row("2026-11-11T22:45:25Z", configured=False)])
+        assert ok is True, said

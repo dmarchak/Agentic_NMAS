@@ -1,4 +1,5 @@
-"""Flap detection: the `logs-tail` reader's after-store step that records each interface's
+"""Flap detection: self-healing's own syslog read's after-store step (`heal-detect`,
+modules/heal/detect_read.py, C3330: never a display reader's store) that records each interface's
 UPDOWN transitions, for guard 13e (board H's amendment, item 2, part H19; docs/HEAL_TO_INTENT.md
 19.4, N18). Deterministic; it reads no device and calls no model.
 
@@ -44,7 +45,7 @@ import time
 
 log = logging.getLogger(__name__)
 
-READER = "logs-tail"
+READER = "heal-detect"
 MNEMONICS = ("%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN")
 #: The interface and its new state, in the text after the mnemonic.
 _TEXT = re.compile(r"^(?:Line protocol on )?Interface (?P<iface>[A-Za-z][\w./:-]{0,47}), "
@@ -91,7 +92,7 @@ def uninstall() -> None:
 
 
 def _after_store(reader, moved: bool = True) -> None:
-    """A `logs-tail` store whose lines moved: its step. Never raises."""
+    """A detection store whose lines moved: its step. Never raises."""
     from modules import reader_job
 
     base = (getattr(reader, "name", "") or "").split("@", 1)[0]
@@ -101,7 +102,7 @@ def _after_store(reader, moved: bool = True) -> None:
         got = reader_job.read_cached(reader.name)
         value = ((got.get("doc") or {}).get("last_good") or {}).get("value")
         if isinstance(value, dict):
-            from_logs_tail(reader.name, value)
+            from_syslog(reader.name, value)
     except Exception as exc:                          # noqa: BLE001 (never stops a reader)
         log.error("heal: the flap step on %s failed: %s: %s", reader.name,
                   type(exc).__name__, exc)
@@ -138,7 +139,20 @@ def _move(fn):
     return out
 
 
-def from_logs_tail(store: str, value: dict, now: float = None) -> dict:
+def cursor_for(store: str, doc: dict = None):
+    """The receive time of the last UPDOWN line recorded from *store* (epoch seconds), or None;
+    a detection store with none yet takes the one its configuration's logs-tail store left
+    (`triggers.legacy_store`, C3330). Raises when the record cannot be read."""
+    from modules.heal import triggers as T
+
+    got = ((_read() if doc is None else doc).get("cursors") or {})
+    if store in got:
+        return float(got[store])
+    old = got.get(T.legacy_store(store)) if T.legacy_store(store) else None
+    return float(old) if old is not None else None
+
+
+def from_syslog(store: str, value: dict, now: float = None) -> dict:
     """The step: each UPDOWN line newer than *store*'s cursor, recorded on its network's
     interface. ``{"recorded", "off", "unplaced"}``."""
     from modules.heal import triggers as T
@@ -148,7 +162,7 @@ def from_logs_tail(store: str, value: dict, now: float = None) -> dict:
     counts = {"recorded": 0, "off": 0, "unplaced": []}
     seen = None
     try:
-        seen = (_read().get("cursors") or {}).get(store)
+        seen = cursor_for(store)
     except (OSError, ValueError) as exc:
         log.error("heal: the flap record cannot be read (%s); the step waits", exc)
         return counts

@@ -17,7 +17,16 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `6fea2a28da645e3f5d5fceaadf2db0a6f0c1622cd15f787a61df231427772d15`
+Templates sha256: `e82b7456ce24c06e6e712faabf681e0424e15c73f85b7e574c283c0001349b10`
+(2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
+a new shot: once the logs-tail reader's last good read is older than its promise (its interval
+times its stale factor, 15 s, as its job-health row judges it), an opened device's lines gain a
+warning notice under their foot, "Held lines are <age> old: the logs reader has stopped (<its
+last error>)", the foot drops "held by the logs reader, read <age>", and the failed-refresh
+notice above the lines is not drawn then (each fact once); a fresh buffer draws as before. The
+board draws no stale state: **deviation** (log: The Logs pages say when the held lines are past
+the reader's promise). Every other region as compared. Before:
+`6fea2a28da645e3f5d5fceaadf2db0a6f0c1622cd15f787a61df231427772d15`.)
 (2026-11-12, C3166 slice 2, by the template diff against the regions below and the pages
 tests/test_logs_buffer.py draws, not a new shot: an opened device's lines are those the
 logs-tail reader holds, drawn at once, with its read time in the lines' foot ("held by the logs

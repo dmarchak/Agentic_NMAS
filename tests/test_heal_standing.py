@@ -80,7 +80,7 @@ def dep(running, device):
 
 def change(device, ts):
     """A CONFIG_I from outside Mercury on *device* at *ts* (the logs-tail step)."""
-    return T.from_logs_tail("logs-tail", {"lines": [line(dev=device, ts=ts)]}, now=ts)
+    return T.from_syslog("logs-tail", {"lines": [line(dev=device, ts=ts)]}, now=ts)
 
 
 def alerted(device, ts, *, by="label", rule="IP SLA probe failing"):

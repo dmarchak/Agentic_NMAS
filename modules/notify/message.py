@@ -66,6 +66,10 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           # `send`): a person handed an incident over to an engineer, sent to the teams they
           # chose among those told about the network's can't-fix, with the incident's link.
           "fixit_handover": "an incident handed over to an engineer",
+          # C3330 (the operator, 2026-11-12): self-healing's detection cannot see, or a person
+          # turned self-healing off or stopped it; on by default for every team
+          # (modules/heal/blind_notice.py), once per raise.
+          "heal_blind": "self-healing is blind or paused",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a

@@ -345,7 +345,8 @@ def _held_words(h: dict, kind: str, start: float = None) -> dict:
     reach = c.get("reach")
     short = (not c.get("whole")) if start is None else bool(reach) and reach > start + 1
     return {"state": h.get("state"), "value_at": h.get("value_at", ""),
-            "failed": h.get("failed", ""), "from_iso": _iso(int(reach * 1e9)) if reach else "",
+            "failed": h.get("failed", ""), "stale": h.get("stale", ""),
+            "from_iso": _iso(int(reach * 1e9)) if reach else "",
             "loading": h.get("state") == "ok" and short}
 
 

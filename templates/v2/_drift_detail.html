@@ -44,7 +44,7 @@
     {%- elif h.state == 'never' %}
     <p class="drift-sum" role="status">Reading Loki: the logs reader has not read it yet. This part fills itself when it has.</p>
     {%- else %}
-    {%- if h.failed %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</span></p>{% endif %}
+    {%- if h.failed and not h.stale %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</span></p>{% endif %}
     {%- if h.loading %}<p class="drift-note" role="status">Loading older lines: held from {{ stamp(h.from_iso) }}; the logs reader is reading back, and this part fills itself as it does.</p>{% endif %}
     <p class="drift-sum">{% if g.capped %}In the last {{ g.max_days }} days{% else %}Since its golden was recorded ({{ stamp(g.start_iso) }}){% endif %}: {{ g.lines | length }}{% if g.cut %} (the newest {{ g.limit }}; there are more){% endif %} line{{ '' if g.lines | length == 1 else 's' }} about its configuration or a restart.</p>
     {%- if g.lines %}
@@ -55,7 +55,8 @@
       {%- endfor %}
     </ul>
     {%- endif %}
-    <p class="drift-note">Each at the time Mercury received it; {{ host }}'s own time is on hover{% if g.unsync %} ({{ g.unsync }} with a clock IOS marks as not set){% endif %}{% if h.value_at %}; held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}. <a href="{{ url_for('device_v2.device', name=host, tab='logs') }}">Every line from {{ host }}: its Logs tab</a></p>
+    <p class="drift-note">Each at the time Mercury received it; {{ host }}'s own time is on hover{% if g.unsync %} ({{ g.unsync }} with a clock IOS marks as not set){% endif %}{% if h.value_at and not h.stale %}; held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}. <a href="{{ url_for('device_v2.device', name=host, tab='logs') }}">Every line from {{ host }}: its Logs tab</a></p>
+    {%- if h.stale %}<p class="notice notice-warn" role="status" data-held-stale>{{ icon('warn', 16) }}<span>{{ h.stale }}.</span></p>{% endif %}
     {%- endif %}
   </div>
   <div class="drift-part">

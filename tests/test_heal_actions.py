@@ -383,7 +383,7 @@ def record():
 
 class TestTheFlapRecord:
     def test_a_link_and_its_line_protocol_are_one_transition_at_the_receive_time(self, world):
-        got = F().from_logs_tail("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 120)
+        got = F().from_syslog("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 120)
         assert got["recorded"] == 3
         t = F().transitions("Default", "core-b", "GigabitEthernet2", T0 - 1, T0 + 120)
         # The collector's receive time, never the device's clock (Jan 1, a slow vIOS clock).
@@ -391,7 +391,7 @@ class TestTheFlapRecord:
             (T0, "down"), (T0 + 20, "up"), (T0 + 40, "down")]
 
     def test_three_in_ten_minutes_is_a_flap_two_is_not(self, world):
-        F().from_logs_tail("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 120)
+        F().from_syslog("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 120)
         got = F().flapping("Default", "core-b", "GigabitEthernet2", T0 + 120, at_least=3,
                            minutes=10)
         assert got["flapping"] and got["transitions"] == 3 and "a flap" in got["words"]
@@ -406,12 +406,12 @@ class TestTheFlapRecord:
         shut = line_of(str(int(T0 * 1e9)), "Oct 10 21:19:18 core-b 4290: core-b: Jan  1 "
                        "00:03:17.371 UTC: %LINK-5-CHANGED: Interface GigabitEthernet2, changed "
                        "state to administratively down")
-        assert F().from_logs_tail("logs-tail", {"lines": [shut]}, now=T0)["recorded"] == 0
+        assert F().from_syslog("logs-tail", {"lines": [shut]}, now=T0)["recorded"] == 0
 
     def test_each_line_once(self, world):
         lines = flap_lines(T0, 2)
-        F().from_logs_tail("logs-tail", {"lines": lines}, now=T0 + 60)
-        again = F().from_logs_tail("logs-tail", {"lines": lines + flap_lines(T0 + 100, 1)},
+        F().from_syslog("logs-tail", {"lines": lines}, now=T0 + 60)
+        again = F().from_syslog("logs-tail", {"lines": lines + flap_lines(T0 + 100, 1)},
                                    now=T0 + 160)
         assert again["recorded"] == 1
         assert len(F().transitions("Default", "core-b", "GigabitEthernet2", T0 - 1,
@@ -420,21 +420,21 @@ class TestTheFlapRecord:
     def test_nothing_where_healing_is_off_but_the_lines_are_consumed(self, world, monkeypatch):
         from modules import attention as AT
         monkeypatch.setattr(AT, "_device_networks", lambda: {"core-b": ["Branch"]})
-        got = F().from_logs_tail("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 60)
+        got = F().from_syslog("logs-tail", {"lines": flap_lines(T0, 3)}, now=T0 + 60)
         assert (got["recorded"], got["off"]) == (0, 6)
         doc = record()
         assert doc["cursors"]["logs-tail"] == T0 + 41 and "Branch" not in doc.get("networks", {})
 
     def test_an_ipv6_only_device_is_placed_like_any(self, world):
-        got = F().from_logs_tail("logs-tail", {"lines": flap_lines(T0, 1, dev="v6-d",
+        got = F().from_syslog("logs-tail", {"lines": flap_lines(T0, 1, dev="v6-d",
                                                                    iface="GigabitEthernet1")},
                                  now=T0 + 10)
         assert got["recorded"] == 1
 
     def test_the_record_keeps_an_hour_and_a_longer_window_is_unreadable(self, world):
-        F().from_logs_tail("logs-tail", {"lines": flap_lines(T0, 1)}, now=T0 + 10)
+        F().from_syslog("logs-tail", {"lines": flap_lines(T0, 1)}, now=T0 + 10)
         # Up an hour later: a transition (a second "down" would be none: the state is known).
-        F().from_logs_tail("logs-tail", {"lines": [line(T0 + 3700, "up")]}, now=T0 + 3710)
+        F().from_syslog("logs-tail", {"lines": [line(T0 + 3700, "up")]}, now=T0 + 3710)
         assert F().transitions("Default", "core-b", "GigabitEthernet2", T0 + 200,
                                T0 + 3710)["transitions"][0]["epoch"] == T0 + 3700
         assert "core-b" in record()["networks"]["default"]
@@ -470,7 +470,7 @@ class TestTheStep:
         from modules import reader_job as RJ
         now = time.time()
         lines = flap_lines(now - 60, 1)
-        for name, n in (("adjacencies@t9", 0), ("logs-tail@t9", 1)):
+        for name, n in (("adjacencies@t9", 0), ("heal-detect@t9", 1)):
             reader = RJ.Reader(name=name, what="a test's reader", endpoints=("a test",),
                                interval_seconds=5, interval_basis="a test",
                                invalidates=("logs",),
@@ -488,8 +488,8 @@ class TestTheStep:
 
         def boom(store, value):
             raise RuntimeError("no")
-        monkeypatch.setattr(F(), "from_logs_tail", boom)
-        reader = RJ.Reader(name="logs-tail@t8", what="a test's tail", endpoints=("a test",),
+        monkeypatch.setattr(F(), "from_syslog", boom)
+        reader = RJ.Reader(name="heal-detect@t8", what="a test's tail", endpoints=("a test",),
                            interval_seconds=5, interval_basis="a test", invalidates=("logs",),
                            read=lambda: {"configured": True, "lines": []})
         F().install()

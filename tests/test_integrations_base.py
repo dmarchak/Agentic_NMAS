@@ -63,7 +63,7 @@ class TestOptionality:
 class TestErrorsNeverEscape:
     @pytest.mark.parametrize("exc,expected", [
         (requests.exceptions.ConnectionError(), "Could not connect"),
-        (requests.exceptions.Timeout(), "Timed out"),
+        (requests.exceptions.Timeout(), "did not answer within 5 s"),
         (requests.exceptions.SSLError("bad cert"), "TLS error"),
         (ValueError("something odd"), "something odd"),
     ])

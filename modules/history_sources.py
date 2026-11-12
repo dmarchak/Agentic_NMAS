@@ -1625,6 +1625,26 @@ def page_stalls(ctx):
                  if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
 
 
+def reader_restarts(ctx):
+    """Each reader thread Mercury started again after it stopped (C3330, `reader_job`'s
+    supervisor): who ("Mercury's self-healing"), the reader, why, and the exception's type. The
+    installation's own record, so a row names no device and every network's History shows it."""
+    from modules import reader_job
+    if ctx["device"]:
+        return _out()
+    got = reader_job.restarts()
+    if got["error"]:
+        return _out(errors=[f"the reader restarts record could not be read: {got['error']}"])
+    return _out([_event(r.get("at"), "reader_restart",
+                        f"Reader {r.get('reader') or '?'} started again: {r.get('why') or '?'}",
+                        [], who=r.get("who") or reader_job.RESTART_DOER,
+                        record=[("Reader", r.get("reader")), ("Why", r.get("why")),
+                                ("Exception", r.get("type") or "none recorded"),
+                                ("Restart in the last hour", str(r.get("attempt", ""))),
+                                ("Process", str(r.get("pid", "")))])
+                 for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
+
+
 #: An alert rule change's kind of row, as its line says it.
 _RULE_CHANGE_WORDS = {"added": "added", "changed": "changed", "removed": "removed"}
 
@@ -2997,7 +3017,7 @@ SOURCES = {
     "controller_deploys": controller_deploys,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
-    "diagnoses": diagnoses, "ai_reads": ai_reads,
+    "diagnoses": diagnoses, "ai_reads": ai_reads, "reader_restarts": reader_restarts,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -3044,6 +3064,8 @@ KIND_GROUPS = (
                                 ("alert_rule",)),
                                ("show_commands", "Show commands", ("show_commands",)),
                                ("stalls", "Page stalls (live updates)", ("stall",)),
+                               ("reader_restarts", "Reader threads restarted",
+                                ("reader_restart",)),
                                ("notifications", "Notifications delivered and failed",
                                 ("notification",)))),
 )
@@ -3169,6 +3191,7 @@ SOURCE_KINDS = {
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
     "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",),
+    "reader_restarts": ("reader_restart",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

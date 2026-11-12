@@ -126,6 +126,9 @@ NOT_WOKEN = {
                     "write changes it",
     "logs-tail": "the network's log store's last 15 minutes and each device's buffer: devices "
                  "write it, never an operation here; read every 5 s",
+    "heal-detect": "the devices' configuration-change and link lines in the log store: devices "
+                   "write them, never an operation here; read every 5 s for self-healing's "
+                   "detection (C3330)",
     "loki-labels": "the log store's labels and bounds: the log shipper and Loki's configuration "
                    "change them, never an operation here",
 }

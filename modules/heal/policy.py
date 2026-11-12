@@ -616,6 +616,9 @@ def turn_off(network: str, *, actor: str, actor_verified: str = "", now: float =
                                 "until_before": got["values"].get(UNTIL_KEY, ""),
                                 "actor": actor, "actor_verified": actor_verified})
     log.info("heal: %s turned self-healing off for %s (was %s)", actor, network, before)
+    # C3330: "self-healing is blind or paused", once, to every team; never fails the press.
+    from modules.heal import blind_notice
+    blind_notice.notify_paused(network, actor, OFF_EFFECT)
     return {"ok": True, "network": network, "nothing": False, "before": before,
             "recorded": entry.get("recorded", False), "at": entry.get("at", _iso(now)),
             "words": (f"Self-healing turned off for {network} by {actor} (was "
@@ -676,6 +679,9 @@ def stop(*, actor: str, actor_verified: str = "", why: str = "") -> dict:
                        "why": (why or "").strip(), "actor": actor,
                        "actor_verified": actor_verified})
     log.info("heal: %s stopped self-healing everywhere", actor)
+    # C3330: "self-healing is blind or paused", once, to every team; never fails the press.
+    from modules.heal import blind_notice
+    blind_notice.notify_paused("", actor, OFF_EFFECT)
     return {"ok": True, "nothing": False, "recorded": entry.get("recorded", False),
             "at": entry.get("at_iso", ""),
             "words": f"Self-healing stopped everywhere by {actor}: {OFF_EFFECT}"}

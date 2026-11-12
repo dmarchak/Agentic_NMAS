@@ -97,7 +97,9 @@ class _Loki:
     def ask(self, path: str, **params) -> list:
         r = self.client._get(path, **params)          # noqa: SLF001 (the client's one GET)
         if not r.get("ok"):
-            raise RuntimeError(f"Loki could not be asked ({path}): {r.get('error')}")
+            # A timeout's words already name Loki, its bound and the path (C3330).
+            raise RuntimeError(r["error"] if r.get("timed_out") else
+                               f"Loki could not be asked ({path}): {r.get('error')}")
         try:
             return (r["response"].json().get("data") or {}).get("result") or []
         except ValueError as exc:

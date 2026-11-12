@@ -91,7 +91,7 @@
       {%- endif %}
       {%- if not o.errors %}
       {%- set h = o.held or {} %}
-      {%- if h.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The logs reader's last refresh failed ({{ h.failed }}): the lines held are those read from Loki {{ stamp(h.value_at) }}.</p></div>{% endif %}
+      {%- if h.failed and not h.stale %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The logs reader's last refresh failed ({{ h.failed }}): the lines held are those read from Loki {{ stamp(h.value_at) }}.</p></div>{% endif %}
       {%- if o.lines or o.older %}
       <div class="table-wrap"><table class="table lg-lines" aria-label="{{ r.device }}'s lines, newest first">
         <thead><tr><th scope="col">Received (UTC)</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
@@ -103,10 +103,11 @@
         {%- endif %}
       </table></div>
       {%- else %}<p class="small">No line of {{ r.device }} matches, {{ o.window[0] }} to {{ o.window[1] }} UTC.</p>{% endif %}
-      <p class="muted small">Showing {{ o.lines | length }}{% if o.older %} held{% endif %}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.older %}, older ones below as Loki answers{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}{% if h.value_at %} · held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}
+      <p class="muted small">Showing {{ o.lines | length }}{% if o.older %} held{% endif %}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.older %}, older ones below as Loki answers{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}{% if h.value_at and not h.stale %} · held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}
         {%- if o.more %} · {{ go(g, {'before': o.next_before}, 'the next 50') }}{% endif %}
         · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a>
         · <a href="{{ url_for('logs_v2.page', list=g.list, d=r.device, sev=g.s.sev, mn=g.s.mn, text=g.s.text, **{'from': 'query'}) }}">Open these lines on Logs</a></p>
+      {%- if h.stale %}<div class="notice notice-warn" role="status" id="logs-held" data-held-stale>{{ icon('warn', 16) }}<p>{{ h.stale }}.</p></div>{% endif %}
       {%- endif %}
     </td></tr>
     {%- endif %}

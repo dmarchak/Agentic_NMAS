@@ -25,7 +25,15 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `f8a5568311056af4edf062c64a8c9c58aaac357ef30f52417a677bba88ba2782`
+Templates sha256: `90dfef7f5f92d4d9fe8883d1d18ad12620cfb45d17dbc8a3ca799445c8a3cd7a`
+(2026-11-12, C3330, by the template diff and the part tests/test_logs_held_stale.py draws, not
+a new shot: in `_drift_detail.html` the "What r3's log says" part, once the logs-tail reader's
+last good read is older than its promise (15 s), drops "held by the logs reader, read <age>"
+from its note and draws a warning notice under it, "Held lines are <age> old: the logs reader
+has stopped (<its last error>)", the failed-refresh notice above not drawn then (each fact
+once); a fresh buffer draws as before. The board draws no stale state: **deviation** (log: The
+Logs pages say when the held lines are past the reader's promise). Every other region as
+compared. Before: `f8a5568311056af4edf062c64a8c9c58aaac357ef30f52417a677bba88ba2782`.)
 (2026-11-12, C3166 slice 2, by the template diff and the part tests/test_logs_buffer.py draws,
 not a new shot: in `_drift_detail.html` the "What r3's log says" part draws the logs-tail
 reader's buffer, never Loki when the row opens, and redraws itself in place when the reader

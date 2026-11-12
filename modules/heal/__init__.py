@@ -43,8 +43,8 @@ and calls no model.
 
 H19 is the action remediations' declarations (the amendment's item 2, 19.4): `actions` (the four
 action kinds in the tier table, guards 13a to 13e, `judge`; every kind refused by name until
-its part, H20 to H22, builds its operation), `flaps` (the `logs-tail` reader's after-store step
-recording each interface's UPDOWN transitions at their receive time, for 13e), and
+its part, H20 to H22, builds its operation), `flaps` (self-healing's own syslog read's
+after-store step recording each interface's UPDOWN transitions at their receive time, for 13e), and
 `diagnose.ACTIONS` with `diagnose.action_for` (an action chosen only from the diagnosis's first,
 complete hypothesis).
 

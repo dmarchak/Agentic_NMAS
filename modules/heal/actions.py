@@ -51,8 +51,9 @@ failing closed):
   dampening proposal instead; a session is cleared once per incident, a second need being
   can't fix (Tier 3) with its diagnosis;
 - **13e, a flap is measured, not felt** (`g13e_flap`): ``heal_flap_transitions`` UPDOWN
-  transitions of one interface in ``heal_flap_minutes``, from the flap record the `logs-tail`
-  reader's after-store step keeps (`modules/heal/flaps.py`); the stability window is the same
+  transitions of one interface in ``heal_flap_minutes``, from the flap record self-healing's
+  own syslog read's (`heal-detect`) after-store step keeps (`modules/heal/flaps.py`); the
+  stability window is the same
   minutes. The dampening proposal needs a measured flap; a bounce needs the record readable,
   since its verify reads the stability window from it.
 """

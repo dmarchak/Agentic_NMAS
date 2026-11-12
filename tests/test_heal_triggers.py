@@ -177,7 +177,7 @@ class TestAttribution:
 
 class TestConfigChange:
     def test_a_line_from_outside_opens_the_devices_incident_naming_the_person(self, world):
-        got = T.from_logs_tail("logs-tail", {"lines": [line()]}, now=T0)
+        got = T.from_syslog("logs-tail", {"lines": [line()]}, now=T0)
         assert got["sighted"] == 1, got
         (inc,) = stored()
         assert (inc["device"], inc["cause"], inc["state"]) == ("core-b", "change", "watching")
@@ -208,7 +208,7 @@ class TestConfigChange:
         monkeypatch.setattr(A, "_inventory", lambda: ((names | {"s3"}, dict(
             by_ip, **{"192.0.2.99": {"s3"}})), ""))
         monkeypatch.setattr(BR, "host_networks", lambda: ["198.51.100.0/30"])
-        got = T.from_logs_tail("logs-tail", value, now=LT.NOW)
+        got = T.from_syslog("logs-tail", value, now=LT.NOW)
         assert got["sighted"] == 2, got
         (inc,) = [i for i in stored() if i["device"] == "s3"]
         assert (inc["cause"], inc["state"]) == ("change", "watching")
@@ -218,30 +218,30 @@ class TestConfigChange:
     def test_mercurys_own_line_is_no_trigger(self, world, monkeypatch):
         monkeypatch.setattr("modules.nsot.device_ops.holder", lambda n, d: {
             "operation": "deploy", "actor": "op@example.com", "started": T0 - 10})
-        got = T.from_logs_tail("logs-tail", {"lines": [line()]}, now=T0)
+        got = T.from_syslog("logs-tail", {"lines": [line()]}, now=T0)
         assert (got["sighted"], got["mercury"]) == (0, 1) and stored() == []
 
     def test_each_line_once_the_cursor_moves(self, world):
-        T.from_logs_tail("logs-tail", {"lines": [line()]}, now=T0)
-        again = T.from_logs_tail("logs-tail", {"lines": [line(), line(ts=T0 + 9)]}, now=T0 + 10)
+        T.from_syslog("logs-tail", {"lines": [line()]}, now=T0)
+        again = T.from_syslog("logs-tail", {"lines": [line(), line(ts=T0 + 9)]}, now=T0 + 10)
         assert again["sighted"] == 1
         (inc,) = stored()
         assert len(inc["triggers"]) == 2
 
     def test_a_line_that_is_no_change_is_no_trigger(self, world):
         other = dict(line(), mn="%LINK-3-UPDOWN", text="Interface Gi1, changed state to down")
-        assert T.from_logs_tail("logs-tail", {"lines": [other]}, now=T0)["sighted"] == 0
+        assert T.from_syslog("logs-tail", {"lines": [other]}, now=T0)["sighted"] == 0
 
     def test_nothing_where_healing_is_off_but_the_lines_are_consumed(self, world, monkeypatch):
         from modules import attention as A
 
         monkeypatch.setattr(A, "_device_networks", lambda: {"core-b": ["Branch"]})
-        got = T.from_logs_tail("logs-tail", {"lines": [line()]}, now=T0)
+        got = T.from_syslog("logs-tail", {"lines": [line()]}, now=T0)
         assert (got["sighted"], got["off"]) == (0, 1) and stored("Branch") == []
         assert T._cursors()["cursors"]["logs-tail"] == T0
 
     def test_a_device_in_two_networks_is_not_placed_by_guess(self, world):
-        got = T.from_logs_tail("logs-tail", {"lines": [line(dev="shared")]}, now=T0)
+        got = T.from_syslog("logs-tail", {"lines": [line(dev="shared")]}, now=T0)
         assert got["sighted"] == 0 and "2 networks" in got["unplaced"][0]
 
 
@@ -456,7 +456,7 @@ class TestDriftRecord:
 # ── The fold: one incident per cause ───────────────────────────────────────────────────────
 
 def cause(device, ts=T0):
-    return T.from_logs_tail("logs-tail", {"lines": [line(dev=device, ts=ts)]}, now=ts)
+    return T.from_syslog("logs-tail", {"lines": [line(dev=device, ts=ts)]}, now=ts)
 
 
 def symptom(device, ts=T0):
@@ -589,7 +589,7 @@ class TestInstalled:
     def test_a_readers_store_runs_its_step_by_its_configurations_name(self, world):
         from modules import reader_job as RJ
 
-        reader = RJ.Reader(name="logs-tail@t1", what="a test's tail", endpoints=("a test",),
+        reader = RJ.Reader(name="heal-detect@t1", what="a test's tail", endpoints=("a test",),
                            interval_seconds=5, interval_basis="a test", invalidates=("logs",),
                            read=lambda: {"configured": True, "lines": [line()]})
         T.install()
@@ -605,8 +605,8 @@ class TestInstalled:
         def boom(store, value):
             raise RuntimeError("no")
 
-        monkeypatch.setitem(T.STEPS, "logs-tail", boom)
-        reader = RJ.Reader(name="logs-tail@t2", what="a test's tail", endpoints=("a test",),
+        monkeypatch.setitem(T.STEPS, "heal-detect", boom)
+        reader = RJ.Reader(name="heal-detect@t2", what="a test's tail", endpoints=("a test",),
                            interval_seconds=5, interval_basis="a test", invalidates=("logs",),
                            read=lambda: {"configured": True, "lines": []})
         T.install()
@@ -618,6 +618,6 @@ class TestInstalled:
 
     def test_an_unchanged_value_is_not_read_again(self, world, monkeypatch):
         calls = []
-        monkeypatch.setitem(T.STEPS, "logs-tail", lambda s, v: calls.append(s))
-        T._after_store(type("R", (), {"name": "logs-tail"})(), moved=False)
+        monkeypatch.setitem(T.STEPS, "heal-detect", lambda s, v: calls.append(s))
+        T._after_store(type("R", (), {"name": "heal-detect"})(), moved=False)
         assert calls == []

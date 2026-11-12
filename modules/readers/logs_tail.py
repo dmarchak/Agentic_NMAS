@@ -25,6 +25,19 @@ kept, a read asks one older page more (`BACKFILL_LIMIT` lines, every device at o
 that returns its limit going forward covers only from its oldest line: older than that is a
 hole, so the kind starts again from there and fills back. ``buffer`` in the value says what the
 buffer covers (``{kind: {"from", "to"}}``, nanoseconds) and how many queries the read asked.
+
+**A read never asks more than the window going forward (C3330).** The newest line held moves
+only on a success, so after one failed read the next asked from further back, timed out, and
+asked further back again: from 14:36 UTC on 2026-11-12 every read failed, each asking a longer
+range of every device (measured on the host at 16:43: a 15-minute ask answered in 0.7 to 3.5 s,
+a 2.2-hour one in 6.4 to 9.3 s, past the client's 5 s). So a forward read starts no earlier
+than `WINDOW_SECONDS` before now, whatever the buffer last held, and a failed read leaves the
+next one's size unchanged. A gap older than that is the backfill's, paged as it pages older
+lines: the kind covers from where the read began, ``missed`` says from when to when nothing was
+read, and the backfill fills back across it (``missed`` is dropped once it has).
+
+**Self-healing's detection does not read this** (C3330, the operator, 2026-11-12): it has its
+own live, bounded read (modules/heal/detect_read.py), so a tail that stops blinds no heal.
 """
 
 import logging
@@ -131,7 +144,8 @@ def _store(list_name: str) -> str:
 
 def _forward(loki, query, cover, now_ns, first_ns, floor_ns, limit) -> tuple:
     """``(raw, cover, cut)``: the lines since the newest held (from *first_ns* when none is
-    held), and what the kind covers after them."""
+    held), and what the kind covers after them, with ``missed`` when the newest held was older
+    than the window (C3330's tail slice: the backfill fills it, and says so until it has)."""
     # Never further back than the first read's own window (C3330's hotfix, 2026-11-12): `cover`
     # moves only on a success, so after one failed read the range grew on every later read
     # toward the 24 h floor, each timed out against Loki, and the reader never recovered (no
@@ -141,9 +155,18 @@ def _forward(loki, query, cover, now_ns, first_ns, floor_ns, limit) -> tuple:
     raw, cut = _ask(loki, query, start, now_ns, limit)
     got_from = min(ns for ns, _l in raw) if cut and raw else start
     if not cover or got_from > cover["to"]:
-        # The first read, or more arrived than one read returns: whole only from its oldest.
-        return raw, {"from": got_from, "to": now_ns}, cut
-    return raw, {"from": cover["from"], "to": now_ns}, cut
+        # The first read, more arrived than one read returns, or the newest held is older than
+        # the window: whole only from its oldest, the rest the backfill's to fill.
+        out = {"from": got_from, "to": now_ns}
+        if cover:
+            was = cover.get("missed") or {}
+            out["missed"] = {"from": min(was.get("from") or cover["to"], cover["to"]),
+                             "to": got_from}
+        return raw, out, cut
+    out = {"from": cover["from"], "to": now_ns}
+    if cover.get("missed") and cover["from"] > cover["missed"]["from"]:
+        out["missed"] = dict(cover["missed"])          # the backfill has not filled it yet
+    return raw, out, cut
 
 
 def read(list_name: str = "", loki=None, clock=time.time, previous=None) -> dict:
@@ -217,6 +240,12 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None) -> dict
             break
     for kind, c in covers.items():
         c["from"] = max(c["from"], floors[kind])
+        m = c.get("missed")
+        if m:
+            # Inside the kept horizon only, and gone once the backfill has read across it.
+            m["from"] = max(m["from"], floors[kind])
+            if c["from"] <= m["from"] or m["from"] >= m["to"]:
+                del c["missed"]
 
     forward = {ns for ns, _l in raw}
     by_dev, window = {}, {}
@@ -272,7 +301,8 @@ READER = reader_job.register(reader_job.Reader(
           "(C675), and each device's buffer for its Logs tab, drift row and Syslog by device "
           "(C3166)"),
     endpoints=("Loki: GET /loki/api/v1/query_range (every device in one query, newest first: "
-               "the lines since the newest held, a minute's overlap, at most 1000; the "
+               "the lines since the newest held, a minute's overlap, never more than the 15 "
+               "minutes before the read, at most 1000; the "
                "heartbeats the same, once a minute; while the buffer fills back, one older "
                "page of at most 1000)",),
     interval_seconds=INTERVAL_SECONDS,
@@ -281,6 +311,9 @@ READER = reader_job.register(reader_job.Reader(
     read=read,
     invalidates=("logs",),
     remedy="Read the error above: it names what Loki answered",
+    # C3330: where the held lines are drawn with their age once they are older than the
+    # promise (History › Query › Syslog by device; each device's Logs tab says the same).
+    remedy_href="/v2/history/query/syslog",
     window="the 15 minutes before each read; each device's buffer its last 24 h, and its "
            "configuration changes 30 days",
     per_group=("loki",),

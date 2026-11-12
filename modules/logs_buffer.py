@@ -124,8 +124,9 @@ def write(store: str, by_device: dict, now: float) -> int:
 # ---------------------------------------------------------------------------- the pages' read
 
 def held(list_name: str, dev: str, now: float = None) -> dict:
-    """What the pages draw of one device: ``{"state", "why", "value_at", "failed", "cover",
-    "lines", "beats", "changes"}``. *state* is ``ok``, ``never`` (the reader has not read yet),
+    """What the pages draw of one device: ``{"state", "why", "value_at", "failed", "stale",
+    "cover", "lines", "beats", "changes"}``. *stale* is `stale_words`' line, or "". *state* is
+    ``ok``, ``never`` (the reader has not read yet),
     ``not_configured``, ``not_applicable`` or ``unreadable``; *cover* is each kind's
     ``{"from", "reach", "to", "whole", "full"}`` for this device (epoch seconds: from when this
     device's lines are all held, `device_cover`; *reach*, how far back the buffer has read for
@@ -138,7 +139,7 @@ def held(list_name: str, dev: str, now: float = None) -> dict:
     now = time.time() if now is None else now
     got = reader_job.read_cached_for(logs_tail.READER_NAME, list_name)
     out = {"state": got.get("state"), "why": got.get("why") or "", "value_at": "", "failed": "",
-           "cover": {}, "lines": [], "beats": [], "changes": []}
+           "stale": "", "cover": {}, "lines": [], "beats": [], "changes": []}
     if out["state"] in ("not_applicable", "not_configured", "unreadable"):
         out["why"] = out["why"] or "the logs reader's store could not be read"
         return out
@@ -153,6 +154,7 @@ def held(list_name: str, dev: str, now: float = None) -> dict:
     if not value.get("configured"):
         return dict(out, state="not_configured", why="Loki is not configured for this network")
     out["value_at"] = last.get("value_at", "")
+    out["stale"] = stale_words(doc, now)
     buf = value.get("buffer") or {}
     if not buf.get("store"):
         # A value stored before the buffer was (this release's first read is yet to come).
@@ -176,6 +178,35 @@ def held(list_name: str, dev: str, now: float = None) -> dict:
                               "full": len(kept) >= LIMITS[kind]}
         out[kind] = kept
     return out
+
+
+def promise_seconds() -> int:
+    """How old the held lines may be before a page says so: the logs-tail reader's interval
+    times its stale factor, as its job-health row judges it (reader_job rule 7)."""
+    from modules.readers import logs_tail
+
+    return logs_tail.INTERVAL_SECONDS * logs_tail.READER.stale_after_intervals
+
+
+def stale_words(doc: dict, now: float) -> str:
+    """C3330: what a page draws in place of its held-by line when the last good read is older
+    than its promise ("" when it is not): the lines' age and why, the last error in its own
+    words, so held lines never look current."""
+    from modules import reader_job
+    from modules.history_ask import duration_words
+
+    good = (doc or {}).get("last_good") or {}
+    at = reader_job._parse_iso(good.get("value_at"))      # noqa: SLF001 (one parser)
+    if at is None or now - at <= promise_seconds():
+        return ""
+    attempt = (doc or {}).get("last_attempt") or {}
+    error = attempt.get("error") or ""
+    if error.startswith("RuntimeError: "):
+        error = error[len("RuntimeError: "):]
+    why = (error if not attempt.get("ok", True) and error else
+           f"it has not read since {attempt.get('at') or good.get('value_at')}")
+    return (f"Held lines are {duration_words(max(1, int(now - at)))} old: the logs reader has "
+            f"stopped ({why})")
 
 
 def device_cover(kept: list, kind: str, floor: float) -> float:

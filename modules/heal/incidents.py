@@ -760,7 +760,7 @@ def drift_cases(network: str) -> dict:
       Mercury and something broke at the same time;
     - ``quiet``: it holds none.
     *who* says whose change it was in words: the configuration-change line's attribution (never
-    Mercury's: `triggers.from_logs_tail` sights no change of Mercury's), the line's time and who
+    Mercury's: `triggers.from_syslog` sights no change of Mercury's), the line's time and who
     the line names; or, with no such line, that Mercury holds no record of making it, so it is
     treated as from outside (the attribution rule: an unknown change is an outside one).
     *symptoms* names each symptom's device and kind."""
