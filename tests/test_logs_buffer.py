@@ -147,6 +147,20 @@ class TestTheIncrementalFill:
         assert sorted(held["beats"], reverse=True) == sorted(
             (ns for ns, l in R3 if HEARTBEAT in l), reverse=True)
 
+    def test_after_failed_reads_the_forward_read_never_asks_past_its_window(self, data):
+        """C3330 (the NMAS host, 2026-11-12): every read failed from 14:36:21 UTC, the cover's
+        end stayed there, and each later read asked from it to now, a range growing toward the
+        24 h floor that Loki could not answer in time. Two hours of failed reads later, the
+        next forward read asks only the tail's own window."""
+        v1 = fill()
+        later = NOW + 7200
+        loki = FakeLoki()
+        T.read("Lab", loki=loki, clock=lambda: later, previous=v1)
+        forward = [p for p in loki.asked if _kind(p) == "lines"
+                   and int(p["end"]) >= int(later * 1e9)]
+        assert forward, loki.asked
+        assert int(forward[0]["start"]) >= int((later - T.WINDOW_SECONDS) * 1e9), forward[0]
+
     def test_a_read_that_returns_its_limit_going_forward_starts_again_from_its_oldest(
             self, data, monkeypatch):
         v1 = fill()

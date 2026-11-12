@@ -128,7 +128,12 @@ def _store(list_name: str) -> str:
 def _forward(loki, query, cover, now_ns, first_ns, floor_ns, limit) -> tuple:
     """``(raw, cover, cut)``: the lines since the newest held (from *first_ns* when none is
     held), and what the kind covers after them."""
-    start = first_ns if not cover else max(floor_ns, cover["to"] - int(OVERLAP_SECONDS * 1e9))
+    # Never further back than the first read's own window (C3330's hotfix, 2026-11-12): `cover`
+    # moves only on a success, so after one failed read the range grew on every later read
+    # toward the 24 h floor, each timed out against Loki, and the reader never recovered (no
+    # read from 14:36:21 UTC on the NMAS host). A gap older than the window is the backfill's.
+    start = first_ns if not cover else max(floor_ns, first_ns,
+                                           cover["to"] - int(OVERLAP_SECONDS * 1e9))
     raw, cut = _ask(loki, query, start, now_ns, limit)
     got_from = min(ns for ns, _l in raw) if cut and raw else start
     if not cover or got_from > cover["to"]:

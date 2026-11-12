@@ -312,7 +312,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   before and after reads always read live. Cost: one background refresh per source, and
   the CPU and memory it adds on the host, stated. Prevents: a page as slow as its slowest
   source, a request storm whenever a heal announces, and a decision made on a page's stale
-  copy. [not mechanised yet: C3166]
+  copy. [the routes still waiting, named and only shrinking: tests/test_no_page_waits.py;
+  display only: tests/test_attention_display_only.py]
 - **A board-built screen is compared with its board before it is called done:** the board
   and the page shot side by side (tests/test_board_shots.py) at the board's width, 1280
   and phone width, compared region by region in docs/fidelity/<screen>.md, every deviation
