@@ -31,7 +31,8 @@ triage and Core 1.0's sign-off are the operator's, never a recommended option th
   stands in for them.
 - Every commit passes the gate before it's pushed; CI runs on every push and doesn't block
   the next commit; a red CI is fixed forward before any new work is pushed, and nothing is
-  deployed from a sha CI (GitHub or the local runner) has not passed.
+  deployed from a sha neither the gate nor GitHub's CI has passed (a gate green deploys at
+  once; a GitHub red known at deploy time refuses, and one after it stops new work).
 - **Still the operator's; the agent stops and asks:** (1) any secret value: the operator types
   secrets, and the agent never prints, stores or reads one; (2) anything outside the lab:
   Cloudflare, DNS, GitHub visibility, anything public; (3) the licence of anything shipped in
@@ -158,16 +159,26 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Never stack a commit on a RED CI; never wait idle for a green one.** Push, name the sha and
   start the next task while CI runs; when a run fails, stop new work and fix forward before
   anything else. Nothing unverified reaches the host: `nmas-deploy --wait` and the Update button
-  refuse a commit whose tree CI has not passed. [the host refusing it: tests/test_nmas_deploy.py,
-  tests/test_update_when_ci_passes.py; the rest: not mechanised] [why](docs/LESSONS.md#no-commits-on-a-red-ci)
-- **The deploy bar is CI green on the exact sha and the change's own tests; recovery is the
-  safety net** (the operator, 2026-10-25, until Stage 10): the host returns to the previous
-  deployed release by `scripts/nmas-rollback <sha> --push` and Update, which deploys on the CI
-  verdict of the deployed commit with the same tree (about 2.5 minutes). [the tree check:
-  tests/test_nmas_rollback.py; the reused verdict: tests/test_nmas_deploy.py]
-- **Deploys are the operator's** (`nmas-deploy --wait`). Never deploy, pull or write in the live
-  checkout on the host. [nmas-deploy needs CI's pass: tests/test_nmas_deploy.py; the agent:
-  hook scripts/hooks/claude-no-host-writes, tests/test_claude_host_writes_hook.py]
+  refuse a commit neither the gate (its verdict a note on origin) nor GitHub's CI has passed,
+  and one GitHub's CI has failed; a GitHub red on the sha the host runs is a Needs attention
+  warning and a "CI disagrees with the deployed release" notice: stop, report it, then fix
+  forward or roll back. [the host refusing it: tests/test_nmas_deploy.py,
+  tests/test_update_when_ci_passes.py; the red after a deploy and its notice:
+  tests/test_ci_agreement.py; the rest: not mechanised] [why](docs/LESSONS.md#no-commits-on-a-red-ci)
+- **The deploy bar is a green verdict on the exact sha, from the gate or GitHub's CI, and the
+  change's own tests; recovery is the safety net** (the operator, 2026-10-25, until Stage 10;
+  the gate's verdict, 2026-11-11: "a sha whose GATE passed may be pushed and deployed at once;
+  GitHub CI is a second check, not a requirement"): the gate runs everything CI runs, the
+  container harness included, and records its verdict on origin; the host returns to the
+  previous deployed release by `scripts/nmas-rollback <sha> --push` and Update, which deploys
+  on the verdict of the deployed commit with the same tree (about 2.5 minutes). [the gate's
+  harness step and its note: tests/test_nmas_gate.py; the verdict read, and the reused one:
+  tests/test_nmas_deploy.py; the tree check: tests/test_nmas_rollback.py]
+- **The agent deploys** through `nmas-deploy --wait` only: the gate or GitHub's CI green on the
+  exact sha, then the smoke check and the preflight; never during a window or a recording; heal
+  mode, devices, credentials and the kit stay the operator's. Never pull or write in the live
+  checkout on the host. [nmas-deploy needs the gate's or CI's pass: tests/test_nmas_deploy.py;
+  the agent: hook scripts/hooks/claude-no-host-writes, tests/test_claude_host_writes_hook.py]
 - **Prose goes through the Edit and Write tools, never a heredoc into an interpreter.**
   [hook: scripts/hooks/claude-no-heredoc-interpreter (.claude/settings.json); tests/test_claude_heredoc_hook.py] [why](docs/LESSONS.md#text-through-file-tools)
 - **CLAUDE.md is the operator's: a change it needs is given to the operator as the exact
