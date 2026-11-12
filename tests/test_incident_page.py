@@ -794,12 +794,13 @@ class TestThePage:
 
 
 class TestInARealBrowser:
-    """In Firefox (where one runs; skipped naming why elsewhere): the page's own clock
-    element draws each recorded time in the viewer's zone, with its date and to the second
-    (static/js/nmas_v2.js `clockWords`, the form this page adds), and nothing on the page
-    scrolls inside a card."""
+    """In Firefox (where one runs; skipped naming why elsewhere): the one clock draws each
+    recorded time in the viewer's zone, kept on their first visit and drawn by the server
+    (`_macros.clock`, routes/v2.clock_words), with its date and to the second (the form this
+    page adds), the zone named once on the page (one time zone per screen, docs/UI_RULES.md),
+    and nothing on the page scrolls inside a card."""
 
-    FORM = r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d:\d\d \S+"
+    FORM = r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d:\d\d( \S+)?"
 
     def test_each_time_is_the_viewer_s_own_to_the_second_and_no_card_scrolls(self, client):
         from tests import browser
@@ -815,14 +816,21 @@ class TestInARealBrowser:
         kept = (I.read(NET), SL.read(NET), DS.read(NET))
         with browser.Served(APP.app) as srv, browser.Browser() as b:
             try:
+                from tests.test_local_times import first_visit
+                # The first visit keeps the browser's zone; the page opened again is drawn by
+                # the server in it ("Sep 21 07:56:39", the zone beside the first time only).
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
-                # The server's words lead with the year ("2026-09-21 13:56:39 UTC") until the
-                # page's script draws the viewer's own ("Sep 21 07:56:39 MDT").
-                first = b.wait_for(
-                    "var t = document.querySelector('[data-cell=detected] time');"
-                    "return t && !/^\\d{4}-/.test(t.textContent) && t.textContent")
-                drawn = b.js("return Array.prototype.map.call(document.querySelectorAll("
-                             "'.inc-head time'), function (t) { return t.textContent; })")
+                with first_visit():
+                    b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
+                    first = b.wait_for(
+                        "var t = document.querySelector('[data-cell=detected] time');"
+                        "return t && t.textContent")
+                    drawn = b.js("return Array.prototype.map.call(document.querySelectorAll("
+                                 "'.inc-head time'), function (t) { return t.textContent; })")
+                    # Every clock on the page, as [its text, its hover].
+                    clocks = b.js("return Array.prototype.map.call(document.querySelectorAll("
+                                  "'time[data-clock]'), function (t) { return [t.textContent, "
+                                  "t.title]; })")
                 zone = b.js("return new Date(Date.parse(arguments[0])).getSeconds()", detected)
                 scrolls = b.js(
                     "return Array.prototype.filter.call(document.querySelectorAll("
@@ -833,6 +841,11 @@ class TestInARealBrowser:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
         assert len(drawn) >= 6 and all(re.fullmatch(self.FORM, t) for t in drawn), drawn
+        # One zone in the fixture's times: named beside one time on the page and no other.
+        named = [t for t, _h in clocks if re.search(r"\d [A-Z][A-Za-z+0-9:-]+$", t)]
+        assert len(named) == 1, ("the zone is named once on the page", clocks)
+        assert all(re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC", h) for _t, h in clocks), \
+            "each time's hover is its UTC instant"
         assert first.split()[2].endswith(f":{zone:02d}") and zone == int(detected[17:19]), \
             "the second drawn is the record's"
         assert scrolls == 0, "something scrolls inside the page"

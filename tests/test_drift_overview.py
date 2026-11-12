@@ -353,12 +353,15 @@ class TestTheLog:
         _drift(monkeypatch)
         _at_the_corpus(monkeypatch)
         monkeypatch.setattr("modules.device_page._epoch", lambda iso: None)
+        from html import unescape
         html = _detail(lab)
         for ns, raw in _config_lines():
+            # The one clock's (docs/UI_RULES.md "One time zone per screen"): the receive time
+            # in the viewer's zone, its UTC instant and the device's own time on the hover.
             at = datetime.datetime.fromtimestamp(ns / 1e9, datetime.timezone.utc)
-            assert at.strftime("%m-%d %H:%M:%S UTC") in html, at
+            assert f'title="{at.strftime("%Y-%m-%d %H:%M:%S UTC")} · received by Mercury' in html, at
             own = re.search(r"\*(\w{3}\s+\d+ [\d:.]+ UTC)", raw).group(1)
-            assert f"r3's own time: {own} (its clock not set)" in html
+            assert f"r3's own time: {own} (its clock not set)" in unescape(html)
         assert "Configured from console by" in html
         assert 'href="/v2/device/r3?tab=logs&amp;list=Lab"' in html
 

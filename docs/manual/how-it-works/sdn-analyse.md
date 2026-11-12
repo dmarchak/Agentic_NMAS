@@ -72,7 +72,7 @@ that line names. While no snapshot is kept, it is off and says so. A newer snaps
 latest answer's is said above the findings.
 
 Under that line the card names the latest snapshot by its id, as text, with **Copy**, the time
-it was collected in UTC, who collected it, and how many switches and flows it holds. The id is
+it was collected, who collected it, and how many switches and flows it holds. The id is
 what the evaluation is given, so copy it from here.
 
 **Kept snapshots** counts every snapshot the network keeps. Open it to list them, newest

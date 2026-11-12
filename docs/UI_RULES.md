@@ -58,7 +58,11 @@ Each is `[not mechanised]` until the review proposes its test.
 - **No secrets or emails on screen** (a person is named by display name; an identity is held
   only in a collapsed record, board E2a).
 - **One time zone per screen:** local time, with UTC on hover (the operator, 2026-11-11, on the
-  run card: "The card mixes "20:01 UTC" with steps in MST").
+  run card: "The card mixes "20:01 UTC" with steps in MST"). Every time a template draws goes
+  through `_macros.clock`, drawn by the server in the viewer's kept zone (a per-person setting,
+  from the browser on the first visit; the operator, 2026-11-12), the zone named once per
+  screen, the record's UTC on hover. [the templates and the zone: tests/test_local_times.py;
+  the words Python builds: not mechanised yet, C3290]
 
 ## Rules added 2026-11-12 (the operator)
 

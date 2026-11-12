@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {#- Diagnose… on the device page (board H's amendment, artboards I and J; H16 of
     docs/HEAL_TO_INTENT.md 19.7): the card in place of the tab, opened by the Actions menu's row.
     The dialog picks a runbook and its target from intent (never a typed command), lists every
@@ -64,7 +64,7 @@
   <div class="op-part" id="diagnose-run"><h3>Run</h3><div>
     {%- if c.busy %}
     {%- for b in c.busy %}
-    <p class="notice notice-warn">{{ icon('warn', 16) }}<span>{{ b.host }} is in diagnosis {{ b.diagnosis }} (started {{ b.started }} UTC by {{ b.actor | people }}); Diagnose… is offered when it ends.</span></p>
+    <p class="notice notice-warn">{{ icon('warn', 16) }}<span>{{ b.host }} is in diagnosis {{ b.diagnosis }} (started {{ clock(b.started, missing='at an unrecorded time') }} by {{ b.actor | people }}); Diagnose… is offered when it ends.</span></p>
     {%- endfor %}
     {%- else %}
     <form hx-post="{{ url_for('device_v2.diagnose_run', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">

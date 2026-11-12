@@ -847,6 +847,59 @@ def display_name():
                                 "default": out["default"], "nothing": out["nothing"]})
 
 
+# ── Time zone (the operator, 2026-11-12): the zone each person's screens draw their times in,
+#    kept per person as a display name is (modules/time_zones.py). ────────────────────────────
+
+def _time_zone(status: int = 200, **ctx):
+    """The Time zone card for this request's viewer: their own zone, where it came from, and
+    Change…; a service or an unverified request has none to set."""
+    from modules import identity, time_zones
+
+    ident = identity.viewer()
+    person = bool(ident.is_identified and ident.kind == "person")
+    return _fragment("v2/_time_zone.html", status,
+                     tz=time_zones.view(ident.actor if person else ""), **ctx)
+
+
+@bp.route("/installation/time-zone", methods=["GET"])
+def time_zone_card():
+    """The Time zone card at rest; a result (saved or refused) stays where its Save drew it."""
+    return _time_zone()
+
+
+@bp.route("/installation/time-zone/save", methods=["POST"])
+def time_zone():
+    """Set the viewer's own time zone: from the card's Change… (``source`` absent, a person's
+    choice), or from the page's script on a first visit (``source=browser``, the browser's own
+    zone, set only while none is stored). Recorded in the store's row with who set it, how they
+    were verified and where it came from. Refused, naming both sides, with nothing changed: a
+    zone `zoneinfo` does not know, an unreadable store, and a request that is no verified
+    person's."""
+    from modules import identity, time_zones
+
+    ident = identity.verified_identity()
+    if ident is None or ident.kind != "person":
+        return _time_zone(403, refused=(
+            "A time zone is set by a verified person: this request's identity is not "
+            "verified." if ident is None else
+            "A time zone is set by a verified person: this request is a "
+            f"{ident.kind or 'requester of unknown kind'} "
+            f"({identity.display_name(ident.actor)}), not a person."))
+    actor, form = identity.request_actor(), request.form
+    source = "browser" if form.get("source") == "browser" else "person"
+    typed = form.get("zone", "")
+    try:
+        out = time_zones.set_zone(actor, typed, by=actor, actor_verified=_verified(),
+                                  source=source)
+    except time_zones.Refused as exc:
+        return _time_zone(409, refused=str(exc), typed=typed)
+    except time_zones.Unreadable as exc:
+        return _time_zone(409, refused=(f"The time zones could not be read ({exc.kind}), so "
+                                        "nothing was saved."), typed=typed)
+    return _time_zone(done={"zone": out["zone"], "was": out["was"], "nothing": out["nothing"],
+                            "source": out["source"]})
+
+
 # ── The installation's one local account (modules/local_account.py): its card, sign-in and
 #    sign-out. Off by default, and only where Mercury listens on loopback only. ─────────────
 

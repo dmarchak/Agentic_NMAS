@@ -136,7 +136,9 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `8cbd5ec11735aca0ed19c68c32b8a296ee0ed4b5845dfcfc264c4344c7a44b01`
+Templates sha256: `2e46ce31af1de0ed42d3ef4fe46e24414f0365e119dbaa3ca75c681020074885`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_sdn_view.html`, `_sdn_log.html`, `_sdn_apps.html`, `_sdn_analyse.html` and `_sdn_snapshots.html`, an override's end, a mitigation's expiry, the loop's log range and each of its lines, a receipt's time and its deploy's, a snapshot's collected time and the kept list's Collected column are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover; Run's choices name each run's start in the viewer's zone (`_macros.clock_option`); the Collected column reads without its "(UTC)". Nothing else moves. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `8cbd5ec11735aca0ed19c68c32b8a296ee0ed4b5845dfcfc264c4344c7a44b01`.
 
 **Hashed again 2026-11-12 (board E2a, the gate's findings):** `_sdn_app_draft.html`'s closed
 commit message carries its key (`data-keep`), so a redraw keeps it as the person left it;

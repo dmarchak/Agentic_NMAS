@@ -423,14 +423,16 @@ def test_after_a_press_ask_in_words_says_so_and_the_next_press_sends_nothing(nl_
     assert r.status_code == 200
     assert f"Not filled: {WORDS}." in html
     # The row is drawn again with the press's answer: its control disabled, its reason the
-    # same words with the moment in the viewer's time and UTC's beside it.
+    # same words with the moment in the viewer's time, its UTC on the hover (the one clock).
     reason = re.search(r'<p class="ai-off" role="note" data-ai-off-reason="ask_in_words">(.*?)'
                        r"</p>", html, re.S)
-    assert reason and _text(reason.group(1)).strip() == (
-        "AI is unavailable: the provider's workspace usage limit is reached, until 1 November "
-        "2026 00:00 UTC (1 November 2026 00:00 UTC); an admin raises it in the provider's "
-        "console. Open Settings › Installation, AI (hosted)"), reason
-    assert 'datetime="2026-11-01T00:00:00Z" data-clock="date"' in reason.group(1)
+    assert reason and re.fullmatch(
+        r"AI is unavailable: the provider's workspace usage limit is reached, until "
+        r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d( \S+)?; an admin raises it in the provider's "
+        r"console\. Open Settings › Installation, AI \(hosted\)",
+        _text(reason.group(1)).strip()), reason
+    assert ('datetime="2026-11-01T00:00:00Z" data-clock="date" '
+            'title="2026-11-01 00:00:00 UTC"') in reason.group(1)
     _r, again = _words_page(nl_site)
     assert len(nl_site.provider.sent) == 1, "the second press reached the provider"
     assert f"Not filled: {WORDS}." in again
@@ -439,7 +441,8 @@ def test_after_a_press_ask_in_words_says_so_and_the_next_press_sends_nothing(nl_
 def test_in_a_browser_the_moment_is_the_viewers_own_time_with_utc_beside_it(site, clock,
                                                                          monkeypatch):
     """Firefox started with TZ=America/Denver: the reason's moment reads the viewer's own date
-    and time of the provider's instant (Oct 31 18:00 MDT), UTC's beside it."""
+    and time of the provider's instant (Oct 31 18:00 MDT), drawn by the server in the zone the
+    first visit kept, its UTC on the hover."""
     from tests import ai_controls_check as AIC
     from tests import browser
     if not browser.available()[0]:
@@ -450,15 +453,21 @@ def test_in_a_browser_the_moment_is_the_viewers_own_time_with_utc_beside_it(site
     monkeypatch.setenv("TZ", "America/Denver")
     with browser.Served(APP.app) as srv, browser.Browser() as b:
         try:
+            from tests.test_local_times import first_visit
             b.go(srv.url("/v2/history/query/ask/metrics?list=Lab&m=ifHCInOctets"))
-            b.wait_for("var t = document.querySelector('[data-ai-off-reason] time');"
-                       " return t && /M[DS]T/.test(t.textContent)", 15)
-            words = b.js("return document.querySelector('[data-ai-off-reason]').textContent")
+            with first_visit() as kept_zone:
+                assert kept_zone == "America/Denver"
+                b.go(srv.url("/v2/history/query/ask/metrics?list=Lab&m=ifHCInOctets"))
+                b.wait_for("var t = document.querySelector('[data-ai-off-reason] time');"
+                           " return t && t.textContent", 15)
+                words, hover = b.js("var r = document.querySelector('[data-ai-off-reason]');"
+                                    " return [r.textContent, r.querySelector('time').title]")
         finally:
             b.go("about:blank")
-    assert ("AI is unavailable: the provider's workspace usage limit is reached, until Oct 31 "
-            "18:00 MDT (1 November 2026 00:00 UTC); an admin raises it in the provider's "
-            "console.") in " ".join(words.split()), words
+    assert re.search(r"AI is unavailable: the provider's workspace usage limit is reached, "
+                     r"until Oct 31 18:00( MDT)?; an admin raises it in the provider's console\.",
+                     " ".join(words.split())), words
+    assert hover == "2026-11-01 00:00:00 UTC", hover
 
 
 # ── The chip and the panel ─────────────────────────────────────────────────────────────────

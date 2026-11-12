@@ -465,11 +465,14 @@ class TestTheCantFix:
 
 
 def test_a_time_is_drawn_in_the_viewer_s_zone_with_utc_on_hover():
+    # The server's words are the host's zone, named, until the page's script writes the
+    # viewer's (`_macros.clock`, routes/v2.clock_words): pinned to a host in Denver.
     from flask import render_template_string
     import app as A
-    with A.app.test_request_context("/v2/"):
+    from tests.test_local_times import zone
+    with zone("America/Denver"), A.app.test_request_context("/v2/"):
         got = render_template_string('{% from "v2/_macros.html" import clock %}'
                                      '{{ clock("2026-11-08T19:41:07Z") }}|{{ clock("") }}')
     assert got == ('<time class="clock" datetime="2026-11-08T19:41:07Z" data-clock '
-                   'title="2026-11-08 19:41:07 UTC">19:41 UTC</time>|'
+                   'title="2026-11-08 19:41:07 UTC">12:41 MST</time>|'
                    '<span class="clock">at an unrecorded time</span>')

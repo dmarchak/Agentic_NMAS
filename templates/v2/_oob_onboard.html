@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {%- from "v2/_oob_outcome.html" import oob_level, oob_chip -%}
 {#- The one-decision out-of-band onboarding's card (boards B and C of
@@ -64,7 +64,7 @@
       {%- if p.transport %}<dt>Reached by</dt><dd class="mono">{{ p.transport }}</dd>{% endif %}
       {%- if p.port %}<dt>Driver</dt><dd class="mono">{{ p.port.driver }} to {{ p.port.host }}{% if p.port.jump_host %} via {{ p.port.jump_host }}{% endif %}{% if p.port.ssh_port %}:{{ p.port.ssh_port }}{% endif %}{% if p.port.container %}, container {{ p.port.container }}{% elif p.port.tcp_port %}, TCP {{ p.port.tcp_port }}{% endif %}{% if p.port.credential_ref %}, key {{ p.port.credential_ref }}{% endif %}</dd>{% endif %}
       {%- set hk = p.host_key or {} %}
-      <dt>Host key</dt><dd>{% if hk.state == 'held' %}{{ hk.type }} <span class="fp" data-fingerprint>{{ hk.fingerprint }}</span>{% if hk.kept_at %} <span class="faint small">kept {{ hk.kept_at[:10] }}</span>{% endif %}{% elif hk.state == 'none' %}<span class="muted">none held: the first contact keeps the key {{ hk.host }} presents, and the record names it</span>{% elif hk.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} {{ hk.error }}{% else %}<span class="muted">this driver speaks no SSH</span>{% endif %}</dd>
+      <dt>Host key</dt><dd>{% if hk.state == 'held' %}{{ hk.type }} <span class="fp" data-fingerprint>{{ hk.fingerprint }}</span>{% if hk.kept_at %} <span class="faint small">kept {{ clock(hk.kept_at, 'day') }}</span>{% endif %}{% elif hk.state == 'none' %}<span class="muted">none held: the first contact keeps the key {{ hk.host }} presents, and the record names it</span>{% elif hk.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} {{ hk.error }}{% else %}<span class="muted">this driver speaks no SSH</span>{% endif %}</dd>
     </dl></div></div>
   {%- endif %}
 

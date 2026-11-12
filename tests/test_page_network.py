@@ -479,6 +479,9 @@ SCRIPT_REQUESTS = {
     ("nmas_v2.js", "root.fetch('/v2/diagnostics/stall', {"): (
         "C2003's stall record: its body carries the page's own address, ?list= included, and "
         "the route reads the network from it (else the person's active network)"),
+    ("nmas_v2.js", "root.fetch(url, {method: 'POST', body: form, headers: {'HX-Request'"): (
+        "drawn: data-tz-first, settings_v2.time_zone, network-free (a person's own time zone, "
+        "kept for every network)"),
     ("nmas_apply.js", "root.location.assign(o.go)"): (
         "the server's answer: v2.ip_sla_commit names the network in the Apply it returns"),
     ("nmas_credentials.js", "a.href = url;"): "a download of bytes already held: no request",

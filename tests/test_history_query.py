@@ -342,7 +342,10 @@ class TestTheRestartRecord:
         assert "Mercury&#39;s restart record, 30 d</h3>" in html or \
             "Mercury's restart record, 30 d</h3>" in html
         assert "unplanned</span> r3 restarted unexpectedly at 08:45 UTC on 02 Oct" in html
-        assert "The record begins 2026-09-01" in html
+        # The record's first day by the one clock: the viewer's day, its UTC on the hover.
+        assert re.search(r'The record begins <time class="clock" datetime="2026-09-01T[0-9:]+Z" '
+                         r'data-clock="day" title="2026-09-01 [0-9:]+ UTC">[A-Z][a-z]{2} \d{1,2} '
+                         r'2026</time>', html), html[html.find("The record begins"):][:300]
         assert "a fall the chart shows with no row here is one Mercury did not record" in html
 
 
@@ -425,7 +428,9 @@ class TestYourOwnQuery:
         assert asked[0]["limit"] == 200 and asked[0]["direction"] == "backward"
         assert int(asked[0]["end"]) - int(asked[0]["start"]) == 7 * 86400 * 10 ** 9
         assert "Your LogQL query's lines" in html and "Sup3rSecret" not in html
-        times = re.findall(r'<tr><td class="mono">([0-9: -]+)</td>', html)
+        # Each line's time by the one clock, its UTC instant on the hover: newest first.
+        times = re.findall(r'<tr><td class="mono"><time class="clock" [^>]*title="([0-9: -]+) UTC">',
+                           html)
         assert times and times == sorted(times, reverse=True)
 
     def test_a_logql_metric_query_with_no_series_says_so(self, web, monkeypatch):  # noqa: F811

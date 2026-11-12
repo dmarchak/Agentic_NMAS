@@ -438,8 +438,11 @@ class TestASilenceStaysARow:
         monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
         from tests.test_needs_attention import _panel
         html = _panel(A.needs_attention())
-        # Board E2a: the silence's author by display name, the part before the "@".
-        assert "<strong>silenced in Grafana</strong> by operator until 2026-09-30" in html
+        # Board E2a: the silence's author by display name, the part before the "@"; its end by
+        # the one clock, the UTC instant on the hover.
+        assert ('<strong>silenced in Grafana</strong> by operator until <time class="clock" '
+                'datetime="2026-09-30T10:15:00Z" data-clock="date" '
+                'title="2026-09-30 10:15:00 UTC">') in html
         assert "send log 2 test &lt;b&gt;" in html and "test <b>" not in html
 
     def test_v2s_panel_draws_it_on_the_member_and_escapes_the_comment(self, inventory,
@@ -456,8 +459,9 @@ class TestASilenceStaysARow:
         members = html[html.index('<ul class="att-members">'):]
         members = members[:members.index("</ul>")]
         # Board E2a: the silence's author by display name, the part before the "@".
-        assert ("<strong>silenced in Grafana</strong> by operator until "
-                "2026-09-30 10:15 UTC") in members, members
+        assert ('<strong>silenced in Grafana</strong> by operator until <time class="clock" '
+                'datetime="2026-09-30T10:15:00Z" data-clock="date" '
+                'title="2026-09-30 10:15:00 UTC">') in members, members
         assert "(&ldquo;send log 2 test &lt;b&gt;&rdquo;)" in members, members
         assert "test <b>" not in html
         # Its onset and the basis for it, as today's panel drew them beside the silence.

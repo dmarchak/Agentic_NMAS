@@ -110,6 +110,134 @@ def utc_when(ts, fmt="dt", to=None) -> dict:
     return {"iso": history_ask.iso(a), "to_iso": "", "words": history_ask.utc(a, pyfmt)}
 
 
+#: `clock`'s modes (templates/v2/_macros.html) as the server words them, the browser's own
+#: forms (static/js/nmas_v2.js `clockWords`): "19:41", "19:41:07", "Nov 8 19:41",
+#: "Nov 8 19:41:07", "Nov 8 2026" (a day carries no zone).
+CLOCK_FORMS = {"": "%H:%M", "seconds": "%H:%M:%S", "date": "%b %-d %H:%M",
+               "date-seconds": "%b %-d %H:%M:%S", "day": "%b %-d %Y"}
+
+
+def instant(value):
+    """A recorded instant as epoch seconds: epoch seconds, an ISO time ("…Z", "+00:00", or
+    none, as the records keep UTC) or "YYYY-MM-DD HH:MM[:SS]" (UTC, as the log lines keep
+    it); None for an empty or unreadable one."""
+    from datetime import datetime, timezone
+
+    if value is None or value == "" or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        t = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return t.timestamp()
+
+
+def viewer_zone():
+    """The zone this request's viewer reads times in: their stored zone (modules/time_zones.py)
+    as a `ZoneInfo`, else None, the host's own (`time.localtime`): a viewer with no identity,
+    or none stored yet (their first visit, whose page sends the browser's). Asked once per
+    request."""
+    from flask import g, has_request_context
+
+    if not has_request_context():
+        return None
+    if not hasattr(g, "nmas_time_zone"):
+        from modules import identity, time_zones
+
+        ident = identity.viewer()
+        person = bool(ident.is_identified and ident.kind == "person")
+        g.nmas_time_zone = time_zones.zone_of(ident.actor if person else "")
+    return g.nmas_time_zone
+
+
+def _zone_said(d) -> str:
+    """An aware datetime's zone as a person reads it: its abbreviation ("MST"), or its offset
+    from UTC where the zone has none ("UTC+05:45")."""
+    name = d.tzname() or ""
+    if name and not name.startswith(("+", "-")):
+        return name
+    off = int(d.utcoffset().total_seconds())
+    sign, off = ("+", off) if off >= 0 else ("-", -off)
+    return "UTC" if off == 0 else f"UTC{sign}{off // 3600:02d}:{off % 3600 // 60:02d}"
+
+
+@bp.app_template_filter("clock_words")
+def clock_words(value, mode="", named=False) -> dict:
+    """A recorded instant as `_macros.clock` draws it (one time zone per screen, docs/UI_RULES.md:
+    "local time, with UTC on hover"; the operator, 2026-11-12: "The server draws times in the
+    viewer's stored time zone ... so no UTC flashes before the script runs"):
+    ``{"iso", "utc", "words"}``, *iso* the machine-readable UTC instant for ``datetime=``, *utc*
+    its words for the hover ("2026-11-08 19:41:07 UTC"), *words* the time in the viewer's zone
+    (`viewer_zone`). The zone is named ONCE per response, beside its first time, and again
+    beside a time whose zone differs from that one (a daylight-saving change); a fragment a
+    page asks for (htmx) names it only on such a difference, its page having named it; a day
+    never. Outside a request every time names its zone, and so does one asked *named* (a
+    picker's choice), without counting as the response's naming. None for an empty or
+    unreadable instant."""
+    import time as _time
+    from datetime import datetime
+
+    at = instant(value)
+    if at is None:
+        return None
+    tz = viewer_zone()
+    d = datetime.fromtimestamp(at, tz) if tz is not None else datetime.fromtimestamp(at).astimezone()
+    words = d.strftime(CLOCK_FORMS.get(mode or "", CLOCK_FORMS[""]))
+    if mode != "day":
+        zone = _zone_said(d)
+        now = datetime.now(tz) if tz is not None else datetime.now().astimezone()
+        if named or _names_zone(zone, _zone_said(now)):
+            words = f"{words} {zone}"
+    kept = isinstance(value, str) and "T" in value and value.endswith("Z")
+    return {"iso": value if kept else _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(at)),
+            "utc": _time.strftime("%Y-%m-%d %H:%M:%S UTC", _time.gmtime(at)),
+            "words": words}
+
+
+@bp.app_context_processor
+def _time_zone_first():
+    """``tz_first``: where a verified person's first visit sends their browser's zone (the
+    page's <body data-tz-first>, static/js/nmas_v2.js `firstVisitZone`), drawn only while no
+    zone is kept for them and the store can be read; "" otherwise."""
+    from flask import url_for
+
+    from modules import identity, time_zones
+
+    try:
+        ident = identity.viewer()
+        if not (ident.is_identified and ident.kind == "person"):
+            return {"tz_first": ""}
+        if time_zones.unreadable() or time_zones.stored(ident.actor):
+            return {"tz_first": ""}
+        return {"tz_first": url_for("settings_v2.time_zone")}
+    except Exception as exc:                            # noqa: BLE001 (a page still draws)
+        log.warning("v2: the first visit's time zone could not be judged (%s)",
+                    type(exc).__name__)
+        return {"tz_first": ""}
+
+
+def _names_zone(zone: str, current: str) -> bool:
+    """Whether this time names *zone*: the response's first, or one whose zone differs from
+    the one it named (`clock_words`). A fragment's page named the zone already (*current*, the
+    viewer's zone now), so a fragment names only a zone that differs from it."""
+    from flask import g, has_request_context, request
+
+    if not has_request_context():
+        return True
+    named = getattr(g, "nmas_zone_named", None)
+    if named is None:
+        if request.headers.get("HX-Request"):
+            g.nmas_zone_named = current
+            return zone != current
+        g.nmas_zone_named = zone
+        return True
+    return zone != named
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the

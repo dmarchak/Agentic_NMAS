@@ -1,13 +1,13 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
 {#- Onboard devices › Discovered (board L): the summary and the range, the vendor filter and the
     search, then the three groups (asking now open; picked, gone quiet collapsed). Everything from
     the discovery reader's stored value; never a Kea call per view. -#}
 {%- macro go(g, over, words, cls='', pressed=none) -%}
 <a class="{{ cls }}" href="{{ url_for('onboard_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('onboard_v2.region') }}{{ g.qs(over) }}" hx-target="#discovered" hx-swap="outerHTML" hx-push-url="{{ url_for('onboard_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
-{#- Board L's times: the clock time in UTC, the full instant on hover (never an age that
+{#- Board L's times: the clock time (`_macros.clock`), the UTC instant on hover (never an age that
     drifts while the page is open). -#}
-{%- macro at(iso) -%}{% if iso %}<time datetime="{{ iso }}" title="{{ iso }}">{{ iso[11:16] }} UTC</time>{% else %}<span class="faint">not recorded</span>{% endif %}{%- endmacro -%}
+{%- macro at(iso) -%}{% if iso %}{{ clock(iso) }}{% else %}<span class="faint">not recorded</span>{% endif %}{%- endmacro -%}
 <div id="discovered" class="dv" hx-get="{{ url_for('onboard_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:ztp_discovery from:body" hx-swap="outerHTML">
 <p class="crumbs small"><a href="{{ url_for('v2.devices', list=g.list) }}">Devices</a> › Onboard devices › Discovered</p>
 <div class="dh-head">

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {#- Re-key (C906): the card in place of the tab, from modules/device_actions.py over
     `rekey_preview` and `rekey_result`, in persist's card pattern. The preview reads the key the
     device presents now with no credential; the two keys lead, since they are the decision. The
@@ -57,7 +57,7 @@
   <div class="op-hd"><h2 id="op-title">Re-key {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('rekey') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
-    <p>{{ c.summary }} {{ stamp(c.at, c.at[11:19] ~ ' UTC') }}</p>
+    <p>{{ c.summary }} {{ clock(c.at, 'seconds') }}</p>
     {%- if c.outcome != 'rekeyed' %}
     <p><button type="button" class="btn" data-op="rekey" hx-get="{{ url_for('device_v2.rekey', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rekey', compact=True, op='re-key') }}</p>
     {%- endif %}</div></div>

@@ -11,7 +11,9 @@ Shots: 1440, 1280 and phone 390 (the page and its first screen). Compared 2026-1
 The range it reads was installed on the host 2026-10-11 21:16 UTC (5cbb226, the host step 10 of 10 PASS); after it, the lab's unreserved hosts renewed through their relays still got 365 days.
 Templates compared: templates/v2/onboard.html, templates/v2/_onboard_discovered.html
 Compared again 2026-10-11: each group carries `data-keep`, so a live redraw keeps it open or closed as the person left it (C472); nothing drawn moved.
-Templates sha256: `7920d4c90e218fe88103424f1ac91e784f9b71d1a0653bfcafa95e2eabda776b`
+Templates sha256: `fb65689ab7d668e6dad8230ca14b918344b3f6567b93b41129c1b58074bda427`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_onboard_discovered.html`, board L's clock times are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `7920d4c90e218fe88103424f1ac91e784f9b71d1a0653bfcafa95e2eabda776b`.
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of Discovered
 (`_onboard_discovered.html`) carries `data-key` by its MAC, which the live merge matches rows by;
 nothing drawn moves. Compared by reading the diff, with no new shot. Before:

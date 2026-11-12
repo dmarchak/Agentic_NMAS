@@ -170,9 +170,11 @@ class TestEveryKindSaysHowItClears:
         assert "Clears when a person acknowledges it with a reason, or 7 days after the " \
                "restart; History keeps it either way" in html
         # And WHEN the seven days end (the row's clears_at, 2026-10-02): the moment the page
-        # and the sidebar's count re-read on.
-        assert re.search(r"either way \(by <time datetime=\"[0-9TZ:-]+\">[0-9: -]+ UTC</time>\)\.",
-                         html)
+        # and the sidebar's count re-read on: the one clock's, in the viewer's zone, its UTC
+        # instant on the hover (`_macros.clock`, docs/UI_RULES.md "One time zone per screen").
+        assert re.search(r"either way \(by <time class=\"clock\" datetime=\"[0-9TZ:-]+\" "
+                         r"data-clock=\"date\" title=\"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC\">"
+                         r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d( \S+)?</time>\)\.", html)
         # And the landing page, Needs attention as a person opens it (the list above is its
         # redraw). Today's panel (`static/js/nmas_attention.js`), the second page this read
         # until P7-27, left with today's index.

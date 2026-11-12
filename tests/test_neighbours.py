@@ -445,8 +445,11 @@ class TestThePage:
         _r, html = page("/v2/device/r3/neighbours")
         newest = max(float(r["value"][0]) for r in _capture()["ospfNbrState"]["data"]["result"]
                      if r["metric"].get("device") == "r3")
-        hhmm = T.strftime("%H:%M", T.gmtime(newest))
-        assert f"As of {hhmm} UTC: r3's OSPF scrapes since then have failed" in html
+        # As of the last good report's time, by the one clock: its UTC instant on the hover.
+        utc = T.strftime("%Y-%m-%d %H:%M:%S", T.gmtime(newest))
+        assert re.search(r'As of <time class="clock" datetime="[0-9T:-]+Z" data-clock title="'
+                         + re.escape(utc) + r' UTC">\d\d:\d\d( \S+)?</time>: r3\'s OSPF scrapes '
+                         r'since then have failed', html), html[html.find("As of"):][:300]
         assert 'class="nb-asof-cell">as of <time' in html
         monkeypatch.setattr(T, "time", lambda: newest + 30)
         _r, html = page("/v2/device/r3/neighbours")

@@ -1,0 +1,49 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- The viewer's time zone (the operator, 2026-11-12: "a per-person setting like display names,
+    defaulting from the browser on first visit"): Settings › Installation › Access and
+    identity's Time zone card, beside Display names, from modules/time_zones.view through
+    routes/settings_v2. Every screen draws its times in this zone on the server. Change… opens
+    the form in place: Save. The result (saved or refused, naming both sides) is drawn here,
+    in place; at rest the card reads again when a response names `time_zone`. -#}
+{%- set live = not done and not refused -%}
+<section class="card set-card set-card-wide" id="card-time-zone" aria-labelledby="h-time-zone"
+  {%- if live %} hx-disinherit="*" hx-get="{{ url_for('settings_v2.time_zone_card') }}" hx-trigger="nmas:time_zone from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="card-head"><h2 id="h-time-zone">Time zone</h2>{{ badge('yours', 'neutral') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not saved:</strong> {{ refused }} Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if done.nothing %}<strong>Nothing changed:</strong> your times are already drawn in <strong>{{ done.zone }}</strong>.
+    {%- else %}<strong>Saved:</strong> your times are now drawn in <strong>{{ done.zone }}</strong>{% if done.was %}, in place of {{ done.was }}{% endif %}. Every screen draws it from its next read.{% endif %}</div></div>
+  {%- endif %}
+  <p class="muted small">The time zone every screen draws your times in, named once on each screen; hover over a time for the same instant in UTC. Set from your browser on your first visit, until you choose one here.</p>
+  {%- if not tz.readable %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The time zones could not be read, so every time is drawn in this host's zone ({{ tz.host }}) and nothing can be saved until the file is put right: {{ tz.why }}</span></p>
+  {%- endif %}
+  {%- if not tz.viewer %}
+  <p class="muted small">This request is no verified person's, so it has no time zone to set: times are drawn in this host's zone ({{ tz.host }}).</p>
+  {%- else %}
+  <table class="table set-table">
+    <thead><tr><th>Person</th><th>Drawn in</th><th></th></tr></thead>
+    <tbody>
+    <tr>
+      <td>you</td>
+      <td>{% if tz.zone %}<strong>{{ tz.zone }}</strong> <span class="set-origin">{{ 'from your browser' if tz.source == 'browser' else 'chosen by you' }}, {{ stamp(tz.at) }}</span>{% else %}<strong>{{ tz.host }}</strong> <span class="set-origin">this host's zone: none is kept for you yet</span>{% endif %}</td>
+      <td>
+        {%- if tz.readable %}
+        <details class="set-replace" data-keep="tz-change"{% if refused %} open{% endif %}><summary class="btn btn-small">Change…</summary>
+          <form class="set-inline" method="post" action="{{ url_for('settings_v2.time_zone') }}"
+                hx-post="{{ url_for('settings_v2.time_zone') }}" hx-target="#card-time-zone" hx-swap="outerHTML" autocomplete="off">
+            <label for="tz-zone">Time zone</label>
+            <input id="tz-zone" name="zone" type="text" value="{{ typed if refused else tz.zone }}" placeholder="America/Denver" title="An IANA time zone name, for example America/Denver, Europe/London or UTC">
+            <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'time-zone', op='a time zone') }}</span>
+          </form>
+        </details>
+        {%- endif %}
+      </td>
+    </tr>
+    </tbody>
+  </table>
+  {%- endif %}
+</section>

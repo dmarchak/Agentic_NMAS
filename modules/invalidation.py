@@ -80,6 +80,7 @@ VOCABULARY = {
     "posture": "the identity gates' recorded posture",
     "people": "how each person is named on a screen: a display name set or returned to its "
               "default (modules/display_names.py, board E2a)",
+    "time_zone": "the zone a person's screens draw their times in (modules/time_zones.py)",
     "device_state": "what a device runs: anything read live from it",
     "host_keys": "the SSH host key Mercury keeps for each device: kept on first contact, "
                  "refused when it changed, replaced by a re-key (modules/host_keys.py, C906)",
@@ -411,6 +412,9 @@ DECLARED = {
     "settings_v2.install_writes_off": ("settings",),
     "settings_v2.install_ratify": ("posture", "settings"),
     "settings_v2.display_name": ("people",),
+    # The viewer's own time zone: only their pages move, each drawn in it at its next read;
+    # the posting card draws its own result.
+    "settings_v2.time_zone": ("time_zone",),
     "settings_v2.local_sign_in": ("posture",),
     "settings_v2.local_sign_out": ("posture",),
     "settings_v2.platforms_test": ("reads",),

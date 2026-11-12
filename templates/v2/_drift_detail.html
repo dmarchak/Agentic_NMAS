@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how -%}
+{%- from "v2/_macros.html" import icon, stamp, how, clock -%}
 {#- What the Overview's Drift row opens onto (C342, board C342Drift): the lines the drift run
     kept for the device, masked; what its own log says about when and how it changed since its
     golden (each line at the time Mercury received it); and the three choices, each opening the
@@ -51,7 +51,7 @@
     <ul class="drift-logs">
       {%- for l in g.lines %}
       {#- The receive time itself, never an age the page redraws: when it changed is the point. #}
-      <li><span class="drift-when"><time datetime="{{ l.at_iso }}" title="{{ l.at_iso }}, received by Mercury · {{ host }}'s own time: {{ l.devts or 'not in the line' }}{{ ' (its clock not set)' if l.unsync }}">{{ l.at_iso[5:10] }} {{ l.at_iso[11:19] }} UTC</time></span><span class="drift-line">{% if l.mnemonic %}<span class="mono">{{ l.mnemonic }}</span> {% endif %}{{ l.text }}</span></li>
+      <li><span class="drift-when">{{ clock(l.at_iso, 'date-seconds', 'received by Mercury · ' ~ host ~ "'s own time: " ~ (l.devts or 'not in the line') ~ (' (its clock not set)' if l.unsync else '')) }}</span><span class="drift-line">{% if l.mnemonic %}<span class="mono">{{ l.mnemonic }}</span> {% endif %}{{ l.text }}</span></li>
       {%- endfor %}
     </ul>
     {%- endif %}

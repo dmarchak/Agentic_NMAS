@@ -316,6 +316,32 @@ answer, and a commit's message in a preview. History › Export writes its files
 names, and each file says so in its first lines. A notification's destination address is a
 setting's value, not a person: Settings › Installation › Notifications draws it whole.
 
+## Time zone {#time-zone}
+
+Every screen draws your times in **your time zone**, kept for you as your display name is: the
+server draws them, so a page never shows them in another zone first. The zone is named once on
+each screen, beside the first time; hover over any time for the same instant in UTC.
+
+On your first visit no zone is kept for you, so the page draws its times in the zone of the host
+Mercury runs on, named, and sends your browser's own zone (for example America/Denver) once;
+that page's times are drawn again in it, and every page after draws them in it from the start.
+
+The **Time zone** card, on the Access and identity tab beside Display names, says the zone your
+times are drawn in and where it came from (your browser, or your choice, and when).
+
+- **Change…** opens the form. Type a time zone's name, as your system's time zone database
+  names it (America/Denver, Europe/London, Asia/Kolkata or UTC), and press **Save**.
+- You set your own zone only: it is how you read the screens, never anyone else's. A service
+  token and a request that is not verified set none, and their pages draw the host's zone.
+- A zone is refused, with nothing changed and what you typed kept in the form, when the time
+  zone database does not know it; the refusal names it. Your browser's zone never replaces one
+  you chose.
+- If the file that holds the zones cannot be read, the card says so, nothing is saved, and
+  every time is drawn in the host's zone until the file is put right.
+
+Records keep UTC: History's "Details for the record", an incident's The record, receipts,
+commits, logs and exports.
+
 ## The local account {#local-account}
 
 An installation that listens on its own machine only (the laptop kit) has no access proxy in

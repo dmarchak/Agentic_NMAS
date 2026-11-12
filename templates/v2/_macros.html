@@ -105,18 +105,43 @@
 </form>
 {%- endmacro %}
 
-{#- When the AI day cap's counter turns over (`calls.reset_info`): the viewer's own time, drawn
-    from the instant in the browser (nmas_v2.js `drawClock`; the boundary zone's time until it
-    runs), and UTC's beside it. One instant, the one the counter uses. -#}
-{% macro resets(r) -%}
-resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day begins at midnight {{ r.zone }} (Settings › Installation, AI (hosted))">{{ r.zone_hm }} {{ r.zone }}</time> ({{ r.utc }} UTC)
+{#- THE way a v2 screen draws a time (one time zone per screen, docs/UI_RULES.md: "local time,
+    with UTC on hover", the operator, 2026-11-11; C2817: "Show times in the viewer's time zone,
+    with UTC on hover and UTC in Details for the record"; 2026-11-12: "The server draws times in
+    the viewer's stored time zone"): the time in the viewer's kept zone, drawn by the server
+    (routes/v2.py `clock_words`, modules/time_zones.py), the zone named once per response, the
+    record's UTC instant on hover and in ``datetime=``; the page's script writes none but on a
+    viewer's first visit (nmas_v2.js `firstVisitZone`). *iso* is a recorded instant (an ISO
+    time, epoch seconds, or a log line's "YYYY-MM-DD HH:MM:SS", all UTC); *clock_mode* ''
+    "19:41", 'seconds' "19:41:07", 'date' "Nov 8 19:41", 'date-seconds' "Nov 8 19:41:07", 'day'
+    "Nov 8 2026" (a day, no zone); *note* follows the UTC on the hover; *missing* is drawn for
+    no instant. Its parameters are named apart from any field a page carries
+    (tests/test_v2_context_is_drawn.py reads names). tests/test_local_times.py holds every
+    template to it. -#}
+{% macro clock(iso, clock_mode='', note='', missing='at an unrecorded time') -%}
+{%- set w = iso | clock_words(clock_mode) -%}
+{%- if w %}<time class="clock" datetime="{{ w.iso }}" data-clock{% if clock_mode %}="{{ clock_mode }}"{% endif %} title="{{ w.utc }}{{ ' · ' ~ note if note }}">{{ w.words }}</time>{% elif iso %}<span class="clock">{{ iso }}</span>{% else %}<span class="clock">{{ missing }}</span>{% endif -%}
 {%- endmacro %}
 
-{#- A moment days away, as `resets` draws the day's: the viewer's own date and time (drawn in
-    the browser, nmas_v2.js `drawClock`, `data-clock="date"`), UTC's beside it. *m* is
-    `provider_limit.moment`'s ``{"at", "utc"}`` (C2084). -#}
+{#- A choice in a picker whose words hold a time (*label*'s "{at}"): in the viewer's zone, as
+    `clock` draws it, the zone always named (a closed picker shows one choice alone), the UTC
+    on its hover. -#}
+{% macro clock_option(value, label, iso, clock_mode='date-seconds', chosen=False) -%}
+{%- set w = iso | clock_words(clock_mode, True) -%}
+<option value="{{ value }}"{% if chosen %} selected{% endif %}{% if w %} title="{{ w.utc }}"{% endif %}>{{ label | replace('{at}', w.words if w else 'at an unrecorded time') }}</option>
+{%- endmacro %}
+
+{#- When the AI day cap's counter turns over (`calls.reset_info`): the viewer's own time (the
+    one clock above), the cap's day named on the hover. One instant, the one the counter
+    uses. -#}
+{% macro resets(r) -%}
+resets {{ clock(r.at, note=r.zone_hm ~ " " ~ r.zone ~ ": the cap's day begins at midnight there (Settings › Installation, AI (hosted))") }}
+{%- endmacro %}
+
+{#- A moment days away, as `resets` draws the day's: the viewer's own date and time (the one
+    clock above, 'date'). *m* is `provider_limit.moment`'s ``{"at", "utc"}`` (C2084). -#}
 {% macro moment(m) -%}
-<time class="clock" datetime="{{ m.at }}" data-clock="date" title="{{ m.utc }} UTC">{{ m.utc }} UTC</time> ({{ m.utc }} UTC)
+{{ clock(m.at, 'date') }}
 {%- endmacro %}
 
 {#- The provider's workspace usage limit, in the words every AI screen shares (C2084): *u* is
@@ -147,13 +172,6 @@ resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day
 {{ url_for('device_v2.device', name=device, list=network, result=result or none) }}
 {%- endmacro %}
 
-{#- A time Mercury measured, in the viewer's own zone (the operator, 2026-11-09, C2817: "Show
-    times in the viewer's time zone, with UTC on hover and UTC in Details for the record"):
-    drawn "HH:MM UTC" by the server and as the browser's own time by nmas_v2.js `drawClock`
-    ("19:41 MST"), the record's UTC on hover. *iso* is a record's UTC time. -#}
-{% macro clock(iso) -%}
-{%- if iso %}<time class="clock" datetime="{{ iso }}" data-clock title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[11:16] }} UTC</time>{% else %}<span class="clock">at an unrecorded time</span>{% endif -%}
-{%- endmacro %}
 
 {#- What happened, as a self-healing decision stated it (C2823, `heal.said.cause_of`): the facts
     in time order, each its time in the viewer's zone, then the hypothesis labelled as one

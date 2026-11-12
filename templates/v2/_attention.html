@@ -49,9 +49,9 @@
 {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
 {%- endmacro -%}
-{#- A moment a record holds, in the viewer's own zone with its date (nmas_v2.js `drawClock`),
-    the UTC time the server's words and on hover. -#}
-{%- macro when(iso) -%}<time class="clock" datetime="{{ iso }}" data-clock="date" title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[:16] | replace('T', ' ') }} UTC</time>{%- endmacro -%}
+{#- A moment a record holds, in the viewer's own zone with its date, the UTC on hover (the one
+    `_macros.clock`). -#}
+{%- macro when(iso) -%}{{ clock(iso, 'date') }}{%- endmacro -%}
 {#- C3166: the value the background store holds (`attention_store.read`), never computed for this
     request. `store.state` "reading": its network's first value has not landed, said as that,
     busy, and drawn again when it lands (the store announces `attention`). `store.checked_at`:
@@ -219,7 +219,7 @@
       <p class="small muted">Re-subscribe is not offered: {{ (nets.get(rd) or [])|length }} of the networks Mercury holds name a device {{ rd }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
       {%- endif %}
       {%- endif %}
-      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
+      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
           (attention.acknowledge); a later event is a new row. -#}
@@ -342,7 +342,7 @@
             silence's id and matchers are its provenance, on hover. -#}
         {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
           {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
-          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ (s.created_by or 'an unnamed account') | people }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
+          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ (s.created_by or 'an unnamed account') | people }} until {{ clock(s.ends_at, 'date', missing='an unrecorded time') }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
         </li>{% endfor %}
       </ul>
       {%- endif %}

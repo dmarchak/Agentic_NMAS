@@ -14,7 +14,9 @@ at 390 keeps the table whole and scrolls it in its box.
 Shots: desktop 1440 (live; arrived from History › Query, filtered; paused); phone 390. Compared
 2026-10-11.
 Templates compared: templates/v2/logs.html, templates/v2/_logs_tail.html
-Templates sha256: `cc865343c9bd0ab9755e745ae0b6432efe8bf7ed67fd4ab7b9101cdd6ce19e44`
+Templates sha256: `c7957fdc63c09b84f483dfd929f700d6f4fef85d5dde19afab8b3dd81d013a5e`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_logs_tail.html`, the newest line's time, Paused at, the log store's failure and each line's received time are `_macros.clock`'s: the viewer's own time to the second, the zone named once on the screen, the UTC instant on hover; the lines' column reads "Received" without its "(UTC)". Nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `cc865343c9bd0ab9755e745ae0b6432efe8bf7ed67fd4ab7b9101cdd6ce19e44`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

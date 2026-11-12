@@ -204,10 +204,11 @@ def card(network: str, host: str, back: str, args) -> dict:
         return c
     # A device the plan reads already in a diagnosis (artboard I's amendment note): named in
     # place of Run, read from the lock's record WITHOUT taking the lock; the press's lock
-    # stays the authority. The card re-reads when a diagnosis ends.
+    # stays the authority. The card re-reads when a diagnosis ends. Its start is the recorded
+    # instant, which the card draws in the viewer's zone (`_macros.clock`).
     c["busy"] = [{"host": h, "diagnosis": b.get("diagnosis") or "",
                   "actor": b.get("actor") or "an unrecorded caller",
-                  "started": (b.get("started_at") or "")[11:16] or "an unrecorded time"}
+                  "started": b.get("started_at") or ""}
                  for h, b in D.in_diagnosis(network, [r["device"] for r in c["plan"]["rows"]])
                  .items()]
     return c

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
 {#- The DHCP page's region (C529 step 1), drawn to board A: the network, the counts and the read,
     the tabs Subnets, Leases, Reservations and Exclusions. Everything from the DHCP reader's
     stored value; never a Kea call per view. -#}
@@ -113,7 +113,7 @@
         <td class="mono">{% if l.same %}the same {{ l.by }}{% else %}{{ ident(l.by, l.identity) }}{% if l.duid %} <span class="faint">({{ l.duid }})</span>{% endif %}{% endif %}{% if l.iaid is not none %}<br><span class="small" title="The client's IA identifier: one client asking with a new IAID is given a new address">IAID {{ l.iaid }}</span>{% endif %}</td>
         <td class="mono">{{ l.hostname or '–' }}</td>
         <td>{% if l.device %}<a href="{{ url_for('device_v2.device', name=l.device, list=g.list) }}">{{ l.device }}</a>{% else %}<span class="faint">not in the inventory</span>{% endif %}</td>
-        <td>{{ g.duration(l.valid) }}{% if l.ends %}, <span class="dh-lease">ends <time datetime="{{ l.ends }}" title="{{ l.ends }}">{{ l.ends[:10] }}</time></span>{% endif %}{% if l.state != 'active' %} {{ badge(l.state) }}{% endif %}{% if l.reserved %} {{ badge('reserved', 'ok') }}{% elif l.reserved_for_other %} {{ badge('reserved for another client', 'warn') }}{% endif %}</td>
+        <td>{{ g.duration(l.valid) }}{% if l.ends %}, <span class="dh-lease">ends {{ clock(l.ends, 'day') }}</span>{% endif %}{% if l.state != 'active' %} {{ badge(l.state) }}{% endif %}{% if l.reserved %} {{ badge('reserved', 'ok') }}{% elif l.reserved_for_other %} {{ badge('reserved for another client', 'warn') }}{% endif %}</td>
         {%- if l.span %}
         <td rowspan="{{ l.span }}" class="dh-shared"><strong>{{ l.span }} addresses for one client.</strong> It asked again and was given a new address each time{% if l.iaids > 1 %}, with a new IAID each time ({{ l.iaids }} different){% endif %}; Kea keeps each until it ends. A client that installs its address with no lifetime ("forever", as Linux does for DHCPv6) keeps using it whatever Kea's lease says, so a lease ending changes nothing on the host. A reservation for the address the host uses is the fix: it is given that one address every time it asks.</td>
         {%- elif not l.same %}
@@ -193,7 +193,7 @@
     <thead><tr><th scope="col">Range</th><th scope="col">Subnet</th><th scope="col">Reason</th><th scope="col">Source</th><th scope="col">In a pool?</th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
     <tbody>{% for e in g.exclusions %}<tr>
       <td class="mono">{{ e.range }}</td><td class="mono">{{ e.prefix }}</td><td>{{ e.reason }}</td>
-      <td class="small">{{ e.source }}{% if e.detail %} <span class="faint">{{ e.detail }}</span>{% endif %}<br><span class="faint">{{ e.by | people }}, {{ (e.at or '')[:10] }}</span></td>
+      <td class="small">{{ e.source }}{% if e.detail %} <span class="faint">{{ e.detail }}</span>{% endif %}<br><span class="faint">{{ e.by | people }}, {{ clock(e.at, 'day') }}</span></td>
       <td class="small">{{ 'yes: the pool is split around it' if e.inside else 'outside the pool today; kept out if it grows' }}</td>
       <td>{% if g.writable %}<a class="btn btn-small" href="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-get="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-exclusion" aria-label="Remove the exclusion {{ e.range }}">Remove…</a>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}{% endif %}</td>
     </tr>{% endfor %}</tbody>

@@ -101,6 +101,9 @@
               // chip on every page, Needs attention and Settings' Display names card read
               // again; every other region draws the name at its next read.
               'people',
+              // A person's time zone kept (Settings' Time zone card, or a first visit's send):
+              // the card reads again; every other region draws its times at its next read.
+              'time_zone',
               // A break-glass export, its intact check or a drill logged: Credentials' record
               // card reads the log again at once; job health's judgement follows (P7-05).
               'breakglass',
@@ -987,9 +990,9 @@
     } finally {
       merging = false;
     }
-    // Ages and clocks are the page's to draw: drawn before the browser paints the merge.
+    // Ages are the page's to draw: drawn before the browser paints the merge (clock times
+    // come drawn by the server, in the viewer's zone).
     drawAges(target);
-    drawClock(target);
     giveFocusBack(kept, target);
     drawNewNote(target);
     return [target];
@@ -1204,17 +1207,15 @@
     }
   }
 
-  /* The AI day cap's reset (`calls.reset_info`, `resets()` in _macros.html): the one instant
-     the counter turns over at, in the viewer's own time and zone ("18:00 MDT"); the server's
-     words (the boundary zone's time) stay until this runs. */
-  /* A moment in the viewer's own time: "19:00 MDT", or with its date ("Oct 31 19:00 MDT")
-     when the element says data-clock="date" (a moment days away: C2084's provider limit), and
-     to the second ("Oct 31 19:00:12 MDT") when it says data-clock="date-seconds" (an
-     incident's recorded times, which its time to repair is counted between). */
-  function clockWords(t, withDate, withSeconds) {
-    var opts = {hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'};
-    if (withDate) { opts.month = 'short'; opts.day = 'numeric'; }
-    if (withSeconds) { opts.second = '2-digit'; }
+  /* One time zone per screen (docs/UI_RULES.md; the operator, 2026-11-12): the server draws
+     every time in the viewer's kept zone (`_macros.clock`, routes/v2.clock_words), so this
+     script writes none, but on a viewer's first visit (`firstVisitZone`). Its forms, the
+     server's: data-clock '' "19:00", "seconds" "19:00:12", "date" "Oct 31 19:00",
+     "date-seconds" "Oct 31 19:00:12", "day" "Oct 31 2026". */
+  function clockWords(t, mode) {
+    var opts = mode === 'day' ? {year: 'numeric'} : {hour: '2-digit', minute: '2-digit', hour12: false};
+    if (mode === 'date' || mode === 'date-seconds' || mode === 'day') { opts.month = 'short'; opts.day = 'numeric'; }
+    if (mode === 'seconds' || mode === 'date-seconds') { opts.second = '2-digit'; }
     try {
       return new Intl.DateTimeFormat('en-US', opts).format(new Date(t)).replace(',', '');
     } catch (e) {
@@ -1222,14 +1223,47 @@
     }
   }
 
-  function drawClock(scope) {
-    var list = (scope || root.document).querySelectorAll('time[data-clock]');
-    for (var i = 0; i < list.length; i++) {
-      var t = Date.parse(list[i].getAttribute('datetime'));
-      var mode = list[i].getAttribute('data-clock') || '';
-      var words = t === t ? clockWords(t, mode === 'date' || mode === 'date-seconds', mode === 'date-seconds') : null;
-      if (words) list[i].textContent = words;
-    }
+  /* The viewer's zone at the instant *t*, its short name ("MST"), or '' without Intl. */
+  function clockZone(t) {
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {timeZoneName: 'short'}).formatToParts(new Date(t));
+      for (var i = 0; i < parts.length; i++) if (parts[i].type === 'timeZoneName') return parts[i].value;
+    } catch (e) { /* no Intl: the words stand without it */ }
+    return '';
+  }
+
+  /* The browser's own zone, its IANA name ("America/Denver"), or '' without Intl. */
+  function browserZone() {
+    try { return root.Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
+  }
+
+  /* A viewer's first visit (no zone kept for them: the page's <body data-tz-first>): the
+     browser's zone is sent once, as their own setting (routes/settings_v2.time_zone,
+     source=browser, kept only while none is), and on its answer this page's times are drawn
+     once in it, the zone named beside the first, as the server draws every page after. A
+     failed send changes nothing: the page keeps the host's zone, named. */
+  function firstVisitZone() {
+    var body = root.document.body, url = body && body.getAttribute('data-tz-first');
+    var zone = browserZone();
+    if (!url || !zone || !root.fetch) return;
+    body.removeAttribute('data-tz-first');
+    var form = new root.FormData();
+    form.append('zone', zone);
+    form.append('source', 'browser');
+    root.fetch(url, {method: 'POST', body: form, headers: {'HX-Request': 'true'}}).then(function (r) {
+      if (!r.ok) { if (root.console) root.console.warn('NMAS: the time zone was not kept: ' + r.status); return; }
+      var list = root.document.querySelectorAll('time[data-clock]'), named = null;
+      for (var i = 0; i < list.length; i++) {
+        var t = Date.parse(list[i].getAttribute('datetime')), mode = list[i].getAttribute('data-clock') || '';
+        var words = t === t ? clockWords(t, mode) : null;
+        if (!words) continue;
+        var z = mode === 'day' ? '' : clockZone(t);
+        if (z && (named === null || z !== named)) { words += ' ' + z; if (named === null) named = z; }
+        list[i].textContent = words;
+      }
+    }, function (e) {
+      if (root.console) root.console.warn('NMAS: the time zone was not kept: ' + e);
+    });
   }
 
   function drawLive() {
@@ -1379,6 +1413,7 @@
   function relayActiveList() { relay('active_list'); }
   function relayPosture() { relay('posture'); }
   function relayPeople() { relay('people'); }
+  function relayTimeZone() { relay('time_zone'); }
   function relayBreakglass() { relay('breakglass'); }
   function relayInProgress() { relay('in_progress'); }
   function relayConsoleZtp() { relay('console_ztp'); }
@@ -1651,6 +1686,7 @@
     NMAS.subscribe('active_list', 'v2ActiveList', relayActiveList);
     NMAS.subscribe('posture', 'v2Posture', relayPosture);
     NMAS.subscribe('people', 'v2People', relayPeople);
+    NMAS.subscribe('time_zone', 'v2TimeZone', relayTimeZone);
     NMAS.subscribe('breakglass', 'v2Breakglass', relayBreakglass);
     NMAS.subscribe('in_progress', 'v2InProgress', relayInProgress);
     NMAS.subscribe('console_ztp', 'v2ConsoleZtp', relayConsoleZtp);
@@ -2373,7 +2409,7 @@
         root.__nmasSocket.on('connect', function () { drawLive(); drawBadge(); });
       }
       drawAges();
-      drawClock();
+      firstVisitZone();
       drawLive();
       drawBadge();
       drawStale();
@@ -2382,7 +2418,7 @@
       root.setInterval(function () { drawLive(); catchUpInFlight(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); redrawPushedOver(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); redrawPushedOver(); });
     root.document.addEventListener('click', rememberToggle);
     root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
     root.document.addEventListener('input', reasonTyped);   // before: it marks the checks drawDeployOf reads

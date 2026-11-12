@@ -47,7 +47,9 @@ after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In p
 compared by reading the diff, with no new shot (the templates then hashed
 `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `3f16fde7e5fd13c20f80a9f26cf6f655f44abfdc15e43294b340cb4820966390`
+Templates sha256: `888e40eb8be1876169b741a4d4b5b02a4d75424ccc04fa788c2fa9706b8d1994`
+
+**Compared again 2026-11-12 (local times, the viewer's time zone):** `base.html`'s `<body>` carries `data-tz-first` (where a verified person's first visit sends the browser's zone) only while no zone is kept for them: an attribute nothing draws, so no region moves and no shot was taken again; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `3f16fde7e5fd13c20f80a9f26cf6f655f44abfdc15e43294b340cb4820966390`.
 
 **Hashed again 2026-11-12 for the operator's report of that day** (C3081: ""Finished, not
 opened yet" keeps r7's two failed runs (16:49 and 20:12 UTC) after I press "Open the result";

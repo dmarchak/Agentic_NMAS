@@ -129,7 +129,11 @@ def _get(web, query=""):
 
 
 def _rows(html):
-    return re.findall(r'<tr><td class="mono">(\d\d:\d\d:\d\d)</td><td class="mono"><a [^>]*>'
+    """Each line's received time (the one clock's: the viewer's zone, its UTC on the hover,
+    the zone named once) and device."""
+    return re.findall(r'<tr><td class="mono"><time class="clock" datetime="[0-9T:-]+Z" '
+                      r'data-clock="seconds" title="\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC">'
+                      r'(\d\d:\d\d:\d\d)(?: \S+)?</time></td><td class="mono"><a [^>]*>'
                       r'(\w+)</a>', html)
 
 
@@ -206,5 +210,6 @@ class TestThePage:
     def test_a_failed_read_draws_the_last_window_with_its_error(self, web):
         web["store"](_read(), ok=False, error="Loki could not be asked: connection refused")
         html = _get(web)
-        assert "The log store did not answer at 18:20:17 UTC" in html and "connection refused" in html
+        assert re.search(r'The log store did not answer at <time class="clock" [^>]*title="'
+                         r'\d{4}-\d\d-\d\d 18:20:17 UTC">', html) and "connection refused" in html
         assert _rows(html)

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The device page's Reload (P.14; cutover blocker 6, drawn under the Phase 7 mode,
     docs/STANDING_APPROVAL_LOG.md): the card in place of the tab. It starts its own read of the
@@ -27,11 +27,11 @@
   <div class="op-part" id="reload-effects"><h3>Expected effects</h3><div>
     {%- if e.effects %}
     <table class="table set-table effects-table"><thead><tr><th scope="col">Effect</th><th scope="col">Predicted by</th><th scope="col">Now</th><th scope="col">Expected back by</th></tr></thead>
-      <tbody>{% for f in e.effects %}<tr><td>{{ f.what }}</td><td data-label="Predicted by:">{{ f.predicted_by }}</td><td data-label="Now:">{{ badge('held, not raised' if f.state == 'held' else 'answering', 'warn' if f.state == 'held' else 'ok') }}</td><td data-label="Back by:">{% if f.back_by %}<time datetime="{{ f.back_by }}">{{ f.back_by[11:16] }} UTC</time>{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table>
+      <tbody>{% for f in e.effects %}<tr><td>{{ f.what }}</td><td data-label="Predicted by:">{{ f.predicted_by }}</td><td data-label="Now:">{{ badge('held, not raised' if f.state == 'held' else 'answering', 'warn' if f.state == 'held' else 'ok') }}</td><td data-label="Back by:">{% if f.back_by %}{{ clock(f.back_by) }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table>
     {%- else %}<p>Nothing is held for this reload now.</p>{% endif %}
     {%- if e.unexpected %}<p class="notice notice-warn">{{ icon('warn', 16) }} Unexpected during this reload, raised on Needs attention: {% for u in e.unexpected %}{{ u.what }} ({{ u.source }}){{ '; ' if not loop.last }}{% endfor %}.</p>
     {%- else %}<p class="small muted">Unexpected during this reload: none.</p>{% endif %}
-    {%- if e.overdue %}<p class="notice notice-danger">{{ icon('warn', 16) }} Overdue, past the time it was expected back, raised on Needs attention: {% for o in e.overdue %}{{ o.what }} (back by <time datetime="{{ o.back_by }}">{{ o.back_by[11:16] }} UTC</time>){{ '; ' if not loop.last }}{% endfor %}.</p>
+    {%- if e.overdue %}<p class="notice notice-danger">{{ icon('warn', 16) }} Overdue, past the time it was expected back, raised on Needs attention: {% for o in e.overdue %}{{ o.what }} (back by {{ clock(o.back_by) }}){{ '; ' if not loop.last }}{% endfor %}.</p>
     {%- else %}<p class="small muted">Overdue: none. Every alert and evidence pack is kept as it was; nothing here is hidden from Monitoring.</p>{% endif %}
     {%- if e.errors %}<p class="notice notice-warn">{{ icon('warn', 16) }} Not read, so what it would hold is unknown: {{ e.errors | join('; ') }}.</p>{% endif %}
   </div></div>

@@ -154,7 +154,8 @@ def test_the_card_states_the_boundary_and_its_reset_is_the_counter_s(networks, m
     assert "The day begins at" in card
     assert ('resets <time class="clock" datetime="2026-10-27T00:00:00Z" data-clock'
             in card), card[card.find("Spent today"):][:400]
-    assert ">00:00 UTC</time> (00:00 UTC)" in card
+    # The boundary's own time and the UTC instant, on the reset's hover (`_macros.resets`).
+    assert 'title="2026-10-27 00:00:00 UTC · 00:00 UTC: the cap' in card
     loaded = re.search(r"name=\"loaded\" value='([^']*)'", card).group(1)
     from html import unescape
     form = {"ai_cap_usd_per_day": "1.5", "loaded": unescape(loaded)}
@@ -169,7 +170,7 @@ def test_the_card_states_the_boundary_and_its_reset_is_the_counter_s(networks, m
     card = _card(networks)
     # 13:00 UTC is 07:00 MDT on 26 Oct: the day ends at Denver's midnight, 06:00 UTC on 27 Oct.
     assert 'datetime="2026-10-27T06:00:00Z"' in card
-    assert ">00:00 America/Denver</time> (06:00 UTC)" in card
+    assert 'title="2026-10-27 06:00:00 UTC · 00:00 America/Denver: the cap' in card
 
 
 def test_an_ai_control_s_day_cap_reason_says_when_it_resets(monkeypatch):
@@ -185,7 +186,8 @@ def test_an_ai_control_s_day_cap_reason_says_when_it_resets(monkeypatch):
         html = render_template_string(
             '{% import "v2/_ai.html" as ai %}{{ ai.reason(c) }}',
             c=dict(got, name="ai_card_test", ready=False, may_configure=False))
-    assert 'datetime="2026-10-27T00:00:00Z" data-clock' in html and "(00:00 UTC)" in html
+    assert ('datetime="2026-10-27T00:00:00Z" data-clock' in html
+            and 'title="2026-10-27 00:00:00 UTC · 00:00 UTC:' in html), html
 
 
 @pytest.mark.parametrize("now,said", [
@@ -194,7 +196,8 @@ def test_an_ai_control_s_day_cap_reason_says_when_it_resets(monkeypatch):
 ], ids=["mdt", "mst"])
 def test_in_a_browser_in_denver_the_reset_is_its_local_time(networks, monkeypatch, now, said):
     """Firefox started with TZ=America/Denver: the card's reset reads the viewer's own time
-    of the counter's instant, and UTC's beside it, on both sides of the DST change."""
+    of the counter's instant (the server's, in the zone the first visit kept), its UTC on the
+    hover, on both sides of the DST change."""
     from tests import browser
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
@@ -203,11 +206,17 @@ def test_in_a_browser_in_denver_the_reset_is_its_local_time(networks, monkeypatc
     monkeypatch.setattr(calls, "_now", lambda: _at(now))
     with browser.Served(APP.app) as srv, browser.Browser() as b:
         try:
+            from tests.test_local_times import first_visit
             b.go(srv.url("/v2/settings/installation?tab=ai"))
-            b.wait_for("var t = document.querySelector('#card-ai time[data-clock]');"
-                       " return t && /M[DS]T/.test(t.textContent)", 15)
-            words = b.js("var t = document.querySelector('#card-ai time[data-clock]');"
-                         " return t.parentNode.textContent")
+            with first_visit() as kept_zone:
+                assert kept_zone == "America/Denver"
+                b.go(srv.url("/v2/settings/installation?tab=ai"))
+                b.wait_for("var t = document.querySelector('#card-ai time[data-clock]');"
+                           " return t && t.textContent", 15)
+                words, hover = b.js("var t = document.querySelector('#card-ai time[data-clock]');"
+                                    " return [t.parentNode.textContent, t.title]")
         finally:
             b.go("about:blank")
-    assert f"resets {said} (00:00 UTC)" in " ".join(words.split()), words
+    hm, zone_name = said.split()
+    assert re.search(rf"resets {hm}( {zone_name})?\b", " ".join(words.split())), words
+    assert " 00:00:00 UTC · 00:00 UTC: the cap" in hover, hover

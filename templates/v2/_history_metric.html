@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, badge -%}
+{%- from "v2/_macros.html" import icon, info, badge, clock -%}
 {#- History › Query › a metrics question (C667; board B, AskMetric): the question with its
     device, interface and range in the address (so a view is a link), the chart (the
     Monitoring panel island, reading history_query_metric_data), what holds the range, the
@@ -52,7 +52,7 @@
 {%- endif %}
 {%- if ask and s.lang == 'logql' and s.q %}{% set lq = m.logql %}
 <section class="card hq-logql" aria-labelledby="hq-logql-h">
-  <h3 id="hq-logql-h">Your LogQL query's {{ 'series' if lq.kind == 'series' else 'lines' }}, {{ lq.window[0] }} to {{ lq.window[1] }} UTC</h3>
+  <h3 id="hq-logql-h">Your LogQL query's {{ 'series' if lq.kind == 'series' else 'lines' }}, {{ clock(lq.window[0], 'date') }} to {{ clock(lq.window[1], 'date') }}</h3>
   {%- if lq.error %}
   <p class="notice notice-warn" role="status">{{ icon('warn', 16) }} Couldn't load: {{ lq.error }}</p>
   {%- elif lq.kind == 'series' and not lq.series_total %}
@@ -69,8 +69,8 @@
   <p class="muted small">No line in this range matches the query.</p>
   {%- else %}
   <div class="table-wrap"><table class="table lg-lines">
-    <thead><tr><th>Received (UTC)</th><th>Stream</th><th>Line</th></tr></thead>
-    <tbody>{% for l in lq.lines %}<tr><td class="mono">{{ l.at }}</td><td class="mono small muted">{{ l.labels }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Received</th><th>Stream</th><th>Line</th></tr></thead>
+    <tbody>{% for l in lq.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td class="mono small muted">{{ l.labels }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
   </table></div>
   {%- if lq.cut %}<p class="muted small">The newest {{ lq.lines | length }} lines are drawn; there are more: narrow the query or the range.</p>{% endif %}
   {%- endif %}
@@ -110,7 +110,7 @@
   {%- else %}
   <p class="muted small">No restart recorded in this range{% if s.d %} for {{ s.d }}{% endif %}.</p>
   {%- endif %}
-  <p class="muted small">The record begins {{ rec.since[:10] if rec.since else 'with its first row' }}; a fall the chart shows with no row here is one Mercury did not record.</p>
+  <p class="muted small">The record begins {{ clock(rec.since, 'day') if rec.since else 'with its first row' }}; a fall the chart shows with no row here is one Mercury did not record.</p>
   {%- endif %}
 </section>
 {%- endif %}

@@ -68,7 +68,10 @@ class TestTheDeletedNetwork_sPage:
         main = _main(html)
         assert "<strong>Branch was deleted</strong>" in main, main[:800]
         assert f"lists_removed/{gone['moved'][0].name}" in main
-        assert " UTC)" in main and 'datetime="20' in main
+        # When, by the one clock: the viewer's zone, its UTC instant on the hover.
+        assert re.search(r'\(<time class="clock" datetime="20[0-9T:-]+Z" data-clock="date-seconds"'
+                         r' title="\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC">[A-Z][a-z]{2} \d{1,2} '
+                         r'\d\d:\d\d:\d\d( \S+)?</time>\)', main), main[:800]
         rec = [json.loads(l) for l in (gone["dir"] / "settings_record.jsonl")
                .read_text().splitlines()][-1]
         assert rec["kind"] == "network_delete" and rec["folder"] == \

@@ -10,7 +10,9 @@ this page yet (its first real run on the lab is its walk). There is no phone boa
 the console card's layout (`op-card`, `op-part`), which reflows at phone width.
 Compared 2026-10-23.
 Templates compared: templates/v2/oob_run.html, templates/v2/_oob_onboard.html, templates/v2/_oob_outcome.html
-Templates sha256: `7557a81ff036dc5adb407876163760a7a5747956c8f6a13e6fdb1e66c7c30670`
+Templates sha256: `320303e57c6d647fb76e5d6eff4037102658d06b6a890a2cb565ee6f78f88acd`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_oob_onboard.html`, the host key's "kept" day is `_macros.clock`'s, the viewer's own day ("Nov 12 2026"), the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `7557a81ff036dc5adb407876163760a7a5747956c8f6a13e6fdb1e66c7c30670`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_oob_onboard.html`, each place that draws a person (the

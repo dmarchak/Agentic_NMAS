@@ -15,7 +15,9 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `5137eb26bb5dd2f6501375f094cc7c54812ed4027903d325d767c376645eccc8`
+Templates sha256: `066786e9fe501f6b53aae91ea8496f0e3ba0067084326a7bb8d78f214b316757`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_evidence_pack.html`, each time an evidence piece names (a window's ends, a peak, a gap's end, the first and last failure, a sighting, a flow's install, a log line) is `_macros.clock`'s: the viewer's own time, drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; where `stamp` was given clock words (which the page's script turned into an age) it now reads as the clock time those words named. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `5137eb26bb5dd2f6501375f094cc7c54812ed4027903d325d767c376645eccc8`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_evidence_pack.html` and `_explain.html`, each place

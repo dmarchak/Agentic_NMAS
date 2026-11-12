@@ -183,7 +183,7 @@
 <section class="card" id="update-declined">
   <div class="card-head"><h2>Host steps declined</h2></div>
   <ul class="plain-list">
-    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by | people }} at {{ clock(d.at) }} on {{ (d.at or '')[:10] }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by | people }} at {{ clock(d.at, 'date') }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}

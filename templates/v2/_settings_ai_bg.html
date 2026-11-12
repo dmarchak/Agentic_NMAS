@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, info, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, info, stamp, clock -%}
 {#- Board AI3 (`SettingsAi`, the mockups canvas's page "C1843: AI cost safety", signed off under
     the Phase 7 mode 2026-10-27): Settings › AI's background features, one network at a time.
     Each feature Mercury knows with its state (off, on until its approval ends, stopped by a
@@ -53,7 +53,7 @@
       <div class="ai-f-state">
       {%- if f.state == 'off' %}{{ badge('off', 'neutral') }}
       {%- elif f.state == 'ended' %}{{ badge('approval ended', 'warn') }} <span class="set-origin">turned on by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; its approval ended {{ stamp(f.ends_iso) }}, so its calls are refused until an admin turns it on again</span>
-      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
+      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; approval until {{ clock(f.ends_iso, 'date') }}{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
       {%- endif %}</div>
     </div>
     <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capitalize }}; {{ f.calls_per_finding }} call per finding</span></div>
