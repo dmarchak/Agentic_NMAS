@@ -96,12 +96,17 @@ def test_a_lost_drop_answered_again_is_drawn_answered_naming_the_newer_response(
     html = page()
     line = answered_line(html, old["id"])
     assert line, "the lost response is drawn answered"
-    assert text(line) == (
+    # The end in the viewer's zone (the one clock; the zone named once on the page), its UTC
+    # instant on the hover: the viewer here keeps none, so the host's.
+    assert re.fullmatch(re.escape(
         f"Answered Drop traffic from the source ({source}): 1 flow ("
         + re.search(r"1 flow \((0x[0-9a-f]+)\)", text(lost_forms(before)[0])).group(1)
         + f") missing, and a newer response answers the same threat on this switch: response "
         f"{new['id']}, Drop traffic from the source ({named}), in force until "
-        f"{hm(at + 630)} UTC. Nothing to re-apply.")
+        f"{time.strftime('%H:%M', time.localtime(at + 630))}") + r"( \S+)?"
+        + re.escape(". Nothing to re-apply."), text(line)), text(line)
+    assert (f'title="{time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(at + 630))} UTC"'
+            in line), line
     assert f'datetime="{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at + 630))}"' in line
     assert lost_forms(html) == [], "no Re-apply… form for it"
     assert "Re-apply…" not in line and "/v2/sdn/reapply/preview" not in html

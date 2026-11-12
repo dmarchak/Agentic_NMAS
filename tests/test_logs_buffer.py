@@ -323,7 +323,9 @@ class TestSyslogByDevice:
         store(fill(FakeLoki(web.corpus), now=web.now))
         html = web.get("/v2/logs/view?list=Lab&range=24h&sev=all&d=r3").get_data(as_text=True)
         assert counted == [], counted
-        rows = re.findall(r'<tr><td class="mono">(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)</td>', html)
+        # Each line's received time is the one clock's: its UTC instant on the hover.
+        rows = re.findall(r'<tr><td class="mono"><time class="clock" [^>]*title="(\d{4}-\d\d-\d\d '
+                          r'\d\d:\d\d:\d\d) UTC">', html)
         assert len(rows) == sum(1 for _n, l in R3 if HEARTBEAT not in l)
         assert 'id="lg-older"' not in html, "the buffer holds the whole range"
         week = web.get("/v2/history/query/syslog?list=Lab&range=7d&sev=all&d=r3"

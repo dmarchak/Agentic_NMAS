@@ -719,6 +719,9 @@ class TestTheShippedScripts:
                                                     "/v2/network/picker?next=/v2/",
                                                     "/v2/settings/scope?at=Lab",
                                                     "/v2/settings/installation?tab=access",
+                                                    # The Time zone card, which the access tab
+                                                    # loads (time_zone).
+                                                    "/v2/settings/installation/time-zone",
                                                     "/v2/credentials?list=Lab",
                                                     # O8: the Console servers tab's region
                                                     # (console_servers).
@@ -797,7 +800,9 @@ class TestTheShippedScripts:
         # list draws moved, C3166: the list reads the held value again); and -4 the same day:
         # scheduled_jobs, ci_agreement, approvals and credential_health, heard by Needs
         # attention alone, whose keys now reach its store and never the page.
-        assert len(keys) == 55
+        # +1 2026-11-12: time_zone (a person's time zone kept, by Change… or a first visit's
+        # send: Settings' Time zone card reads again).
+        assert len(keys) == 56
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {

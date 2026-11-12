@@ -1,9 +1,9 @@
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, clock -%}
 {#- SDN › Flows, Analyse this network: one page of the network's kept snapshots (C3001), drawn
     inside the card's Kept snapshots list when a person opens it, and by its Older and Newer
     links (`sdn_analyse_v2.snapshots`, a read). *k* is `analyst.kept_page`'s answer with the
     network: each snapshot's id (with Copy: the id is what Analyse and the evaluation are
-    given), when it was collected (UTC) and by whom, how many switches and flows it holds, and
+    given), when it was collected (`_macros.clock`) and by whom, how many switches and flows it holds, and
     whether its seal holds; newest first, at most ten a page, so a network that keeps hundreds
     never draws one long list. A part that cannot be read says so in its place. -#}
 {%- if k.error %}
@@ -12,10 +12,10 @@
 <p class="muted small">No snapshot is kept for {{ k.network }} yet: Collect now keeps the first.</p>
 {%- else %}
 <p class="small muted">Showing {{ k.start + 1 }} to {{ k.start + k.shown }} of {{ k.count }}, newest first. Each seal was checked when this opened: a snapshot whose seal holds is exactly what was collected.</p>
-<div class="table-wrap"><table class="table sdn-an-tbl sdn-an-kept-tbl"><thead><tr><th>Snapshot</th><th>Collected (UTC)</th><th>Switches</th><th>Flows</th><th>Seal</th></tr></thead><tbody>
+<div class="table-wrap"><table class="table sdn-an-tbl sdn-an-kept-tbl"><thead><tr><th>Snapshot</th><th>Collected</th><th>Switches</th><th>Flows</th><th>Seal</th></tr></thead><tbody>
 {%- for r in k.rows %}
   <tr data-seal="{{ r.seal }}"><td data-l="Snapshot"><code class="mono">{{ r.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ r.id }}" x-on:click="copy" x-text="label">Copy</button></td>
-    <td data-l="Collected (UTC)">{% if r.collected_at %}<time datetime="{{ r.collected_at }}">{{ r.collected_at | replace('T', ' ') | replace('Z', '') }}</time>{% if r.by %} <span class="faint small">by {{ r.by | people }}</span>{% endif %}{% else %}<span class="muted">not read</span>{% endif %}</td>
+    <td data-l="Collected">{% if r.collected_at %}{{ clock(r.collected_at, 'date-seconds') }}{% if r.by %} <span class="faint small">by {{ r.by | people }}</span>{% endif %}{% else %}<span class="muted">not read</span>{% endif %}</td>
     <td data-l="Switches">{% if r.switches is not none %}{{ r.switches }}{% else %}<span class="muted">not read</span>{% endif %}</td>
     <td data-l="Flows">{% if r.flows is not none %}{{ r.flows }}{% if r.flows_read != r.flows %} <span class="faint small">of the {{ r.flows_read }} read</span>{% endif %}{% else %}<span class="muted">not read</span>{% endif %}</td>
     <td data-l="Seal">{% if r.seal == 'holds' %}{{ badge('holds', 'ok') }}{% elif r.seal == 'broken' %}{{ badge('broken', 'danger') }} <span class="small">it changed since it was kept, so Analyse and the evaluation refuse it</span>{% else %}{{ badge('unreadable', 'warn') }} <span class="small">{{ r.error }}</span>{% endif %}</td></tr>

@@ -39,7 +39,7 @@
 <script defer src="{{ url_for('static', filename='js/nmas_logq.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
 </head>
-<body class="v2" x-data="frame" x-on:keydown.escape="closeSides">
+<body class="v2" x-data="frame" x-on:keydown.escape="closeSides"{% if tz_first %} data-tz-first="{{ tz_first }}"{% endif %}>
 <a class="skip" href="#main">Skip to the content</a>
 <div class="scrim" x-show="drawer" x-on:click="close" x-cloak></div>
 <nav class="sidebar" aria-label="Main" x-bind:class="drawerClass">

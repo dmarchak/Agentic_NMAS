@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {%- import "v2/_ai.html" as ai -%}
 {%- import "v2/_explain_beta.html" as beta -%}
 {#- Monitoring › Alerts › History (modules/alert_history.tab; the operator's order of
@@ -64,10 +64,10 @@
         <span class="muted small alert-labels" title="{{ e.rule }}{% if e.rule_uid %} (rule {{ e.rule_uid }}){% endif %}; read from {{ e.store }}; recorded by {{ e.sources|join(' and ') }}; device by {{ e.device_from }}; alert {{ e.identity }}">{{ e.summary_labels }}</span>
       </summary>
       <div class="pack-body">
-        <p class="pack-source">{% for s in e.states %}{{ s.state }} at {{ stamp(s.at, s.at[11:19] ~ ' UTC') }}{{ '; ' if not loop.last }}{% endfor %}{% if e.resolved_at %}; {{ e.resolved_state }} at {{ stamp(e.resolved_at, e.resolved_at[11:19] ~ ' UTC') }}{% endif %}.</p>
+        <p class="pack-source">{% for s in e.states %}{{ s.state }} at {{ clock(s.at, 'seconds') }}{{ '; ' if not loop.last }}{% endfor %}{% if e.resolved_at %}; {{ e.resolved_state }} at {{ clock(e.resolved_at, 'seconds') }}{% endif %}.</p>
         {%- if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ p.device or 'no one device' }}, built {{ stamp(p.built_at) }}…</p>
         {%- else %}
-        <p class="pack-source">No evidence was captured when this alert fired. <strong>Build evidence</strong> rebuilds its pack as of {{ stamp(e.fired_at or e.started_at, (e.fired_at or e.started_at)[:16]|replace('T', ' ') ~ ' UTC') }}: History up to then, the Intent check at the commit current then, the health figures and log lines over its window. The neighbours, the network as observed and the endpoints cannot be rebuilt, and will say so.</p>
+        <p class="pack-source">No evidence was captured when this alert fired. <strong>Build evidence</strong> rebuilds its pack as of {{ clock(e.fired_at or e.started_at, 'date') }}: History up to then, the Intent check at the commit current then, the health figures and log lines over its window. The neighbours, the network as observed and the endpoints cannot be rebuilt, and will say so.</p>
         {%- set aic = ai_control('explain') %}
         <form class="explain-ask" method="post" action="{{ url_for('v2.monitoring_alert_history_evidence', episode_id=e.id) }}" hx-post="{{ url_for('v2.monitoring_alert_history_evidence', episode_id=e.id) }}" hx-target="closest .pack-body" hx-swap="innerHTML">
           <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="alert-history" hx-disabled-elt="this"{{ gate('configure') }} title="Rebuilds this alert's evidence pack as of its time and keeps it; reaches no device"><span class="op-idle">Build evidence</span><span class="op-busy">Building the evidence…</span></button>{{ how('alert-history', 'build') }}</span>

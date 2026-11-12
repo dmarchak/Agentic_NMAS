@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, clock -%}
 {#- Board A of docs/boards/console-ztp.html (O8): the cards Settings › Installation › Console
     servers opens in #cs-op, in the state its route names (routes/console_servers_v2.py): a
     port's record (port, port_saved), its removal (remove, removed), a console server's key
@@ -94,7 +94,7 @@
   {%- set p = c.p %}
   <div class="card-head"><h2 id="h-cs-op">Re-key console-server port {{ c.port_id }}'s host{% if p.host %} ({{ p.host }} port {{ p.port }}){% endif %}</h2>{{ close('Cancel') }}</div>
   <dl class="op-ops">
-    <dt>Held</dt><dd>{% if p.held.type %}{{ p.held.type }} {% endif %}<span class="fp" data-fingerprint>{{ p.held.fingerprint or 'none' }}</span>{% if p.held.type %} <span class="faint small">kept {{ p.held.kept_at[:10] }} by {{ p.held.kept_by | people }}</span>{% endif %}</dd>
+    <dt>Held</dt><dd>{% if p.held.type %}{{ p.held.type }} {% endif %}<span class="fp" data-fingerprint>{{ p.held.fingerprint or 'none' }}</span>{% if p.held.type %} <span class="faint small">kept {{ clock(p.held.kept_at, 'day') }} by {{ p.held.kept_by | people }}</span>{% endif %}</dd>
     <dt>Presents now</dt><dd>{% if p.now.type %}{{ p.now.type }} {% endif %}<span class="fp" data-fingerprint>{{ p.now.fingerprint or 'not read' }}</span></dd>
     {%- if p.refused_key.fingerprint %}<dt>Refused</dt><dd class="mono">{{ p.refused_key.fingerprint }} ({{ p.refused_key.count }} time{{ '' if p.refused_key.count == 1 else 's' }} since {{ p.refused_key.first_at }})</dd>{% endif %}
   </dl>

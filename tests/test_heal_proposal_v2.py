@@ -132,9 +132,9 @@ def test_the_card_says_what_approving_sends_and_to_which_device(app_client, meas
     # where and when (the viewer's time, UTC on hover); what it affects with the measured
     # settle time; Approve, Decline and How does this work? (Check drift now left the card).
     cmds = html.split(">Show the commands</summary>")[1].split("</details>")[0]
-    assert "<span class=\"mono\">clear ip ospf 1 process</span>, its prompt measured on edge-b " \
-           "at <time class=\"clock\" datetime=\"2026-11-10T00:00:00Z\" data-clock " \
-           "title=\"2026-11-10 00:00:00 UTC\">00:00 UTC</time>" in cmds
+    assert re.search(r'<span class="mono">clear ip ospf 1 process</span>, its prompt measured on '
+                     r'edge-b at <time class="clock" datetime="2026-11-10T00:00:00Z" data-clock '
+                     r'title="2026-11-10 00:00:00 UTC">\d\d:\d\d( \S+)?</time>', cmds), cmds
     assert "Every OSPF adjacency of process 1 on edge-b" in html
     assert f"back within about {v['reset']['settle_s']} s" in html
     assert "a reset cannot be undone" in html

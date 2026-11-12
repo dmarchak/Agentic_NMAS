@@ -94,7 +94,9 @@ Templates sha256 before: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad1115
 | CR: Saved | D: Saved in green, saying to press Fetch now | the same words, drawn muted | **deviation** (log: D8-R 4) |
 | CR: phone width | F: fields stacked, Save and Fetch now below | the card's set-field layout, as every Settings card at phone width; not shot | **later** (C2858: the card's board shot at 390) |
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html, templates/v2/_code_repo.html
-Templates sha256: `f2fe868369275da2bb37ae6b52713768b2c8bab8398e33be29206089210f127a`
+Templates sha256: `ab3aab9f5da9d0ea3c6f6e9178f90188e365e612ad9b290faf2a359420c77063`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `settings.html`, a deleted network's time beside its age is `_macros.clock`'s, the viewer's own date and time, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `f2fe868369275da2bb37ae6b52713768b2c8bab8398e33be29206089210f127a`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `settings.html`, `_settings_mode.html`,

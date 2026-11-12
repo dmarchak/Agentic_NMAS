@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, clock -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- SDN › Flows: Analyse this network (Lab 9 B1, C2903; board I of docs/boards/lab9-sdn.html,
     self-signed 2026-11-10). *an* is `analyst.view(network)`: the network's latest collected
@@ -48,11 +48,11 @@
 <p class="small notice notice-warn" role="status">The last collection, started by {{ an.collect_failed.by | people }} {{ stamp(an.collect_failed.at) }}, kept nothing: {{ an.collect_failed.error }}.{% if s.id %} The snapshot above is the last one kept.{% endif %}</p>
 {%- endif %}
 {#- C3001: the snapshot the bar names, by its id as text (what Analyse and the evaluation are
-    given), with when it was collected in UTC and what it holds; a collection History could
+    given), with when it was collected (`_macros.clock`) and what it holds; a collection History could
     not be given a record of; and every kept snapshot, a collapsed list that reads one page
     (`sdn_analyse_v2.snapshots`) when it is opened. -#}
 {%- if s.id %}
-<p class="small sdn-an-snap" id="sdn-an-snap">Snapshot <code class="mono">{{ s.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ s.id }}" x-on:click="copy" x-text="label">Copy</button> collected <time datetime="{{ s.collected_at }}">{{ s.collected_at | replace('T', ' ') | replace('Z', ' UTC') }}</time> by {{ s.by | people }}{% if s.flows is number %}: {{ s.switches }} switch{{ 'es' if s.switches != 1 }}, {{ s.flows }} flow{{ 's' if s.flows != 1 }}{% if s.flows_read != s.flows %} of the {{ s.flows_read }} read{% endif %}{% endif %}.</p>
+<p class="small sdn-an-snap" id="sdn-an-snap">Snapshot <code class="mono">{{ s.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ s.id }}" x-on:click="copy" x-text="label">Copy</button> collected {{ clock(s.collected_at, 'date-seconds') }} by {{ s.by | people }}{% if s.flows is number %}: {{ s.switches }} switch{{ 'es' if s.switches != 1 }}, {{ s.flows }} flow{{ 's' if s.flows != 1 }}{% if s.flows_read != s.flows %} of the {{ s.flows_read }} read{% endif %}{% endif %}.</p>
 {%- endif %}
 {%- if an.unrecorded %}
 <p class="small notice notice-warn" role="status">The last collection could not be recorded for History: {{ an.unrecorded }}.</p>

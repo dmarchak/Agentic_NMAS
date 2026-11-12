@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, clock -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- DHCP › Leases › Release lease… (C1403; signed off under the Phase 7 mode, 2026-10-20, a
     card on board A's Leases tab like board D's exclusion card): one Kea lease, named by its
@@ -35,7 +35,7 @@
     <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else ('op-del' if sign == '-' else 'muted') }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
 {% endif %}{% endfor %}</pre>
     {%- set l = p.lease %}
-    <p class="small">{% if l.hostname %}<span class="mono">{{ l.hostname }}</span>, {% endif %}{% if l.mac and l.by != 'MAC' %}MAC <span class="mono">{{ l.mac }}</span>, {% endif %}{% if l.client_id and l.by != 'client-id' %}client-id <span class="mono">{{ l.client_id }}</span>, {% endif %}last renewed {% if l.last_seen %}<time datetime="{{ l.last_seen }}">{{ l.last_seen[:16] | replace('T', ' ') }} UTC</time>{% else %}at a time Kea did not give{% endif %}{% if l.ends %}; Kea holds it until <time datetime="{{ l.ends }}">{{ l.ends[:16] | replace('T', ' ') }} UTC</time>{% endif %}.</p></div></div>
+    <p class="small">{% if l.hostname %}<span class="mono">{{ l.hostname }}</span>, {% endif %}{% if l.mac and l.by != 'MAC' %}MAC <span class="mono">{{ l.mac }}</span>, {% endif %}{% if l.client_id and l.by != 'client-id' %}client-id <span class="mono">{{ l.client_id }}</span>, {% endif %}last renewed {% if l.last_seen %}{{ clock(l.last_seen, 'date') }}{% else %}at a time Kea did not give{% endif %}{% if l.ends %}; Kea holds it until {{ clock(l.ends, 'date') }}{% endif %}.</p></div></div>
   <div class="op-part"><h3>Checks</h3><div>
     <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'pending': 'at confirm', 'note': 'note', 'warn': 'differs', 'fail': 'fail'}[state], {'pass': 'ok', 'pending': '', 'note': '', 'warn': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
   {%- if p.survives %}<div class="op-part"><h3>What survives</h3><div>{% for n in p.survives %}<p>{{ n }}</p>{% endfor %}</div></div>{% endif %}

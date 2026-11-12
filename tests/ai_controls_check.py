@@ -58,13 +58,14 @@ MARKUP = {
 NOT_READY = {
     "ai_off": "hosted AI is off",
     "no_key": "no Anthropic API key is set",
-    # C2084: the provider's workspace usage limit, its moment in the viewer's time (drawn in the
-    # browser from `datetime`) with UTC's beside it.
-    "workspace_limit": ("AI is unavailable: the provider's workspace usage limit is reached, "
-                        'until <time class="clock" datetime="2026-11-01T00:00:00Z" '
-                        'data-clock="date" title="1 November 2026 00:00 UTC">1 November 2026 '
-                        "00:00 UTC</time> (1 November 2026 00:00 UTC); an admin raises it in "
-                        "the provider's console."),
+    # C2084: the provider's workspace usage limit, its moment in the viewer's time (the one
+    # clock, drawn by the server in the viewer's zone, docs/UI_RULES.md "One time zone per
+    # screen") with its UTC instant on the hover.
+    "workspace_limit": re.compile(
+        r"AI is unavailable: the provider's workspace usage limit is reached, until "
+        r'<time class="clock" datetime="2026-11-01T00:00:00Z" data-clock="date" '
+        r'title="2026-11-01 00:00:00 UTC">[A-Z][a-z]{2} \d{1,2} \d\d:\d\d( \S+)?</time>; an '
+        r"admin raises it in the provider's console\."),
     "day_cap": "is over the day cap",
     "unreadable": "the record of AI calls cannot be read",
 }
@@ -176,7 +177,9 @@ def assert_not_ready(html: str, name: str, kind: str, admin: bool) -> None:
         assert _disabled(box), f"{name}: its input is fillable while {kind}: {box}"
     said = reason(html, name)
     lead = LEADS.get(kind, "Not available now:")
-    assert said.count(lead) == 1 and NOT_READY[kind] in said, (kind, said)
+    want = NOT_READY[kind]
+    held = want.search(said) if isinstance(want, re.Pattern) else want in said
+    assert said.count(lead) == 1 and held, (kind, said)
     assert (SETTINGS_LINK in said) is admin, (admin, said)
 
 

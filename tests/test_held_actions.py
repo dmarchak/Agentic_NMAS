@@ -167,7 +167,8 @@ class TestTheActionsMenu:
                 in html
             said = re.sub(r"<svg.*?</svg>", "", html, flags=re.S)
             said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", said)).strip()
-            assert re.fullmatch(r"r2 is held: Re-subscribe telemetry since \d\d:\d\d UTC, "
+            # The time in the viewer's zone; a fragment names no zone its page named already.
+            assert re.fullmatch(r"r2 is held: Re-subscribe telemetry since \d\d:\d\d( \S+)?, "
                                 rf"by {re.escape(SHOWN)} · Open the run", said), said
             assert f'<a href="/v2/device/r2?list={NET}">Open the run</a>' in html
             page = world.get(f"/v2/device/r2?list={NET}").get_data(as_text=True)

@@ -116,7 +116,7 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   (a finding citing nothing the snapshot holds is dropped, and the card says how many were).
   Beside it, the snapshot's size and time, the model and about what a call costs, and
   **Collect now**, which reads the switches again as a job. Under them, the latest snapshot's
-  id as text with **Copy**, when it was collected (UTC) and what it holds, and **Kept
+  id as text with **Copy**, when it was collected and what it holds, and **Kept
   snapshots**, which lists every snapshot kept when you open it: its id, time, switches,
   flows and whether its seal holds ([Collect now](sdn-analyse#collect)). **Planted issues** is the sheet
   that compares the findings with problems you planted, each **found** or **missed** with your
@@ -481,7 +481,7 @@ mode and whether the loop is running.
   Nothing is proposed for AUTO; the rule's default is drawn for you to dismiss.
 - **The loop's log** shows one run whole, from its start, in a box that scrolls: every pass's
   steps, newest first. **Run** chooses an earlier run, each named by its job id (the network and
-  the time it started) and its start time in UTC, with its line count. **Download log** saves
+  the time it started) and its start time, with its line count. **Download log** saves
   the run shown as plain text, every line oldest first under a header naming the network and the
   run, in a file named for the run's job id (for example, a lab's evidence of a 3-minute run). A
   run longer than 2,000 lines is drawn to its newest 2,000, and the box says how many of how

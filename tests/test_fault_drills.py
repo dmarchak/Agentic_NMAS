@@ -410,9 +410,10 @@ class TestTheCard:
             "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS, "back": "overview"})
         html = r.get_data(as_text=True)
         (row,) = FD().declared(NET)
-        hhmm = row["until"][11:16]
         assert r.status_code == 200, html[:400]
-        assert f"Declared: a drill on {DEV} until" in html and f"{hhmm} UTC" in html
+        # The end by the one clock: the viewer's zone in its words, its UTC on the hover.
+        assert f"Declared: a drill on {DEV} until" in html
+        assert f'title="{row["until"][:19].replace("T", " ")} UTC"' in html
         assert (f"Inject the fault now; an incident on {DEV} before") in html and EXPECTS in html
         assert row["by"] == "test-person@example.invalid" and row["via"] == "device page"
         assert r.headers.get("X-NMAS-Invalidates", "").find("fault_drills") >= 0
@@ -630,7 +631,8 @@ class TestEndTheDrillOnThePage:
         assert r.status_code == 200, html[:400]
         (d,) = FD().declared(NET)
         assert d["ended_by"] == "test-person@example.invalid" and d["ended_via"] == "device page"
-        assert f"Fault drill {row['id']} ended at" in html and f"{d['ended_at'][11:16]} UTC" in html
+        assert f"Fault drill {row['id']} ended at" in html
+        assert f'title="{d["ended_at"][:19].replace("T", " ")} UTC"' in html
         assert "incidents from now are real" in html and 'id="fault-drill-result"' in html
         assert "fault_drills" in r.headers.get("X-NMAS-Invalidates", "")
         menu = c.get(f"/v2/device/{DEV}/actions?tab=overview").get_data(as_text=True)

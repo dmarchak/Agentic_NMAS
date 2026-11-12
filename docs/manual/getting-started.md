@@ -218,6 +218,12 @@ Who sees the amounts is not a choice yet: everyone who can make AI calls sees th
 - **The help panel**: an info link opens its manual page in a panel beside what you are doing;
   **Close the help** closes it.
 
+## Times {#times}
+
+Times on every screen are in your time zone (your browser's, kept on your first visit; [Time
+zone](installation-settings#time-zone)), named once beside the screen's first time; hover over
+any time for the same instant in UTC, as the records keep it.
+
 ## Everything is read from what is committed
 
 Every reader takes intent and goldens as COMMITTED in git, never a file edited on the host's

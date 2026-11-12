@@ -25,7 +25,11 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `90dfef7f5f92d4d9fe8883d1d18ad12620cfb45d17dbc8a3ca799445c8a3cd7a`
+Templates sha256: `455491cc42b30316756f6cd0fafcf8905d9233daa3f791a96b500447b00dd4ee`
+(2026-11-12, the two comparisons below merged: the tail slice's stale line and local times'
+clock in `_drift_detail.html`, each kept; their own hashes were
+`90dfef7f5f92d4d9fe8883d1d18ad12620cfb45d17dbc8a3ca799445c8a3cd7a` (the tail slice) and
+`495251e95ca6cf6b5e204ffbbfb4183359e4ce67f9026acdf4d5d83b703c7d28` (local times).)
 (2026-11-12, C3330, by the template diff and the part tests/test_logs_held_stale.py draws, not
 a new shot: in `_drift_detail.html` the "What r3's log says" part, once the logs-tail reader's
 last good read is older than its promise (15 s), drops "held by the logs reader, read <age>"
@@ -34,6 +38,8 @@ has stopped (<its last error>)", the failed-refresh notice above not drawn then 
 once); a fresh buffer draws as before. The board draws no stale state: **deviation** (log: The
 Logs pages say when the held lines are past the reader's promise). Every other region as
 compared. Before: `f8a5568311056af4edf062c64a8c9c58aaac357ef30f52417a677bba88ba2782`.)
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_drift_detail.html`, each log line's time is `_macros.clock`'s, the viewer's own date and time to the second, the zone named once on the screen; its hover keeps the UTC instant, "received by Mercury" and the device's own time. Nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `f8a5568311056af4edf062c64a8c9c58aaac357ef30f52417a677bba88ba2782`.
 (2026-11-12, C3166 slice 2, by the template diff and the part tests/test_logs_buffer.py draws,
 not a new shot: in `_drift_detail.html` the "What r3's log says" part draws the logs-tail
 reader's buffer, never Loki when the row opens, and redraws itself in place when the reader

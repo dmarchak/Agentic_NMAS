@@ -9,7 +9,9 @@ the lab having no IP SLA policy), then the Decline… card opened as its button 
 reason typed. The board draws no phone width; at 390 the rows stack (label, why, then the
 controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
-Templates sha256: `6d288ff1ce3e89ba264ef82d8c82f5a1679c1b653ea152e1f3eb911b6c3c9cc4`
+Templates sha256: `2dec582d06e53b2efd7399ffcbc51d97f79c219aabf80711ca4e77600de6e32d`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_coverage.html`, a declined section's "Declined by …, <time>" is `_macros.clock`'s, the viewer's own date and time drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `6d288ff1ce3e89ba264ef82d8c82f5a1679c1b653ea152e1f3eb911b6c3c9cc4`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_decline.html` and `_coverage.html`, each place that

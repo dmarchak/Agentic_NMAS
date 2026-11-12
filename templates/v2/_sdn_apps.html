@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
 {#- SDN › Apps (P6; board docs/boards/controller-app-deploy.html, artboards A, B, H and J, signed
     off by the operator 2026-11-07): the network's controllers, each card leading with what the
     controller runs as read against Mercury's record, then its apps grouped by what to do; an
@@ -37,7 +37,7 @@
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>No receipt <span class="mono">{{ r.missing }}</span> in {{ g.network }}'s controller deploys.</p></div>
 {%- else %}
 <section class="card apps-receipt" aria-label="The receipt">
-  <div class="sdn-ctl-hd"><h2>Receipt: {{ r.controller }}, <time datetime="{{ r.at }}">{{ (r.at or '')[:16] | replace('T', ' ') }} UTC</time></h2>{{ badge(r.outcome_words, r.tone) }}</div>
+  <div class="sdn-ctl-hd"><h2>Receipt: {{ r.controller }}, {{ clock(r.at, 'date') }}</h2>{{ badge(r.outcome_words, r.tone) }}</div>
   <dl class="sdn-kv">
     <dt>Confirmed by</dt><dd>{{ (r.actor or 'unknown') | people }}{% if r.actor_verified %}, verified by {{ r.actor_verified }}{% endif %}</dd>
     <dt>Plan</dt><dd class="mono" title="{{ r.plan }}">sha256:{{ r.plan }}</dd>
@@ -127,7 +127,7 @@
   {#- J · drift -#}
   <div class="apps-drift">
     <div class="table-wrap"><table class="table">
-      <thead><tr><th scope="col">What</th><th scope="col">Mercury's record{% if c.last.at %} (deploy of {{ (c.last.at or '')[11:16] }} UTC){% endif %}</th><th scope="col">{{ c.name }}'s unit says</th></tr></thead>
+      <thead><tr><th scope="col">What</th><th scope="col">Mercury's record{% if c.last.at %} (deploy of {{ clock(c.last.at) }}){% endif %}</th><th scope="col">{{ c.name }}'s unit says</th></tr></thead>
       <tbody>{% for r in c.drift.rows %}<tr><td>{{ r.what }}</td><td>{{ r.record }}</td><td>{% if r.differs %}<strong>{{ r.unit }}</strong>{% else %}the same{% endif %}</td></tr>{% endfor %}</tbody>
     </table></div>
     <p class="small muted">Read from {{ c.drift.words }}.</p>

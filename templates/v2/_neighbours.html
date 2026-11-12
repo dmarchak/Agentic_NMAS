@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
 {#- The device page's Neighbours (NSOT_GUI_BRIEF 3.3; register C38), from
     modules/neighbours.for_device(): the adjacencies committed intent implies,
     against what the device's own routing tables report through Prometheus, and
@@ -22,7 +22,7 @@
   {%- for p in n.protocols %}
   <h3 class="nb-proto">{{ p.words }}</h3>
   {%- if p.why %}<p class="muted">{{ p.why }}.</p>{% endif %}
-  {%- if p.as_of and p.measured %}<p class="nb-asof">{{ icon('warn') }} As of {{ p.as_of[11:16] }} UTC: {{ device.hostname }}'s {{ p.words }} scrapes since then have failed, so this is its last good report, not what it holds now.</p>{% endif %}
+  {%- if p.as_of and p.measured %}<p class="nb-asof">{{ icon('warn') }} As of {{ clock(p.as_of) }}: {{ device.hostname }}'s {{ p.words }} scrapes since then have failed, so this is its last good report, not what it holds now.</p>{% endif %}
   <div class="table-wrap">
     <table class="table nb-table">
       {#- C706: one column layout for every protocol's table, so a column reads straight down. #}
@@ -35,7 +35,7 @@
           <td class="mono">{{ r.address or r.rid or '—' }}</td>
           <td>{{ r.via or '—' }}</td>
           <td>{{ badge(WORD.get(r.state, r.state), KIND.get(r.state, 'muted')) }}{% if r.state in ('up', 'down', 'unexpected') %} <span class="muted">{{ r.words }}</span>{% endif %}</td>
-          <td>{% if r.as_of %}<span class="nb-asof-cell">as of {{ stamp(r.as_of, r.as_of[11:16] ~ ' UTC') }}</span>{% elif r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% if r.as_of %}<span class="nb-asof-cell">as of {{ clock(r.as_of) }}</span>{% elif r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {%- endfor %}
       </tbody>

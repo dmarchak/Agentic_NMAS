@@ -796,22 +796,29 @@ class TestTheRow:
         (row,) = rows_of(lost())
         assert row["what"] == "r2: 2 telemetry streams lost (101, 102)"
         assert row["action"]["open"] == "resubscribe" and row["action"]["subs"] == ["101", "102"]
-        page = drawn([row])
+        # The times in the viewer's kept zone (the one clock; here UTC), the zone named once.
+        from tests.test_local_times import kept_zone
+        with kept_zone("UTC"):
+            page = drawn([row])
         said = text_of(page)
-        seen = ("Seen before on r2 ( 2026-11-08 20:04 UTC to 2026-11-08 21:02 UTC ): Telemetry "
-                "subscriptions 101 and 102 were lost for 57 min. It cleared with no Mercury "
-                "operation recorded. A configuration change was made on its console at "
-                "2026-11-08 20:59 UTC . It held 28 min, until this loss began. Open that "
-                "incident")
+        seen = re.search(
+            r"Seen before on r2 \( Nov 8 20:04( UTC)? to Nov 8 21:02( UTC)? \): Telemetry "
+            r"subscriptions 101 and 102 were lost for 57 min\. It cleared with no Mercury "
+            r"operation recorded\. A configuration change was made on its console at "
+            r"Nov 8 20:59( UTC)? \. It held 28 min, until this loss began\. Open that "
+            r"incident", said)
+        assert seen, said
+        seen = seen.group(0)
+        assert seen.count("UTC") <= 1, ("the zone is named once", seen)
         diag = "Mercury's diagnosis: " + HALF_OPEN + " Read "
         for line in (LEAD, seen, NEEDS, diag, "What to do"):
             assert line in said, line
         order = [said.index(x) for x in (LEAD, seen, NEEDS, diag, "What to do")]
         assert order == sorted(order), order
         assert "Next, as the diagnosis says: Re-subscribe r2's streams" in said
-        # The times are the records', drawn for the viewer's zone, UTC the server's words.
+        # The times are the records', drawn in the viewer's zone, their UTC on the hover.
         assert ('<time class="clock" datetime="2026-11-08T20:59:41Z" data-clock="date" '
-                'title="2026-11-08 20:59:41 UTC">2026-11-08 20:59 UTC</time>') in page
+                'title="2026-11-08 20:59:41 UTC">Nov 8 20:59') in page
         # Open that incident: Monitoring › Alerts › History, this device, a range reaching it.
         assert ('href="/v2/monitoring/alerts/history?device=r2&amp;q=telemetry+stream+lost'
                 '&amp;range=7d">Open that incident</a>') in page
@@ -930,9 +937,11 @@ class TestTheRow:
         past_loss(device="r7")
         (row,) = rows_of(lost(device="r7"))
         assert row["what"] == "r7: 2 telemetry streams lost (101, 102)"
-        said = text_of(drawn([row]))
+        from tests.test_local_times import kept_zone
+        with kept_zone("UTC"):
+            said = text_of(drawn([row]))
         assert LEAD.replace("r2", "r7") in said
-        assert "Seen before on r7 ( 2026-11-08 20:04 UTC to 2026-11-08 21:02 UTC ):" in said
+        assert re.search(r"Seen before on r7 \( Nov 8 20:04( UTC)? to Nov 8 21:02 \):", said), said
         assert "Re-subscribe r7's telemetry (101, 102)…" in said
 
     def test_another_alerts_row_carries_none_of_it(self, world):

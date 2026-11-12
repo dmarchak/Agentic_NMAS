@@ -84,6 +84,9 @@
   {#- Board E2a: the Display names card draws itself (modules/display_names.py), so its Save
       answers in its own region and the tab's redraw on `posture` leaves its result alone. -#}
   <div id="card-display-names" hx-get="{{ url_for('settings_v2.display_names_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
+  {#- The viewer's time zone draws itself beside it, kept per person the same way
+      (modules/time_zones.py). -#}
+  <div id="card-time-zone" hx-get="{{ url_for('settings_v2.time_zone_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
   {#- The local account's card draws itself (modules/local_account.py): off by default. -#}
   <div id="card-local-account" hx-get="{{ url_for('settings_v2.local_account_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
 </div>

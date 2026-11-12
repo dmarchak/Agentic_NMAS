@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, clock -%}
 {#- Board AI3 (`SettingsAi`, signed off under the Phase 7 mode 2026-10-27): Change caps… open on
     an ON background feature's row in Settings › AI. The admin's day and month caps, the day
     cap within the installation's; raising one is how a stopped feature runs again before its
@@ -18,7 +18,7 @@
         <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else '%.2f' % f.caps.month }}">
         <span class="set-origin">now ${{ '%.2f' % f.caps.month }}</span></label>
     </div>
-    <p class="set-origin ai-open-note">The approval still ends <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>: changing caps never extends it. Recorded with the old and new caps.</p>
+    <p class="set-origin ai-open-note">The approval still ends {{ clock(f.ends_iso, 'date') }}: changing caps never extends it. Recorded with the old and new caps.</p>
     <div class="ai-open-act">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="ai-background" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save caps</span><span class="op-busy">Saving…</span></button>{{ how('ai-background', 'caps', op="saving a feature's caps") }}</span>
       <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='ai', network=ai.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=ai.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Cancel</a>

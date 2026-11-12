@@ -15,7 +15,9 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `b233eb75c781d6440e0882e82c94de012b291d3dcc575cd8b4a2f5ae33654b5b`
+Templates sha256: `153d55e035af1478ab211774744e00354348c470810e8fb0f03b6c28342d028a`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_alert_history.html` and `_evidence_pack.html`, an alert's state times, its resolution and Build evidence's "as of", and each evidence piece's times, are `_macros.clock`'s: the viewer's own time, drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `b233eb75c781d6440e0882e82c94de012b291d3dcc575cd8b4a2f5ae33654b5b`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_evidence_pack.html`, each place that draws a person (a

@@ -182,7 +182,9 @@ card" below, each a deviation logged in STANDING_APPROVAL_LOG ("End the fault dr
 other region as compared; compared by the templates' diff and the pages
 tests/test_fault_drills.py draws, not a new shot. Templates sha256 before:
 `90dbaf2c170cfd5ed895d9a2c75cbaa98093cac47300709390dde8727c0e221d`.
-Templates sha256: `82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`
+Templates sha256: `696230d49ded8a36a9d9b793cc251d94e42dcdb3ba8d7d908d5d4a9fc9989c16`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_capture.html`, `_persist.html` and `_diagnose.html`, the capture's recorded and measured times, the golden's time, the save's time and a busy device's diagnosis start are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`.
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and

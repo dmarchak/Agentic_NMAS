@@ -17,7 +17,11 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `e82b7456ce24c06e6e712faabf681e0424e15c73f85b7e574c283c0001349b10`
+Templates sha256: `019be9d19542bd4c3d62104fe59e297686f393ff9c31fe6a452d3533d63b634b`
+(2026-11-12, the two comparisons below merged: the tail slice's stale line and local times'
+clock in the same `_logs_view.html` line pair, each kept; their own hashes were
+`e82b7456ce24c06e6e712faabf681e0424e15c73f85b7e574c283c0001349b10` (the tail slice) and
+`879e13f725ae802059f87228dc55fe5ebbf1bc0db49d2ce8bc5b0692087ba8e7` (local times).)
 (2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
 a new shot: once the logs-tail reader's last good read is older than its promise (its interval
 times its stale factor, 15 s, as its job-health row judges it), an opened device's lines gain a
@@ -27,6 +31,8 @@ notice above the lines is not drawn then (each fact once); a fresh buffer draws 
 board draws no stale state: **deviation** (log: The Logs pages say when the held lines are past
 the reader's promise). Every other region as compared. Before:
 `6fea2a28da645e3f5d5fceaadf2db0a6f0c1622cd15f787a61df231427772d15`.)
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_logs_view.html`, each line's received time and the no-match line's window are `_macros.clock`'s: the viewer's own date and time, the zone named once on the screen, the UTC instant on hover; the lines' column reads "Received" without its "(UTC)"; the chart's day axis, built in Python, stays UTC days (C3290). Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `6fea2a28da645e3f5d5fceaadf2db0a6f0c1622cd15f787a61df231427772d15`.
 (2026-11-12, C3166 slice 2, by the template diff against the regions below and the pages
 tests/test_logs_buffer.py draws, not a new shot: an opened device's lines are those the
 logs-tail reader holds, drawn at once, with its read time in the lines' foot ("held by the logs

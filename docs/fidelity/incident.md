@@ -36,7 +36,9 @@ proposal, and the write-up's page. The rows from "AI troubleshooting: the totals
 the frame's one row. Templates sha256 before: `7aa81346a92e1720d612598579774f4e26de434d91dacaee2db881983819834c`.
 
 Templates compared: templates/v2/incident.html, templates/v2/_fixit_section.html, templates/v2/incident_handover.html
-Templates sha256: `ecfb220f7aa8d7f158980c24a3aa53a360889b79f59d88141a3949e76ca40264`
+Templates sha256: `fd015f548f9e98aca3ce23f8985f0233623ff2a173d6b8ba8d94f9984f8a9da1`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `incident.html`, the header's and the timeline's times are drawn by the shared `_macros.clock` in place of the page's own element: the viewer's date and time to the second, the zone named once on the page rather than beside every time, the UTC instant on hover; The record's times stay UTC, as recorded. Compared by the template's diff and the page tests/test_incident_page.py opens in Firefox, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `ecfb220f7aa8d7f158980c24a3aa53a360889b79f59d88141a3949e76ca40264`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

@@ -12,7 +12,9 @@ a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
 Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html
-Templates sha256: `56f1640c85c6296c15d7eb814dde4956d93f947af49d32bcf8077455800007c5`
+Templates sha256: `4be2bd09e581b39d075af5be18677488dccf781d43c3e8d0a85bf0fae47a4efe`
+
+**Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_settings_ai_bg.html`, `_settings_ai_caps.html` and `_settings_ai_on.html`, an approval's end, the estimate's measured time and an approval's end day are `_macros.clock`'s: the viewer's own time (or day), drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; the day cap's reset keeps its UTC and the boundary zone's time on its hover in place of "(… UTC)" beside it. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `56f1640c85c6296c15d7eb814dde4956d93f947af49d32bcf8077455800007c5`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_settings_ai_bg.html` and `_install_card.html`, each

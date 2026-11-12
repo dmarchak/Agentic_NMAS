@@ -58,18 +58,23 @@ def test_the_panel_draws_the_whole_run_in_a_box_that_scrolls(client):
     assert lines[0].endswith("stop: stopped by op")
     assert lines[-1].endswith(f"start: started by op, every 5 s, as job {job}")
     assert "All 122 lines of this run, newest first." in html
-    assert f'<option value="{job}" selected>{job} · started 2026-09-21 14:13:20 UTC' in html
+    # The run's start in the viewer's zone, named (a closed picker shows one choice), its UTC
+    # instant on the choice's hover (`_macros.clock_option`).
+    assert re.search(re.escape(f'<option value="{job}" selected title="2026-09-21 14:13:20 UTC">'
+                               f'{job} · started ') + r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d:\d\d \S+ ·",
+                     html), html[html.find("<select"):][:600]
 
 
 def test_an_earlier_run_is_reachable_by_its_job_id(client):
     first = a_run(t0=T0, passes=2)
     second = a_run(t0=T0 + 600, passes=5)
     html = client.get("/v2/sdn/responses?list=Default").get_data(as_text=True)
-    assert f'<option value="{second}" selected>' in html and f'<option value="{first}">' in html
+    assert re.search(f'<option value="{second}" selected title="[^"]+ UTC">', html) and \
+        re.search(f'<option value="{first}" title="[^"]+ UTC">', html)
     assert 'hx-get="/v2/sdn/log?list=Default"' in html and '<select id="sdn-log-run" ' \
                                                             'name="run">' in html
     part = client.get(f"/v2/sdn/log?list=Default&run={first}").get_data(as_text=True)
-    assert f'<option value="{first}" selected>' in part
+    assert re.search(f'<option value="{first}" selected title="[^"]+ UTC">', part)
     assert "All 6 lines of this run" in part and "pass 004" not in part
     gone = client.get("/v2/sdn/log?list=Default&run=sdn-loop-default-19700101T000000Z")
     assert "Couldn't load: no run sdn-loop-default-19700101T000000Z is in Default&#39;s " \

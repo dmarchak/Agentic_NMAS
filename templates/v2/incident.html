@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info, stamp, heal_cause -%}
+{%- from "v2/_macros.html" import icon, badge, info, stamp, heal_cause, clock -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- One incident's own page (the incident page's board, part B; the operator's design change
     of 2026-11-11: "each incident gets its own page"), its first slice: read-only, for a
@@ -13,7 +13,7 @@
     card is. Every time is the viewer's own (the page's clock element, UTC on hover);
     every person is drawn by display name, and the identity as recorded is only in The record.
     A failed verify never reads "Fixed". -#}
-{%- macro at(iso) -%}<time class="clock" datetime="{{ iso }}" data-clock="date-seconds" title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[:19] | replace('T', ' ') }} UTC</time>{%- endmacro -%}
+{%- macro at(iso) -%}{{ clock(iso, 'date-seconds') }}{%- endmacro -%}
 {%- macro cell(c) -%}
   {%- if c.state == 'at' %}{{ at(c.at) }}{% if c.words %} <span class="inc-by">· {{ c.words }}</span>{% endif %}
   {%- elif c.state == 'failed' %}<span class="inc-failed">✗ {{ c.words }} {{ at(c.at) }}</span>

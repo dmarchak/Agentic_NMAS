@@ -21,6 +21,7 @@ collection's, as a snapshot is written when it is collected.
 """
 import json
 import os
+import re
 from html import unescape
 
 import pytest
@@ -156,9 +157,12 @@ def test_the_card_names_the_snapshot_by_its_id_and_counts_the_kept(client):
     when = snap["collected_at"].replace("T", " ").replace("Z", " UTC")
     assert f'Snapshot <code class="mono">{snap["id"]}</code>' in html, "the id as text"
     assert f'data-copy="{snap["id"]}"' in html and ">Copy</button>" in html
-    # By display name (board E2a).
-    assert (f'collected <time datetime="{snap["collected_at"]}">{when}</time> by '
-            f'{TEST_PERSON.split("@")[0]}') in html
+    # By display name (board E2a); when, by the one clock (the viewer's zone, its UTC on the
+    # hover, docs/UI_RULES.md "One time zone per screen").
+    assert re.search(re.escape(f'collected <time class="clock" datetime="{snap["collected_at"]}" '
+                               f'data-clock="date-seconds" title="{when}">')
+                     + r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d:\d\d( \S+)?"
+                     + re.escape(f'</time> by {TEST_PERSON.split("@")[0]}'), html), html
     assert f"</time> by {TEST_PERSON}" not in html, "the identity is never the card's words"
     assert f": 5 switches, {held['flows']} flow" in html
     assert "Kept snapshots (1), the newest collected " in html
@@ -214,8 +218,11 @@ def test_the_list_draws_each_snapshot_s_id_time_counts_and_seal(client):
     assert html.index(third["id"]) < html.index(second["id"]) < html.index(first["id"])
     assert f'<code class="mono">{third["id"]}</code>' in html
     assert f'data-copy="{third["id"]}"' in html
-    assert f'<time datetime="{_iso(T0 + 7200)}">{_iso(T0 + 7200)[:19].replace("T", " ")}</time>' \
-        in html
+    # Its time by the one clock: the viewer's zone, its UTC instant on the hover.
+    assert re.search(re.escape(f'<time class="clock" datetime="{_iso(T0 + 7200)}" '
+                               f'data-clock="date-seconds" title="'
+                               f'{_iso(T0 + 7200)[:19].replace("T", " ")} UTC">')
+                     + r"[A-Z][a-z]{2} \d{1,2} \d\d:\d\d:\d\d( \S+)?</time>", html), html
     assert f'<td data-l="Switches">5</td>' in html
     assert f'<td data-l="Flows">{held["flows"]}' in html
     assert 'data-seal="holds"' in html and ">holds<" in html

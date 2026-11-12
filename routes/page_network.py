@@ -68,6 +68,8 @@ NETWORK_FREE = {
     "settings_v2.local_*": "the installation's one local account: every network's, no one's",
     "settings_v2.display_name*": "how each person is named (board E2a): every network's, no "
                                  "one's",
+    "settings_v2.time_zone*": "the zone a person's screens draw their times in: every "
+                              "network's, no one's",
     "settings_v2.diag_*": "the installation's diagnostics: every network's, no one's",
     "settings_v2.platforms_*": "the installation's platforms: every network's, no one's",
     "settings_v2.records_*": "the installation's records stores: every network's, no one's",
