@@ -17,9 +17,14 @@ network's data folder (``fixit/<incident id>.json``), its ``lines`` append-only 
 kinds only:
 
 - a **proposal** line: ``{"proposal": <id>, "source": "mercury"|"ai"|"person", "calls": [the
-  AI calls it came from], "prompt", "operation", "params_hash", "at", "epoch"}``. An answer that
-  proposed no operation (a gap, an answer that could not be checked) is a proposal line with
-  an empty operation, so the calls it cost are still this incident's;
+  AI calls it came from], "prompt", "operation", "params", "params_hash", "at", "epoch"}``,
+  ``params`` the operation's canonical parameters (`canonical`) beside their hash, so the page
+  and the hand-over can name what was proposed (C3195; a line written before it holds the
+  hash alone, and is read as naming none). An answer that proposed no operation (a gap, an
+  answer that could not be checked, a re-plan that found none) is a proposal line with an
+  empty operation, so the calls it cost are still this incident's. A proposal a person's press
+  asked for (Retry with more information) also carries who pressed (``by``, ``verified``), the
+  words they typed (``note``, masked) and, when it proposed nothing, why (``words``);
 - a **choice** line, a person's: ``{"choice": "cancel"|"handover"|"save", "by", "verified",
   "at", "epoch", "attempts", "ai_usd"}``, the attempt count and the AI sum as they were at
   that moment; a hand-over carries its ``version`` and the ``teams`` told, a save what was
@@ -359,18 +364,31 @@ def _run_params(run: dict) -> dict:
                                        "collector_step": run.get("collector_step") is True})
 
 
+#: Where a press's typed words and a proposal's "why none" stop when kept.
+NOTE_CHARS = 2000
+WORDS_CHARS = 500
+
+
 def record_proposal(incident: Incident, source: str, operation: str = "", params=None, *,
-                    calls=(), prompt: str = "", now: float = None) -> dict:
+                    calls=(), prompt: str = "", now: float = None, by: str = "",
+                    verified: str = "", note: str = "", words: str = "") -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
-    `SOURCES`; *operation* a catalogue operation's key with its *params* (kept as their hash,
-    `params_hash`), or empty with none for an answer that proposed nothing; *calls* the ids of
-    the AI calls it came from (an ``ai`` proposal names at least one), and *prompt* the
-    prompt's name and version. It starts nothing."""
+    `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
+    `canonical`, beside their hash, `params_hash`), or empty with none for an answer that
+    proposed nothing; *calls* the ids of the AI calls it came from (an ``ai`` proposal names at
+    least one), and *prompt* the prompt's name and version. A person's press that asked for it
+    gives *by* and *verified* (both or neither), the *note* they typed and, when nothing was
+    proposed, *words* saying why; each kept only when given. It starts nothing."""
     _check(incident)
     if source not in SOURCES:
         raise Refused(f"a proposal comes from one of {', '.join(SOURCES)}, and {source!r} was "
                       "given")
+    if bool(by) != bool(verified):
+        raise Refused("a press is recorded with who pressed and how they were verified, both "
+                      f"or neither ({by or 'no one'}, verified {verified or 'by nothing'} given)")
+    if by:
+        _person(by, verified, "a press")
     if isinstance(calls, (str, bytes)):
         raise Refused(f"a proposal's calls are a list of ids, and {calls!r} was given")
     ids = []
@@ -383,18 +401,23 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
         raise Refused("an AI proposal names the call it came from, and none was given: its "
                       "cost and \"how fixed\" are read from that call")
     if operation:
-        hashed = params_hash(operation, params)
+        kept, hashed = canonical(operation, params), params_hash(operation, params)
     elif params:
         raise Refused("parameters were given with no operation")
     else:
-        hashed = ""
+        kept, hashed = {}, ""
     at = time.time() if now is None else float(now)
+    more = {k: v for k, v in (("by", by), ("verified", verified),
+                              ("note", " ".join(str(note or "").split())[:NOTE_CHARS]),
+                              ("words", " ".join(str(words or "").split())[:WORDS_CHARS]))
+            if v}
 
     def build(lines):
         n = sum(1 for line in lines if "proposal" in line) + 1
-        return {"proposal": f"p{n}", "source": source, "calls": ids, "prompt": str(prompt or ""),
-                "operation": operation or "", "params_hash": hashed, "at": _iso(at),
-                "epoch": at}
+        return dict({"proposal": f"p{n}", "source": source, "calls": ids,
+                     "prompt": str(prompt or ""), "operation": operation or "",
+                     "params": kept, "params_hash": hashed, "at": _iso(at), "epoch": at},
+                    **more)
 
     line = _append(incident, build)
     log.info("fixit: %s: proposal %s recorded (%s, %s)", incident.id, line["proposal"], source,

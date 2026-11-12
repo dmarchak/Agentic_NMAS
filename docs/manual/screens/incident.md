@@ -2,8 +2,9 @@
 
 Each self-healing incident has a page of its own, at `/v2/incident/<its id>`. It tells the
 whole story of one incident in one place: when it was detected, what Mercury decided and did,
-whether the fix was verified, how long the repair took, and what is left for a person. It is
-read-only: it starts nothing and changes nothing. How each time is found is on
+whether the fix was verified, how long the repair took, and what is left for a person. Apart
+from its AI troubleshooting section, whose controls are a person's presses, it starts nothing
+and changes nothing. How each time is found is on
 [An incident's timeline and its time to repair](incident-timeline).
 
 **How to open it.** One place per incident, from wherever it is named:
@@ -71,63 +72,28 @@ incident."
 ## What to do {#what-to-do}
 
 What is left for a person, in words, with links to where it is done: Needs attention, the
-device's page, its History or its Intent. This page has no buttons: an incident's actions are
-on its Needs attention item.
+device's page, its History or its Intent. The fix itself is started from the incident's Needs
+attention item, or from a proposal in AI troubleshooting below.
 
 ## AI troubleshooting {#ai-troubleshooting}
 
-**On the page today** the section is labelled **not built yet** and says so: "Not built yet: AI
-troubleshooting will be here. Mercury's own account is above, with no AI." An incident Mercury
-fixed with no AI call recorded says "Not needed: Mercury fixed it without AI." An AI analysis
-kept for the incident (the can't-fix analysis its team's message carried,
-[Notifications](notifications#cant-fix)) is drawn under it, labelled advisory: self-healing
-never reads it.
+The fixes tried in this incident, one line each, with what each cost in AI and **Open the
+run**; this incident's AI spend against its cap and today's against the day cap; and what may
+be done next. After a fix that did not pass, the section stops: **Retry with more
+information…**, **Cancel** and **Hand over…**. Retry asks Mercury's own diagnosis to plan
+again, with no AI call yet, and draws its proposal with **Open the fix's card…**; a proposal
+that repeats a failed attempt is flagged. Past the per-incident cap, Retry is not offered and
+the section says both figures. Once the incident is resolved, the section is read-only. Each
+step is on [AI troubleshooting: Retry, Cancel and Hand over](fixit-troubleshoot).
 
-**What is built underneath, and not drawn yet.** The parts of AI troubleshooting that need no
-AI call exist in Mercury's code (`modules/fixit/`), and no screen shows them yet:
+An AI analysis kept for the incident is drawn under it, labelled advisory: self-healing never
+reads it.
 
-- **The mode**, the installation's: **Manual** by default, in which an AI troubleshoot runs
-  only when a verified person asks for one, as a job, and the model is never called for an
-  incident on its own; or **Off**, in which none is offered and Mercury's own proposer still
-  proposes. There is no automatic mode: a model called with no person asking is a background
-  AI feature, turned on only in Settings › AI ([Turn a background AI feature on or
-  off](ai-background)), and AI troubleshooting has none.
-- **The cap**, $1.00 an incident by default: what the incident's AI calls cost so far, plus
-  the next attempt's worst case, against the cap. Over it, the attempt is refused, naming all
-  four amounts ("Spent $0.92 in this incident; the next attempt costs at most $0.25, which would
-  make $1.17 against the cap of $1.00. Mercury never raises the cap"); exactly at it is allowed.
-  A cap that is not a positive amount, or a cost that cannot be read, refuses: there is no "no
-  cap".
-- **The catalogue and the check.** A proposal, whoever makes it (Mercury's diagnosis, a
-  model's answer or a person), names one operation from Mercury's catalogue with its
-  parameters, never a command. Today the catalogue holds the telemetry Re-subscribe and its
-  Re-add the receiver ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). Code
-  checks it in order, the first refusal ending the check and naming what it compared: the
-  catalogue's schema; the incident's own scope (its device, the subscriptions its triggers
-  name); the guards that hold any change to a device (a device Mercury manages, no planned work
-  holding it); and committed intent, through the operation's own preview. What passes is that
-  operation's own preview and hash, for a person to approve. A proposal that repeats a fix that
-  already failed in the incident is flagged as a repeat (or a variation, naming each parameter
-  that changed), never hidden.
-- **Mercury's own proposer**, with no AI: a receiver a run left removed is added back first;
-  otherwise, when the lost-stream diagnosis's first hypothesis is complete and its rule is a
-  stream stuck at its ends (half-open, no session, or outlived its cause), it proposes
-  Re-subscribe for the incident's lost subscriptions. Anything else proposes nothing, and says
-  why.
-- **The incident's record** of its proposals and of each person's choice (Cancel, Hand over, a
-  save), masked at rest. Its attempts are read from the operations' own run records each time,
-  never copied, and Cancel runs nothing: the incident stays open with its attempts recorded.
-- **What a model would be sent**: the attempts and the catalogue, masked, every person a stable
-  label ("person-3f9a1c"), never an address or a name.
-- **The hand-over**, a write-up for an engineer in nine sections (summary, impact now, what is
-  known, what was tried, what the AI said or that none was asked, the configuration now, next
-  steps, notes, cost), built from the records with no AI call, kept as a new version each time,
-  and sent to the teams the person chooses among those told about the network's can't-fix,
-  with the incident's link.
+## A hand-over's page {#hand-over}
 
-**Not built yet:** the section's controls (asking for an AI troubleshoot, approving a proposal,
-retrying with more information, Cancel and Hand over), the AI call itself, and a screen that
-shows or changes the mode and the cap (each holds its default until one does).
+Each hand-over is kept as a version on its own page, `/v2/incident/<its id>/handover/<n>`: its
+nine sections, who handed it over and to which teams, a link back to the incident's page and
+**Download as Markdown**. It is linked from the section and from The record.
 
 ## Evidence {#evidence}
 
@@ -139,7 +105,8 @@ each device attached to it with the reason it was attached.
 Collapsed. The incident's id, its network, its state as its own store keeps it, each
 decision's id, the program's hash and its lines (masked), the times behind the header in UTC,
 every step with its result and words, and who acted, by their identity as recorded. This is
-the only place on the page an identity is drawn.
+the only place on the page an identity is drawn. Each hand-over is listed last, with **Open the
+write-up**.
 
 ## What an address answers {#addresses}
 

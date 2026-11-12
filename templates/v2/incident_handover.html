@@ -1,0 +1,27 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, info -%}
+{#- An incident's hand-over write-up, one kept version on its own page (board recurring-fixes
+    v2, step 8; the fix-it plan's S4: `/v2/incident/<id>/handover/<version>`), from
+    routes/fixit_v2.handover_page: its nine sections as `modules/fixit/handover.build` kept
+    them, built from the incident's records with no AI call, people by display name and teams
+    by name; a link back to the incident's page, and Download as Markdown. Read-only: a kept
+    version is never written over. -#}
+{% block title %}Hand-over {{ version }} · {{ title }} · {{ brand.short }}{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><a href="{{ url_for('incident_v2.incident', incident_id=incident_id, list=network) }}">{{ title }}</a><span aria-hidden="true">/</span><span>Hand-over {{ version }}</span></nav>
+<div class="page-head"><div class="page-title"><h1>Hand-over {{ version }}: {{ title }} {{ info('fixit-troubleshoot', 'hand-over') }}</h1></div></div>
+{%- if doc is none %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>No write-up {{ version }} is kept for this incident:</strong> {{ why }}. <a href="{{ url_for('incident_v2.incident', incident_id=incident_id, list=network) }}">Open the incident</a></div></div>
+{%- else %}
+<section class="card handover-doc" aria-label="The write-up">
+  <p class="inc-line">{{ badge('kept, never written over', 'muted') }} <span>Handed over {{ doc.at }} by {{ doc.by }}{% if doc.teams %} to {{ doc.teams | join(', ') }}{% else %}, sent to no team{% endif %}</span> <span class="muted">Built from Mercury's records, with no AI call.</span></p>
+  {%- for s in doc.sections %}
+  <h2 class="handover-h">{{ loop.index }}. {{ s.title }}</h2>
+  <ul class="set-list handover-lines">
+    {%- for ln in s.lines %}<li>{{ ln }}</li>{% endfor %}
+  </ul>
+  {%- endfor %}
+  <p class="small inc-links"><a href="{{ doc.link or url_for('incident_v2.incident', incident_id=incident_id, list=network) }}" title="Incident {{ doc.incident }}">Open the incident's page</a> · <a href="{{ url_for('fixit_v2.handover_page', incident_id=incident_id, version=version, list=network, download='md') }}" download>Download as Markdown</a></p>
+</section>
+{%- endif %}
+{% endblock %}

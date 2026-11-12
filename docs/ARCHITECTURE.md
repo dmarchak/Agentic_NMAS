@@ -1058,6 +1058,12 @@ starts a job or opens a session, and nothing in `modules/heal/` imports it
 - **[modules/fixit/handover.py](modules/fixit/handover.py)** — the write-up for an engineer
   (nine sections, versions kept under `fixit/handover/<incident id>/`), and its send as the
   event `fixit_handover`, the one caller of the relay here
+- **[modules/fixit/section.py](modules/fixit/section.py)** — the incident page's AI
+  troubleshooting section (S4, no AI call): its state from the newest record, the totals, the
+  attempts; Retry with more information (the cap at the press, Mercury's own proposer, one
+  proposal line); the operation's card opened from a proposal and the link its confirm writes
+  into the run's record. Its routes are routes/fixit_v2.py; the only caller of a proposer is
+  the retry route (tests/test_fixit_never_retries.py)
 - **[modules/heal/catalog.py](modules/heal/catalog.py)** — the operations a proposal may name:
   Re-subscribe and Re-add the receiver, each with its parameters' schema and its own plan
 

@@ -1,0 +1,157 @@
+{%- from "v2/_macros.html" import icon, badge, how, clock, run_href -%}
+{#- The incident page's "AI troubleshooting" section (board recurring-fixes v2, every state but
+    the AI's own; the incident page board, B5's frame; the fix-it plan's S4), drawn with no AI
+    call from `modules/fixit/section.view` (`x`), by templates/v2/incident.html and again by
+    each of routes/fixit_v2.py's posts with its answer in place (`answer`). It always leads
+    with the totals and the attempts, one line each, in order; then the state's own content
+    and its controls: after a STOP, Retry with more information (its note, its cost lines and
+    what the AI would be sent, drawn before the press), Cancel and Hand over; the cap's
+    refusal in place of Retry; a proposal with its repeat flag and the operation's own card,
+    opened in place; the cancelled and hand-over lines; once resolved, the record alone, with
+    no control. Nothing here loads or repeats a request by itself (no hx-trigger of load,
+    every, revealed or intersect: tests/test_fixit_never_retries.py), and the two text boxes
+    are textareas, so Enter submits nothing. People by display name; teams by name. -#}
+{%- set S = x.state -%}
+{%- set R = x.retry or {} -%}
+{%- set T = x.totals or {} -%}
+{%- set sec = url_for('fixit_v2.cancel', incident_id=x.id, list=x.network) -%}
+<section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}">
+  <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('beta: no AI call yet', 'muted', title="Retry re-plans through Mercury's own diagnosis; the AI's own call is the next slice") }}</div>
+  {%- if answer and answer.refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ answer.refused }}</div></div>
+  {%- elif answer and answer.done %}
+  <div class="notice notice-{{ answer.level or 'muted' }} set-result" role="status">{{ icon('tick' if (answer.level or 'muted') == 'muted' else 'warn', 16) }}<div>{{ answer.done }}
+    {%- if answer.resend %}
+    <span class="op-act" id="fixit-resend-{{ x.id }}">{% for t in answer.resend_teams %}<input type="hidden" name="team" value="{{ t }}">{% endfor %}<button type="button" class="btn btn-small" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.handover_send', incident_id=x.id, version=answer.resend, list=x.network) }}" hx-include="#fixit-resend-{{ x.id }}" hx-target="#inc-ai" hx-swap="outerHTML" hx-disabled-elt="this" title="Sends the kept write-up {{ answer.resend }} again to the same teams; nothing new is kept"{{ gate('configure') }}><span class="op-idle">Send again</span><span class="op-busy">Sending…</span></button>{{ how('fixit-troubleshoot', 'hand-over', compact=True, op='a hand-over') }}</span>
+    {%- endif %}</div></div>
+  {%- endif %}
+  {%- if S == 'none' %}
+  {%- if x.ended == 'fixed' %}
+  <p>Not needed: Mercury fixed it without AI. No AI call is recorded for this incident.</p>
+  {%- else %}
+  <p>AI troubleshooting is not offered here: {{ x.why }}.</p>
+  {%- endif %}
+  {%- else %}
+  {%- if x.unreadable %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's troubleshooting record couldn't be read:</strong> {{ x.unreadable }}. Nothing is written to it until it can be; what else could be read is drawn below.</div></div>
+  {%- endif %}
+  <p class="fixit-totals"><strong>This incident:</strong> {% if T.spent %}AI {{ T.spent }}{% else %}AI spend not known ({{ T.spent_error }}){% endif %} of {% if T.cap %}its cap of {{ T.cap }}{% else %}no readable cap ({{ T.cap_error }}){% endif %} · <strong>today:</strong> {% if T.today %}{{ T.today }}{% else %}not known ({{ T.today_error }}){% endif %} of {{ T.day_cap or 'no day cap' }}</p>
+  {%- if x.mode.refused %}<p class="small muted">{{ x.mode.refused }}.</p>{% endif %}
+  {%- if x.attempts %}
+  <h3 class="fixit-h">Attempts</h3>
+  <ol class="fixit-attempts">
+    {%- if x.more %}<li class="muted small">and {{ x.more }} earlier attempt{{ 's' if x.more != 1 }}, each on {{ x.device }}'s History</li>{% endif %}
+    {%- for a in x.attempts %}
+    <li class="fixit-a fixit-a-{{ a.state }}" data-attempt="{{ a.n }}" value="{{ a.n }}">{{ clock(a.started) }}{% if a.finished %} to {{ clock(a.finished) }}{% endif %} · <span title="{{ a.params }}">{{ a.operation }}</span> · {% if a.source %}proposed by {{ a.source }}, {% endif %}approved by {{ (a.actor or 'nobody recorded') | people }} · <strong>{{ {'passed': 'passed', 'running': 'running', 'failed': 'failed'}[a.state] }}:</strong> <span title="{{ a.detail }}">{{ a.words }}</span> · AI {{ a.ai_usd }} · <a href="{{ run_href(a.device, x.network, a.run) }}">Open the run</a></li>
+    {%- endfor %}
+  </ol>
+  {%- endif %}
+  {%- if x.incomplete %}<p class="small warn-text">Not every attempt could be read: {{ x.incomplete }}.</p>{% endif %}
+
+  {%- if S == 'resolved' %}
+  {%- if not x.attempts and not x.handovers and x.ended == 'fixed' %}
+  <p>Not needed: Mercury fixed it without AI. No AI call is recorded for this incident.</p>
+  {%- elif not x.attempts and not x.handovers %}
+  <p>Not needed: no fix was tried in this incident, and no AI call is recorded for it.</p>
+  {%- else %}
+  <p class="muted">Resolved: read-only. The attempts, their costs and each hand-over are kept as recorded.</p>
+  {%- endif %}
+  {%- elif S == 'ready' %}
+  <p>No fix has been tried in this incident. What to do above says where one is started.</p>
+  <p class="small muted">Troubleshoot with AI comes with its AI call, the next slice; nothing here calls a model.</p>
+  {%- elif S == 'running' %}
+  {%- set s = x.stop %}
+  <p><strong>Attempt {{ s.n }} is running</strong> since {{ clock(s.started) }}: {{ s.operation }}. Its steps are on its card. <a href="{{ run_href(x.device, x.network, s.run) }}">Open the run</a></p>
+  {%- elif S == 'passed' %}
+  {%- set s = x.stop %}
+  <p><strong>Attempt {{ s.n }} passed its verify</strong>{% if s.finished %} at {{ clock(s.finished) }}{% endif %}: {{ s.words }}. The incident closes when its symptom clears.</p>
+  {%- elif S == 'stopped' %}
+  {%- set s = x.stop %}
+  <div class="fixit-stop">
+    <p><strong>Stopped: {{ s.words }}</strong> (attempt {{ s.n }}{% if s.finished %}, {{ clock(s.finished) }}{% endif %})</p>
+    {%- if s.found %}
+    <p class="small"><strong>What it found</strong> (the run's own record):</p>
+    <ul class="small fixit-found">
+      {%- for f in s.found %}
+      <li>Subscription {{ f.sub }}{% if f.outcome %} ({{ f.outcome }}){% endif %}:{% for c in f.checks %} {{ {'device': 'the device', 'stream': 'the stream', 'collector': 'the collector'}.get(c.name, c.name) }} {{ {'pass': '✓', 'fail': '✗', 'cant_tell': "can't tell:"}.get(c.state, c.state) }} {{ c.words }}{% if not loop.last %};{% endif %}{% endfor %}{% for st in f.stale %} <span class="warn-text">Flagged: {{ st }}</span>{% endfor %}</li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <p>Nothing more runs unless you choose.</p>
+  </div>
+  {%- elif S == 'proposed' %}
+  {%- set pr = x.proposal %}
+  {%- set fl = pr.flag or {} %}
+  <div class="fixit-proposal">
+    {%- if pr.operation %}
+    <p><strong>Proposed fix</strong> ({{ pr.source }} proposes; you decide){% if pr.at %}, {{ clock(pr.at) }}{% endif %}: <span title="{{ pr.params }}">{{ pr.words }}</span>.</p>
+    {%- if fl.kind == 'repeat' %}
+    <p class="fixit-flag" role="status">{{ icon('warn', 15) }} <strong>Proposed before in this incident: attempt {{ fl.attempt }}, failed: {{ fl.words }}{% if fl.at %} ({{ clock(fl.at) }}){% endif %}.</strong> The same operation with the same parameters (parameter hash {{ fl.params_hash }} both times). Its card asks what is different now before it runs again.</p>
+    {%- elif fl.kind == 'variation' %}
+    <p class="fixit-flag-var"><em>A variation of attempt {{ fl.attempt }}: the same operation, {{ fl.changed | length }} parameter{{ 's' if fl.changed | length != 1 }} changed ({% for c in fl.changed %}{{ c.name }}: {{ c.before }} → {{ c.after }}{% if not loop.last %}; {% endif %}{% endfor %}).</em></p>
+    {%- endif %}
+    {%- if fl and not fl.complete %}<p class="small warn-text">Compared with the attempts that could be read: {{ fl.error }}.</p>{% endif %}
+    {%- if pr.note %}<p class="small">Your note, kept for the hand-over and for the AI once built: “{{ pr.note }}”</p>{% endif %}
+    <div id="fixit-op"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=x.device, list=x.network, subs=pr.subs | join(','), fixit=x.id, proposal=pr.id) }}" hx-target="#fixit-op" hx-swap="innerHTML" hx-disabled-elt="this" title="Opens the operation's own card here, with this proposal's subscriptions: its program, its hash and your reason; nothing runs until you confirm it"><span class="op-idle">Open the fix's card…</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}</span></div>
+    {%- else %}
+    <p><strong>Proposed fix:</strong> none Mercury can run{% if pr.at %} ({{ clock(pr.at) }}){% endif %}: {{ pr.none or 'no operation was named' }}.</p>
+    {%- if pr.note %}<p class="small">Your note, kept for the hand-over and for the AI once built: “{{ pr.note }}”</p>{% endif %}
+    {%- endif %}
+  </div>
+  {%- elif S == 'cancelled' %}
+  {%- set cx = x.cancelled %}
+  <p><strong>Troubleshooting cancelled</strong> at {{ clock(cx.at) }} by {{ (cx.by or 'nobody recorded') | people }}; {{ cx.attempts }} attempt{{ 's' if cx.attempts != 1 }} recorded. The incident stays open, and nothing more runs.</p>
+  {%- elif S == 'handed_over' %}
+  {%- set hx = x.handover %}
+  <p><strong>Handed over</strong> at {{ clock(hx.at) }} by {{ (hx.by or 'nobody recorded') | people }} to {{ hx.teams | join(', ') if hx.teams else 'no team (kept, sent to nobody)' }} · <a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=hx.version, list=x.network) }}">Open the write-up</a></p>
+  {%- endif %}
+
+  {%- if S in ('passed', 'stopped', 'proposed', 'cancelled', 'handed_over', 'ready') %}
+  <div class="fixit-controls">
+    {%- if R.offered %}
+    <details class="fixit-retry" data-keep="fixit-retry-{{ x.id }}">
+      <summary>Retry with more information…</summary>
+      <form class="fixit-form" hx-post="{{ url_for('fixit_v2.retry', incident_id=x.id, list=x.network) }}" hx-target="#inc-ai" hx-swap="outerHTML">
+        <label class="heal-field" for="fixit-note-{{ x.id }}">What do you know that Mercury doesn't? (optional; masked, and kept with the retry)<textarea id="fixit-note-{{ x.id }}" name="note" rows="3" maxlength="2000" autocomplete="off"></textarea></label>
+        <p class="small muted">Mercury's diagnosis does not read words; they are kept for the hand-over and for the AI, once built.</p>
+        <p class="small fixit-cost"><strong>This retry:</strong> Mercury's own diagnosis re-plans, with no AI call ($0.00); the cap holds it as an AI retry, at most {{ R.worst }} · <strong>this incident so far:</strong> {{ T.spent or 'not known' }} · after it, at most {{ R.after or 'not known' }} of {{ T.cap or 'no readable cap' }} · <strong>today:</strong> {{ T.today or 'not known' }} of {{ T.day_cap or 'no day cap' }}</p>
+        <details class="small" data-keep="fixit-sent-{{ x.id }}"><summary>What the AI would be sent, once it is asked</summary>
+          <ul class="fixit-sent">{% for s in R.sent %}<li class="mono">{{ s }}</li>{% else %}<li class="muted">No attempt and no proposal yet.</li>{% endfor %}<li class="muted">Mercury's diagnosis, Seen before and your note, masked, every person a stable label.</li></ul>
+        </details>
+        <input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}">
+        <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-disabled-elt="this" title="Mercury's own diagnosis names its fix again, checked against this incident, the heal guards and committed intent; nothing runs until you approve it in its card"{{ gate('configure') }}><span class="op-idle">Ask Mercury's diagnosis to re-plan</span><span class="op-busy">Re-planning…</span></button>{{ how('fixit-troubleshoot', 'retry', compact=True, op='Retry with more information') }}</span>
+      </form>
+    </details>
+    {%- elif R.in_state and R.refused %}
+    <div class="notice notice-warn fixit-capped" role="status">{{ icon('warn', 16) }}<div><strong>{{ R.refused }}</strong> (Settings › Installation › AI, “AI spend per incident”).</div></div>
+    {%- endif %}
+    {%- if S != 'cancelled' and S != 'ready' %}
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="fixit-troubleshoot" hx-post="{{ sec }}" hx-target="#inc-ai" hx-swap="outerHTML" hx-disabled-elt="this" title="Records that you stopped troubleshooting this incident: nothing runs, nothing is sent, and the incident stays open"{{ gate('configure') }}><span class="op-idle">Cancel</span><span class="op-busy">Recording…</span></button>{{ how('fixit-troubleshoot', 'cancel', compact=True, op='Cancel') }}</span>
+    {%- endif %}
+    <details class="fixit-hand" data-keep="fixit-hand-{{ x.id }}">
+      <summary>Hand over…</summary>
+      <form class="fixit-form" hx-post="{{ url_for('fixit_v2.handover', incident_id=x.id, list=x.network) }}" hx-target="#inc-ai" hx-swap="outerHTML">
+        <p class="small">The write-up: nine sections built from this incident's records, with no AI, kept as a new version on its own page and linked from The record below.</p>
+        <label class="heal-field" for="fixit-hand-note-{{ x.id }}">Add a note (optional)<textarea id="fixit-hand-note-{{ x.id }}" name="note" rows="2" maxlength="2000" autocomplete="off"></textarea></label>
+        {%- if x.teams.state != 'ok' %}
+        <p class="small warn-text">The teams cannot be read ({{ x.teams.error }}), so the write-up can be kept and sent to nobody.</p>
+        {%- elif x.teams.teams %}
+        <fieldset class="fixit-teams"><legend class="small">Send to (the teams told about {{ x.network }}'s can't-fix)</legend>
+          {%- for t in x.teams.teams %}<label class="small"><input type="checkbox" name="team" value="{{ t.id }}" checked> {{ t.name }}</label>{% endfor %}
+        </fieldset>
+        {%- else %}
+        <p class="small muted">No team is told about {{ x.network }}'s can't-fix (Settings › Notifications), so the write-up is kept and sent to nobody.</p>
+        {%- endif %}
+        <span class="op-act"><button type="submit" class="btn btn-small" data-op="fixit-troubleshoot" hx-disabled-elt="this" title="Keeps the write-up as a new version and sends its link to the teams ticked"{{ gate('configure') }}><span class="op-idle">Send the hand-over</span><span class="op-busy">Keeping and sending…</span></button>{{ how('fixit-troubleshoot', 'hand-over', compact=True, op='a hand-over') }}</span>
+      </form>
+    </details>
+  </div>
+  {%- endif %}
+  {%- if x.handovers %}
+  <p class="small fixit-versions">Hand-overs: {% for h in x.handovers %}<a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=h.version, list=x.network) }}">version {{ h.version }}</a> ({{ h.by }}, {{ clock(h.at) }}{% if h.kept != 'ok' %}, its write-up {{ 'not kept' if h.kept == 'absent' else 'unreadable' }}{% endif %}){% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {%- endif %}
+  {%- endif %}
+  {%- for a in x.advisories or [] %}
+  <p class="inc-advisory"><strong>AI analysis (advisory; self-healing never reads it)</strong>{% if a.at %}, {{ clock(a.at) }}{% endif %}: {{ a.words }}</p>
+  {%- endfor %}
+</section>

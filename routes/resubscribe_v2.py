@@ -179,12 +179,58 @@ def card(ref, dev, args, **answer) -> dict:
     c["sharing"] = [dict(x, offered=x["sub"] in offered, refused=refused.get(x["sub"], ""))
                     for x in p.get("sharing") or []]
     c["removed"] = []
+    fixit = _fixit_args(args)
     for r in R.removed_now(ref.name, host):
         one = R.plan(ref.name, host, [r["sub"]], readd=True, sources=src)
         c["removed"].append({"sub": r["sub"], "run": r["run"],
                              "hash": (one["units"][0]["hash"] if one["ok"] else ""),
-                             "refused": "; ".join(one["refusals"])})
+                             "refused": "; ".join(one["refusals"]),
+                             "fixit": (_fixit_card(ref.name, host, fixit, [r["sub"]], True)
+                                       if fixit else None)})
+    if fixit:
+        # Opened from an incident's page (its AI troubleshooting section's proposal, C3106):
+        # the form carries the incident and the proposal into the confirm, and a repeat of an
+        # attempt that failed asks what is different now.
+        c["fixit"] = _fixit_card(ref.name, host, fixit, ticked, False)
     return c
+
+
+def _fixit_args(args) -> dict:
+    """The incident and the proposal a card opened from an incident's page carries (``fixit``,
+    ``proposal``), or ``{}``."""
+    incident = str(args.get("fixit") or "").strip()[:64]
+    if not incident:
+        return {}
+    return {"incident": incident, "proposal": str(args.get("proposal") or "").strip()[:16]}
+
+
+def _fixit_again(form) -> dict:
+    """The card's arguments that carry an incident when it is drawn again after a refusal."""
+    got = _fixit_args(form)
+    return {"fixit": got["incident"], "proposal": got["proposal"]} if got else {}
+
+
+def _fixit_card(network: str, host: str, fixit: dict, subs, readd: bool) -> dict:
+    """What the card draws for the incident it was opened for (`section.card_link`)."""
+    from modules.fixit import section
+
+    return section.card_link(network, fixit["incident"], fixit["proposal"], host, subs, readd)
+
+
+def _fixit_link(network: str, host: str, form, subs, readd: bool = False):
+    """``(link, refusal)``: what the confirm writes into its run's record when the card was
+    opened from an incident's page (`section.confirm_link`), ``(None, "")`` when it was not,
+    or ``(None, why)`` refused with nothing sent."""
+    from modules.fixit import section
+
+    fixit = _fixit_args(form)
+    if not fixit:
+        return None, ""
+    try:
+        return section.confirm_link(network, fixit["incident"], fixit["proposal"], host, subs,
+                                    form.get("different") or "", readd), ""
+    except section.Refused as exc:
+        return None, str(exc)
 
 
 def _draw(ref, dev, args, code=200, **answer):
@@ -262,13 +308,17 @@ def confirm(name):
     form = request.form
     subs = [s for s in form.getlist("sub") if s][:20]
     reason = form.get("reason") or ""
+    again = dict({"subs": form.get("subs") or ",".join(subs), "picked": "1", "sub": subs},
+                 **_fixit_again(form))
+    link, why = _fixit_link(ref.name, dev["hostname"], form, subs)
+    if why:
+        return _draw(ref, dev, again, 409, error=why, reason=reason)
     got = R.start(ref.name, dev["hostname"], subs, confirmed=_confirmed(form, subs),
                   program=(form.get("program") or "").strip(),
-                  previewed=(form.get("previewed") or "")[:200], reason=reason, **_who())
+                  previewed=(form.get("previewed") or "")[:200], reason=reason, fixit=link,
+                  **_who())
     if got.get("refused"):
-        return _draw(ref, dev, {"subs": form.get("subs") or ",".join(subs), "picked": "1",
-                                "sub": subs},
-                     _refused_code(got), error=got["refused"], reason=reason)
+        return _draw(ref, dev, again, _refused_code(got), error=got["refused"], reason=reason)
     return _draw(ref, dev, {"subs": ",".join(subs), "run": got["run"], "job": got["job"]})
 
 
@@ -286,9 +336,13 @@ def readd(name):
     ref, dev = found
     form = request.form
     sub = (form.get("sub") or "").strip()
+    link, why = _fixit_link(ref.name, dev["hostname"], form, [sub], readd=True)
+    if why:
+        return _draw(ref, dev, dict({"subs": form.get("subs") or sub}, **_fixit_again(form)),
+                     409, error=why)
     got = R.start(ref.name, dev["hostname"], [sub],
                   confirmed={sub: (form.get("hash") or "").strip()},
-                  reason=form.get("reason") or "", readd=True, **_who())
+                  reason=form.get("reason") or "", readd=True, fixit=link, **_who())
     if got.get("refused"):
         return _draw(ref, dev, {"subs": form.get("subs") or sub}, _refused_code(got),
                      error=got["refused"])

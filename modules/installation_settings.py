@@ -374,6 +374,25 @@ CARDS = {
         "note": "Test sends one small call to the model, through the mask and the caps, and "
                 "records it under History › AI calls.",
     },
+    # AI troubleshooting on an incident's page (the operator's order of 2026-11-12, overnight
+    # item 6: "a per-incident cap of $1.00", "AI mode Manual by default"; C3193): its mode and
+    # its per-incident cap, on the AI tab beside the hosted card's day cap, saved, checked and
+    # recorded (old and new, who and when) as every card's fields are. The cap is a positive
+    # amount with no "no cap" (`_value`'s "usd"); Mercury never raises it.
+    "fixit": {
+        "group": "ai_troubleshoot", "title": "AI troubleshooting", "tab": "ai",
+        "fields": (_f("ai_troubleshoot_mode", "AI mode", "choice",
+                      "manual: an AI troubleshoot runs only when a person presses it on an "
+                      "incident's page, never on its own; off: none is offered, and Mercury's "
+                      "own diagnosis still proposes a fix", ("manual", "off")),
+                   _f("ai_cap_usd_per_incident", "AI spend per incident", "usd",
+                      "what one incident's AI calls may cost: spent plus the next attempt's "
+                      "worst case, refused past it, naming both; there is no \"no cap\", and "
+                      "Mercury never raises it")),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "Per installation, every network. An incident's page draws its spend against "
+                "this cap; the day cap above still holds every call.",
+    },
     # Notifications' email relay (board H, artboard B; H9): the installation's one relay, on
     # the Notifications tab beside the webhooks and teams, drawn by its own template
     # (`template`). Its password is the credential store's (`credentials.set_notify_secret`,

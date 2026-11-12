@@ -147,6 +147,8 @@ def register_blueprints(app) -> list:
     from routes.resubscribe_v2 import bp as resubscribe_v2_bp
     # One incident's own page (the incident page's board, part B): read-only, for `hi-` ids.
     from routes.incident_v2 import bp as incident_v2_bp
+    # The incident page's AI troubleshooting section's controls (board recurring-fixes v2, S4).
+    from routes.fixit_v2 import bp as fixit_v2_bp
 
     for bp in (integrations_bp, identity_bp,
                remote_bp,
@@ -160,7 +162,7 @@ def register_blueprints(app) -> list:
                sdn_v2_bp, sdn_switches_v2_bp, ai_feedback_v2_bp, intent_layers_v2_bp, assistant_v2_bp,
                heal_v2_bp, notify_v2_bp, heal_proposal_v2_bp, ai_classes_v2_bp,
                sdn_analyse_v2_bp, sdn_dhcp_v2_bp, sdn_policies_v2_bp, resubscribe_v2_bp,
-               incident_v2_bp):
+               incident_v2_bp, fixit_v2_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

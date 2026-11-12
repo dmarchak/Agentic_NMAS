@@ -102,6 +102,8 @@ PAGES = (
     ("fault-drill", "Declare a fault drill", H, "how-it-works/fault-drill.md"),
     ("incident-timeline", "An incident's timeline and its time to repair", H,
      "how-it-works/incident-timeline.md"),
+    ("fixit-troubleshoot", "AI troubleshooting: Retry, Cancel and Hand over", H,
+     "how-it-works/fixit-troubleshoot.md"),
     ("notifications", "Notifications: how a team is told", H,
      "how-it-works/notifications.md"),
     ("diagnose", "Diagnose: a runbook's reads, ranked into hypotheses", H,
@@ -267,6 +269,9 @@ OPERATIONS = {
     "privileged": ("modules.nsot.privileged", "STEPS"),
     # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
     "heal-proposal": ("modules.heal.propose", "STEPS"),
+    # Board recurring-fixes v2 (the fix-it plan's S4): Retry with more information on an
+    # incident's page, re-planned by Mercury's own diagnosis with no AI call.
+    "fixit-troubleshoot": ("modules.fixit.section", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     # Lab 9 Objective B2 (board lab9-sdn E): a policy in words, the intent controller.
     "sdn-policy": ("modules.sdn.policy_intent", "STEPS"),

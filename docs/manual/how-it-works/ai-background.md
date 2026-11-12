@@ -7,7 +7,7 @@ until an admin turns it on, on **Settings › Installation › AI**, after readi
 expected to cost. Turning it on, turning it off and changing its caps are all there; nothing
 here contacts a device, and nothing here calls the provider. AI troubleshooting on an
 incident's page is not a background feature: a person asks for it, it is held to its own
-per-incident cap, and it is not built on the page yet ([AI
+per-incident cap, and it makes no AI call yet ([AI
 troubleshooting](incident#ai-troubleshooting)).
 
 ![Turning a background AI feature on for one network. Turn on shows the estimate, labelled as one, with its digest; you type the day and month caps and accept it. Mercury checks you are a verified person and the caps are within the installation's day cap, measures the estimate again and refuses if it moved, then writes the switch with who, when, the estimate and the caps, and records the decision. The gateway reads the switch at every call; Turn off removes it and the next call is refused. No provider call is made.](diagrams/ai-background.svg)

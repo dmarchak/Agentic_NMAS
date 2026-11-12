@@ -542,6 +542,20 @@ HISTORY = {
     "heal_proposal_v2.mark": ("n/a: a mark is kept in the network's heal decisions "
                               "(modules/heal/decisions.py) with who, when and why, and drawn "
                               "on the dry-run record's own History row (kind heal)"),
+    # The incident page's AI troubleshooting section (board recurring-fixes v2): each choice
+    # and proposal is a line of the incident's own troubleshooting record, drawn on its page.
+    "fixit_v2.cancel": ("n/a: a cancel is one line of the incident's troubleshooting record "
+                        "(modules/fixit/incident.py), drawn on the incident's page, never one "
+                        "device's record"),
+    "fixit_v2.retry": ("n/a: a re-plan is one proposal line of the incident's troubleshooting "
+                       "record (modules/fixit/incident.py), drawn on the incident's page; the "
+                       "fix it proposes runs only through its operation's own confirm"),
+    "fixit_v2.handover": ("n/a: a hand-over is one line of the incident's troubleshooting "
+                          "record and a kept write-up, linked from the incident's page; its send "
+                          "is in the notifications' delivery log, never one device's record"),
+    "fixit_v2.handover_send": ("n/a: a send again is in the notifications' delivery log; the "
+                               "write-up it sends is the one already kept, never one device's "
+                               "record"),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     # C2003: a page's own stall, kept as a local record and drawn on History › Page stalls.
     "v2.stall_capture": ("page_stalls",),

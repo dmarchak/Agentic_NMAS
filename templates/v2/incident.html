@@ -35,7 +35,7 @@
 <div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is recorded, and whether it is open, is not known: nothing that could be read holds it. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
 {%- else %}
-<div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body{% if p.done.running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
+<div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body, nmas:privileged from:body{% if p.done.running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of this incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is open is not known; what could be read is drawn below. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
 {%- elif p.only_log %}
@@ -94,6 +94,10 @@
       was by is said once, in the header, and its outcome once, in its Done stage. -#}
   <p class="small muted">Written by Mercury from its own record: no AI.</p>
   {{ run_stepper(p.done.steps) }}
+  {%- elif p.fixit and p.fixit.attempts %}
+  {#- An operation a person ran in the incident (a Re-subscribe) is no heal: it is listed, with
+      its card, under AI troubleshooting below, never said here as nothing (C3198). -#}
+  <p>Self-healing ran nothing in this incident. The {{ p.fixit.attempts | length }} fix{{ 'es' if p.fixit.attempts | length != 1 }} a person ran {{ 'are' if p.fixit.attempts | length != 1 else 'is' }} listed under AI troubleshooting, below.</p>
   {%- else %}
   <p>Nothing has run in this incident.</p>
   {%- endif %}
@@ -112,17 +116,11 @@
     {%- endif %}{% if not loop.last %} · {% endif %}
     {%- endfor %}</p>
 </section>
-<section class="card" id="inc-ai" aria-labelledby="h-inc-ai">
-  <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('not built yet', 'muted') }}</div>
-  {%- if p.state == 'fixed' and not p.ai.spent %}
-  <p>Not needed: Mercury fixed it without AI. No AI call is recorded for this incident.</p>
-  {%- else %}
-  <p>Not built yet: AI troubleshooting will be here. Mercury's own account is above, with no AI.</p>
-  {%- endif %}
-  {%- for a in p.ai.advisories %}
-  <p class="inc-advisory"><strong>AI analysis (advisory; self-healing never reads it)</strong>{% if a.at %}, {{ at(a.at) }}{% endif %}: {{ a.words }}</p>
-  {%- endfor %}
-</section>
+{#- AI troubleshooting (board recurring-fixes v2; `modules/fixit/section.py`), drawn with no
+    AI call; its posts draw it again in place (routes/fixit_v2.py). -#}
+{%- set x = p.fixit %}
+{%- set answer = {} %}
+{% include "v2/_fixit_section.html" %}
 <details class="card inc-evidence" data-keep="inc-evidence-{{ p.id }}">
   <summary>Evidence</summary>
   <ul class="set-list">
@@ -138,7 +136,8 @@
 <details class="card tl-record-d inc-record" data-keep="inc-record-{{ p.id }}">
   <summary>The record</summary>
   <p class="small muted">Ids, hashes, the times as recorded (UTC), every step with its result and words, and who acted as their identity was recorded.</p>
-  <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+  <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+    {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}</dl>
 </details>
 </div>
 {%- endif %}

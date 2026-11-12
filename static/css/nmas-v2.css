@@ -3267,6 +3267,33 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .inc-said, .inc-advisory { margin: 0; overflow-wrap: anywhere; }
 .inc-links { margin: 0; }
 .inc .card > p { margin: 0; overflow-wrap: anywhere; }
+/* The AI troubleshooting section (templates/v2/_fixit_section.html; board recurring-fixes v2):
+   one line per attempt at its outcome's colour, the STOP, a proposal's flag, and the controls
+   in a row that wraps. Nothing scrolls inside it (the board's 1920x1080 rule). */
+.fixit { gap: 8px; }
+.fixit p, .fixit ul, .fixit ol { margin: 0; overflow-wrap: anywhere; }
+.fixit-h { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.fixit-attempts { padding-left: 22px; display: flex; flex-direction: column; gap: 4px;
+  font-size: 13px; }
+.fixit-a { border-left: 3px solid var(--line); padding-left: 8px; }
+.fixit-a-failed { border-left-color: var(--danger); }
+.fixit-a-passed { border-left-color: var(--ok); }
+.fixit-a-running { border-left-color: var(--accent); }
+.fixit-stop { border-left: 3px solid var(--danger); padding-left: 10px; display: flex;
+  flex-direction: column; gap: 4px; }
+.fixit-proposal { border-left: 3px solid var(--accent); padding-left: 10px; display: flex;
+  flex-direction: column; gap: 6px; }
+.fixit-flag { color: var(--warn); }
+.fixit-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-start; }
+.fixit-controls details { min-width: 0; flex: 1 1 320px; }
+.fixit-controls summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.fixit-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.fixit-form textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.fixit-teams { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.fixit-sent { padding-left: 18px; }
+.handover-doc { display: flex; flex-direction: column; gap: 6px; }
+.handover-h { margin: 8px 0 0; font-size: 15px; }
+.handover-lines li { overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .inc-times { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inc-ttr { grid-column: 1 / -1; }

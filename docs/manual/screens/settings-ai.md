@@ -16,6 +16,22 @@ switches below say. Every background feature's caps are within the day cap. The 
 here from the Connections tab, which keeps one line linking to it. What its actions do, step
 by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-settings#ai-cap).
 
+## AI troubleshooting {#ai-troubleshooting}
+
+The second card, **AI troubleshooting**, holds the two settings an incident's AI
+troubleshooting section is held to, for every network:
+
+- **AI mode**: `manual` (the default), in which an AI troubleshoot runs only when a person
+  presses it on an incident's page and never on its own, or `off`, in which none is offered and
+  Mercury's own diagnosis still proposes a fix. There is no automatic mode: a model asked on its
+  own would be a background feature, below.
+- **AI spend per incident**: $1.00 by default. What one incident's AI calls have cost plus the
+  next attempt's worst case is compared with it, and past it Retry is refused, naming both. It
+  is a positive amount; there is no "no cap", and Mercury never raises it.
+
+**Save** writes what you changed, recorded with who, when, and each value's old and new, and
+drawn on History. How the section uses them: [AI troubleshooting](fixit-troubleshoot#the-cap).
+
 ## Background features {#background-features}
 
 Each background feature Mercury knows is a row:

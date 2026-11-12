@@ -12,10 +12,12 @@ names and the link to the incident's page: docs/manual/how-it-works/notification
 incident's page (/v2/incident/<id>, read-only, its first slice) and its times:
 docs/manual/screens/incident.md and docs/manual/how-it-works/incident-timeline.md. Fault
 drills: docs/manual/how-it-works/fault-drill.md. How the tests and their coverage are run:
-docs/manual/concepts/testing.md. **Not built yet:** AI troubleshooting's section on the
-incident's page (its controls and its AI call; the parts with no AI call are in
-`modules/fixit/`, section 12's rule in force over them), the screen that shows its mode and
-per-incident cap, and the Slack, Teams and PagerDuty webhook formats (section 10; C2387).
+docs/manual/concepts/testing.md. AI troubleshooting's section on the incident's page, with no
+AI call (its attempts, the STOP, Retry with more information through Mercury's own diagnosis,
+Cancel and Hand over, `modules/fixit/`, section 12's rule in force over them), and its mode and
+per-incident cap on Settings › Installation › AI: docs/manual/how-it-works/fixit-troubleshoot.md.
+**Not built yet:** the AI call itself, and the Slack, Teams and PagerDuty webhook formats
+(section 10; C2387).
 The sections below are the design as reviewed, kept for its reasons.
 
 **The operator's direction, 2026-11-03, for Lab 10 (automating network troubleshooting).** A

@@ -159,6 +159,8 @@ class TestTheStore:
                                  calls=[CALL_A], prompt="fixit_troubleshoot v1", now=T0 + 5.5)
         assert line == {"proposal": "p1", "source": "ai", "calls": [CALL_A],
                         "prompt": "fixit_troubleshoot v1", "operation": R.KEY,
+                        # C3195: the canonical parameters are kept beside their hash.
+                        "params": {"subs": ["101", "102"], "collector_step": False},
                         "params_hash": F.params_hash(R.KEY, {"subs": ["101", "102"]}),
                         "at": "2026-11-09T18:46:45Z", "epoch": T0 + 5.5}
         assert doc(inc()) == {"version": 1, "incident": ID, "network": NET,

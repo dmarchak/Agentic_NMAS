@@ -785,9 +785,6 @@ def page(network: str, incident_id: str) -> dict:
                              "hypotheses": len(diagnosis.get("hypotheses") or [])}
                             if diagnosis else None)},
         todo=_todo(state, device, tl),
-        ai={"spent": bool(found["advisories"]),
-            "advisories": [{"at": a.get("at") or "", "words": a.get("words") or ""}
-                           for a in found["advisories"][-1:]]},
         evidence={"triggers": len(inc.get("triggers") or []),
                   "seen": int(inc.get("triggers_seen") or 0),
                   "reads": len(inc.get("reads") or []),
@@ -797,4 +794,12 @@ def page(network: str, incident_id: str) -> dict:
         members_n=len(members))
     model = display_names.people_payload(steplog.masked(model))
     model["record"] = steplog.masked(_record(found, tl))
+    # The AI troubleshooting section (board recurring-fixes v2; `modules/fixit/section.py`),
+    # drawn with no AI call: a read of the incident's troubleshooting record, the operations'
+    # run records, the record of AI calls and the settings. Resolved, it is read-only.
+    from modules.fixit import section
+    closed = _epoch(model["closed_at"]) if model["closed_at"] else None
+    model["fixit"] = section.drawn(network, found,
+                                   resolved=(closed or time.time()) if resolved else None,
+                                   ended=state if resolved else "")
     return model

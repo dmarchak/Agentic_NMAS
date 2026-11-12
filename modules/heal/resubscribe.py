@@ -540,6 +540,32 @@ def receiver_command(dialect: str, sub: str) -> str:
 
 # ── The record ──────────────────────────────────────────────────────────────────────────────
 
+#: The field of a run's record naming the incident its confirm was pressed in, the attempt's
+#: number and the proposal it runs (C3106), as the incident page's section carries it
+#: (`modules/fixit/section.confirm_link`): its keys, each one's kind. This module reads nothing
+#: of the fix-it path (section 12's scan of modules/heal/): it keeps what the confirm sent,
+#: held to this shape.
+FIXIT_FIELD = "fixit"
+FIXIT_KEYS = {"incident": str, "attempt": int, "proposal": str, "different": str,
+              "repeats": int}
+
+
+def fixit_field(fixit) -> dict:
+    """*fixit*, what a confirm pressed on an incident's page sent, as the run's record keeps it
+    (`FIXIT_KEYS`, each of its kind, the texts cut to 500 characters), or ``{}`` for none or
+    anything of another shape: a run is never refused for it, and keeps only what is its own."""
+    if not isinstance(fixit, dict) or not isinstance(fixit.get("incident"), str) \
+            or not fixit.get("incident"):
+        return {}
+    out = {}
+    for key, kind in FIXIT_KEYS.items():
+        value = fixit.get(key)
+        if isinstance(value, bool) or not isinstance(value, kind):
+            continue
+        out[key] = value[:500] if isinstance(value, str) else value
+    return out
+
+
 def _record(network: str, rec: dict) -> dict:
     """Write the run's record in the operations' record History reads (`privileged.record`)."""
     from modules.nsot import privileged
@@ -691,12 +717,14 @@ class _Run:
 
 def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, person: bool,
           confirmed: dict, program: str = "", previewed: str = "", reason: str = "",
-          readd: bool = False, run_id: str = "", sources=None) -> dict:
+          readd: bool = False, run_id: str = "", sources=None, fixit=None) -> dict:
     """Run the confirmed re-subscribe (or, with *readd*, the one-step Re-add the receiver) on
     *device*, holding it, as *actor*, a person verified as *actor_verified* (`person_refusal`:
     neither has a default): the run's record, written. *confirmed* is each subscription's hash
-    and *program* the selection's, both as previewed (`refusal`). Never raises; a refusal is a
-    record too, with nothing sent."""
+    and *program* the selection's, both as previewed (`refusal`). *fixit* is the incident, the
+    attempt and the proposal its confirm was pressed for on an incident's page, kept in the
+    record (`fixit_field`, C3106). Never raises; a refusal is a record too, with nothing
+    sent."""
     from modules.nsot import device_ops, reads
 
     src = sources or Sources(network)
@@ -715,6 +743,9 @@ def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, p
            "finished_at": None, "state": "running", "outcome": "running",
            "at": _iso(now), "config_change": False, "hash": "", "program": [],
            "subscriptions": [], "steps": []}
+    link = fixit_field(fixit)
+    if link:
+        rec[FIXIT_FIELD] = link
     run = _Run(network, rec, src, src.values())
     # The run's own steps, live: inside its job this list is what its card and the In
     # progress list read while it runs (`op_progress.attach`), and what its record keeps.
@@ -1282,10 +1313,11 @@ def _collector_check(device: str, u: dict, was: dict, now: dict) -> tuple:
 
 def start(network: str, device: str, subs, *, actor: str, actor_verified: str, person: bool,
           confirmed: dict, program: str = "", previewed: str = "", reason: str = "",
-          readd: bool = False) -> dict:
+          readd: bool = False, fixit=None) -> dict:
     """Refuse now (``{"refused": why}``, nothing sent) or start the run as a job: ``{"job",
     "run"}``. *confirmed* and *program* are the hashes the card carried (each subscription's,
-    and the selection's; `refusal`). *actor_verified* and *person* are the request's own
+    and the selection's; `refusal`); *fixit* the incident its confirm was pressed for, kept in
+    the run's record (`apply`). *actor_verified* and *person* are the request's own
     (`person_refusal`), read there once; the job is started by the one job starter (`capture_job.start`), which carries
     the request's verified identity into its thread (`identity.carried`), so the reads the run
     records and anything it commits name the person as the request verified them."""
@@ -1306,7 +1338,7 @@ def start(network: str, device: str, subs, *, actor: str, actor_verified: str, p
                                                          person=person, confirmed=confirmed,
                                                          program=program, previewed=previewed,
                                                          reason=reason, readd=readd,
-                                                         run_id=run_id)["id"]},
+                                                         run_id=run_id, fixit=fixit)["id"]},
                             kind="telemetry re-subscribe", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER,
                             # Its device and its card (the operator, 2026-11-11): the run is

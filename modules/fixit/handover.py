@@ -247,6 +247,26 @@ def _tried(tried: list) -> list:
     return out
 
 
+def params_words(params: dict) -> str:
+    """Canonical parameters in words ("subs 101, 102; collector_step on"), each one set;
+    "no parameter" when none is."""
+    out = []
+    for k, v in (params or {}).items():
+        if v in ("", [], False, None):
+            continue
+        said = ", ".join(map(str, v)) if isinstance(v, list) else "on" if v is True else v
+        out.append(f"{k} {said}")
+    return "; ".join(out) or "no parameter"
+
+
+def _params_words(line: dict) -> str:
+    """A proposal line's parameters, kept beside their hash (C3195); a line written before
+    they were kept names its hash alone."""
+    if isinstance(line.get("params"), dict):
+        return f"{params_words(line['params'])}; parameters {line.get('params_hash')}"
+    return f"parameters {line.get('params_hash')}"
+
+
 def _ai(lines: list, advisory) -> list:
     asked = [ln for ln in lines if "proposal" in ln and ln.get("source") == "ai"]
     if not asked:
@@ -254,7 +274,7 @@ def _ai(lines: list, advisory) -> list:
     out = []
     for ln in asked[:SHOWN]:
         out.append(f"{ln.get('at', '')}: "
-                   + (f"proposed {ln['operation']} (parameters {ln.get('params_hash')})"
+                   + (f"proposed {ln['operation']} ({_params_words(ln)})"
                       if ln.get("operation") else "proposed no operation Mercury has")
                    + " — advisory; a person approves any fix")
     out += [f"Advisory: {_people(a)}" for a in list(advisory or ())[:SHOWN]]
@@ -400,6 +420,12 @@ def _chosen(network: str, team_ids) -> list:
                       f"{_listed(t['name'] for t in got['teams']) if got['teams'] else 'none'})"
                       ": nothing was kept or sent")
     return [have[t] for t in ids]
+
+
+def checked_teams(network: str, team_ids) -> list:
+    """*team_ids* each checked as one of the teams told about *network*'s can't-fix, as
+    ``{"id", "name"}``, or `Refused` naming what was compared (Send again's check). A read."""
+    return _chosen(network, team_ids)
 
 
 def hand_over(incident, *, actor: str, actor_verified: str, note: str = "", notes=(),

@@ -87,6 +87,8 @@
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to
       (the re-add's own, its whole program). -#}
   <div class="att-action" id="{{ rid }}"><input type="hidden" name="sub" value="{{ x.sub }}"><input type="hidden" name="subs" value="{{ c.subs | join(',') }}">
+    {%- if x.fixit %}<input type="hidden" name="fixit" value="{{ x.fixit.incident }}"><input type="hidden" name="proposal" value="{{ x.fixit.proposal }}">
+    {%- if x.fixit.repeat and x.fixit.repeat.kind == 'repeat' %}<label class="heal-field" for="{{ rid }}-different">This repeats attempt {{ x.fixit.repeat.attempt }}, which failed: what is different now (required, at least three words)<input id="{{ rid }}-different" name="different" type="text" autocomplete="off"></label>{% endif %}{% endif %}
     <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-post="{{ url_for('resubscribe_v2.readd', name=c.host, list=c.list) }}" hx-vals='{"hash": "{{ x.hash }}"}' hx-include="#{{ rid }}" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Adds subscription {{ x.sub }}'s receiver back from {{ c.host }}'s committed intent, bound to {{ x.hash }}; nothing is removed or saved"{{ gate('confirm') }}><span class="op-idle">Re-add the receiver for {{ x.sub }}</span><span class="op-busy">Starting…</span></button>{{ how('telemetry-resubscribe', 're-add-the-receiver', compact=True, op='Re-add the receiver') }}</span></div>
   {%- else %}<p class="small">Re-add the receiver is not offered: {{ x.refused }}</p>{% endif %}
   {%- endfor %}
@@ -109,6 +111,26 @@
     {%- endfor %}
   </fieldset>
   <input type="hidden" name="subs" value="{{ c.subs | join(',') }}"><input type="hidden" name="picked" value="1"><input type="hidden" name="previewed" value="{{ names | replace(' ', '') }}">
+  {%- if c.fixit %}
+  {#- Opened from an incident's page (its AI troubleshooting section's proposal; C3106): the
+      confirm carries the incident and the proposal into the run's record, and a fix that
+      repeats an attempt which failed asks what is different now (refused without it). -#}
+  {%- set fx = c.fixit %}
+  {%- if fx.refused %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>Not attached to the incident:</strong> {{ fx.refused }}. A confirm here is refused until the card is opened from the incident's page again.</p></div>
+  {%- endif %}
+  <input type="hidden" name="fixit" value="{{ fx.incident }}"><input type="hidden" name="proposal" value="{{ fx.proposal or '' }}">
+  <p class="small fixit-attached">Proposed in this incident{% if fx.proposal %} (proposal {{ fx.proposal }}){% endif %}: the run is recorded as its next attempt.</p>
+  {%- if fx.repeat and fx.repeat.kind == 'repeat' %}
+  <p class="fixit-flag" role="status">{{ icon('warn', 15) }} <strong>This repeats attempt {{ fx.repeat.attempt }}, which failed: {{ fx.repeat.words }}.</strong> The same operation with the same parameters (parameter hash {{ fx.repeat.params_hash }} both times).</p>
+  <label class="heal-field" for="{{ cid }}-different">What is different now (required, at least three words)<input id="{{ cid }}-different" name="different" type="text" autocomplete="off" placeholder="what changed since attempt {{ fx.repeat.attempt }}"></label>
+  {%- elif fx.repeat and fx.repeat.kind == 'variation' %}
+  <p class="small"><em>A variation of attempt {{ fx.repeat.attempt }}: {% for ch in fx.repeat.changed %}{{ ch.name }} {{ ch.before }} → {{ ch.after }}{% if not loop.last %}; {% endif %}{% endfor %}.</em></p>
+  {%- endif %}
+  {%- if fx.repeat and fx.repeat.complete is defined and not fx.repeat.complete %}
+  <p class="small warn-text">Compared with the attempts that could be read: {{ fx.repeat.error }}.</p>
+  {%- endif %}
+  {%- endif %}
   {%- for x in c.sharing or [] %}
   <div class="notice notice-warning" role="status">{{ icon('warn', 16) }}<p><strong>Subscription {{ x.sub }} is not ticked, and it sends to the same receiver as {{ x.shares | join(' and ') }}</strong> ({{ x.address }} port {{ x.port }}). A device's subscriptions to one receiver share one connection, so {{ x.sub }} may keep the old connection open, and {{ x.shares | join(' and ') }} may rejoin it instead of dialling again. {% if x.offered %}Tick {{ x.sub }} to re-subscribe them together.{% else %}It cannot be ticked here: {{ x.refused }}{% endif %}</p></div>
   {%- endfor %}

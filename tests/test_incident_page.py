@@ -757,7 +757,8 @@ class TestThePage:
         iid = healed()
         body = page(client, iid)
         tag = re.search(r'<div id="incident-live"[^>]*>', body).group(0)
-        assert 'hx-trigger="nmas:drift from:body"' in tag and 'hx-select="#incident-live"' in tag
+        assert 'hx-trigger="nmas:drift from:body, nmas:privileged from:body"' in tag
+        assert 'hx-select="#incident-live"' in tag
         assert 'hx-disinherit="*"' in tag and "every " not in tag
         assert f'hx-get="/v2/incident/{iid}?list={NET}"' in unescape(tag)
 
@@ -777,7 +778,9 @@ class TestThePage:
         iid = cant_fix()
         body = page(client, iid)
         ai = body.split('id="inc-ai"', 1)[1].split("</section>", 1)[0]
-        assert "Not built yet: AI troubleshooting will be here." in ai
+        # The section is built (the fix-it plan's S4): edge-b is in no inventory row that gives
+        # it an identity, so the section says why it is not offered, and keeps the advisory.
+        assert "AI troubleshooting is not offered here: edge-b&#39;s identity is not known" in ai
         assert "advisory" not in ai
         SL.record_advisory(NET, iid, device="edge-b", state="answered", passes=1,
                            words="AI analysis: asked for 2 reads; 2 run; answered", steps=[])

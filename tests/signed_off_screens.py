@@ -269,6 +269,15 @@ SIGNED_OFF = {
                                     "(one incident's own page\"). Built: its first slice, a "
                                     "read-only page for a self-healing incident (an hi- id); "
                                     "compared, docs/fidelity/incident.md"),
+    "incident_handover.html": ("2026-11-12", "board recurring-fixes v2, step 8 (the hand-over's "
+                                             "write-up; text only, kept with the operator's "
+                                             "reports, recurring-fixes-board-v2.md), its own "
+                                             "page drawn in the fix-it build plan's S4 "
+                                             "(/v2/incident/<id>/handover/<version>), counted "
+                                             "as signed off under the Phase 7 mode "
+                                             "(docs/STANDING_APPROVAL_LOG.md, \"Board "
+                                             "recurring-fixes v2\"); compared, "
+                                             "docs/fidelity/incident.md"),
 }
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.

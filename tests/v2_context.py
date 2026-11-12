@@ -4435,8 +4435,13 @@ def _incident_page(client, _lab, _mp):
 
     try:
         assert 'data-state="fixed"' in get(plant("healed")["page"])
-        failed = get(plant("failed")["page"])
+        doc = plant("failed")
+        failed = get(doc["page"])
         assert 'data-state="needs_person"' in failed and "verify failed" in failed
+        # Its hand-over's page (board recurring-fixes v2, step 8) for a version not kept: the
+        # frame and its refusal, said (a kept one is tests/test_fixit_section_v2.py's).
+        r = client.get(f"/v2/incident/{doc['page']}/handover/1?list=Lab")
+        assert r.status_code == 404 and "No write-up 1 is kept" in r.get_data(as_text=True)
         busy = plant("busy")
         took = get(busy["page"])
         assert "Folded into this incident" in took and "AI analysis (advisory" in took
@@ -4461,6 +4466,117 @@ def _incident_page(client, _lab, _mp):
                 _os.rmdir(d)
 
 
+def _fixit_section(client, _lab, _mp):
+    """An incident's AI troubleshooting section (board recurring-fixes v2; the fix-it plan's
+    S4) on r3, in the states its loops draw: a failed attempt (a real Re-subscribe on
+    tests/test_heal_resubscribe.py's box whose verify reads no data, r2's real intent standing
+    in for r3's, as `_resubscribe` does) STOPPED with what it found and Retry's panel; a
+    proposal of both subscriptions, a variation of that attempt's one, and the operation's card
+    opened from it; a hand-over to a team whose relay refuses, its Send again and its kept
+    page. The incident is opened by the incidents store's own writer from two lost-stream
+    alerts; r3's identity, the teams told about Lab's can't-fix and the relay are stand-ins
+    for this provider alone. Lab's incidents, its runs and its troubleshooting records are put
+    back as they were after."""
+    import os as _os
+    import shutil as _shutil
+
+    import pytest
+
+    from modules import config
+    from modules.fixit import incident as F
+    from modules.heal import incidents as HI
+    from modules.heal import resubscribe as R
+    from modules.nsot import capture_job, privileged
+    from tests import test_heal_resubscribe as T
+
+    hx = {"HX-Request": "true"}
+    mp = pytest.MonkeyPatch()
+    folder = _os.path.join(config.get_list_data_dir("Lab"), "privileged")
+    had = set(_os.listdir(folder)) if _os.path.isdir(folder) else set()
+    jobs_before = set(capture_job._jobs)
+    fixit_dir = _os.path.join(config.get_list_data_dir("Lab"), "fixit")
+    fixit_had = _os.path.isdir(fixit_dir)
+    # One folder for the runs, as on a host (`_resubscribe`'s reason), patched before the
+    # incidents store's path is read, so the one written is the one put back.
+    mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+    inc_path = HI.path("Lab")
+    kept = open(inc_path, "rb").read() if _os.path.exists(inc_path) else None
+
+    def lab_src(**kw):
+        src = T.Src(**kw)
+        src.device = lambda h: dict(T.DEV, hostname="r3") if h == "r3" else {}
+        src._intents["r3"] = src._intents["r2"]
+        return src
+
+    def alert(sub, epoch):
+        return {"kind": "alert", "key": f"alert:tel-{sub}", "epoch": epoch, "at": "",
+                "rule": f"NMAS telemetry stream lost: r3 subscription {sub}", "interface": "",
+                "words": f"the alert fired on r3 (subscription {sub})", "subscription": sub,
+                "detect_seconds": "150"}
+
+    try:
+        mp.setattr("modules.heal.resubscribe.Sources",
+                   lambda net, **kw: lab_src(series=T.seq([T.ABSENT])))
+        mp.setattr("modules.commands.run_device_command",
+                   lambda conn, c, read_timeout=None: conn.answer(c))
+        mp.setattr("modules.fixit.section._identity", lambda net, dev: "nb:3")
+        mp.setattr("modules.fixit.handover.offered", lambda net: {
+            "state": "ok", "error": "", "teams": [{"id": "t-walk", "name": "Network team"}]})
+        mp.setattr("modules.notify.delivery.deliver_event", lambda event, ids: {
+            "ok": False, "sent": 0, "failed": 1, "deliveries": [],
+            "error": "the relay refused the message (a stand-in)"})
+        t0 = 1_794_250_000.0                       # the box's clock (`T.Clock`)
+        iid = HI.sight("Lab", "r3", alert("101", t0 - 3600), now=t0 - 3600)["incident"]
+        HI.sight("Lab", "r3", alert("102", t0 - 3599), now=t0 - 3599)
+        page = f"/v2/incident/{iid}?list=Lab"
+        base = "/v2/device/r3/resubscribe"
+        card = client.get(f"{base}?list=Lab&subs=101", headers=hx).get_data(as_text=True)
+        program = re.search(r'hx-vals=\'\{"program": "([0-9a-f]{16})"\}\'', card).group(1)
+        h101 = re.search(r'name="hash::101" value="([0-9a-f]{16})"', card).group(1)
+        r = client.post(f"{base}/confirm?list=Lab", headers=hx, data={
+            "sub": ["101"], "reason": T.REASON, "subs": "101", "picked": "1",
+            "program": program, "previewed": "101", "hash::101": h101})
+        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
+        if job:
+            capture_job.wait(job.group(1), 10)
+        stopped = client.get(page).get_data(as_text=True)
+        assert 'data-state="stopped"' in stopped and "What it found" in stopped, stopped[:400]
+        assert "What the AI would be sent" in stopped
+        # A proposal of both subscriptions, by the record's own writer: a variation of the
+        # attempt that re-subscribed 101 alone; and its card, opened from it.
+        line = F.record_proposal(F.Incident("Lab", iid, "nb:3", "r3", t0 - 3600, ("101", "102")),
+                                 "mercury", R.KEY, {"subs": ["101", "102"]})
+        proposed = client.get(page).get_data(as_text=True)
+        assert "A variation of attempt 1" in proposed, proposed[:400]
+        opened = client.get(f"{base}?list=Lab&subs=101,102&fixit={iid}&proposal={line['proposal']}",
+                            headers=hx).get_data(as_text=True)
+        assert "A variation of attempt 1" in opened and 'name="fixit"' in opened, opened[:400]
+        # A hand-over to a team whose relay refuses: kept, Send again offered; then its page.
+        r = client.post(f"/v2/incident/{iid}/fixit/handover?list=Lab", headers=hx,
+                        data={"team": "t-walk", "note": "read the collector's sessions"})
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Send again" in out, out[:400]
+        again = client.get(page).get_data(as_text=True)
+        assert "Hand-over 1" in again
+        w = client.get(f"/v2/incident/{iid}/handover/1?list=Lab")
+        assert w.status_code == 200 and "Next steps for an engineer" in w.get_data(as_text=True)
+    finally:
+        mp.undo()
+        if kept is None:
+            if _os.path.exists(inc_path):
+                _os.remove(inc_path)
+        else:
+            with open(inc_path, "wb") as fh:
+                fh.write(kept)
+        if not fixit_had and _os.path.isdir(fixit_dir):
+            _shutil.rmtree(fixit_dir)
+        if _os.path.isdir(folder):
+            for name in set(_os.listdir(folder)) - had:
+                _os.remove(_os.path.join(folder, name))
+        for k in set(capture_job._jobs) - jobs_before:
+            capture_job._jobs.pop(k, None)
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -4477,7 +4593,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal, _resubscribe, _heal_run, _incident_page,
+                   _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,

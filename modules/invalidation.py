@@ -374,6 +374,13 @@ DECLARED = {
     # Right / Wrong (C2399): the dry-run record's row (`attention.heal_source`, riding on
     # drift) leaves; the History row it was pressed on draws the mark in place.
     "heal_proposal_v2.mark": ("drift",),
+    # The incident page's AI troubleshooting section (routes/fixit_v2.py): each post draws the
+    # section again in place, and an incident's page open elsewhere (its live region rides on
+    # drift) reads the incident's record again; a hand-over's send moves the notifications log.
+    "fixit_v2.cancel": ("drift",),
+    "fixit_v2.retry": ("drift",),
+    "fixit_v2.handover": ("drift", "notifications"),
+    "fixit_v2.handover_send": ("drift", "notifications"),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a
     # setting's companion; teams, destinations, codes and sends move the notifications record.
     "notify_v2.relay_password": ("settings",),

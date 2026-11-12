@@ -262,6 +262,13 @@ GATES = {
     # Right / Wrong on a dry-run record (board H artboard C, C2399): refuses anyone but a
     # verified person too (modules/heal/decisions.mark), whatever a service is granted.
     "heal_proposal_v2.mark": _g(K, "marks one self-healing dry-run record right or wrong, by its decision's id, as a verified person (Wrong with why it was wrong): recorded in the network's heal decisions with who, when and why, and counted per fix kind as the dry run's false-positive rate; sends nothing to a device"),
+    # The incident page's AI troubleshooting section (board recurring-fixes v2, decision 8:
+    # Troubleshoot, Retry, Cancel and Hand over as Explain; routes/fixit_v2.py). Each refuses
+    # anyone but a verified person too, whatever a service is granted; none sends to a device.
+    "fixit_v2.cancel": _g(K, "records that a verified person cancelled troubleshooting in one incident: one line in its troubleshooting record, with the attempts and the AI spend as they stand; nothing runs, nothing is sent, and the incident stays open"),
+    "fixit_v2.retry": _g(K, "Retry with more information in one incident, as a verified person: the per-incident AI cap asked again at the press (refused naming both figures), then Mercury's own diagnosis names its fix as one catalogue operation, checked against the incident, the heal guards and committed intent; one proposal line recorded with the person's note; no AI call, nothing sent to a device"),
+    "fixit_v2.handover": _g(K, "hands one incident over, as a verified person: its write-up built from the incident's records with no AI, kept as a new version, and sent to the teams ticked (each told about the network's can't-fix) through the notification relay; sends nothing to a device"),
+    "fixit_v2.handover_send": _g(K, "sends one kept hand-over write-up again to the teams ticked (each told about the network's can't-fix), as a verified person; nothing new is kept and nothing is sent to a device"),
     # Settings › Installation › Notifications (board H, artboard B; H9; routes/notify_v2.py):
     # the relay's password, the teams and their destinations, codes and test sends.
     "notify_v2.relay_password": _g(K, "stores the email relay's password a person typed, encrypted in the credential store, never drawn back; recorded with who and when in the installation's settings record"),
