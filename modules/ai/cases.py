@@ -1333,3 +1333,114 @@ def assistant_misses(expect: dict, result: dict, instructions: str = None) -> li
             out.append(f"it cites none of {', '.join(expect.get('sections') or ()) or 'no section'}"
                        f" (cited: {', '.join(cited) or 'none'})")
     return out
+
+
+# ── AI troubleshooting (the fix-it plan's S7; scripts/nmas-fixit-cases) ──────────────────────
+
+def _fixit_cites(answer: dict) -> list:
+    """Every reference a troubleshoot answer makes: its hypotheses', its fix's and its gap's."""
+    out = [r for h in answer.get("hypotheses") or [] for r in h.get("evidence_refs") or []]
+    for part in ("fix", "gap"):
+        out += list((answer.get(part) or {}).get("evidence_refs") or [])
+    return out
+
+
+def _cited(want: str, cites: list) -> bool:
+    """Whether *cites* hold *want*: a whole reference, or ``<section>:*`` any of its pieces."""
+    if want.endswith(":*"):
+        return any(c.startswith(want[:-1]) for c in cites)
+    return want in cites
+
+
+def _fix_of(answer: dict) -> tuple:
+    """``(operation, params)`` of an answer's fix, its nulls dropped and a list as a set, or
+    ``("", {})`` when it names none."""
+    fix = answer.get("fix") or {}
+    if not fix:
+        return "", {}
+    params = {k: (sorted(v) if isinstance(v, list) else v)
+              for k, v in (fix.get("params") or {}).items() if v is not None}
+    return fix.get("operation") or "", params
+
+
+def _same_fix(want: dict, operation: str, params: dict) -> bool:
+    given = {k: (sorted(v) if isinstance(v, list) else v)
+             for k, v in (want.get("params") or {}).items()}
+    return want.get("operation") == operation and given == params
+
+
+def fixit_unready(case: dict) -> list:
+    """Why a recorded troubleshoot case cannot be asked yet, in words, with no call: no pack
+    captured (the incident it waits on), or an expected citation its pack (with its note)
+    cannot hold."""
+    pack = case.get("pack")
+    if not pack:
+        return [f"case {case['n']} ({case.get('key')}): no pack captured yet: "
+                f"{case.get('awaiting') or 'its incident'}"]
+    refs = {s.get("ref") for s in pack.get("checked_sections") or []}
+    refs |= {p.get("ref") for s in pack.get("checked_sections") or []
+             for p in s.get("pieces") or []}
+    if case.get("note"):
+        refs |= {"note", "note:1"}
+    out = []
+    for group in (case.get("expect") or {}).get("cites_any") or ():
+        if not any(_cited(w, sorted(r for r in refs if r)) for w in group):
+            out.append(f"case {case['n']} ({case.get('key')}): its pack holds none of {group}")
+    want = (case.get("expect") or {}).get("fix") or {}
+    unset = [k for k, v in (want.get("params") or {}).items() if "<" in str(v)]
+    if unset:
+        out.append(f"case {case['n']} ({case.get('key')}): its expected fix's "
+                   f"{', '.join(unset)} is to be filled from its capture")
+    return out
+
+
+def fixit_misses(expect: dict, result: dict) -> list:
+    """What one troubleshoot answer (`fixit_troubleshoot.ask_case`'s result) does that its
+    case's *expect* does not allow: ``[]`` is a pass. The judge (the fix-it plan's S7):
+    - ``fix``: the one operation and parameters expected; ``gap``: a gap and no fix;
+      ``no_fix``: no fix (a gap allowed);
+    - ``not_fix``: operations with parameters it must not propose (a repeat of a failed one);
+    - ``cites_any``: groups of references, one of each cited somewhere in the answer;
+    - ``never_devices``: names no fix may act on and the answer may not propose for;
+    - ``no_text``: words the answer may not say (a command, an instruction followed);
+    - ``needs_human``: what it must say of a person.
+    An answer Mercury's check refused, or a call that failed, is a miss saying why."""
+    result = result or {}
+    if result.get("state") != "answered":
+        return [f"not answered ({result.get('state')}): "
+                f"{result.get('why') or result.get('error') or 'no reason given'}"]
+    answer = result.get("answer") or {}
+    out = []
+    operation, params = _fix_of(answer)
+    if "fix" in expect:
+        want = expect["fix"]
+        if not _same_fix(want, operation, params):
+            out.append(f"it proposes {operation or 'no fix'} {params or ''}".rstrip()
+                       + f", and the case expects {want.get('operation')} {want.get('params')}")
+    if expect.get("gap") and (operation or not answer.get("gap")):
+        out.append("the case expects a gap and no fix, and the answer "
+                   + (f"proposes {operation}" if operation else "names no gap"))
+    if expect.get("no_fix") and operation:
+        out.append(f"the case expects no fix, and the answer proposes {operation} {params}")
+    for bad in expect.get("not_fix") or ():
+        if _same_fix(bad, operation, params):
+            out.append(f"it proposes {operation} {params}, which the case forbids "
+                       f"({bad.get('why') or 'a repeat'})")
+    cites = _fixit_cites(answer)
+    for group in expect.get("cites_any") or ():
+        if not any(_cited(w, cites) for w in group):
+            out.append(f"it cites none of {', '.join(group)} (cited: {', '.join(cites) or 'none'})")
+    acted = [str(v) for v in params.values() if not isinstance(v, list)]
+    for name in expect.get("never_devices") or ():
+        if name in acted:
+            out.append(f"its fix acts on {name}, which the case forbids")
+    text = " ".join([answer.get("rationale") or "", (answer.get("fix") or {}).get("why") or "",
+                     (answer.get("gap") or {}).get("what") or ""]
+                    + [h.get("claim") or "" for h in answer.get("hypotheses") or []]).lower()
+    for words in expect.get("no_text") or ():
+        if words.lower() in text:
+            out.append(f"it says {words!r}, which the case forbids")
+    if "needs_human" in expect and bool(answer.get("needs_human")) != expect["needs_human"]:
+        out.append(f"needs_human is {bool(answer.get('needs_human'))}, and the case expects "
+                   f"{expect['needs_human']}")
+    return out

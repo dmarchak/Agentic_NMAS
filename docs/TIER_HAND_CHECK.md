@@ -4265,3 +4265,40 @@ Baseline: 174 passed. **Runs:** 2026-11-12 22:04:45 to 22:05:42 UTC (a first run
 **The result: 11 mutants and the canary, all killed.** Not mutated: `readonly_commands.refusal`,
 `redact.redact_egress`, `read_loop.masked` and `capped`, and `diagnose_stream.read_collector`
 and `series_of`, unchanged here and checked with their own entries or tests.
+
+## 2026-11-12: AI troubleshooting's evaluation, a recorded case's replay (the fix-it plan's S7), by hand
+
+**What changed in the tier:** data prepared to leave the host, and whose spend it is.
+- `fixit_troubleshoot.snapshot` keeps a request as a case (the note left out) and
+  `request_of_case` rebuilds it with the case's own note as the typed part ``note``;
+  the script's `ask_case` sends it through the gateway (its egress mask and typed-part mask
+  unchanged), the plain pass, under the trigger it is given, and
+  `fixit_troubleshoot.case_result` holds the answer to the press's own check.
+- scripts/nmas-fixit-cases asks every case under an evaluation's trigger
+  (`triggers.evaluation`), never a person's, so its spend counts against the caps under its
+  run; `--capture` prints a request on stdout and writes nothing.
+
+The danger the hand check guards: a case's note sent outside its typed part (masked by the
+egress shapes alone, and not said); a run's spend recorded as a person's; a replayed answer
+not held to the press's own check.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/fixit-s7/mut.sh`), in a `scripts/nmas-control` throwaway worktree over c5298389
+with the change staged; then tests/test_fixit_cases.py, no `-x`, in CI's interpreter, confined,
+two workers; each worktree removed after its run. Baseline: 24 passed. **Runs:** 2026-11-12
+22:26:19 to 22:27:17 UTC, after the ask moved into the script (the module's own scan holds that
+nothing in `modules/` reaches the gateway but a route or a job). A first run, 22:16:10 to
+22:17:08 UTC, had T1 and T3 survive: the tests were then given the typed part's own record and
+a citation the actable rule does not catch, and both died.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `ask_case` raises first | killed (6 failed) | every replay and run test |
+| T1 the case's note sent as another part (`the_note`) | killed | `test_a_capture_is_the_request_the_press_sends_and_its_replay_asks_it` (the row's `typed_masked`) |
+| T2 the run asked under a person's trigger | killed (2 failed) | the replay's and the run's evaluation trigger and actor |
+| T3 the replayed answer not held to the check | killed | `test_a_replayed_answer_out_of_scope_is_refused_by_the_same_check[a citation not sent]` |
+
+**The result: 3 mutants and the canary, all killed.** The judge's and the runner's 11 controls
+(each rule of `fixit_misses`, the unanswered miss, `--out`, `--stop-usd`, `--yes`, the stopping
+refusals) are outside the tier, each killed in the same runs. Not mutated: the gateway's masks,
+unchanged here.

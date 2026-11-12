@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""AI troubleshooting, measured on its recorded and blind cases (the fix-it plan's S7;
+docs/HEAL_TO_INTENT.md section 12, "The AI call (S5)"; tests/fixtures/ai_cases/fixit_troubleshoot/
+recorded.json and blind.json).
+
+    # on the host, the deployed copy run as a file: an incident's request, printed as a case's
+    # pack (to stdout; nothing is written there), to be pasted into its case
+    nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --capture --network <network> \\
+        --incident <incident id>
+    # no call: every case's pack captured, and its expectations borne out by it
+    nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --check
+    # the pilot, then the measurement: one call a case a run, recorded as an evaluation
+    nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --network <network> --runs 2 \\
+        --stop-usd 4 --yes --out /tmp/fixit-cases.json
+
+**Capture** (`--capture`): the request Mercury builds for the incident as Troubleshoot with AI
+would send it (`fixit_troubleshoot.request`, then `snapshot`: the evidence pack, the attempts,
+Seen before, the catalogue, the incident; the note left out, each case states its own), printed
+as JSON on stdout. Nothing is asked and nothing is written on the host.
+
+**Check** (`--check`, and first thing in every recording): a case with no pack, an expected
+citation its pack cannot hold, or an expected fix still to be filled from its capture stops the
+recording before anything is asked or spent (5), said by case (`cases.fixit_unready`).
+
+**The recording** asks each case's pack as the press asks its plain pass (a recorded pack reads
+no device: `ask_case`, the same request and the press's own check, `fixit_troubleshoot.case_result`), with an
+evaluation's trigger, never a person's (C1784, C1846): the actor ``evaluation:<run>``, so its
+spend counts against the caps under its run (PHASE8_PLAN 18.3 rule 9). Without ``--yes`` it
+prints the estimate (cases × runs × the measured cost per call, or the per-call cap while
+nothing is measured) and asks nothing (6). Each run is judged by `cases.fixit_misses` (the
+expected operation and parameters or gap, the citations each case must hold, no command, no
+widened scope); per case it reports the passes, whether every run passed (**reliable**) and the
+confidently wrong candidates (a miss on an answer not asking for a person); the blind set's
+share of passing runs against its floor. A refusal that is Mercury's or the provider's stops the
+run with nothing more spent (3); a run past ``--stop-usd`` stops (4). ``--out`` may not be
+inside the checkout (2). ``--set recorded|blind|both`` picks the cases (both by default).
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+FOLDER = os.path.join("tests", "fixtures", "ai_cases", "fixit_troubleshoot")
+SETS = {"recorded": "recorded.json", "blind": "blind.json"}
+#: The gateway's refusals that are Mercury's or the provider's: the run stops.
+STOPS = ("ai_off", "no_key", "over_cap", "feature_cap", "trigger", "workspace_limit",
+         "classified", "provider_down", "rate_limited", "overloaded")
+#: The blind set's floor (15.12).
+BLIND_FLOOR = 0.85
+
+
+def capture(network: str, incident_id: str) -> dict:
+    """``{"pack"}`` or ``{"error"}``: the incident's request, as a case keeps it."""
+    from modules import incident_page
+    from modules.ai import fixit_troubleshoot as T
+    from modules.fixit import section
+
+    found = incident_page.resolve(network, incident_id)
+    if found["found"] != "page":
+        return {"error": f"{incident_id} is no incident of {network} with a page "
+                         f"({found['found']})"}
+    got = section.incident_of(network, found)
+    if got["incident"] is None:
+        return {"error": got["why"]}
+    try:
+        prep = T.request(network, found, got["incident"])
+    except T.Refused as exc:
+        return {"error": str(exc)}
+    return {"pack": T.snapshot(prep, got["incident"])}
+
+
+def load(checkout: str, which: str) -> list:
+    """Every case of the sets *which* names, each with its set's name."""
+    from modules.ai import cases
+
+    names = list(SETS) if which == "both" else [which]
+    out = []
+    for name in names:
+        data = cases.load(os.path.join(checkout, FOLDER, SETS[name]))
+        out += [dict(c, set=name, model=data["model"]) for c in data["cases"]]
+    return out
+
+
+def check(checkout: str, which: str = "both") -> list:
+    from modules.ai import cases
+
+    return [p for c in load(checkout, which) for p in cases.fixit_unready(c)]
+
+
+def ask_case(prep: dict, *, trigger: dict, send=None, today: str = None) -> dict:
+    """One recorded case asked as the press asks its plain pass (v1: a recorded pack reads no
+    device), through the gateway with *trigger* (an evaluation run's, `triggers.evaluation`),
+    the case's note the typed part ``note``; its answer held to the press's own check
+    (`fixit_troubleshoot.case_result`). *send* replaces the provider (tests)."""
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import gateway, triggers
+
+    got = gateway.ask(T.FEATURE, T.PROMPT, T.Troubleshoot, dict(prep["data"]),
+                      actor=triggers.actor_of(trigger), trigger=trigger, context=prep["ctx"],
+                      send=send, today=today, subject=prep["subject"])
+    return T.case_result(prep, got)
+
+
+def estimate(n_cases: int, runs: int) -> dict:
+    from modules.ai import background
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import profiles
+
+    got = background.measured_cost(T.FEATURE)
+    per = float(got["usd_per_call"])
+    worst = profiles.cap_per_call(T.FEATURE)
+    return {"calls": n_cases * runs, "usd_per_call": per, "usd": round(per * n_cases * runs, 4),
+            "worst_usd": round(worst * n_cases * runs, 4), "basis": got["basis"]}
+
+
+def record(checkout: str, actor: str, out: str, runs: int, stop_usd: float, yes: bool,
+           which: str = "both", send=None) -> int:
+    from modules.ai import cases, triggers
+    from modules.ai import fixit_troubleshoot as T
+
+    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-fixit-cases: --out {out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    actor, refusal = cases.evaluation_actor(actor, "fixit-cases")
+    if refusal:
+        print(f"nmas-fixit-cases: {refusal}", file=sys.stderr)
+        return 2
+    problems = check(checkout, which)
+    if problems:
+        for p in problems:
+            print(f"nmas-fixit-cases: not ready: {p}", file=sys.stderr)
+        print(f"nmas-fixit-cases: {len(problems)} problem(s); nothing asked, nothing spent",
+              file=sys.stderr)
+        return 5
+    every = load(checkout, which)
+    est = estimate(len(every), runs)
+    print(f"nmas-fixit-cases: {est['calls']} call(s), about ${est['usd']:.2f}, at most "
+          f"${est['worst_usd']:.2f} ({est['basis']}); stops past ${stop_usd:.2f}")
+    if not yes:
+        print("nmas-fixit-cases: nothing asked: run again with --yes to spend it",
+              file=sys.stderr)
+        return 6
+    by_case, spent, status = {c["n"]: [] for c in every}, 0.0, 0
+    trigger = triggers.evaluation(actor)
+    for run in range(1, runs + 1):
+        for case in every:
+            prep = T.request_of_case(case["pack"], case.get("note") or "")
+            t0 = time.monotonic()
+            got = ask_case(prep, trigger=trigger, send=send)
+            took = time.monotonic() - t0
+            spent += float(got.get("cost_usd") or 0)
+            kind = (got.get("error") or "").split(":", 1)[0]
+            if got["state"] == "failed" and kind in STOPS:
+                print(f"nmas-fixit-cases: run {run} case {case['n']} refused ({got['error']}); "
+                      f"stopped, ${spent:.4f} spent", file=sys.stderr)
+                status = 3
+                break
+            misses = cases.fixit_misses(case["expect"], got)
+            by_case[case["n"]].append({
+                "run": run, "state": got["state"], "misses": misses,
+                "confidently_wrong_candidate": cases.confidently_wrong_candidate(
+                    misses, got.get("answer")),
+                "call_id": got.get("call_id"), "cost_usd": got.get("cost_usd"),
+                "latency_s": round(took, 2)})
+            print(f"run {run} case {case['n']} ({case['key']}, {took:.1f} s): "
+                  + ("pass" if not misses else "MISS: " + "; ".join(misses)), flush=True)
+            if spent > stop_usd:
+                print(f"nmas-fixit-cases: ${spent:.4f} spent, past --stop-usd; stopped",
+                      file=sys.stderr)
+                status = 4
+                break
+        if status:
+            break
+    sets = {c["n"]: c["set"] for c in every}
+    summary = [{"n": n, "set": sets[n], "passed": sum(not r["misses"] for r in rs),
+                "runs": len(rs), "reliable": bool(rs) and all(not r["misses"] for r in rs),
+                "confidently_wrong": sum(r["confidently_wrong_candidate"] for r in rs)}
+               for n, rs in by_case.items()]
+    blind = [s for s in summary if s["set"] == "blind"]
+    blind_runs = sum(s["runs"] for s in blind)
+    blind_share = (sum(s["passed"] for s in blind) / blind_runs) if blind_runs else None
+    recorded = [s for s in summary if s["set"] == "recorded"]
+    met = (all(s["reliable"] for s in recorded) and not any(s["confidently_wrong"]
+                                                            for s in summary)
+           and (blind_share is None or blind_share >= BLIND_FLOOR) and not status)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"actor": actor, "runs": by_case, "summary": summary, "spent_usd": spent,
+                   "status": status, "blind_share": blind_share, "met": met,
+                   "prompt": list(T.PROMPT), "model": every[0]["model"] if every else ""},
+                  fh, indent=2, sort_keys=True)
+    for s in summary:
+        print(f"case {s['n']} ({s['set']}): {s['passed']} of {s['runs']} runs passed, "
+              f"{'reliable' if s['reliable'] else 'NOT reliable'}, "
+              f"{s['confidently_wrong']} confidently wrong candidate(s)")
+    print(f"nmas-fixit-cases: ${spent:.4f} spent; "
+          + (f"blind {blind_share:.0%} against the floor of {BLIND_FLOOR:.0%}; "
+             if blind_share is not None else "")
+          + ("the bar is met" if met else "the bar is not met"))
+    return status
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--checkout", default=ROOT)
+    ap.add_argument("--network", default="")
+    ap.add_argument("--incident", default="")
+    ap.add_argument("--capture", action="store_true")
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--set", default="both", choices=("recorded", "blind", "both"))
+    ap.add_argument("--runs", type=int, default=10)
+    ap.add_argument("--stop-usd", type=float, default=4.0)
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--yes", action="store_true")
+    a = ap.parse_args(argv)
+    if a.check:
+        problems = check(a.checkout, a.set)
+        for p in problems:
+            print(f"nmas-fixit-cases: not ready: {p}")
+        print(f"nmas-fixit-cases: {len(problems)} problem(s)")
+        return 5 if problems else 0
+    if a.capture:
+        if not a.network or not a.incident:
+            print("nmas-fixit-cases: --capture needs --network and --incident", file=sys.stderr)
+            return 2
+        got = capture(a.network, a.incident)
+        if got.get("error"):
+            print(f"nmas-fixit-cases: {got['error']}", file=sys.stderr)
+            return 3
+        print(json.dumps({"pack": got["pack"]}, indent=2, sort_keys=True))
+        return 0
+    if not a.out:
+        print("nmas-fixit-cases: --out is required", file=sys.stderr)
+        return 2
+    return record(a.checkout, a.actor, a.out, a.runs, a.stop_usd, a.yes, a.set)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

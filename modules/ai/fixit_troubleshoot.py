@@ -655,3 +655,57 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     words = "The AI named no fix: " + (_cut(answer.rationale) or "it gave no reason")
     out.update(state="no_fix", words=words, proposal=keep(words, shown=out["shown"]))
     return out
+
+
+# ── A recorded case (the fix-it plan's S7: scripts/nmas-fixit-cases) ──────────────────────────
+
+#: What a case keeps of a request: everything the call and its check read, the note apart.
+CASE_KEYS = ("pack", "checked_sections", "data", "ctx", "subject", "actable", "topo")
+#: The topology's fields the check reads (`check`), kept with a case.
+TOPO_KEYS = ("sent", "why", "ids", "names", "summary", "yaml")
+
+
+def snapshot(prep: dict, incident) -> dict:
+    """A case's ``pack``: the request *prep* (`request`) as the call is sent it and its check
+    reads it, the note taken out (a case states its own), and the incident it was built for.
+    JSON-able; a read of nothing."""
+    out = {k: prep[k] for k in CASE_KEYS if k != "topo"}
+    out["topo"] = {k: (prep.get("topo") or {}).get(k) for k in TOPO_KEYS}
+    out["data"] = {k: v for k, v in prep["data"].items() if k != "note"}
+    out["checked_sections"] = [s for s in prep["checked_sections"] if s.get("name") != NOTE]
+    out["incident"] = {"network": incident.network, "id": incident.id,
+                       "device": incident.device, "subscriptions": list(incident.subscriptions)}
+    return json.loads(json.dumps(out, sort_keys=True, default=str))
+
+
+def request_of_case(pack: dict, note: str = "") -> dict:
+    """The request a recorded case's *pack* (`snapshot`) is asked with, its *note* the case's:
+    the request `request` built, read from the record, with no store, device or service read."""
+    note = " ".join(str(note or "").split())
+    return {"pack": pack["pack"], "topo": dict(pack.get("topo") or {}),
+            "checked_sections": list(pack["checked_sections"]) + [note_section(note)],
+            "data": dict(pack["data"], note=note), "ctx": dict(pack["ctx"]),
+            "subject": dict(pack["subject"]), "actable": list(pack["actable"])}
+
+
+def case_result(prep: dict, got: dict) -> dict:
+    """A recorded case's answer (*got*, the gateway's result of its plain pass, asked by
+    scripts/nmas-fixit-cases under an evaluation's trigger) held to the press's own check and
+    the read loop's actable rule: ``{"state": "answered"|"unchecked"|"failed", "answer", "why",
+    "call_id", "cost_usd", "error"}``, *answer* the checked answer as a dict (its fix and gap
+    included). Calls nothing; nothing is kept, proposed or run."""
+    out = {"state": "failed", "answer": None, "why": "", "call_id": got.get("call_id") or "",
+           "cost_usd": float(got.get("cost_usd") or 0.0),
+           "error": f"{got.get('error') or ''}: {got.get('detail') or ''}".strip(": ")}
+    if not got.get("ok"):
+        return out
+    answer = got["output"]
+    why = check(answer, prep["pack"], prep["checked_sections"], prep["topo"])
+    if not why:
+        outside = [str(v) for v in acts_on(answer) if str(v) not in set(prep["actable"])]
+        if outside:
+            why = (f"the answer acts on {outside[0]}, which is not one the finding names "
+                   f"({', '.join(prep['actable'])})")
+    out["answer"] = answer.model_dump(mode="json")
+    out.update(state="unchecked" if why else "answered", why=why, error="")
+    return out

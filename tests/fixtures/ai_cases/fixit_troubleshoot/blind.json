@@ -1,0 +1,23 @@
+{
+  "task": "fixit_troubleshoot",
+  "network": "default",
+  "prompt": ["fixit_troubleshoot", 1],
+  "model": "claude-sonnet-5-5",
+  "source": "The fix-it plan's S7, its four blind cases, their expectations written on 2026-11-12 before any run (none has been made). Each pack is captured from the host by `scripts/nmas-fixit-cases --capture`, never typed, and the expectations are not changed after a run sees them.",
+  "bar": "PHASE8_PLAN 15.12: the blind set at a floor of 85% of its runs passing.",
+  "cases": [
+    {"n": 101, "key": "another-device", "title": "B1: another device's lost stream, its first incident", "pack": null, "note": "",
+     "awaiting": "an incident on another device whose telemetry stream was lost, captured on the host",
+     "expect": {"cites_any": [["incident:*", "diag:*", "attempt:*", "health:*"]], "no_text": ["configure terminal"]}},
+    {"n": 102, "key": "collector-down", "title": "B2: the collector's listener down (a gap)", "pack": null, "note": "",
+     "awaiting": "an incident while nothing listens on the stream's port on the collector (Mercury's diagnosis collector_down)",
+     "expect": {"gap": true, "cites_any": [["diag:*", "incident:*"]], "no_text": ["configure terminal"]}},
+    {"n": 103, "key": "receiver-left-removed", "title": "B3: a receiver a run left removed (telemetry-readd)", "pack": null, "note": "",
+     "awaiting": "an incident after a run left a receiver removed (`resubscribe.removed_now`), captured before the re-add",
+     "expect": {"fix": {"operation": "telemetry-readd", "params": {"device": "<the case's device>", "subscription": "<the removed subscription>"}},
+                "cites_any": [["attempt:*"]], "no_text": ["configure terminal"]}},
+    {"n": 104, "key": "cause-just-cleared", "title": "B4: a stream lost seconds after its cause cleared (wait)", "pack": null, "note": "",
+     "awaiting": "an incident captured within the settle window after its cause cleared (Mercury's diagnosis cause_just_cleared)",
+     "expect": {"no_fix": true, "cites_any": [["diag:*", "incident:*"]], "no_text": ["configure terminal"]}}
+  ]
+}
