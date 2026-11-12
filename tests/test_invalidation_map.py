@@ -57,6 +57,19 @@ def shipped_subscriptions() -> list:
     return out
 
 
+def store_subscriptions() -> set:
+    """The keys Needs attention's background store subscribes to on the SERVER (C3166,
+    modules/attention_store.py `mark`, called for every announcement and every route's declared
+    invalidation): each key that marks one of its sources to compute again, or (an
+    acknowledgement) its page to assemble again. A page's list hears the store's own key,
+    `attention`, instead."""
+    from modules import attention, attention_store
+
+    return {k for k in I.VOCABULARY
+            if attention_store._touched([k]) - {attention_store._UNDECLARED}
+            and k in attention.ATTENTION_KEYS}
+
+
 def _defined(name: str) -> bool:
     """Defined in a component (the same population `shipped_subscriptions` scans)."""
     pat = re.compile(r"(?:^|\s)(?:async\s+)?function\s+%s\s*\(" % re.escape(name), re.M)
@@ -233,11 +246,23 @@ class TestSubscriptions:
         assert missing == []
 
     def test_every_declared_key_has_a_subscriber_or_a_reason(self):
-        subscribed = {k for k, _, _, _ in shipped_subscriptions()}
+        """A subscriber is a page's panel (the shipped scripts) or, since C3166, Needs
+        attention's background store, which hears a key on the server and recomputes what it
+        moves (`store_subscriptions`)."""
+        subscribed = {k for k, _, _, _ in shipped_subscriptions()} | store_subscriptions()
         orphans = sorted(I.keys_in_use() - subscribed - set(NOT_YET_SUBSCRIBED))
         assert orphans == [], (
             f"declared and subscribed to by nothing: {orphans}. Subscribe a "
             "panel, or record the step that will in NOT_YET_SUBSCRIBED.")
+
+    def test_the_store_subscribes_to_what_moves_a_row_and_nothing_else(self):
+        """The control on the server's subscriber: a key that moves a row (an approval, a
+        scheduled job's runs) is the store's, a running card's step is not, and the store's own
+        key never is (it would mark itself)."""
+        got = store_subscriptions()
+        assert {"approvals", "scheduled_jobs", "ci_agreement", "credential_health",
+                "acknowledgements"} <= got
+        assert not {"device_progress", "in_progress", "attention"} & got
 
     def test_no_ghost_in_the_waiting_list(self):
         subscribed = {k for k, _, _, _ in shipped_subscriptions()}

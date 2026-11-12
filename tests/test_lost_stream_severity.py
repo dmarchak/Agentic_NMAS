@@ -494,7 +494,8 @@ def test_a_folded_rows_action_opens_it_in_a_real_browser(world, monkeypatch):  #
     monkeypatch.setattr(A, "SOURCES", (lambda: source(copy.deepcopy(v), reach),))
     # One network holds each router here, so its Re-subscribe is offered.
     monkeypatch.setattr(A, "_device_networks", lambda: {d: [T.NET] for d in three})
-    A._shared.clear()
+    from modules import attention_store
+    attention_store.clear()             # nothing held from before (C3166's store)
     top = "document.querySelector('details.att')"
     kids = "document.querySelectorAll('details.att details.att')"
     with browser.Served(nmas.app) as srv, browser.Browser() as b:
@@ -518,7 +519,7 @@ def test_a_folded_rows_action_opens_it_in_a_real_browser(world, monkeypatch):  #
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
-            A._shared.clear()
+            attention_store.clear()
     assert "1 item" in summary and "1 warning" in summary and "critical" not in summary
     assert [open_ for _id, open_ in before] == [False, False, False]
     assert [i.split(":")[1] for i, _ in before] == ["incident"] * 3

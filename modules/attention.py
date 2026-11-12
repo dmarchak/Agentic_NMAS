@@ -32,7 +32,6 @@ cache, rather than a guess.
 
 import logging
 import re
-import threading
 import time
 from urllib.parse import urlencode
 
@@ -7591,7 +7590,8 @@ SOURCE_KEYS = {
     "pushed_source": ("app_version",),
     # C2514: a deploy is a restart, so this process starts with it (its first computation
     # reads the record); the warm-up's end changes the row too, and announces nothing, so the
-    # shared computation's SHARED_SECONDS bounds how long a cleared row is still drawn.
+    # background store's cadence (`attention_store.cadence`) bounds how long a cleared row is
+    # still drawn.
     "readiness_source": ("app_version",),
     "host_steps_source": ("app_version",),
     "adjacency_source": ("adjacencies",),
@@ -7650,12 +7650,11 @@ SOURCE_KEYS = {
     "controller_python_source": ("sdn",),
 }
 
-#: Every key that can move a row, and a person's acknowledgement.
+#: Every key that can move a row, and a person's acknowledgement: what marks the background
+#: store's sources (`attention_store.mark`, C3166), and what the client relays. A row that
+#: clears by TIME is read again by the store at that moment (`clears_at`): nothing announces it.
 ATTENTION_KEYS = tuple(sorted({k for ks in SOURCE_KEYS.values() for k in ks}
                               | {"acknowledgements"}))
-
-#: The event the page and the count also re-read on: the moment a row clears by TIME.
-DUE_EVENT = "attention_due"
 
 
 def badge_of(rows: list, results: list, acknowledged: list = ()) -> dict:
@@ -8310,52 +8309,40 @@ def _expected_on_cards(results: list) -> list:
     return out
 
 
-#: How long one computation serves every tab with no change announced (C1262): rows that move
-#: by time alone (a row clearing by time, a source past its promise) are at most this late. The
-#: badge's reads come in bursts, one per open tab per announcement (C1262: 620 reads in 136
-#: bursts, about 4.6 a burst, one every ~13 s), and the host's log of 2026-11-01 to 03 measured
-#: a computation at 0.9 to 2.5 s; 10 s is about 4x the slower.
-SHARED_SECONDS = 10.0
-_shared: dict = {}
-_shared_lock = threading.Lock()
+def every_source() -> list:
+    """The sources a computation asks, for the network it is for: `SOURCES`, and the Grafana
+    alerts source once more for each other network's own Grafana."""
+    return _with_every_configuration(SOURCES)
 
 
-def needs_attention_shared(clock=time.time) -> dict:
-    """`needs_attention()`, computed ONCE for every tab and request asking for the same network
-    until a change is announced (`invalidation.generation`: an announcement, or a mutating
-    route's declared invalidation) or `SHARED_SECONDS` pass (C1262: each open tab recomputed
-    every source on every announcement, the badge at p50 2.5 s and p90 7.7 s on the host,
-    3.9 h of server time in 31 h). One computes while the others wait for its answer, so a
-    burst is one computation. Each caller gets its own copy. The value a computation stores is
-    keyed by the generation read BEFORE it began, so one begun before a change is never
-    served after it."""
-    import copy
-
-    from modules import invalidation
-
-    key = _page_network()
-    with _shared_lock:
-        gen = invalidation.generation()
-        got = _shared.get(key)
-        if got is None or got["gen"] != gen or clock() - got["at"] >= SHARED_SECONDS:
-            got = {"gen": gen, "at": clock(), "value": needs_attention()}
-            _shared[key] = got
-        return copy.deepcopy(got["value"])
+def run_source(src) -> tuple:
+    """One source asked: ``(its result, "")``, or, when its ADAPTER raised, ``(a result saying
+    it could not be read, the error)``: still a row, never an absence. The background store
+    (`modules.attention_store`) keeps the last good value instead, and says the refresh
+    failed."""
+    try:
+        return src(), ""
+    except Exception as exc:                       # noqa: BLE001
+        name = getattr(src, "__name__", "source")
+        log.error("attention: source %s raised: %s", name, exc)
+        why = f"its adapter raised {type(exc).__name__}: {exc}"
+        return source_result(name, name, read_at=time.time(), took_ms=0, error=why), why
 
 
 def needs_attention(sources=None) -> dict:
-    """The page: every row from every source, worst first, and every source
-    with its read time, so an empty page says what it looked at."""
-    results = []
-    for src in (_with_every_configuration(SOURCES) if sources is None else sources):
-        try:
-            results.append(src())
-        except Exception as exc:                   # noqa: BLE001
-            # A source whose ADAPTER raised is still a row, never an absence.
-            name = getattr(src, "__name__", "source")
-            log.error("attention: source %s raised: %s", name, exc)
-            results.append(source_result(name, name, read_at=time.time(), took_ms=0,
-                                         error=f"its adapter raised {type(exc).__name__}: {exc}"))
+    """The page, computed now: every row from every source, worst first, and every source
+    with its read time, so an empty page says what it looked at. A LIVE computation, for the
+    callers that must read live (the record of sightings, a test); a page draws the value
+    the background holds (`modules.attention_store.read`, C3166)."""
+    return assemble([run_source(src)[0]
+                     for src in (every_source() if sources is None else sources)])
+
+
+def assemble(results: list) -> dict:
+    """The page from each source's result (`run_source`), in order: attached, folded, the
+    acknowledged taken out, worst first, with the badge and What was checked. *results* is
+    changed in place (each row's reading age); a caller that keeps them passes copies."""
+    results = list(results)
     # C539 (3): every row shows the age of its reading. A row that names none is as old as
     # the value its source shows (a stored reader's value, or this request's live read).
     for res in results:

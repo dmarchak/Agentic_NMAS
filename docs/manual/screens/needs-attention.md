@@ -95,17 +95,44 @@ The landing page answers one question: does anything need you?
   person whose policy allowed it after: the lines are the configuration lines it re-applied,
   never the `exit` that closes a sub-mode.
 
+## How current it is {#how-current}
+
+The page never waits on its sources. {{product}} reads them in the background, each on its own
+schedule, and the page draws what was last read, at once. So every value says how old it is:
+
+- **"N sources checked 20 s ago, the oldest 2 min ago"**, on the line above the list: when the
+  list was last put together, and how old the oldest of its sources' reads is.
+- **What was checked** has a **Checked** column: when each source was last read. **Value
+  from** is older for a source that reports a stored reading (the time of that reading).
+- A source is read about every 20 seconds while someone has a page of its network open, or
+  while it has a row; about every 2 minutes otherwise. Templates behind the shipped version
+  is read only after a commit to the network's repository. Anything {{product}} does that can
+  move a row (a deploy, a heal, an approval decided) has its sources read again within about
+  2 seconds of it, once however many steps it announced, so a fix you make clears its row
+  within seconds. An acknowledgement you record takes its row off the list at once, on your
+  page and on every other open page.
+- **"Reading Needs attention …"** is drawn when {{product}} has just started and has not read
+  the sources yet. The page fills itself when the first read lands; there is nothing to press.
+- **"Its refresh … failed"** on a source's line, and "N refreshes failed, the last value kept"
+  above the list, mean its last read raised an error: the value shown is its last good one,
+  and its Checked time says how old it is. A source whose value is older than it promised is a
+  row of its own ("… has not been read within its promise").
+
+There is no refresh button: a page left open updates itself as the reads land.
+
 ## The count in the sidebar {#count}
 
 Beside "Needs attention" in the sidebar, on every page, is the number of rows this page shows
 now, coloured by the worst of them: red for a critical row, amber for warnings only, grey when
 every row is unknown. It is this page's own count, from the same rows, and it changes the
-moment a row appears or clears, without a reload: it listens for everything that can move a
-row, and it reads again at the moment a row clears by time (an approval expiring, a restart's
-seven days). While live updates are stopped, or a source it counts is older than it promised,
-it is drawn faded with a dashed outline, and its hover says it may be out of date; it catches
-up when they come back. A "?" means the count could not be read, which is not the same as
-nothing needing attention.
+moment a row appears or clears, without a reload: {{product}} sends it to every open page of
+that network whenever it moves, including the moment a row clears by time (an approval
+expiring, a restart's seven days); after it loads, the page asks for it again only when you
+acknowledge a row on it. "…"
+means the first read has not landed yet. While live updates are stopped, or a source it counts
+is older than it promised, it is drawn faded with a dashed outline, and its hover says it may
+be out of date; it catches up when they come back. A "?" means the count could not be read,
+which is not the same as nothing needing attention.
 
 ## Where the rows come from {#sources}
 

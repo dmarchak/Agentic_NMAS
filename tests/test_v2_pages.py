@@ -252,10 +252,16 @@ class TestTheLanding:
         assert "Pl4ntedC0mmunity" not in html and "snmp-server community" in html
 
     def test_the_list_refetches_on_every_reader_it_draws_from(self, landing):
+        """C3166: a reader's announcement reaches Needs attention's background store, which
+        recomputes the sources it moves and announces `attention`, which the list hears: each
+        reader's key marks a source, and the list listens for the store, never the reader."""
+        from modules import attention, attention_store
         html = _client().get("/v2/attention").get_data(as_text=True)
+        assert "nmas:attention from:body" in html
         for key in ("job_health", "alerts", "integration_health", "ci_verdict",
                     "app_version", "reachability", "netbox", "remote", "baselines", "drift"):
-            assert f"nmas:{key} from:body" in html, key
+            assert f"nmas:{key} from:body" not in html, key
+            assert attention_store._touched([key]) & set(attention.SOURCE_KEYS), key
 
     def test_recent_changes_come_from_the_receipts_and_an_unreadable_record_is_said(self, landing,
                                                                                     monkeypatch):

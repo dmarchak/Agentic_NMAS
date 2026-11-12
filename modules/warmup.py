@@ -35,11 +35,13 @@ def _ai_calls() -> None:
 
 
 def _needs_attention() -> None:
-    """Needs attention's sources gathered once (`/v2/attention-count`'s own computation, for
-    the installation's current network): what every page's sidebar badge asks first."""
-    from modules import attention
+    """Needs attention's sources computed once for the installation's current network, into
+    the background store every page's sidebar badge and Needs attention read
+    (`attention_store.refresh`, C3166): until it lands they draw "Reading …"."""
+    from modules import attention_store
+    from modules.config import get_current_list_name
 
-    attention.needs_attention_shared()
+    attention_store.ensure(get_current_list_name())
 
 
 #: The declared steps, in order: ``(name, what it warms, the function)``. Measured on a cold
@@ -118,6 +120,13 @@ def _go() -> None:
                                   seconds=secs, error=error)
         log.info("warm-up: %s %s in %.2f s", run["rows"][i]["step"],
                  "FAILED" if error else "done", secs)
+    # The warm-up's end moves Needs attention's readiness row and announces nothing: the
+    # sources that read it are marked (C3166), so the row clears within one debounce.
+    try:
+        from modules import attention_store
+        attention_store.mark(("app_version",), "warm-up")
+    except Exception as exc:                            # noqa: BLE001 (its cadence reads it)
+        log.warning("warm-up: Needs attention's store was not told the warm-up ended: %s", exc)
 
 
 def status() -> dict:

@@ -255,11 +255,16 @@ class TestDrawn:
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         assert "nmas:adjacencies from:body" in open(
             os.path.join(root, "templates/v2/_neighbours.html")).read()
-        # Needs attention and the sidebar's count listen to ONE generated list (2026-10-02):
-        # the key is in it, and both templates draw it.
-        from modules import attention
+        # The key reaches Needs attention's background store (C3166), which recomputes the
+        # adjacency sources and announces `attention`; the list draws the ONE generated trigger,
+        # and the sidebar's count is pushed and listens for nothing.
+        from modules import attention, attention_store
         assert "adjacencies" in attention.ATTENTION_KEYS
-        for path in ("templates/v2/_attention.html", "templates/v2/_count.html"):
-            assert "{{ attention_trigger }}" in open(os.path.join(root, path)).read(), path
+        assert {"adjacency_source", "adjacency_log_source"} <= \
+            attention_store._touched(["adjacencies"])
+        assert "{{ attention_trigger }}" in open(
+            os.path.join(root, "templates/v2/_attention.html")).read()
+        assert "attention_trigger" not in open(
+            os.path.join(root, "templates/v2/_count.html")).read()
         # Today's panel subscribed to it itself (`nmas_attention.js`) until it left with
         # today's index at 7.8 (P7-27).

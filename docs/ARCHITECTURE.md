@@ -479,6 +479,18 @@ and others have left since too.
   hash against the confirmed one, the actor, the checks that RAN (or why
   none did), rollback, and the commit. The follow-up window is not built,
   and each row says so
+- **[modules/attention_store.py](modules/attention_store.py)** — C3166 slice 1 (the operator's
+  rule, 2026-11-12: no page load or badge poll waits on a computation): Needs attention held in
+  the background, per network. One worker computes each source on its own cadence (20 s while
+  viewed or alerting, 120 s idle, the template check only when the repository head moves, a row
+  that clears by time at that moment); every announcement and route invalidation marks only the
+  sources whose `attention.SOURCE_KEYS` it touches, computed once 2 s after the first mark; a
+  failed refresh keeps the last good value and says so. `/v2/`, `/v2/attention` and
+  `/v2/attention-count` read the held value and its age; the sidebar's count is pushed to the
+  network's Socket.IO room (`nmas_attention`), the list hears `attention`; an acknowledgement
+  re-assembles at once (no source read) and the acting page's list and count re-read on its
+  response's `acknowledgements`. Display only: the heal
+  pipeline and deploys read live (tests/test_attention_display_only.py).
 - **[modules/attention.py](modules/attention.py)** — Stage 7.2: Needs
   attention. One row constructor (what, devices, since, cause, operands,
   the one action, a level, an empty triage slot for Stage 8) that refuses a

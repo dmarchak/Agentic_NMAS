@@ -344,9 +344,19 @@
     root.__nmasTick = root.setInterval(tick, TICK_MS);
   }
 
+  /* PURE: the network a page is about, as its sidebar count names it (`data-network`, drawn
+     from the page's own network): the live connection names it, so the server joins this
+     page to that network's room and pushes it that network's Needs attention count (C3166).
+     '' on a page with no count: the server takes the person's own network. */
+  function pageNetwork(doc) {
+    var el = (doc && doc.getElementById) ? doc.getElementById('attention-count') : null;
+    return (el && el.getAttribute && el.getAttribute('data-network')) || '';
+  }
+
   if (root.io && !root.__nmasSocket) {
     try {
-      var sock = root.io();
+      var net = pageNetwork(root.document);
+      var sock = net ? root.io({query: {network: net}}) : root.io();
       root.__nmasSocket = sock;
       sock.on('connect', function () {
         live.sid = sock.id || '';
@@ -404,7 +414,7 @@
     onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml, onHeartbeat: onHeartbeat,
     stamp: stamp, ageHtml: ageHtml, tick: tick,
     live: function () { return {state: live.state, since: live.since}; },
-    liveDetail: liveDetail,
+    liveDetail: liveDetail, pageNetwork: pageNetwork,
     keysFrom: keysFrom, staleMarkerHtml: staleMarkerHtml, _subs: subs,
     log: function () { return log.slice(); },
   };

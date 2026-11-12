@@ -16,10 +16,9 @@
      vocabulary; the readers that announce them). */
   var KEYS = ['reachability', 'integration_health', 'alerts', 'drift', 'dashboards', 'reads',
               'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines',
-              // C2347's reader: the scheduled quality jobs' runs.
-              'scheduled_jobs',
-              // Workstream 0's reader: the two CI runners on each commit.
-              'ci_agreement',
+              // (C3166: `scheduled_jobs`, `ci_agreement`, `approvals` and `credential_health`
+              // were heard only by Needs attention, whose keys now reach its background store,
+              // never the page: no page region listens for them, so none is relayed.)
               // A batch deploy run as a job (P.9 d2), and the goldens it commits.
               'deploy_job', 'goldens',
               // C38's reader: the routing adjacencies intent implies.
@@ -28,16 +27,19 @@
               'restarts',
               // A person acknowledged an event row (modules/acknowledgements.py).
               'acknowledgements',
+              // Needs attention's background store recomputed and what the list draws moved
+              // (modules/attention_store.py, C3166): the list reads the held value again.
+              'attention',
               // A device's SSH host key kept, refused or re-keyed (modules/host_keys.py, C906).
               'host_keys',
               // What else moves a Needs attention row (attention.SOURCE_KEYS).
-              'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back',
+              'device_state', 'intent', 'inventory', 'pending', 'rolled_back',
               // A capture preview's reads finished (modules/nsot/capture_job.py): the
               // device page's Capture card reads its preview (7.3).
               'capture_preview',
               // An operation the app ran released a device: a card refused because it was
               // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
-              'device_holds', 'rotation', 'credential_health',
+              'device_holds', 'rotation',
               // Where each record store is and whether a moved one still matches its files
               // (the records-check reader): the Records database card's stores.
               'records',
@@ -1318,7 +1320,6 @@
   }
   function relayReachability() { relay('reachability'); }
   function relayIntegrationHealth() { relay('integration_health'); }
-  function relayCredentialHealth() { relay('credential_health'); }
   function relayRecords() { relay('records'); }
   function relayCoverageReporting() { relay('coverage_reporting'); }
   function relayAlerts() { relay('alerts'); }
@@ -1328,8 +1329,6 @@
   function relaySettings() { relay('settings'); }
   function relayJobHealth() { relay('job_health'); }
   function relayCiVerdict() { relay('ci_verdict'); }
-  function relayScheduledJobs() { relay('scheduled_jobs'); }
-  function relayCiAgreement() { relay('ci_agreement'); }
   function relayAppVersion() { relay('app_version'); }
   function relayNetbox() { relay('netbox'); }
   function relayRemote() { relay('remote'); }
@@ -1341,10 +1340,10 @@
   // A fault drill declared (modules/fault_drills.py): History draws each declaration.
   function relayFaultDrills() { relay('fault_drills'); }
   function relayAcknowledgements() { relay('acknowledgements'); }
+  function relayAttention() { relay('attention'); }
   function relayHostKeys() { relay('host_keys'); }
   // What else moves a Needs attention row (attention.SOURCE_KEYS, the operator,
   // 2026-10-02): the page and the sidebar's count could not hear these.
-  function relayApprovals() { relay('approvals'); }
   function relayDeviceState() { relay('device_state'); }
   function relayIntent() { relay('intent'); }
   function relayInventory() { relay('inventory'); }
@@ -1515,9 +1514,10 @@
     }
   }
 
-  /* The sidebar's count (on every v2 page): marked while it may be out of date, and read
-     again at the moment a row clears by time (data-next-change-at), once per moment.
-     Run on the frame's one-second tick; it asks nothing unless a row is due. */
+  /* The sidebar's count (on every v2 page): marked while it may be out of date. Run on the
+     frame's one-second tick and after each push; it asks nothing. A row that clears by time
+     (data-next-change-at) is read again by the background store at that moment, which pushes
+     the count (C3166): the page never asks for it. */
   function drawBadge() {
     var el = root.document.getElementById('attention-count');
     if (!el) return;
@@ -1534,11 +1534,60 @@
       el.setAttribute('title', el.getAttribute('data-title') || '');
       el.removeAttribute('data-title');
     }
-    var due = Date.parse(el.getAttribute('data-next-change-at') || '');
-    if (due === due && now >= due && el.getAttribute('data-due-fired') !== String(due)) {
-      el.setAttribute('data-due-fired', String(due));
-      if (root.htmx) root.htmx.trigger(root.document.body, 'nmas:attention_due');
-    }
+  }
+
+  /* PURE: the sidebar count's parts for a pushed badge (`attention_store.PUSH_EVENT`: its
+     count, worst level, and when a row next clears by time and its oldest source passes its
+     promise): the class, text and title templates/v2/_count.html draws for the same badge. */
+  function badgeParts(b) {
+    var n = (b && b.n) || 0, level = (b && b.level) || '';
+    var worst = {danger: 'critical', warning: 'a warning', unknown: 'unknown'}[level] || level;
+    return {className: n ? 'count count-' + level : 'count count-zero', text: String(n),
+            title: n ? n + ' item' + (n === 1 ? '' : 's') + '; the worst is ' + worst
+              : 'Nothing needs attention',
+            nextChangeAt: (b && b.next_change_at) || '', staleAt: (b && b.stale_at) || ''};
+  }
+
+  /* PURE: whether a pushed badge assembled at *pushedAt* is older than the one drawn, assembled
+     at *drawnAt* (ISO times in one format compare as text); unknown times are never older. */
+  function pushIsOlder(pushedAt, drawnAt) {
+    return !!(pushedAt && drawnAt && String(pushedAt) < String(drawnAt));
+  }
+
+  /* The count pushed over the page's live connection when it moves (C3166, the operator's
+     addition 3: pushed, never polled): drawn in place, for this page's network only, never
+     over a newer one. The last push is kept: the page's one load of the count may answer
+     after it, older, and is drawn over again (`redrawPushedOver`). */
+  var lastPush = null;
+  function drawPushedBadge(msg) {
+    var el = root.document.getElementById('attention-count');
+    if (!el || !msg || !msg.badge) return;
+    var mine = el.getAttribute('data-network') || '';
+    if (mine && msg.network && msg.network !== mine) return;
+    if (pushIsOlder(msg.at, el.getAttribute('data-at'))) return;
+    lastPush = msg;
+    if (msg.at) el.setAttribute('data-at', msg.at);
+    var p = badgeParts(msg.badge);
+    el.className = p.className;
+    el.textContent = p.text;
+    el.removeAttribute('aria-busy');
+    el.setAttribute(el.hasAttribute('data-title') ? 'data-title' : 'title', p.title);
+    if (p.nextChangeAt) el.setAttribute('data-next-change-at', p.nextChangeAt);
+    else el.removeAttribute('data-next-change-at');
+    if (p.staleAt) el.setAttribute('data-stale-at', p.staleAt);
+    else el.removeAttribute('data-stale-at');
+    if (el.hasAttribute('data-title')) el.className += ' count-maybe';
+    drawBadge();
+  }
+
+  /* After a swap settles: a push newer than the count's drawn answer (or than its "Reading"
+     answer) is drawn again: it arrived while the count's one load was in flight, and the older
+     answer replaced it. */
+  function redrawPushedOver() {
+    var el = root.document.getElementById('attention-count');
+    if (!el || !lastPush) return;
+    var drawn = el.getAttribute('data-at');
+    if (!drawn || pushIsOlder(drawn, lastPush.at)) drawPushedBadge(lastPush);
   }
 
   function wireAnnouncements() {
@@ -1546,7 +1595,6 @@
     if (!NMAS || !NMAS.subscribe) return;
     NMAS.subscribe('reachability', 'v2Reachability', relayReachability);
     NMAS.subscribe('integration_health', 'v2IntegrationHealth', relayIntegrationHealth);
-    NMAS.subscribe('credential_health', 'v2CredentialHealth', relayCredentialHealth);
     NMAS.subscribe('records', 'v2Records', relayRecords);
     NMAS.subscribe('coverage_reporting', 'v2CoverageReporting', relayCoverageReporting);
     NMAS.subscribe('alerts', 'v2Alerts', relayAlerts);
@@ -1556,8 +1604,6 @@
     NMAS.subscribe('settings', 'v2Settings', relaySettings);
     NMAS.subscribe('job_health', 'v2JobHealth', relayJobHealth);
     NMAS.subscribe('ci_verdict', 'v2CiVerdict', relayCiVerdict);
-    NMAS.subscribe('scheduled_jobs', 'v2ScheduledJobs', relayScheduledJobs);
-    NMAS.subscribe('ci_agreement', 'v2CiAgreement', relayCiAgreement);
     NMAS.subscribe('app_version', 'v2AppVersion', relayAppVersion);
     NMAS.subscribe('netbox', 'v2Netbox', relayNetbox);
     NMAS.subscribe('remote', 'v2Remote', relayRemote);
@@ -1568,8 +1614,8 @@
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
     NMAS.subscribe('fault_drills', 'v2FaultDrills', relayFaultDrills);
     NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
+    NMAS.subscribe('attention', 'v2Attention', relayAttention);
     NMAS.subscribe('host_keys', 'v2HostKeys', relayHostKeys);
-    NMAS.subscribe('approvals', 'v2Approvals', relayApprovals);
     NMAS.subscribe('device_state', 'v2DeviceState', relayDeviceState);
     NMAS.subscribe('intent', 'v2Intent', relayIntent);
     NMAS.subscribe('inventory', 'v2Inventory', relayInventory);
@@ -2316,6 +2362,16 @@
       if (root.location) checkServedPage(root.document, root.location.origin);
       if (root.location && root.location.hash === AI_PANEL_HASH) aiSpendOpen();
       wireAnnouncements();
+      // The sidebar's count, pushed by the server's Needs attention store (C3166). And its
+      // doubt judged again the moment the channel connects (registered after
+      // nmas_invalidation.js's own handler, so the state is already connected): a count marked
+      // "connecting" before the connection, by the tick or a push, read so for up to a tick
+      // after it (measured 2026-11-12 in a real browser: the mark stood about 0.9 s past the
+      // connect).
+      if (root.__nmasSocket && root.__nmasSocket.on) {
+        root.__nmasSocket.on('nmas_attention', drawPushedBadge);
+        root.__nmasSocket.on('connect', function () { drawLive(); drawBadge(); });
+      }
       drawAges();
       drawClock();
       drawLive();
@@ -2326,7 +2382,7 @@
       root.setInterval(function () { drawLive(); catchUpInFlight(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); redrawPushedOver(); });
     root.document.addEventListener('click', rememberToggle);
     root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
     root.document.addEventListener('input', reasonTyped);   // before: it marks the checks drawDeployOf reads
@@ -2376,7 +2432,9 @@
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
                   focusWhenShown: focusWhenShown, FOCUS_TRIES: FOCUS_TRIES,
-                  badgeDoubt: badgeDoubt, staleNote: staleNote, missedKeys: missedKeys,
+                  badgeDoubt: badgeDoubt, badgeParts: badgeParts, drawPushedBadge: drawPushedBadge,
+                  pushIsOlder: pushIsOlder,
+                  staleNote: staleNote, missedKeys: missedKeys,
                   inFlightKeys: inFlightKeys,
                   stallBody: stallBody,
                   isFragment: isFragment,

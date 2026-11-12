@@ -255,10 +255,10 @@ class TestANeedsAttentionRow:
         assert "held" not in rows[0] and offer in html and "data-held" not in html
 
     def test_the_list_s_own_route_marks_the_rows_it_draws(self, world, monkeypatch):
-        """Through the list's route (`v2.attention_list`): the shared computation's rows,
-        marked for this request from the holds as they are now."""
+        """Through the list's route (`v2.attention_list`): the rows the background holds
+        (C3166), marked for this request from the holds as they are now."""
         from modules.nsot import device_ops
-        monkeypatch.setattr("modules.attention.needs_attention_shared", lambda: {
+        monkeypatch.setattr("modules.attention_store.read", lambda network=None: {
             "rows": self.lost(), "sources": [], "badge": {"n": 1}})
         with device_ops.hold(NET, "r2", "rotate", WHO):
             html = world.get("/v2/attention", headers=HX).get_data(as_text=True)
@@ -291,7 +291,10 @@ class TestANeedsAttentionRow:
         page = world.get("/v2/").get_data(as_text=True)
         trigger = re.search(r'id="attention"[^>]*hx-trigger="([^"]+)"', page, re.S).group(1)
         assert "nmas:device_holds from:body" in trigger and "nmas:in_progress from:body" in trigger
-        assert "nmas:drift from:body" in trigger, "and every key it heard before"
+        # C3166: every key that moves a row reaches the background store, never the page; the
+        # list hears the store's own announcement, made when what it draws moved.
+        assert "nmas:attention from:body" in trigger, "and the store's announcement"
+        assert "nmas:drift from:body" not in trigger, "a source's key is the store's, not the page's"
         from modules import attention, in_flight, invalidation
         assert set(in_flight.HELD_KEYS) <= set(invalidation.VOCABULARY)
         assert not set(in_flight.HELD_KEYS) & set(attention.ATTENTION_KEYS), \

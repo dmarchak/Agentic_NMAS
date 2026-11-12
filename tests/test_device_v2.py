@@ -700,6 +700,17 @@ class TestTheShippedScripts:
                                                     "/v2/history?tab=query&list=Lab",
                                                     # History's timeline (C818's reveals).
                                                     "/v2/history?list=Lab",
+                                                    # Heard there since Needs attention's list
+                                                    # hears its store's key alone (C3166):
+                                                    # History › Baselines (baselines), the
+                                                    # device's Neighbours (adjacencies),
+                                                    # Devices (pending), and Settings ›
+                                                    # Installation › Connections' record
+                                                    # stores (records).
+                                                    "/v2/history?tab=baselines&list=Lab",
+                                                    "/v2/device/r3/neighbours?list=Lab",
+                                                    "/v2/devices?list=Lab",
+                                                    "/v2/settings/installation?tab=connections",
                                                     # P7-05: the picker's list (lists,
                                                     # active_list), Settings' scope bar
                                                     # (lists), Access and identity at rest
@@ -782,14 +793,18 @@ class TestTheShippedScripts:
         # redraw on a save or a fetch, decision 8's registry).
         # +1 2026-11-11: people (a display name set or returned to its default, board E2a: the
         # name chip and Needs attention read again).
-        assert len(keys) == 58
+        # +1 2026-11-12: attention (Needs attention's background store recomputed and what its
+        # list draws moved, C3166: the list reads the held value again); and -4 the same day:
+        # scheduled_jobs, ci_agreement, approvals and credential_health, heard by Needs
+        # attention alone, whose keys now reach its store and never the page.
+        assert len(keys) == 55
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {
             "state": "running", "elapsed_s": 1, "list": "Lab", "kind": "diagnosis"})
         heard += " " + _get(lab, "/v2/device/r3/diagnose/job/x")[1]
-        for key in keys:
-            assert f"nmas:{key} from:body" in heard, key
+        unheard = [key for key in keys if f"nmas:{key} from:body" not in heard]
+        assert unheard == [], unheard
         src = _js("nmas_v2.js")
         for key in keys:        # each written out, so the subscription scan reads it
             assert re.search(r"^\s*NMAS\.subscribe\('%s'" % key, src, re.M), key

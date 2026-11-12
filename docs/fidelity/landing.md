@@ -35,7 +35,24 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `917d18b106b382b9924d5debc6825594552a2398f0674aa6e6eb1d4b88d54508`
+Templates sha256: `cdc42b110331edb52496d05e40f8dc7fa880f5325088ba594b86209cf946f070`
+
+**Hashed again 2026-11-12 for the background store** (C3166 slice 1; the operator's rule that
+day: "every page draws at once from data the background already holds, shows each source's age
+("checked 20 s ago") … there is no refresh button"). `_attention.html` draws the value the
+background holds: the summary line gains "checked <age>" (when the list was assembled) and, when
+older, "the oldest <age>" (its oldest source's read), each a stamp with its time on hover; a
+source whose refresh failed adds "N refresh(es) failed, the last value kept: <sources>" to it,
+and on its own line in What was checked "Its refresh <age> failed (<why>): what is shown is its
+last good value"; What was checked gains a Checked column, each source's read time, between
+Value from and Rows. Before the first value lands the list is one busy line, "Reading Needs
+attention… Its sources are read in the background; this fills itself when their first value
+lands." The list listens for the store's own announcement (`attention`), this page's own
+acknowledgement, a hold's start and end, and a display name's change. The incident link below
+is as it was compared. Every other region as compared. Compared by the template diff and the
+pages tests/test_attention_store.py draws, not a new shot; board NA-R draws none of the three:
+**deviation**, logged in docs/STANDING_APPROVAL_LOG.md. Templates sha256 before:
+`917d18b106b382b9924d5debc6825594552a2398f0674aa6e6eb1d4b88d54508`.
 
 **Hashed again 2026-11-12 for the incident page's first slice** (the operator's item 5: "so
 the email and Needs attention link to one place per incident"). `_attention.html`: a

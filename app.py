@@ -127,6 +127,10 @@ socketio = SocketIO(
 # modules/invalidation.announce). Handing over the emit starts nothing.
 from modules import invalidation as _invalidation  # noqa: E402
 _invalidation.set_emitter(lambda event, msg: socketio.emit(event, msg))
+# Needs attention's background store (C3166): a page's live connection joins its network's
+# room, where the sidebar's count is pushed. Registering the handlers starts nothing.
+from modules import attention_store as _attention_store  # noqa: E402
+_attention_store.install_socket(socketio)
 
 # ---------------------------------------------------------------------------
 # Cache policy. Stage 7 6c, measured 2026-09-24.
@@ -650,6 +654,13 @@ def _start_background_daemons():
         _warmup.start(spawn=socketio.start_background_task)
     except Exception as _e:
         app.logger.error("The warm-up did not start: %s", _e)
+
+    # Needs attention computed in the background, per network, each source on its own cadence
+    # (C3166, modules/attention_store.py): no page or badge request computes it.
+    try:
+        _attention_store.start(spawn=socketio.start_background_task)
+    except Exception as _e:
+        app.logger.error("Needs attention's background store did not start: %s", _e)
 
     # The scheduled credential rotation's timer (C724): a run only when a policy is on.
     try:

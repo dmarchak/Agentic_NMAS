@@ -146,17 +146,17 @@ RECENT_RECEIPTS = 5
 
 
 def _attention() -> dict:
-    from modules.attention import needs_attention_shared
+    from modules import attention_store
     from modules.outbound import mask_payload
 
-    # Rows quote their sources' own words: masked on the way out. One computation serves every
-    # tab until a change is announced (C1262).
+    # Rows quote their sources' own words: masked on the way out. The value the background
+    # holds, never computed for this request (C3166): "Reading …" before its first value.
     from modules import display_names
     # And every person in those words by display name (board E2a): a copy, as the mask's is.
-    a = display_names.people_payload(mask_payload(needs_attention_shared()))
+    a = display_names.people_payload(mask_payload(attention_store.read()))
     # A row whose action would change a device a run holds NOW draws it disabled, with the
     # run (the operator, 2026-11-11): read for this request from the holds themselves, never
-    # kept with the shared computation, which a hold's start does not announce.
+    # kept with the held value, which a hold's start does not move.
     from modules import in_flight
     from routes.operations import viewer_key
     try:

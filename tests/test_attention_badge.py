@@ -79,22 +79,35 @@ class TestOneCount:
 
 
 class TestItKeepsListening:
-    def test_the_fragment_is_the_whole_badge_with_its_listener_and_no_load(self, state):
-        html = _client().get("/v2/attention-count").get_data(as_text=True)
-        assert 'id="attention-count"' in html and 'hx-get="/v2/attention-count?list=Default"' in html
-        trigger = re.search(r'hx-trigger="([^"]*)"', html).group(1)
-        assert "load" not in trigger                 # a response never re-loads itself
-        for key in attention.ATTENTION_KEYS + (attention.DUE_EVENT,):
-            assert f"nmas:{key} from:body" in trigger, key
+    """C3166 (the operator's addition 3, 2026-11-12: "the badge is pushed over the page's live
+    connection when its count changes, not polled"): the count is asked for once, as the page
+    loads, and then drawn from what the server pushes; it re-fetches on no key."""
 
-    def test_the_sidebar_loads_it_and_the_page_listens_to_the_same_list(self, state):
+    def test_the_fragment_is_the_whole_badge_and_hears_only_its_own_page_s_press(self, state):
+        from modules import attention_store
+        before = attention_store.reads()
+        html = _client().get("/v2/attention-count").get_data(as_text=True)
+        assert attention_store.reads() == before + 1, "one read of the held value"
+        assert 'id="attention-count"' in html and 'data-network="Default"' in html
+        trigger = re.search(r'hx-trigger="([^"]*)"', html).group(1)
+        assert trigger == "nmas:acknowledgements from:body", \
+            "pushed after it; asked again only on this page's own acknowledgement"
+        assert re.search(r'data-at="[0-9T:.Z-]+"', html), "when the drawn value was assembled"
+
+    def test_the_sidebar_loads_it_once_and_the_list_hears_the_store(self, state):
         page = _client().get("/v2/help/about").get_data(as_text=True)
         badge = re.search(r'<span id="attention-count"[^>]*hx-trigger="([^"]*)"', page).group(1)
-        assert badge.startswith("load, ")
+        assert badge == "load, nmas:acknowledgements from:body"
         attention_html = _client().get("/v2/attention").get_data(as_text=True)
         listened = re.search(r'id="attention"[^>]*hx-trigger="([^"]*)"', attention_html,
                              re.S).group(1)
-        assert badge[len("load, "):] == listened
+        assert "nmas:attention from:body" in listened
+        assert "nmas:acknowledgements from:body" in listened, "the person's own press"
+        sources = {k for ks in attention.SOURCE_KEYS.values() for k in ks}
+        assert not [k for k in sources if f"nmas:{k} from:body" in listened], \
+            "a source's key reaches the background store, never the page"
+        assert ("attention",) in [tuple(v) for v in invalidation.ANNOUNCERS.values()], \
+            "the store announces what the list hears"
 
 
 class TestOneKeyList:
@@ -103,11 +116,16 @@ class TestOneKeyList:
         assert len(names) >= 20
         assert set(attention.SOURCE_KEYS) == names
 
-    def test_every_key_is_in_the_vocabulary_and_relayed_by_the_client(self):
+    def test_every_key_is_in_the_vocabulary_and_reaches_the_store(self):
+        """C3166: a key that moves a row reaches Needs attention's background store, which
+        recomputes the sources it moves (and an acknowledgement re-assembles), and the client
+        relays the store's own key, which the list hears."""
+        from modules import attention_store
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
         for key in attention.ATTENTION_KEYS:
             assert key in invalidation.VOCABULARY, key
-            assert re.search(r"^\s*NMAS\.subscribe\('%s'" % key, src, re.M), key
+            assert attention_store._touched([key]) - {attention_store._UNDECLARED}, key
+        assert re.search(r"^\s*NMAS\.subscribe\('attention'", src, re.M)
 
 
 class TestARowThatClearsByTime:
@@ -207,6 +225,35 @@ class TestAnAnnouncementDuringAFetchIsNotLost:
         assert self._missed("nmas:drift from:body", {"app_version": 2000}, 1000) == []
 
 
+class TestThePushedBadge:
+    """C3166: the count the server pushes (`attention_store.PUSH_EVENT`), drawn in place by the
+    shipped script: the same class, text and title the fragment draws, and never an older value
+    over a newer one."""
+
+    def _js(self, call):
+        import dukpy
+        src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
+        return dukpy.evaljs("var window = {};\n" + src + f"\nwindow.NMAS_V2.{call};")
+
+    def test_its_parts_are_the_fragments_own(self, state):
+        state["steps"] = [STEP]
+        html = _client().get("/v2/attention-count").get_data(as_text=True)
+        got = self._js('badgeParts({"n": 1, "level": "warning"})')
+        assert f'class="{got["className"]}"' in html and f'title="{got["title"]}"' in html
+        assert re.search(r">\s*1\s*</span>", html) and got["text"] == "1"
+        state["steps"] = []
+        html = _client().get("/v2/attention-count").get_data(as_text=True)
+        got = self._js('badgeParts({"n": 0, "level": ""})')
+        assert f'class="{got["className"]}"' in html and f'title="{got["title"]}"' in html
+
+    def test_an_older_push_is_older_and_an_unknown_time_never_is(self):
+        assert self._js('pushIsOlder("2026-11-12T04:00:00Z", "2026-11-12T04:00:05Z")') is True
+        assert self._js('pushIsOlder("2026-11-12T04:00:05Z", "2026-11-12T04:00:00Z")') is False
+        assert self._js('pushIsOlder("2026-11-12T04:00:00Z", "2026-11-12T04:00:00Z")') is False
+        assert self._js('pushIsOlder("", "2026-11-12T04:00:00Z")') is False
+        assert self._js('pushIsOlder("2026-11-12T04:00:00Z", null)') is False
+
+
 # ── a real browser ─────────────────────────────────────────────────────────────
 
 def _browser_or_skip():
@@ -226,13 +273,27 @@ def live_browser():
 
 
 @pytest.fixture
-def served(state, live_browser):
+def served(state, live_browser, monkeypatch):
+    """The served app with Needs attention's store as in production (C3166): nothing computed
+    on a request, its background worker running, the count pushed over the live connection."""
+    import threading
+
+    from modules import attention_store
     browser, srv, b = live_browser
-    yield {"b": b, "srv": srv, "state": state}
+    monkeypatch.setattr(attention_store, "COMPUTE_ON_READ", False)
+    stop = threading.Event()
+    worker = threading.Thread(target=attention_store.run, args=(stop,), daemon=True)
+    worker.start()
     try:
-        b.go("about:blank")
+        yield {"b": b, "srv": srv, "state": state}
     finally:
-        browser.close_socketio_sessions()
+        stop.set()
+        attention_store._wake.set()
+        worker.join(10)
+        try:
+            b.go("about:blank")
+        finally:
+            browser.close_socketio_sessions()
 
 
 COUNT = "document.getElementById('attention-count')"
@@ -268,18 +329,35 @@ class TestInARealBrowser:
         _wait(b, f"return {COUNT}.textContent.trim() === '0'")
         assert b.js("return window.__notReloaded") == 1      # no reload happened
 
-    def test_it_reads_again_when_a_row_clears_by_time(self, served):
-        """Nothing announces the moment an approval expires: the badge's own
-        `data-next-change-at` fires the re-read, once."""
+    def test_a_row_that_clears_by_time_leaves_the_count_with_nothing_announced(
+            self, served, monkeypatch):
+        """Nothing announces the moment an approval expires: the background store reads its
+        source again at the row's `clears_at` and pushes the count (C3166); the page asks
+        for nothing."""
         b = served["b"]
+        until, asked = time.time() + 6, []
+
+        def approvals_source():
+            asked.append(time.time())
+            rows = [attention.row(source="approvals", kind="pending", key="q1",
+                                  level="warning", what="An approval is waiting",
+                                  cause="a test's approval, expiring", clears_at=until,
+                                  action={"label": "Review the approval"})] \
+                if time.time() < until else []
+            return attention.source_result("approvals", "Approvals", read_at=time.time(),
+                                           took_ms=0, rows=rows, checked="a test's queue")
+        monkeypatch.setattr(attention, "SOURCES", (approvals_source,))
+        # The worker already holds a value from the fixture's sources (it started with them):
+        # dropped, so this test's one source is the value the page loads (measured: kept, the
+        # count stayed at the fixture's 0 for its 20 s cadence, past this test's wait).
+        from modules import attention_store
+        attention_store.clear()
         b.go(served["srv"].url("/v2/help/about"))
-        b.wait_for(f"return {COUNT} && {COUNT}.textContent.trim() === '0'")
-        # A redraw merges into the count and keeps its node (C2810): it is counted.
-        from tests.test_swaps_in_a_browser import MARK_REDRAW
-        b.js(MARK_REDRAW, "attention-count")
-        b.js(f"{COUNT}.setAttribute('data-next-change-at', '2020-01-01T00:00:00Z'); return 1")
-        b.wait_for("return (window.__redraws['attention-count'] || 0) > "
-                   f"window.__redrawsAt['attention-count'] && !!{COUNT}", 10)
+        _wait(b, f"return {COUNT} && {COUNT}.textContent.trim() === '1'")
+        b.js("window.__notReloaded = 1; return 1")
+        _wait(b, f"return {COUNT}.textContent.trim() === '0'", 20)
+        assert b.js("return window.__notReloaded") == 1
+        assert [t for t in asked if t >= until], "its source was read again at its clear time"
 
     def test_it_says_it_may_be_out_of_date_and_catches_up(self, served):
         """A value past its promise, and a live channel that dropped, each mark the count
@@ -303,37 +381,42 @@ class TestInARealBrowser:
         _wait(b, "return NMAS.live().state === 'connected'", 15)
         _wait(b, f"return {COUNT}.className.indexOf('count-maybe') < 0", 5)
 
-    def test_an_announcement_while_the_count_is_loading_is_not_lost(self, served, monkeypatch):
-        """The race the real run hit, forced: the count's request is held open, a row
-        appears and its reader announces while it is in flight; the count ends correct."""
+    def test_a_push_while_the_count_is_loading_is_not_lost(self, served, monkeypatch):
+        """The race, forced (C3166): the count's one load is held open with the value held
+        BEFORE a row appears; the row appears, the store pushes the new count while the load
+        is in flight, and the old answer settles after the push: the count ends at the push."""
         import threading
+
+        from modules import attention_store
         b, st = served["b"], served["state"]
         b.go(served["srv"].url("/v2/help/about"))
-        b.wait_for(f"return {COUNT} && {COUNT}.textContent.trim() === '0'")
-        b.wait_for("return window.NMAS && NMAS.live().state === 'connected'")
-        entered, real = threading.Event(), attention.needs_attention
+        _wait(b, f"return {COUNT} && {COUNT}.textContent.trim() === '0'")
+        entered, real = threading.Event(), attention_store.badge
 
-        def slow(sources=None):
-            page = real(sources)          # read BEFORE the row appears: an old answer
+        def slow(network=None):
+            got = real(network)           # read BEFORE the row appears: an old answer
             entered.set()
-            time.sleep(1.5)
-            return page
-        monkeypatch.setattr(attention, "needs_attention", slow)
-        # No fetch of the count in flight (htmx drops a trigger on a fetching element).
-        b.wait_for(f"return !{COUNT}.classList.contains('htmx-request')")
-        # Through the live client's own dispatch (a response's invalidation goes this way).
-        b.js("NMAS.invalidate(['drift']); return 1")                     # a fetch begins
-        assert entered.wait(5)
-        monkeypatch.setattr(attention, "needs_attention", real)
+            time.sleep(attention_store.DEBOUNCE_S + 3)
+            return got
+        monkeypatch.setattr(attention_store, "badge", slow)
+        b.go(served["srv"].url("/v2/help/about"))            # its load begins
+        assert entered.wait(10)
         st["steps"] = [STEP]
         invalidation.announce(["app_version"], "test", True)             # during it
-        _wait(b, f"return {COUNT}.textContent.trim() === '1'")
+        _wait(b, f"return {COUNT}.textContent.trim() === '1'", 15)
+        _wait(b, f"return !{COUNT}.classList.contains('htmx-request') "
+                 f"&& {COUNT}.textContent.trim() === '1'", 15)
 
     def test_the_count_equals_the_pages_own_count(self, served):
         b, st = served["b"], served["state"]
         st["steps"] = [STEP]
         st["jobs"] = [{"unit": "updater", "state": "writable", "detail": "writable"}]
+        # As their readers would: the store (its worker already running, C3166) reads the
+        # sources the announcement moves, and the open page fills itself from what it holds.
+        invalidation.announce(["app_version", "job_health"], "test", True)
         b.go(served["srv"].url("/v2/"))
         b.wait_for(f"return {COUNT} && {COUNT}.textContent.trim() !== '…'")
-        page = b.js("return document.querySelector('#attention .att-summary strong').textContent")
+        strong = "document.querySelector('#attention .att-summary strong')"
+        _wait(b, f"return {strong} && {strong}.textContent.indexOf('items') > 0")
+        page = b.js(f"return {strong}.textContent")
         assert page == f"{b.js(f'return {COUNT}.textContent.trim()')} items"

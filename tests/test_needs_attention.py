@@ -316,12 +316,14 @@ class TestThePageAndThePanel:
 
     def test_a_failed_read_is_never_drawn_as_nothing(self, monkeypatch):
         """On v2 the list is drawn on the server: a read that raises is the request's failure,
-        answered in place as "Couldn't load" (the v2 swap rule), never an empty list."""
+        answered in place as "Couldn't load" (the v2 swap rule), never an empty list. The read
+        is of the value the background holds (`attention_store.read`, C3166)."""
         import app as nmas
+        from modules import attention_store
 
         def boom(*_a, **_k):
             raise RuntimeError("timeout")
-        monkeypatch.setattr(A, "needs_attention", boom)
+        monkeypatch.setattr(attention_store, "read", boom)
         r = nmas.app.test_client().get("/v2/attention", headers={"HX-Request": "true"})
         body = r.get_data(as_text=True)
         assert r.status_code >= 500 and "timeout" in body

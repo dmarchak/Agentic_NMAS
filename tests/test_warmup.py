@@ -144,12 +144,13 @@ class TestWhatTheDeployReadsIsUnchanged:
 
 class TestTheDeclaredSteps:
     def test_they_warm_the_ai_record_and_needs_attention(self, fresh, monkeypatch):
-        from modules import attention
+        from modules import attention_store
         from modules.ai import calls
         seen = []
         monkeypatch.setattr(calls, "warm", lambda: seen.append("ai-calls"))
-        monkeypatch.setattr(attention, "needs_attention_shared",
-                            lambda: seen.append("needs-attention") or {})
+        # C3166: the installation's network computed once into the background store.
+        monkeypatch.setattr(attention_store, "ensure",
+                            lambda network: seen.append("needs-attention") or {})
         warmup.start(spawn=lambda target: target())
         assert seen == ["ai-calls", "needs-attention"]
         s = warmup.status()

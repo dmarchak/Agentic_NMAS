@@ -51,8 +51,17 @@
 {#- A moment a record holds, in the viewer's own zone with its date (nmas_v2.js `drawClock`),
     the UTC time the server's words and on hover. -#}
 {%- macro when(iso) -%}<time class="clock" datetime="{{ iso }}" data-clock="date" title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[:16] | replace('T', ' ') }} UTC</time>{%- endmacro -%}
+{#- C3166: the value the background store holds (`attention_store.read`), never computed for this
+    request. `store.state` "reading": its network's first value has not landed, said as that,
+    busy, and drawn again when it lands (the store announces `attention`). `store.checked_at`:
+    when it was assembled; `store.oldest_at`: its oldest source's read; each source's own is
+    under What was checked. A value drawn straight from `needs_attention()` carries no store. -#}
+{%- set store = a.store or {} %}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
-     hx-trigger="{{ attention_trigger }}">
+     hx-trigger="{{ attention_trigger }}"{% if store.state == 'reading' %} aria-busy="true"{% endif %}>
+  {%- if store.state == 'reading' %}
+  <p class="att-summary" role="status"><strong>Reading Needs attention&#8230;</strong> <span class="muted">Its sources are read in the background; this fills itself when their first value lands.</span></p>
+  {%- else %}
   {%- set counts = namespace(danger=0, warning=0, unknown=0) %}
   {%- for r in rows %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}
   <p class="att-summary">
@@ -61,7 +70,9 @@
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
     {%- if a.acknowledged %} · {{ a.acknowledged|length }} acknowledged{% endif %}
     · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
+    {%- if store.checked_at %} {{ stamp(store.checked_at, note='when the background last assembled this list') }}{% if store.oldest_at and store.oldest_at != store.checked_at %}, the oldest {{ stamp(store.oldest_at, note='the oldest read among its sources; each source has its own under What was checked') }}{% endif %}{% endif %}
     {%- if a.unreadable %} · <span class="warn-text">{{ a.unreadable|length }} could not be read: {{ a.unreadable|join(', ') }}</span>{% endif -%}
+    {%- if store.failed %} · <span class="warn-text">{{ store.failed|length }} refresh{{ '' if store.failed|length == 1 else 'es' }} failed, the last value kept: {{ store.failed|join(', ') }}</span>{% endif -%}
     {#- Board NA-R's decision 4: an operation's expected effects are one quiet link to its
         card, never rows (PHASE8_PLAN 20.2). -#}
     {%- for x in a.expected or [] %} · {% if x.device %}<a href="{{ url_for('device_v2.device', name=x.device) }}">{{ x.words }}</a>{% else %}{{ x.words }}{% endif %}{% endfor -%}
@@ -387,13 +398,14 @@
   <details class="evidence" data-keep="evidence">
     <summary>What was checked · {{ sources|length }} sources</summary>
     <table class="table">
-      <thead><tr><th>Source</th><th>What it found</th><th>Value from</th><th>Rows</th></tr></thead>
+      <thead><tr><th>Source</th><th>What it found</th><th>Value from</th><th>Checked</th><th>Rows</th></tr></thead>
       <tbody>
       {%- for s in sources %}
-        <tr class="{{ 'row-warn' if s.state != 'read' else '' }}">
+        <tr class="{{ 'row-warn' if s.state != 'read' or s.failed else '' }}">
           <td>{{ s.label }}</td>
-          <td>{{ s.checked or ('could not be read' if s.state != 'read' else '') }}</td>
+          <td>{{ s.checked or ('could not be read' if s.state != 'read' else '') }}{% if s.failed %} <span class="warn-text">Its refresh {{ stamp(s.failed.at) }} failed ({{ s.failed.error }}): what is shown is its last good value, checked when the next column says.</span>{% endif %}</td>
           <td>{% if s.value_at %}{{ stamp(s.value_at) }}{% else %}<span class="muted">not recorded</span>{% endif %}<span class="muted small"> · read in {{ s.took_ms }} ms</span></td>
+          <td>{% if s.read_at %}{{ stamp(s.read_at, note='when the background last read this source') }}{% else %}<span class="muted">not recorded</span>{% endif %}</td>
           <td>{{ s.count }}</td>
         </tr>
       {%- endfor %}
@@ -408,4 +420,5 @@
     </ul>
     {%- endif %}
   </details>
+  {%- endif %}
 </div>

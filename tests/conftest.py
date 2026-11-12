@@ -138,13 +138,15 @@ SOCKETIO_PATCHED = ("_send_packet", "_send_eio_packet")
 
 @pytest.fixture(autouse=True, scope="session")
 def _needs_attention_computed_per_request():
-    """Needs attention computed for every request, as before C1262: a test patches a source and
-    reads the page again with nothing announced, which the shared value (10 s, keyed on the
-    announcements) would serve unchanged. For the whole session, so module-scoped fixtures (the
-    v2 walk's providers) read fresh too; the sharing's own tests set it back
-    (tests/test_attention_shared.py)."""
-    from modules import attention
-    attention.SHARED_SECONDS = 0.0
+    """Needs attention computed for every read in a test session (`attention_store.
+    COMPUTE_ON_READ`), as before C3166: a test patches a source and reads the page again with
+    no background worker running, which the held value would serve unchanged. For the whole
+    session, so module-scoped fixtures (the v2 walk's providers) read fresh too; the store's
+    own tests and every check that a page waits on nothing set it back
+    (tests/test_attention_store.py, tests/test_no_page_waits.py). Production never computes
+    on a read."""
+    from modules import attention_store
+    attention_store.COMPUTE_ON_READ = True
     yield
 
 
@@ -172,11 +174,11 @@ def _shipped_history_is_read_in_the_copied_checkout():
 
 @pytest.fixture(autouse=True)
 def _needs_attention_shared_value_cleared():
-    """No test is served another test's shared Needs attention value (C1262)."""
-    from modules import attention
-    attention._shared.clear()
+    """No test is served another test's held Needs attention value (C1262, C3166)."""
+    from modules import attention_store
+    attention_store.clear()
     yield
-    attention._shared.clear()
+    attention_store.clear()
 
 
 @pytest.fixture(autouse=True)

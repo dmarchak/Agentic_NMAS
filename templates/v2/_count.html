@@ -1,22 +1,29 @@
-{#- The sidebar's Needs attention count: the WHOLE badge, its listener included, so every
-    redraw keeps listening (it was a bare span, swapped in once and deaf after). Its number
-    and level are attention.needs_attention()["badge"]: the page's own rows. `initial` is the
-    first render inside base.html, which loads it; a response never says `load` (it would
-    re-fetch itself for ever). data-next-change-at: when a row clears by time;
-    data-stale-at: when the oldest source passes its promise (nmas_v2.js marks the badge). -#}
+{#- The sidebar's Needs attention count. Its number and level are the badge the background store
+    holds (`attention_store.badge`: the page's own rows, C3166). `initial` is the first render
+    inside base.html, which asks for it once (`load`). After it the count is PUSHED over the
+    page's live connection whenever it moves (`attention_store.PUSH_EVENT`, drawn in place by
+    nmas_v2.js `drawPushedBadge`); it reads itself again only on this page's own acknowledgement
+    (`count_trigger`: the press re-assembled the held value first), never on a source's key or
+    another page's announcement. `reading`: the network's first value has not landed yet ("…"; it is pushed when it
+    does). data-network: the page's network, which the live connection names
+    (nmas_invalidation.js `pageNetwork`); data-next-change-at: when a row clears by time;
+    data-stale-at: when the oldest source passes its promise (nmas_v2.js marks the badge);
+    data-at: when the held value was assembled (a push older than it is not drawn, and the
+    newer push is drawn again over an older answer that settled after it). -#}
 {%- set level = (badge.level if badge else '') -%}
 <span id="attention-count" class="count
-  {%- if initial %} count-zero count-loading
+  {%- if initial or reading %} count-zero count-loading
   {%- elif not ok %} count-unreadable
   {%- elif not badge.n %} count-zero
-  {%- else %} count-{{ level }}{% endif %}"
-  hx-get="{{ url_for('device_v2.attention_count') }}" hx-swap="outerHTML"
-  hx-trigger="{% if initial %}load, {% endif %}{{ attention_trigger }}"
+  {%- else %} count-{{ level }}{% endif %}" data-network="{{ list_name or '' }}"
+  {%- if badge and badge.at %} data-at="{{ badge.at }}"{% endif %}
+  hx-get="{{ url_for('device_v2.attention_count') }}" hx-swap="outerHTML" hx-trigger="{% if initial %}load, {% endif %}{{ count_trigger }}"
   {%- if badge and badge.next_change_at %} data-next-change-at="{{ badge.next_change_at }}"{% endif %}
   {%- if badge and badge.stale_at %} data-stale-at="{{ badge.stale_at }}"{% endif %}
   {%- if initial %} title="Reading Needs attention"
+  {%- elif reading %} title="Reading Needs attention: the count fills itself when its first value lands" aria-busy="true"
   {%- elif not ok %} title="Needs attention could not be read: this is not the same as nothing needing attention"
   {%- elif not badge.n %} title="Nothing needs attention"
   {%- else %} title="{{ badge.n }} item{{ '' if badge.n == 1 else 's' }}; the worst is {{ {'danger': 'critical', 'warning': 'a warning', 'unknown': 'unknown'}[level] }}"{% endif %}>
-  {%- if initial %}&#8230;{% elif not ok %}?{% else %}{{ badge.n }}{% endif -%}
+  {%- if initial or reading %}&#8230;{% elif not ok %}?{% else %}{{ badge.n }}{% endif -%}
 </span>

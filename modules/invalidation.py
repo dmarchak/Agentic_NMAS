@@ -67,6 +67,8 @@ VOCABULARY = {
     "restarts": "a device restart the restarts reader found, planned or not (modules/restarts.py)",
     "fault_drills": "a fault drill declared on a device (modules/fault_drills.py)",
     "acknowledgements": "a person acknowledged a Needs attention event row (modules/acknowledgements.py)",
+    "attention": "Needs attention's rows, as its background store last assembled them "
+                 "(modules/attention_store.py, C3166): the list reads the held value again",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
     "approvals": "the approval queue",
@@ -158,6 +160,8 @@ VOCABULARY = {
 #: request started, announcing when it finishes. Declared here so the keys
 #: they send are senders to `keys_in_use`, exactly as a reader's are.
 ANNOUNCERS = {
+    # modules/attention_store.py (C3166): a recompute that changed what the list draws.
+    "needs-attention": ("attention",),
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     # routes/settings_v2.display_name (board E2a): a display name changed, for every open
     # page's name chip and Needs attention; the posting page hears its own response.
@@ -699,9 +703,24 @@ _last = {"server_last_heartbeat_at": "", "server_last_announce_at": "",
          "server_last_announce_keys": []}
 
 
-#: How many announcements this process has sent (C1262): a value computed for every tab, Needs
-#: attention's, stands until the next one (`attention.needs_attention_shared`). Process memory.
+#: How many changes this process has seen (C1262): each announcement, and each mutating route's
+#: declared invalidation. Every one of them is also handed to Needs attention's background store
+#: (`attention_store.mark`, C3166), which recomputes the sources its keys touch. Process memory.
 _generation = [0]
+
+
+def _changed(keys, by: str) -> None:
+    """A change under *keys*, announced or declared by a route: counted, and handed to Needs
+    attention's background store, which marks the sources those keys move (debounced, so a
+    burst is one recompute). A store that cannot take it is logged, never raised: the change
+    itself happened, and the store's own cadence reads the source again."""
+    _generation[0] += 1
+    try:
+        from modules import attention_store
+        attention_store.mark(keys, by)
+    except Exception as exc:                            # noqa: BLE001 (the change still stands)
+        log.error("invalidation: Needs attention's store did not take %s from %s: %s",
+                  list(keys), by, exc)
 
 
 def generation() -> int:
@@ -764,9 +783,8 @@ def announce(keys, by: str, ok: bool = True) -> dict:
                            "has none")
     msg = {"keys": keys, "by": by, "ok": bool(ok),
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    # Counted before it is sent, so a page that re-reads on hearing it never gets a value
-    # computed before the change.
-    _generation[0] += 1
+    # Counted, and handed to Needs attention's store, before it is sent (C3166).
+    _changed(keys, by)
     _emitter(ANNOUNCE_EVENT, msg)
     _last.update(server_last_announce_at=msg["at"], server_last_announce_keys=keys)
     # C539: a job that changed a store re-reads, at once, each reader that reports on it, so a
@@ -805,9 +823,10 @@ def install(app) -> None:
         if not keys:
             return response
         response.headers[HEADER] = ",".join(keys)
-        # C1262: a write this route made stands as a change, as an announcement does, so a
-        # value computed for every tab before it is never served after it.
-        _generation[0] += 1
+        # C1262: a write this route made stands as a change, as an announcement does; Needs
+        # attention's store recomputes the sources its keys move (C3166), so a fix made through
+        # Mercury clears its row within one debounce.
+        _changed(keys, request.endpoint or "")
         # C539: the readers whose answer this route's write changes are read again at once.
         from modules import reader_wakes
         reader_wakes.wake(keys, request.endpoint or "")

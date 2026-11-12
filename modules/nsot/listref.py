@@ -31,6 +31,8 @@ the migration writes ``lists[name] = list_slug(name)`` — but "they agree
 today" is how the other three started.
 """
 
+import contextlib
+import contextvars
 import logging
 import os
 from dataclasses import dataclass
@@ -311,8 +313,30 @@ def active_name() -> str:
 PAGE_ROUTES_OUTSIDE_V2 = ("remote.verify", "remote.push", "attention.acknowledge")
 
 
+#: The network a background computation is FOR (C3166: Needs attention computed per network
+#: in the background, `modules.attention_store`): set only by `computing_for`, read first by
+#: `_request_choice`, so every source asked inside it reads that network as a v2 request
+#: naming it would. Per thread and per context; empty everywhere else.
+_COMPUTING_FOR = contextvars.ContextVar("nmas_computing_for", default="")
+
+
+@contextlib.contextmanager
+def computing_for(name: str):
+    """Inside it, `active()` and `active_name()` answer *name*: a background computation for
+    one network (`attention_store.refresh`), which has no request to name it."""
+    token = _COMPUTING_FOR.set(str(name or ""))
+    try:
+        yield
+    finally:
+        _COMPUTING_FOR.reset(token)
+
+
 def _request_choice() -> str:
-    """The network a v2 request is about, or "": read once per request."""
+    """The network a v2 request is about, or "": read once per request. A background
+    computation for one network (`computing_for`) answers that network."""
+    named = _COMPUTING_FOR.get()
+    if named:
+        return named
     try:
         from flask import g, has_request_context, request
     except ImportError:

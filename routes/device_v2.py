@@ -785,18 +785,26 @@ def update_available():
 
 @bp.app_context_processor
 def _attention_trigger():
-    """What re-reads Needs attention and the sidebar's count, on every v2 page: every key
-    that can move a row (`attention.ATTENTION_KEYS`, ONE list) and the moment a row clears
-    by time. Both fragments draw this string; neither keeps its own (the operator,
-    2026-10-02: the count's hand-kept list lacked keys the page heard)."""
-    from modules.attention import ATTENTION_KEYS, DUE_EVENT
+    """What re-reads Needs attention's list, on every v2 page: the background store's own
+    announcement (`attention`, made when a recompute moved what the list draws, C3166; every
+    source's key reaches the store, `attention.SOURCE_KEYS`, never the page), an
+    acknowledgement on this page (its response's `acknowledgements`: the store has already
+    re-assembled without the row, `attention_store.mark`, so the person's own press is drawn
+    at once), a hold's start and end (`HELD_KEYS`: a row's action greys while a run holds its
+    device, read for each request), and a display name's change (board E2a: rows name people
+    by display name, for each request). The sidebar's count is pushed
+    (`attention_store.PUSH_EVENT`) and reads itself again only on this page's own
+    acknowledgement (`COUNT_TRIGGER`)."""
     from modules.in_flight import HELD_KEYS
-    # And a hold's start and end (`HELD_KEYS`): a row's action greys while a run holds its
-    # device and returns when the run ends, without a reload.
-    keys = ATTENTION_KEYS + tuple(k for k in HELD_KEYS if k not in ATTENTION_KEYS)
-    # And a display name's change (board E2a): its rows name people by display name.
-    keys += ("people",)
-    return {"attention_trigger": ", ".join(f"nmas:{k} from:body" for k in keys + (DUE_EVENT,))}
+    keys = ("attention", "acknowledgements") + tuple(HELD_KEYS) + ("people",)
+    return {"attention_trigger": ", ".join(f"nmas:{k} from:body" for k in keys),
+            "count_trigger": COUNT_TRIGGER}
+
+
+#: The sidebar count's one listener after its load (C3166): this page's own acknowledgement,
+#: whose response names `acknowledgements` (the press re-assembles the held value first). No
+#: source's key and no announcement from another page re-reads it: those are pushed.
+COUNT_TRIGGER = "nmas:acknowledgements from:body"
 
 
 @bp.app_context_processor
@@ -808,15 +816,16 @@ def _brand():
 
 @bp.route("/attention-count", methods=["GET"])
 def attention_count():
-    """The sidebar's Needs attention count: `needs_attention()`'s own badge, the same rows
-    the page draws, with their worst level. The fragment is the WHOLE badge, its listener
-    included: the badge it replaces (`outerHTML`) was a bare span, so it updated once after
-    the page loaded and never again (the operator, 2026-10-02)."""
+    """The sidebar's Needs attention count, asked once as a page loads: the badge the
+    background holds (`attention_store.badge`, the same rows the page draws, with their worst
+    level), never computed for this request (C3166); "…" before its network's first value.
+    After it, the count is pushed over the page's live connection whenever it moves
+    (`attention_store.PUSH_EVENT`, drawn in place by nmas_v2.js), never asked again."""
     try:
-        from modules import attention
-        # One computation for every tab's badge until a change is announced (C1262).
-        b = attention.needs_attention_shared()["badge"]
-        return _strict(render_template("v2/_count.html", badge=b, ok=True))
+        from modules import attention_store
+        b = attention_store.badge()
+        return _strict(render_template("v2/_count.html", badge=b, ok=True,
+                                       reading=b is None))
     except Exception as exc:                            # noqa: BLE001
         log.warning("v2 attention count failed: %s", exc)
         return _strict(render_template("v2/_count.html", badge=None, ok=False))
