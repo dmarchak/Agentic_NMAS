@@ -262,17 +262,22 @@ def actor_words(actor: str, verified: str) -> dict:
     return {"who": actor or "nobody recorded", "how": VERIFIED_WORDS.get(verified, verified)}
 
 
-def baseline_words(decision: str, tags: list) -> dict:
+def baseline_words(decision: str, tags: list, source: str = "") -> dict:
     """``{"state", "words", "tag"}`` for the Baseline column: earned (its tag),
-    not taken (a deploy that did not cover the network), denied (and why),
-    unrecorded (a tag on a commit that recorded nothing), or none."""
+    not taken (a deploy that did not cover the network, or a heal's commit, which decides
+    nothing for the network: `repo.network_decision`, C3165, the one reading Needs
+    attention's row shares), denied (and why), unrecorded (a tag on a commit that recorded
+    nothing), or none. *source* is the commit's `Source:`."""
     tag = next((t for t in tags if t.startswith("baseline/")), "")
     d = (decision or "").strip()
     if d == "earned":
         return {"state": "earned", "words": "earned", "tag": tag}
     if d.startswith("denied"):
-        from modules.nsot.repo import not_targeted_only
+        from modules.nsot.repo import network_decision, not_targeted_only
 
+        if not network_decision(source, d):
+            return {"state": "not_taken", "tag": tag,
+                    "words": "not taken: a heal decides nothing for the network"}
         why = d.partition(":")[2].strip()
         # Not taken only when not covering the network is ALL it says (C885's one reading).
         n = not_targeted_only(why)
@@ -634,7 +639,7 @@ def decisions(ctx):
         return _out(errors=[f"the baseline decisions could not be read: {err}"])
     events = []
     for r in rows[:ctx["limit"]]:
-        b = baseline_words(r["baseline"], r["tags"])
+        b = baseline_words(r["baseline"], r["tags"], r["source"])
         events.append(_from_commit(r, "decision",
                                  f"Baseline {b['words'] or 'recorded'} "
                                  f"({r['source'] or 'no Source: trailer'})", [],

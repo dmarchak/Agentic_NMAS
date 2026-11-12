@@ -2108,11 +2108,19 @@ def baseline_source(log_fn=None, presence=None) -> dict:
     Commits before 2026-09-28 carry no decision, and the source says so
     rather than reading their silence as either answer.
 
+    The newest decision ABOUT THE NETWORK (the operator, 2026-11-12, C3165: "d) Clear the
+    current row by the corrected rule. Don't acknowledge it, and don't hand-edit the record.";
+    C3167: "only heals exempt", and "safety records are never skipped"): a denial a heal's
+    commit recorded, before the save stopped recording one, is passed over
+    (`repo.network_decision`) and the decision before it is read, unless it carries a cut
+    path; what was passed over is counted under What was checked. The record is not changed.
+
     A network with no devices is one line, "no devices yet", when the source reads the
     network's own history; a *log_fn* given by a caller is read as given."""
     import os
 
     from modules.config import get_list_data_dir
+    from modules.nsot.repo import network_decision
 
     started = time.time()
     if log_fn is None:
@@ -2125,8 +2133,8 @@ def baseline_source(log_fn=None, presence=None) -> dict:
         if log_fn is None:
             from modules.nsot.repo import git
             repo = os.path.join(get_list_data_dir(lst), "config_repo")
-            rc, out, err = git(repo, "log", "-1", "-E", "--grep=^Baseline: ",
-                               "--format=%H%x1f%ct%x1f%B")
+            rc, out, err = git(repo, "log", f"--max-count={BASELINE_DECISIONS_READ}", "-E",
+                               "--grep=^Baseline: ", "--format=%H%x1f%ct%x1f%B%x1e")
             if rc != 0:
                 raise RuntimeError(f"git log failed: {err.strip() or rc}")
         else:
@@ -2145,11 +2153,36 @@ def baseline_source(log_fn=None, presence=None) -> dict:
                              checked=f"list {lst}: no baseline decision recorded yet "
                                      "(decisions are recorded from 2026-09-28); "
                                      + usability["checked"])
-    sha, ct, body = out.split("\x1f", 2)
-    decision = next((ln.split(":", 1)[1].strip() for ln in body.splitlines()
-                     if ln.startswith("Baseline: ")), "")
-    source_line = next((ln.split(":", 1)[1].strip() for ln in body.splitlines()
-                        if ln.startswith("Source: ")), "")
+    def trailer(text, key):
+        return next((ln.split(":", 1)[1].strip() for ln in text.splitlines()
+                     if ln.startswith(key)), "")
+
+    records = [r.lstrip("\n") for r in out.split("\x1e") if r.strip()]
+    passed, found = [], None
+    for record in records:
+        sha, ct, body = record.split("\x1f", 2)
+        decision, source_line = trailer(body, "Baseline: "), trailer(body, "Source: ")
+        if network_decision(source_line, decision):
+            found = (sha, ct, body, decision, source_line)
+            break
+        passed.append(sha[:10])
+    over = ""
+    if passed:
+        over = (f"; {len(passed)} newer denial(s) passed over, each recorded by a heal's "
+                "commit, which decides nothing for the network ("
+                + ", ".join(passed[:3])
+                + (f" and {len(passed) - 3} more" if len(passed) > 3 else "") + ")")
+    if found is None:
+        # Every decision read was passed over. A read that returned its whole page may have
+        # older decisions beyond it, and says so (a view showing a subset says so).
+        usability = _baseline_usability_row(lst)
+        cut = (f"; the read takes the newest {BASELINE_DECISIONS_READ} decisions, and older "
+               "ones were not read" if len(records) >= BASELINE_DECISIONS_READ else "")
+        return source_result("baseline", "Baseline", read_at=started, took_ms=took,
+                             rows=usability["rows"],
+                             checked=f"list {lst}: no baseline decision about the network is "
+                                     f"recorded{over}{cut}; " + usability["checked"])
+    sha, ct, body, decision, source_line = found
     at = float(ct)
     rows = []
     reasons = decision.split(":", 1)[1].strip() if ":" in decision else ""
@@ -2186,25 +2219,68 @@ def baseline_source(log_fn=None, presence=None) -> dict:
         rows.append(row(
             source="baseline", kind="denied", key=f"{lst}:last", level="warning",
             what=f"The network's last baseline was not earned ({source_line or 'a save'})",
-            # The decision's OWN commit and time: a Save All that changed
-            # nothing since decided without a commit to carry it, so this can
-            # be older than the newest save, and the row says whose it is.
+            # The decision's OWN commit and time: a save of one device or a
+            # heal since makes no decision about the network (C3165), so this can be
+            # older than the newest save, and the row says whose it is. A Save All
+            # always decides, a golden changed or not, so the next one replaces it.
             cause=(reasons or "the decision recorded no reason")
-                  + f" (decided by commit {sha[:10]} at {_iso(at)}; a save since that made "
-                    "no decision, a one-device capture or a Save All that changed nothing, "
-                    "leaves it standing)",
-            action={"label": "Resolve each departure the reasons name, one of two ways "
-                             "that mean opposite things: change the DEVICE (a line intent "
-                             "has is deployed; a line only the device has is removed by hand, "
-                             "since the tool never removes one) if intent is right, or Edit "
-                             "INTENT if the device is right. Then Save All"},
+                  + f" (decided by commit {sha[:10]} at {_iso(at)}; a capture of one device "
+                    "or a heal since makes no decision about the network and leaves it "
+                    "standing; the next Save All decides again, even when no configuration "
+                    "changed)",
+            action={"label": _denial_remedy(reasons)},
             since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
     rows += usability["rows"]
     return source_result("baseline", "Baseline", read_at=started, took_ms=took, rows=rows,
                          value_at=at,
                          checked=f"list {lst}: the last baseline decision, {sha[:10]}: "
-                                 f"{decision.split(':', 1)[0] or 'unreadable'}; "
+                                 f"{decision.split(':', 1)[0] or 'unreadable'}{over}; "
                                  + usability["checked"])
+
+
+#: How many of the newest `Baseline:` decisions one read takes: the newest is the answer
+#: unless it is a denial a heal's or one device's commit recorded before 2026-11-12 (C3165),
+#: and such commits come in runs between two Save Alls. A read that returns this many and
+#: finds none about the network says older ones were not read.
+BASELINE_DECISIONS_READ = 200
+
+
+def _denial_remedy(reasons: str, unusable: bool = False) -> str:
+    """What to do about a denied baseline, BY ITS CAUSE (the operator, 2026-11-12, C3165: "b)
+    The row's "What to do" must match its cause: a coverage reason says to capture the missing
+    devices, not to resolve departures."). A cut path (`repo.safety_record`, C2270) says to
+    repair the path; the reasons' coverage part is read by `repo.uncaptured`; anything else
+    they name is a departure to resolve. *unusable*: the words for the row that also says no
+    stored baseline can be re-applied."""
+    from modules.nsot.repo import safety_record, uncaptured
+
+    if safety_record(reasons):
+        return ("Check Mercury's path to each device the reason names, and repair it where it "
+                "is cut. Then Save All: it captures every device and earns a baseline if each "
+                "is read and at its committed intent")
+    got = uncaptured(reasons)
+    if not got["any"]:
+        if unusable:
+            return ("Resolve each departure the denial names, one of two ways that mean "
+                    "opposite things: change the DEVICE if intent is right (a line only the "
+                    "device has is removed by hand: the tool never removes one), or Edit "
+                    "INTENT if the device is right. Then Save All. Save All alone will be "
+                    "refused again while it departs")
+        return ("Resolve each departure the reasons name, one of two ways "
+                "that mean opposite things: change the DEVICE (a line intent "
+                "has is deployed; a line only the device has is removed by hand, "
+                "since the tool never removes one) if intent is right, or Edit "
+                "INTENT if the device is right. Then Save All")
+    capture = ("Capture the missing devices: "
+               + (f"that save could not read {', '.join(got['skipped'])} (its result says why "
+                  "for each); once each answers, " if got["skipped"] else "")
+               + "Save All captures every device in the inventory and earns a baseline if "
+                 "each is read and at its committed intent")
+    if got["only"]:
+        return capture
+    return (capture + ". The reasons also name a departure: resolve each first, by changing "
+            "the DEVICE if intent is right (a line only the device has is removed by hand: "
+            "the tool never removes one) or by Edit INTENT if the device is right")
 
 
 def _operation_words(source: str, body: str) -> str:
@@ -2265,11 +2341,7 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
                 f"({blocker['reasons']}; commit {blocker['commit']} at {blocker['at']})."
                 if blocker else "")
              + (" " + _not_covered_words(partial) if partial else ""))
-    action = ({"label": "Resolve each departure the denial names, one of two ways that mean "
-                        "opposite things: change the DEVICE if intent is right (a line only the "
-                        "device has is removed by hand: the tool never removes one), or Edit "
-                        "INTENT if the device is right. Then Save All. Save All alone will be "
-                        "refused again while it departs"}
+    action = ({"label": _denial_remedy(blocker["reasons"], unusable=True)}
               if blocker else
               {"label": "Take a current baseline: Save All captures every device, and earns "
                         "a baseline if each is at its committed intent; if not, it records "

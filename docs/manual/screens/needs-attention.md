@@ -246,17 +246,24 @@ between its rotate and its persist; the row appears only if the rotation ends th
 says how old the reading it stands on is ("read 2 min ago"), and a Save All that would record
 the same state as a baseline just taken says so in its preview, with when and by whom.
 
-**Baselines** (the newest `Baseline:` decision in the network's history, and the stored
-baselines' usability): a commit that did not earn a baseline is a row, with its commit and
-time. Its remedy depends on why. A deploy or restore that did not cover the network (devices
-"not targeted", and nothing else) is a partial operation's decision, not a denial: the row
-says so ("the last commit (a deploy to edge2) did not cover the network, so it earned no
-baseline: Save All takes one"), and Save All alone takes one. A Save All denied because a
-device departs from its intent names each departure, and Save All will be refused again until
-each is resolved, by changing the device or the intent. When no stored baseline can be
-re-applied (each predates a credential rotation, or is withdrawn), one row says so and carries
-whichever of the two the last decision was. The row clears when a later decision earns a
-baseline.
+**Baselines** (the newest `Baseline:` decision about the network in its history, and the
+stored baselines' usability): a commit that did not earn a baseline is a row, with its commit
+and time. A self-healing repair decides nothing about the network and raises no row; a
+denial one recorded before 2026-11-12 is passed over, and the decision before it is read
+(What was checked counts what was passed over). The exception is a repair whose program cut
+Mercury's path to a device: that denial is recorded and drawn like any deploy's, and says to
+check the path and repair it. The row's remedy depends on why. A deploy or restore that did
+not cover the network (devices "not targeted", and nothing else) is a partial operation's
+decision, not a denial: the row says so ("the last commit (a deploy to edge2) did not cover
+the network, so it earned no baseline: Save All takes one"), and Save All alone takes one. A
+save that did not capture every device says to capture the missing ones, naming each device
+it could not read or the count ("12 of 13"). A Save All denied because a device departs from
+its intent names
+each departure, and Save All will be refused again until each is resolved, by changing the
+device or the intent. When no stored baseline can be re-applied (each predates a credential
+rotation, or is withdrawn), one row says so and carries whichever the last decision was. The
+row clears when a later decision earns a baseline: the next Save All that reads every device
+at its intent earns one, even when no configuration changed.
 
 **A source that has not been read within its promise** is a row of its own: each reader says
 how often it reads, and when a source's value is older than that, the row names the source, how

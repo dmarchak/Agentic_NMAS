@@ -836,11 +836,84 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
         f"acknowledge it with a reason on the capture's preview.", lost)
 
 
+#: The workflows that repair the devices they name and never judge the network: a heal's
+#: golden commit (`routes.deploy.HEAL_SOURCE`).
+REPAIRS = ("heal_to_intent",)
+
+#: A SAFETY RECORD among a denial's reasons: a program that cut Mercury's path to a device,
+#: or one whose cut could not be computed (C2270). Both sentences
+#: `routes.deploy._reach_cut` writes hold these words.
+_SAFETY_REASON = re.compile(r"cut Mercury's path to ")
+
+
+def safety_record(reason: str) -> bool:
+    """Is *reason* (one reason, or a `Baseline: denied:` trailer's whole text) a safety
+    record, or does it carry one? The operator, 2026-11-12 (C3167): "safety records are never
+    skipped." Neither the save, for a heal's commit, nor a reader of one already written
+    leaves one out."""
+    return bool(_SAFETY_REASON.search(str(reason or "")))
+
+
+def decides_for_network(source: str) -> bool:
+    """Does a commit made by workflow *source* make a decision about the NETWORK's baseline?
+    The one rule, asked by the save that writes the decision (`save_golden`), by the batch
+    that words its result (`routes.deploy._commit_batch_golden`) and, for the records written
+    before it, by the readers (`network_decision`).
+
+    The operator, 2026-11-12 (C3165): "a) A heal's (or any one-device) commit makes no network
+    baseline decision." The first live Auto heal re-applied one device's applet, and its
+    commit recorded "Baseline: denied: not every inventory device was captured (1 of an
+    unstated number)", which Needs attention drew as the network's last baseline not earned.
+    And his decision on what that covers, the same day (C3167): "only heals exempt. Keep
+    C1454 (2) and C2270 for a person's one-device deploy. A heal makes no network baseline
+    decision (no earned baseline and no coverage denial), but a management-path cut by a heal
+    still records its C2270 denial: safety records are never skipped."
+
+    So: a heal's commit (`REPAIRS`) earns nothing and is denied nothing for coverage, a
+    departure or a hold, and records only a safety record (`safety_record`) its caller
+    passes. Every other commit decides as it always did, a person's one-device deploy
+    included: judged with the devices outside it by their record, earned or denied."""
+    return source not in REPAIRS
+
+
+def no_decision_words(measured_count: int, inventory_size: int = 0) -> str:
+    """Why a heal's commit made no baseline decision, for the result that would otherwise
+    say "no baseline": the devices in the commit and the inventory's size, both named."""
+    of = (f"{measured_count} of {inventory_size} inventory devices" if inventory_size > 0
+          else f"{measured_count} device(s); the inventory's size was not read")
+    return ("a heal's commit makes no decision about the network's baseline: it repairs the "
+            f"devices it names ({of}); Save All captures every device and takes one")
+
+
+def _baseline_asked(baseline, source: str, changed_count: int, caller_reasons=None) -> bool:
+    """Did the save's CALLER ask for a baseline decision, whatever `decides_for_network` then
+    says of the commit? A batch (a deploy, a restore, a heal) passes ``baseline`` True, or
+    False with its reasons; a capture of one device passes False with none, and asks nothing."""
+    if baseline is False:
+        return bool(caller_reasons)
+    if baseline is not None:
+        return True
+    return source in ("save_all", "migration") or changed_count > 1
+
+
 def _baseline_wanted(baseline, source: str, changed_count: int) -> bool:
-    """Does this save claim to mark the state of the whole network?"""
+    """Does this save claim to mark the state of the whole network? Never a heal's
+    (`decides_for_network`), whatever its caller passed."""
+    if not decides_for_network(source):
+        return False
     if baseline is not None:
         return bool(baseline)
     return source in ("save_all", "migration") or changed_count > 1
+
+
+def _recorded_denial(source: str, baseline, caller_reasons) -> list:
+    """The reasons a caller that decided for itself (``baseline=False`` with its reasons) has
+    recorded in the commit: all of them, or, for a commit that makes no network decision (a
+    heal's), only its safety records (`safety_record`), which are never left out."""
+    if baseline is not False or not caller_reasons:
+        return []
+    reasons = [str(r) for r in caller_reasons]
+    return reasons if decides_for_network(source) else [r for r in reasons if safety_record(r)]
 
 
 def _in_flight_denial(list_name: str, judged) -> list:
@@ -907,17 +980,31 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
     passes ``baseline=True`` has measured coverage itself (the deploy and
     restore paths' `_baseline_earned`). A deploy's caller that judged the devices outside its
     batch by their record passes that *standing* (C1454 (2)): it is re-checked here, inside
-    the lock, and its devices are among those no other operation may hold."""
+    the lock, and its devices are among those no other operation may hold.
+
+    The operator, 2026-11-12 (C3165): "c) A full capture with no departures earns the baseline,
+    even if nothing changed." It did for a Save All; a deploy whose every capture equalled its
+    golden was denied "not every inventory device was captured (N of an unstated number)"
+    (C2105), because the nothing-changed path checks coverage and the deploy stated no
+    inventory size. The deploy states it now, and the devices its caller judged by their
+    record (*standing*) count as covered, as they do when a golden changes. And the same
+    words' (b): the reason "names the count ("1 of 13")"."""
     if not _baseline_wanted(baseline, source, changed_count):
         return False, []
     from modules.nsot.intent_match import baseline_denial
 
     reasons = []
-    if require_coverage and not _covers_inventory(measured, inventory_size, skipped):
+    judged = [h for h in ((standing or {}).get("devices") or {}) if h not in measured]
+    if require_coverage and not _covers_inventory(list(measured) + judged, inventory_size,
+                                                  skipped):
         named = ", ".join(sorted(s.get("hostname", "?") for s in (skipped or [])))
+        count = (f"{len(measured)} of {inventory_size}" if inventory_size > 0 else
+                 f"{len(measured)} captured; the save was given no inventory size")
         reasons.append("not every inventory device was captured"
                        + (f" ({named} skipped)" if named else
-                          f" ({len(measured)} of {inventory_size or 'an unstated number'})"))
+                          f" ({count}"
+                          + (f"; {len(judged)} more judged by their record" if judged else "")
+                          + ")"))
     reasons += baseline_denial(intent)
     reasons += _standing_moved(repo, standing)
     # Intent and stored secrets as of one moment, no device judged held elsewhere (C2030).
@@ -928,7 +1015,9 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
 
 def _baseline_trailer(earned: bool, denied: list, baseline, source: str,
                       changed_count: int, caller_reasons) -> str:
-    """The baseline DECISION as a trailer, or "" when none was made (7.2).
+    """The baseline DECISION as a trailer, or "" when none was made (7.2). A heal's commit
+    makes none (`decides_for_network`) and carries the trailer only for a safety record its
+    caller passed (`_recorded_denial`).
 
     The reasons a baseline was denied lived only in `save_golden()`'s return
     value, so a denial was drawn once on the result screen and could not be
@@ -941,8 +1030,9 @@ def _baseline_trailer(earned: bool, denied: list, baseline, source: str,
     def one_line(text):
         return " ".join(str(text).split())
 
-    if baseline is False and caller_reasons:
-        return "Baseline: denied: " + "; ".join(one_line(r) for r in caller_reasons)
+    own = _recorded_denial(source, baseline, caller_reasons)
+    if own:
+        return "Baseline: denied: " + "; ".join(one_line(r) for r in own)
     if not _baseline_wanted(baseline, source, changed_count):
         return ""
     if earned:
@@ -970,6 +1060,52 @@ def not_targeted_only(reasons: str) -> int:
     if not parts or not all(found):
         return 0
     return max((int(m.group(1)) for m in found if "not targeted" in m.group(0)), default=0)
+
+
+#: `_baseline_decision`'s coverage reason, with what it names in brackets: the devices
+#: skipped, or the count.
+_UNCAPTURED = re.compile(r"not every inventory device was captured(?: \(([^()]*)\))?")
+
+
+def uncaptured(reasons: str) -> dict:
+    """What a denied decision's *reasons* say about COVERAGE: ``{"any", "only", "skipped",
+    "detail"}``. ``any``: the save did not capture every inventory device; ``only``: that is
+    all the reasons say (no device was judged to depart); ``skipped``: the devices it names as
+    skipped; ``detail``: its bracket as written ("1 of 13").
+
+    The operator, 2026-11-12 (C3165): "b) The row's "What to do" must match its cause: a
+    coverage reason says to capture the missing devices, not to resolve departures." The row
+    said "Resolve each departure the reasons name" under a reason that named none."""
+    text = reasons or ""
+    m = _UNCAPTURED.search(text)
+    if not m:
+        return {"any": False, "only": False, "skipped": [], "detail": ""}
+    detail = (m.group(1) or "").strip()
+    rest = (text[:m.start()] + text[m.end():]).strip(" ;")
+    skipped = ([n.strip() for n in detail[:-len(" skipped")].split(",") if n.strip()]
+               if detail.endswith(" skipped") else [])
+    return {"any": True, "only": not rest, "skipped": skipped, "detail": detail}
+
+
+def network_decision(source: str, decision: str) -> bool:
+    """Is a recorded `Baseline:` *decision* (the trailer's value), in a commit by workflow
+    *source*, a decision about the NETWORK? What `decides_for_network` asks of a commit being
+    written, asked of one already written, for every reader of the trailer
+    (`attention.baseline_source`, History's Baseline column).
+
+    The operator, 2026-11-12 (C3165): "d) Clear the current row by the corrected rule. Don't
+    acknowledge it, and don't hand-edit the record." The record stays as it was written; a
+    reader passes over a denial a heal's commit recorded before the save stopped writing one,
+    and reads the decision before it.
+
+    Refused by resemblance, never allowed by it. Never passed over: an EARNED decision (its
+    `baseline/<ts>` tag is the fact); any other workflow's denial, a person's one-device
+    deploy's included (C3167: "only heals exempt"); and a heal's denial that carries a cut
+    path, whatever else it says (the same decision: "safety records are never skipped")."""
+    d = (decision or "").strip()
+    if not d.startswith("denied") or decides_for_network(source):
+        return True
+    return safety_record(d)
 
 
 def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
@@ -1254,19 +1390,28 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             # carries. An earned tag then marks that commit.
             decision = _baseline_trailer(earned, denied, baseline, source, 0,
                                          baseline_reasons)
+            # A HEAL'S MEASUREMENT IS STILL RECORDED, THOUGH ITS COMMIT DECIDES NOTHING FOR
+            # THE NETWORK (C3165): its caller asked, and `decides_for_network` says the commit
+            # makes no decision. The commit is the record the heal's step log and receipt
+            # link to (a heal with no golden commit ends partial, `modules.heal.act`) and the
+            # measurement `startup_source` reads (`Intent-Match:`); it carries no `Baseline:`
+            # trailer and its subject says so.
+            measured_only = (not decision
+                             and _baseline_asked(baseline, source, 0, baseline_reasons))
             decision_commit = ""
-            if decision:
-                if baseline is False and baseline_reasons:
-                    denied = [str(r) for r in baseline_reasons]
+            if decision or measured_only:
+                denied = _recorded_denial(source, baseline, baseline_reasons) or denied
                 # The subject names what HAPPENED (C83): nothing changed, a
                 # decision was recorded. Only the tag, if earned, claims one.
-                message = (f"golden: no configuration changed; decision recorded "
+                message = (f"golden: no configuration changed; "
+                           f"{'decision' if decision else 'measurement'} recorded "
                            f"({len(unchanged)} device(s) measured via {source})\n\n"
-                           + "\n".join([f"Source: {source}", f"Actor: {actor}",
-                                        f"Devices-Measured: {','.join(unchanged)}",
-                                        _intent_trailer(intent), decision,
-                                        "Not-Done: no golden changed: every capture "
-                                        "equals its committed golden"]
+                           + "\n".join([line for line in (
+                               f"Source: {source}", f"Actor: {actor}",
+                               f"Devices-Measured: {','.join(unchanged)}",
+                               _intent_trailer(intent), decision,
+                               "Not-Done: no golden changed: every capture "
+                               "equals its committed golden") if line]
                                        + list(extra_trailers or [])) + "\n")
                 rc, _o, err = commit(repo, message, allow_empty=True, publish_now=False)
                 if rc == 0:
@@ -1310,13 +1455,18 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                    leave_items)
             return {"ok": True, "commit": decision_commit, "changed": [],
                     "refused": refused,
-                    "decision_only": bool(decision_commit),
+                    "decision_only": bool(decision_commit and decision),
+                    "measured_only": bool(decision_commit and not decision),
                     "unchanged": unchanged, "tags": tags, "tag_failures": tag_failures,
                     "baseline": baseline_tag, "baseline_denied": denied,
                     "intent": intent,
                     "renamed": rename_result["renamed"],
                     "message": (("No configuration changed; the baseline decision is "
                                  f"recorded in commit {decision_commit[:12]}."
+                                 if decision_commit and decision else
+                                 "No configuration changed; the measurement is recorded in "
+                                 f"commit {decision_commit[:12]}, which makes no baseline "
+                                 "decision."
                                  if decision_commit else
                                  "No content changed — no commit created.")
                                 + (f" Baseline {baseline_tag} tagged: every capture was "
@@ -1362,8 +1512,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
             inventory_size, skipped, intent, require_coverage=baseline is None,
             list_name=list_name, repo=repo, standing=standing)
-        if baseline is False and baseline_reasons:
-            denied = [str(r) for r in baseline_reasons]
+        denied = _recorded_denial(source, baseline, baseline_reasons) or denied
         decision = _baseline_trailer(earned, denied, baseline, source, len(changed),
                                      baseline_reasons)
         if decision:

@@ -656,6 +656,76 @@ class TestABaselineAfterAScopedDeploy:
             "every inventory device is in this commit, or outside it and shown at its "
             "committed intent by its golden and the last drift run: r7"]
 
+    def _batch(self, moved=True, source=""):
+        """The deploy to r2 committed as the batch commits it; *moved* False: r2's capture
+        equals its golden; *source*: the workflow, when it is not a person's deploy."""
+        from modules.nsot.deploy import DEPLOYED
+        from routes.deploy import _commit_batch_golden
+
+        pending = [dict(p, config_text=p["config_text"] if moved else R2_APPLET)
+                   for p in self._pending()]
+        report = {"batch_id": "t1", "results": [
+            {"device": "r2", "outcome": DEPLOYED, "golden_pending": pending}]}
+        return _commit_batch_golden("Lab", report, actor="t", source=source)
+
+    def test_a_persons_one_device_deploy_that_changed_nothing_earns_one_too(
+            self, lab, monkeypatch):
+        """C2105, and the operator's (c) of 2026-11-12 (C3165): "A full capture with no
+        departures earns the baseline, even if nothing changed." The same deploy with nothing
+        to record was denied "not every inventory device was captured (1 of an unstated
+        number)", because the nothing-changed path checks coverage and the deploy stated no
+        inventory size. It states it, and r7, judged by its record, counts as covered. His
+        decision the same day (C3167): "Keep C1454 (2) and C2270 for a person's one-device
+        deploy.\""""
+        self._fleet(lab, monkeypatch)
+        got = self._batch(moved=False)
+        assert got["ok"] and got["changed"] == [] and got["decision_only"], got
+        assert [t for t in got["tags"] if t.startswith("baseline/")], got.get("baseline_denied")
+        body = R.git(lab, "log", "-1", "--format=%B", got["commit"])[1]
+        assert "Baseline: earned" in body and "Judged-Outside: r7 (golden " in body
+        assert "Devices-Measured: r2" in body
+
+    @pytest.mark.parametrize("moved", [True, False])
+    def test_the_same_deploy_as_a_heal_earns_none_and_denies_none(self, lab, monkeypatch,
+                                                                 moved):
+        """C3167: "only heals exempt … A heal makes no network baseline decision (no earned
+        baseline and no coverage denial)". The batch a person's deploy earns one with, as a
+        heal's: its commit is made, carries no `Baseline:` trailer and no tag, and r7 is not
+        read for a judgement nobody makes."""
+        from routes.deploy import HEAL_SOURCE
+
+        self._fleet(lab, monkeypatch)
+        # Counted, never raised: the batch reads the others inside a try that would swallow it.
+        asked = []
+        monkeypatch.setattr("modules.nsot.startup_source.standing",
+                            lambda *a, **k: asked.append(a) or {"head": "", "devices": {}})
+        got = self._batch(moved=moved, source=HEAL_SOURCE)
+        assert got["ok"] and got["commit"], got
+        assert asked == [], "the devices outside a heal's commit were judged"
+        body = R.git(lab, "log", "-1", "--format=%B", got["commit"])[1]
+        assert "Source: heal_to_intent" in body
+        assert "Baseline:" not in body and "Judged-Outside:" not in body
+        assert not [t for t in got["tags"] if t.startswith("baseline/")]
+        assert got["baseline"] is False and got["baseline_reasons"] == [
+            "a heal's commit makes no decision about the network's baseline: it repairs the "
+            "devices it names (1 of 2 inventory devices); Save All captures every device and "
+            "takes one"]
+
+    def test_a_deploy_that_changed_nothing_and_did_not_cover_the_inventory_names_the_count(
+            self, lab, monkeypatch):
+        """The control, and the operator's (b): the count is named. The inventory grows by a
+        device nobody judged between the deploy's judgement and its save, so the save's own
+        coverage check denies it with both operands ("1 of 3", r7 judged by its record)."""
+        self._fleet(lab, monkeypatch)
+        out = self._earned()
+        assert out["baseline"] is True
+        got = R.save_golden("Lab", [R.GoldenItem("r2", R2_APPLET, "203.0.113.12")],
+                            source="pipeline", actor="t", baseline=True, inventory_size=3,
+                            standing=out["standing"])
+        assert got["ok"] and not got["baseline"]
+        assert got["baseline_denied"] == [
+            "not every inventory device was captured (1 of 3; 1 more judged by their record)"]
+
     def test_a_device_outside_off_its_intent_denies_it_as_a_partial_operation(
             self, lab, monkeypatch):
         """The control: r7's newest capture departs from its intent, so the deploy to r2

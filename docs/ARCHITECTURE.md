@@ -879,7 +879,10 @@ and others have left since too.
   copies them; `--check` names each device's source commit. A device with no such golden is not
   built, named, the rest written. `standing()` judges a device outside a deploy by its record
   (its intent state, the last drift run), so a scoped deploy can earn a baseline
-  (`routes/deploy.py` `_baseline_earned`, re-checked under the lock by `repo._standing_moved`)
+  (`routes/deploy.py` `_baseline_earned`, re-checked under the lock by `repo._standing_moved`);
+  a heal's commit makes no baseline decision (`repo.decides_for_network`, C3165 and C3167),
+  recording only a path its program cut (`repo.safety_record`, C2270), and a denial a heal
+  recorded before is passed over by its readers (`repo.network_decision`)
 - **[modules/nsot/verify_scope.py](modules/nsot/verify_scope.py)** — C316 (2026-10-01): which
   verify a program gets. Every top-level section management (terminal lines, logging, SNMP, NTP,
   banners, users) is QUICK: no wait for BGP's hold time, each new line read back; anything else or

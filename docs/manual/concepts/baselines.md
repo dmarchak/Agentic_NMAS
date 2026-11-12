@@ -40,9 +40,17 @@ and says why it earned nothing.
 
 - **Save All** (the fleet capture) always asks. A capture of one device never does: it makes
   no claim about the network, so it records no decision. See [Capture and Save All](capture).
-- **A deploy batch** asks. Every targeted device must succeed; a device with nothing to send
-  is still read back, because "nothing to send" was decided against a stored capture, not
-  the device now. A device the deploy did not target is judged by its record instead: its
+- **A self-healing repair never asks.** It repairs the devices it names and says nothing
+  about the network: its commit records what was read (`Intent-Match:`, and
+  `Devices-Measured:` when no golden changed) and carries no `Baseline:` line, neither earned
+  nor denied for the devices outside it, and its record says so, naming the devices in the
+  commit and the inventory's size ("1 of 13 inventory devices"). One thing it still records:
+  a repair whose program cut Mercury's path to a device writes that denial, as any deploy
+  does. A safety record is never left out.
+- **A deploy batch** asks, a deploy to one device included. Every targeted device must
+  succeed; a device with nothing to send is still read back, because "nothing to send" was
+  decided against a stored capture, not the device now. A device the deploy did not target
+  is judged by its record instead: its
   newest measurement recorded it at its committed intent with nothing it was judged against
   changed since, and the last drift check read it without finding it departing from its
   golden (or its capture is newer than that check). When every device outside the batch
@@ -67,6 +75,16 @@ configuration changed; decision recorded`), carrying the same `Intent-Match:` an
 earned, the tag goes on that commit. A denial is therefore never only a message on a screen:
 its reason is in the history, and the save's preview says at the confirm that nothing will
 be recorded but the denial.
+
+A full capture with no departures earns the baseline even when nothing changed: every device
+read, each equal to its golden and at its committed intent. The same holds for a deploy
+batch that covers the inventory, counting the devices outside it that stand at their intent
+by their record. What still denies it is a fact about the network: a device not read (the
+reason names it, or the count, "12 of 13"), a device that departs from its intent, a device
+another operation holds, or a path the deploy cut.
+
+A self-healing repair that changes no golden records an empty commit too, with the subject
+`golden: no configuration changed; measurement recorded`: what was read, and no decision.
 
 ## Two claims: configured, and configured and working {#golden-state}
 

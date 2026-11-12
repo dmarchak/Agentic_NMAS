@@ -1710,7 +1710,11 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     are not wrong — each is truthful — but they leave no single reference for
     "the network after this batch", because ``baseline/<ts>`` only appeared
     when one call changed more than one device. Collecting here means the
-    baseline exists for any completed batch, including a single-device one.
+    baseline exists for any completed batch, including a single-device one. A
+    heal's batch is the exception (the operator, 2026-11-12, C3165 and C3167;
+    `repo.decides_for_network`): it decides nothing for the network, so its
+    commit records the measurement and no `Baseline:` trailer, unless its
+    program cut Mercury's path to a device, which is recorded as any deploy's is.
 
     The subject and trailers name the **successful subset** and the failures
     alongside it, so a partial batch is legible from the commit rather than
@@ -1722,7 +1726,8 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     from modules.config import get_list_data_dir
     from modules.nsot.deploy import DEPLOYED
     from modules.nsot.repo import (GoldenItem, clear_post_deploy_staging,
-                                   clear_restored_intent_staging, save_golden)
+                                   clear_restored_intent_staging, decides_for_network,
+                                   no_decision_words, save_golden)
 
     results = report.get("results") or []
     pending, succeeded, failed = [], [], []
@@ -1743,8 +1748,29 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
                 "reason": "no device completed successfully"}
 
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
-    earned = _baseline_earned(report, pending, failed, source_ref=source_ref,
-                              list_name=list_name)
+    # `Source:` names the WORKFLOW (repo.ACTOR_CONVENTION). A restore was
+    # recorded `pipeline`, the mechanism both paths share, so C70's premise
+    # ("no commit carries Source: restore") held whether or not a restore
+    # had ever run: a lookup that could not miss.
+    workflow = source or ("restore" if source_ref else "pipeline")
+    # The operator, 2026-11-12 (C3167): "only heals exempt. Keep C1454 (2) and C2270 for a
+    # person's one-device deploy. A heal makes no network baseline decision (no earned
+    # baseline and no coverage denial), but a management-path cut by a heal still records its
+    # C2270 denial: safety records are never skipped." Asked of `repo.decides_for_network`,
+    # the rule's one home, before the batch is judged: a heal's batch is not measured for a
+    # baseline (no standing read) and its result says why, but the path its program cut
+    # (`_reach_cut`) is its commit's denial, as it is any deploy's.
+    inventory = _inventory_names(list_name)
+    size = len(inventory) if inventory is not None else 0
+    if decides_for_network(workflow):
+        earned = _baseline_earned(report, pending, failed, source_ref=source_ref,
+                                  list_name=list_name, inventory=inventory)
+    else:
+        in_commit = sorted({p["hostname"] for p in pending})
+        cut = _reach_cut(report)
+        earned = {"baseline": False, "decided": bool(cut), "measured": in_commit,
+                  "standing": {},
+                  "baseline_reasons": cut or [no_decision_words(len(in_commit), size)]}
     what = label or f"via pipeline {batch_id}"
     # No "baseline" in the subject (C83): the tag is the claim, and it is
     # decided by save_golden after this commit and may be denied.
@@ -1792,17 +1818,15 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     items = [GoldenItem(p["hostname"], p["config_text"], p["mgmt_ip"],
                         netbox_id=p["netbox_id"], device_uid=p["device_uid"])
              for p in pending]
-    # `Source:` names the WORKFLOW (repo.ACTOR_CONVENTION). A restore was
-    # recorded `pipeline`, the mechanism both paths share, so C70's premise
-    # ("no commit carries Source: restore") held whether or not a restore
-    # had ever run: a lookup that could not miss.
-    result = save_golden(list_name, items,
-                         source=source or ("restore" if source_ref else "pipeline"),
+    result = save_golden(list_name, items, source=workflow,
                          # The person carried in by a job (deploy_job): outside a
                          # request `request_actor()` reads `unauthenticated`, and
                          # the commit would record nobody behind the deploy.
                          actor=actor or request_actor(),
                          message=subject, pipeline_id=batch_id,
+                         # The inventory's size, stated (C2105): the save checks coverage
+                         # when every capture equals its golden, and names the count.
+                         inventory_size=size,
                          baseline=earned["baseline"], allow_new=False,
                          baseline_reasons=(None if earned["baseline"]
                                            else earned.get("baseline_reasons")),
@@ -1851,9 +1875,25 @@ def _reach_cut(report: dict) -> list:
     return out
 
 
+def _inventory_names(list_name: str):
+    """The device names of the batch's own list (C215, never the active one), or ``None``
+    when the inventory cannot be read."""
+    from modules.nsot.restore import _devices_of
+
+    try:
+        return {d.get("hostname", "") for d in _devices_of(list_name)}
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("deploy: could not read the inventory to judge baseline "
+                    "eligibility (%s)", exc)
+        return None
+
+
 def _baseline_earned(report: dict, pending: list, failed: list,
-                     source_ref: str = "", *, list_name: str) -> dict:
-    """Whether this batch produced a state worth calling a baseline.
+                     source_ref: str = "", *, list_name: str, inventory=None) -> dict:
+    """Whether this batch produced a state worth calling a baseline. Asked of every batch
+    but a heal's, whose commit makes no network decision (`repo.decides_for_network`, asked
+    by `_commit_batch_golden`); *inventory* is the list's device names when the caller read
+    them.
 
     **Each path's baseline is keyed on the claim its tag makes**, which are not
     the same claim:
@@ -1888,20 +1928,21 @@ def _baseline_earned(report: dict, pending: list, failed: list,
     other direction: it answers whether the template reproduces the device, not
     whether the commit is the network.
     """
-    from modules.nsot.restore import _devices_of
-
     reasons = []
     if failed:
         reasons.append(f"{len(failed)} device(s) did not succeed: {sorted(failed)}")
     reasons += _reach_cut(report)
 
-    try:
-        # The batch's own list (C215), never the active one.
-        inventory = {d.get("hostname", "") for d in _devices_of(list_name)}
-    except Exception as exc:                  # noqa: BLE001
-        log.warning("deploy: could not read the inventory to judge baseline "
-                    "eligibility (%s)", exc)
-        return {"baseline": False, "baseline_reasons": ["inventory unreadable"]}
+    if inventory is None:
+        from modules.nsot.restore import _devices_of
+
+        try:
+            # The batch's own list (C215), never the active one.
+            inventory = {d.get("hostname", "") for d in _devices_of(list_name)}
+        except Exception as exc:                  # noqa: BLE001
+            log.warning("deploy: could not read the inventory to judge baseline "
+                        "eligibility (%s)", exc)
+            return {"baseline": False, "baseline_reasons": ["inventory unreadable"]}
 
     measured = {p["hostname"] for p in pending}
     targeted = measured | set(failed)
