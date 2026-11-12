@@ -6,6 +6,9 @@ field. Only the notifier and the pages draw it").
 The scan parses every module of `modules/heal/` (a floor on its population, so a scan of
 nothing never passes) and refuses, in code (docstrings are prose and are not read):
 - an import of `modules.ai` or anything under it, or of the analysis (`heal_analysis`);
+- an import of the fix-it path (`modules.fixit` or anything under it: an incident's
+  troubleshooting record holds the AI's proposals; the operator's order of 2026-11-12,
+  "Section 12's rule stays in force");
 - a name, an attribute or a string naming an analysis (``analysis``, ``analyses``,
   ``analyse``), so ``incident["analysis"]`` or ``.analysis`` is found as surely as an import;
 - any reference to the notifier (`modules.heal_notice`) but the runner's one notify step,
@@ -88,6 +91,9 @@ def found(name: str, source: str, known=frozenset(KNOWN)) -> list:
             continue
         if m == "modules.ai" or m.startswith("modules.ai.") or "heal_analysis" in m:
             out.append((lineno, f"imports {m}"))
+        elif m == "modules.fixit" or m.startswith("modules.fixit."):
+            out.append((lineno, f"imports {m}, the fix-it path, whose record holds the AI's "
+                                "proposals"))
         elif "heal_notice" in m and (name, _enclosing(node, parents)) != NOTIFY_STEP:
             out.append((lineno, f"imports {m} outside the runner's notify step"))
     for node in ast.walk(tree):
@@ -143,6 +149,10 @@ def test_each_planted_reference_is_found():
     planted = {
         "from modules.ai import heal_analysis\n": "imports modules.ai",
         "import modules.ai.gateway\n": "imports modules.ai.gateway",
+        "from modules.fixit import incident\n": "imports modules.fixit.incident, the fix-it",
+        "def f():\n    from modules.fixit.validate import check\n    return check\n":
+            "imports modules.fixit.validate.check, the fix-it",
+        "import modules.fixit\n": "imports modules.fixit, the fix-it",
         "def f(inc):\n    return inc['analysis']\n": "names 'analysis'",
         "def f(inc):\n    return inc.get('analyses')\n": "names 'analyses'",
         "def f(inc):\n    return inc.analysis\n": "reads .analysis",

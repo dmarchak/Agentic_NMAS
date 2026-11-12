@@ -62,6 +62,10 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           # runs after it was deployed on the gate's green (modules/readers/ci_agreement.py,
           # `notify_reds`), once per commit and GitHub run.
           "ci_disagrees": "CI disagrees with the deployed release",
+          # AI troubleshooting's hand-over (the fix-it board's step 8; modules/fixit/handover.py
+          # `send`): a person handed an incident over to an engineer, sent to the teams they
+          # chose among those told about the network's can't-fix, with the incident's link.
+          "fixit_handover": "an incident handed over to an engineer",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a

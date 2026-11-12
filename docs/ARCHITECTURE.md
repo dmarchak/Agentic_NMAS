@@ -1024,6 +1024,31 @@ and others have left since too.
   **[static/js/nmas_in_flight.js](static/js/nmas_in_flight.js)**, one panel
   above every modal)
 
+#### AI troubleshooting (the fix-it path, `modules/fixit/`; no AI call yet)
+The incident page's AI troubleshooting, its parts before the page is drawn (the fix-it plan's
+S1 to S3; the operator's order of 2026-11-12). Nothing here calls a model, holds a device,
+starts a job or opens a session, and nothing in `modules/heal/` imports it
+(tests/test_heal_analysis_never_read.py).
+- **[modules/fixit/incident.py](modules/fixit/incident.py)** — the incident's own record
+  (`data/lists/<net>/fixit/<incident id>.json`: proposal and choice lines only, locked,
+  replaced atomically, masked at rest), the attempts derived from the operations' run records,
+  the repeat flag, the AI cost, "cancelled" and "how fixed" derived each time
+- **[modules/fixit/policy.py](modules/fixit/policy.py)** — the AI troubleshooting mode
+  (`ai_troubleshoot_mode`, Manual by default) and the per-incident cap
+  (`ai_cap_usd_per_incident`, $1.00): spent plus the next attempt's worst case, against it
+- **[modules/fixit/validate.py](modules/fixit/validate.py)** — a proposal from any source
+  checked: the catalog's schema (`modules/heal/catalog.py`), the incident's scope, the heal
+  guards, committed intent; the repeat flag on what passes; `propose` records it
+- **[modules/fixit/proposers.py](modules/fixit/proposers.py)** — Mercury's own proposer: the
+  lost-stream diagnosis's next step as a catalog operation, a receiver left removed first
+- **[modules/fixit/payload.py](modules/fixit/payload.py)** — what a later AI call would be
+  sent of the incident (`tried:<n>`, the catalogue), every person a stable label
+- **[modules/fixit/handover.py](modules/fixit/handover.py)** — the write-up for an engineer
+  (nine sections, versions kept under `fixit/handover/<incident id>/`), and its send as the
+  event `fixit_handover`, the one caller of the relay here
+- **[modules/heal/catalog.py](modules/heal/catalog.py)** — the operations a proposal may name:
+  Re-subscribe and Re-add the receiver, each with its parameters' schema and its own plan
+
 #### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
 `backups.py`, `variable_discovery.py`, `event_monitor.py`,

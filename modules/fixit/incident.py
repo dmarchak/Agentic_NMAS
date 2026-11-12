@@ -55,7 +55,8 @@ Create) is never an earlier device's incident's attempt.
 **Nothing here retries, and Cancel runs nothing** (the operator, 2026-11-11: "FAIL: STOP. Never
 retry on its own"; "Cancel: nothing more runs, the incident stays open, attempts recorded").
 `cancel` appends one line and calls nothing else; no function of this package reaches an
-operation's apply, a device hold, the job starter, a session, the AI gateway or the
+operation's apply, a device hold, the job starter, a session or the AI gateway, and only the
+hand-over's send (`handover.send`, and `handover.hand_over` through it) reaches the
 notification relay (tests/test_fixit_incident.py, by parsing).
 
 **What is derived:** `cost_so_far` (the incident's AI calls summed from the record of AI calls
@@ -77,6 +78,7 @@ import re
 import time
 from dataclasses import dataclass
 
+from modules.heal import catalog as _catalog
 from modules.heal.resubscribe import KEY as RESUBSCRIBE_KEY
 from modules.heal.resubscribe import READD_KEY, header
 
@@ -85,14 +87,18 @@ log = logging.getLogger(__name__)
 STORE_DIR = "fixit"
 VERSION = 1
 
-#: The operations whose runs are an incident's attempts: the telemetry re-subscribe and its
-#: one-step re-add, by the keys their own module records a run under. The catalogue
-#: (modules/heal/catalog.py) replaces this tuple with its own keys once it lands.
-CATALOGUE_KEYS = (RESUBSCRIBE_KEY, READD_KEY)
+#: The operations whose runs are an incident's attempts: the catalog's own keys
+#: (`modules/heal/catalog.py`), the telemetry re-subscribe and its one-step re-add, each the
+#: key its module records a run under.
+CATALOGUE_KEYS = tuple(_catalog.CATALOG)
 
-#: Each catalogue operation's parameters and their kinds: ``set`` (its members, in no order),
-#: ``flag`` (true or false; absent is false) and ``one`` (one value). The catalogue's own
-#: table replaces this one with `CATALOGUE_KEYS`.
+#: Each catalogue operation's parameters as an attempt is compared by, and their kinds:
+#: ``set`` (its members, in no order), ``flag`` (true or false; absent is false) and ``one``
+#: (one value). Not the catalog's schema: an attempt is read from its run's record, which
+#: names no device here (the incident does, `NOT_PARAMETERS`) and will say whether the
+#: collector step ran (C3108), a step no proposal may name until the operation takes it. A
+#: proposal's parameters reach this form by `modules/fixit/validate.py`'s `as_attempt`;
+#: tests/test_fixit_catalogue.py holds the two tables to the same operations.
 PARAMETERS = {RESUBSCRIBE_KEY: (("subs", "set"), ("collector_step", "flag")),
               READD_KEY: (("sub", "one"),)}
 #: Given with a proposal and no parameter of it: the incident names the device, and the reason
@@ -118,6 +124,7 @@ RUNS_READ = 500
 _ID = re.compile(r"(?:hi-[0-9a-f]{6,40}|resp-[0-9a-f]{6,40}|al-[a-z0-9][a-z0-9-]{0,63})")
 _DEVICE_ID = re.compile(r"(?:nb:[0-9]{1,18}|uid:[0-9A-Za-z-]{1,64})")
 _CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_SUBSCRIPTION = re.compile(r"[0-9]{1,10}")
 _RUN_NAME = re.compile(r"([0-9]{8}T[0-9]{6})([0-9]{6})Z-[0-9a-f]{32}")
 
 
@@ -134,13 +141,17 @@ class Incident:
     """An incident as its own store reads it: *id* (that store's, `valid_id`), *network*, the
     device by its stable identity (*device_id*: ``nb:<NetBox id>``, else ``uid:<…>``) with its
     name as a label (*device*), and when it was *detected* (epoch seconds). An incident that
-    names no device carries neither identity nor name."""
+    names no device carries neither identity nor name. *subscriptions* are the telemetry
+    subscriptions its triggers name, by id (a lost stream's; `diagnose_stream.stream_of`), and
+    none for an incident of another kind: what a proposal in it may act on
+    (`modules/fixit/validate.py`)."""
 
     network: str
     id: str
     device_id: str
     device: str
     detected: float
+    subscriptions: tuple = ()
 
 
 def valid_id(text) -> bool:
@@ -172,6 +183,14 @@ def _check(incident) -> None:
             or incident.detected <= 0):
         raise Refused(f"{incident.id} was given no detected time (epoch seconds; "
                       f"{incident.detected!r} given)")
+    subs = incident.subscriptions
+    if (not isinstance(subs, tuple)
+            or not all(isinstance(s, str) and _SUBSCRIPTION.fullmatch(s) for s in subs)):
+        raise Refused(f"{incident.id}'s subscriptions are a tuple of subscription ids (text of "
+                      f"1 to 10 digits), and {subs!r} was given")
+    if subs and not ident:
+        raise Refused(f"{incident.id} names subscriptions ({', '.join(subs)}) and no device "
+                      "they are on")
 
 
 def _iso(epoch: float) -> str:
@@ -557,44 +576,59 @@ def repeat_of(incident: Incident, op: str, params, resolved: float = None, *,
 
 # ── The cost, summed ────────────────────────────────────────────────────────────────────────
 
-def cost_so_far(incident: Incident) -> dict:
-    """What *incident*'s AI calls cost, summed from the record of AI calls by the ids its
-    proposals name, each time: ``{"state": "ok"|"partial"|"unreadable", "usd", "calls",
-    "missing", "error"}``. Read within the incident (`calls.rows_since` from when it was
-    detected), never the whole record; no proposal naming a call is 0 with nothing read.
-    ``unreadable`` (this record or the calls') has no sum, never 0; ``partial`` when the calls'
-    record holds no row for an id named (``missing``), the sum then of the rest."""
+def calls_of(incident: Incident) -> dict:
+    """*incident*'s AI calls, each read from the record of AI calls by the ids its proposals
+    name, each time: ``{"state": "ok"|"partial"|"unreadable", "calls", "missing", "error"}``,
+    *calls* in the order the record first names them, each ``{"id", "usd", "joined"}``
+    (``joined``: a call that joined another's and cost nothing of its own). Read within the
+    incident (`calls.rows_since` from when it was detected), never the whole record; no
+    proposal naming a call reads nothing. ``unreadable`` (this record or the calls') holds no
+    calls, never none in their place; ``partial`` when the calls' record holds no row for an
+    id named (``missing``)."""
     _check(incident)
     rec = read(incident)
     if rec["state"] == "unreadable":
-        return {"state": "unreadable", "usd": None, "calls": 0, "missing": [],
-                "error": rec["error"]}
+        return {"state": "unreadable", "calls": [], "missing": [], "error": rec["error"]}
     ids = []
     for line in rec["lines"]:
         for c in (line.get("calls") or []) if "proposal" in line else []:
             if c not in ids:
                 ids.append(c)
     if not ids:
-        return {"state": "ok", "usd": 0.0, "calls": 0, "missing": [], "error": ""}
+        return {"state": "ok", "calls": [], "missing": [], "error": ""}
     from modules.ai import calls
 
     got = calls.rows_since(datetime.datetime.fromtimestamp(incident.detected,
                                                            datetime.timezone.utc))
     if got["state"] == "unreadable":
-        return {"state": "unreadable", "usd": None, "calls": 0, "missing": [],
+        return {"state": "unreadable", "calls": [], "missing": [],
                 "error": (f"the record of AI calls could not be read ({got['error']}), so what "
                           f"{incident.id}'s {len(ids)} call(s) cost is not known")}
     rows = {r.get("id"): r for r in got["rows"]}
     missing = [c for c in ids if c not in rows]
-    mine = [rows[c] for c in ids if c in rows]
     return {"state": "partial" if missing else "ok",
-            "usd": sum(float(r.get("cost_usd") or 0) for r in mine),
-            "calls": sum(1 for r in mine if r.get("verdict") != calls.JOINED),
+            "calls": [{"id": c, "usd": float(rows[c].get("cost_usd") or 0),
+                       "joined": rows[c].get("verdict") == calls.JOINED}
+                      for c in ids if c in rows],
             "missing": missing,
             "error": (f"the record of AI calls holds no row for {len(missing)} of the "
                       f"{len(ids)} call(s) {incident.id} names ({', '.join(missing[:5])}"
                       f"{', …' if len(missing) > 5 else ''}): the sum is of the rest"
                       if missing else "")}
+
+
+def cost_so_far(incident: Incident) -> dict:
+    """What *incident*'s AI calls cost (`calls_of`), summed each time: ``{"state":
+    "ok"|"partial"|"unreadable", "usd", "calls", "missing", "error"}``. ``unreadable`` has no
+    sum, never 0; ``partial`` the sum of the calls the record holds; no proposal naming a call
+    is 0 with nothing read."""
+    got = calls_of(incident)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "usd": None, "calls": 0, "missing": [],
+                "error": got["error"]}
+    return {"state": got["state"], "usd": sum((c["usd"] for c in got["calls"]), 0.0),
+            "calls": sum(1 for c in got["calls"] if not c["joined"]),
+            "missing": got["missing"], "error": got["error"]}
 
 
 # ── A person's choices ──────────────────────────────────────────────────────────────────────

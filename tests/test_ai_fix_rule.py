@@ -192,10 +192,16 @@ class TestTheDoor:
     CASES = {
         # ── an operation not in the catalog
         "another operation": (answer(operation="reload-device"), "not_in_catalog",
-                              ["an operation of the catalog (telemetry-resubscribe)",
-                               "this one names 'reload-device'"]),
-        "the re-add, a real operation the catalog does not hold": (
-            answer(operation="telemetry-readd"), "not_in_catalog", ["names 'telemetry-readd'"]),
+                              ["an operation of the catalog (telemetry-readd and "
+                               "telemetry-resubscribe)", "this one names 'reload-device'"]),
+        "the re-add, given the re-subscribe's parameters": (
+            answer(operation="telemetry-readd"), "unknown_parameter",
+            ["telemetry-readd takes exactly the parameters device and subscription",
+             "also gives 'subscriptions'"]),
+        "the re-add, given two subscriptions as its one": (
+            answer(operation="telemetry-readd",
+                   params={"device": "r2", "subscription": ["101", "102"]}), "wrong_shape",
+            ["parameter subscription is one subscription id", "gave a list"]),
         # ── two operations, and none
         "two operations": (answer(operation=[KEY, KEY]), "not_one_operation",
                            ["names exactly one operation", "this one names 2"]),
@@ -400,7 +406,8 @@ class TestTheCatalog:
     def test_it_holds_re_subscribe_and_each_entry_is_whole(self, app):
         from modules.heal import resubscribe as R
 
-        assert set(catalog.CATALOG) == {R.KEY} == {KEY}
+        # Re-subscribe and its one-step Re-add the receiver, by their own module's keys.
+        assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY} == {KEY, "telemetry-readd"}
         endpoints = {r.endpoint for r in app.url_map.iter_rules()}
         for key, op in catalog.CATALOG.items():
             assert op.key == key
@@ -428,6 +435,23 @@ class TestTheCatalog:
         theirs = R.plan(NET, "r2", ["101", "102"], sources=src)
         assert mine == theirs and mine["ok"]
         assert op.runs == f"{R.apply.__module__}.{R.apply.__name__}"
+
+    def test_re_adds_plan_is_the_operations_own_with_readd(self, lab):  # noqa: F811
+        """The re-add's plan is `resubscribe.plan` with ``readd``, called: one subscription's
+        one send, its hash the re-add's own (never the re-subscribe's), confirmed at the
+        card's own re-add route."""
+        from modules.heal import resubscribe as R
+
+        src = Src()
+        op = catalog.CATALOG[R.READD_KEY]
+        mine = op.plan(NET, {"device": "r2", "subscription": "101"}, src)
+        theirs = R.plan(NET, "r2", ["101"], readd=True, sources=src)
+        assert mine == theirs and mine["ok"] and mine["readd"] is True
+        assert mine["program"] == mine["units"][0]["readd"]
+        assert mine["units"][0]["hash"] != R.plan(NET, "r2", ["101"],
+                                                  sources=src)["units"][0]["hash"]
+        assert (op.confirm_endpoint, op.runs) == ("resubscribe_v2.readd",
+                                                  f"{R.apply.__module__}.{R.apply.__name__}")
 
 
 # ── B: from a proposal to a run takes a verified person and the hash ────────────────────────
@@ -472,8 +496,21 @@ class ResubscribeDrive:
         return type(self)(series=seq([ABSENT]))
 
 
+class ReaddDrive(ResubscribeDrive):
+    """Re-add the receiver's run on the same lab, one subscription: its one send is its whole
+    program, so its own hash is the only one it is bound to (no selection's)."""
+    wrong_hash = [{"confirmed": {"101": "0" * 16}}]
+
+    def plan(self):
+        from modules.heal import resubscribe as R
+        return R.plan(NET, "r2", ["101"], readd=True, sources=self.src)
+
+    def run(self, fn, **over):
+        return super().run(fn, **dict({"readd": True}, **over))
+
+
 #: How each catalog entry's run is driven; an entry with no drive fails (`TestToARun`).
-DRIVES = {KEY: ResubscribeDrive}
+DRIVES = {KEY: ResubscribeDrive, "telemetry-readd": ReaddDrive}
 
 
 def _not_a_person() -> list:

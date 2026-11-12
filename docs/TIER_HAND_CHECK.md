@@ -4130,3 +4130,54 @@ after each mutant.
 **The result: 22 mutants and the canary, all killed**, each file identical after each and the
 worktrees removed. Not mutated: `display_names.people` and `EMAIL`, unchanged here (board E2a's,
 held by tests/test_display_names.py); `EP.withhold`, H8's.
+
+## 2026-11-12: AI troubleshooting's cap, its stable-labelled payload and the hand-over's masking (the fix-it plan's S1 to S3), by hand
+
+**What changed in the tier:** data prepared to leave the host, and code that masks text it
+stores. Nothing here sends to a model: no AI call is made in this build.
+- `modules/fixit/payload.py` builds what a later AI troubleshoot call would be sent of an
+  incident (`tried:<n>` and the catalogue): every person `display_names.label` of their
+  identity, words unnamed (identities labelled by `display_names.labelled`, display names and
+  default names replaced word by word), every text masked (`redact.redact_payload`).
+- The labels are the can't-fix email build's own (`display_names.label` and `labelled`,
+  C3190, logged above), used here unchanged; mutant 8 is of them as this payload depends on.
+- `modules/fixit/policy.py` holds the per-incident AI cap: spent plus the next attempt's worst
+  case against the cap, refusing past it, an unreadable or partial cost and a cap that is no
+  positive amount.
+- `modules/fixit/handover.py` keeps each write-up masked at rest (its builder masks, and its
+  store masks again what it is handed), names people by display name, and sends the kept,
+  masked write-up as the event `fixit_handover` through the relay, whose own egress mask is
+  unchanged.
+
+The danger the hand check guards:
+- an identity, a display name or a secret left in a payload;
+- a cap that passes a call it should refuse (at or past the cap, a cost not known, "no cap");
+- a write-up kept or sent unmasked, or naming a person by identity.
+
+**The method:** each mutant is one exact replacement of a changed line, required to match once,
+applied in a `scripts/nmas-control` throwaway worktree over 331722b5 with the change uncommitted
+(`scratchpad/ai-troubleshoot-1/mut.py`). The tests are tests/test_fixit_payload.py's,
+tests/test_fixit_cap.py's and tests/test_fixit_handover.py's, run with no `-x` in CI's
+interpreter, confined, one worker; each worktree was removed after its run.
+- **Runs:** 2026-11-12 09:41:51 to 09:58:18 UTC (paused while another gate ran); mutant 11
+  again at 09:58:30 UTC, after its test was added.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canaries: `tried_parts`, `build` and `cap_state` each raise first | killed (3, 10 and 9 failed) | every payload, write-up and cap test that asks |
+| 1 the cap's `>` made `>=` | killed | `test_at_the_cap_exactly_it_allows` |
+| 2 a cost not known read as nothing spent | killed (2 failed) | the unreadable record of calls and the call it does not hold |
+| 3 a stored null cap read as no cap | killed | `test_a_stored_cap_that_is_no_positive_amount_refuses_never_no_cap[None]` |
+| 4 identities not labelled (`labelled` dropped) | killed | `test_no_part_carries_an_at_sign_a_display_name_or_a_default_name` |
+| 5 display names not replaced | killed | the same |
+| 6 `approved_by` the identity | killed (2 failed) | the same, and `test_the_label_is_the_same_in_every_request_and_differs_by_person` |
+| 7 the parts not masked | killed | `test_no_part_carries_an_at_sign_a_display_name_or_a_default_name` |
+| 8 `display_names.label` returns the identity | killed (2 failed) | the two label tests |
+| 9 the write-up's builder not masking | killed (2 failed) | the nine sections, and no email and no secret |
+| 10 a person drawn by identity, not display name | killed (4 failed) | the nine sections, no email, the versions, the relay's message |
+| 11 the hand-over store not masking what it is handed | survived first (its builder masks too); killed once `test_the_store_masks_what_it_is_handed_whoever_built_it` was added | that test |
+
+**The result: 11 mutants and the three canaries, all killed** (the eleventh after its test was
+added). Not mutated: `redact.redact_payload`, `redact_text` and the relay's egress mask, unchanged
+here and checked with their own tier entries; the other 16 controls of this build (the check, the
+proposer, the scans) are outside the tier and are listed with the build's report.

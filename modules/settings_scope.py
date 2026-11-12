@@ -168,6 +168,9 @@ SCOPES: dict = {
            # Per network INSIDE one installation value (PHASE8_PLAN 18.3 rule 2): a network's
            # background AI switch is never inherited, so it cannot be a network group.
            "ai_background"),
+    # AI troubleshooting's mode and its per-incident cap (`modules/fixit/policy.py`): the
+    # installation's, as the day cap is (a per-network cap is C3114's row).
+    **_group(HOST, "ai_troubleshoot", "ai_troubleshoot_mode", "ai_cap_usd_per_incident"),
     # Retiring by expand, then contract (the operator, 2026-10-25: a call's cap is its task's,
     # derived from its pinned model): read by nothing from this release, declared for one
     # more so the previous release still reads it, then removed.

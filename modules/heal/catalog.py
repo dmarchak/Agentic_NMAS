@@ -27,11 +27,16 @@ opens no session, holds no device, starts no job and writes nothing. From its an
 is the confirm route's work: the previewed hash, sent back by a verified person.
 
 **Who calls it:** the one door an AI answer comes through (`modules/ai/fix_proposal.py`), which
-records each refusal with the call that made the answer. This module knows nothing of where a
-proposal came from, and holds no reference to the AI modules (section 12's scan of
-`modules/heal/`, tests/test_heal_analysis_never_read.py).
+records each refusal with the call that made the answer, and the fix-it path's check of a
+proposal in an incident (`modules/fixit/proposals.py`: whoever proposed it, held to what the
+incident names and to the heal guards before this module's preview). This module knows nothing
+of where a proposal came from, and holds no reference to the AI modules or to the fix-it path's
+records (section 12's scan of `modules/heal/`, tests/test_heal_analysis_never_read.py).
 
-Today the catalog holds one operation, the telemetry Re-subscribe (C2838).
+Today the catalog holds two operations, each Re-subscribe's (C2838): the telemetry
+Re-subscribe, and its one-step Re-add the receiver, which adds back a receiver a run left
+removed (`resubscribe.apply` with ``readd``; its card's own button posts it). Both run the same
+function, and each is previewed by the same card, bound to its own hash.
 """
 
 import logging
@@ -113,6 +118,14 @@ def _ids_refusal(value) -> str:
     return ""
 
 
+def _id_refusal(value) -> str:
+    if not isinstance(value, str):
+        return kind_of(value)
+    if not (value.isascii() and value.isdigit() and 1 <= len(value) <= ID_DIGITS):
+        return said(value)
+    return ""
+
+
 @dataclass(frozen=True)
 class Param:
     """One parameter of an operation: its name, the shape it takes in words, and the check
@@ -137,6 +150,13 @@ class Operation:
 def _resubscribe_plan(network: str, params: dict, sources=None) -> dict:
     """Re-subscribe's own plan for the proposal's parameters (`resubscribe.plan`)."""
     return resubscribe.plan(network, params["device"], list(params["subscriptions"]),
+                            sources=sources)
+
+
+def _readd_plan(network: str, params: dict, sources=None) -> dict:
+    """Re-add the receiver's own plan for the proposal's one subscription (`resubscribe.plan`
+    with ``readd``)."""
+    return resubscribe.plan(network, params["device"], [params["subscription"]], readd=True,
                             sources=sources)
 
 
@@ -169,6 +189,22 @@ CATALOG = {op.key: op for op in (
         drawn=_resubscribe_drawn,
         preview_endpoint="resubscribe_v2.preview",
         confirm_endpoint="resubscribe_v2.confirm",
+        runs="modules.heal.resubscribe.apply",
+    ),
+    Operation(
+        key=resubscribe.READD_KEY,
+        words="Add back the receiver of one telemetry subscription a run left removed",
+        params=(
+            Param("device", "one name the network's inventory holds (1 to "
+                            f"{NAME_CHARS} printable ASCII characters, no space)",
+                  _device_refusal),
+            Param("subscription", f"one subscription id, text of 1 to {ID_DIGITS} digits, that "
+                                  "the device's committed intent declares", _id_refusal),
+        ),
+        plan=_readd_plan,
+        drawn=_resubscribe_drawn,
+        preview_endpoint="resubscribe_v2.preview",
+        confirm_endpoint="resubscribe_v2.readd",
         runs="modules.heal.resubscribe.apply",
     ),
 )}

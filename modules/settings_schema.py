@@ -152,6 +152,20 @@ DEFAULTS: dict = {
     # background AI call runs. Turning one on is an admin's decision after its estimate, which
     # no measurement can make; its caps are theirs too (Mercury never raises a cap).
     "ai_background":            {},
+    # AI troubleshooting on an incident's page (the operator's order of 2026-11-12, overnight
+    # item 6: "Settings › Background processes, AI mode Manual by default";
+    # `modules/fixit/policy.py`). The mode: ``manual``, the default, in which an AI troubleshoot
+    # runs only on a verified person's press (as a job; the model is never called on its own),
+    # or ``off``, in which none is offered and Mercury's own proposer still is. No automatic
+    # mode is declared: a model called on its own is a background AI feature, which only
+    # Settings › AI turns on, per network, after its estimate (CLAUDE.md, "AI cost safety";
+    # `background.FEATURES`). Manual reproduces every release before it: nothing calls the
+    # model for an incident without a person. The per-incident cap is the operator's figure
+    # ($1.00): what the incident's AI calls cost so far plus the next attempt's worst case,
+    # against it; a positive amount, never "no cap". An admin's to change; Mercury never raises
+    # it. Neither is drawn yet (the incident page's AI troubleshooting section draws them).
+    "ai_troubleshoot_mode":     "manual",
+    "ai_cap_usd_per_incident":  1.00,
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -950,6 +964,11 @@ SCHEMA: dict = {
                 "properties": {"on": _BOOL, "by": _STR, "at": _STR,
                                "day_cap_usd": {"type": "number", "exclusiveMinimum": 0},
                                "month_cap_usd": {"type": "number", "exclusiveMinimum": 0}}}}},
+        # AI troubleshooting (`modules/fixit/policy.py`): the mode, and the per-incident cap, a
+        # positive amount with no maximum (limits are the customer's) and no null: this cap has
+        # no "no cap" (the fix-it plan's decision 1).
+        "ai_troubleshoot_mode": {"enum": ["manual", "off"]},
+        "ai_cap_usd_per_incident": {"type": "number", "exclusiveMinimum": 0},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

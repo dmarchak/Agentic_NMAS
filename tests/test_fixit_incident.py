@@ -704,15 +704,22 @@ def program() -> dict:
     return _PROGRAM
 
 
-def fixit_starters(planted: str = "") -> list:
+RELAY = ("modules.notify.delivery", "deliver_event")
+#: The one way from modules/fixit/ to the relay (the fix-it plan's S3: "the relay is called
+#: only by the send function"): the hand-over's send, and the hand-over through it.
+RELAY_CALLERS = [("modules.fixit.handover", "hand_over"), ("modules.fixit.handover", "send")]
+
+
+def fixit_starters(planted: str = "", without=()) -> list:
     """The definitions of modules/fixit/ that reach something that starts something; with
-    *planted*, a module's text, as if modules/fixit/planted.py held it."""
+    *planted*, a module's text, as if modules/fixit/planted.py held it; *without*, seeds left
+    out (the relay, to ask what reaches anything else)."""
     got = program()
     refs = dict(got["refs"])
     if planted:
         one = {"modules/fixit/planted.py": planted}
         refs.update(references(one, module_names(dict(got["sources"], **one))))
-    reached = starting(refs, got["seeds"])
+    reached = starting(refs, got["seeds"] - set(without))
     return sorted(k for k in reached if k[0].startswith("modules.fixit"))
 
 
@@ -746,7 +753,8 @@ PLANTED = {
 class TestNothingHereStartsAnything:
     """The operator's "no path retries without a person", as far as this slice goes: no
     function of modules/fixit/ reaches an operation's apply, a device hold, a job start, a
-    session, the AI gateway or the relay, so nothing recorded here can start anything."""
+    session or the AI gateway, so nothing recorded here can start anything; the relay is
+    reached by the hand-over's send alone (`RELAY_CALLERS`), a person's press."""
 
     def test_the_scans_population_and_seeds_are_there(self):
         sources, refs = program()["sources"], program()["refs"]
@@ -767,15 +775,20 @@ class TestNothingHereStartsAnything:
         assert ("modules.ai.calls", "rows_since") not in reached
 
     def test_no_function_of_the_package_starts_anything(self):
-        assert fixit_starters() == []
+        # The relay is reached by the hand-over's send alone (and the hand-over through it),
+        # and with the relay left out of the seeds nothing of the package reaches anything.
+        assert fixit_starters() == RELAY_CALLERS
+        assert fixit_starters(without=[RELAY]) == []
 
     @pytest.mark.parametrize("how", sorted(PLANTED))
     def test_a_planted_starter_is_found(self, how):
         assert ("modules.fixit.planted", "retry") in fixit_starters(PLANTED[how])
 
     def test_a_planted_reader_is_not(self):
+        # A planted reader adds nothing to what the package reaches (the hand-over's send).
         assert fixit_starters("from modules.nsot import privileged\n\n"
-                              "def tried(i):\n    return privileged.runs(i.network)\n") == []
+                              "def tried(i):\n    return privileged.runs(i.network)\n") == \
+            RELAY_CALLERS
 
 
 # ── Hand over and the save choice: the line only ────────────────────────────────────────────
