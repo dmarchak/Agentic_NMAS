@@ -12,6 +12,11 @@ id AND its *event* (a restart's time; a repeated authorisation's latest authoris
 a new restart is a new row, and the same line authorised once more after the
 acknowledgement raises the row again.
 
+**Some acknowledgements also EXPIRE** (`EXPIRES`, the operator, 2026-11-11): a scheduled quality
+job's failed run is acknowledged only until the workflow's next scheduled run by its cron, kept
+as *until* with the entry; past it the row comes back by itself, saying so, while its condition
+stands.
+
 Which kinds a person acknowledges here is `attention.ACKNOWLEDGED_HERE`; every other kind
 clears when its condition resolves, or by its own control (a host step said done, a held
 push acknowledged in History's Remote set-up), as `attention.CLEARS` says on the row.
@@ -43,6 +48,19 @@ STABLE_SECONDS = 15 * 60
 #: hours"): a day, the adjacency log's own window for a row.
 MAX_HOURS = 24
 
+#: THE EXPIRIES, a declared kind of clearing (the operator, 2026-11-11): an acknowledgement
+#: that holds only until a moment its row's own source names, then lets the row come back by
+#: itself while its condition stands. Each is the words drawn for it; its moment is computed
+#: when the acknowledgement is made (`expiry_at`) and kept with it as *until*, so the record
+#: says when it ends.
+NEXT_SCHEDULED_RUN = "next_scheduled_run"
+EXPIRIES = {NEXT_SCHEDULED_RUN: "the next scheduled run"}
+
+#: Which row kinds take which expiry: a scheduled quality job's failed newest run, until the
+#: workflow's next scheduled run by its cron, so a red that persists comes back by itself (the
+#: operator's "an acknowledge with reason and expiry"). No other kind expires so.
+EXPIRES = {("scheduled_jobs", "failed"): NEXT_SCHEDULED_RUN}
+
 
 def _epoch(text):
     import calendar
@@ -50,6 +68,57 @@ def _epoch(text):
         return float(calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S")))
     except (TypeError, ValueError):
         return None
+
+
+def _iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def expiry_at(expiry: str, row: dict, now: float = None) -> tuple:
+    """``(epoch, "")`` when an acknowledgement of *row* taking *expiry* ends, or ``(None, why)``
+    when that moment cannot be read (then nothing is acknowledged). The next scheduled run is
+    read from the workflow's own cron in this checkout (`scheduled_jobs.scheduled_workflows`),
+    the row naming the workflow's file."""
+    now = time.time() if now is None else now
+    if expiry != NEXT_SCHEDULED_RUN:
+        return None, f"{expiry!r} is not a declared expiry"
+    from modules.readers import scheduled_jobs as SJ
+
+    file = str(row.get("id") or "").split(":", 1)[-1]
+    w = next((x for x in SJ.scheduled_workflows() if x.get("file") == file), None)
+    if w is None or not w.get("cron"):
+        return None, f"no schedule is read for {file!r} in this checkout's workflows"
+    at = SJ.next_run(w["cron"], now)
+    if at is None:
+        return None, f"its cron {w['cron']!r} could not be read for its next run"
+    return at, ""
+
+
+def expired(ack: dict, now: float = None) -> bool:
+    """Whether an acknowledgement taking a declared expiry has ended: its *until* passed, or
+    unreadable (an end that cannot be read hides nothing)."""
+    now = time.time() if now is None else now
+    until = _epoch(ack.get("until"))
+    return until is None or now >= until
+
+
+def _until_words(ack: dict) -> str:
+    until = str(ack.get("until") or "")
+    return (f"{until[:10]} {until[11:16]} UTC" if _epoch(until) is not None
+            else "an unreadable time")
+
+
+def in_force_words(ack: dict) -> str:
+    """"Acknowledged by <name> until the next scheduled run (<when>): <reason>"."""
+    return (f"Acknowledged by {ack.get('by') or 'an unnamed person'} until "
+            f"{EXPIRIES.get(ack.get('expires'), 'its expiry')} ({_until_words(ack)}): "
+            f"{ack.get('why') or ''}")
+
+
+def expired_words(ack: dict) -> str:
+    """What a row whose expiring acknowledgement ended says, so it is never a silent return."""
+    return (f"{in_force_words(ack)}; that time has passed and the row's condition stands, so it "
+            "is shown again")
 
 
 def covers(ack: dict, events, now: float = None) -> dict:
@@ -223,11 +292,17 @@ def standing_bands(rows: list) -> list:
 
 def record(row_id: str, event: str, *, why: str, by: str, verified: str,
            kind: str, what: str, band: float = None, value: float = None,
-           devices: list = None, disposition: str = "", hours: float = None) -> dict:
+           devices: list = None, disposition: str = "", hours: float = None,
+           expires: str = "", until_at: float = None) -> dict:
     """Append one acknowledgement. The caller has checked the row exists now and the
     reason's shape (`attention.acknowledge`, the one caller). *band* and *value* are a chronic
     alert's measured band and its value then (C433): it holds only within the band. *devices*
-    are the row's devices, so History reads it on each device's timeline."""
+    are the row's devices, so History reads it on each device's timeline. *expires* names a
+    declared expiry (`EXPIRIES`) and *until_at* its moment (`expiry_at`): it holds until then
+    and no longer."""
+    if expires and (expires not in EXPIRIES or until_at is None):
+        raise ValueError(f"an acknowledgement expiring by {expires!r} needs a declared expiry "
+                         "and its moment")
     from modules.config import open_secure
     from modules.filestore import PathLock
     from modules.redact import redact_text
@@ -248,6 +323,9 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
         # A planned quiet period (C2316): every event to its expiry is covered, none after.
         entry["until"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                        time.gmtime(time.time() + float(hours) * 3600))
+    if expires:
+        # A declared expiry (the operator, 2026-11-11): the moment its row's source names.
+        entry["expires"], entry["until"] = expires, _iso(float(until_at))
     line = json.dumps(entry, sort_keys=True)
     if _on_database():
         from modules import records_migrate

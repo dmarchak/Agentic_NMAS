@@ -17,6 +17,11 @@ say so; a step without one is recorded done by a person, by name, on the
 Update page. The root-owned updater parses `Host-Step:` alone, so an AFTER
 step never reaches it and needs no re-install of the updater.
 
+An owed AFTER step can also be DECLINED by a person with a reason (the operator,
+2026-11-11: "CI stays on GitHub-hosted runners" for the local CI runner's
+steps): recorded beside the done rows, it is no longer owed, and History keeps
+it. Declining is never saying it is done.
+
 `Host-Step-None: <why>` says a host-installed file changed and nothing is
 needed (scripts/nmas-host-step-check).
 """
@@ -371,6 +376,53 @@ def record_done(sha: str, step: str, actor: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Declined, with a reason, by a person (the operator, 2026-11-11)
+# ---------------------------------------------------------------------------
+
+#: A decline's mark on its row in the done store: a person decided the step is not to be done
+#: ("CI stays on GitHub-hosted runners"), which is not saying it is done. A row without it is a
+#: person's "It is done" (every row written before declines existed).
+DECLINED = "declined"
+
+
+def is_declined(row: dict) -> bool:
+    return (row or {}).get("decision") == DECLINED
+
+
+def decline_reason_problem(why: str) -> str:
+    """Why *why* is not a reason, or "": the authorisation rule's shape (not empty, three
+    words, eight characters; `authorisation.SHAPE_RULE`), the one every typed reason takes."""
+    from modules.nsot.authorisation import MIN_CHARS, MIN_WORDS, reason_problem
+
+    if reason_problem({"line": "", "reason": (why or "").strip()}):
+        return (f"a decline needs a reason: at least {MIN_WORDS} words and {MIN_CHARS} "
+                "characters saying why the step is not to be done")
+    return ""
+
+
+def record_decline(sha: str, step: str, actor: str, why: str, verified: str = "") -> dict:
+    """A person declines one AFTER step with a reason: kept beside the done rows in the same
+    store (K31: the file, or the records database once moved): who, how it was established,
+    when, and the reason masked at rest, as every typed reason is. The step is then no longer
+    owed. The caller (the Update page's route) has checked that the running release owes it."""
+    from modules.redact import redact_text
+
+    if not actor:
+        return {"ok": False, "reason": "no verified person: a host step is declined by a person"}
+    problem = decline_reason_problem(why)
+    if problem:
+        return {"ok": False, "reason": problem}
+    row = {"id": step_id(sha, step), "sha": sha, "step": step, "by": actor,
+           "verified": verified or "", "decision": DECLINED, "why": redact_text(why.strip()),
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    from modules import records_migrate
+
+    records_migrate.store_append(STORE, DONE, row)
+    log.info("host step %s declined by %s", row["id"], actor)
+    return {"ok": True, "row": row}
+
+
+# ---------------------------------------------------------------------------
 # What the running release still owes
 # ---------------------------------------------------------------------------
 
@@ -417,7 +469,9 @@ def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
     person (``said_done``) or by the tool's own check (``checked_done``, with
     the check's answer: C795, the operator, 2026-10-15: a step the check had
     passed vanished from the Update page, so a person could not see that it
-    had been checked, or by what)."""
+    had been checked, or by what); and the steps a person DECLINED with a reason
+    (``declined``, the operator, 2026-11-11), no longer owed. A step its check reads done is
+    the check's, declined or not: done stays the check's where there is one."""
     try:
         text = log_text if log_text is not None else _log(root, running, HISTORY)
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
@@ -426,19 +480,25 @@ def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
     if "__unreadable__" in done:
         return {"ok": False, "steps": [], "error": "the host-step record could not be read: "
                                                   + done["__unreadable__"]["error"]}
-    out, said, checked = [], [], []
+    out, said, checked, declined = [], [], [], []
     for s in steps_in(text, when="after"):
         c = check(s, root)
-        if c["state"] == "not_checkable" and s["id"] in done:
-            said.append(dict(s, by=done[s["id"]].get("by"), at=done[s["id"]].get("at")))
-            continue
+        rec = done.get(s["id"])
         if c["state"] == "done":
             checked.append(dict(s, check_state="done", check_detail=c["detail"]))
             continue
+        if rec and is_declined(rec):
+            declined.append(dict(s, by=rec.get("by"), at=rec.get("at"), why=rec.get("why"),
+                                 check_state=c["state"], check_detail=c["detail"]))
+            continue
+        if c["state"] == "not_checkable" and rec:
+            said.append(dict(s, by=rec.get("by"), at=rec.get("at")))
+            continue
         out.append(dict(s, check_state=c["state"], check_detail=c["detail"]))
-    # The record read back: who said each step done, and when; and what the tool checked.
+    # The record read back: who said each step done, and when; what the tool checked; and who
+    # declined each step, when and why.
     return {"ok": True, "steps": grouped(out), "said_done": grouped(said),
-            "checked_done": grouped(checked)}
+            "checked_done": grouped(checked), "declined": grouped(declined)}
 
 
 def grouped(steps: list) -> list:

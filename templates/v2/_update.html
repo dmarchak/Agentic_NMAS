@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, check_again, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, clock, check_again, how -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The Update operation (modules/update_op.py): the last outcome, the preview
     in its parts, and the confirm, which then waits on /health. Re-fetched when
@@ -155,14 +155,37 @@
         <input type="hidden" name="sha" value="{{ s.sha }}"><input type="hidden" name="step" value="{{ s.step }}">
         <span class="op-act"><button type="submit" class="btn btn-sm" data-op="update" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">It is done</span><span class="op-busy">Recording…</span></button>{{ how('update', 'the-preview', compact=True, op='a host step') }}</span>
       </form>
-      {%- endif %}</li>{% endfor %}
+      {%- endif %}
+      {#- The operator, 2026-11-11: a step a person decides is not to be done is DECLINED with a
+          reason, beside "It is done" (and on a checked step, whose done stays the check's).
+          Decline this step… opens the reason box in place; Decline the step is its one
+          primary action, busy on itself; the answer is this panel drawn again, the step moved
+          under "Host steps declined", or the refusal below. -#}
+      <details class="update-step-decline" data-keep="decline-{{ s.id }}"><summary class="btn btn-small btn-outline">Decline this step…</summary>
+      <form class="update-step-decline-form" hx-post="{{ url_for('update.step_decline') }}" hx-target="#update-panel" hx-swap="outerHTML">
+        <input type="hidden" name="sha" value="{{ s.sha }}"><input type="hidden" name="step" value="{{ s.step }}">
+        <label for="decline-{{ s.id }}">Why it is not to be done (recorded with your name, kept by History)</label>
+        <input id="decline-{{ s.id }}" name="why" type="text" autocomplete="off" placeholder="At least three words: why this step is not to be done">
+        <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="update" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Decline the step</span><span class="op-busy">Declining…</span></button>{{ how('update', 'declining-a-host-step', compact=True, op='declining a host step') }}</span>
+      </form>
+      </details></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}
-{#- "It is done" refused: said with its reason, and held against redraws nobody asked for until
-    Check again (the step may no longer be on the list above, so it is said here). -#}
+{#- "It is done" or a decline refused: said with its reason, and held against redraws nobody
+    asked for until Check again (the step may no longer be on the list above, so it is said
+    here). -#}
 {%- if step_refusal %}
-<div class="notice notice-danger" id="update-step-refused" role="alert" data-update-hold="result">{{ icon('warn') }}<p>Not recorded as done ("{{ step_refusal.step }}"): {{ step_refusal.error }}</p></div>
+<div class="notice notice-danger" id="update-step-refused" role="alert" data-update-hold="result">{{ icon('warn') }}<p>{% if step_refusal.decline %}Not declined{% else %}Not recorded as done{% endif %} ("{{ step_refusal.step }}"): {{ step_refusal.error }}</p></div>
+{%- endif %}
+{#- The steps a person declined with a reason: who, when and why, each no longer owed. -#}
+{%- if owed and owed.declined %}
+<section class="card" id="update-declined">
+  <div class="card-head"><h2>Host steps declined</h2></div>
+  <ul class="plain-list">
+    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by }} at {{ clock(d.at) }} on {{ (d.at or '')[:10] }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+  </ul>
+</section>
 {%- endif %}
 {%- if owed and owed.said_done %}
 <section class="card" id="update-said-done">

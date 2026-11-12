@@ -137,7 +137,11 @@ class TestEveryKindSaysHowItClears:
                                      ("heal", "clear"),
                                      # One change of a network's controller Python, by its
                                      # id (the operator, 2026-11-07).
-                                     ("controller_python", "changed")}
+                                     ("controller_python", "changed"),
+                                     # A scheduled job's failed run, by its id, until the
+                                     # workflow's next scheduled run (the operator,
+                                     # 2026-11-11; tests/test_scheduled_job_acknowledge.py).
+                                     ("scheduled_jobs", "failed")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

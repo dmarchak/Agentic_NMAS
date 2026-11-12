@@ -185,7 +185,8 @@ ROW_KINDS = {
                                  "it may still finish warming)"),
     ("remote", "publication"): ("a list's history is not on its remote",
                                 "push, acknowledge, repair the remote, or verify it"),
-    ("host_steps", "owed"): ("a host step a release asked for is not done", "do it, then say so"),
+    ("host_steps", "owed"): ("a host step a release asked for is not done",
+                             "do it, then say so, or decline it with a reason"),
     ("templates", "behind_drops"): ("a template behind the shipped version drops a section of the profile",
                                     "bring in the shipped version on Templates"),
     ("adjacencies", "link"): ("an adjacency intent implies is not up",
@@ -495,8 +496,13 @@ CLEARS = {
                                    "180 days"),
     ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
     ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
-    ("scheduled_jobs", "failed"): (("resolves",), "the workflow's next scheduled run succeeds "
-                                   "(read every 30 minutes); a dispatched run does not clear it"),
+    ("scheduled_jobs", "failed"): (("resolves", "acknowledge"),
+                                   "the workflow's next scheduled run succeeds (read every 30 "
+                                   "minutes); a dispatched run does not clear it; or a person "
+                                   "acknowledges it with a reason until the workflow's next "
+                                   "scheduled run by its cron, when it comes back by itself "
+                                   "unless that run succeeded (a later failed run is a new "
+                                   "row)"),
     ("scheduled_jobs", "overdue"): (("resolves",), "a scheduled run of the workflow succeeds "
                                     "(read every 30 minutes)"),
     ("scheduled_jobs", "unread"): (("resolves",), "the reader's next read (every 30 minutes) "
@@ -544,7 +550,8 @@ CLEARS = {
     ("templates", "behind_drops"): (("resolves",), "the template is brought to the shipped version, or "
                                     "the profile no longer has the section it drops"),
     ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
-                             "says it is done on the Update page"),
+                             "says it is done, or declines it with a reason, on the Update "
+                             "page (History keeps either)"),
     ("adjacencies", "link"): (("resolves",), "the next read finds the adjacency up"),
     ("adjacencies", "unmeasured"): (("resolves",), "Prometheus scrapes the protocol again"),
     ("adjacency_log", "flap"): (("resolves", "acknowledge", "time"),
@@ -747,7 +754,11 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "clear"),
                                # One change of a network's controller Python, by its id
                                # (the operator, 2026-11-07): a later change raises it again.
-                               ("controller_python", "changed")})
+                               ("controller_python", "changed"),
+                               # A scheduled quality job's failed newest run (the operator,
+                               # 2026-11-11), by the run's id, and only until the workflow's
+                               # next scheduled run (`acknowledgements.EXPIRES`).
+                               ("scheduled_jobs", "failed")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -3138,14 +3149,22 @@ def scheduled_jobs_source(cached=None, now: float = None) -> dict:
 
         if verdict["state"] == "failed":
             where = CV.failed_words({"failed_at": w.get("failed_at")})
+            newest = w.get("newest") or {}
+            # Acknowledged per failed run (the operator, 2026-11-11), by its id, and only until
+            # the workflow's next scheduled run by its cron (`acknowledgements.EXPIRES`): a
+            # later failed run is a new event, and a red that persists comes back by itself.
             rows.append(row(source="scheduled_jobs", kind="failed", key=w.get("file"),
                             level="warning", cause=cause,
                             what=(f"The scheduled job {name} failed: {verdict['words']}"
                                   + (f"; failed at {where}" if where else "")),
+                            event=str(newest.get("id") or newest.get("run_number") or
+                                      newest.get("created_at") or w.get("file")),
                             action=linked("The developer reads where the run failed and fixes "
                                           "forward; a dispatched run checks the fix, but only "
                                           "a scheduled run that succeeds clears this",
                                           w.get("newest"))))
+            rows[-1]["ack_placeholder"] = ("Why this can wait until the next scheduled run "
+                                           "(recorded with your name)")
         else:
             rows.append(row(source="scheduled_jobs", kind="overdue", key=w.get("file"),
                             level="warning", cause=cause,
@@ -5145,9 +5164,13 @@ def host_steps_source(owed=None) -> dict:
                           "artifact, so doing this one does each" if s.get("superseded")
                           else "")),
                 operands={"check": s.get("check") or "", "state": s["check_state"]},
-                action={"label": ("Open the Update page and say it is done"
-                                  if s["check_state"] == "not_checkable"
-                                  else "Do it on the host; this row goes when the check reads done"),
+                # One action, Open the Update page (the operator, 2026-11-11: the rows drew none
+                # on their line); its words name both ways a person closes the step there.
+                action={"label": ("Open the Update page: say it is done, or decline it with a "
+                                  "reason" if s["check_state"] == "not_checkable"
+                                  else "Do it on the host (this row goes when the check reads "
+                                       "done), or open the Update page to decline it with a "
+                                       "reason"),
                         "open": "app_update"})
             for s in got["steps"]]
     return source_result("host_steps", label, read_at=started, took_ms=took, rows=rows,
@@ -7240,13 +7263,17 @@ ATTENTION_KEYS = tuple(sorted({k for ks in SOURCE_KEYS.values() for k in ks}
 DUE_EVENT = "attention_due"
 
 
-def badge_of(rows: list, results: list) -> dict:
+def badge_of(rows: list, results: list, acknowledged: list = ()) -> dict:
     """The sidebar's count, from the SAME rows the page draws, after attaching, folding and
     acknowledgements (the operator, 2026-10-02: the count was computed apart and left out
-    rows the page showed): how many, the worst level, when a row next clears by time, and
-    when the oldest source's value passes its promise. The page's own count is this one."""
+    rows the page showed): how many, the worst level, when a row next clears by time, when an
+    acknowledgement with a declared expiry ends and its row comes back (the operator,
+    2026-11-11), and when the oldest source's value passes its promise. The page's own count
+    is this one."""
     worst = min((LEVELS.index(r["level"]) for r in rows), default=None)
     due = [_ts(r["clears_at"]) for r in rows if r.get("clears_at")]
+    due += [t for t in (_ts(k.get("until")) for k in acknowledged or () if k.get("expires"))
+            if t]
     stale = [_ts(res["value_at"]) + res["stale_after_seconds"] for res in results
              if res.get("value_at") and res.get("stale_after_seconds")]
     unreadable = [res["label"] for res in results if res.get("state") not in ("read", WAITING)]
@@ -7569,6 +7596,20 @@ def _without_acknowledged(rows: list):
             gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
                          "why": a.get("why"), "at": a.get("at"), "until": a["until"]})
             continue
+        expiry = ACK.EXPIRES.get((str(r.get("source") or "").split("@", 1)[0], r.get("kind")))
+        if a and expiry:
+            # A DECLARED EXPIRY (the operator, 2026-11-11): a scheduled job's failed run is
+            # acknowledged until the workflow's next scheduled run; past it, or with no expiry
+            # recorded, the row is shown again, saying whose acknowledgement ended.
+            if a.get("expires") == expiry and not ACK.expired(a):
+                gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
+                             "why": a.get("why"), "at": a.get("at"), "until": a.get("until"),
+                             "expires": expiry, "said": ACK.in_force_words(a)})
+                continue
+            r = dict(r)
+            r["cause"] = f"{r['cause']}. {ACK.expired_words(a)}"
+            kept.append(r)
+            continue
         if a and a.get("band") is not None:
             # WITHIN ITS BAND ONLY (C433): hidden while the reader's reading is inside the
             # band recorded with the acknowledgement; outside it, or unread, the row stays and
@@ -7609,7 +7650,10 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 # An interrupted heal (board H, H6).
                 "heal": "heal_source",
                 # A change of a network's controller Python (the operator, 2026-11-07).
-                "controller_python": "controller_python_source"}
+                "controller_python": "controller_python_source",
+                # A scheduled quality job's failed run, until its next scheduled run
+                # (the operator, 2026-11-11).
+                "scheduled_jobs": "scheduled_jobs_source"}
 
 #: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
 #: instructions are a true positive (someone aimed them at the model: investigate), benign or
@@ -7710,6 +7754,16 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                 + ", ".join(f"{w.split(':')[0].lower()} ({v})" for v, w in asked)
                 + f", not {disposition or 'none given'}")}
         extra = {"disposition": disposition}
+    expiry = ACK.EXPIRES.get((found["source"].split("@", 1)[0], found["kind"]))
+    if expiry:
+        # A DECLARED EXPIRY (the operator, 2026-11-11): its moment, read now from the row's own
+        # source (a workflow's cron), is kept with the acknowledgement; none read, none made.
+        until, why_not = ACK.expiry_at(expiry, found)
+        if until is None:
+            return {"ok": False, "error": (f"Not acknowledged: it holds only until "
+                                           f"{ACK.EXPIRIES[expiry]}, and that could not be "
+                                           f"read ({why_not})")}
+        extra.update(expires=expiry, until_at=until)
     try:
         entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
                            kind=f"{found['source']}/{found['kind']}", what=found["what"],
@@ -7721,7 +7775,10 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                                       f"recorded ({type(exc).__name__}: {first}); the row "
                                       "stays"}
     out = {"ok": True, "acknowledged": entry, "hides_now": True, "words": ""}
-    if entry.get("until"):
+    if entry.get("expires"):
+        out["words"] = (f"Recorded: {ACK.in_force_words(entry)}. If that run has not "
+                        "succeeded by then, the row comes back by itself.")
+    elif entry.get("until"):
         # A quiet period hides the row whatever its band, and says when it ends (C2316).
         out["words"] = (f"Recorded: a quiet period until {entry['until'][11:16]} UTC on "
                         f"{entry['until'][:10]}; anything after it raises the row again.")
@@ -7926,7 +7983,8 @@ def needs_attention(sources=None) -> dict:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,
             "unreadable": unreadable, "acknowledged": acknowledged, "in_force": in_force,
-            "badge": badge_of(rows, results), "expected": _expected_on_cards(results),
+            "badge": badge_of(rows, results, acknowledged),
+            "expected": _expected_on_cards(results),
             "sources": _checked_lines(results)}
 
 

@@ -35,7 +35,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `d4fbaddf4bfdb61a68112f162ffe3c47465a59ea162bd464dce8256424dc9441`
+Templates sha256: `f073f50f12f58170494dcc643d68a952868ed410565a443d18e457760ce5132e`
+
+**Hashed again 2026-11-11 for recorded closes** (the operator, that day: "The seven host-step
+rows have no action, against our own rule. Add a recorded way to close one"; and for the
+scheduled mutation run, "an acknowledge with reason and expiry"; log: Recorded closes).
+`_attention.html`: a host step's row draws Open the Update page on its line, with its (i),
+where it drew nothing, and in What to do in place of Update…; and the Acknowledged list draws
+an acknowledgement with a declared expiry (a scheduled job's failed run) as "Acknowledged by
+<name> until the next scheduled run (<when>): <reason>" (`said`). Every other row and every
+other acknowledgement is drawn as compared. Compared by the template diff and the rows
+tests/test_host_step_decline.py and tests/test_scheduled_job_acknowledge.py draw, not a new
+shot. Templates sha256 before: `d4fbaddf4bfdb61a68112f162ffe3c47465a59ea162bd464dce8256424dc9441`.
 
 **Hashed again 2026-11-11 after the operator's test of the held actions on the host** ("2. A
 Needs attention row with a run in progress: the run's text on a SECOND line under the title;

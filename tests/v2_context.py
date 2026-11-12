@@ -2025,7 +2025,12 @@ def _update_owed(client, _lab, _mp):
     `[updater]` steps (UPDATER_STEPS), never from the checkout's history. The walk drew each
     only while the checkout's last 200 commits held one: 3db04b01 moved 99664f27 to 201 back
     (CI #994), and ebbf71ca moved 149c8f89, the last `[updater]` step, to 201 back
-    (2026-11-01, C2246). Its patches are undone before the next provider."""
+    (2026-11-01, C2246). And two of 8c059523's local CI runner steps (each trailer cut to its
+    first clause), one said done and one declined with the operator's reason of 2026-11-11, so
+    "Host steps said done" and "Host steps declined" are drawn. Its patches, and the done
+    record's temporary folder, are undone before the next provider."""
+    import tempfile
+
     import pytest
 
     from modules import host_steps
@@ -2035,23 +2040,35 @@ def _update_owed(client, _lab, _mp):
     body = ("C794: the host step turning Loki's own detected_level off\n\nHost-Step-After: on "
             "the NMAS host: bash scripts/host-steps/c794-loki-detected-level-off.sh (Loki's own "
             "detected_level off; severity the one level)\n")
-    log_text = "".join(f"{s}\x1f{b}\x1e" for s, b in UPDATER_STEPS) + f"{sha}\x1f{body}\x1e"
+    ci_sha = "8c05952345c88717c6ae213aa6c2dc2c23bf58fa"
+    done_step = "remove what the scheduled runs left: sudo rm -r /var/lib/nmas-local-ci/scheduled"
+    declined_step = "reinstall the root-owned runner from the host's checkout at this commit"
+    ci_body = (f"Local CI after its first host run\n\nHost-Step-After: {declined_step}\n"
+               f"Host-Step-After: {done_step}\n")
+    log_text = ("".join(f"{s}\x1f{b}\x1e" for s, b in UPDATER_STEPS) + f"{sha}\x1f{body}\x1e"
+                + f"{ci_sha}\x1f{ci_body}\x1e")
     real = host_steps.owed
     mp = pytest.MonkeyPatch()
-    try:
-        mp.setattr(health, "_COMMIT", sha)
-        mp.setattr(host_steps, "owed", lambda running, **kw: real(running, log_text=log_text))
-        mp.setitem(host_steps.CHECKS, "updater",
-                   lambda root: {"state": "done", "detail": "the updater's copies match"})
-        for path in ("/v2/update", "/v2/update/panel"):
-            r = client.get(path, headers={"Accept": "text/html"})
-            text = r.get_data(as_text=True)
-            assert r.status_code == 200 and 'id="update-owed-steps"' in text, (path,
-                                                                               r.status_code)
-            assert "the updater&#39;s copies match" in text or "the updater's copies match" \
-                in text, f"{path}: the checked-done step was not drawn"
-    finally:
-        mp.undo()
+    with tempfile.TemporaryDirectory() as folder:
+        try:
+            mp.setattr(health, "_COMMIT", sha)
+            mp.setattr(host_steps, "DONE", os.path.join(folder, "host_steps_done.jsonl"))
+            mp.setattr(host_steps, "owed", lambda running, **kw: real(running, log_text=log_text))
+            mp.setitem(host_steps.CHECKS, "updater",
+                       lambda root: {"state": "done", "detail": "the updater's copies match"})
+            assert host_steps.record_done(ci_sha, done_step, "test-person@example.invalid")["ok"]
+            assert host_steps.record_decline(ci_sha, declined_step, "test-person@example.invalid",
+                                             "CI stays on GitHub-hosted runners", "access")["ok"]
+            for path in ("/v2/update", "/v2/update/panel"):
+                r = client.get(path, headers={"Accept": "text/html"})
+                text = r.get_data(as_text=True)
+                assert r.status_code == 200 and 'id="update-owed-steps"' in text, (
+                    path, r.status_code)
+                assert "the updater&#39;s copies match" in text or "the updater's copies match" \
+                    in text, f"{path}: the checked-done step was not drawn"
+                assert 'id="update-said-done"' in text and 'id="update-declined"' in text, path
+        finally:
+            mp.undo()
 
 
 def _lease_release(client, _lab, _mp):

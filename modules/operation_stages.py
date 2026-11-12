@@ -271,6 +271,11 @@ STAGES = {
         "n/a: a person records that a host step is done", "n/a: nothing is previewed",
         "n/a: a step nothing can check is said done by a person", "n/a: a record only",
         "modules.host_steps.record_done"),
+    "update.step_decline": Stages(
+        "n/a: a person records that a host step is declined, with a reason",
+        "n/a: nothing is previewed",
+        "n/a: nothing is done on the host: the step is recorded as declined",
+        "n/a: a record only", "modules.host_steps.record_decline"),
     # ---- The record: goldens and intent (no device changes)
     # The v2 device page's Capture (7.3), one device. Today's capture (golden.capture_apply,
     # its preview golden.capture_preview) and profile proposal (templatize.profile_propose_apply,
@@ -489,6 +494,7 @@ HISTORY = {
                                   "record; the network's repository keeps it "
                                   "(dhcp/exclusions.yml)"),
     "update.step_done": NOT_A_DEVICE,
+    "update.step_decline": NOT_A_DEVICE,
     # ---- approve: a decision a later device change acts on
     "device_v2.capture_confirm": ("golden", "measured"),
     "onboard_v2.create": ("intent",),
@@ -750,6 +756,9 @@ WRITTEN_ELSEWHERE = {
                "templates, a policy (every writer, through repo.commit())",
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
+    "host_steps": "a person's word on the Update page about a host step a release asked for, "
+                  "said done (update.step_done) or declined with a reason "
+                  "(update.step_decline): the installation's record, about no device",
     "approvals": "the drift check queues an item (modules/drift_check.py) and a capture of the "
                  "device closes it (device_v2.capture_confirm, routes.golden.apply_captures); "
                  "the approve and reject routes left with the AI family (D15)",

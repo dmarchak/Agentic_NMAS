@@ -446,6 +446,7 @@ GATES = {
     "intent_v2.acknowledge": _g(N, "rewrites the document in the editor (its unmodeled_ack block); writes nothing"),
     "intent_v2.reopen": _g(N, "opens the editor on what is committed now with the person's edit on it; writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
+    "update.step_decline": _g(C, "records that a verified person declined a host step the running release owes, with a reason (the operator, 2026-11-11): beside the done record, no longer owed, kept by History; changes nothing on the host"),
     "v2.stall_capture": _g(K, "records a stall the viewer's own page captured as it showed its stale note (C2003): the page, its live connection's state and the app's view of it, a local record History reads; changes nothing a device, a setting or a decision reads"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),
     "device_v2.fault_drill_declare": _g(K, "declares a fault drill on one device for at most 15 minutes, BEFORE its fault is injected, recorded as the verified caller (modules/fault_drills.py): an incident opened on the device inside it is tagged a drill at creation, exempt from guards 9 and 11 and counted apart from the real figures; it silences, holds and sends nothing, and one declared after the fault is refused", operation="fault_drill_declare"),

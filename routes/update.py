@@ -11,6 +11,11 @@ docs/UPDATE.md). The page is `v2.update` (routes/v2.py).
                        pattern, Stage 7 acceptance criterion 6);
 - POST /update/host-step/done   a person says an AFTER host step is done (`sha`,
                        `step`); it answers with the panel drawn again;
+- POST /update/host-step/decline   a person declines an AFTER host step the
+                       running release owes, with a reason (`sha`, `step`,
+                       `why`; the operator, 2026-11-11): recorded beside done,
+                       no longer owed, kept by History; it answers with the
+                       panel drawn again;
 - GET  /update/status  what runs, what waits, what the updater last said: the
                        waiting page reads it beside /health;
 - POST /update/check   runs the `app-pushed` reader now, on a thread, as the
@@ -101,7 +106,8 @@ def step_done():
     match = [s for s in owed["steps"]
              if sha in (s.get("shas") or [s["sha"]]) and s["step"] == step]
     if not match:
-        return refused("that step is not one the running release owes")
+        return refused(_closed_words(owed, sha, step)
+                       or "that step is not one the running release owes")
     if match[0]["check_state"] != "not_checkable":
         return refused("the tool checks this step itself: " + match[0]["check_detail"])
     for each in match[0].get("shas") or [sha]:
@@ -109,6 +115,64 @@ def step_done():
         if not got["ok"]:
             return refused(got["reason"])
     # Drawn back under "Host steps said done": who said so, and when.
+    return _panel(200)
+
+
+def _closed_words(owed: dict, sha: str, step: str) -> str:
+    """Who already said *step* of *sha* done, or declined it, and when, or ""."""
+    for key, verb in (("said_done", "said done"), ("declined", "declined")):
+        for s in owed.get(key) or []:
+            if sha in (s.get("shas") or [s.get("sha")]) and s.get("step") == step:
+                return (f"that step was already {verb} by {s.get('by') or 'an unnamed person'} "
+                        f"at {str(s.get('at') or 'an unrecorded time').replace('T', ' ')[:16]}"
+                        f"{' UTC' if s.get('at') else ''}"
+                        + (f": {s['why']}" if s.get("why") else ""))
+    for s in owed.get("checked_done") or []:
+        if sha in (s.get("shas") or [s.get("sha")]) and s.get("step") == step:
+            return "the tool's check reads that step done: " + str(s.get("check_detail") or "")
+    return ""
+
+
+@bp.route("/host-step/decline", methods=["POST"])
+def step_decline():
+    """A person declines an AFTER host step the running release owes, with a reason (the
+    operator, 2026-11-11: "decline the local-CI-runner steps (CI stays on GitHub-hosted
+    runners)"). Refused: no reason; a step not owed (one already said done or declined is
+    named with who and when); an unverified request. Declining is never saying it is done: a
+    check's answer stays the check's."""
+    from modules import host_steps, identity
+    from routes import health
+
+    sha = str(request.form.get("sha") or "")
+    step = str(request.form.get("step") or "")
+    why = str(request.form.get("why") or "")
+
+    def refused(words):
+        return _panel(409, step_refusal={"sha": sha, "step": step, "error": words,
+                                         "decline": True})
+
+    actor = identity.request_actor()
+    if not actor or actor == identity.UNVERIFIED:
+        return refused("no verified person: a host step is declined by a verified person")
+    owed = host_steps.owed(health._COMMIT or "")
+    if not owed["ok"]:
+        return refused(owed["error"])
+    match = [s for s in owed["steps"]
+             if sha in (s.get("shas") or [s["sha"]]) and s["step"] == step]
+    if not match:
+        return refused(_closed_words(owed, sha, step)
+                       or "that step is not one the running release owes")
+    problem = host_steps.decline_reason_problem(why)
+    if problem:
+        return refused(problem)
+    verified = identity.actor_verification(actor)
+    # One row may stand for several commits that asked for the same step (host_steps.grouped):
+    # declining it declines it for each of them.
+    for each in match[0].get("shas") or [sha]:
+        got = host_steps.record_decline(each, step, actor, why, verified=verified)
+        if not got["ok"]:
+            return refused(got["reason"])
+    # Drawn back under "Host steps declined": who, when and why; History keeps it.
     return _panel(200)
 
 

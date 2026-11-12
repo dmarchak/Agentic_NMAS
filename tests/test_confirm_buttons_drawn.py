@@ -1314,6 +1314,10 @@ class TestHostStepCards(_Cards):
     CASES = {
         "step_done": ("_update.html", "It is done", r"It is done",
                       "data: the step is one the tool checks itself"),
+        # A host step declined with a reason (the operator, 2026-11-11): offered on every owed
+        # step, so its block is the viewer's.
+        "step_decline": ("_update.html", "Decline the step", r"Decline the step",
+                         "viewer: a verified service, not a person"),
     }
 
     def _panel(self, request, monkeypatch, body):
@@ -1340,6 +1344,16 @@ class TestHostStepCards(_Cards):
                            "install the renderer as a symlink and restart it\n")
         assert 'id="update-owed-steps"' in html and "checked: absent" in html, \
             "floor: the owed step is drawn with its check's answer"
+        return html
+
+    def drawn_step_decline(self, request):
+        return self.drawn_step_done(request)
+
+    def blocked_step_decline(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._panel(request, monkeypatch, "x\n\nHost-Step-After: tell the team\n")
+        assert 'id="update-owed-steps"' in html and "Decline this step…" in html, \
+            "floor: the owed step and its decline are drawn (disabled)"
         return html
 
 
@@ -2378,9 +2392,10 @@ class TestThePopulation:
         switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10; 82 until SDN ›
         Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904;
         84 until a lost telemetry stream's Re-subscribe <device>'s telemetry (<ids>) and Re-add
-        the receiver for <id>, C2838, 2026-11-10)."""
+        the receiver for <id>, C2838, 2026-11-10; 86 until the Update page's Decline the step on
+        an owed host step, the operator, 2026-11-11)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 86, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 87, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -100,6 +100,11 @@ PAGE_RECORD = {
     # each step done and when, on the Update page.
     "update.step_done": ("templates/v2/_update.html", ('id="update-said-done"', "d.by", "d.at"),
                          "v2.update_panel"),
+    # A host step declined with a reason (the operator, 2026-11-11): drawn back as who
+    # declined it, when and why, on the Update page; History keeps it too.
+    "update.step_decline": ("templates/v2/_update.html",
+                            ('id="update-declined"', "d.by", "d.at", "d.why"),
+                            "v2.update_panel"),
     # The monitoring profile's batch Apply (P.9 d2): a job, its result drawn
     # from the receipts the apply wrote (each device's outcome, what was sent
     # and checked, the record), and the receipts read back on each device's

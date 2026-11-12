@@ -82,9 +82,10 @@ it with its golden before changing it, then acknowledge the row with what you fo
 Host steps come in two kinds. A `Host-Step:` must be done BEFORE the update: where the tool
 can check it, it does so itself (done needs no tick; not done refuses, saying what it found);
 otherwise you tick it as done. A `Host-Step-After:` never blocks: once the release runs, it
-is a Needs attention row until it is checked done or you say **It is done**. Done steps stay
-on the page: **Host steps said done** names who said so and when, and **Host steps the tool
-checked done** names each check and what it read.
+is a Needs attention row until it is checked done, you say **It is done**, or you decline it
+with a reason (below). Done steps stay on the page: **Host steps said done** names who said
+so and when, **Host steps the tool checked done** names each check and what it read, and
+**Host steps declined** names who declined each, when and why.
 
 One artifact is one row. Steps checked by the same check (three re-links of the topology
 renderer, say) are one row naming every commit: the newest step's words lead, and the older
@@ -195,6 +196,30 @@ requested:
 It never installs a newer release in place of the one you chose. **Stop waiting** ends it,
 naming you.
 
+## Declining a host step {#declining-a-host-step}
+
+Some after-steps are never to be done here: a step for a part the installation has chosen
+not to run (the local CI runner, when CI stays on GitHub-hosted runners). Each step under
+**Still to do on the host** offers **Decline this step…** beside **It is done**. It opens a
+reason box in place; type why the step is not to be done (at least three words) and press
+**Decline the step**, which is busy on itself until the answer arrives.
+
+- Read: the steps the running release owes, from its commits' trailers. Sent: nothing; no
+  command runs on the host. Recorded: the decline, beside the done record in the same store
+  (`data/host_steps_done.jsonl`, or the records database once it is moved there): you, how
+  your identity was established, the time and the reason, masked as every typed reason is.
+- The panel draws the answer in place: the step leaves **Still to do on the host** and is
+  listed under **Host steps declined** as "Declined by <you> at <time>: <reason>. It is no
+  longer owed; History keeps it." Its Needs attention row leaves too, and History lists it
+  under **Host steps done or declined**, as it lists a step said done.
+- One row asked for by several commits is declined for each of them.
+- Declining never says a step is done. A step with a check can be declined too, and if its
+  check later reads done, it moves to **Host steps the tool checked done**: done stays the
+  check's.
+- Refused, nothing recorded, the refusal drawn under the list: no reason, or one without the
+  shape of one; a step already declined or said done (naming who did so, and when); a step
+  the running release does not owe; a request that is not a verified person's.
+
 ## Check again {#check-again}
 
 **Check again** asks origin and CI now. It is busy on itself until the answer arrives, which
@@ -212,4 +237,4 @@ that check is still owed an answer says how long ago it was asked.
   rollback is yours to choose from its Needs attention row.
 - It changes no network device, intent, golden or setting.
 - It does not do a host step for you: before-steps must be done first, after-steps stay on
-  Needs attention until done.
+  Needs attention until done or declined with a reason.

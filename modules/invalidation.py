@@ -449,6 +449,9 @@ DECLARED = {
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),
     "update.step_done": ("app_version",),
+    # A declined host step leaves "Still to do on the host" and its Needs attention row (the
+    # host-steps source re-reads on app_version).
+    "update.step_decline": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
     "device_v2.fault_drill_declare": ("fault_drills",),
     "restarts.planned": ("restarts",),

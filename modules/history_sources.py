@@ -1131,6 +1131,42 @@ def updates(ctx):
                  for o in got.get("rows") or []])
 
 
+def host_steps(ctx):
+    """A person's word on the Update page about a host step a release asked for: said done, or
+    declined with a reason (the operator, 2026-11-11: "It is no longer owed; History keeps
+    it"). The installation's record, never a device's. One word given for a step several
+    commits asked for is one row naming each commit."""
+    from modules import host_steps as HST
+    from modules.redact import redact_text
+    if ctx["device"]:
+        return _out()
+    got = HST.done_records()
+    if "__unreadable__" in got:
+        return _out(errors=["the host-step record could not be read: "
+                            + got["__unreadable__"]["error"]])
+    merged = {}
+    for r in sorted(got.values(), key=lambda r: str(r.get("at") or "")):
+        if not _recent(ctx, r.get("at", "")):
+            continue
+        key = (HST.is_declined(r), r.get("step"), r.get("by"), r.get("at"))
+        merged.setdefault(key, dict(r, shas=[]))["shas"].append(str(r.get("sha") or ""))
+    events = []
+    for (declined, step, by, at), r in list(merged.items())[-ctx["limit"]:]:
+        commits = ", ".join(s[:10] for s in r["shas"] if s)
+        why = redact_text(str(r.get("why") or ""))
+        events.append(_event(
+            at, "host_step",
+            (f"Host step declined: {step}" if declined else f"Host step said done: {step}"),
+            [], who=_who(by or "", r.get("verified", "")),
+            detail=((f"{why}; " if declined else "") + f"asked for by {commits or '?'}"),
+            outcome="declined" if declined else "done",
+            record=[("Step", step), ("Commits", ", ".join(r["shas"])),
+                    ("Decision", "declined" if declined else "said done"),
+                    ("Reason", why if declined else None),
+                    ("Verified", r.get("verified"))]))
+    return _out(list(reversed(events)))
+
+
 #: A subject's words (15.14): what the call was about, from the row's own `subject`.
 SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
                  "intent": "an intent change on", "sdn_detection": "the SDN detection",
@@ -2881,7 +2917,8 @@ SOURCES = {
     "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "approvals": approvals,
-    "updates": updates, "show_commands": show_commands, "privileged": privileged,
+    "updates": updates, "host_steps": host_steps, "show_commands": show_commands,
+    "privileged": privileged,
     "reloads": reloads, "console_ztp": console_ztp, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
@@ -2927,6 +2964,7 @@ KIND_GROUPS = (
                                ("secret_values", "Secret values set", ("secret_value",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
+                               ("host_steps", "Host steps done or declined", ("host_step",)),
                                ("ai_calls", "AI calls", ("ai_call", "ai_read")),
                                ("sdn", "SDN flow operations", ("sdn",)),
                                ("controller_deploy", "Controller app deploys",
@@ -3040,7 +3078,8 @@ SOURCE_KINDS = {
     "restarts": ("restart",), "restart_windows": ("window",), "fault_drills": ("fault_drill",),
     "rotation": ("rotation", "persist"), "retries": ("retry",), "onboarding": ("onboarding",), "acknowledgements": ("acknowledged",),
     "breakglass": ("breakglass",), "interrupted": ("interrupted",), "approvals": ("approval",),
-    "updates": ("update",), "show_commands": ("show_commands",), "privileged": ("privileged",),
+    "updates": ("update",), "host_steps": ("host_step",), "show_commands": ("show_commands",),
+    "privileged": ("privileged",),
     "reloads": ("reload",), "console_ztp": ("console",), "credential_profiles": ("credential",),
     "topology_expected": ("expected",), "topology_layout": ("layout",), "saved_views": ("view",),
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),

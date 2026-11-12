@@ -74,6 +74,83 @@ def period_of(cron: str):
     return 3600
 
 
+def _cron_values(text: str, lo: int, hi: int):
+    """The values one cron field allows (numbers, ``*``, ranges, lists and ``/N`` steps, as
+    GitHub's schedules use them), or None for anything else (a name such as ``MON``): never a
+    guess."""
+    out = set()
+    for part in str(text).split(","):
+        base, _sep, step = part.partition("/")
+        if _sep and not (step.isdigit() and int(step) >= 1):
+            return None
+        every = int(step) if _sep else 1
+        if base == "*":
+            a, b = lo, hi
+        elif "-" in base:
+            x, _d, y = base.partition("-")
+            if not (x.isdigit() and y.isdigit()):
+                return None
+            a, b = int(x), int(y)
+        elif base.isdigit():
+            a = int(base)
+            b = hi if _sep else a
+        else:
+            return None
+        if a < lo or b > hi or a > b:
+            return None
+        out.update(range(a, b + 1, every))
+    return out
+
+
+def next_run(cron: str, after: float):
+    """The epoch of a schedule's next run strictly after *after*, by its cron in UTC (GitHub
+    runs schedules in UTC; "0 14 * * 0" is each Sunday at 14:00), or None when a cron cannot be
+    read. Several crons ("a; b", as `scheduled_workflows` joins them) give the earliest. This is
+    when GitHub is asked to start it, not when it starts (`START_DELAY_SECONDS`). Day of month
+    and day of week, both restricted, match either (cron's own rule)."""
+    import datetime as dt
+
+    best = None
+    for one in str(cron or "").split(";"):
+        fields = one.split()
+        if len(fields) != 5:
+            return None
+        minute, hour, dom, month, dow = (
+            _cron_values(fields[0], 0, 59), _cron_values(fields[1], 0, 23),
+            _cron_values(fields[2], 1, 31), _cron_values(fields[3], 1, 12),
+            _cron_values(fields[4], 0, 7))
+        if None in (minute, hour, dom, month, dow):
+            return None
+        dow = {d % 7 for d in dow}
+        either = not fields[2].startswith("*") and not fields[4].startswith("*")
+        start = dt.datetime.fromtimestamp(int(after) // 60 * 60, dt.timezone.utc)
+        found = None
+        # Every day for eight years, past the longest gap any cron here can have (a schedule on
+        # 29 February, every four years, or eight across a century's skipped leap year).
+        for n in range(366 * 8):
+            day = (start + dt.timedelta(days=n)).date()
+            if day.month not in month:
+                continue
+            on_dom, on_dow = day.day in dom, (day.isoweekday() % 7) in dow
+            if not ((on_dom or on_dow) if either else (on_dom and on_dow)):
+                continue
+            for h in sorted(hour):
+                for m in sorted(minute):
+                    t = dt.datetime(day.year, day.month, day.day, h, m,
+                                    tzinfo=dt.timezone.utc).timestamp()
+                    if t > after:
+                        found = t
+                        break
+                if found is not None:
+                    break
+            if found is not None:
+                break
+        if found is None:
+            return None
+        best = found if best is None else min(best, found)
+    return best
+
+
 def run_bound_of(doc: dict) -> int:
     """A run's longest possible length, in seconds: every job's ``timeout-minutes`` summed, as
     though they ran one after another (the bound, not a measured length). A job with none takes

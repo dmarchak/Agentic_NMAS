@@ -817,14 +817,12 @@ EMPTY_IN_FIXTURE = {
     "v2/_topology_map.html t.path_from": _TOPOLOGY,
     "v2/_topology_map.html t.path_to": _TOPOLOGY,
     "v2/_topology_map.html tr.branches": _TOPOLOGY,
-    "v2/_update.html (d.shas or (1 literal items))": _UPDATE,
     "v2/_update.html (o.notes or ())": _UPDATE,
     "v2/_update.html f.after_steps": _UPDATE,
     "v2/_update.html f.beyond": _UPDATE,
     "v2/_update.html f.commits": _UPDATE,
     "v2/_update.html f.host_steps": _UPDATE,
     "v2/_update.html hist.rows[…]": _UPDATE,
-    "v2/_update.html owed.said_done": _UPDATE,
     "v2/heartbeat.html plan.not_expected": _HEARTBEAT,
     "v2/heartbeat.html plan.rows": _HEARTBEAT,
     "v2/ip_sla.html g.rows": _IP_SLA,
@@ -854,7 +852,9 @@ EMPTY_IN_FIXTURE = {
 #: 332 with the SDN trace's provider (board D of docs/boards/sdn-trace.html, C2578,
 #: 2026-11-09): Topology drawn from a topology reader value for the first time, with its
 #: controller layer, so 27 of `_topology_map.html`'s loops drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 332
+#: 330 with the Update provider's said-done and declined host steps (the operator, 2026-11-11:
+#: a host step declined with a reason): "Host steps said done" and its commits drew, measured.
+EMPTY_IN_FIXTURE_CEILING = 330
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

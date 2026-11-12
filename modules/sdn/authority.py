@@ -98,6 +98,7 @@ NOT_DIRECT = {
     "dhcp_v2.subnet_confirm": "changes Kea, not a device",
     "update.apply": "updates the app, not a device",
     "update.step_done": "records a host step, not a device",
+    "update.step_decline": "records a host step declined, not a device",
     "netbox_v2.confirm": "writes NetBox's records, not a device",
     "templates_v2.approve": "changes a template's approval, not a device",
     "templates_v2.revoke": "changes a template's approval, not a device",

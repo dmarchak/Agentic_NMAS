@@ -409,8 +409,11 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
   new host keys a planned window kept, a deploy whose verify could not read back lines the
-  device prints in another form; and, within a measured band, a chronic alert and an
-  adjacency a device keeps logging down. See below.
+  device prints in another form; within a measured band, a chronic alert and an adjacency a
+  device keeps logging down; and, until the workflow's next scheduled run, a scheduled
+  quality job's failed run. See below. A host step a release owes is closed on the Update
+  page instead: its row's one action, **Open the Update page**, is where you say it is done
+  or decline it with a reason ([Declining a host step](update#declining-a-host-step)).
 - **Time.** An unplanned restart stays for 7 days if nobody acknowledges it; a pending
   approval expires after 48 hours (expiring executes nothing); an adjacency logged down
   clears a day after its last unexplained drop; an AI spend row about a day's or a month's
@@ -452,6 +455,28 @@ name, how your identity was established and the time, and the row leaves the pag
   recorded after the tool saw the restart it covers is refused, unless it is marked as a
   correction with its own reason: a restart that really was planned and only recorded late.
   History then says the window was a correction, and why.
+
+### A scheduled job's failed run, until its next scheduled run {#acknowledging-a-scheduled-job}
+
+A scheduled quality job (the weekly mutation run, the coverage nightly) whose newest scheduled
+run failed is a row until a scheduled run succeeds; a dispatched run does not clear it. While
+the fix waits, you can acknowledge it with a reason, and the acknowledgement **expires** at the
+workflow's next scheduled run, read from its cron in UTC ("0 14 * * 0": the next Sunday at
+14:00 UTC).
+
+- **When you acknowledge it**, the tool reads the workflow's cron and records the moment of its
+  next scheduled run with your reason. If the cron cannot be read, nothing is acknowledged and
+  the form says why.
+- **Until then** the row is not listed, and the acknowledged list says "Acknowledged by <you>
+  until the next scheduled run (<when>): <reason>". The count re-reads at that moment.
+- **At that moment** the row comes back by itself while the job is still red, naming the
+  acknowledgement that ended, so a failure that persists is never hidden for longer than one
+  period. GitHub starts a scheduled run hours late at times; the row comes back at the cron's
+  time all the same, and leaves when a scheduled run succeeds.
+- **A later failed run is a new row**: the acknowledgement covers the run it was made for, by
+  that run's id.
+- Only a failed run is acknowledged this way. An overdue job (no success within its period)
+  and a job whose runs cannot be read clear only when the condition resolves.
 
 ### A device restarting as planned {#restarting-as-planned}
 

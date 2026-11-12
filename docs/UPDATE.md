@@ -295,6 +295,12 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 - **A step with no check** is said done by the person: a box on the preview for a
   BEFORE step (recorded in the request), and "It is done" on the Update page for
   an AFTER step (recorded in `data/host_steps_done.jsonl`, 0600, with who and when).
+- **An owed AFTER step can be declined** with a reason on the Update page (the
+  operator, 2026-11-11: the local CI runner's steps, "CI stays on GitHub-hosted
+  runners"): `POST /update/host-step/decline`, a verified person, recorded beside
+  the done rows in the same store (`decision: declined`, who, how established,
+  when, the reason masked). It is no longer owed, and History keeps it. Declining
+  is never saying it is done: a step whose check reads done is the check's.
 - **The root-owned updater parses `Host-Step:` alone**, so an AFTER step never
   reaches it and needs no re-install of the updater.
 - A new step that can be checked gets a check in `CHECKS` with its commit.
