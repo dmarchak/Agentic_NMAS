@@ -246,6 +246,8 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ip-row:hover { background: var(--hover); }
 .ip-what { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .ip-what small { display: block; color: var(--ink-2); font-size: 12px; }
+/* An entry's Open the result and its Dismiss (C3081), side by side, never wrapped apart. */
+.ip-acts { display: flex; gap: 6px; flex: none; margin: 0; }
 .ip-note { margin: 0 8px; font-size: 12.5px; color: var(--ink-3); }
 .ip-unread { margin: 4px 6px; font-size: 12.5px; color: var(--danger); }
 .ip-foot { border-top: 1px solid var(--line-2); margin-top: 6px; padding: 8px 6px 2px; display: flex; justify-content: space-between;

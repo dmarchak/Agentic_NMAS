@@ -139,9 +139,12 @@ resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day
     reopens the run's card (C537; `routes/device_v2._reopened`). The ONE place this address
     is built for "Open the result" and "Open the run" (the operator, 2026-11-11: "The result
     opens on the device page for now; once the incident page exists, 'Open the result' goes
-    to the incident's URL"): that change is made here alone. -#}
-{% macro run_href(device, network=none) -%}
-{{ url_for('device_v2.device', name=device, list=network) }}
+    to the incident's URL"): that change is made here alone. *result* names one run (a kept
+    job's id, or a run's record id), so the page opens THAT run's result, never only the
+    device's newest (C3081); Open the result's mark (`routes/v2.seen_run`) sends the
+    browser to this same address. -#}
+{% macro run_href(device, network=none, result=none) -%}
+{{ url_for('device_v2.device', name=device, list=network, result=result or none) }}
 {%- endmacro %}
 
 {#- A time Mercury measured, in the viewer's own zone (the operator, 2026-11-09, C2817: "Show

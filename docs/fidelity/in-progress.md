@@ -47,7 +47,32 @@ after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In p
 compared by reading the diff, with no new shot (the templates then hashed
 `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `a2c1502cf47dfe2d48b38321b54cae60ca439bef45c988e6e3866c366369f654`
+Templates sha256: `3f16fde7e5fd13c20f80a9f26cf6f655f44abfdc15e43294b340cb4820966390`
+
+**Hashed again 2026-11-12 for the operator's report of that day** (C3081: ""Finished, not
+opened yet" keeps r7's two failed runs (16:49 and 20:12 UTC) after I press "Open the result";
+they're back on every page, and the "2 failed" chip stays. Opening a result must mark it seen
+PERSISTENTLY (per person, stored), so it leaves the list and the chip; add a "Dismiss" on each
+entry too."). Compared region by region by the template diff, not a new shot:
+- the chip and its counts: **same** (laid out as before; the counts now leave out what the
+  person looking has opened or dismissed, which the model decides);
+- Running now: **same**;
+- a Finished row: its badge, its name and its small line **same**; on its right, Open the
+  result (the same `btn btn-small`, now the submit of a small form that keeps the mark and then
+  opens the page on that run's result) and, beside it, **Dismiss** (`btn-outline`, secondary),
+  both in `.ip-acts`, which keeps them side by side and, at phone width, under the row's words
+  as the single button was: **deviation** (boards A and B draw Open the result alone), logged
+  in STANDING_APPROVAL_LOG ("In progress chip: each entry under Finished, not opened yet has two
+  controls");
+- the list's head: a refused mark ("Not marked dismissed: <why>.") and an unreadable store
+  ("What you have opened could not be read (<why>): every finished run is listed …") drawn in
+  the unread line's danger style, as "Could not read what runs in …" is: **deviation**, the
+  same line (the boards draw no refusal);
+- the empty list's note: "until you open it or dismiss it": wording.
+The two buttons' form posts to `/v2/operations/seen` (a v2 route, `v2.seen_run`); the address
+draws nothing. The browser check (tests/test_v2_layout_in_a_browser.py's chip at its widest, 320 to 1280 px)
+was run with the two buttons on each finished row. Templates sha256 before:
+`a2c1502cf47dfe2d48b38321b54cae60ca439bef45c988e6e3866c366369f654`.
 
 **Hashed again 2026-11-11 for where a result opens** (the operator, that day: "4. The result
 opens on the device page for now; once the incident page exists, 'Open the result' goes to the

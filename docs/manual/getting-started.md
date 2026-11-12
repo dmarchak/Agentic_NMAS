@@ -80,9 +80,13 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
 - **A cross, a warning sign or a tick, with a count**: an operation a device's page started
   that finished while you were elsewhere, with its outcome in its card's own words. Red wins:
   one failed operation makes the chip red, a partial one amber, and it is green only when every
-  finished one is clean. **Open the result** opens the device's page on that result. Once you
-  have seen a result (on its card, or on the device's page), the chip stops listing it for you,
-  and only for you: someone else who has not seen it still has it on their chip. A
+  finished one is clean. **Open the result** opens the device's page on that run's result (the
+  one you pressed it on, never only the device's newest), and **Dismiss** takes it off your
+  list without opening it; its record stays in History either way. Each is kept for you, so
+  the entry does not come back on any page, after a reload or after Mercury restarts, and the
+  chip's count no longer counts it. It is kept only for you: someone else who has not opened or
+  dismissed it still has it on their chip. A result you saw on its card while the app ran (on
+  the device's page) also leaves your list until the app restarts. A
   **self-healing run** is listed the same way, as **Self-healing**, for every person until each
   has opened it, since no person started it; a **telemetry re-subscribe** as **Re-subscribe
   telemetry**. Each says how many steps the run recorded, and its result opens with the outcome
@@ -96,8 +100,12 @@ kept for 30 minutes, in the running app's memory: after that, or after the app r
 in History (All recent operations), and a state an operation left behind (a rotation not yet
 persisted) is a Needs attention row. A **re-subscribe** is also listed from its record: the
 person who started it has it under **Finished, not opened yet** for a day after it started,
-until they open it, whether or not Mercury restarted in between. What was opened is remembered
-in the running app's memory, so after a restart a run of the last day is listed once more.
+until they open it or dismiss it, whether or not Mercury restarted in between. What each person
+opened or dismissed is kept in a small store of its own; when that store cannot be read, the
+list says so and lists every finished run, **Open the result** opens the page without keeping
+anything, and **Dismiss** is refused, saying why. With nobody verified looking (no access
+proxy), there is no one to keep it for: **Open the result** opens the page, and there is no
+**Dismiss**.
 
 A device's page opened while that device has an operation running, or one finished you have
 not seen, opens THAT card in place of its tab, wherever you came from: the chip, a bookmark or

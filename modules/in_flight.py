@@ -318,7 +318,24 @@ def finished_row(job: dict, viewer: str) -> dict:
             "who": _who(job.get("actor", ""), viewer),
             # A run that keeps a record (`heal.run_card`): its id, and how many steps it took.
             "run": c["run"] if isinstance(c.get("run"), str) else "",
+            # The job's id: with the run's, what Open the result and Dismiss mark seen.
+            "job": job["job"],
             "steps": len((c.get("steps") or {}).get("trail") or [])}
+
+
+def job_opened(job: dict, viewer: str) -> bool:
+    """Whether *viewer* has seen a kept job's result (`capture_job.card_jobs`' row): drawn on
+    a card this process served (the job's in-memory ``opened``, a cache lost at a restart), or
+    opened or dismissed under Finished, which is kept (`seen_runs`, C3081)."""
+    from modules import seen_runs
+
+    return viewer in (job.get("opened") or ()) or seen_runs.is_seen(viewer, job.get("job"))
+
+
+#: What the list says when what a person has seen cannot be read (`seen_runs`): every finished
+#: run is listed, and none can be marked.
+SEEN_UNREAD = ("What you have opened could not be read ({why}): every finished run is listed, "
+               "and Dismiss cannot remember one until it can be read")
 
 
 def chip(networks, viewer: str, now: float = None) -> dict:
@@ -345,10 +362,11 @@ def chip(networks, viewer: str, now: float = None) -> dict:
     running += waits
     unread += unread_pending
     finished = [f for f in (finished_row(j, viewer) for j in jobs
-                            if j["state"] != "running" and viewer not in j["opened"]) if f]
+                            if j["state"] != "running" and not job_opened(j, viewer)) if f]
     # A run whose job this server no longer holds, from its RECORD (the operator, 2026-11-11:
     # a run that ended "disappeared from 'running' with NO outcome shown ... and nothing under
     # 'Finished, not opened yet'"): for the person who started it, until they open it.
+    from modules import seen_runs
     from modules.heal import run_card
     finished = [f for f in finished if not (f.get("run") and run_card.opened(f["run"], viewer))]
     have = {f["run"] for f in finished if f.get("run")}
@@ -367,8 +385,15 @@ def chip(networks, viewer: str, now: float = None) -> dict:
         f"{counts['partial']} partial" if counts["partial"] else "",
         f"{counts['done']} done" if counts["done"] else "",
         f"{len(unread)} network(s) unread" if unread else "") if w)
+    # What this person has seen, kept (C3081): unreadable lists everything (above) and says so;
+    # with nobody verified looking there is no one to keep it for, so Open the result opens
+    # the page and the in-memory mark is the only one.
+    seen = seen_runs.read()
     return {"running": running, "finished": finished, "unread": unread, "counts": counts,
-            "level": level, "words": words, "shown": bool(running or finished or unread)}
+            "level": level, "words": words, "shown": bool(running or finished or unread),
+            "seen_unread": (SEEN_UNREAD.format(why=seen["why"])
+                            if seen["state"] == "unreadable" else ""),
+            "marks": bool(viewer) and seen["state"] != "unreadable"}
 
 
 # ---------------------------------------------------------------------------

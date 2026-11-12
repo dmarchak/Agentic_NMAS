@@ -2873,3 +2873,13 @@ def stall_capture():
         return jsonify({"ok": True, "error": ""})
     code = 500 if got["entry"] else (429 if "last minute" in got["error"] else 400)
     return jsonify({"ok": False, "error": got["error"]}), code
+
+
+@bp.route("/operations/seen", methods=["POST"])
+def seen_run():
+    """A verified person marks one entry of the In progress list's "Finished, not opened yet"
+    opened or dismissed (C3081). A v2 route, so the press is one of the page's own; its one
+    handler is the In progress chip's, `routes.operations.mark_seen`, beside the chip it
+    draws again."""
+    from routes import operations
+    return operations.mark_seen()

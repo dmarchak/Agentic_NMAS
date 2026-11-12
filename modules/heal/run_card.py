@@ -21,8 +21,8 @@ said.
 - a run whose job this server no longer holds (a restart, or more than `capture_job.KEEP_S`
   ago) is listed from its RECORD (`finished_records`: the operations' record store,
   `privileged.runs`), for the person who started it, for `FINISHED_KEEP_S` after it started,
-  until they open it; opening is remembered in memory, as a job's is, so a restart lists it
-  once more.
+  until they open it or dismiss it; that is kept per person (`seen_runs`, C3081), so a
+  restart lists it no more.
 
 A heal that Mercury started (the policy's, no person) is listed for every person, as every
 job's result is, until each opens it; its durable outcome is its incident's (History, and a
@@ -295,13 +295,22 @@ def _records(network: str, since: float) -> list:
 
 
 def opened(run_id: str, viewer: str) -> bool:
+    """Whether *viewer* has seen run *run_id*'s result: drawn on a card this process served
+    (`mark_opened`, a cache lost at a restart), or opened or dismissed under Finished, which is
+    kept (`seen_runs`, C3081)."""
+    from modules import seen_runs
+
     with _lock:
-        return viewer in _opened.get(run_id, ())
+        if viewer in _opened.get(run_id, ()):
+            return True
+    return seen_runs.is_seen(viewer, run_id)
 
 
 def mark_opened(run_id: str, viewer: str) -> bool:
-    """*viewer* has seen run *run_id*'s result: Finished stops listing it for them. In memory,
-    beside the jobs' own marks; True when it was news."""
+    """*viewer* has been drawn run *run_id*'s result on a card: Finished stops listing it for
+    them while this process runs. In memory, beside the jobs' own marks, a cache: what is kept
+    across a restart is a person's own press (`seen_runs.mark`, through a declared route, since
+    a read writes nothing). True when it was news."""
     if not run_id:
         return False
     with _lock:
@@ -353,7 +362,7 @@ def finished_records(network: str, viewer: str, now: float = None, have=()) -> l
         out.append({"device": rec.get("device") or "", "list": network, "card": RESUB_CARD,
                     "name": in_flight.OPERATION_NAMES[RESUB_CARD], "level": o["level"],
                     "outcome": in_flight.OUTCOMES[o["level"]], "words": o["words"],
-                    "at": in_flight._clock(at), "who": "you", "run": run,
+                    "at": in_flight._clock(at), "who": "you", "run": run, "job": "",
                     "steps": len(rec.get("steps") or [])})
     return out
 
@@ -474,7 +483,21 @@ def reopened_record(network: str, host: str, viewer: str, now: float = None):
     by its record (`unopened_record`): its reopened card (`record_card_for`), and what a job
     row would say of it (who started it, when it started and ended), for the page's "Finished
     at …, while you were elsewhere". None when there is none."""
-    rec = unopened_record(network, host, viewer, now)
+    return _as_reopened(network, host, unopened_record(network, host, viewer, now))
+
+
+def named_record(network: str, host: str, run_id: str, now: float = None):
+    """``(card, job)`` as `reopened_record` gives them, for the ended run *run_id* on *host*
+    started inside `FINISHED_KEEP_S`, opened or not: the run a person pressed Open the result
+    on (`routes/v2.seen_run`), never the device's newest. None when there is none."""
+    now = time.time() if now is None else now
+    rec = next((r for r in _records(network, now - FINISHED_KEEP_S)
+                if r.get("id") == run_id and r.get("device") == host
+                and r.get("state") != "running"), None) if run_id else None
+    return _as_reopened(network, host, rec)
+
+
+def _as_reopened(network: str, host: str, rec):
     if rec is None:
         return None
     from modules import run_stepper

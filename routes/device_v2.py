@@ -432,22 +432,33 @@ def device(name):
                       _diagnose_card(ref, dev, tab, _diagnose_fields(request.args, hints=True))
                       if op == "diagnose" else
                       # C537 (3), board C: no card asked for, and this device has an operation
-                      # running, or one finished this person has not opened: THAT card.
-                      _reopened(ref, dev, tab) if not op else None)
+                      # running, or one finished this person has not opened: THAT card; or
+                      # the one run Open the result named (``result``, C3081).
+                      _reopened(ref, dev, tab, result=request.args.get("result", ""))
+                      if not op else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
-def _reopened(ref, dev, back, card: str = "", after: float = None):
+def _reopened(ref, dev, back, card: str = "", after: float = None, result: str = ""):
     """The card of the job *dev*'s page last started (of *card* when named), when it is
     running, or finished and not yet opened by the person looking (or, given *after*, finished
     since then, opened or not): drawn as its own job route draws it, saying it was reopened,
     and marked opened once its result is drawn. None otherwise, or when the job's result is no
-    longer known (the tab is drawn as usual)."""
-    from modules import device_actions
+    longer known (the tab is drawn as usual).
+
+    *result* names one run (a kept job's id, or a run's record id): the one Open the result
+    was pressed on (`routes/v2.seen_run`, which has marked it seen), drawn whether or not
+    it is opened, never the device's newest; a name that matches nothing here falls back to
+    the newest, as without it."""
+    from modules import device_actions, in_flight
     from modules.nsot import capture_job
     from routes.operations import viewer_key
 
     host = dev.get("hostname", "")
+    if result and not card and after is None:
+        named = _named_result(ref, dev, back, result)
+        if named is not None:
+            return named
     job = capture_job.for_device(ref.name, host, card)
     if job is None:
         # No job kept here (it ended long ago, or Mercury restarted): a run whose RECORD says
@@ -456,7 +467,7 @@ def _reopened(ref, dev, back, card: str = "", after: float = None):
     viewer = viewer_key()
     done = job["state"] != "running"
     if done and ((job["finished_at"] or 0) < after if after is not None
-                 else viewer in job["opened"]):
+                 else in_flight.job_opened(job, viewer)):
         # The device's newest job is one this person has opened: an older run they started
         # and have not opened may still be known by its record.
         return _reopened_record(ref, dev, back) if not card and after is None else None
@@ -468,6 +479,42 @@ def _reopened(ref, dev, back, card: str = "", after: float = None):
     if done:
         capture_job.mark_opened(job["job"], viewer)
         _run_opened(c, viewer)
+    return c
+
+
+def _named_result(ref, dev, back, result: str):
+    """The card of the one run *result* names on *dev* (a kept job's id, else a run's record
+    id, `run_card.named_record`), drawn as `_reopened` draws one, or None when it names
+    neither here."""
+    from modules import device_actions
+    from modules.heal import run_card
+    from modules.nsot import capture_job
+    from routes.operations import viewer_key
+
+    host, viewer = dev.get("hostname", ""), viewer_key()
+    job = next((j for j in capture_job.card_jobs() if j["job"] == result
+                and j["list"] == ref.name and j["device"] == host), None)
+    if job is not None:
+        c = device_actions.job_card(ref, host, job["card"], job["job"])
+        if c.get("state") == "unknown":
+            return None
+        c.update(back=back, ip=dev.get("ip", ""),
+                 reopened=device_actions.reopened_words(job, viewer))
+        if job["state"] != "running":
+            capture_job.mark_opened(job["job"], viewer)
+            _run_opened(c, viewer)
+        return c
+    try:
+        found = run_card.named_record(ref.name, host, result)
+    except Exception as exc:                          # noqa: BLE001 (the tab is drawn as usual)
+        log.warning("device_v2: %s's run %s could not be read: %s", host, result, exc)
+        return None
+    if found is None:
+        return None
+    c, as_job = found
+    c.update(back=back, ip=dev.get("ip", ""),
+             reopened=device_actions.reopened_words(as_job, viewer))
+    run_card.mark_opened(c["run"], viewer)
     return c
 
 

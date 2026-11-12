@@ -662,6 +662,9 @@ HISTORY = {
     "sdn_policies_v2.draft": "n/a: one AI call, kept in the fleet's ai_calls record (its "
                              "subject the network); its draft sends nothing, and its confirm "
                              "is recorded by sdn_policies_v2.confirm",
+    "v2.seen_run": "n/a: which runs a person has opened or dismissed is kept per person "
+                       "(modules/seen_runs.py), never a device's record; the run and its "
+                       "record are untouched",
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
     "sdn_v2.link_verify": "n/a: a reroute's verify is kept on the network's link-failure card "

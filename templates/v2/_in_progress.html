@@ -4,7 +4,8 @@
     htmx (`in_flight.chip`): absent while nothing runs and nothing waits to be opened; else the
     count running, and the outcome of each operation a device's page started that finished
     while this person was elsewhere (red wins), until they open it. The list opens under the
-    chip, full width at phone width; each row opens its device's page, which reopens its card.
+    chip, full width at phone width; each row opens its device's page, which reopens its card;
+    a finished row's Open the result and Dismiss keep, for this person, that they saw it (C3081).
     A read that failed is drawn as unknown, never as nothing running (C99). -#}
 {%- if ip.shown %}
 {%- set c = ip.counts %}
@@ -44,16 +45,33 @@
     </div>
     {%- endfor %}
     {%- endif %}
+    {%- if ip.said %}
+    <p class="ip-unread" role="alert">{{ ip.said }}</p>
+    {%- endif %}
+    {%- if ip.seen_unread %}
+    <p class="ip-unread" role="alert">{{ ip.seen_unread }}.</p>
+    {%- endif %}
     {%- if not ip.error %}
     <p class="ip-head">Finished, not opened yet · {{ ip.finished | length }}</p>
     {%- for f in ip.finished %}
     <div class="ip-row">
       <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
         <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
-      <a class="btn btn-small" href="{{ run_href(f.device, f.list) }}">Open the result</a>
+      {#- C3081: opening or dismissing it is kept for this person (`seen_runs`), so it leaves
+          their list and chip for good; with nobody verified, or the store unreadable, there
+          is nothing to keep, and Open the result is the page's own link. -#}
+      {%- if ip.marks %}
+      <form class="ip-acts" method="post" action="{{ url_for('v2.seen_run') }}" hx-post="{{ url_for('v2.seen_run') }}" hx-target="#nmas-in-progress" hx-swap="innerHTML">
+        <input type="hidden" name="job" value="{{ f.job }}"><input type="hidden" name="run" value="{{ f.run }}"><input type="hidden" name="device" value="{{ f.device }}"><input type="hidden" name="list" value="{{ f.list }}">
+        <button type="submit" class="btn btn-small" name="how" value="opened" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Open the result</span><span class="op-busy">Opening…</span></button>
+        <button type="submit" class="btn btn-small btn-outline" name="how" value="dismissed" hx-disabled-elt="this" title="Remove it from your list without opening it; its record stays in History"{{ gate('configure') }}><span class="op-idle">Dismiss</span><span class="op-busy">Dismissing…</span></button>
+      </form>
+      {%- else %}
+      <a class="btn btn-small" href="{{ run_href(f.device, f.list, f.job or f.run) }}">Open the result</a>
+      {%- endif %}
     </div>
     {%- else %}
-    <p class="ip-note">An operation that finishes while you are elsewhere stays here, with its outcome, until you open it.</p>
+    <p class="ip-note">An operation that finishes while you are elsewhere stays here, with its outcome, until you open it or dismiss it.</p>
     {%- endfor %}
     {%- endif %}
     <div class="ip-foot"><a href="{{ url_for('v2.history_page') }}">All recent operations (History)</a>{{ how('getting-started', 'in-progress') }}</div>

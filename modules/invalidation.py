@@ -453,6 +453,8 @@ DECLARED = {
     # host-steps source re-reads on app_version).
     "update.step_decline": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
+    # A person's mark seen (C3081): their In progress list and chip draw without the entry.
+    "v2.seen_run": ("in_progress",),
     "device_v2.fault_drill_declare": ("fault_drills",),
     "restarts.planned": ("restarts",),
     # C539: each writes a log job health's break-glass rows read, so it wakes that reader.

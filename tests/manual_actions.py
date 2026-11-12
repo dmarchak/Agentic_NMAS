@@ -375,7 +375,12 @@ NOT_AN_OPERATION = {
     ("_in_progress.html", "btn btn-small"): "Open its card, or Open <device>: opens the device's "
                                             "page, where a running operation's card reopens, a read",
     ("_in_progress.html", "Open the result"): "opens the device's page on the finished "
-                                              "operation's result, a read",
+                                              "operation's result, kept as opened for the "
+                                              "person looking (C3081); no device is touched",
+    # C3081 (the operator, 2026-11-12: "add a "Dismiss" on each entry too"): the entry leaves
+    # this person's list, kept; the run and its record are untouched.
+    ("_in_progress.html", "Dismiss"): "takes a finished entry off the person's own list, kept "
+                                      "as dismissed; no device or record is touched",
     # The one-decision out-of-band onboarding: a console run's row opens the run's own page
     # (its live stepper, a read), on the chip's list and on Devices' In progress list.
     ("_in_progress.html", "Open its stepper"): "opens a console run's own page, its live "
