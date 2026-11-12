@@ -49,6 +49,27 @@ def states(got):
     return {s["key"]: s["state"] for s in got["steps"]}
 
 
+def stage_states(body):
+    """``{stage key: state}`` of the stages drawn in *body* (the operator, 2026-11-12: a run's
+    card draws its stages, each expanding to its steps)."""
+    return {key: state for state, key in
+            re.findall(r'class="run-stage run-stage-(\w+)" data-stage="([^"]+)"', body)}
+
+
+def drawn_steps(body):
+    """``{step key: state}`` of the steps under the stages drawn in *body*."""
+    return {key: state for state, key in
+            re.findall(r'class="run-step run-step-(\w+)" data-step="([^"]+)"', body)}
+
+
+def stage_block(body, key):
+    """The markup of one stage, *key*, as drawn in *body*: up to the next stage, or the end
+    of the stages' list."""
+    start = body.index(f'data-stage="{key}"')
+    end = body.find('<li class="run-stage ', start)
+    return body[start:end if end != -1 else body.index('</ol>\n</div>', start)]
+
+
 class TestTheStepsTaken:
     """`run_stepper.from_record`: what a run recorded, against what it declared."""
 
@@ -225,12 +246,19 @@ class TestAReSubscribesOutcome:
         assert f"{len(rec['steps'])} steps recorded" in html and "Open the result" in html
         assert "Running now" not in html, "and it is no longer running"
         body = page(resub)
-        assert "op-card op-danger" in body and "Finished at" in body
+        # Premise corrected (the operator, 2026-11-12: "no "Reopened" label"; "Your run,
+        # started 13:01"): the banner says whose run it is and when it started and finished.
+        assert "op-card op-danger" in body and "Your run, started " in body
+        assert "while you were elsewhere" in body
         assert "Re-subscribed; the stream did not come back:" in body
         assert "notice-danger" in body and "notice-muted" not in body
-        assert f"The steps taken · {len(rec['steps'])}" in body
-        assert 'run-lead run-lead-failed" data-lead="verify"' in body, "the failed step leads"
-        assert "run-row-failed" in body and "run-row-done" not in body, "nothing green"
+        # Premise corrected (the operator, 2026-11-12: "FIVE stages ... Each stage expands to
+        # its detailed steps"): every step it recorded is drawn under its stage, and the stage
+        # that failed names it; the run's Done is never green over a failure.
+        assert {s["step"] for s in rec["steps"]} <= set(drawn_steps(body))
+        assert 'class="run-stage run-stage-failed" data-stage="checking" data-lead="verify"' \
+            in body, "the failed stage names its step"
+        assert stage_states(body)["done"] == "failed", "nothing green"
         assert "Preview a re-subscribe again…" in body, "the next action"
         assert "ip-chip" not in bar(resub), "opened: the chip lets it go"
 
@@ -249,20 +277,22 @@ class TestAReSubscribesOutcome:
             "verify", "verify", "record"]
         assert (rec["state"], rec["outcome"]) == ("failed", "not_back")
         body = page(resub)
-        assert "The steps taken · 12" in body and 'data-lead="verify"' in body
-        lead = body[body.index('data-lead="verify"'):body.index('class="run-trail"')]
-        taken = body[body.index('class="run-trail"'):]
-        # "Failed at" names the step, by its short label; the red box above it says why.
-        assert ">Failed at: Verify 101, 102</strong>" in lead
-        assert "run-line" not in lead and "run-lead-said" not in lead, \
-            "no checks and no second telling of the failure in the lead"
+        # Premise corrected (the operator, 2026-11-12: "FIVE stages ... Each stage expands to
+        # its detailed steps ... A failure names its stage and why, in one line"): the stage
+        # that failed names the step by its short label, the red box above it says why, and
+        # the stage's steps, one line each, are its expansion.
+        assert 'data-lead="verify"' in body
+        lead = stage_block(body, "checking")
+        taken = body[body.index('class="run-stages"'):]
+        assert '<span class="run-stage-said" role="alert">Verify 101, 102 failed</span>' in lead
         # The failure is said ONCE on the card: the record's own summary, in the red box.
         assert body.count(str(escape(rec["why"]))) == 1
         for failed in (s for s in rec["steps"] if s["step"] == "verify"):
             assert body.count(str(escape(failed["words"]))) == 0, \
                 "a failed step's own sentence is not said again under the summary"
-        # Each step is one line; a failed step's checks sit under it alone, closed.
-        assert taken.count('data-took="') == 12
+        # Each declared step is one line; a failed step's checks sit under it alone, closed:
+        # its two records' checks, each verify's own.
+        assert set(drawn_steps(taken)) == {s["step"] for s in rec["steps"]} | {"rollback"}
         assert taken.count('<details class="run-checks"') == 2
         assert '<details class="run-checks" open' not in taken
         # Each verify's reads are one level further down, in a closed list of its own (the
@@ -272,7 +302,7 @@ class TestAReSubscribesOutcome:
         assert checks.count("<strong>stream</strong> (fail)") == 2, "each verify's own checks"
         assert taken.count('<details class="run-reads"') == 2
         assert not re.search(r'<details class="run-reads"[^>]* open', taken)
-        passed = taken[taken.index('data-took="re-add"'):taken.index('data-took="verify"')]
+        passed = taken[taken.index('data-step="re-add"'):taken.index('data-step="verify"')]
         assert "run-checks" not in passed and "back; the running configuration" in passed, \
             "a step that passed: its one-line outcome, no checks"
 
@@ -301,14 +331,19 @@ class TestAReSubscribesOutcome:
         assert verify["result"] == "failed" and n == 1 + 30 + 2, "device, stream, collector"
         assert [e["read_id"] != "" for e in verify["reads"] if e["check"] == "device"] == [True]
         body = page(resub)
-        lead = body[body.index('data-lead="verify"'):body.index('class="run-trail"')]
-        taken = body[body.index('class="run-trail"'):]
-        assert ">Failed at: Verify 101</strong>" in lead
-        assert "run-line" not in lead and "run-reads" not in lead, "nothing read in the lead"
+        # Premise corrected (the operator, 2026-11-12: a stage "expands to its detailed
+        # steps"; "A failure names its stage"): the stage names the step, and what it read is
+        # under that step in the stage's list.
+        lead = stage_block(body, "checking")
+        taken = body[body.index('class="run-stages"'):]
+        summary = lead[:lead.index("</summary>")]
+        assert '<span class="run-stage-said" role="alert">Verify 101 failed</span>' in summary
+        assert "run-line" not in summary and "run-reads" not in summary, \
+            "nothing read in the stage's own line"
         # Under the failed Verify step only, closed.
         assert body.count('<details class="run-checks"') == 1
         assert not re.search(r'<details class="run-checks"[^>]* open', body)
-        block = taken[taken.index('data-took="verify"'):taken.index('data-took="record"')]
+        block = taken[taken.index('data-step="verify"'):taken.index('data-step="record"')]
         assert block.count('<details class="run-checks"') == 1
         checks, _sep, listed = block.partition('<details class="run-reads"')
         # Its three checks, each once, as the verify ended on them.
@@ -356,7 +391,9 @@ class TestAReSubscribesOutcome:
             assert "<strong>r2</strong> · Re-subscribe telemetry" in html
             assert "Open its card" in html
             body = page(resub)
-            assert "Re-subscribing on r2." in body and "Reopened: started by you" in body
+            # Premise corrected (the operator, 2026-11-12: "no "Reopened" label"; C3122's
+            # "Your run, started 13:01").
+            assert "Re-subscribing on r2." in body and "Your run, started " in body
             assert "Afterwards:" not in body, "the run, never a fresh offer"
         finally:
             gate.set()
@@ -381,8 +418,10 @@ class TestAReSubscribesOutcome:
         assert "ip-chip" not in bar(resub), "only the person who started it"
         resub.state["viewer"] = TEST_PERSON
         body = page(resub)
-        assert "op-card op-danger" in body and "started by you" in body
-        assert 'data-lead="verify"' in body and f"The steps taken · {len(rec['steps'])}" in body
+        assert "op-card op-danger" in body and "Your run, started " in body
+        # Premise corrected (2026-11-12): each step it recorded drawn under its stage.
+        assert 'data-lead="verify"' in body
+        assert {s["step"] for s in rec["steps"]} <= set(drawn_steps(body))
         assert "ip-chip" not in bar(resub), "opened from the record: not listed again"
         assert "op-card op-danger" not in page(resub), "an opened result is not reopened"
 
@@ -418,7 +457,8 @@ class TestAReSubscribesOutcome:
                          rf"did not come back</strong> · {len(rec['steps'])} steps · "
                          r'<span class="resub-show">Show</span>$', line), line
         assert "notice-danger" not in html.split("Afterwards:")[0], "no second red box"
-        assert f"The steps taken · {len(rec['steps'])}" in html and 'data-lead="verify"' in html
+        assert {s["step"] for s in rec["steps"]} <= set(drawn_steps(html))
+        assert 'data-lead="verify"' in html, "its stages, the failed one naming its step"
         assert "Re-subscribe r2&#39;s telemetry (101)" in html or \
             "Re-subscribe r2's telemetry (101)" in html, "the offer stays under it"
         assert "ip-chip" not in bar(resub), "read on the row: the chip lets it go"
@@ -430,7 +470,9 @@ class TestAReSubscribesOutcome:
         body = page(resub)
         assert "op-card op-ok" in body and "notice-muted" in body
         assert "run-lead" not in body, "nothing to lead with: every step is done"
-        assert "run-step-failed" not in body and "run-row-done" in body
+        # Premise corrected (2026-11-12: a run is drawn as its stages): every stage done.
+        assert "run-step-failed" not in body
+        assert set(stage_states(body).values()) == {"done"}, stage_states(body)
 
     def test_a_receiver_left_removed_names_the_next_action(self, resub):
         run_one(resub, Src(box=Box(readd_fails=2)))
@@ -510,11 +552,18 @@ class TestAHealsOutcome:
         assert SETTER not in html
         body = page(heal, "edge-b", "Default")
         assert "op-card op-ok" in body and "Self-healing on edge-b" in body
-        assert 'data-outcome="healed"' in body and "The steps taken" in body
+        # Premise corrected (the operator, 2026-11-12: "FIVE stages: Detected → Decided →
+        # Fixing → Checking → Done ... Each stage expands to its detailed steps"): the steps
+        # taken are each stage's, every one of the five done.
+        assert 'data-outcome="healed"' in body
+        assert stage_states(body) == {k: "done" for k in (
+            "detected", "decided", "fixing", "checking", "done")}, stage_states(body)
+        got = drawn_steps(body)
         for key in ("take", "stops", "read", "plan", "authorise", "apply", "intent", "saved",
                     "golden", "record"):
-            assert f'data-took="{key}"' in body, f"the {key} step is among the steps taken"
+            assert got.get(key) == "done", f"the {key} step is among the steps taken"
         assert "run-step-failed" not in body and "run-lead" not in body
+        assert "Healed and verified" in stage_block(body, "done"), "Done says the outcome"
         assert "ip-chip" not in bar(heal), "opened: the chip lets it go"
         again = heal.get(f"/v2/device/edge-b/heal/job/{job}?list=Default", headers=HX)
         assert again.status_code == 200 and 'data-outcome="healed"' in again.get_data(
@@ -531,11 +580,16 @@ class TestAHealsOutcome:
         body = page(heal, "edge-b", "Default")
         assert "op-card op-danger" in body and 'data-outcome="rolled_back"' in body
         # The first failed step, in the order the act declares them: the apply, which says
-        # why it was undone; the check that found it (intent) is failed under it.
-        assert 'run-lead run-lead-failed" data-lead="apply"' in body, "the failed step leads"
-        assert "so what landed was undone" in body
-        assert 'run-line run-line-failed" data-took="intent"' in body
-        assert "run-row-failed" in body and "run-row-done" not in body, "nothing green"
+        # why it was undone; the check that found it (intent) is failed under it. Premise
+        # corrected (the operator, 2026-11-12: "A failure names its stage and why, in one
+        # line"): Fixing names the Apply and why, in its one line; Done is never green.
+        fixing = stage_block(body, "fixing")
+        assert 'class="run-stage run-stage-failed" data-stage="fixing" data-lead="apply"' in body
+        said = fixing[fixing.index('class="run-stage-said"'):]
+        said = said[:said.index("</span>")]
+        assert 'role="alert">Apply failed: ' in said and "so what landed was undone" in said
+        assert drawn_steps(body)["intent"] == "failed"
+        assert stage_states(body)["done"] == "failed", "nothing green"
 
     def test_a_partial_heal_is_amber_never_green(self, heal):
         _job, _src, d = heal_one(heal, recheck="drifted")
@@ -544,7 +598,9 @@ class TestAHealsOutcome:
         assert 'class="ip-chip ip-warn"' in html and "In progress: 1 partial" in html
         body = page(heal, "edge-b", "Default")
         assert "op-card op-warn" in body and 'data-outcome="partial"' in body
-        assert "op-card op-ok" not in body and "run-row-done" not in body
+        assert "op-card op-ok" not in body
+        # Premise corrected (2026-11-12: a heal is drawn as its stages): its Done not green.
+        assert stage_states(body)["done"] == "partial", stage_states(body)
 
     def test_it_is_listed_for_every_person_until_each_opens_it(self, heal):
         from modules.nsot import capture_job
@@ -599,7 +655,8 @@ class TestACantFixsSteps:
         assert len(taken["lead"]["words"].split()) <= 4, "by the step's short label"
         from markupsafe import escape
         block = html[html.index('<details class="att-taken"'):html.index('class="att-meta"')]
-        assert "The steps taken" in block and 'data-lead="d-' in block
+        # Premise corrected (the operator, 2026-11-12): the steps are each stage's, under it.
+        assert 'class="run-stages"' in block and 'data-lead="d-' in block
         for why in taken["lead"]["why"]:
             assert block.count(str(escape(why))) == 0, \
                 "the row's cause says it above: the steps do not say it again"

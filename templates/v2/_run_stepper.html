@@ -7,10 +7,10 @@
     (static/js/nmas_stepper.js, from `data-run-since`). Every operation page draws its progress
     through this macro and no other way (tests/test_one_stepper.py).
     A run drawn from its own recorded steps (`run_stepper.record_card`; the operator,
-    2026-11-11) also carries the step to read first (`lead`: the failed one, else the running
-    one, with its own words, its declared wait and what was left of it when the server drew
-    it, and each read it made) and every step as it was recorded (`trail`: "The steps taken",
-    open once the run ended). -#}
+    2026-11-11) is drawn as its operation's STAGES (`run_stepper.stages`; the operator,
+    2026-11-12: "a person cares about progress, not mechanics"), in place of its row: each
+    stage its sentence, time and state, the step it is on or failed at named in it, its
+    declared wait counting down, and its steps, with what each read, one level down. -#}
 {#- What a step read: its few lines in place (its final checks, or the newest read of each
     check while it runs, then one line saying its reads), and every read one level down in a
     closed list, newest first: a verify makes up to 120 reads, never one long expanded list. -#}
@@ -63,8 +63,49 @@
 </div>
 {%- endmacro %}
 
+{#- An operation's STAGES (`run_stepper.stages`; the operator, 2026-11-12: "a person cares
+    about progress, not mechanics ... FIVE stages ... each with one plain sentence, its time and
+    its state ... Each stage expands to its detailed steps"; "A linear stepper (one row,
+    wrapping cleanly), not a grid with gaps"). One row of stages that wraps as words do, each
+    its mark, name, sentence and time; opened, its steps one line each (today's labels, the
+    declared words on hover), with what a step that did not pass read, and a step's own
+    sub-steps under it (the deploy's stages under a heal's Apply): one stepper, never two.
+    The running stage's time counts and its declared wait counts down (nmas_stepper.js). -#}
+{%- macro _stages(r) %}
+<ol class="run-stages" aria-label="{{ r.label }}: stage {{ r.stage_at }} of {{ r.stage_of }}">
+  {%- for g in r.stages %}
+  <li class="run-stage run-stage-{{ g.state }}" data-stage="{{ g.key }}"{% if g.lead_key %} data-lead="{{ g.lead_key }}"{% endif %}{% if g.state == 'running' %} aria-current="step"{% endif %}>
+    <details class="run-stage-box" data-keep="{{ r.key }}-stage-{{ g.key }}">
+      <summary><span class="run-mark run-mark-{{ g.state }}" aria-hidden="true"></span><span class="run-stage-name">{{ g.name }}<span class="sr-only"> ({{ g.state_words }})</span></span>
+        <span class="run-stage-said"{% if g.state == 'failed' %} role="alert"{% endif %}>{{ g.sentence }}{% if g.wait %} · <span class="run-left" data-run-wait-began="{{ g.wait.began }}" data-run-wait-s="{{ g.wait.length_s }}"{% if g.wait.bound %} data-run-wait-bound="1"{% endif %}>{{ g.wait.words }}</span>{% endif %}</span>
+        <span class="run-stage-time">{% if g.began %}{{ clock(g.began) }}{% endif %}{% if g.state == 'running' and g.since %} · <span class="run-took" data-run-since="{{ g.since }}">{{ g.took_s }} s</span>{% elif g.took_words %} · {{ g.took_words }}{% endif %}</span></summary>
+      <ol class="run-stage-list" aria-label="{{ g.name }}'s steps">
+        {%- for s in g.steps %}
+        <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.long %} title="{{ s.long }}"{% endif %}><strong>{{ s.words }}</strong> ({{ s.state_words }}){% if s.at %} <span class="run-at">{{ clock(s.at) }}</span>{% endif %}{% if s.said and s.state != 'running' %}: {{ s.said }}{% elif s.note %}: {{ s.note }}{% endif %}
+          {%- if s.lines and s.state == 'running' %}{{ _lines(s.lines, s.more, r.key ~ '-' ~ s.key) }}{% endif %}
+          {%- for x in s.read %}
+          <details class="run-checks" data-keep="{{ r.key }}-checks-{{ s.key }}-{{ loop.index }}"><summary>What it read{% if x.of %} ({{ x.of }}){% endif %}</summary>{{ _lines(x.checks, x.more, r.key ~ '-took-' ~ s.key ~ '-' ~ loop.index) }}</details>
+          {%- endfor %}
+          {%- if s.substeps %}
+          <ol class="run-sub" aria-label="{{ s.words }}'s stages">
+            {%- for u in s.substeps %}
+            <li class="run-line run-line-{{ u.state }}" data-sub="{{ u.key }}"{% if u.waits and u.state == 'running' %} title="waits on {{ u.waits }}"{% endif %}><strong>{{ u.words }}</strong> ({{ {'done': 'done', 'running': 'running now', 'waiting': 'pending', 'failed': 'failed', 'partial': 'not fully done', 'not_reached': 'not reached', 'skipped': 'not needed'}.get(u.state, u.state) }}){% if u.took_s is not none and u.state in ('done', 'running', 'failed', 'partial') %} · {{ u.took_s }} s{% endif %}</li>
+            {%- endfor %}
+          </ol>
+          {%- endif %}</li>
+        {%- endfor %}
+      </ol>
+    </details>
+  </li>
+  {%- endfor %}
+</ol>
+{%- endmacro %}
+
 {% macro run_stepper(r) -%}
-<div class="run{% if r.single %} run-single{% endif %}" data-run-stepper aria-label="{{ r.label }}">
+<div class="run{% if r.single %} run-single{% endif %}{% if r.stages %} run-staged{% endif %}" data-run-stepper aria-label="{{ r.label }}">
+  {%- if r.stages %}
+  {{ _stages(r) }}
+  {%- else %}
   {%- if not r.single %}
   <progress class="run-bar" max="{{ r.bar.max }}" value="{{ r.bar.value }}" aria-label="{{ r.bar.words }}"></progress>
   <p class="run-counts">{% for t in r.tally %}<strong{% if t.group == 'failed' and t.n %} class="run-failed"{% endif %}>{{ t.n }}</strong> {{ t.words }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
@@ -87,35 +128,6 @@
   {%- if r.final %}
   <div class="run-final run-final-{{ r.final.state }}"><span class="run-name">{{ r.final.name }}</span><span class="run-final-words">{{ r.final.words }}</span><span class="run-el">{{ r.final.detail }}</span></div>
   {%- endif %}
-  {%- if r.lead %}
-  {%- set L = r.lead %}
-  <div class="run-lead run-lead-{{ L.state }}" data-lead="{{ L.key }}" role="{{ 'alert' if L.state == 'failed' else 'status' }}">
-    <p class="run-lead-head"><strong title="{{ L.long }}">{{ {'failed': 'Failed at', 'running': 'Now', 'partial': 'Not fully done'}.get(L.state, 'Step') }}: {{ L.words }}</strong>{% if L.wait and L.state == 'running' %} <span class="run-left" data-run-wait-began="{{ L.wait.began }}" data-run-wait-s="{{ L.wait.length_s }}"{% if L.wait.bound %} data-run-wait-bound="1"{% endif %}>{{ L.wait.words }}</span>{% endif %}</p>
-    {#- The failure is said ONCE on the card, here; a running step says what it is doing and
-        the newest read of each of its checks. -#}
-    {%- if L.state == 'running' %}
-    {%- if L.note and not L.lines %}<p class="run-lead-said">{{ L.note }}</p>{% endif %}
-    {%- if L.lines %}{{ _lines(L.lines, L.more, r.key ~ '-lead') }}{% endif %}
-    {%- else %}
-    {%- if not r.summarised %}{% for w in L.why %}<p class="run-lead-said">{{ w }}</p>{% endfor %}{% endif %}
-    {%- endif %}
-  </div>
-  {%- endif %}
-  {%- if r.trail %}
-  <details class="run-trail" data-keep="{{ r.key }}-trail"{% if r.ended %} open{% endif %}>
-    <summary>The steps taken · {{ r.trail | length }}</summary>
-    <ol class="run-trail-list">
-      {%- for t in r.trail %}
-      {#- One line a step: its short label (the declared words on hover), its state, its
-          time, its one-line outcome. What a step that did not pass read sits under it
-          alone, closed; a step that passed shows no checks. -#}
-      <li class="run-line run-line-{{ t.state }}" data-took="{{ t.key }}"><strong{% if t.long %} title="{{ t.long }}"{% endif %}>{{ t.words }}</strong> ({{ t.state_words }}){% if t.at %} <span class="run-at">{{ clock(t.at) }}</span>{% endif %}{% if t.said %}: {{ t.said }}{% endif %}
-        {%- if t.checks %}
-        <details class="run-checks" data-keep="{{ r.key }}-checks-{{ loop.index }}"><summary>What it read</summary>{{ _lines(t.checks, t.more, r.key ~ '-took-' ~ loop.index) }}</details>
-        {%- endif %}</li>
-      {%- endfor %}
-    </ol>
-  </details>
   {%- endif %}
 </div>
 {%- endmacro %}

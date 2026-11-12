@@ -488,7 +488,8 @@ def start(network: str, decision: dict, approval: dict, *, sources=None, ident=N
     return capture_job.start(network, f"healing {decision['device']} (approved by "
                                       f"{approval['by']})", approval["by"], work, kind=act.KIND,
                              announce_keys=keys, announcer=announcer,
-                             device=decision["device"], card="heal_run")
+                             device=decision["device"], card="heal_run",
+                             actor_kind="approval")
 
 
 def _approved_for(network: str, decision: dict, approval: dict, *, sources=None) -> dict:

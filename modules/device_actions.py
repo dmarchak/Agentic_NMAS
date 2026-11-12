@@ -1121,17 +1121,25 @@ def job_card(ref, host: str, card: str, job_id: str) -> dict:
     raise ValueError(f"no card reopens a {card!r} job (REOPENS: {', '.join(REOPENS)})")
 
 
-def reopened_words(job: dict, viewer: str) -> str:
-    """What the reopened card says about itself (board C): who started it and when while it
-    runs; when it finished once it has."""
+def reopened_words(job: dict, viewer: str) -> dict:
+    """What a reopened card's banner says about its run (board C): whose run it is and when
+    it started, and when it finished once it has, while the person was elsewhere:
+    ``{"whose", "started", "finished"}``, the times ISO, drawn in the viewer's zone by the
+    page's clock (C3121: one time zone per screen). In the operator's words, 2026-11-11 and
+    2026-11-12: "Your run, started 13:01" (another person's: "<name>'s run"), and "no
+    "Reopened" label" (C3122, C3162). A self-heal's card says who it is by itself, once
+    (C3161), so it carries no banner: ``{}``."""
     from modules import display_names                   # board E2a: a person by display name
 
-    who = "you" if job.get("actor") and job.get("actor") == viewer else (
-        display_names.people(job.get("actor") or "") or "an unknown person")
-    if job.get("state") == "running":
-        return f"Reopened: started by {who} at {_iso(job['started_at'])[11:16]} UTC"
-    return (f"Finished at {_iso(job.get('finished_at') or 0)[11:16]} UTC, while you were "
-            f"elsewhere; started by {who}")
+    if job.get("card") == "heal_run":
+        return {}
+    mine = bool(job.get("actor")) and job.get("actor") == viewer
+    name = display_names.people(job.get("actor") or "")
+    whose = "Your run" if mine else (f"{name}'s run" if name else "A run nobody recorded")
+    return {"whose": whose,
+            "started": _iso(job["started_at"]) if job.get("started_at") else "",
+            "finished": ("" if job.get("state") == "running"
+                         else _iso(job["finished_at"]) if job.get("finished_at") else "")}
 
 
 #: The result's did-not items the deploy card says as its `saved` line instead (C511, C2701).

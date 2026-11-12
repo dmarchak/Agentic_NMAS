@@ -90,7 +90,11 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   **self-healing run** is listed the same way, as **Self-healing**, for every person until each
   has opened it, since no person started it; a **telemetry re-subscribe** as **Re-subscribe
   telemetry**. Each says how many steps the run recorded, and its result opens with the outcome
-  first and **The steps taken** under it.
+  first and its stages under it ([Self-healing](heal#act)). A self-healing run is
+  never anyone's: it is **by Mercury's self-healing · policy set by <name>**, never "you".
+  A card the page opens for a run you left says whose run it is and when, in your zone: "Your
+  run, started 13:01", or "<name>'s run, started 13:01", and "finished … while you were
+  elsewhere" once it has.
 - **Unread**: the tool could not read what runs in a network. That is not the same as nothing
   running there, and the chip says which network and why.
 

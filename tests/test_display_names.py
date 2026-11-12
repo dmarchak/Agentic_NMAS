@@ -407,13 +407,17 @@ def test_a_reopened_card_names_who_started_it_by_display_name():
     """`device_actions.reopened_words`: the badge on a card another person's run reopens."""
     from modules import device_actions
 
+    # Premise corrected (the operator, 2026-11-12: "no "Reopened" label"; C3122's "Your run,
+    # started 13:01"): whose run it is, by display name, and its times as ISO, which the page
+    # draws in the viewer's zone (C3121).
     job = {"actor": "pat.lee@example.invalid", "state": "running", "started_at": 1762862400.0}
-    assert re.fullmatch(r"Reopened: started by pat\.lee at \d\d:\d\d UTC",
-                        device_actions.reopened_words(job, "viewer@example.invalid"))
-    assert device_actions.reopened_words(job, "pat.lee@example.invalid").startswith(
-        "Reopened: started by you at ")
+    assert device_actions.reopened_words(job, "viewer@example.invalid") == {
+        "whose": "pat.lee's run", "started": "2025-11-11T12:00:00Z", "finished": ""}
+    assert device_actions.reopened_words(job, "pat.lee@example.invalid")["whose"] == "Your run"
     done = dict(job, state="done", finished_at=1762862460.0)
-    assert device_actions.reopened_words(done, "viewer@example.invalid").endswith(
-        "elsewhere; started by pat.lee")
-    assert device_actions.reopened_words({"state": "done"}, "v@example.invalid").endswith(
-        "started by an unknown person")
+    assert device_actions.reopened_words(done, "viewer@example.invalid")["finished"] == \
+        "2025-11-11T12:01:00Z"
+    assert device_actions.reopened_words({"state": "done"}, "v@example.invalid") == {
+        "whose": "A run nobody recorded", "started": "", "finished": ""}
+    # A self-heal's card says who it is by itself (C3161): no banner, and no person named.
+    assert device_actions.reopened_words(dict(job, card="heal_run"), "v@example.invalid") == {}

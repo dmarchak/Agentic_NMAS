@@ -1369,6 +1369,50 @@ button.menu-item[disabled]:hover { background: none; }
 .resub-last-danger > summary strong { color: var(--danger); }
 .resub-last-warn > summary strong { color: var(--warn); }
 .resub-show { color: var(--accent); text-decoration: underline; }
+/* An operation's stages (the operator, 2026-11-12: "A linear stepper (one row, wrapping
+   cleanly), not a grid with gaps"; "FIVE stages ... each with one plain sentence, its time and
+   its state"): ONE row, the stages sharing it edge to edge, each its mark and name, its
+   sentence under them, its time; an opened stage lists its steps under itself, its neighbours
+   keeping their place. Where the card is too narrow for the row (under 640 px of card, a
+   phone, a narrow column) it does not break into a grid: the stages run down, one under the
+   other (board StepperPhone). The card is the container, so the row answers to its own
+   width, never the window's. */
+.run-staged { container-type: inline-size; }
+.run-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: nowrap;
+  align-items: flex-start; }
+.run-stage { flex: 1 1 0; min-width: 0; padding: 0 12px 0 0; border-top: 4px solid var(--line);
+  font-size: 13px; color: var(--ink-3); }
+.run-stage + .run-stage { padding-left: 12px; }
+.run-stage-done { border-top-color: var(--ok); color: var(--ink-2); }
+.run-stage-running { border-top-color: var(--accent); color: var(--ink); }
+.run-stage-failed { border-top-color: var(--danger); color: var(--ink); }
+.run-stage-partial { border-top-color: var(--warn-mark); color: var(--ink); }
+.run-stage-not_reached .run-stage-name { text-decoration: line-through; }
+.run-stage-skipped { font-style: italic; }
+.run-stage-box > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 2px 8px; padding: 8px 0 4px; list-style: none; }
+.run-stage-box > summary::-webkit-details-marker { display: none; }
+.run-stage-name { font-weight: 600; }
+.run-stage-running .run-stage-name, .run-stage-failed .run-stage-name { color: var(--ink); }
+.run-stage-said { flex: 1 0 100%; overflow-wrap: anywhere; }
+.run-stage-failed .run-stage-said { color: var(--danger); }
+.run-stage-time { flex: 1 0 100%; font-size: 12px; color: var(--ink-3); }
+.run-stage-list, .run-sub { list-style: none; margin: 4px 0 6px; padding: 0 0 0 10px;
+  border-left: 2px solid var(--line-2); font-size: 12.5px; color: var(--ink-2); }
+.run-stage-list > .run-step { display: block; margin: 3px 0; font-weight: 400; overflow-wrap: anywhere; }
+.run-stage-list > .run-step-failed > strong { color: var(--danger); }
+.run-stage-list > .run-step-partial > strong { color: var(--warn); }
+.run-stage-list > .run-step-waiting, .run-stage-list > .run-step-skipped { color: var(--ink-3); }
+.run-sub { margin: 3px 0 2px 4px; }
+@container (max-width: 640px) {
+  .run-stages { flex-direction: column; gap: 0; }
+  .run-stage { flex: none; width: 100%; padding: 0 0 0 12px; border-top: 0; border-left: 4px solid var(--line); }
+  .run-stage + .run-stage { padding-left: 12px; }
+  .run-stage-done { border-left-color: var(--ok); }
+  .run-stage-running { border-left-color: var(--accent); }
+  .run-stage-failed { border-left-color: var(--danger); }
+  .run-stage-partial { border-left-color: var(--warn-mark); }
+}
 .run-checks { margin: 2px 0 0; }
 .run-checks > summary { cursor: pointer; color: var(--ink-2); }
 .run-trail > summary { cursor: pointer; font-size: 13px; font-weight: 600; }

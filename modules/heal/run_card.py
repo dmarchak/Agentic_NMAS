@@ -97,6 +97,187 @@ def _drawn(steps: list) -> list:
             if isinstance(s, dict) and s.get("words") else s for s in steps]
 
 
+# ── The heal's five stages (the operator, 2026-11-12) ───────────────────────────────────────
+
+#: What was seen before the decision, from the incident's own record: it opened on a trigger,
+#: then its grace period was waited out (the detect loop's, which is no job: C3124).
+DETECT_STEPS = (("opened", "An incident opened: what was seen on the device"),
+                ("grace", "Wait out the grace period, reading the device again"))
+DETECT_LABELS = {"opened": "Open incident", "grace": "Wait out grace"}
+#: The act's step keys under each of its stages: an act's, an approved proposal's, a bounce's
+#: and a clear's own (`heal_tables`). A step none names joins the stage of the step before it.
+FIXING = ("take", "stops", "read", "plan", "authorise", "hash", "hold", "pre-read", "route",
+          "window", "send", "watch", "apply", "repair", "rollback")
+CHECKING = ("intent", "reset", "symptom", "saved", "golden", "confirm", "verify", "stable")
+
+
+def heal_stage_table(act_prefix: str = "") -> tuple:
+    """The heal's stages (the operator, 2026-11-12: "The stepper shows FIVE stages: Detected →
+    Decided → Fixing → Checking → Done"), each naming the card's steps under it: the
+    detection's (``x-``), the decision's (``d-``, `decide.STEPS`: "They were done by the
+    detection job: draw them done, with their times, as one continuous run") and the act's
+    (*act_prefix* before each of its keys)."""
+    from modules.heal import decide
+
+    return (("detected", "Detected", ("x-opened", "x-grace")),
+            ("decided", "Decided", tuple("d-" + k for k, _w in decide.STEPS)),
+            ("fixing", "Fixing", tuple(act_prefix + k for k in FIXING)),
+            ("checking", "Checking", tuple(act_prefix + k for k in CHECKING)),
+            ("done", "Done", (act_prefix + "record",)))
+
+
+#: What the first trigger was, as the Detected stage says it.
+SEEN_WORDS = {"config_change": "{device}'s configuration changed outside Mercury",
+              "drift": "{device} departed from its golden",
+              "alert": "An alert fired on {device}",
+              "adjacency": "An adjacency went down on {device}",
+              "adjacency_log": "{device} logged an adjacency drop",
+              "duplicate_router_id": "{device} logged a duplicate router-id"}
+#: A decision's outcome, as the Decided stage leads with it.
+DECIDED_WORDS = {"heal": "Heal", "would_heal": "Would heal (dry run: nothing sent)",
+                 "propose": "Propose a fix to a person", "cant_fix": "Can't fix",
+                 "nothing": "Nothing to heal"}
+#: What the act's running step is doing, as its stage's sentence.
+RUNNING_WORDS = {"take": "Checking {device} again before the fix…",
+                 "stops": "Checking {device} again before the fix…",
+                 "read": "Reading {device} again before the fix…",
+                 "plan": "Recomputing the program from {device}'s read…",
+                 "authorise": "Giving each removal the policy's reason…",
+                 "apply": "Applying {lines} to {device}…",
+                 "intent": "Checking {device} is at intent…",
+                 "symptom": "Waiting for {device}'s symptom to clear",
+                 "saved": "Saving {device}'s startup…",
+                 "golden": "Reading {device} against its new golden…",
+                 "record": "Recording the outcome…"}
+
+
+def _lines_words(n) -> str:
+    return f"{n} line{'s' if n != 1 else ''}" if isinstance(n, int) and n > 0 else "the fix"
+
+
+def by_words(actor: str, kind: str = "policy") -> str:
+    """Who a self-heal is by (the operator, 2026-11-12: "A self-heal is never "by <person>" or
+    "started by you": the chip, the banner and the card read "by Mercury's self-healing ·
+    policy set by <display name>""): Mercury's own, and the person whose decision it ran
+    under, by display name (`identity.display_name`), never their identity. *kind*
+    ``approval``: an approved proposal, which runs once a person approved it."""
+    from modules import identity
+
+    name = identity.display_name(actor) if actor else ""
+    if kind == "approval":
+        return "Mercury's self-healing · approved by " + (name or "nobody recorded")
+    return "Mercury's self-healing · policy set by " + (name or "nobody recorded")
+
+
+def job_by(job: dict) -> str:
+    """`by_words` for a self-healing job (`capture_job`'s, its card ``heal_run``): its actor
+    is the policy's setter, or the person who approved a proposal (``actor_kind``)."""
+    return by_words(job.get("actor") or "", job.get("actor_kind") or "policy")
+
+
+def _detected_phase(decision: dict, incident: dict = None, now: float = None) -> dict:
+    """What was seen before the decision, as the first phase (``x-``), from the incident's own
+    record: when it opened and on what, then the grace period from then until it settled.
+    With no incident held (*incident* empty), the decision's own triggers, done, with no time:
+    nothing is invented."""
+    from modules import display_names, run_stepper
+
+    inc = incident or {}
+    triggers = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
+    said = (triggers[0].get("words") if triggers else
+            "; ".join(str(t) for t in (decision.get("triggers") or [])[:1])) or \
+        "an incident opened"
+    steps = [dict({"step": "opened", "result": "ok", "words": display_names.people(said)},
+                  **({"at": inc["opened_at"]} if inc.get("opened_at") else {}))]
+    settled = inc.get("settled") or {}
+    if settled.get("at"):
+        steps.append({"step": "grace", "result": "ok", "began": inc.get("opened_at") or "",
+                      "at": settled["at"],
+                      "words": display_names.people(settled.get("words") or "settled")})
+    return run_stepper.from_record(DETECT_STEPS, steps, ended=True, now=now, prefix="x-",
+                                   labels=DETECT_LABELS)
+
+
+def _incident(network: str, incident_id: str) -> dict:
+    """The incident *incident_id* as its store holds it (a closed one is kept), or {}."""
+    from modules.heal import incidents
+
+    if not incident_id:
+        return {}
+    try:
+        got = incidents.read(network)
+    except Exception as exc:                          # noqa: BLE001 (the decision's words stand)
+        log.info("run_card: %s's incidents could not be read: %s", network, exc)
+        return {}
+    return next((i for i in got["incidents"] if i.get("id") == incident_id), {})
+
+
+def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float = None,
+                nested: dict = None, act_prefix: str = "") -> dict:
+    """A heal's *card* (`run_stepper.record_card`'s) as its five stages (`heal_stage_table`),
+    each its own sentence from *facts*: ``kind``, the first trigger's; ``decision``,
+    ``units`` and ``lines``, the decision's outcome, units and program length; ``outcome``,
+    the act's; ``since``, when it was first seen. *nested*: the deploy's stages, under Apply
+    ("ONE stepper: the deploy's stages belong INSIDE "Apply" (expanding), not as a second
+    stepper")."""
+    from modules import run_stepper
+    from modules.heal import act, said, steplog
+
+    device = host or "the device"
+    lines = _lines_words(facts.get("lines"))
+
+    def sentence(g):
+        lead = str((g["lead"] or {}).get("key") or "")[len(act_prefix):]
+        if g["state"] == "running":
+            return RUNNING_WORDS.get(lead, "").format(device=device, lines=lines)
+        if g["key"] == "done" and g["state"] in ("done", "partial", "failed"):
+            outcome = facts.get("outcome") or ""
+            if not outcome:
+                return ""
+            words = act.OUTCOME_WORDS.get(outcome) or steplog.mark(outcome,
+                                                                   facts.get("act_kind") or "")
+            end = max((run_stepper._epoch(s.get("at")) or 0 for s in g["steps"]), default=0)
+            took = end - facts["since"] if facts.get("since") and end else None
+            return run_stepper._first_said(words) + (
+                f" in {run_stepper.duration_words(took)}" if took and took >= 1 else "")
+        if g["state"] != "done":
+            return ""
+        if g["key"] == "detected":
+            return SEEN_WORDS.get(facts.get("kind") or "", "").format(device=device)
+        if g["key"] == "decided":
+            head = DECIDED_WORDS.get(facts.get("decision") or "", "")
+            fixes = said.fixes_words(facts.get("units") or []) if facts.get("units") else ""
+            return (f"{head}: {fixes}" if head and fixes and facts.get("decision") in (
+                "heal", "would_heal", "propose") else head)
+        if g["key"] == "fixing":
+            sent = any(s["key"] == act_prefix + "apply" and s["state"] == "done"
+                       for s in g["steps"])
+            return f"Applied {lines} to {device}" if sent else ""
+        if g["key"] == "checking":
+            gone = any(s["key"] == act_prefix + "symptom" and s["state"] == "done"
+                       for s in g["steps"])
+            return f"{device} at intent" + ("; its symptom gone" if gone else "")
+        return ""
+
+    return run_stepper.stages(card, heal_stage_table(act_prefix), ended=ended, now=now,
+                              sentence=sentence, nested=nested)
+
+
+def _facts(decision: dict, incident: dict, outcome: str = "", act_kind: str = "") -> dict:
+    """What a heal's stage sentences say, from its decision and its incident (`heal_stages`)."""
+    from modules import run_stepper
+
+    triggers = [t for t in (incident or {}).get("triggers") or [] if isinstance(t, dict)]
+    program = decision.get("program")
+    return {"kind": (triggers[0].get("kind") if triggers else "") or "",
+            "decision": decision.get("outcome") or "",
+            "units": [u for u in decision.get("units") or [] if isinstance(u, dict)],
+            "lines": len(program) if isinstance(program, list) else None,
+            "outcome": outcome, "act_kind": act_kind or decision.get("kind") or "",
+            "since": (incident or {}).get("opened_epoch") or run_stepper._epoch(
+                (incident or {}).get("opened_at")) or run_stepper._epoch(decision.get("at"))}
+
+
 def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = None,
               prefix: str = "", host: str = "") -> dict:
     """An act's recorded *steps* on the stepper (`run_stepper.from_record`): a symptom read
@@ -143,12 +324,21 @@ def steps_card(host: str, entry: dict) -> dict:
         phases.append(act_phase(acted, ended=entry.get("state") != "applying", prefix="a-",
                                 host=host))
     outcome = entry.get("outcome") or ""
-    return run_stepper.record_card(
-        host, f"The steps self-healing took on {host}", phases,
-        ended=entry.get("state") != "applying",
+    # Its stages, as the heal's card draws them (C3163): the decision's, then the act's when it
+    # had one; what was seen is the row's own cause, said above it (so no Detected here), and
+    # the failed stage names its step.
+    ended = entry.get("state") != "applying"
+    card = run_stepper.record_card(
+        host, f"The steps self-healing took on {host}", phases, ended=ended,
         level="ok" if outcome in HEALED + DECISION_GOOD else level_of(outcome),
         key=f"heal-steps-{entry.get('incident') or host}",
         summarised=True)                              # the row's cause says why, above it
+    acted_outcome = outcome if acted else ""
+    return heal_stages(card, host=host, ended=ended, act_prefix="a-", facts={
+        "kind": "", "decision": next((s.get("result") for s in reversed(decided)
+                                      if s.get("step") not in ("record",)), "") or "",
+        "units": [], "lines": None, "outcome": acted_outcome,
+        "act_kind": entry.get("kind") or "", "since": None})
 
 
 def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
@@ -163,56 +353,87 @@ def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
     if got is None:
         return dict(card, state="unknown")
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(got.get("started_at") or 0))
-    card.update(started=started, actor=got.get("actor") or "the policy")
+    # Who it is by, in words that name no person by identity (C3161): Mercury's own, under
+    # the policy its setter confirmed (or the proposal a person approved).
+    card.update(started=started, by=job_by(got))
     if got["state"] == "running":
         # The run's REAL steps as they stand now (`op_progress.run_of`: the act's own list),
-        # after its decision's; while it applies, the deploy's stages from the device's hold.
+        # after what was seen and its decision's; while it applies, the deploy's stages from
+        # the device's hold, under Apply (C3160).
         from modules import op_progress
         card["state"] = "running"
         live = op_progress.run_of(job_id)
         if live is not None:
-            phases = _decided(network, live["run"], host) + [
-                act_phase(live["steps"], ended=False, host=host)]
-            card["steps"] = run_stepper.record_card(
-                host, f"Self-healing's steps on {host}", phases, ended=False,
-                key=f"heal-run-{job_id[:12]}")
+            phases, facts = _decided(network, live["run"], host)
+            phases.append(act_phase(live["steps"], ended=False, host=host))
             stages = _stages(network, host)
-            if stages:
-                card["stages"] = stages
+            card["steps"] = heal_stages(
+                run_stepper.record_card(host, f"Self-healing on {host}", phases,
+                                        ended=False, key=f"heal-run-{job_id[:12]}"),
+                host=host, facts=facts, ended=False,
+                nested={"apply": stages} if stages else None)
         return card
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     result = (got.get("payload") or {}).get("result") or {}
     outcome = result.get("outcome") or "failed"
     steps = [s for s in result.get("steps") or [] if isinstance(s, dict)]
-    phases = _decided(network, result.get("decision") or "", host) + [
-        act_phase(steps, ended=True, host=host)]
+    phases, facts = _decided(network, result.get("decision") or "", host)
+    phases.append(act_phase(steps, ended=True, host=host))
     level = level_of(outcome)
+    facts.update(outcome=outcome, act_kind=result.get("kind") or facts.get("act_kind") or "")
     return dict(card, state="result", level=level, outcome=outcome,
                 words=steplog.mark(outcome, result.get("kind") or ""),
-                summary=result.get("words") or "",
-                # The card's own "What happened" says why: the lead names the step alone.
-                steps=run_stepper.record_card(host, f"The steps self-healing took on {host}",
-                                              phases, ended=True, level=level,
-                                              key=f"heal-run-{job_id[:12]}", summarised=True),
+                steps=heal_stages(
+                    run_stepper.record_card(host, f"Self-healing on {host}", phases,
+                                            ended=True, level=level,
+                                            key=f"heal-run-{job_id[:12]}"),
+                    host=host, facts=facts, ended=True),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                        time.gmtime(got.get("finished_at") or 0)))
 
 
-def _decided(network: str, decision_id: str, host: str = "") -> list:
-    """The decision that started a heal, as the first phase of its stepper (its recorded
-    steps, `steplog.decision_steps`), or no phase when the decision cannot be read: the act's
-    own steps are still drawn."""
-    from modules.heal import decisions, steplog
+def _decision_steps(network: str, decision: dict) -> list:
+    """The decision's steps as the detection job recorded them (the operator, 2026-11-12:
+    "They were done by the detection job: draw them done, with their times, as one continuous
+    run"). The decision's own store keeps no steps (`decide.run` writes them to the step log,
+    `steplog.record_decision`), so a card that read them there drew every step before the
+    outcome as not needed; they are read from the step log's decision row, each stamped with
+    that row's time where it keeps none of its own. A decision the step log does not hold is
+    drawn from its own record, as before."""
+    from modules.heal import steplog
+
+    try:
+        got = steplog.of_decision(network, decision.get("id") or "")
+    except Exception as exc:                          # noqa: BLE001 (its own record stands)
+        log.info("run_card: %s's step log could not be read: %s", network, exc)
+        got = {"rows": []}
+    row = next((r for r in got.get("rows") or [] if r.get("row") == "decision"), None)
+    if row is None or not row.get("steps"):
+        return [dict(s, at=s.get("at") or decision.get("at") or "")
+                for s in steplog.decision_steps(decision)]
+    return [dict(s, at=s.get("at") or row.get("at") or "") for s in row["steps"]
+            if isinstance(s, dict)]
+
+
+def _decided(network: str, decision_id: str, host: str = "") -> tuple:
+    """``(phases, facts)``: what was seen, then the decision that started a heal, as the first
+    phases of its stepper (the incident's record, `_detected_phase`; the decision's recorded
+    steps, `_decision_steps`), and what their stages say (`_facts`); no phase when the
+    decision cannot be read: the act's own steps are still drawn."""
+    from modules.heal import decisions
 
     if not decision_id:
-        return []
+        return [], _facts({}, {})
     try:
         decision = decisions.find(network, decision_id)
     except Exception as exc:                          # noqa: BLE001 (the act's steps stand)
         log.info("run_card: %s's decision %s could not be read: %s", network, decision_id, exc)
-        return []
-    return [decision_phase(steplog.decision_steps(decision), host=host)]
+        return [], _facts({}, {})
+    incident = _incident(network, decision.get("incident") or "")
+    return ([_detected_phase(decision, incident),
+             decision_phase(_decision_steps(network, decision), host=host)],
+            _facts(decision, incident))
 
 
 def _stages(network: str, host: str) -> list:
@@ -256,10 +477,76 @@ def record_steps(host: str, rec: dict, *, now: float = None, labels: dict = None
                                     conditional=("rollback",),
                                     cut_short=rec.get("state") == "stopped",
                                     labels=labels or R.step_labels(host, subs))
-    return run_stepper.record_card(
-        host, f"The steps the re-subscribe took on {host}", [phase], ended=ended,
+    card = run_stepper.record_card(
+        host, f"The re-subscribe on {host}", [phase], ended=ended,
         level=record_level(rec) if ended else "", key=f"resub-run-{str(rec.get('id'))[-12:]}",
         summarised=summarised)
+    return resub_stages(card, host=host, subs=subs, outcome=rec.get("outcome") or "",
+                        ended=ended, now=now)
+
+
+#: A re-subscribe's stages (the operator, 2026-11-12: "Apply the same five-stage pattern to
+#: every operation's stepper (re-subscribe, deploys…), with stage names that fit each"):
+#: planned and read before anything is sent, the receivers removed and the wait after, added
+#: back, the stream checked, done. A Re-add the receiver removes nothing, so it has four.
+RESUB_STAGES = (("planned", "Planned", ("plan", "hash", "hold", "started", "before")),
+                ("removing", "Removing", ("remove", "wait", "rollback")),
+                ("re-adding", "Re-adding", ("re-add",)),
+                ("checking", "Checking", ("verify",)),
+                ("done", "Done", ("record",)))
+#: What a re-subscribe's running step is doing, as its stage's sentence.
+RESUB_RUNNING = {"plan": "Reading each receiver from {device}'s committed intent…",
+                 "hash": "Comparing each program with the one previewed…",
+                 "hold": "Holding {device}…", "started": "Recording the run before it sends…",
+                 "before": "Reading {device} before anything is sent…",
+                 "remove": "Removing {subs}'s receiver…",
+                 "wait": "Waiting after the removal",
+                 "re-add": "Adding {subs}'s receiver back…",
+                 "verify": "Checking {subs}'s stream is back",
+                 "rollback": "Adding back what was removed…",
+                 "record": "Recording the outcome…"}
+RESUB_DONE = {"planned": "Each receiver from {device}'s committed intent; {device} held",
+              "removing": "{subs}'s receiver removed", "re-adding": "{subs}'s receiver back"}
+
+
+def resub_stages(card: dict, *, host: str, subs: list, outcome: str, ended: bool,
+                 now: float = None) -> dict:
+    """A re-subscribe's (or a Re-add's) *card* as its stages (`RESUB_STAGES`), each its own
+    sentence; Done says the outcome and how long the run took."""
+    from modules import run_stepper
+    from modules.heal import resubscribe as R
+
+    subs = [str(s) for s in subs or [] if str(s)]
+    named = (", ".join(subs) if 0 < len(subs) <= 2 else
+             f"{len(subs)} streams" if subs else "each stream")
+    fields = {"device": host or "the device", "subs": named}
+
+    def sentence(g):
+        lead = str((g["lead"] or {}).get("key") or "")
+        if g["state"] == "running":
+            return RESUB_RUNNING.get(lead, "").format(**fields)
+        if g["key"] == "done" and g["state"] in ("done", "partial", "failed") and outcome:
+            words = R.OUTCOME_WORDS.get(outcome, outcome.replace("_", " "))
+            took = _run_took(card)
+            return run_stepper._first_said(words) + (
+                f" in {run_stepper.duration_words(took)}" if took and took >= 1 else "")
+        if g["state"] == "done" and g["key"] in RESUB_DONE:
+            return RESUB_DONE[g["key"]].format(**fields)
+        return ""
+
+    return run_stepper.stages(card, RESUB_STAGES, ended=ended, now=now, sentence=sentence)
+
+
+def _run_took(card: dict):
+    """How long a run drawn on *card* took: from its first step's start to its last step's
+    time, or None when its steps keep no times."""
+    from modules import run_stepper
+
+    steps = (card.get("rows") or [{}])[0].get("steps") or []
+    starts = [e for e in (run_stepper._epoch(s.get("began") or s.get("at")) for s in steps)
+              if e is not None]
+    ends = [e for e in (run_stepper._epoch(s.get("at")) for s in steps) if e is not None]
+    return max(ends) - min(starts) if starts and ends else None
 
 
 def record_outcome(rec: dict) -> dict:

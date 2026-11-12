@@ -5,10 +5,14 @@
     and under 'Finished' (success / partial / failed, with the steps taken)"). The page
     reopens it while the heal's job runs and, once it ended, until each person has opened it
     (C537); the In progress list's row opens it. Running, it waits for the job's end
-    (`in_progress`) and each step (`device_progress`). Ended, the outcome leads, its level
-    never green over a partial or a failure, with the steps the run recorded drawn by THE
-    stepper (the failed step first), and where the whole record is kept. Close puts back the
-    tab it replaced. -#}
+    (`in_progress`) and each step (`device_progress`). Its ONE stepper is the heal's five
+    stages (the operator, 2026-11-12: Detected → Decided → Fixing → Checking → Done, each its
+    sentence, time and state, expanding to its steps; the deploy's stages inside Apply), from
+    what was seen, through the decision the detection job made, to the act's end, as one run.
+    Who it is by is said once, here, and names no person by identity: "by Mercury's
+    self-healing · policy set by <display name>" (C3161). Ended, the outcome leads, its level
+    never green over a partial or a failure, and where the whole record is kept. Close puts
+    back the tab it replaced. -#}
 {%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
 {%- macro close_button() -%}
 <button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">Close</button>
@@ -20,21 +24,19 @@
   <div class="op-hd"><h2 id="op-title">Self-healing is running on {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('heal', 'act') }}</div></div>
   <div class="op-part"><h3>Where it is</h3><div>
-    {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
-    {%- if c.stages %}
-    <p class="small muted">While it applies, the deploy's stages on {{ c.host }}:</p>
-    {{ run_stepper(c.stages | one_run(c.host, 'The deploy stages of the heal')) }}
-    {%- endif %}
-    <p class="op-wait">Started {{ clock(c.started) }}, as {{ c.actor | people }}. It holds {{ c.host }} while it applies and verifies. Its outcome and the steps it took are drawn here when it ends; this page can close: the In progress chip in the top bar keeps the run in front of you, and its outcome until you open it.</p></div></div>
+    <p class="small muted heal-by">By {{ c.by }} · started {{ clock(c.started) }}. It holds {{ c.host }} until it ends; the In progress chip keeps it in front of you.</p>
+    {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}</div></div>
 </section>
 {%- elif c.state == 'result' %}
 <section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
   <div class="op-hd"><h2 id="op-title">Self-healing on {{ c.host }} {{ badge(c.words, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('heal', 'act') }}{{ close_button() }}</div></div>
-  <div class="op-part"><h3>What happened</h3><div>
-    <p data-outcome="{{ c.outcome }}">{{ c.summary }}</p>
-    <p class="small muted">Started {{ clock(c.started) }}, as {{ c.actor | people }}; ended {{ clock(c.finished) }}. Written by Mercury from its own record: no AI.</p></div></div>
-  <div class="op-part"><h3>The steps taken</h3><div>{{ run_stepper(c.steps) }}</div></div>
+  {#- What happened is its stages: Done says the outcome and how long it took, a failed stage
+      why, in one line; the record's own summary is Done's Record step, one level down (each
+      fact once). -#}
+  <div class="op-part"><h3>What happened</h3><div data-outcome="{{ c.outcome }}">
+    <p class="small muted heal-by">By {{ c.by }} · started {{ clock(c.started) }}, ended {{ clock(c.finished) }}. Written by Mercury from its own record: no AI.</p>
+    {{ run_stepper(c.steps) }}</div></div>
   <div class="op-part"><h3>Recorded</h3><div><p>The decision, the program it sent and every step are kept on <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">{{ c.host }}'s History</a>.</p></div></div>
 </section>
 {%- else %}

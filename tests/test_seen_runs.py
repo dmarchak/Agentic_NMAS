@@ -91,7 +91,11 @@ class TestOpening:
         assert r.status_code == 204, r.get_data(as_text=True)
         assert r.headers["HX-Redirect"] == f"/v2/device/r2?list={NET}&result={pick['job']}"
         body = resub.get(f"/v2/device/r2?list={NET}&result={pick['job']}").get_data(as_text=True)
-        assert f"The steps taken · {len(older['steps'])}" in body, "the run pressed, opened"
+        # Premise corrected (the operator, 2026-11-12: a run's card draws its stages, each
+        # expanding to its steps): the pressed run's card, its own record id on it.
+        assert older["id"][-12:] in body and newer["id"][-12:] not in body, \
+            "the run pressed, opened"
+        assert 'class="run-stages"' in body
         html = bar(resub)
         assert "In progress: 1 failed" in html and "Finished, not opened yet · 1" in html
         assert [e["run"] for e in entries(html)] == [newer["id"]]
@@ -119,7 +123,8 @@ class TestOpening:
         assert r.status_code == 204
         assert r.headers["HX-Redirect"] == f"/v2/device/r2?list={NET}&result={older['id']}"
         body = resub.get(f"/v2/device/r2?list={NET}&result={older['id']}").get_data(as_text=True)
-        assert f"The steps taken · {len(older['steps'])}" in body
+        assert older["id"][-12:] in body and newer["id"][-12:] not in body
+        assert 'class="run-stages"' in body
         restart(monkeypatch)
         assert [e["run"] for e in entries(bar(resub))] == [newer["id"]]
 

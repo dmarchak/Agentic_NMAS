@@ -3820,15 +3820,27 @@ def _heal_run(client, _lab, _mp):
     with open(_os.path.join(_os.path.dirname(__file__), "fixtures", "heal_run",
                             "rolled_back.json"), encoding="utf-8") as fh:
         result = _json.load(fh)
-    gate = threading.Event()
+    gate, applying = threading.Event(), threading.Event()
     before = set(capture_job._jobs)
 
     def start(work):
         return capture_job.start("Lab", "healing r3", "admin@example.com", work, kind="heal",
-                                 device="r3", card="heal_run")
+                                 device="r3", card="heal_run", actor_kind="policy")
 
     def waits(_job):
-        gate.wait(10)
+        # Running, it is at its Apply, holding r3 as the deploy does (C3160: the deploy's
+        # stages drawn inside Apply): its recorded steps up to it, the fixture's own.
+        from modules import op_progress
+        from modules.heal import act
+        from modules.nsot import device_ops
+        op_progress.attach(act.STEPS, list(result["steps"][:6]),
+                           run=result.get("decision") or "")
+        with device_ops.hold("Lab", "r3", "deploy", "admin@example.com",
+                             detail="heal to intent"):
+            device_ops.note("pre_snapshot")
+            device_ops.note("deploy")
+            applying.set()
+            gate.wait(10)
         return {"ok": True, "result": result}
 
     def raises(_job):
@@ -3837,12 +3849,14 @@ def _heal_run(client, _lab, _mp):
     try:
         job = start(waits)
         url = f"/v2/device/r3/heal/job/{job}?back=overview&list=Lab"
+        assert applying.wait(10), "the run never reached its Apply"
         going = client.get(url).get_data(as_text=True)
         assert "Self-healing is running on r3" in going, going[:300]
+        assert 'class="run-sub"' in going, "the deploy's stages inside Apply"
         gate.set()
         assert capture_job.wait(job, 10)
         done = client.get(url).get_data(as_text=True)
-        assert "The steps taken" in done and 'data-lead="apply"' in done, done[:300]
+        assert 'class="run-stages"' in done and 'data-lead="apply"' in done, done[:300]
         bad = start(raises)
         assert capture_job.wait(bad, 10)
         raised = client.get(f"/v2/device/r3/heal/job/{bad}?back=overview&list=Lab")

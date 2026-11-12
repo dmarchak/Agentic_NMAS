@@ -171,7 +171,22 @@ and the operator's words for the card, as tests/test_fault_drills.py renders it;
 (tests/test_board_shots.py has none of it yet): the table "Declare a fault drill… and its
 card" below. Templates sha256 before (without `_declare_drill.html` in the list):
 `a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`.
-Templates sha256: `61e0ce89028786ad01347c2e77a133efd1c6a86c0137bb16719dc4aa6b35be89`
+Templates sha256: `90dbaf2c170cfd5ed895d9a2c75cbaa98093cac47300709390dde8727c0e221d`
+
+**Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
+"no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and
+C3121's one time zone; and "A self-heal is never "by <person>" or "started by you"", C3161):
+`device.html`'s banner above a card the page reopened says whose run it is and when, "Your run,
+started <time>" (another person's: "<name>'s run, started <time>"), and ", finished <time>
+while you were elsewhere" once it has, each time the page's clock element (the viewer's zone,
+UTC on hover), where it said "Reopened: started by you at HH:MM UTC" or "Finished at HH:MM UTC,
+while you were elsewhere; started by you". A self-heal's card says who it is by itself, once
+("by Mercury's self-healing · policy set by <name>"), so it carries no banner. Board C's
+"Reopened" chip: **deviation**, logged in STANDING_APPROVAL_LOG ("A reopened card's banner
+says whose run it is"). No other region moved. Compared by the template's diff and the pages
+tests/test_in_flight.py, tests/test_run_outcomes.py and tests/test_heal_stages.py draw, not a
+new shot. Templates sha256 before:
+`61e0ce89028786ad01347c2e77a133efd1c6a86c0137bb16719dc4aa6b35be89`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_capture.html`, `_retire.html` and `_diagnose.html`,

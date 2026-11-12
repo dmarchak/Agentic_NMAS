@@ -175,14 +175,28 @@ class TestAHealLive:
             assert "Self-healing is running on edge-b" in body
             got = step_states(body)
             assert got["apply"] == "running" and 'data-lead="apply"' in body
-            assert ('<strong title="Apply as the policy, holding the device: the deploy&#39;s '
-                    'nine stages">Now: Apply</strong>') in body, "short label, long on hover"
+            # Premise corrected (the operator, 2026-11-12: "FIVE stages ... each with one
+            # plain sentence ... (e.g. "Applying 3 lines to r3…")"): the stage it is in says
+            # what it is doing, and its steps say the short label, the long words on hover.
+            assert ('class="run-stage run-stage-running" data-stage="fixing" '
+                    'data-lead="apply" aria-current="step"') in body
+            assert '<span class="run-stage-said">Applying 1 line to edge-b…</span>' in body
+            assert ('data-step="apply" title="Apply as the policy, holding the device: the '
+                    'deploy&#39;s nine stages"><strong>Apply</strong>') in body, \
+                "short label, long on hover"
             assert {got[k] for k in ("take", "stops", "read", "plan", "authorise")} == {"done"}
             assert {got[k] for k in ("intent", "symptom", "saved", "golden", "record")} == {
                 "waiting"}, "a step the run has not reached is pending, never done"
-            assert {got[k] for k in got if k.startswith("d-")} <= {"done", "skipped"}, \
-                "its decision's steps come first, each as it was recorded"
-            assert got["d-claim"] == "done" and got["d-decide"] == "done"
+            # Premise corrected (C3159, the operator, 2026-11-12: "The decision's steps ...
+            # were done by the detection job: draw them done, with their times, as one
+            # continuous run"): every one of them done, each with its time.
+            decided_steps = [k for k in got if k.startswith("d-")]
+            assert len(decided_steps) == 8 and {got[k] for k in decided_steps} == {"done"}, \
+                {k: got[k] for k in decided_steps}
+            for k in decided_steps:
+                line = body[body.index(f'data-step="{k}"'):]
+                assert '<time class="clock"' in line[:line.index("</li>")], f"{k} has its time"
+            assert got["x-opened"] == "done", "what was seen comes first"
         finally:
             src.let_go()
         assert capture_job.wait(job, 30) and recorded(d) == "healed"
@@ -235,9 +249,10 @@ class TestAHealLive:
 
 
 class TestWhileAHealApplies:
-    """The deploy's stages are the device's hold's (the deploy's own stepper), drawn under the
-    heal's steps while the heal holds the device as a deploy. On the re-subscribe's lab, whose
-    holds are read for real."""
+    """The deploy's stages are the device's hold's (the deploy's own stepper), drawn INSIDE the
+    heal's Apply while the heal holds the device as a deploy (C3160, the operator, 2026-11-12:
+    "ONE stepper: the deploy's stages belong INSIDE "Apply" (expanding), not as a second
+    stepper"). On the re-subscribe's lab, whose holds are read for real."""
 
     def test_the_stages_come_from_the_hold_and_only_a_deploy_s(self, resub):  # noqa: F811
         import app as A
@@ -257,19 +272,25 @@ class TestWhileAHealApplies:
             running = [s for s in stages if s["state"] == "running"]
             assert [s["key"] for s in running] == ["deploy"], stages
             assert [s["state"] for s in stages][:3] == ["done", "done", "done"]
+            steps = RS.record_card("r2", "Self-healing on r2", [
+                run_card.act_phase([{"step": "take", "result": "ok", "words": "taken"},
+                                    {"step": "apply", "result": "running",
+                                     "words": "holding r2"}], ended=False)], ended=False)
             card = {"op": "heal_run", "state": "running", "host": "r2", "list": NET,
-                    "job": "0" * 32, "started": "2026-11-11T16:38:00Z", "actor": "the policy",
-                    "back": "overview", "stages": stages,
-                    "steps": RS.record_card("r2", "Self-healing's steps on r2", [
-                        run_card.act_phase([{"step": "take", "result": "ok", "words": "taken"},
-                                            {"step": "apply", "result": "running",
-                                             "words": "holding r2"}], ended=False)],
-                        ended=False)}
+                    "job": "0" * 32, "started": "2026-11-11T16:38:00Z",
+                    "by": run_card.by_words("policy@example.invalid"), "back": "overview",
+                    "steps": run_card.heal_stages(steps, host="r2", facts={}, ended=False,
+                                                  nested={"apply": stages})}
             with A.app.test_request_context(f"/v2/device/r2?list={NET}"):
                 html = render_template("v2/_heal_run.html", c=card)
-        assert "While it applies, the deploy's stages on r2:" in html
-        assert html.count("data-run-stepper") == 2, "the heal's steps, then the deploy's stages"
-        assert 'class="run-step run-step-running" data-step="deploy"' in html
+        # Premise corrected (C3160): ONE stepper, the deploy's stages under Apply.
+        assert html.count("data-run-stepper") == 1, "one stepper, never a second"
+        apply = html[html.index('data-step="apply"'):]
+        apply = apply[:apply.index('<li class="run-step ')] if '<li class="run-step ' in apply \
+            else apply
+        assert '<ol class="run-sub" aria-label="Apply' in apply
+        assert 'class="run-line run-line-running" data-sub="deploy"' in apply, \
+            "the deploy's running stage, inside Apply"
         assert device_ops.holder(NET, "r2") is None
 
 
@@ -297,8 +318,15 @@ class TestAReSubscribeLive:
             assert "<small>started" not in listed, "never the hold's 'started'"
             _r, going = card(resub, subs="101")
             assert 'data-lead="wait"' in going
-            assert ('<strong title="Wait 10 s, once, after the last removal">Now: Wait 10 s'
-                    "</strong>") in going
+            # Premise corrected (the operator, 2026-11-12: a stage's "one plain sentence, its
+            # time and its state"): Removing says it waits, its countdown beside it; the
+            # step's short label, the long words on hover, under it.
+            assert ('class="run-stage run-stage-running" data-stage="removing" '
+                    'data-lead="wait"') in going
+            assert '<span class="run-stage-said">Waiting after the removal · <span ' \
+                'class="run-left"' in going
+            assert ('data-step="wait" title="Wait 10 s, once, after the last removal">'
+                    "<strong>Wait 10 s</strong>") in going
             assert 'data-run-wait-s="10"' in going and "data-run-wait-bound" not in going
             got = step_states(going)
             assert got["wait"] == "running" and got["remove"] == "done"
@@ -334,7 +362,12 @@ class TestAReSubscribeLive:
         assert "Re-subscribing on r2." not in html and 'aria-busy="true"' not in html
         got = step_states(html)
         assert got["verify"] == "not_reached" and got["record"] == "not_reached"
-        assert got["re-add"] == "done" and "run-row-failed" in html, "never green"
+        # Premise corrected (the operator, 2026-11-12: a run is drawn as its stages): what it
+        # did is done, and the stages it never reached are drawn so, its Done never green.
+        stages = dict((k, s) for s, k in re.findall(
+            r'class="run-stage run-stage-(\w+)" data-stage="([^"]+)"', html))
+        assert got["re-add"] == "done" and stages["re-adding"] == "done"
+        assert stages["checking"] == stages["done"] == "not_reached", "never green"
         assert device_ops.holder(NET, "r2") is None, "nothing holds the device"
 
 
@@ -395,20 +428,29 @@ class TestReadsAreDrawnCompactly:
         assert first["more"][0]["reads"][0]["words"] == "stream read 11", "newest first"
         assert [t["checks"] for t in phase["trail"] if t["key"] != "verify"] == [[], []], \
             "a step that passed shows no checks"
-        html = drawn(RS.record_card("r2", "Steps", [phase], ended=True, level="danger"))
-        lead_html = html[html.index('data-lead="verify"'):html.index('class="run-trail"')]
-        assert "run-line" not in lead_html, "no checks in the lead of a step that ended"
-        taken = html[html.index('class="run-trail"'):]
+        # Premise corrected (the operator, 2026-11-12: a run's card is drawn as its stages,
+        # each expanding to its steps): the stage names the failed step, and what each of its
+        # records read is under that step, closed.
+        html = drawn(RS.stages(RS.record_card("r2", "Steps", [phase], ended=True,
+                                              level="danger"),
+                               (("planned", "Planned", ("plan", "wait")),
+                                ("checking", "Checking", ("verify",)),
+                                ("done", "Done", ("record",))), ended=True))
+        lead_html = html[html.index('data-lead="verify"'):]
+        lead_html = lead_html[:lead_html.index("</summary>")]
+        assert "run-line" not in lead_html, "no checks in the stage's line of a step that ended"
+        taken = html[html.index('class="run-stages"'):]
         in_place = re.sub(r'<details class="run-checks".*?</details>\s*</details>', "", taken,
                           flags=re.S)
-        assert in_place.count('<li class="run-line') == 4, "four lines in place, not 130"
+        assert in_place.count('<li class="run-step ') == 4 and \
+            in_place.count('<li class="run-line') == 0, "four lines in place, not 130"
         assert taken.count('<details class="run-checks"') == 2
         assert taken.count("<strong>stream</strong> (fail): no series") == 2
         assert taken.count('<details class="run-reads"') == 2
         assert '<details class="run-checks" open' not in taken \
             and '<details class="run-reads" open' not in taken \
-            and taken.count(" open>") == 1, \
-            "only the steps taken are open: the checks and the full list stay closed"
+            and taken.count(" open>") == 0, \
+            "the stages, the checks and the full list stay closed"
         assert taken.count("device read ") + taken.count("stream read ") \
             + taken.count("collector read ") >= 122, "and every read is in it"
 
@@ -516,19 +558,25 @@ class TestStepColumnsAreShort:
             ended=True, labels=labels)
         assert [(s["words"], s["long"]) for s in phase["steps"]] == [
             (labels[k], w) for k, w in R.STEPS], "every declared step, labelled"
-        html = drawn(RS.record_card("r7", "Steps", [phase], ended=True, level="danger"))
+        # Premise corrected (the operator, 2026-11-12: a run is drawn as its stages, each
+        # expanding to its steps, "today's labels"): each step's line says its short label,
+        # its hover the declared words; the failed stage names it and why, once.
+        from modules.heal import run_card
+        html = drawn(run_card.resub_stages(
+            RS.record_card("r7", "Steps", [phase], ended=True, level="danger"), host="r7",
+            subs=["101"], outcome="refused", ended=True))
         for key, long_words in R.STEPS:
-            column = re.search(rf'data-step="{key}"[^>]*title="([^"]*)"[^>]*>.*?'
-                               r'<span class="run-words">([^<]*)<', html, re.S)
-            assert column, key
-            assert column.group(2) == labels[key], "the column: the short label"
-            assert column.group(1).startswith(str(__import__("markupsafe").escape(long_words))), \
+            line = re.search(rf'data-step="{key}" title="([^"]*)"><strong>([^<]*)</strong>',
+                             html)
+            assert line, key
+            assert line.group(2) == labels[key], "the line: the short label"
+            assert line.group(1) == str(__import__("markupsafe").escape(long_words)), \
                 "the hover: the declared words"
-        assert ('<strong title="Recompute each subscription&#39;s program and compare its '
-                'hash">Failed at: Check hashes</strong>') in html
+        assert ('data-stage="planned" data-lead="hash"') in html
+        assert '<span class="run-stage-said" role="alert">Check hashes failed: the hash ' \
+            'moved</span>' in html
         assert html.count("the hash moved") == 1, "the failure is said once"
-        assert '<strong title="Read each subscription&#39;s receiver from committed intent; ' \
-            in html and ">Read intent</strong> (done)" in html, "the list: label, long on hover"
+        assert ">Read intent</strong> (done)" in html, "the list: label, its state"
 
 
 # ── The countdown ───────────────────────────────────────────────────────────────────────────
@@ -630,7 +678,8 @@ def test_a_heal_s_card_advances_by_itself_and_ends_with_its_outcome_in_a_real_br
         src.let_go()
     assert capture_job.wait(job, 30) and recorded(d) == "healed"
     assert re.match(r"up to 150 s: \d+ s left$", first), first
-    assert "The steps taken" in ended and "healed" in ended and "Now:" not in ended
+    # Premise corrected (2026-11-12): Done says the outcome, in its own sentence.
+    assert "Healed and verified" in ended and "Now:" not in ended
 
 
 # ── One address for a run ───────────────────────────────────────────────────────────────────

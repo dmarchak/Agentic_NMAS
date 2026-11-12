@@ -168,40 +168,53 @@ A failed verify rolls back what landed, and **halts** the network's healing unti
 lifts it ([Lift the halt](heal-proposal#halt)). A configuration healed whose symptom remains is
 amber, "symptom remains", never green.
 
+**Who a heal is by.** A heal is Mercury's own: the chip, the held-device banner and the card say
+**by Mercury's self-healing · policy set by <name>** (an approved proposal's, **approved by
+<name>**), the person by their display name, never their address, and never "you", even when
+the person looking set the policy.
+
 **While a heal runs**, the top bar's **In progress** chip lists it as one row,
 **Self-healing**, on its device, and the row's words are the step the run is in ("Apply · step
 6 of 11"), never "starting". The device's page opens the run's card in place of its tab, and
-the card draws the run on one stepper, from the steps the run itself has recorded: its
-decision's steps first, then the eleven above, each **done**, **running**, **pending**,
-**failed** or **not reached**; nothing is drawn done that the run has not recorded. Each
-step's column says it in two to four words ("Read <device>", "Recompute program", "Apply", "Check
-intent", "Read symptom", "Save startup", "Check golden", "Record"); the step's full words are
-on hover. Under the steps, **Now: <step>** names the step it is in, with the run's own words.
-While it applies, the deploy's stages are drawn under it, as
-a deploy's card draws them. A step that waits says how long: the symptom's read waits "up to
-150 s" for an adjacency (up to 750 s for an alert), and the card counts it down ("up to 150 s:
-96 s left") from the time the step began and the length the run declared; when the time is up
-it says so and waits for the run's next step. A step that reads draws, while it runs, the
-newest read of each check and one line saying how many reads it has made. The card
-moves by itself at each step, over the live connection; nothing asks on a timer. The card
-starts when the heal's job does: the wait before it (the grace period between the two reads
-that open a heal) is not on this card.
+the card draws the run as ONE run on one stepper of five stages, from what was seen to its end:
+
+| Stage | Its steps | What it says |
+|---|---|---|
+| **Detected** | the incident opening on its first trigger, and the grace period waited out | what was seen ("edge1's configuration changed outside Mercury") |
+| **Decided** | the decision's eight steps, done by the detection job, each with its time | the decision ("Heal: remove …") |
+| **Fixing** | the act's steps up to and including Apply; the deploy's stages inside Apply | "Applying 3 lines to edge1…", then "Applied 3 lines to edge1" |
+| **Checking** | Check intent, Read symptom, Save startup, Check golden | "Waiting for edge1's symptom to clear · up to 750 s: 120 s left", then "edge1 at intent; its symptom gone" |
+| **Done** | Record | the outcome and how long from when it was seen ("Healed and verified in 4 min 12 s") |
+
+Each stage is one plain sentence, its time (in your zone; UTC on hover) and its state (**done**,
+**in progress**, **not started**, **failed**, **not fully done** or **not reached**); nothing is
+drawn done that the run has not recorded. The five sit in one row on a desk; where the card is
+too narrow for the row they run down, one under the other. Open a stage to read its steps, one
+line each in two to four words ("Read <device>", "Recompute program", "Apply", "Check intent"),
+the full words on hover, with each step's time and one-line outcome; while it applies, the
+deploy's own stages are listed inside **Apply**, never as a second stepper. A step that waits
+says how long: the symptom's read waits "up to 150 s" for an adjacency (up to 750 s for an
+alert), and its stage counts it down from the time the step began and the length the run
+declared; when the time is up it says so and waits for the run's next step. The card moves by
+itself at each step, over the live connection; nothing asks on a timer. The card starts when
+the heal's job does: the grace period is drawn done under Detected once it has passed, and is
+not drawn live while it runs.
 
 **Where a run's outcome is read.** When it ends, the chip keeps it under **Finished, not opened
 yet** for every person until each has opened it (nobody started it, so it is everybody's to
 read), and the device's page opens its card: the outcome first (green only for healed; amber
 for a heal partly shown or whose symptom remains; red for nothing sent, a rollback or a
-failure) and what happened, said once; then the stepper, with **Failed at: <step>** naming the
-step it stopped at; then **The steps taken**: one line a step, its state, its time and its
-one-line outcome. What a step that did not pass read sits under that step alone, closed, as
-**What it read** (its checks, one line saying its reads, and every read one level further
-down); a step that passed shows no checks. The card is kept for 30 minutes in the running
-app's memory; after that the same steps are on the device's History.
+failure), who it was by and when it started and ended, then its five stages. A failure is named
+at its stage, with why, in one line ("Apply failed: …"); Done is never green over a partial or a
+failure. What a step that did not pass read sits under that step alone, closed, as **What it
+read** (its checks, one line saying its reads, and every read one level further down); a step
+that passed shows no checks. The card is kept for 30 minutes in the running app's memory; after
+that the same steps are on the device's History.
 
 A **can't-fix** is a decision, not a run: nothing ran, so nothing is listed as finished. Its
 outcome is its Needs attention row, which stays until a person acknowledges it or a later heal
 ends healed; opened, the row says why it stopped and carries one closed line under it, **The
-steps Mercury took: stopped at <step> · N steps · Show**, which opens the same stepper (the
+steps Mercury took: stopped at <step> · N steps · Show**, which opens the same stages (the
 decision's steps, the one it stopped at named); the team's notice carries each step and its
 result ([Notifications](notifications)).
 

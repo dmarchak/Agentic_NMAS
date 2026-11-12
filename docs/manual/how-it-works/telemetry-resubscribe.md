@@ -164,15 +164,19 @@ why.
 11. `record`: the run is written with who, when, why, the hash, each send and each check, and
     each subscription's own outcome. History shows it.
 
-**While it runs**, the card draws these steps on one stepper, from the steps the run itself
-has recorded: each **done**, **running**, **pending**, **failed** or **not reached**, and
-nothing done that the run has not recorded. Each step's column says it in two to four words
-("Read intent", "Hold <device>", "Remove 101", "Wait 10 s", "Re-add", "Verify 101", "Record"); the
-step's full words, as listed above, are on hover. Under them, **Now: <step>** names the step
-it is in, with the run's own words; at the wait it counts down ("6 s left of 10 s") from when
-the wait began and the 10 s the run declared, and when the time is up it says so and waits for
-the run's next step. At each verify it counts down the longest the verify waits ("up to 290 s:
-212 s left"); the verify ends sooner when all three checks pass. The card moves by itself at
+**While it runs**, the card draws the run on one stepper of five stages, from the steps the run
+itself has recorded: **Planned** (read intent, check hashes, hold the device, record the start,
+read before), **Removing** (each removal, and the wait after the last), **Re-adding**,
+**Checking** (each verify) and **Done** (the record); a Re-add the receiver removes nothing, so
+it has four. Each stage is one plain sentence ("Removing 101's receiver…", "Waiting after the
+removal", "Checking 101's stream is back"), its time and its state (**done**, **in progress**,
+**not started**, **failed**, **not fully done** or **not reached**), and nothing is drawn done
+that the run has not recorded. Open a stage to read its steps, one line each in two to four
+words ("Read intent", "Hold <device>", "Remove 101", "Wait 10 s", "Re-add", "Verify 101",
+"Record"), the full words, as listed above, on hover. At the wait the stage counts down ("6 s
+left of 10 s") from when the wait began and the 10 s the run declared, and when the time is up
+it says so and waits for the run's next step. At each verify it counts down the longest the
+verify waits ("up to 290 s: 212 s left"); the verify ends sooner when all three checks pass. The card moves by itself at
 each step, and at each round of a verify's reads. In the top bar's **In progress**
 list the run is one row, **Re-subscribe telemetry**, whose words are the step it is in ("Wait
 10 s · step 7 of 11"), never "starting" or "started". A step that reads draws, while it runs,
@@ -224,9 +228,10 @@ partial:
 it is never lost by leaving the page, refreshing it, or Mercury restarting:
 
 - **On the card**, in place: the outcome first, in a box that says what failed and why, once;
-  each subscription's own line; then the stepper, with **Failed at: <step>** naming the step
-  it stopped at; then **The steps taken**: one line a step, its state, its time and its
-  one-line outcome. What a step that did not pass read sits under that step alone, closed, as
+  each subscription's own line; then its stages, the one that failed naming the step it
+  stopped at ("Verify 101 failed"; why is the box's), and Done never green over a failure; each
+  stage opens to its steps, one line each with its state, its time and its one-line outcome.
+  What a step that did not pass read sits under that step alone, closed, as
   **What it read** (each failed verify's device, stream and collector checks, one line saying
   its reads, and every read one level further down, **The N reads**); a step that passed
   shows no checks. A run that did not end clean offers the next action under it: **Re-add the

@@ -48,7 +48,7 @@ template only what it draws). The row's name is drawn unlinked, as a non-device 
 is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
 new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `3f5612d6866a357041f8b278b27f6d3de8fc76c01792ac8e83c7df1610056927`
+Templates sha256: `9b358470254f3de36ae38c30a3337b26a63429f23c73f51cf4f966af28715fb9`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each
@@ -98,6 +98,31 @@ region is on SaveProgress or StepperPhone: **deviation**, logged in STANDING_APP
 one stepper draws a run from its own recorded steps"). Compared by the template diff and the
 pages tests/test_run_outcomes.py draws, not a new shot. Templates sha256 before:
 `8b51e27c3aaee9e3d0ac8931411e3d0d3fd42364e585fa3944ebd28bf85fa5e9`.
+
+**Hashed again 2026-11-12 for the operator's F1 smoke test of r3** ("TOO MANY STEPS: a person
+cares about progress, not mechanics. The stepper shows FIVE stages ... each with one plain
+sentence, its time and its state ... Each stage expands to its detailed steps"; "ONE stepper";
+"A linear stepper (one row, wrapping cleanly), not a grid with gaps"; C3159 to C3163). A run
+drawn from its own record is drawn as its operation's STAGES (`stages`; the heal's Detected,
+Decided, Fixing, Checking and Done, the re-subscribe's Planned, Removing, Re-adding, Checking
+and Done) in place of its row, its lead and The steps taken, which the macro no longer draws.
+Region by region against the regions below, for such a card only (a Save, a deploy, a rotation
+and every other operation's stepper are drawn as compared, every verdict below standing):
+the bar, the counts and the groups are not drawn (one run, as before); the row is ONE row of
+stages, edge to edge, each its mark (as a row's), its name, one sentence and its time, the
+running one counting and its declared wait counting down in its sentence; a stage opens to its
+steps, one line each (the step's short label, its state in words, its time, its one-line
+outcome), what a step that did not pass read under it alone, closed, and a step's own sub-steps
+under it (the deploy's stages inside a heal's Apply); a failed stage names its step and why in
+one line (where the card has no summary of its own), and the run's last stage is never green
+over a partial or a failure. Phone: where the card is under 640 px wide the stages run down,
+one under the other, each with a bar on its left (a container query: the card's width, never
+the window's). Neither SaveProgress nor StepperPhone draws stages: **deviation**, logged in
+STANDING_APPROVAL_LOG ("The one stepper draws a run's stages"). Compared by the diff, the
+markup tests/test_heal_stages.py, tests/test_run_outcomes.py and tests/test_run_progress.py
+draw, and tests/test_heal_stages.py's real-browser measure at 1280 and 500 px (one row; then
+each stage under the one before, nothing past the edge), not a new shot. Templates sha256
+before: `3f5612d6866a357041f8b278b27f6d3de8fc76c01792ac8e83c7df1610056927`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

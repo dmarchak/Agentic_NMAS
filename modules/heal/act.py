@@ -940,7 +940,8 @@ def start(network: str, decision: dict, sources=None) -> str:
     # progress list keeps its outcome until each person opens it (`heal.run_card`).
     return capture_job.start(network, f"healing {decision['device']}", setter, work, kind=KIND,
                              announce_keys=DONE_KEYS, announcer=ANNOUNCER,
-                             device=decision["device"], card="heal_run")
+                             device=decision["device"], card="heal_run",
+                             actor_kind="policy")
 
 
 def run(network: str, *, now: float = None, starter=None, by: str = "heal to intent") -> dict:

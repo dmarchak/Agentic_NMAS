@@ -87,7 +87,7 @@ def merge(holds: list, ops: list, jobs: list) -> list:
         key = (job["list"], job["device"]) if job else None
         if key in held:
             row = out[index[key]]
-            row.update(job=job["job"], card=job["card"])
+            row.update(job=job["job"], card=job["card"], actor_kind=job.get("actor_kind", ""))
             if op.get("own_steps"):
                 # The run records its own steps (`op_progress.attach`): the row's words are
                 # its newest step's, and it has moved when either the hold or the run has
@@ -97,11 +97,15 @@ def merge(holds: list, ops: list, jobs: list) -> list:
                            stalled=ago > STALL_AFTER_SECONDS)
         elif job:
             said = CARD_WORDS.get(job["card"]) or OPERATION_WORDS.get(job["card"], job["card"])
+            # A self-heal is Mercury's, never a person's (C3161): its words name the policy's
+            # setter by display name, as the chip does.
+            by = (_row_who(job, "") if job["card"] in HEAL_RUNS
+                  else op.get("actor") or "unknown")
             rest.append(dict(op, device=job["device"], list=job["list"], operation=job["card"],
-                             words=said,
+                             words=said, actor_kind=job.get("actor_kind", ""),
                              job=job["job"], card=job["card"], stalled=False,
                              text=f"{job['device']} is being {said} by "
-                                  f"{op.get('actor') or 'unknown'}: {op.get('step_words', '')}"))
+                                  f"{by}: {op.get('step_words', '')}"))
         else:
             rest.append(op)
     return out + rest
@@ -191,6 +195,22 @@ def _who(actor: str, viewer: str) -> str:
     return "you" if actor and actor == viewer else (display_names.people(actor) or "unknown")
 
 
+#: The cards whose run Mercury starts itself: its row is never "by <person>" or "you".
+HEAL_RUNS = ("heal_run",)
+
+
+def _row_who(row: dict, viewer: str) -> str:
+    """Who a row's run is by: a self-heal's is Mercury's (the operator, 2026-11-12: "A
+    self-heal is never "by <person>" or "started by you": the chip, the banner and the card
+    read "by Mercury's self-healing · policy set by <display name>""), its actor the
+    policy's setter or the person who approved it (`heal.run_card.job_by`); any other run's,
+    the person who started it."""
+    if row.get("card") in HEAL_RUNS:
+        from modules.heal import run_card
+        return run_card.job_by(row)
+    return _who(row.get("actor", ""), viewer)
+
+
 def _step(row: dict) -> str:
     """The step a held device's operation is on, in the stepper's own words where its card
     draws one (`device_actions.job_steps`: "Persist: … · step 6 of 6"), else the hold's own
@@ -227,7 +247,7 @@ def running_row(row: dict, viewer: str) -> dict:
         named = row.get("card") if row.get("card") in RUN_CARDS else row.get("operation", "")
         return {"device": row.get("device", ""), "list": row.get("list", ""),
                 "name": OPERATION_NAMES.get(named, row.get("operation") or "An operation"),
-                "step": _step(row), "who": _who(row.get("actor", ""), viewer),
+                "step": _step(row), "who": _row_who(row, viewer),
                 "since": _clock(row.get("started", "")), "card": bool(row.get("job")),
                 "page": True, "stalled": bool(row.get("stalled")),
                 # A console run opens its own page, its live stepper (its device may have no
@@ -316,7 +336,7 @@ def finished_row(job: dict, viewer: str) -> dict:
     return {"device": job["device"], "list": job["list"], "card": job["card"],
             "name": OPERATION_NAMES.get(job["card"], job["card"]), "level": level,
             "outcome": OUTCOMES[level], "words": words, "at": _clock(at),
-            "who": _who(job.get("actor", ""), viewer),
+            "who": _row_who(job, viewer),
             # A run that keeps a record (`heal.run_card`): its id, and how many steps it took.
             "run": c["run"] if isinstance(c.get("run"), str) else "",
             # The job's id: with the run's, what Open the result and Dismiss mark seen.
@@ -421,7 +441,8 @@ def _held_words(holder: dict, viewer: str, job: dict = None) -> dict:
     card = (job or {}).get("card")
     named = card if card in RUN_CARDS else holder.get("operation", "")
     name = OPERATION_NAMES.get(named, holder.get("operation") or "An operation")
-    who = _who(holder.get("actor", ""), viewer)
+    who = (_row_who(job, viewer) if card in HEAL_RUNS
+           else _who(holder.get("actor", ""), viewer))
     return {"name": name, "since": started, "by": who,
             "words": f"{name} running since {_clock(started)}, by {who}",
             # A greyed menu item's reason, on hover and for a reader: short (the operator,

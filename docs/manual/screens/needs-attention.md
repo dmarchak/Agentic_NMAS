@@ -23,9 +23,9 @@ The landing page answers one question: does anything need you?
   item asks the model nothing; with no answer kept, Explain is offered behind its cost); for
   anything Mercury found itself, **Why this happened**, written by Mercury from its own record
   with no AI. A self-healing can't-fix carries one closed line there too, **The steps Mercury
-  took: stopped at <step> · N steps · Show**; opened, it draws the one stepper: each step
-  Mercury took, done, failed or not reached, the step it stopped at named, and **The steps
-  taken**, one line a step ([Self-healing](heal#act)). A lost telemetry stream's card carries
+  took: stopped at <step> · N steps · Show**; opened, it draws the one stepper: its stages
+  (Decided, and Fixing to Done when it acted), the step it stopped at named in its stage, each
+  stage opening to its steps, one line a step ([Self-healing](heal#act)). A lost telemetry stream's card carries
   its last run the same way, **The last run, <how long ago>: <how it ended> · N steps ·
   Show**. Then the **Details**: the alerts, the devices with their networks, since when and
   which source, and last **Details for the record**, closed until you open it: the record's

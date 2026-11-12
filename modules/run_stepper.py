@@ -28,6 +28,18 @@ length and when it began; each read a step made (its ``reads``, else its ``check
 step as it was recorded, in order (`trail`: "the steps taken"). Nothing is invented: a step
 the run never recorded is never drawn done, and a result this module does not know is amber,
 never green.
+
+**Stages: progress, not mechanics** (the operator, 2026-11-12, after the F1 self-heal smoke test
+on a lab router: "TOO MANY STEPS: a person cares about progress, not mechanics. The stepper shows FIVE
+stages ... each with one plain sentence, its time and its state ... Each stage expands to its
+detailed steps ... A failure names its stage and why, in one line. Apply the same five-stage
+pattern to every operation's stepper"). An operation declares its stages and which of its
+steps fall under each (``((key, name, step keys), ...)``: the heal's in
+`heal.run_card.heal_stage_table`, the re-subscribe's `run_card.RESUB_STAGES`); `stages` draws
+a record card as them: each stage's state, time and sentence from its steps (its operation's
+own sentence where it says one), its steps one level down, and a step's own sub-steps under it
+(the deploy's stages inside a heal's Apply: "ONE stepper"). Every record card is drawn so;
+every other operation's stepper keeps its rows until it declares its stages (C3163's rest).
 """
 
 import calendar
@@ -450,6 +462,11 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
         # The column says the step in two to four words (the operation's own short label);
         # its long words are its hover, and the list below says what each step did.
         label = (labels or {}).get(k) or words[k]
+        # What the step's newest record said, and when it began and last moved: a stage
+        # (`stages`) lists its steps with these, one line each.
+        said = str(got[-1][2].get("words") or "") if got else ""
+        first_rec = got[0][2] if got else {}
+        last_at = str(got[-1][2].get("at") or "") if got else ""
         # Only a running step carries what it is doing on its column (its hover, and under
         # it on a phone): a step that ended says its outcome ONCE, in the list below, and a
         # failed one in the lead.
@@ -458,7 +475,8 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
                    long=words[k], title=words[k] + (f": {note}" if note else ""),
                    state_words=STATE_WORDS[state], wait=extra.get("wait"),
                    lines=extra.get("lines") or [], more=extra.get("more") or [],
-                   why=extra.get("why") or [])
+                   why=extra.get("why") or [], said=said, at=last_at,
+                   began=str(first_rec.get("began") or first_rec.get("at") or ""))
         out.append(one)
     for want in ("failed", "running") + (("partial",) if ended else ()):
         lead = next((s for s in out if s["state"] == want), None)
@@ -474,7 +492,7 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
         st = state_of(n, s) or "done"
         key = str(s.get("step") or "")
         drawn, every = _lines(s, False) if st in ("failed", "partial") else ([], [])
-        trail.append({"key": key,
+        trail.append({"key": key, "step_key": prefix + key,
                       "words": (labels or {}).get(key) or words.get(key) or key or "a step",
                       "long": words.get(key) or "",
                       "state": st, "state_words": STATE_WORDS[st],
@@ -517,10 +535,11 @@ def record_card(name: str, label: str, phases: list, *, ended: bool, level: str 
     """A one-row card for a run drawn from its own record: *phases* are `from_record`'s
     answers, in order (a heal's decision, then its act; any other run has one). The row's group
     is its steps' worst, and never better than the outcome's *level* (``ok``, ``warn``,
-    ``danger``) once the run *ended*. The card carries ``lead``, ``trail`` and ``ended`` for
-    the stepper to draw under the row. *summarised*: the card this is drawn on already says
-    why the run failed, in its own summary (a result's red box, a row's cause), so the lead
-    names the step and does not say the failure a second time."""
+    ``danger``) once the run *ended*. The card carries ``lead``, ``trail`` and ``ended``, which
+    its operation's stages (`stages`) are drawn from: every record card is drawn as its stages
+    (C3163). *summarised*: the card this is drawn on already says why the run failed, in its
+    own summary (a result's red box, a row's cause), so the failed stage names the step and
+    does not say the failure a second time."""
     steps = [s for p in phases for s in p["steps"]]
     trail = [t for p in phases for t in p["trail"]]
     states = {s["state"] for s in steps}
@@ -546,3 +565,183 @@ def record_card(name: str, label: str, phases: list, *, ended: bool, level: str 
     return {"rows": [one], "single": True, "grouped": False, "final": None, "label": label,
             "key": key or label.lower().replace(" ", "-"), "lead": lead, "trail": trail,
             "ended": ended, "summarised": bool(summarised)}
+
+
+# ── Stages: progress, not mechanics ─────────────────────────────────────────────────────────
+
+#: A stage's state in words, for a reader the colour does not reach.
+STAGE_WORDS = {"done": "done", "running": "in progress", "waiting": "not started",
+               "failed": "failed", "partial": "not fully done",
+               "not_reached": "not reached: the run stopped before it",
+               "skipped": "not needed in this run"}
+
+
+def duration_words(seconds) -> str:
+    """*seconds* as a person reads a duration: ``45 s``, ``4 min 12 s``, ``1 h 3 min``."""
+    s = int(round(max(0.0, float(seconds or 0))))
+    if s < 60:
+        return f"{s} s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m} min {s} s" if s else f"{m} min"
+    h, m = divmod(m, 60)
+    return f"{h} h {m} min" if m else f"{h} h"
+
+
+def stage_state(states, ended: bool) -> str:
+    """A stage's state from its steps' *states*: failed when one failed, in progress when one
+    runs (or, before the run *ended*, when some are done and the rest pending: it is between
+    two of them), not fully done when one is; done only when every step is done or not
+    needed and one is done; pending when none has begun. Done is never drawn beside a step
+    that is not."""
+    st = set(states)
+    if not st:
+        return "skipped"
+    for worst in ("failed", "running", "partial"):
+        if worst in st:
+            return worst
+    if st <= {"done", "skipped"}:
+        return "done" if "done" in st else "skipped"
+    if st <= {"waiting", "skipped"}:
+        return "waiting"
+    if st <= {"not_reached", "skipped"}:
+        return "not_reached"
+    if not ended and "waiting" in st:
+        return "running"
+    return "partial"
+
+
+def _stage_lead(steps: list, state: str):
+    """The step a stage's sentence is about: its failed one, else its running one, else the
+    one not fully done; for a stage between two steps, the next one pending."""
+    for want in ("failed", "running", "partial"):
+        got = next((s for s in steps if s["state"] == want), None)
+        if got:
+            return got
+    if state == "running":
+        return next((s for s in steps if s["state"] == "waiting"), None)
+    return None
+
+
+def _first_said(text: str) -> str:
+    text = str(text or "").strip()
+    return text[:1].upper() + text[1:] if text else ""
+
+
+def _generic_sentence(g: dict, summarised: bool = False) -> str:
+    """A stage's one plain sentence when its operation says none: what its last step said
+    once done; the step it is on while it runs; the step that failed and why, in one line."""
+    lead, state = g["lead"], g["state"]
+    if state == "done":
+        said = next((s["said"] for s in reversed(g["steps"]) if s.get("said")), "")
+        return _first_said(said) or "Done"
+    if state == "running":
+        return f"{lead['words']}…" if lead else "In progress…"
+    if state in ("failed", "partial"):
+        why = "" if summarised else (
+            (lead or {}).get("why") or [(lead or {}).get("said") or ""])[0]
+        head = (lead or {}).get("words") or g["name"]
+        return (f"{head} failed" if state == "failed" else f"{head} not fully done") + (
+            f": {why}" if why else "")
+    return {"waiting": "Not started yet", "not_reached": "Not reached: the run stopped before it",
+            "skipped": "Not needed in this run"}[state]
+
+
+def stages(card: dict, declared, *, ended: bool, now: float = None, sentence=None,
+           nested: dict = None) -> dict:
+    """*card* (`record_card`'s) drawn as its operation's STAGES (the operator, 2026-11-12:
+    "TOO MANY STEPS: a person cares about progress, not mechanics. The stepper shows FIVE
+    stages: Detected → Decided → Fixing → Checking → Done, each with one plain sentence, its
+    time and its state (e.g. "Applying 3 lines to <device>…", "Waiting for <device>'s heartbeat:
+    120 s left", "Healed and verified in 4 min 12 s"). Each stage expands to its detailed steps
+    (today's labels, and the deploy's stages under Fixing). A failure names its stage and why,
+    in one line. Apply the same five-stage pattern to every operation's stepper").
+
+    *declared*: ``((key, name, step keys), ...)``, the operation's stages in order and the
+    keys of the card's steps under each (as the card keys them: a phase's prefix included).
+    A step no stage names joins the stage of the step before it, so nothing recorded is
+    hidden; a stage with no step on this card (a Re-add's, which removes nothing) is left
+    out. Each stage: its ``state`` from its steps (`stage_state`), when it began (``began``,
+    its first step's) and how long it took once it ended (``took_words``), or since when it
+    runs (``since``); its ``sentence``, the operation's own (*sentence*, called with the
+    stage, may return "" for the generic one), else `_generic_sentence`; while it waits on a
+    declared wait, that wait (``wait``, the page's countdown); and its ``steps``, each step's
+    label, state, time and one-line outcome, with what a step that did not pass read
+    (``read``: each such record's ``checks`` and ``more``) and, under a step *nested* names, that step's own sub-steps
+    (``substeps``: the deploy's stages under a heal's Apply, C3160). The card carries ``stages``
+    (and the place of the stage it is on, ``stage_at`` of ``stage_of``); the macro then draws
+    them as its one stepper, a single row that wraps, in place of the row, the lead and the
+    steps taken."""
+    now = time.time() if now is None else now
+    steps = list((card.get("rows") or [{}])[0].get("steps") or [])
+    trail = card.get("trail") or []
+    # A card that already says why its run failed (a result's red box, a row's cause:
+    # `record_card`'s *summarised*): its failed stage names the step, and the why stays there.
+    summarised = bool(card.get("summarised"))
+    owner = {}
+    for i, (_k, _n, keys) in enumerate(declared):
+        for key in keys:
+            owner.setdefault(key, i)
+    groups, last = [[] for _ in declared], 0
+    for s in steps:
+        last = owner.get(s["key"], last)
+        groups[last].append(s)
+    # What each record of a step that did not pass read (a verify per subscription: each its
+    # own checks), under that step alone.
+    checked = {}
+    for t in trail:
+        if t.get("state") in ("failed", "partial") and (t.get("checks") or t.get("more")):
+            checked.setdefault(t.get("step_key") or t.get("key"), []).append(t)
+    out = []
+    for (key, name, _keys), group in zip(declared, groups):
+        if not group:
+            continue
+        drawn = []
+        for s in group:
+            got = checked.get(s["key"]) or []
+            drawn.append(dict(s, read=[{"of": f"{i + 1} of {len(got)}" if len(got) > 1 else "",
+                                        "checks": t.get("checks") or [],
+                                        "more": t.get("more") or []}
+                                       for i, t in enumerate(got)],
+                              substeps=list((nested or {}).get(s["key"]) or [])))
+        state = stage_state([s["state"] for s in drawn], ended)
+        # Its steps are recorded in the order they ran, which need not be the declared one
+        # (a heal saves before it reads its symptom): it began at the earliest of them.
+        starts = sorted((e, iso) for iso in (s.get("began") or s.get("at") for s in drawn)
+                        if iso for e in [_epoch(iso)] if e is not None)
+        began = starts[0][1] if starts else ""
+        ends = [e for e in (_epoch(s.get("at")) for s in drawn if s.get("at")) if e is not None]
+        b = starts[0][0] if starts else None
+        took = (max(ends) - b if state in ("done", "partial", "failed") and ends and b is not None
+                else None)
+        lead = _stage_lead(drawn, state)
+        g = {"key": key, "name": name, "state": state, "state_words": STAGE_WORDS[state],
+             "began": began, "took_s": (round(now - b) if state == "running" and b is not None
+                                        else round(took) if took is not None else None),
+             "took_words": duration_words(took) if took is not None and took >= 1 else "",
+             "since": began if state == "running" else "",
+             "lead": lead, "lead_key": (lead or {}).get("key") if state != "waiting" else "",
+             "wait": ((lead or {}).get("wait") if state == "running"
+                      and (lead or {}).get("state") == "running" else None),
+             "steps": drawn, "sentence": ""}
+        g["sentence"] = (sentence(g) if sentence else "") or _generic_sentence(g, summarised)
+        if lead and lead["state"] in ("failed", "partial") and lead.get("said") and (
+                summarised or lead["said"] in g["sentence"]):
+            # Why, said ONCE: in the sentence, or the summary the card already draws (a
+            # result's red box: *summarised*), never again on its step's line.
+            lead["said"] = ""
+        out.append(g)
+    # Never green over a partial or a failure: once the run ended, its last stage is no better
+    # than the run's own outcome (`record_card`'s row: its steps' worst, capped by its level).
+    group = ((card.get("rows") or [{}])[0]).get("group")
+    if ended and out and group in ("failed", "partial") and out[-1]["state"] == "done":
+        out[-1].update(state=group, state_words=STAGE_WORDS[group], took_words="")
+    at = next((i for i, g in enumerate(out) if g["state"] in ("failed", "running")), None)
+    if at is None:
+        at = next((i for i, g in enumerate(out) if g["state"] == "partial"), len(out) - 1)
+    # The trail is kept for what counts it (the In progress row's "N steps recorded"); its
+    # key into the stages was this function's alone.
+    # Its *summarised* is spent here: the stages say what it decided.
+    card = {k: v for k, v in card.items() if k != "summarised"}
+    return dict(card, stages=out, stage_at=at + 1 if out else 0, stage_of=len(out),
+                trail=[{k: v for k, v in t.items() if k != "step_key"} for t in trail])

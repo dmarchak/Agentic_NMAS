@@ -306,10 +306,13 @@ class TestTheChip:
         assert "rotated and persisted" in html and "Open the result" in html
         page = chip["client"].get("/v2/device/r2").get_data(as_text=True)
         body = page[page.index('id="tab-body"'):]
-        assert "op-card op-ok" in body and "Finished at" in body, "the page opens the result"
+        # Premise corrected (the operator, 2026-11-12: "no "Reopened" label"; C3122): the
+        # banner says whose run it is, when it started and that it finished meanwhile.
+        assert "op-card op-ok" in body and "while you were elsewhere" in body, \
+            "the page opens the result"
         assert "ip-chip" not in _bar(chip), "opened: the chip lets it go"
         again = chip["client"].get("/v2/device/r2").get_data(as_text=True)
-        assert "Finished at" not in again, "an opened result is not reopened"
+        assert "while you were elsewhere" not in again, "an opened result is not reopened"
 
     def test_red_wins(self, chip):
         from modules.nsot import credential_rotation as cr
@@ -370,7 +373,9 @@ class TestTheDevicePageReopens:
         _start(chip)
         page = chip["client"].get("/v2/device/r2?tab=history").get_data(as_text=True)
         body = page[page.index('id="tab-body"'):]
-        assert "Rotating r2's credential" in body and "Reopened: started by" in body
+        # Premise corrected (C3122, C3162): "<name>'s run, started <time>", no "Reopened".
+        assert "Rotating r2's credential" in body and "&#39;s run, started <time" in body
+        assert "Reopened" not in body
         assert "/rotate/preview" not in body and "op-confirm" not in body
 
     def test_a_card_freed_by_a_rotation_shows_that_rotation_never_rotate_again(self, chip):

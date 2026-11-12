@@ -46,7 +46,7 @@ def _purge(now: float) -> None:
 
 def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture preview",
           announce_keys: tuple = ANNOUNCE_KEYS, announcer: str = ANNOUNCER,
-          device: str = "", card: str = "") -> str:
+          device: str = "", card: str = "", actor_kind: str = "") -> str:
     """Run ``work(job_id) -> payload`` on its own thread and return the id at
     once. *payload* is the response as the page reads it (masked by the
     caller). A raising *work* is the job's `failed` state with its reason.
@@ -58,7 +58,11 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
     *device* and *card* (C537): a job one device's page started, and the card that draws it
     there (`rotate`, `deploy`, `restore`, `reload`), so the device's page reopens that card
     while it runs and its result until each person has opened it (`for_device`), and the top
-    bar's In progress chip lists it (`card_jobs`)."""
+    bar's In progress chip lists it (`card_jobs`).
+
+    *actor_kind*: what *actor* is to a job no person started (C3161): ``policy``, a
+    self-heal run under the policy *actor* confirmed; ``approval``, one a person approved.
+    Such a job is drawn as Mercury's own, never "by <person>" (`heal.run_card.job_by`)."""
     from modules import identity, op_progress
 
     # The identity THIS request's gate verified, carried into the job's thread, so a commit
@@ -74,7 +78,8 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
                          "kind": kind, "keys": tuple(announce_keys), "announcer": announcer,
                          "started_at": now, "finished_at": None, "payload": None,
                          "error": "", "announced": None, "thread": None,
-                         "device": device, "card": card, "actor": actor, "opened": set()}
+                         "device": device, "card": card, "actor": actor,
+                         "actor_kind": actor_kind, "opened": set()}
     op_progress.start(job_id, kind, label, actor=actor, counts="")
     _announce_moved()
 
@@ -146,13 +151,14 @@ def _announce_moved() -> None:
 def card_jobs(now: float = None) -> list:
     """Every job a device's page started that is still kept (running, or finished inside
     `KEEP_S`), newest first: ``{"job", "list", "device", "card", "kind", "state", "actor",
-    "started_at", "finished_at", "opened"}``. A READ of this process's registry."""
+    "actor_kind", "started_at", "finished_at", "opened"}``. A READ of this process's registry."""
     now = time.time() if now is None else now
     with _lock:
         _purge(now)
         rows = [{"job": k, "list": v["list"], "device": v.get("device", ""),
                  "card": v.get("card", ""), "kind": v["kind"], "state": v["state"],
-                 "actor": v.get("actor", ""), "started_at": v["started_at"],
+                 "actor": v.get("actor", ""), "actor_kind": v.get("actor_kind", ""),
+                 "started_at": v["started_at"],
                  "finished_at": v["finished_at"], "opened": set(v.get("opened") or ())}
                 for k, v in _jobs.items() if v.get("card") and v.get("device")]
     return sorted(rows, key=lambda r: r["started_at"], reverse=True)

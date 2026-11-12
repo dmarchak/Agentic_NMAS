@@ -31,7 +31,13 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `01ab7766b563dd9db9342233eb39869020f8515de77a7b22702e7f098eb9835c`
+Templates sha256: `212ab38243a2cd8eba782686817d5d025b94402d894799f1af7f8eed869ebd9e`
+
+**Hashed again 2026-11-12 for the one stepper's stages** (C3159 to C3163;
+docs/fidelity/stepper.md): the macro draws a run from its own record as its stages, in place
+of the lead and The steps taken. This page draws the stepper's bar and counts (`run_summary`),
+which did not change, so no region here moved and every verdict stands. Templates sha256
+before: `01ab7766b563dd9db9342233eb39869020f8515de77a7b22702e7f098eb9835c`.
 
 **Hashed again 2026-11-11 after the operator's test of the first slice**, for
 `_run_stepper.html` alone ("Say the failure once"; "short labels ... No full sentences in the
