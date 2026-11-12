@@ -182,6 +182,27 @@ def _needs_attention_shared_value_cleared():
 
 
 @pytest.fixture(autouse=True)
+def _no_time_zone_kept_by_another_test():
+    """No test reads a time zone another test kept (C3394). A real browser's first visit keeps
+    its zone for the verified test person (modules/time_zones.py, the store in the session's
+    data folder), CI's Firefox reading UTC and the laptop's America/Denver, so a later test in
+    the same process drawing "the host's zone" drew the browser's instead (CI runs #1656 and
+    #1657). The store is removed before and after each test; a test that keeps a zone keeps it
+    for itself."""
+    from modules import time_zones
+
+    def clear():
+        try:
+            os.remove(time_zones._path())
+        except FileNotFoundError:
+            pass
+
+    clear()
+    yield
+    clear()
+
+
+@pytest.fixture(autouse=True)
 def _socketio_server_sends_to_real_clients():
     """After each test, the app's Socket.IO server sends through its own methods again.
 
