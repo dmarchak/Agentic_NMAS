@@ -303,7 +303,7 @@ def action(network: str) -> dict:
     """The blind row's one action: where Loki's connection is tested for the network."""
     from urllib.parse import quote
 
-    return {"label": ("Test Loki's connection in this network's Settings › Integrations; "
+    return {"label": ("Test Loki's connection in this network's Settings, Integrations tab; "
                       "the row clears itself when detection reads Loki again"),
             "href": f"/v2/settings/network/{quote(network, safe='')}?tab=integrations"}
 
