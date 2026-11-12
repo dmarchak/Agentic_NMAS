@@ -2186,6 +2186,47 @@ def _netbox_lag(client, _lab, _mp):
         mp.undo()
 
 
+def _neighbours_held(client, _lab, _mp):
+    """The device page's Neighbours tab drawing the adjacencies reader's stored view (C3166
+    slice 3): the REAL reader's one run, its store in a folder of its own, over the nine real
+    fleet configs parsed as committed intent and Prometheus's real answer captured read-only
+    (tests/test_neighbours.py's fixtures, through tests/test_adjacencies_reader.py's source),
+    and the RIP reader's real reads of r1, r2, s1 and s2; then r3's tab (OSPF, OSPFv3, BGP),
+    the walk's device, drawn. Its patches and store are undone before the next provider."""
+    import shutil
+    import tempfile
+    from types import SimpleNamespace
+
+    import pytest
+
+    from modules import reader_job
+    from modules.readers import adjacencies as ADJ
+    from tests.test_adjacencies_reader import _source
+    from tests.test_neighbours import _capture, _intents
+    from tests.test_topology_graph import _rip
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-neighbours-")
+    try:
+        intents = _intents()
+        mp.setattr(reader_job, "store_path",
+                   lambda name: os.path.join(folder, f"{name}.json"))
+        mp.setattr("modules.neighbours.committed_intents", lambda repo: (intents, ""))
+        mp.setattr(ADJ, "lists", lambda: [
+            ("Lab", SimpleNamespace(name="Lab", repo_dir="/nowhere"), sorted(intents))])
+        mp.setattr("modules.integration_groups.merged",
+                   lambda group, fetch: _source(_capture())())
+        mp.setattr(ADJ, "_rip_answer", lambda: ({"Lab": _rip()}, ""))
+        doc = reader_job.run_once(ADJ.READER, announce=None)
+        assert doc["last_attempt"]["ok"], doc["last_attempt"]
+        r = client.get("/v2/device/r3/neighbours?list=Lab", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and '<h3 class="nb-proto">OSPF</h3>' in r.get_data(
+            as_text=True), r.status_code
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 #: Two real commits asking for the same checked host step, `[updater]`, newest first, each
 #: trailer cut to its first sentence: what the panel's checked-done row draws (C2246).
 UPDATER_STEPS = (
@@ -4662,7 +4703,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _attention_withheld,
                    _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
-                   _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _silenced_alert,
+                   _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
+                   _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,

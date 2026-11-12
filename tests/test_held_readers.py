@@ -228,16 +228,25 @@ class TestTheAdjacencyViews:
         assert set(big["views"]) == {f"Lab:{h}" for h in big_hosts}
 
     def test_the_view_is_what_the_tab_drew_before(self, fleet):
-        """The stored view is the one `for_device` drew from the same answer: its protocols,
-        its counts with RIP's, and no_intent."""
+        """The stored view is what the tab drew from the same answer: each protocol's words,
+        why, as-of and measured, each row's drawn keys, the two counts the head adds up, and
+        no_intent; nothing the tab does not draw is carried."""
         from modules import neighbours as N
         from tests.test_neighbours import _for
         value, _hosts = self._read(fleet, 1, [])
         res, up = _for(fleet.cap, "r3")
         want = N.compare(fleet.intents, "r3", res, up, now=T0)
         got = value["views"]["Lab:r3"]
-        assert got["protocols"] == want["protocols"] and got["no_intent"] is False
-        assert got["counts"] == want["counts"]
+        drawn_p = {"words", "why", "as_of", "measured"}
+        drawn_r = {"managed", "peer", "address", "rid", "via", "state", "words", "as_of",
+                   "at_iso"}
+        assert [p["words"] for p in got["protocols"]] == [p["words"] for p in want["protocols"]]
+        for g, w in zip(got["protocols"], want["protocols"]):
+            assert set(g) == ({k for k in w if k in drawn_p} | {"rows"})
+            assert g["rows"] == [{k: r[k] for k in r if k in drawn_r} for r in w["rows"]]
+            assert all(set(r) <= drawn_r for r in g["rows"]) and g["rows"]
+        assert got["counts"] == {s: want["counts"][s] for s in ("down", "not_seen")}
+        assert got["no_intent"] is False
 
     def test_the_tabs_read_compares_nothing_and_asks_nothing(self, fleet, store, monkeypatch):
         from modules import neighbours as N

@@ -132,7 +132,6 @@ UNDRAWN = {
         ("drawn seconds", PANELS), ("is_default", DEFAULT_BADGE), ("value_from", VALUE_FROM),
         ("checked not_reporting", COVERAGE_ROW), ("reporting sections", COVERAGE_FACTS),
         ("identity people", HISTORY_SHELL), ("verified", EVENT_VERIFIED),
-        ("proto", "the neighbour protocol's id: its words are drawn"),
         ("age_seconds counts elapsed_s total", PENDING_UNDRAWN)],
     "GET /v2/device/<name>/pending/progress": [
         ("age_seconds counts elapsed_s identity total", PENDING_UNDRAWN)],
@@ -155,10 +154,7 @@ UNDRAWN = {
         ("drawn seconds", PANELS), ("is_default", DEFAULT_BADGE), ("value_from", VALUE_FROM),
         ("checked host not_reporting", COVERAGE_ROW),
         ("golden platform profile reporting role", COVERAGE_FACTS)],
-    "GET /v2/device/<name>/neighbours": [
-        ("device_type ip username", DEVICE_ROW),
-        ("proto source", "the protocol's id (its words are drawn) and a marker set on RIP "
-                         "entries that nothing reads")],
+    "GET /v2/device/<name>/neighbours": [("device_type ip username", DEVICE_ROW)],
     "GET /v2/device/<name>/netbox": [("device_type ip username", DEVICE_ROW)],
     "GET /v2/device/<name>/overview": [
         ("username", "the login the tool uses: drawn in the device page's header, around this "
@@ -388,7 +384,10 @@ UNDRAWN = {
 #: drawn, none listed.
 #: -1 2026-10-28: C2090, DHCP › Leases draws a delegated prefix's `prefix_len` (DHCPv6 IA_PD)
 #: as `<address>/<prefix_len>`.
-UNDRAWN_CEILING = 380
+#: -3 2026-11-12: C3166 slice 3, the Neighbours tab draws the adjacencies reader's stored view,
+#: which carries only what the tab draws (adjacencies `VIEW_*`): no protocol id `proto` (on
+#: the tab or the device page) and no RIP `source` marker.
+UNDRAWN_CEILING = 377
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.
@@ -663,7 +662,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_logs_view.html t.xticks": _LOKI,
     "v2/_monitoring.html m.folded.panels": "a dashboard's folded rows: the captured dashboards the lab's Grafana answers with fold none",
     "v2/_neighbours.html n.errors": _ERRORS,
-    "v2/_neighbours.html p.rows": "the Neighbours tab's adjacency rows per protocol: no Prometheus or RIP reader answers the walk with one",
     "v2/_netbox.html nb.errors": _ERRORS,
     "v2/_network_source.html pv.would.skipped": _OP + " (the source change's preview, NetBox read with new filters)",
     "v2/_network_source.html s.credential_choices": "the source card's credentials networks: the walk's one network has no other network with its own list",
@@ -853,7 +851,10 @@ EMPTY_IN_FIXTURE = {
 #: controller layer, so 27 of `_topology_map.html`'s loops drew, measured.
 #: 330 with the Update provider's said-done and declined host steps (the operator, 2026-11-11:
 #: a host step declined with a reason): "Host steps said done" and its commits drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 329
+#: 328 with the Neighbours provider (C3166 slice 3, 2026-11-12): the adjacencies reader's real
+#: run over the fleet's configs and Prometheus's captured answer, r3's tab drawn from its
+#: stored view, so `_neighbours.html`'s rows per protocol drew, measured.
+EMPTY_IN_FIXTURE_CEILING = 328
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

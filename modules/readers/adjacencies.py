@@ -94,6 +94,28 @@ def _key(list_name: str, host: str, row: dict) -> str:
     return f"{list_name}|{row['proto']}|{host}|{row.get('address', '')}"
 
 
+#: What the Neighbours tab draws of a device's view (templates/v2/_neighbours.html), and so
+#: all a stored view carries (CLAUDE.md: every carried field is drawn): each protocol's words,
+#: why, as-of and whether it is measured, its rows; each row's peer, address, router id, via,
+#: state, words and times; the two counts the tab's head sentence adds up.
+VIEW_PROTOCOL_KEYS = ("words", "why", "as_of", "measured")
+VIEW_ROW_KEYS = ("managed", "peer", "address", "rid", "via", "state", "words", "as_of",
+                 "at_iso")
+VIEW_COUNTS = ("down", "not_seen")
+
+
+def _drawn_view(protocols: list, no_intent: bool, err: str) -> dict:
+    """A device's view as the tab draws it, from the comparison's *protocols* (RIP's
+    included), copied: the comparison itself is read again below for the states and rows."""
+    return {"protocols": [dict({k: p[k] for k in VIEW_PROTOCOL_KEYS if k in p},
+                               rows=[{k: r[k] for k in VIEW_ROW_KEYS if k in r}
+                                     for r in p["rows"]])
+                          for p in protocols],
+            "no_intent": no_intent, "errors": [err] if err else [],
+            "counts": {s: sum(1 for p in protocols for r in p["rows"] if r["state"] == s)
+                       for s in VIEW_COUNTS}}
+
+
 def read(previous=None, clock=None, source=None, population=None, rip=None) -> dict:
     from modules.neighbours import committed_intents, compare
 
@@ -130,12 +152,8 @@ def read(previous=None, clock=None, source=None, population=None, rip=None) -> d
                 if configured else {"protocols": []}
             view["protocols"] = list(view["protocols"]) + rip_protocols(
                 intents, host, rip, rip_error)
-            views[f"{list_name}:{host}"] = {
-                "protocols": view["protocols"], "no_intent": host not in intents,
-                "errors": [err] if err else [],
-                "counts": {s: sum(1 for p in view["protocols"] for r in p["rows"]
-                                  if r["state"] == s)
-                           for s in ("up", "down", "not_seen", "unexpected")}}
+            views[f"{list_name}:{host}"] = _drawn_view(view["protocols"],
+                                                       no_intent=host not in intents, err=err)
             for p in view["protocols"]:
                 kinds = {r["state"] for r in p["rows"]}
                 states.setdefault(f"{list_name}:{host}", {})[p.get("proto") or p["words"]] = (
