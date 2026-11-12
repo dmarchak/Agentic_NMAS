@@ -66,14 +66,15 @@ FULL_LOCK = os.environ.get("NMAS_FULL_LOCK",
 #: systemd-oomd on memory pressure) and 15.33 GiB (06:10 UTC, b4f68c92's gate: capped at 15.5
 #: with throttling from 15.0, high 87204, no OOM) and 15.57 GiB (06:35 UTC, the memory change's
 #: own gate: MemoryMax 16.4 only, high 0, no OOM), and 16.01 GiB (09:40 UTC, 88e0316b's gate,
-#: under 16.6: within 0.6 GiB of its cap). 2 workers is the highest, rounded up to 16.1 (the cap
-#: is the measured peak + 1 GiB). 1 worker is still the free-memory figure until a capped
-#: 1-worker gate is measured.
-#: 3 and 4 workers are PROJECTED, not measured: linear from those two (8.7 GiB a worker), so a
-#: machine with the memory still reaches CI's four; this laptop never has them free (26.8 and
-#: 35.5 GiB with the margin). Measure one before relying on it.
-GATE_PEAK = {1: 74 * GIB // 10, 2: 161 * GIB // 10,       # in whole bytes, exact tenths
-             3: 248 * GIB // 10, 4: 335 * GIB // 10}
+#: under 16.6: within 0.6 GiB of its cap), and 16.45 GiB (12:17 UTC, the Lab 10 docs' gate,
+#: under 17.1: within 0.65 GiB of its cap; high 0, no OOM). 2 workers is the highest, rounded up
+#: to 16.5 (the cap is the measured peak + 1 GiB). 1 worker is still the free-memory figure until
+#: a capped 1-worker gate is measured.
+#: 3 and 4 workers are PROJECTED, not measured: linear from those two (9.1 GiB a worker), so a
+#: machine with the memory still reaches CI's four; this laptop never has them free (27.6 and
+#: 36.7 GiB with the margin). Measure one before relying on it.
+GATE_PEAK = {1: 74 * GIB // 10, 2: 165 * GIB // 10,       # in whole bytes, exact tenths
+             3: 256 * GIB // 10, 4: 347 * GIB // 10}
 #: Left beside the gate's measured peak (the operator's 2 GB margin).
 GATE_MARGIN = 2 * GIB
 #: A build's tests run beside a gate only through `--beside`: under this cap, holding

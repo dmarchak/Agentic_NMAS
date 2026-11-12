@@ -164,8 +164,8 @@ step is the deploy pipeline's ([Deploy](deploy)):
    the applet that intent's syslog block declares as the device's heartbeat, the heartbeat itself
    is a symptom: the heal waits for the device's next heartbeat line, read from the arrivals
    Coverage already stores for the whole fleet (no device is read). It waits up to about 2.5
-   times the applet's own interval in intent plus the 2 minutes the logs read takes to hold a
-   line: 1050 s for a 300 s heartbeat. The heal is healed and verified only when the heartbeat
+   times the sum of the applet's own interval in intent and the 2 minutes the logs read takes
+   to hold a line: 2.5 × (300 + 120) = 1050 s for a 300 s heartbeat. The heal is healed and verified only when the heartbeat
    arrives; if none has arrived by then it ends **symptom remains** (amber), saying how long it
    waited and the newest heartbeat it read. Any other applet, and any other missing line, keeps
    its own symptom.
@@ -245,6 +245,11 @@ ids, the program
 golden commit (`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the
 change record and the NetBox journal entry. A healed incident is History and a notice, never a Needs attention
 item.
+
+**Each incident has its own page**, `/v2/incident/<id>` ([An incident's page](incident)): its
+four recorded times and its time to repair, its five stages, what is left for a person, and its
+record. A self-healing row on History, and a Needs attention item about one incident, open it with
+**Open the incident**, and the team's message links it.
 
 **Download the change record (.md)**, beside **Show the change** on the opened row, saves the
 incident's change record as a Markdown file named for the device and the incident, masked as

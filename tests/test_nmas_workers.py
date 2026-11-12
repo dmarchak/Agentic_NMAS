@@ -59,15 +59,16 @@ def _meminfo(tmp_path, gib: float) -> str:
     (30.0, 1, 0, 4),       # never more than CI's four
     (5.6, 1, 1, 2),        # a headless browser counts as one worker's memory
     # Several runs at once are the gate's suite, sized by its measured peak since 2026-11-12
-    # (the operator: "A gate alone keeps 2 workers at 16 GiB free"): 16.1 GiB at 2 workers (the
-    # capped gates' cgroup peak) plus 2 GiB, so 2 from 18.1 GiB (3 and 4 projected: 26.8
-    # and 35.5 GiB); the 2026-10-19 formula gave 3 at 21.6 GiB and 4 at 30 GiB.
+    # (the operator: "A gate alone keeps 2 workers at 16 GiB free"): 16.5 GiB at 2 workers (the
+    # capped gates' cgroup peak, 16.45 on 2026-11-12 12:17 UTC) plus 2 GiB, so 2 from 18.5 GiB
+    # (3 and 4 projected: 27.6 and 36.7 GiB); the 2026-10-19 formula gave 3 at 21.6 GiB and 4
+    # at 30 GiB.
     (10.6, 4, 2, 1),       # the gate's four shards and two browsers, after the agents ended
     (30.0, 4, 2, 3),
-    (35.5, 4, 2, 4),
+    (36.7, 4, 2, 4),
     (21.6, 4, 2, 2),
-    (18.1, 5, 3, 2),
-    (18.0, 5, 3, 1),
+    (18.5, 5, 3, 2),
+    (18.4, 5, 3, 1),
     (1.0, 1, 0, 1),        # at least 1, however low
     (0.0, 4, 2, 1),
 ])
@@ -85,7 +86,7 @@ class TestABuildBesideTheGate:
 
     def test_the_gate_takes_one_worker_while_a_capped_run_tests(self):
         assert W.workers(30 * GIB, 5, 3, beside=True) == 1
-        assert W.workers(36 * GIB, 5, 3, beside=False) == 4
+        assert W.workers(37 * GIB, 5, 3, beside=False) == 4
         assert "capped run is testing beside" in W.explain(30 * GIB, 5, 3, beside=True)
 
     def test_a_held_beside_lock_is_seen_and_an_absent_one_is_not_made(self, tmp_path):
@@ -266,7 +267,7 @@ class TestTheLaptopCeiling:
         assert W.workers(30 * GIB, 5, 3, beside=False) == 2
         assert W.gate_cap(30 * GIB, False) == (2, W.GATE_PEAK[2] + GIB)
         monkeypatch.delenv("NMAS_GATE_CEILING")
-        assert W.workers(36 * GIB, 5, 3, beside=False) == 4     # CI's, with no ceiling set
+        assert W.workers(37 * GIB, 5, 3, beside=False) == 4     # CI's, with no ceiling set
 
     def test_the_cap_is_the_worker_count_s_peak_plus_1_gib(self, monkeypatch):
         """A cap only (MemoryMax), the worker count's measured peak + 1 GiB; 1 worker 9.5 GiB
@@ -276,8 +277,8 @@ class TestTheLaptopCeiling:
         assert (n, round(cap / GIB, 1)) == (1, 9.5)
         n, cap = W.gate_cap(int(16.4 * GIB), False)
         assert (n, round(cap / GIB, 1)) == (1, 9.5)
-        n, cap = W.gate_cap(int(18.1 * GIB) + 1, False)
-        assert (n, round(cap / GIB, 1)) == (2, 17.1)
+        n, cap = W.gate_cap(int(18.5 * GIB) + 1, False)
+        assert (n, round(cap / GIB, 1)) == (2, 17.5)
 
     def test_the_helper_prints_the_count_and_the_cap(self, tmp_path):
         env = dict(os.environ, NMAS_MEMINFO=_meminfo(tmp_path, 30.0), NMAS_GATE_CEILING="2",
@@ -335,8 +336,8 @@ def test_the_helper_prints_the_count_and_its_words(tmp_path):
                             "--explain"], env=env, capture_output=True, text=True,
                            check=True).stdout
     assert words.startswith("1 worker(s) per run: MemAvailable 6.9 GiB, the gate's peaks "
-                            "1 worker(s) 7.4 GiB measured, 2 worker(s) 16.1 GiB measured, "
-                            "3 worker(s) 24.8 GiB projected, 4 worker(s) 33.5 GiB projected, "
+                            "1 worker(s) 7.4 GiB measured, 2 worker(s) 16.5 GiB measured, "
+                            "3 worker(s) 25.6 GiB projected, 4 worker(s) 34.7 GiB projected, "
                             "each plus 2 GiB")
 
 
@@ -344,7 +345,7 @@ class TestTheGate:
     def test_each_shard_takes_its_share_and_its_bound_scales(self, tmp_path, monkeypatch):
         monkeypatch.setenv("NMAS_BESIDE_LOCK", str(tmp_path / "beside.lock"))
         gate = _load("nmas_gate_w", "scripts/nmas-gate")
-        assert gate.suite_workers(int(36 * GIB))[0] == 4
+        assert gate.suite_workers(int(37 * GIB))[0] == 4
         assert gate.suite_workers(int(10.6 * GIB))[0] == 1
         assert gate.suite_bound(4) == 740 and gate.suite_bound(1) == 2960
         cmd = gate.SUITE.format(py="P", shard="a", cov="D", n=1, bound=gate.suite_bound(1),

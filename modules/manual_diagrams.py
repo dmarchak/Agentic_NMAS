@@ -2162,6 +2162,39 @@ def ai_background():
     ])
 
 
+def testing():
+    return svg(424, (
+        "Running the tests and their coverage. scripts/nmas-test runs pytest in CI's Python "
+        "inside a network namespace that holds loopback alone, with a temporary data folder, "
+        "so no test reaches a device, a network or a real store. Each test's tier (unit, "
+        "spawns or browser) is recorded, and coverage.py records the lines each tier ran. "
+        "scripts/nmas-coverage report reads both: the functions a unit test reached, module by "
+        "module, the lines, and the ratchet against the committed baseline, written as HTML "
+        "and JSON where you name them. The baseline moves only when a person runs "
+        "nmas-coverage baseline. scripts/nmas-gate runs the suite as CI runs it, then the "
+        "ratchet, before it commits."), [
+        band(8, 150, "A loopback-only namespace"),
+        store(14, 32, 186, 38, "scripts/nmas-test", "CI's Python, -n by memory"), num(14, 32, 1),
+        svc(14, 84, 186, 34, "pytest", "a temporary data folder"),
+        arrow("rec", 107, 70, 107, 84),
+        device(262, 36, 118, 56, "A device", "never reached", off=True),
+        nosend(232, 101),
+        t(262, 122, "No network:", "sm"), t(262, 135, "loopback only", "sm"),
+        store(14, 172, 186, 38, "The tier record", "unit, spawns or browser"), num(14, 172, 2),
+        store(214, 172, 172, 38, "coverage.py", "the lines each tier ran"), num(214, 172, 3),
+        arrow("rec", 107, 118, 107, 172), arrow("rec", 160, 118, 300, 172),
+        doc("box", 14, 236, 372, 40, "scripts/nmas-coverage report",
+            "functions a unit test reached, lines, the ratchet"), num(14, 236, 4),
+        arrow("rec", 107, 210, 107, 236), arrow("rec", 300, 210, 300, 236),
+        store(14, 302, 186, 38, "coverage.html, .json", "where --html and --json say"),
+        repo(214, 298, 172, 48, "The baseline", "moves only by a person"),
+        arrow("rec", 107, 276, 107, 302), arrow("rec", 300, 298, 300, 276),
+        store(14, 372, 372, 40, "scripts/nmas-gate",
+              "the suite as CI runs it, the ratchet, then the commit"),
+        num(14, 372, 5),
+    ])
+
+
 def ai_feedback():
     return svg(470, (
         "Was this right? under an AI answer. You press Yes, or No with what was wrong and a "
@@ -2403,6 +2436,7 @@ DIAGRAMS = {
     "installation-settings": installation_settings,
     "ai-background": ai_background,
     "ai-feedback": ai_feedback,
+    "testing": testing,
     "change-record": change_record,
     "assistant": assistant,
     "edit-intent": edit_intent,

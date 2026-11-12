@@ -57,6 +57,12 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     from modules import credential_changes
     monkeypatch.setattr(credential_changes, "_path",
                         lambda: str(tmp_path / "credential_changes.jsonl"))
+    # And the installation's settings record (2026-11-12, the gate's browser3 shard with two
+    # workers again): a test that saved an installation card earlier in the worker left its
+    # change in the session's store, and History drew it among this lab's fleet rows as
+    # `setting`.
+    from modules import installation_settings
+    monkeypatch.setattr(installation_settings, "_path", lambda name: str(tmp_path / name))
     from modules.nsot import credential_rotation as cr
     from modules.nsot import listref, receipts
     from modules.nsot import repo as R

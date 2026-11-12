@@ -76,8 +76,58 @@ on its Needs attention item.
 
 ## AI troubleshooting {#ai-troubleshooting}
 
-AI troubleshooting is not built yet, and the section says so. An AI analysis kept for the
-incident today is drawn under it, labelled advisory: self-healing never reads it.
+**On the page today** the section is labelled **not built yet** and says so: "Not built yet: AI
+troubleshooting will be here. Mercury's own account is above, with no AI." An incident Mercury
+fixed with no AI call recorded says "Not needed: Mercury fixed it without AI." An AI analysis
+kept for the incident (the can't-fix analysis its team's message carried,
+[Notifications](notifications#cant-fix)) is drawn under it, labelled advisory: self-healing
+never reads it.
+
+**What is built underneath, and not drawn yet.** The parts of AI troubleshooting that need no
+AI call exist in Mercury's code (`modules/fixit/`), and no screen shows them yet:
+
+- **The mode**, the installation's: **Manual** by default, in which an AI troubleshoot runs
+  only when a verified person asks for one, as a job, and the model is never called for an
+  incident on its own; or **Off**, in which none is offered and Mercury's own proposer still
+  proposes. There is no automatic mode: a model called with no person asking is a background
+  AI feature, turned on only in Settings › AI ([Turn a background AI feature on or
+  off](ai-background)), and AI troubleshooting has none.
+- **The cap**, $1.00 an incident by default: what the incident's AI calls cost so far, plus
+  the next attempt's worst case, against the cap. Over it, the attempt is refused, naming all
+  four amounts ("Spent $0.92 in this incident; the next attempt costs at most $0.25, which would
+  make $1.17 against the cap of $1.00. Mercury never raises the cap"); exactly at it is allowed.
+  A cap that is not a positive amount, or a cost that cannot be read, refuses: there is no "no
+  cap".
+- **The catalogue and the check.** A proposal, whoever makes it (Mercury's diagnosis, a
+  model's answer or a person), names one operation from Mercury's catalogue with its
+  parameters, never a command. Today the catalogue holds the telemetry Re-subscribe and its
+  Re-add the receiver ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). Code
+  checks it in order, the first refusal ending the check and naming what it compared: the
+  catalogue's schema; the incident's own scope (its device, the subscriptions its triggers
+  name); the guards that hold any change to a device (a device Mercury manages, no planned work
+  holding it); and committed intent, through the operation's own preview. What passes is that
+  operation's own preview and hash, for a person to approve. A proposal that repeats a fix that
+  already failed in the incident is flagged as a repeat (or a variation, naming each parameter
+  that changed), never hidden.
+- **Mercury's own proposer**, with no AI: a receiver a run left removed is added back first;
+  otherwise, when the lost-stream diagnosis's first hypothesis is complete and its rule is a
+  stream stuck at its ends (half-open, no session, or outlived its cause), it proposes
+  Re-subscribe for the incident's lost subscriptions. Anything else proposes nothing, and says
+  why.
+- **The incident's record** of its proposals and of each person's choice (Cancel, Hand over, a
+  save), masked at rest. Its attempts are read from the operations' own run records each time,
+  never copied, and Cancel runs nothing: the incident stays open with its attempts recorded.
+- **What a model would be sent**: the attempts and the catalogue, masked, every person a stable
+  label ("person-3f9a1c"), never an address or a name.
+- **The hand-over**, a write-up for an engineer in nine sections (summary, impact now, what is
+  known, what was tried, what the AI said or that none was asked, the configuration now, next
+  steps, notes, cost), built from the records with no AI call, kept as a new version each time,
+  and sent to the teams the person chooses among those told about the network's can't-fix,
+  with the incident's link.
+
+**Not built yet:** the section's controls (asking for an AI troubleshoot, approving a proposal,
+retrying with more information, Cancel and Hand over), the AI call itself, and a screen that
+shows or changes the mode and the cap (each holds its default until one does).
 
 ## Evidence {#evidence}
 

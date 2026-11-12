@@ -1,4 +1,22 @@
-# Heal to intent (board H): a design for the operator's review, not built
+# Heal to intent (board H): the design, reviewed, and what is built of it
+
+**Status, 2026-11-12.** Most of this design is built, and the manual says what the code does
+now; where this design and the manual differ, read the manual, which is checked against the
+code. Self-healing's loop, its records, its five-stage card (Detected, Decided, Fixing,
+Checking, Done) and History's **Open the card**: docs/manual/how-it-works/heal.md. A heal by the
+policy is "by Mercury's self-healing · policy set by" the person who confirmed it, by display
+name. A heal that re-applies the heartbeat applet waits for the device's next heartbeat, up to
+2.5 times the sum of the applet's interval and the logs read's 120 s (1050 s for a 300 s
+applet), and is healed only when it arrives. The can't-fix message, its steps as the stepper says them, its local times, display
+names and the link to the incident's page: docs/manual/how-it-works/notifications.md. The
+incident's page (/v2/incident/<id>, read-only, its first slice) and its times:
+docs/manual/screens/incident.md and docs/manual/how-it-works/incident-timeline.md. Fault
+drills: docs/manual/how-it-works/fault-drill.md. How the tests and their coverage are run:
+docs/manual/concepts/testing.md. **Not built yet:** AI troubleshooting's section on the
+incident's page (its controls and its AI call; the parts with no AI call are in
+`modules/fixit/`, section 12's rule in force over them), the screen that shows its mode and
+per-incident cap, and the Slack, Teams and PagerDuty webhook formats (section 10; C2387).
+The sections below are the design as reviewed, kept for its reasons.
 
 **The operator's direction, 2026-11-03, for Lab 10 (automating network troubleshooting).** A
 self-healing application in Mercury: deterministic code, no AI in the loop, the Respond function
@@ -715,6 +733,18 @@ only.**
   references a function that sends, holds a device or starts an operation; and no run is
   called from a loop or a failure's handler.
 
+**AI troubleshooting on the incident's page, its parts with no AI call (2026-11-12, the
+operator's overnight item 6).** `modules/fixit/` holds the incident's own record of proposals
+and choices, its attempts derived from the operations' run records, the mode (Manual by
+default, or off; no automatic mode) and the per-incident cap ($1.00), the check every proposal
+passes whoever made it (the catalog's schema, the incident's scope, the guards, committed intent
+through the operation's own preview; a repeat of a failed fix flagged), Mercury's own proposer
+from the lost-stream diagnosis, what a model would be sent (every person a stable label), and
+the hand-over. This section's rule holds over all of it: nothing in `modules/heal/` imports
+`modules/fixit/` (tests/test_heal_analysis_never_read.py), and nothing there calls a model,
+holds a device or starts a job. The page's section, its controls and the AI call are not built
+yet (docs/manual/screens/incident.md, "AI troubleshooting").
+
 **A background AI call under CLAUDE.md's "AI cost safety" rules** (PHASE8_PLAN 18.3):
 - **Its trigger is named:** `triggers.background("heal_analysis", job, network,
   "heal_incident", <incident id>)`.
@@ -869,8 +899,10 @@ Never, whatever the policy says:
 - **No live network** (the three layers, C46). SMTP and webhooks are tested against loopback
   servers the test starts.
 - **The coverage report for the video:**
-  - `scripts/nmas-coverage report --html` over a run with contexts, filtered to
-    `modules/heal/`: per function, which unit tests reached it;
+  - `scripts/nmas-coverage report --html <file> --only modules/heal/` over a run with
+    contexts (`--cov-context=test`): per function, which unit tests reached it; over a run
+    measured by tier, as a push's is, per function whether a unit test reached it
+    (docs/manual/concepts/testing.md has the commands);
   - beside it, `--summary` for the totals;
   - a red-then-green run shown on one commit (its parent red, its commit green).
 - **Mutation:** the notifier's egress and the analysis's egress are the irreversible tier, so

@@ -144,6 +144,7 @@ PAGES = (
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
     ("credentials-lifecycle", "Credentials: rotate and persist", "Concepts",
      "concepts/credentials-lifecycle.md"),
+    ("testing", "Run the tests and their coverage", "Concepts", "concepts/testing.md"),
     ("needs-attention", "Needs attention", "Screens", "screens/needs-attention.md"),
     ("incident", "An incident's page", "Screens", "screens/incident.md"),
     ("devices", "Devices", "Screens", "screens/devices.md"),

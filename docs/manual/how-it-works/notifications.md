@@ -49,8 +49,10 @@ diagnosis, then **What Mercury tried**: every step the incident's record holds, 
 line each, as the device page's stepper says it: the time it was recorded, the step's short
 label ("Read edge-b", "Decide"), what it recorded, and its result in words ("done", "failed",
 "not fully done"). Then what to do, the AI analysis or its state, **Open in Mercury**, the
-incident's own address (its card on the device's page, opened on History, so a card that cannot
-be drawn still leaves you at the incident's row), and the incident's id with when it was sent.
+incident's own page (`/v2/incident/<id>` on its network, [An incident's page](incident)),
+which draws the incident's stages from its step log after any restart, and the incident's id
+with when it was sent. One function builds that address, so a can't-fix's email, an action's
+end and their webhooks all link the same page.
 Every time is in the time zone of the host Mercury runs on, named once on the last line ("Times
 are in …"); a time on the other side of a daylight-saving change says its own zone beside it.
 People are named by their display name, never by their sign-in identity; in what the analysis
@@ -76,8 +78,9 @@ so it arrives under the first message:
 2. `claim`: it takes it once, under the store's lock, however many of Mercury's processes look.
 3. `send`: it sends what the action acted on and how it ended ("edge1 GigabitEthernet4 bounced,
    still flapping: ... a dampening change waits for a person"), the decision that chose it, its
-   steps and their results, and **What to do** in the words of its Needs attention item, then
-   the link to the device's History. The program's lines are withheld, as a can't-fix's are.
+   steps and their results, as the stepper says them, and **What to do** in the words of its
+   Needs attention item, then the link to the incident's page, the same page a can't-fix links.
+   The program's lines are withheld, as a can't-fix's are.
 
 Which event it is sent as decides which teams are told, by their choices under **Who is told**:
 
