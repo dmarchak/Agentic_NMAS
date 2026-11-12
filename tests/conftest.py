@@ -18,6 +18,12 @@ import tempfile
 
 import pytest
 
+# A gate's worker ceiling (scripts/nmas-workers CEILING_ENV, set by whoever starts a gate on a
+# machine that has not measured more workers: 2026-11-12) sizes THAT gate. The suite the gate
+# runs inherits the gate's environment, and a test of the sizing (the formula, CI's ceiling) is
+# a test of the rule, never of this machine's ceiling: no test runs under it.
+os.environ.pop("NMAS_GATE_CEILING", None)
+
 # ---------------------------------------------------------------------------
 # THE SUITE NEVER TOUCHES THE LIVE STORE (2026-09-26)
 # ---------------------------------------------------------------------------

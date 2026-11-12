@@ -90,11 +90,19 @@
     }, 0);
   }
 
+  // What a click passed over before the scripts ran landed on (C2234: CI #1631's early click
+  // left no "kept" step at all, so where it landed is the next measurement).
+  function what(t) {
+    if (!t || !t.tagName) { return String(t); }
+    return t.tagName.toLowerCase() + (t.id ? '#' + t.id : '')
+      + (t.className && typeof t.className === 'string' ? '.' + t.className.split(' ')[0] : '');
+  }
+
   doc.addEventListener('click', function (e) {
     if (ready() || !e.target || !e.target.closest) { return; }
     var el = e.target.closest(NEEDS);
     // A press inside an htmx form is the browser's: a submit it makes is kept below (C2217).
-    if (!el || el.tagName === 'FORM') { return; }
+    if (!el || el.tagName === 'FORM') { step('click passed: on ' + what(e.target)); return; }
     e.preventDefault();
     e.stopPropagation();
     pending = el;

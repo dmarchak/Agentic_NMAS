@@ -104,6 +104,14 @@ class TestC399:
                     # its Alpine already run, still answered the query (CI #1028, attempt 2).
                     b.wait_for(f"return location.search.indexOf('cold={attempt}') !== -1 && "
                                f"!!document.querySelector('{BUTTON}')", 10)
+                    # C2234 (CI #1631, 2026-11-12): the early click left no "kept" step, so it
+                    # reached no script-driven control: WebDriver aims at the button's centre,
+                    # and the page's stylesheet, still arriving, moved it. A person clicks what
+                    # is painted, and nothing is painted before the stylesheet applies; so the
+                    # click waits for it, as a person's would, and still lands before Alpine.
+                    b.wait_for("return Array.prototype.some.call(document.styleSheets, "
+                               "function (s) { return (s.href || '').indexOf('nmas-v2.css') !== -1"
+                               " && s.cssRules.length > 0; })", 10)
                     assert b.js("return !window.Alpine"), "the click must land before Alpine"
                     b.js(f"document.querySelector('{BUTTON}').__clicked = {attempt};")
                     b.click(BUTTON)

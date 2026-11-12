@@ -13,7 +13,19 @@ runs share the measurement at once (the gate's four shards). Measured before eac
 
     nmas-workers [--runs R] [--browsers B] [--cap N] [--explain]
 
-prints the count (no more than N with --cap). MemAvailable is read from /proc/meminfo, or from
+prints the count (no more than N with --cap). Several runs at once (R > 1) are the gate's
+suite, sized from its own measured peak instead (`GATE_PEAK`, 2026-11-12: 2 workers at 15.8 GiB
+free or more, the operator's "gate peak + 2 GB margin"), and 1 worker while a build's capped
+run tests beside it:
+
+    nmas-workers --beside -- <command>
+
+runs a build's aimed tests under a 3 GiB cap in their own systemd scope, so an overrun ends that
+run alone; it refuses a command that names a browser, and a gate running that was sized with no
+capped run beside it. The gate itself runs under its own cap, set by whoever starts it (the
+session's rule: 9 GiB at 1 worker beside a build, the pair started at 14 GiB free; 15 GiB at 2
+workers alone), and a killed gate's snapshot is swept by the next gate's start
+(`remove_stale_snapshots`, nmas-gate step 2b). MemAvailable is read from /proc/meminfo, or from
 the file NMAS_MEMINFO names (tests).
 
 AT MOST ONE FULL-SUITE RUN AT A TIME across every agent and terminal: `FULL_LOCK` is held
@@ -44,6 +56,46 @@ MAX_WORKERS = 4
 FULL_LOCK = os.environ.get("NMAS_FULL_LOCK",
                            os.path.expanduser("~/.cache/nmas/full-suite.lock"))
 
+#: The gate's suite (several runs at once) is sized from ITS OWN measured peak, not the per-run
+#: formula (the operator, 2026-11-12: "the threshold as gate peak + running builds' growth + 2 GB
+#: margin"; "A gate alone keeps 2 workers at 16 GiB free"). Measured 2026-11-12 03:00 to 05:05
+#: UTC from the laptop's free memory a minute apart, each gate's fall from its start to its
+#: lowest: 2 workers 13.8, 12.7, 13.7 and 12.5 GiB; 1 worker 7.4 GiB. The highest of each.
+#: Then the capped gates' own cgroups (memory.peak, page cache included): 2 workers 14.5 GiB
+#: (2026-11-12 05:54 UTC: capped at 15 GiB with throttling from 14, throttled, and killed by
+#: systemd-oomd on memory pressure) and 15.33 GiB (06:10 UTC, b4f68c92's gate: capped at 15.5
+#: with throttling from 15.0, high 87204, no OOM) and 15.57 GiB (06:35 UTC, the memory change's
+#: own gate: MemoryMax 16.4 only, high 0, no OOM). 2 workers is the highest, rounded up to 15.6
+#: (the cap is the measured peak + 1 GiB). 1 worker is still the free-memory figure until a
+#: capped 1-worker gate is measured.
+#: 3 and 4 workers are PROJECTED, not measured: linear from those two (8.2 GiB a worker), so a
+#: machine with the memory still reaches CI's four; this laptop never has them free (25.8 and
+#: 34.0 GiB with the margin). Measure one before relying on it.
+GATE_PEAK = {1: 74 * GIB // 10, 2: 156 * GIB // 10,       # in whole bytes, exact tenths
+             3: 238 * GIB // 10, 4: 320 * GIB // 10}
+#: Left beside the gate's measured peak (the operator's 2 GB margin).
+GATE_MARGIN = 2 * GIB
+#: A build's tests run beside a gate only through `--beside`: under this cap, holding
+#: BESIDE_LOCK shared, so a gate starting while one holds it takes 1 worker (the operator,
+#: 2026-11-12: "when a build is testing, the gate runs with 1 worker (measured 7.4 GiB peak,
+#: ~17 min) under a 9 GiB cap, and the build's aimed tests run beside it under a 3 GiB cap,
+#: never browser tests; start that pair at 14 GiB free or more").
+BESIDE_CAP = "3G"
+BESIDE_LOCK = os.environ.get("NMAS_BESIDE_LOCK",
+                             os.path.expanduser("~/.cache/nmas/beside.lock"))
+#: The floors (the operator, 2026-11-12: "A gate refuses to start (waits, printing why) under
+#: GATE_PEAK[1] + GATE_MARGIN (9.4 GiB) free; a gate with a beside run starts only at 14 GiB
+#: free or more; --beside refuses to start a run that would leave less than 3 GiB free beside
+#: the gate's cap").
+GATE_FLOOR = GATE_PEAK[1] + GATE_MARGIN
+PAIR_FLOOR = 14 * GIB
+BESIDE_FLOOR = 3 * GIB
+BESIDE_CAP_BYTES = 3 * GIB
+#: How long a gate waits for memory before it refuses: about 2.5x the 1-worker gate measured
+#: 2026-11-12 (~17 min), naming what it waited for. It asks again every WAIT_EVERY_S.
+WAIT_BOUND_S = 45 * 60
+WAIT_EVERY_S = 30
+
 
 def mem_available(path: str = None) -> int:
     """MemAvailable in bytes, from /proc/meminfo (or *path*, or NMAS_MEMINFO). Raises
@@ -56,9 +108,71 @@ def mem_available(path: str = None) -> int:
     raise RuntimeError(f"{path} holds no MemAvailable line")
 
 
-def workers(available: int, runs: int = 1, browsers: int = 0) -> int:
-    """The operator's formula: each of *runs* runs' workers, from *available* bytes, *browsers*
-    headless browsers counted; between 1 and MAX_WORKERS."""
+def beside_held(path: str = None) -> bool:
+    """Is a build's capped run (`--beside`) testing now? It holds BESIDE_LOCK shared; asked
+    without creating the file (an absent lock is no run)."""
+    import fcntl
+
+    path = path or BESIDE_LOCK
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except FileNotFoundError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+#: A ceiling on the gate's workers, set where a gate is started (the operator, 2026-11-12: "on
+#: this laptop, the gate runs at most 2 workers until a 3-worker gate has been measured here
+#: (set where you start it, e.g. an env ceiling in your gate command; the formula stays as is
+#: for CI and the protected test)"). Unset: no ceiling.
+CEILING_ENV = "NMAS_GATE_CEILING"
+#: The gate's cap is its worker count's measured peak plus this (the operator: "The cap always
+#: matches the worker count's measured peak + 1 GiB"). A cap only, MemoryMax, never a throttle
+#: line (the operator, 2026-11-12: "drop MemoryHigh. Gates and --beside runs use MemoryMax
+#: only"): the first capped gate, throttled at MemoryHigh, made the memory pressure that
+#: systemd-oomd killed it for.
+CAP_OVER_PEAK = 1 * GIB
+#: A worker count whose cgroup peak is not yet measured has its cap set by the operator until it
+#: is (2026-11-12: "until a capped 1-worker gate measures memory.peak, use 9.5 GiB (the
+#: free-memory estimate plus the page cache the 2-worker measurement missed, plus 1 GiB), then
+#: replace it with the measurement").
+CAP_UNTIL_MEASURED = {1: 95 * GIB // 10}
+
+
+def gate_workers(available: int, beside: bool) -> int:
+    """The gate's suite: 1 worker while a build's capped run tests beside it; else the most
+    workers whose measured peak (GATE_PEAK) plus GATE_MARGIN fits in *available*, no more than
+    the ceiling where one is set (CEILING_ENV); at least 1."""
+    if beside:
+        return 1
+    fits = [k for k, peak in GATE_PEAK.items() if available >= peak + GATE_MARGIN]
+    n = max(fits, default=1)
+    ceiling = os.environ.get(CEILING_ENV, "").strip()
+    return max(1, min(n, int(ceiling))) if ceiling.isdigit() else n
+
+
+def gate_cap(available: int, beside: bool) -> tuple:
+    """``(workers, MemoryMax bytes)`` for a gate started now: its workers by `gate_workers`, its
+    cap their measured peak plus CAP_OVER_PEAK, or CAP_UNTIL_MEASURED's while unmeasured."""
+    n = gate_workers(available, beside)
+    return n, CAP_UNTIL_MEASURED.get(n, GATE_PEAK[n] + CAP_OVER_PEAK)
+
+
+def workers(available: int, runs: int = 1, browsers: int = 0, beside: bool = None) -> int:
+    """Each of *runs* runs' workers, from *available* bytes. Several runs at once are the gate's
+    suite, sized by `gate_workers` (*beside*: a build's capped run testing; asked of BESIDE_LOCK
+    when not given). One run: the operator's formula of 2026-10-19, *browsers* headless browsers
+    counted, between 1 and MAX_WORKERS."""
+    if runs > 1:
+        return gate_workers(available, beside_held() if beside is None else beside)
     # In whole numbers, tenths of a GiB: 1.2 GiB is not a whole number of bytes, and a float
     # floor put (4.4 - 2) / 1.2, exactly 2, at 1.
     budget = int(available) * 10 - 20 * GIB - browsers * 12 * GIB
@@ -66,19 +180,82 @@ def workers(available: int, runs: int = 1, browsers: int = 0) -> int:
     return max(1, min(MAX_WORKERS, per_run))
 
 
-def explain(available: int, runs: int = 1, browsers: int = 0) -> str:
-    """The choice in words: the measurement, the formula and the count."""
+def explain(available: int, runs: int = 1, browsers: int = 0, beside: bool = None) -> str:
+    """The choice in words: the measurement, the rule and the count."""
+    if runs > 1:
+        beside = beside_held() if beside is None else beside
+        n = gate_workers(available, beside)
+        if beside:
+            return (f"{n} worker(s) per run: a build's capped run is testing beside the gate "
+                    f"(MemAvailable {available / GIB:.1f} GiB)")
+        return (f"{n} worker(s) per run: MemAvailable {available / GIB:.1f} GiB, the gate's "
+                "peaks "
+                + ", ".join(f"{k} worker(s) {p / GIB:.1f} GiB"
+                            + (" projected" if k > 2 else " measured")
+                            for k, p in GATE_PEAK.items())
+                + f", each plus {GATE_MARGIN / GIB:.0f} GiB, at least 1")
     n = workers(available, runs, browsers)
     return (f"{n} worker(s) per run: MemAvailable {available / GIB:.1f} GiB, "
             f"min({MAX_WORKERS}, floor(({available / GIB:.1f} - 2 - {browsers} x 1.2) / 1.2 / "
             f"{runs})), at least 1")
 
 
-def hold_full(who: str, path: str = None):
+def gate_floor(available: int, beside: bool) -> str:
+    """Why a gate may not start with *available* bytes free (*beside*: a build's capped run is
+    testing), or ``""``. Each names the floor and what is free."""
+    if beside and available < PAIR_FLOOR:
+        return (f"a build's capped run is testing, and a gate beside it starts at "
+                f"{PAIR_FLOOR / GIB:.1f} GiB free; {available / GIB:.1f} GiB is free")
+    if available < GATE_FLOOR:
+        return (f"a gate starts at {GATE_FLOOR / GIB:.1f} GiB free (its 1-worker peak "
+                f"{GATE_PEAK[1] / GIB:.1f} GiB plus {GATE_MARGIN / GIB:.0f} GiB); "
+                f"{available / GIB:.1f} GiB is free")
+    return ""
+
+
+#: Words a command that runs tests names (the suite's own runner and the interpreters it runs in).
+RUNNER_WORDS = ("pytest", "nmas-test", "python")
+
+
+def starts_a_suite(stand_in) -> bool:
+    """Does the run about to start a suite? Decided by what it runs, never by a flag alone (the
+    operator, 2026-11-12: "the exemption is decided by the run starting no suite, not by a flag
+    a real gate could set"): with no stand-in (NMAS_GATE_SUITE unset) the gate runs its five
+    shards; a stand-in starts a suite when its command names a test runner (RUNNER_WORDS)."""
+    if not stand_in:
+        return True
+    return any(w in stand_in.lower() for w in RUNNER_WORDS)
+
+
+def hold_full(who: str, path: str = None, *, mem=None, beside_now=None, sleep=None,
+              bound_s: int = None, say=None):
     """Take the full-suite lock for *who*: the open lock file (keep it open for the run; the
     lock ends when it closes or the process exits), or the refusal in words naming the holder.
-    The same flock `scripts/nmas-test` takes for a run naming no test file."""
+    The same flock `scripts/nmas-test` takes for a run naming no test file.
+
+    First it waits, printing why every WAIT_EVERY_S, while `gate_floor` says the memory is too
+    low (*mem*, *beside_now*: the readings, MemAvailable and BESIDE_LOCK by default), and refuses
+    after *bound_s* naming what it waited for. A run that starts no suite (`starts_a_suite`: a
+    stand-in naming no test runner, as the gate's own tests use) needs no memory and does not
+    wait."""
     import fcntl
+    import time
+
+    mem = mem or mem_available
+    beside_now = beside_now or beside_held
+    sleep = sleep or time.sleep
+    bound_s = WAIT_BOUND_S if bound_s is None else bound_s
+    say = say or (lambda words: print(words, file=sys.stderr, flush=True))
+    waited = 0
+    while starts_a_suite(os.environ.get("NMAS_GATE_SUITE")):
+        why = gate_floor(mem(), beside_now())
+        if not why:
+            break
+        if waited >= bound_s:
+            return f"waited {waited} s for memory and it did not come: {why}"
+        say(f"{who} waits for memory: {why}; asking again in {WAIT_EVERY_S} s")
+        sleep(WAIT_EVERY_S)
+        waited += WAIT_EVERY_S
 
     path = path or FULL_LOCK
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -93,12 +270,114 @@ def hold_full(who: str, path: str = None):
                 "(the operator, 2026-10-19); wait for it to end")
     fh.seek(0)
     fh.truncate()
-    fh.write(who + "\n")
+    # Whether a build's capped run was testing when the suite was sized (the gate sizes, then
+    # takes this lock): a `--beside` run may join only a suite that took it into account.
+    fh.write(who + "\n" + f"beside={'yes' if beside_held() else 'no'}\n")
     fh.flush()
     return fh
 
 
+#: Words in a command that mean it starts a real browser; such a run never goes beside a gate
+#: (the operator, 2026-11-12: "never browser tests"). Refusing by resemblance is the safe side.
+BROWSER_WORDS = ("browser", "board_shots", "nmas-browser", "firefox")
+
+
+def gate_headroom(record: str, proc_root: str = "/proc", cgroup_root: str = "/sys/fs/cgroup"):
+    """``(bytes the running gate may still grow by, why)``: its scope's memory.max less its
+    memory.current, read through the gate's own pid (its lock's record, "nmas-gate (pid N)"),
+    never by a name; ``(None, why)`` when it runs uncapped or cannot be read."""
+    import re
+
+    m = re.search(r"\(pid (\d+)\)", record or "")
+    if not m:
+        return None, "the gate's lock names no pid"
+    try:
+        with open(os.path.join(proc_root, m.group(1), "cgroup"), encoding="utf-8") as fh:
+            rel = next(ln.split(":", 2)[2].strip() for ln in fh if ln.startswith("0::"))
+        scope = os.path.join(cgroup_root, rel.lstrip("/"))
+        with open(os.path.join(scope, "memory.max"), encoding="utf-8") as fh:
+            cap = fh.read().strip()
+        with open(os.path.join(scope, "memory.current"), encoding="utf-8") as fh:
+            current = int(fh.read().strip())
+    except (OSError, StopIteration, ValueError) as exc:
+        return None, f"the gate's memory could not be read ({type(exc).__name__}: {exc})"
+    if cap == "max":
+        return None, "the gate runs with no memory cap"
+    return max(0, int(cap) - current), f"cap {int(cap) / GIB:.1f} GiB, using {current / GIB:.1f}"
+
+
+def beside(cmd: list, *, run=None, lock_path: str = None, full_path: str = None, mem=None,
+           proc_root: str = "/proc", cgroup_root: str = "/sys/fs/cgroup") -> int:
+    """Run *cmd* (a build's aimed tests) under BESIDE_CAP in its own systemd scope, holding
+    BESIDE_LOCK shared, so a gate sized while it runs takes 1 worker. Refused, naming why:
+    a command that names a browser; a gate already running that was sized with no capped run
+    beside it (its lock's record says ``beside=no``), or that runs uncapped; and a run that
+    would leave under BESIDE_FLOOR free once it and the running gate reach their caps."""
+    import fcntl
+    import subprocess
+
+    run = run or subprocess.call
+    mem = mem or mem_available
+    words = " ".join(cmd) + " " + os.environ.get("PATH", "")
+    hit = next((w for w in BROWSER_WORDS if w in words.lower()), "")
+    if hit:
+        print(f"nmas-workers --beside: refused: the command or PATH names {hit!r}, and browser "
+              "tests never run beside a gate (the operator, 2026-11-12)", file=sys.stderr)
+        return 2
+    full_path = full_path or FULL_LOCK
+    headroom, room_words = 0, "no gate is running"
+    try:
+        with open(full_path, encoding="utf-8") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fh, fcntl.LOCK_UN)
+            except BlockingIOError:
+                record = fh.read()
+                holder = record.splitlines()[0] if record.strip() else "a gate"
+                if "beside=yes" not in record:
+                    print(f"nmas-workers --beside: refused: {holder} is running, sized with "
+                          f"no capped run beside it (its record: "
+                          f"{record.strip().replace(chr(10), '; ') or 'empty'}); wait for it "
+                          "to end", file=sys.stderr)
+                    return 2
+                headroom, room_words = gate_headroom(record, proc_root, cgroup_root)
+                if headroom is None:
+                    print(f"nmas-workers --beside: refused: {holder} is running and "
+                          f"{room_words}, so what it may still take is not known; wait for it "
+                          "to end", file=sys.stderr)
+                    return 2
+    except FileNotFoundError:
+        pass
+    available = mem()
+    left = available - headroom - BESIDE_CAP_BYTES
+    if left < BESIDE_FLOOR:
+        print(f"nmas-workers --beside: refused: {available / GIB:.1f} GiB is free, less the "
+              f"gate's room to grow {headroom / GIB:.1f} GiB ({room_words}) and this run's cap "
+              f"{BESIDE_CAP_BYTES / GIB:.0f} GiB leaves {left / GIB:.1f} GiB, under the "
+              f"{BESIDE_FLOOR / GIB:.0f} GiB floor (the operator, 2026-11-12)", file=sys.stderr)
+        return 2
+    lock_path = lock_path or BESIDE_LOCK
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as lk:
+        fcntl.flock(lk, fcntl.LOCK_SH)
+        return run(["systemd-run", "--user", "--scope", "-q", "-p", f"MemoryMax={BESIDE_CAP}",
+                    "-p", "MemorySwapMax=0", "--", *cmd])
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["--gate-cap"]:
+        # For whoever starts a gate (the capped-gate wrapper): "<workers> <MemoryMax>", the cap
+        # in bytes (`gate_cap`).
+        print(*gate_cap(mem_available(), beside_held()))
+        return 0
+    if argv[:1] == ["--beside"]:
+        cmd = argv[2:] if argv[1:2] == ["--"] else argv[1:]
+        if not cmd:
+            print("nmas-workers --beside: usage: nmas-workers --beside -- <command>",
+                  file=sys.stderr)
+            return 2
+        return beside(cmd)
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runs", type=int, default=1)
