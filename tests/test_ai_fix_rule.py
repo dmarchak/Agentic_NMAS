@@ -64,11 +64,12 @@ from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab`
 from tests.test_session_write_guard import _takes_the_hold
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#: The operator's words (2026-11-11), exactly.
+#: The operator's words (2026-11-11), exactly, with "by its preview's hash" (the operator's W3,
+#: 2026-11-12: "Approved: W3, section 12 and the charter as in w3-section12-charter.diff").
 RULE = ("No fix runs from AI text. The AI may propose one operation from Mercury's catalog, "
         "with its parameters; code validates it against intent and the guards, and a person "
-        "approves it before it runs. The AI never composes commands, never runs anything "
-        "itself, and never retries on its own.")
+        "approves it by its preview's hash before it runs. The AI never composes commands, "
+        "never runs anything itself, and never retries on its own.")
 #: His one sentence more for section 12 (2026-11-11), exactly, capitalised as a sentence.
 SAVED = ("A saved fix is the operation a person saved from a verified run, never the AI's "
          "words.")

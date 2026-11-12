@@ -24,7 +24,9 @@ kinds only:
   answer that could not be checked, a re-plan that found none) is a proposal line with an
   empty operation, so the calls it cost are still this incident's. A proposal a person's press
   asked for (Retry with more information) also carries who pressed (``by``, ``verified``), the
-  words they typed (``note``, masked) and, when it proposed nothing, why (``words``);
+  words they typed (``note``, masked) and, when it proposed nothing, why (``words``); an AI
+  proposal also keeps what the section draws of the model's checked answer (``shown``: its
+  rationale, its hypotheses' claims and citations, the fix's why or the gap, masked);
 - a **choice** line, a person's: ``{"choice": "cancel"|"handover"|"save", "by", "verified",
   "at", "epoch", "attempts", "ai_usd"}``, the attempt count and the AI sum as they were at
   that moment; a hand-over carries its ``version`` and the ``teams`` told, a save what was
@@ -367,11 +369,14 @@ def _run_params(run: dict) -> dict:
 #: Where a press's typed words and a proposal's "why none" stop when kept.
 NOTE_CHARS = 2000
 WORDS_CHARS = 500
+#: What is shown of an AI answer, kept with its proposal line, at most (bytes of its JSON).
+SHOWN_BYTES = 8192
 
 
 def record_proposal(incident: Incident, source: str, operation: str = "", params=None, *,
                     calls=(), prompt: str = "", now: float = None, by: str = "",
-                    verified: str = "", note: str = "", words: str = "") -> dict:
+                    verified: str = "", note: str = "", words: str = "",
+                    shown: dict = None) -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
     `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
@@ -379,8 +384,19 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     proposed nothing; *calls* the ids of the AI calls it came from (an ``ai`` proposal names at
     least one), and *prompt* the prompt's name and version. A person's press that asked for it
     gives *by* and *verified* (both or neither), the *note* they typed and, when nothing was
-    proposed, *words* saying why; each kept only when given. It starts nothing."""
+    proposed, *words* saying why; an ``ai`` proposal may keep *shown*, what the section draws
+    of the model's checked answer (its rationale, its hypotheses' claims and citations, the
+    fix's why or the gap), an object of at most `SHOWN_BYTES`; each kept only when given. It
+    starts nothing."""
     _check(incident)
+    if shown is not None and not isinstance(shown, dict):
+        raise Refused(f"what is shown of an answer is an object, and {type(shown).__name__} "
+                      "was given")
+    if shown and source != "ai":
+        raise Refused(f"only an AI proposal keeps what is shown of its answer ({source} given)")
+    if shown and len(json.dumps(shown, sort_keys=True)) > SHOWN_BYTES:
+        raise Refused(f"what is shown of an answer is at most {SHOWN_BYTES} bytes, and "
+                      f"{len(json.dumps(shown, sort_keys=True))} were given")
     if source not in SOURCES:
         raise Refused(f"a proposal comes from one of {', '.join(SOURCES)}, and {source!r} was "
                       "given")
@@ -407,9 +423,17 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     else:
         kept, hashed = {}, ""
     at = time.time() if now is None else float(now)
+    # The note is a person's own words: masked as typed words are (`redact.redact_typed`: a
+    # value Mercury holds, the egress shapes, and each secret word's clause, C2340) before the
+    # line's own mask by position and value (C3340: "enable secret 9 <hash>" inside a sentence
+    # was kept whole by the positional mask alone).
+    from modules.redact import redact_typed
+
+    typed = redact_typed(" ".join(str(note or "").split()))[:NOTE_CHARS]
     more = {k: v for k, v in (("by", by), ("verified", verified),
-                              ("note", " ".join(str(note or "").split())[:NOTE_CHARS]),
-                              ("words", " ".join(str(words or "").split())[:WORDS_CHARS]))
+                              ("note", typed),
+                              ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
+                              ("shown", dict(shown or {})))
             if v}
 
     def build(lines):

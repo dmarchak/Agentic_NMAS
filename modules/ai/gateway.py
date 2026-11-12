@@ -123,6 +123,9 @@ TYPED_PARTS = {
     "connection_check": (),           # a word Mercury chose
     "assistant": ("question",),       # the toolbar assistant (P7): the question as typed; the
                                       # passages are the manual's, published with the product
+    "fixit_troubleshoot": ("note",),  # AI troubleshooting on an incident's page (S5): the note
+                                      # as typed; the pack, the attempts and Seen before are
+                                      # Mercury's own data
 }
 
 #: What each mask's label is, in a person's words: the label is the redact rule's

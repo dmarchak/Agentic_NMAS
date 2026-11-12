@@ -25,16 +25,22 @@ the cap, refused with both operands when it would pass it, the proposer not aske
 diagnosis's next step as one catalogue operation (`proposers.mercury`), checked by code
 (`validate.check`), and ONE proposal line in the incident's record: the operation and its
 parameters, or why there is none, with the person's note. Mercury's diagnosis does not read
-the note: it is kept for the hand-over and for the AI, once built. A retry's worst case is the
-AI troubleshoot's (`worst_usd`: two calls at the per-call cap of `WORST_PIN`, the pin AI
-troubleshooting uses until its own is pinned), so the cap holds the press as it will once the
-AI is asked behind it; today the press costs nothing.
+the note: the AI does, and it is kept for the hand-over. A retry's worst case is the AI
+troubleshoot's (`worst_usd`: two calls at the per-call cap of `WORST_PIN`, AI troubleshooting's
+own pin), so the cap holds Mercury's re-plan as it holds the AI's; Mercury's costs nothing.
+
+**The AI is offered beside it** (`ai_offer`, S5): Troubleshoot with AI with nothing tried, and
+Retry's Ask the AI to re-plan, in Manual mode while the cap allows, the estimate and the worst
+case drawn before the press (`fixit_troubleshoot.estimate`, no call made). The press is
+`routes/fixit_v2.py`'s ``troubleshoot``, whose investigation is `modules/ai/fixit_troubleshoot`
+'s; nothing here calls it.
 
 **Nothing here starts anything** (the operator, 2026-11-11: "FAIL: STOP. Never retry on its
 own"): `view` reads; `retry` records one line and asks no model, holds no device, starts no
 job and sends nothing; the proposal's Approve is the operation's own card and confirm, a
 person's press (tests/test_fixit_never_retries.py: every caller of a proposer is the retry
-route, a POST a verified person makes; the section's template loads and repeats nothing).
+route or the troubleshoot route, each a POST a verified person makes; the section's template
+loads and repeats nothing).
 
 **People** are drawn by display name (the template's ``people`` filter); a hand-over's
 recipients by team name. No email address is drawn.
@@ -56,9 +62,10 @@ STATES = ("none", "ready", "running", "passed", "stopped", "proposed", "cancelle
           "handed_over", "resolved")
 #: The states in which Retry with more information is offered (the cap permitting).
 RETRY_IN = ("passed", "stopped", "proposed", "cancelled", "handed_over")
-#: The pin a retry's worst case is drawn from until AI troubleshooting pins its own (S5): the
-#: heal analysis's, the board's figure (two calls at $0.125, "at most $0.25").
-WORST_PIN = "heal_analysis"
+#: The pin a retry's worst case is drawn from: AI troubleshooting's own (S5; the board's
+#: figure, two calls at $0.125, "at most $0.25"), so the cap holds Mercury's re-plan as it
+#: holds the AI's.
+WORST_PIN = "fixit_troubleshoot"
 #: The calls one AI attempt makes: the read loop's two passes (`read_loop.CALLS_PER_FINDING`).
 CALLS_PER_ATTEMPT = 2
 #: Who a proposal came from, as an attempt's line says it.
@@ -255,9 +262,11 @@ def _said(value) -> str:
     return str(value or "none")
 
 
-def _proposal(incident, line: dict, resolved, now) -> dict:
-    """The newest proposal, as the proposed state draws it, with what its card opens with."""
+def _proposal(incident, line: dict, resolved, now, usd: dict = None) -> dict:
+    """The newest proposal, as the proposed state draws it, with what its card opens with, and
+    for an AI proposal what is shown of its answer and what its calls cost (*usd*, by call)."""
     from modules.fixit.handover import params_words
+    from modules.fixit.policy import money
     from modules.heal import resubscribe as R
 
     params = line.get("params") if isinstance(line.get("params"), dict) else {}
@@ -270,7 +279,11 @@ def _proposal(incident, line: dict, resolved, now) -> dict:
             "params": params_words(params) if params else "", "subs": subs,
             "none": line.get("words") or "", "note": line.get("note") or "",
             "by": line.get("by") or "", "at": line.get("at") or "",
-            "flag": _flag(incident, line, resolved, now)}
+            "flag": _flag(incident, line, resolved, now),
+            "shown": line.get("shown") if isinstance(line.get("shown"), dict) else {},
+            "calls": list(line.get("calls") or []), "prompt": line.get("prompt") or "",
+            "ai_usd": money(sum(((usd or {}).get(c, 0.0) for c in line.get("calls") or []),
+                                0.0))}
 
 
 def _what_is_sent(tried: list, lines: list) -> list:
@@ -353,7 +366,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         out["stop"] = dict(drawn[a["n"] - 1], found=_run_checks(network, a["run"]))
     elif newest[2] == "proposal":
         state = "proposed"
-        out["proposal"] = _proposal(inc, newest[3], resolved, now)
+        out["proposal"] = _proposal(inc, newest[3], resolved, now, usd)
     elif newest[2] == "cancel":
         state = "cancelled"
         line = newest[3]
@@ -379,8 +392,33 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         "drawn_spent": "" if cs["spent"] is None else f"{cs['spent']:.6f}",
         "drawn_cap": "" if cs["cap"] is None else f"{cs['cap']:.6f}",
         "sent": _what_is_sent(drawn, rec["lines"])}
+    out["ai"] = ai_offer(state, cs)
     out["teams"] = H.offered(network)
     return out
+
+
+#: The states in which the AI may be asked: nothing tried yet (Troubleshoot with AI), and
+#: those Retry is offered in (its Ask the AI to re-plan).
+AI_IN = ("ready",) + RETRY_IN
+
+
+def ai_offer(state: str, cs: dict) -> dict:
+    """Whether the section offers the AI for a section in *state* whose cap comparison is *cs*
+    (`policy.cap_state` at the AI's worst case): ``{"offered", "in_state", "refused",
+    "estimate", "worst", "measured", "basis"}``. Offered only in `AI_IN`, the mode Manual
+    (`policy.ai_refusal`) and the cap allowing it; whether hosted AI can answer now is the AI
+    control's own readiness, drawn on its button (`modules/ai/controls.py`). The figures are
+    drawn before the press (`fixit_troubleshoot.estimate`: no call made)."""
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.fixit import policy as P
+
+    off = P.ai_refusal()
+    est = AIT.estimate()
+    return {"offered": state in AI_IN and not off and cs["state"] == "allowed",
+            "in_state": state in AI_IN, "refused": off or (
+                cs["words"] if cs["state"] != "allowed" else ""),
+            "estimate": P.money(est["usd"]), "worst": P.money(est["worst"]),
+            "measured": est["measured"], "basis": est["basis"]}
 
 
 def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",

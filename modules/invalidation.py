@@ -383,6 +383,7 @@ DECLARED = {
     # drift) reads the incident's record again; a hand-over's send moves the notifications log.
     "fixit_v2.cancel": ("drift",),
     "fixit_v2.retry": ("drift",),
+    "fixit_v2.troubleshoot": ("ai_calls", "drift"),
     "fixit_v2.handover": ("drift", "notifications"),
     "fixit_v2.handover_send": ("drift", "notifications"),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a

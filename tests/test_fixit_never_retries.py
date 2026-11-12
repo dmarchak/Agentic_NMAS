@@ -4,9 +4,11 @@ fix-it plan's S4; board recurring-fixes v2, guard G3: "there is no screen for th
 there is no control for it").
 
 - **By parsing:** every definition in the program that reaches a proposer (`modules/fixit/
-  proposers.py`: Mercury's own, and the AI's once built) is exactly the section's `retry` and
-  the route that calls it, and that route is served by POST alone and declared in
-  `modules/route_gates.py` as a verified person's configure gate. The set is compared whole,
+  proposers.py`, Mercury's own, and the AI's, `modules/ai/fixit_troubleshoot.troubleshoot`,
+  S5) is exactly the section's `retry`, the route that calls it and the `troubleshoot` route,
+  and each route is served by POST alone and declared in `modules/route_gates.py` as a
+  verified person's configure gate (the gateway's own entry points: tests/test_ai_entry_points
+  .py). The set is compared whole,
   here, by the test that holds it; a planted GET route, timer and job reaching a proposer are
   each found by the same scan.
 - **By the template:** the section loads and repeats nothing by itself: no ``hx-trigger`` of
@@ -32,11 +34,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECTION = os.path.join(ROOT, "templates", "v2", "_fixit_section.html")
 
 
+#: The AI's proposer (S5): one investigation, its answer through the one door.
+AI_PROPOSER = ("modules.ai.fixit_troubleshoot", "troubleshoot")
+
+
 def proposer_seeds(refs: dict) -> set:
     """Every proposer: each top-level function of modules/fixit/proposers.py whose name is
-    not private, read from the program's own references."""
-    return {k for k in refs if k[0] == "modules.fixit.proposers" and not k[1].startswith("_")
-            and k[1] != FI.TOP}
+    not private, and the AI's (`AI_PROPOSER`), read from the program's own references."""
+    return {k for k in refs if (k[0] == "modules.fixit.proposers" and not k[1].startswith("_")
+                                and k[1] != FI.TOP) or k == AI_PROPOSER}
 
 
 def reaching(planted: str = "") -> set:
@@ -56,18 +62,21 @@ class TestByParsing:
     def test_the_population_and_its_seed(self):
         refs = FI.program()["refs"]
         assert ("modules.fixit.proposers", "mercury") in proposer_seeds(refs)
+        assert AI_PROPOSER in proposer_seeds(refs)
         assert ("routes.fixit_v2", "retry") in refs and ("modules.fixit.section", "retry") in refs
 
     def test_every_caller_of_a_proposer_is_the_retry_route(self):
-        assert reaching() == {("modules.fixit.section", "retry"), ("routes.fixit_v2", "retry")}
+        assert reaching() == {("modules.fixit.section", "retry"), ("routes.fixit_v2", "retry"),
+                              ("routes.fixit_v2", "troubleshoot")}
 
-    def test_the_retry_route_is_a_post_a_person_makes(self):
+    @pytest.mark.parametrize("endpoint", ["fixit_v2.retry", "fixit_v2.troubleshoot"])
+    def test_the_retry_route_is_a_post_a_person_makes(self, endpoint):
         import app as A
         from modules.route_gates import GATES
-        rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == "fixit_v2.retry"]
+        rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == endpoint]
         assert len(rules) == 1
         assert rules[0].methods - {"OPTIONS"} == {"POST"}
-        assert GATES["fixit_v2.retry"].kind == "configure"
+        assert GATES[endpoint].kind == "configure"
 
     @pytest.mark.parametrize("planted", [
         # a GET route
@@ -83,7 +92,12 @@ class TestByParsing:
         ("from modules.nsot import capture_job\nfrom modules.fixit import proposers\n\n"
          "def background(i):\n"
          "    return capture_job.start('Default', 'x', 'y', lambda j: proposers.mercury(i))\n"),
-    ], ids=["a GET route", "a timer", "a job"])
+        # a failure's handler asking the AI (S5)
+        ("from modules.ai import fixit_troubleshoot\n\n"
+         "def on_failed(i):\n"
+         "    return fixit_troubleshoot.troubleshoot('Default', {}, i, actor='', "
+         "actor_verified='', person=False)\n"),
+    ], ids=["a GET route", "a timer", "a job", "a failure's handler asking the AI"])
     def test_a_planted_caller_is_found(self, planted):
         found = reaching(planted)
         assert {k for k in found if k[0] == "routes.planted_v2"}, found

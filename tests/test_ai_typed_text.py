@@ -438,6 +438,13 @@ FIELDS = {
         "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
+    # AI troubleshooting on an incident's page (the fix-it plan's S5): the note as typed; the
+    # figures the panel was drawn with only compare the cap at the press, never sent.
+    "fixit_v2.troubleshoot": {
+        "form.note": TYPED("fixit_troubleshoot", "note"),
+        "form.drawn_spent": "the incident's AI spend the panel was drawn with (a refusal names "
+                            "what moved); never sent",
+        "form.drawn_cap": "the per-incident cap the panel was drawn with; never sent"},
     # Lab 9 B4: Analyse with the trace tool sends the same snapshot's facts, its hosts and the
     # reads Mercury answered from it; nothing typed.
     "sdn_analyse_v2.ask_tools": {

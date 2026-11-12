@@ -718,10 +718,10 @@ only.**
 - **Nothing in the heal loop reads its output.** Detect, decide, act, verify and record never
   import or read the analysis.
 - **No fix runs from AI text.** The AI may propose one operation from Mercury's catalog, with
-  its parameters; code validates it against intent and the guards, and a person approves it
-  before it runs. The AI never composes commands, never runs anything itself, and never retries
-  on its own. (The operator's words, 2026-11-11, replacing "No fix is ever chosen or run from AI
-  text".)
+  its parameters; code validates it against intent and the guards, and a person approves it by
+  its preview's hash before it runs. The AI never composes commands, never runs anything itself,
+  and never retries on its own. (The operator's words, 2026-11-11, replacing "No fix is ever
+  chosen or run from AI text"; "by hash" the operator's, 2026-11-12.)
 - **A saved fix is the operation a person saved from a verified run, never the AI's words.**
   (The operator, 2026-11-11.)
 - **Mechanised:** a test (tests/test_heal_analysis_never_read.py) parses `modules/heal/` and
@@ -738,14 +738,31 @@ only.**
 **AI troubleshooting on the incident's page, its parts with no AI call (2026-11-12, the
 operator's overnight item 6).** `modules/fixit/` holds the incident's own record of proposals
 and choices, its attempts derived from the operations' run records, the mode (Manual by
-default, or off; no automatic mode) and the per-incident cap ($1.00), the check every proposal
+default, or Off: this build offers Manual (default) and Off; an Automatic mode, if one is ever
+added, still only proposes and stays inside both caps) and the per-incident cap ($1.00), the
+check every proposal
 passes whoever made it (the catalog's schema, the incident's scope, the guards, committed intent
 through the operation's own preview; a repeat of a failed fix flagged), Mercury's own proposer
 from the lost-stream diagnosis, what a model would be sent (every person a stable label), and
 the hand-over. This section's rule holds over all of it: nothing in `modules/heal/` imports
-`modules/fixit/` (tests/test_heal_analysis_never_read.py), and nothing there calls a model,
-holds a device or starts a job. The page's section, its controls and the AI call are not built
-yet (docs/manual/screens/incident.md, "AI troubleshooting").
+`modules/fixit/` (tests/test_heal_analysis_never_read.py), and nothing there holds a device or
+starts a job. The page's section is built with no AI call (S4, 8d5148be;
+docs/manual/screens/incident.md, "AI troubleshooting").
+
+**The AI call (S5).** The model is asked only for an investigation started by a verified
+person's press of Troubleshoot with AI, never by a timer or a failure's handler; the press may
+start a background job that carries it. One press, one investigation (its reads included),
+under the per-incident cap and the day cap, its estimated cost shown before the press. This
+build offers Manual (default) and Off; an Automatic mode, if one is ever added, still only
+proposes and stays inside both caps. The answer becomes a proposal only through the one door,
+`modules/ai/fix_proposal.py`: exactly one catalog operation with the parameters its schema
+names; anything else is refused and recorded. That proposal passes the same check as
+Mercury's own (scope, guards, committed intent) and opens the operation's own preview; it runs
+only on a person's approval by that preview's hash. A failed attempt STOPs: the AI is never
+asked again but by a person's Retry with more information. The model reads only through
+Mercury's read families (`modules/ai/router_reads.py` for a device, each command whole on its
+allowlist; `modules/ai/fixit_reads.py` for what Mercury and its host already hold), each read
+recorded in the send log and on History, and composes no command.
 
 **A background AI call under CLAUDE.md's "AI cost safety" rules** (PHASE8_PLAN 18.3):
 - **Its trigger is named:** `triggers.background("heal_analysis", job, network,

@@ -4181,3 +4181,42 @@ interpreter, confined, one worker; each worktree was removed after its run.
 added). Not mutated: `redact.redact_payload`, `redact_text` and the relay's egress mask, unchanged
 here and checked with their own tier entries; the other 16 controls of this build (the check, the
 proposer, the scans) are outside the tier and are listed with the build's report.
+
+## 2026-11-12: AI troubleshooting's call, its typed note and the note kept at rest (the fix-it plan's S5), by hand
+
+**What changed in the tier:**
+- a new task, `fixit_troubleshoot`, declares its typed part in `gateway.TYPED_PARTS`
+  (`("note",)`): the note a person types on an incident's page is masked by the person's own
+  words' mask as it leaves (`redact.redact_typed`: a value Mercury holds, the egress shapes, each
+  secret word's clause) and said back in place (`typed_masked`), the gateway's own mask, no
+  second one;
+- `modules/ai/fixit_troubleshoot.request` builds what leaves the host: the incident's evidence
+  pack as the heal analysis sends it (`evidence_pack.build_incident`, `explain.sent_sections`),
+  the attempts as `fixit.payload.tried_parts` labels them (logged above), Mercury's Seen before
+  and the catalogue, and the note as the part ``note``; the gateway's egress mask covers every
+  byte, unchanged;
+- `fixit.incident.record_proposal` keeps the note masked as typed words before the line's own
+  mask by position and value (C3340: a secret inside a sentence was kept whole by the positional
+  mask alone, in S4's Retry too).
+
+The danger the hand check guards: a note's secret sent or kept, because the note is not a
+typed part, is sent under another part's name, or is kept with the positional mask alone.
+
+**The method:** each mutant one exact replacement of a changed line, required to match once
+(`scratchpad/fixit-s5/tier.sh`), in a `scripts/nmas-control` throwaway worktree over 05df5b60
+with the change staged; then tests/test_fixit_troubleshoot.py and tests/test_ai_typed_text.py,
+no `-x`, in CI's interpreter, confined, one worker; each worktree removed after its run.
+Baseline: 70 passed. **Runs:** 2026-11-12 20:20:49 to 20:22:46 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `request` raises before building anything | killed (15 failed) | every press test |
+| T1 the note not declared a typed part (`()`) | killed (2 failed) | `test_a_secret_in_the_note_is_masked_before_it_leaves_and_said`; `test_every_typed_field_lands_in_a_typed_part_and_every_typed_part_is_reached` |
+| T2 the note sent as another part (`the_note`) | killed (2 failed) | the same masking test; `test_what_is_sent_is_the_pack_the_attempts_and_the_note_never_a_command` |
+| T3 the note kept with the line's positional mask alone | killed | `test_a_secret_in_the_note_is_masked_before_it_leaves_and_said` |
+
+**The result: 3 mutants and the canary, all killed.** Not mutated: `redact.redact_typed`,
+`redact.egress_payload` and `evidence_pack.build_incident`, unchanged here and checked with their
+own tier entries; the build's 8 other controls (the actable rule, the catalogue's schema, a fix
+and a gap together, the cap, the mode, the person, the proposer scan's seed, the kept answer)
+are outside the tier and are listed with the build's report.

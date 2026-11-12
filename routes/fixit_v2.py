@@ -1,14 +1,20 @@
 """routes/fixit_v2.py — the incident page's "AI troubleshooting" section's controls (board
-recurring-fixes v2; the fix-it plan's S4), drawn with no AI call (`modules/fixit/section.py`).
+recurring-fixes v2; the fix-it plan's S4 and S5), drawn from `modules/fixit/section.py`.
 
 Each post answers with the section drawn again in place (`templates/v2/_fixit_section.html`),
 its answer leading it; none opens a second card elsewhere on the page:
 
 - ``cancel``: Cancel. One line in the incident's troubleshooting record, a verified person's;
   nothing runs, nothing is sent, and the incident stays open (`incident.cancel`).
-- ``retry``: Retry with more information. The per-incident cap asked again at the press, then
-  Mercury's own diagnosis re-plans (`section.retry`): one proposal line, the person's note kept
-  with it. No AI call: the AI's own is the next slice.
+- ``retry``: Retry with more information's Ask Mercury's diagnosis to re-plan. The
+  per-incident cap asked again at the press, then Mercury's own diagnosis re-plans
+  (`section.retry`): one proposal line, the person's note kept with it. No AI call.
+- ``troubleshoot``: Troubleshoot with AI, and Retry's Ask the AI to re-plan (S5): ONE
+  investigation asked as the verified person who pressed (`triggers.person`), the mode and
+  the per-incident cap asked again at the press, its answer checked by code and, when it names
+  one catalog operation, that proposal held to the same check as Mercury's own and opened in
+  its operation's own preview (`fixit_troubleshoot.troubleshoot`). It runs nothing: the
+  proposal's Approve is the operation's own card and confirm, by its preview's hash.
 - ``handover``: Hand over. The write-up built from the incident's records with no AI, kept as
   a new version, and sent to the teams ticked, each one told about the network's can't-fix
   (`handover.hand_over`).
@@ -20,7 +26,8 @@ Every post is a verified person's, gated ``configure`` (`modules/route_gates.py`
 decision 8: Troubleshoot, Retry, Cancel and Hand over as Explain), and each declares what it
 invalidates (`modules/invalidation.py`). The proposal's Approve is the operation's own card and
 confirm (routes/resubscribe_v2.py), which carries the incident, the attempt and the proposal
-into its run's record. Nothing here asks a model, holds a device or starts a job.
+into its run's record. Nothing here holds a device or starts a job, and only ``troubleshoot``
+asks a model, on a person's press.
 """
 
 import logging
@@ -159,6 +166,54 @@ def retry(incident_id):
         done = ("Re-planned by Mercury's diagnosis, with no AI: it names no fix Mercury can "
                 "run, said below. Nothing ran.")
     return _section(network, found, done=done)
+
+
+@bp.route("/<incident_id>/fixit/troubleshoot", methods=["POST"])
+def troubleshoot(incident_id):
+    """Troubleshoot with AI (and Retry's Ask the AI to re-plan): one investigation, asked as
+    the verified person who pressed, its answer checked and at most one proposal opened in its
+    operation's preview (`fixit_troubleshoot.STEPS`). Refused in place, with nothing sent,
+    when the incident is resolved, the press is no verified person's, the mode is off or the
+    per-incident cap would be passed (naming what moved since the panel was drawn)."""
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.fixit import policy as P
+    from modules.fixit import section
+
+    network, found = _found(incident_id)
+    if found["found"] != "page":
+        return _missing(incident_id, found)
+    if _ended(found):
+        return _section(network, found, 409, refused=(
+            f"{incident_id} is resolved ({_ended(found)}), and its AI troubleshooting is "
+            "read-only. Nothing was sent"))
+    who = _person()
+    why = _not_a_person(who, "Troubleshoot with AI").replace("Nothing was recorded",
+                                                             "Nothing was sent")
+    if why:
+        return _section(network, found, 403, refused=why)
+    got = section.incident_of(network, found)
+    inc = got["incident"]
+    if inc is None:
+        return _section(network, found, 409, refused=got["why"])
+    cs = P.cap_state(inc, AIT.worst_usd())                                         # cap
+    if cs["state"] != "allowed":
+        moved = section._moved_words(request.form.get("drawn_spent") or "",
+                                     request.form.get("drawn_cap") or "", cs)
+        return _section(network, found, 409, refused=(
+            cs["words"].replace("Retry isn't available", "Not asked", 1)
+            + (f". Since the panel was drawn, {moved}" if moved else "") + ". Nothing was sent"))
+    try:
+        out = AIT.troubleshoot(network, found, inc, actor=who["actor"],
+                               actor_verified=who["actor_verified"], person=who["person"],
+                               note=request.form.get("note") or "", resolved=_resolved_at(found))
+    except AIT.Refused as exc:
+        return _section(network, found, exc.status, refused=str(exc))
+    level = {"proposed": "muted", "gap": "warn", "no_fix": "warn", "unanswerable": "warn",
+             "refused_fix": "warn", "unchecked": "warn"}.get(out["state"], "warn")
+    if out["state"] == "failed" and not out["proposal"]:
+        return _section(network, found, 502, refused=f"Couldn't troubleshoot: {out['words']}")
+    return _section(network, found, level=level, done=out["words"],
+                    typed_masked=out.get("typed_masked"))
 
 
 def _teams() -> list:

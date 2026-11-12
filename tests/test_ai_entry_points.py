@@ -213,6 +213,10 @@ SDN_ANALYSE_PAGES = {"sdn_analyse": ["/v2/sdn/flows?list=Default",
 #: `test_the_tab_calls_no_model`, on its Lab 9 world (the NSOT export and the controller).
 SDN_POLICY_PAGES = {"sdn_policy": ["/v2/sdn/policies?list=Default",
                                    "/v2/sdn/policies/view?list=Default"]}
+#: Drawn on an incident's own page, its AI troubleshooting section (the fix-it plan's S5):
+#: tests/test_fixit_troubleshoot.py's `test_the_incident_page_calls_no_model_and_draws_the_
+#: control`, on the incident it plants (``{incident}``, its id).
+FIXIT_PAGES = {"fixit_troubleshoot": ["/v2/incident/{incident}?list=Default"]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -264,7 +268,7 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     pages = _pages(world)
     assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
         HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) | set(SDN_ANALYSE_PAGES) | set(
-        SDN_POLICY_PAGES) == set(controls.CONTROLS), \
+        SDN_POLICY_PAGES) | set(FIXIT_PAGES) == set(controls.CONTROLS), \
         "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"

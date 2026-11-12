@@ -61,7 +61,8 @@ FEATURES = {"explain": "Explain", "sdn_explain": "Explain (an SDN detection)",
             "sdn_analyse": "Analyse this network (SDN)",
             "sdn_policy": "An SDN policy in words",
             "sdn_analyse_tools": "Analyse with the trace tool (SDN)",
-            "change_record": "A change record draft"}
+            "change_record": "A change record draft",
+            "fixit_troubleshoot": "Troubleshoot with AI (an incident)"}
 #: The review's status filter, in the board's order.
 STATUSES = {TO_REVIEW: "To review", ACCEPTED: "Accepted", DISMISSED: "Dismissed",
             "right": "Said right"}

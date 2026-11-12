@@ -251,8 +251,9 @@ for the ease-of-use review after the labs.
 
 **The rule the steps rest on** (docs/HEAL_TO_INTENT.md, section 12): No fix runs from AI text.
 The AI may propose one operation from Mercury's catalog, with its parameters; code validates it
-against intent and the guards, and a person approves it before it runs. The AI never composes
-commands, never runs anything itself, and never retries on its own.
+against intent and the guards, and a person approves it by its preview's hash before it runs.
+The AI never composes commands, never runs anything itself, and never retries on its own. A
+saved fix is the operation a person saved from a verified run, never the AI's words.
 1. **The notification:** the person sees it in plain words: what, where, and whether it needs
    them.
 2. **The user asks the AI to troubleshoot (Explain).**
@@ -287,8 +288,9 @@ commands, never runs anything itself, and never retries on its own.
      - **Hand over:** step 8.
 
      Never an automatic retry.
-7. **The save:** a fix is saved only on the person's choice in step 6. The record keeps the
-   verification it was based on.
+7. **The save:** a fix is saved only on the person's choice in step 6, and what is saved is the
+   operation the person ran and saw verified, with its parameters, never the AI's words. The
+   record keeps the verification it was based on.
 8. **The hand-over, and any failed step:** a hand-over is a write-up for an engineer of what was
    tried, what is known and the next steps. And if any step fails, the item says which step,
    why, what Mercury already undid, and what the person can do next, as a button where one

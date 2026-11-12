@@ -156,13 +156,16 @@ def check(incident, operation, params, *, resolved: float = None, now: float = N
 
 
 def propose(incident, source: str, operation, params, *, calls=(), prompt: str = "",
-            resolved: float = None, now: float = None, sources=None, planned=None) -> dict:
+            resolved: float = None, now: float = None, sources=None, planned=None,
+            by: str = "", verified: str = "", note: str = "", shown: dict = None) -> dict:
     """`check`, and the proposal's line in *incident*'s record (`incident.record_proposal`):
     the check's answer with ``proposal``, the line's id, which the operation's confirm carries
-    into its run (`incident.run_link`); ``""`` when nothing was recorded. A refused answer of a
-    model (*source* ``ai``) is recorded with no operation, so the calls it cost (*calls*) stay
-    the incident's; a refused proposal of Mercury's or a person's records nothing. Starts
-    nothing."""
+    into its run (`incident.run_link`), and ``line``, the line as kept; ``""`` and ``{}`` when
+    nothing was recorded. A refused answer of a model (*source* ``ai``) is recorded with no
+    operation and the refusal's words, so the calls it cost (*calls*) stay the incident's; a
+    refused proposal of Mercury's or a person's records nothing. *by* and *verified* are the
+    person whose press asked for it, *note* their words and *shown* what the section draws of
+    a model's answer, each kept with the line. Starts nothing."""
     from modules.fixit import incident as F
 
     if source not in F.SOURCES:
@@ -170,14 +173,17 @@ def propose(incident, source: str, operation, params, *, calls=(), prompt: str =
                         "was given")
     got = check(incident, operation, params, resolved=resolved, now=now, sources=sources,
                 planned=planned)
+    kept = {"by": by, "verified": verified, "note": note, "shown": shown}
     if got["ok"]:
         line = F.record_proposal(incident, source, got["operation"],
                                  as_attempt(got["operation"], got["params"]), calls=calls,
-                                 prompt=prompt, now=now)
+                                 prompt=prompt, now=now, **kept)
     elif source == "ai":
-        line = F.record_proposal(incident, source, calls=calls, prompt=prompt, now=now)
+        line = F.record_proposal(incident, source, calls=calls, prompt=prompt, now=now,
+                                 words=f"Mercury's check refused the AI's fix: {got['refused']}",
+                                 **kept)
     else:
         line = {}
     log.info("fixit: %s: a %s proposal %s", incident.id, source,
              "checked" if got["ok"] else f"refused ({got['code']})")
-    return dict(got, proposal=line.get("proposal", ""))
+    return dict(got, proposal=line.get("proposal", ""), line=line)

@@ -52,6 +52,11 @@ MARKUP = {
     # page (routes/assistant_v2.panel).
     "assistant": {"button": r'<button\b[^>]*\bdata-op="assistant"[^>]*>',
                   "input": r'<textarea\b[^>]*\bid="asst-q"[^>]*>'},
+    # An incident's page, AI troubleshooting (the fix-it plan's S5): Troubleshoot with AI and
+    # its Add what you know box (nothing tried), or Retry's Ask the AI to re-plan.
+    "fixit_troubleshoot": {"button": (r'<button\b[^>]*\bhx-post="[^"]*/fixit/troubleshoot'
+                                      r'[^"]*"[^>]*>'),
+                           "input": r'<textarea\b[^>]*\bid="fixit-know-[^"]*"[^>]*>'},
 }
 
 #: Each state that cannot answer, and words its reason must hold.

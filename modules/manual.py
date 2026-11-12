@@ -102,7 +102,8 @@ PAGES = (
     ("fault-drill", "Declare a fault drill", H, "how-it-works/fault-drill.md"),
     ("incident-timeline", "An incident's timeline and its time to repair", H,
      "how-it-works/incident-timeline.md"),
-    ("fixit-troubleshoot", "AI troubleshooting: Retry, Cancel and Hand over", H,
+    ("fixit-troubleshoot",
+     "AI troubleshooting: Troubleshoot with AI, Retry, Cancel and Hand over", H,
      "how-it-works/fixit-troubleshoot.md"),
     ("notifications", "Notifications: how a team is told", H,
      "how-it-works/notifications.md"),
@@ -272,6 +273,8 @@ OPERATIONS = {
     # Board recurring-fixes v2 (the fix-it plan's S4): Retry with more information on an
     # incident's page, re-planned by Mercury's own diagnosis with no AI call.
     "fixit-troubleshoot": ("modules.fixit.section", "STEPS"),
+    # The fix-it plan's S5: Troubleshoot with AI, one investigation a person's press asks for.
+    "fixit-ai": ("modules.ai.fixit_troubleshoot", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     # Lab 9 Objective B2 (board lab9-sdn E): a policy in words, the intent controller.
     "sdn-policy": ("modules.sdn.policy_intent", "STEPS"),
@@ -368,7 +371,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",
-                  "heal-dampening": "heal", "notifications-actions": "notifications"}
+                  "heal-dampening": "heal", "notifications-actions": "notifications",
+                  "fixit-ai": "fixit-troubleshoot"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

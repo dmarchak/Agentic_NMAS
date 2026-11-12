@@ -1,0 +1,13 @@
+{
+  "words": "Troubleshoot an incident with AI (the incident's page, a person's press)",
+  "model": "claude-sonnet-5-5",
+  "max_prompt_tokens": 27000,
+  "max_tokens": 5760,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {
+    "model": "The heal analysis's pin (modules/ai/pins/heal_analysis.json), whose pack it extends: the same incident's evidence pack and Explain's check, plus the incident's attempts, Mercury's Seen before, the catalog and the person's note. Sonnet 5.5 until the fix-it plan's S7 measures its recorded and blind cases at 15.12's bar; then pinned to the cheapest model that meets it.",
+    "max_prompt_tokens": "The heal analysis's, 27,000 by the provider's own count (C2048): its pack plus at most 12 attempts, one Seen before line, the two catalog operations and a note of at most 2,000 characters. Not measured on this task yet: S7's cases are its first measurement, and a request over the bound is refused, never trimmed silently.",
+    "max_tokens": "The heal analysis's (Explain's measured bound, about 2.5x the largest of 65 Explain outputs, 2,286 tokens): the answer is Explain's shape plus one fix or gap. S7's runs measure this task's own outputs, and the bound moves to about 2.5x the largest then."
+  }
+}

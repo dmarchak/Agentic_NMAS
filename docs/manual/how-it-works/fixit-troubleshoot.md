@@ -1,12 +1,13 @@
-# AI troubleshooting: Retry, Cancel and Hand over
+# AI troubleshooting: Troubleshoot with AI, Retry, Cancel and Hand over
 
 An incident's page ([An incident's page](incident)) has an **AI troubleshooting** section. It
 lists every fix tried in the incident, says what each one cost in AI, and offers what a person
-may do next. This first version makes no AI call: **Retry with more information** asks
-Mercury's own diagnosis to plan again. The AI's own call comes in a later version, behind the
-same controls and the same cap.
+may do next: **Troubleshoot with AI** (or, after a failed attempt, Retry with more
+information's **Ask the AI to re-plan**), which asks the AI once, as you, and **Ask Mercury's
+diagnosis to re-plan**, which asks no AI. Either way, a fix runs only when you approve it in its
+operation's own card, by its preview's hash.
 
-![AI troubleshooting on an incident's page, with no AI call yet: an attempt is a catalogue operation's run on the incident's device, read from the operation's own record; a failed attempt stops the section, and nothing more runs until a person chooses. Retry with more information asks the per-incident cap again at the press, then Mercury's own diagnosis names its fix as one catalogue operation, checked against the incident, the heal guards and committed intent, and kept as one proposal line with the person's note; a proposal that repeats a failed attempt is flagged. The fix runs only through its operation's own card, previewed and confirmed by hash, and its run's record names the incident, the attempt and the proposal. Cancel and Hand over each record one line, and Hand over keeps a write-up and sends its link to the teams chosen. Nothing in the section reaches the device but the operation a person confirmed.](diagrams/fixit-troubleshoot.svg)
+![AI troubleshooting on an incident's page: an attempt is a catalogue operation's run on the incident's device, read from the operation's own record; a failed attempt stops the section, and nothing more runs until a person chooses. Troubleshoot with AI, or Retry with more information, asks the per-incident cap again at the press; then either Mercury's own diagnosis, with no AI, or one AI investigation the person's press asked for (at most two calls, its answer checked against what was sent) names a fix as one catalogue operation, checked against the incident, the heal guards and committed intent, and kept as one proposal line with the person's note; a proposal that repeats a failed attempt is flagged. The fix runs only through its operation's own card, previewed and confirmed by hash, and its run's record names the incident, the attempt and the proposal. Cancel and Hand over each record one line, and Hand over keeps a write-up and sends its link to the teams chosen. Nothing in the section reaches the device but the operation a person confirmed.](diagrams/fixit-troubleshoot.svg)
 
 ## The attempts {#attempts}
 
@@ -33,10 +34,11 @@ Retry with more information, Cancel and Hand over.
 ## Retry with more information {#retry}
 
 Retry has a box for what you know that Mercury doesn't. Mercury's diagnosis does not read
-words: they are kept with the retry, for the hand-over and for the AI once it is built. Before
-you press, the panel shows what the retry costs, what the incident has spent, what it would
-have spent at most afterwards against its cap, and today's spend. It also lists what the AI
-would be sent once it is asked.
+words; the AI does, masked before they are sent, and they are kept for the hand-over. Before
+you press, the panel shows what each choice costs (Mercury's diagnosis nothing; the AI at most
+two calls' worth), what the incident has spent, what it would have spent at most afterwards
+against its cap, and today's spend. It also lists what the AI is sent when it is asked. **Ask
+the AI to re-plan** runs the same steps as [Troubleshoot with AI](#ask-ai).
 
 Pressing **Ask Mercury's diagnosis to re-plan** runs these steps:
 
@@ -57,6 +59,57 @@ Nothing runs. The proposal is drawn with **Open the fix's card…**, which opens
 own card in the section: its program, its hash and your reason, exactly as everywhere else. The
 fix runs only when you confirm it there.
 
+## Troubleshoot with AI {#ask-ai}
+
+With nothing tried yet, the section offers **Troubleshoot with AI**, with an optional box,
+**Add what you know first**. After a failed attempt, Retry with more information offers the same
+press as **Ask the AI to re-plan**. Before you press, the section shows what it costs: at most
+two calls at the AI's per-call cap (at most $0.25 today), and about what it has cost before
+once it has been measured; the incident's spend so far and after it at most, against its cap;
+and today's spend against the day cap. The button carries the AI mark; when hosted AI cannot
+answer now (it is off, no key is set, the day cap is reached, or the provider's usage limit
+holds), it is drawn disabled with why, and Mercury's own diagnosis stays usable.
+
+Pressing it runs these steps, as you, one investigation:
+
+1. `person`: the press is a verified person's, or it is refused with nothing sent. The press is
+   the call's trigger: the gateway refuses it for anyone but the person who pressed, and no
+   timer, job, page load or failure starts it.
+2. `mode`: AI troubleshooting's mode (Settings › Installation › AI, AI troubleshooting) is
+   Manual. Off refuses the press, with nothing sent.
+3. `cap`: the per-incident cap is asked again ([the cap](#the-cap)): spent so far plus this
+   investigation's worst case. Past it, the press is refused, naming both figures and what moved
+   since the panel was drawn, and nothing is sent.
+4. `pack`: what the AI is sent is built in code: the incident's evidence pack (what started it,
+   the device, its History and Intent check, its neighbours, health, its log lines, what
+   self-healing tried and Mercury's diagnosis, configuration only by kind), the incident's
+   attempts (each `attempt:<n>`, every person a stable label, never a name or an address),
+   Mercury's own Seen before (`seen_before:1`), the operations it may propose from, and your
+   note (`note:1`), masked as it leaves and said back to you when something in it was masked.
+5. `ask`: one call through the AI gateway, under the day cap and the per-call cap. With the
+   network's device state class on (Settings › AI), the AI may ask Mercury for up to three
+   read-only reads of the incident's device (each command whole on the read-only allowlist,
+   each read recorded in the send log and on History), and a second call carries them; it
+   cannot ask again. With the class off, no read is asked for.
+6. `check`: the answer is checked against what was sent: every reference it cites must be
+   there (a past incident Seen before does not hold is refused), every confirming step must be
+   a read-only read, a device it names must be cited, and its fix must be exactly one catalogue
+   operation with that operation's parameters, each of its shape, acting only on the incident's
+   own device and subscriptions (never one a read or the note named). An answer that fails is
+   drawn "couldn't be checked, so it isn't shown", with why; its cost still counts.
+7. `propose`: a fix passes the same check as Mercury's own proposal (the incident's scope, the
+   heal guards, committed intent through the operation's own preview), and a repeat of a failed
+   attempt is flagged. When no catalogue operation does what the fix needs, the answer is a
+   **gap**: said, with no Approve.
+8. `record`: one proposal line is kept in the incident's troubleshooting record: the operation
+   and its parameters (or why there is none), its AI calls, who pressed, your note, and what the
+   AI said (its rationale and each hypothesis with what it cites). The call's own record on
+   History says what became of its answer and links back to the incident's page.
+
+Nothing runs. A proposed fix is drawn with **Open the fix's card…**, exactly as Mercury's own;
+it runs only when you confirm it there by its hash. If it fails, the section stops again, and
+the AI is asked again only when you press again.
+
 ## A repeated proposal is flagged {#a-repeat}
 
 A proposal is compared with every attempt in the incident that did not pass. The same operation
@@ -76,9 +129,10 @@ line then says who proposed it, and the incident's list can tell later how it wa
 **AI spend per incident** (Settings › Installation › AI, the AI troubleshooting card, $1.00 by
 default) holds every attempt: what the incident's AI calls have cost so far plus the next
 attempt's worst case is compared with it. At the cap exactly is allowed; past it, Retry is not
-offered and the section says spent, the worst case, their sum and the cap. A retry's worst case
-is two calls at the per-call cap of the AI's pinned model (at most $0.25 today), even though
-this version's retry calls no AI. There is no "no cap", and Mercury never raises it. **AI mode**
+offered and the section says spent, the worst case, their sum and the cap. An attempt's worst
+case is two calls at the per-call cap of the AI's pinned model (at most $0.25 today), whether
+you then ask the AI or Mercury's diagnosis, which costs nothing. There is no "no cap", and
+Mercury never raises it. **AI mode**
 on the same card is Manual (an AI troubleshoot only on a person's press) or Off.
 
 ## Cancel {#cancel}

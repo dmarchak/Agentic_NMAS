@@ -1,22 +1,31 @@
 {%- from "v2/_macros.html" import icon, badge, how, clock, run_href -%}
-{#- The incident page's "AI troubleshooting" section (board recurring-fixes v2, every state but
-    the AI's own; the incident page board, B5's frame; the fix-it plan's S4), drawn with no AI
-    call from `modules/fixit/section.view` (`x`), by templates/v2/incident.html and again by
-    each of routes/fixit_v2.py's posts with its answer in place (`answer`). It always leads
-    with the totals and the attempts, one line each, in order; then the state's own content
-    and its controls: after a STOP, Retry with more information (its note, its cost lines and
-    what the AI would be sent, drawn before the press), Cancel and Hand over; the cap's
-    refusal in place of Retry; a proposal with its repeat flag and the operation's own card,
-    opened in place; the cancelled and hand-over lines; once resolved, the record alone, with
-    no control. Nothing here loads or repeats a request by itself (no hx-trigger of load,
-    every, revealed or intersect: tests/test_fixit_never_retries.py), and the two text boxes
-    are textareas, so Enter submits nothing. People by display name; teams by name. -#}
+{%- import "v2/_ai.html" as ai -%}
+{#- The incident page's "AI troubleshooting" section (board recurring-fixes v2; the incident page
+    board, B5's frame; the fix-it plan's S4 and S5), drawn from `modules/fixit/section.view`
+    (`x`), by templates/v2/incident.html and again by each of routes/fixit_v2.py's posts with
+    its answer in place (`answer`). It always leads with the totals and the attempts, one line
+    each, in order; then the state's own content and its controls: nothing tried, Troubleshoot
+    with AI (its note, its estimate and the cap's figures, drawn before the press); after a
+    STOP, Retry with more information (its note, its cost lines and what the AI is sent, drawn
+    before the press: Ask Mercury's diagnosis to re-plan, with no AI, and Ask the AI to
+    re-plan), Cancel and Hand over; the cap's refusal in place of Retry; a proposal with its
+    repeat flag, what the AI said of it when it is the AI's, and the operation's own card,
+    opened in place; a gap or an answer that could not be checked, with no Approve; the
+    cancelled and hand-over lines; once resolved, the record alone, with no control. The AI's
+    buttons carry the one AI mark and its readiness (`ai_control('fixit_troubleshoot')`).
+    Nothing here loads or repeats a request by itself (no hx-trigger of load, every, revealed
+    or intersect: tests/test_fixit_never_retries.py), and the text boxes are textareas, so
+    Enter submits nothing. People by display name; teams by name. -#}
 {%- set S = x.state -%}
 {%- set R = x.retry or {} -%}
 {%- set T = x.totals or {} -%}
+{%- set A = x.ai or {} -%}
 {%- set sec = url_for('fixit_v2.cancel', incident_id=x.id, list=x.network) -%}
+{%- set ask = url_for('fixit_v2.troubleshoot', incident_id=x.id, list=x.network) -%}
+{%- macro ai_cost(A) -%}<strong>Ask the AI:</strong> <span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most two calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
+{%- macro ai_button(ct, words, busy, ask, A) -%}{{ ai.mark(ct) }} <button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ ask }}" hx-target="#inc-ai" hx-swap="outerHTML" hx-disabled-elt="this" title="One investigation as you: at most two AI calls, at most {{ A.worst }} in all, its answer checked against what was sent; a fix it names is one catalogue operation, checked against this incident, the heal guards and committed intent, and runs only when you approve it in its card"{{ ai.attrs(ct, 'configure') }}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', 'ask-ai', compact=True, op='Troubleshoot with AI') }}{%- endmacro -%}
 <section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}">
-  <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('beta: no AI call yet', 'muted', title="Retry re-plans through Mercury's own diagnosis; the AI's own call is the next slice") }}</div>
+  <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('beta', 'muted', title="The AI's answers are not measured on recorded cases yet; a person approves every fix by its preview's hash") }}</div>
   {%- if answer and answer.refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ answer.refused }}</div></div>
   {%- elif answer and answer.done %}
@@ -24,6 +33,7 @@
     {%- if answer.resend %}
     <span class="op-act" id="fixit-resend-{{ x.id }}">{% for t in answer.resend_teams %}<input type="hidden" name="team" value="{{ t }}">{% endfor %}<button type="button" class="btn btn-small" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.handover_send', incident_id=x.id, version=answer.resend, list=x.network) }}" hx-include="#fixit-resend-{{ x.id }}" hx-target="#inc-ai" hx-swap="outerHTML" hx-disabled-elt="this" title="Sends the kept write-up {{ answer.resend }} again to the same teams; nothing new is kept"{{ gate('configure') }}><span class="op-idle">Send again</span><span class="op-busy">Sending…</span></button>{{ how('fixit-troubleshoot', 'hand-over', compact=True, op='a hand-over') }}</span>
     {%- endif %}</div></div>
+  {{ ai.typed_masked(answer.typed_masked) }}
   {%- endif %}
   {%- if S == 'none' %}
   {%- if x.ended == 'fixed' %}
@@ -58,7 +68,6 @@
   {%- endif %}
   {%- elif S == 'ready' %}
   <p>No fix has been tried in this incident. What to do above says where one is started.</p>
-  <p class="small muted">Troubleshoot with AI comes with its AI call, the next slice; nothing here calls a model.</p>
   {%- elif S == 'running' %}
   {%- set s = x.stop %}
   <p><strong>Attempt {{ s.n }} is running</strong> since {{ clock(s.started) }}: {{ s.operation }}. Its steps are on its card. <a href="{{ run_href(x.device, x.network, s.run) }}">Open the run</a></p>
@@ -83,6 +92,22 @@
   {%- set pr = x.proposal %}
   {%- set fl = pr.flag or {} %}
   <div class="fixit-proposal">
+    {%- set sh = pr.shown or {} %}
+    {%- if sh.rationale or sh.hypotheses %}
+    <div class="fixit-ai-answer">
+      <p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>
+      {%- if sh.hypotheses %}
+      <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim }} <span class="mono faint">{{ h.cites | join(' · ') }}</span></li>{% endfor %}</ol>
+      {%- endif %}
+      {%- if sh.why %}<p class="small">Why this fix: {{ sh.why }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
+      {%- if sh.gap %}<p class="small">What the fix needs, which no Mercury operation does yet: {{ sh.gap }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
+      <p class="small muted">{{ pr.calls | length }} AI call{{ 's' if pr.calls | length != 1 }}{% if sh.passes %} over {{ sh.passes }} pass{{ 'es' if sh.passes != 1 }}{% endif %}, {{ pr.ai_usd }} · prompt {{ pr.prompt }}{% if sh.reads %} · {{ sh.reads }}{% endif %}{% if pr.calls %} · <a href="{{ url_for('v2.history_page', call=pr.calls[-1]) }}">the call on History</a>{% endif %}</p>
+      {%- if pr.calls %}
+      {%- set fcall = pr.calls[-1] %}
+      {%- with fb=ai_feedback(fcall) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
+      {%- endif %}
+    </div>
+    {%- endif %}
     {%- if pr.operation %}
     <p><strong>Proposed fix</strong> ({{ pr.source }} proposes; you decide){% if pr.at %}, {{ clock(pr.at) }}{% endif %}: <span title="{{ pr.params }}">{{ pr.words }}</span>.</p>
     {%- if fl.kind == 'repeat' %}
@@ -91,11 +116,12 @@
     <p class="fixit-flag-var"><em>A variation of attempt {{ fl.attempt }}: the same operation, {{ fl.changed | length }} parameter{{ 's' if fl.changed | length != 1 }} changed ({% for c in fl.changed %}{{ c.name }}: {{ c.before }} → {{ c.after }}{% if not loop.last %}; {% endif %}{% endfor %}).</em></p>
     {%- endif %}
     {%- if fl and not fl.complete %}<p class="small warn-text">Compared with the attempts that could be read: {{ fl.error }}.</p>{% endif %}
-    {%- if pr.note %}<p class="small">Your note, kept for the hand-over and for the AI once built: “{{ pr.note }}”</p>{% endif %}
+    {%- if pr.note %}<p class="small">Your note, kept with this proposal and for the hand-over: “{{ pr.note }}”</p>{% endif %}
     <div id="fixit-op"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=x.device, list=x.network, subs=pr.subs | join(','), fixit=x.id, proposal=pr.id) }}" hx-target="#fixit-op" hx-swap="innerHTML" hx-disabled-elt="this" title="Opens the operation's own card here, with this proposal's subscriptions: its program, its hash and your reason; nothing runs until you confirm it"><span class="op-idle">Open the fix's card…</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}</span></div>
     {%- else %}
     <p><strong>Proposed fix:</strong> none Mercury can run{% if pr.at %} ({{ clock(pr.at) }}){% endif %}: {{ pr.none or 'no operation was named' }}.</p>
-    {%- if pr.note %}<p class="small">Your note, kept for the hand-over and for the AI once built: “{{ pr.note }}”</p>{% endif %}
+    {%- if pr.calls and not (sh.rationale or sh.hypotheses) %}<p class="small muted">{{ pr.calls | length }} AI call{{ 's' if pr.calls | length != 1 }}, {{ pr.ai_usd }}, counted in this incident's spend · <a href="{{ url_for('v2.history_page', call=pr.calls[-1]) }}">the call on History</a></p>{% endif %}
+    {%- if pr.note %}<p class="small">Your note, kept with this proposal and for the hand-over: “{{ pr.note }}”</p>{% endif %}
     {%- endif %}
   </div>
   {%- elif S == 'cancelled' %}
@@ -108,18 +134,37 @@
 
   {%- if S in ('passed', 'stopped', 'proposed', 'cancelled', 'handed_over', 'ready') %}
   <div class="fixit-controls">
+    {%- if S == 'ready' and A.offered %}
+    {%- set ct = ai_control('fixit_troubleshoot') %}
+    <form class="fixit-form fixit-ask" hx-post="{{ ask }}" hx-target="#inc-ai" hx-swap="outerHTML">
+      <details class="small" data-keep="fixit-know-{{ x.id }}"><summary>Add what you know first (optional)</summary>
+        <label class="heal-field" for="fixit-know-{{ x.id }}">What do you know that Mercury doesn't? (masked before it is sent, and kept with the answer)<textarea id="fixit-know-{{ x.id }}" name="note" rows="3" maxlength="2000" autocomplete="off"{{ ai.input_attrs(ct) }}></textarea></label>
+      </details>
+      <p class="small fixit-cost">{{ ai_cost(A) }} · <strong>this incident so far:</strong> {{ T.spent or 'not known' }} · after it, at most {{ R.after or 'not known' }} of {{ T.cap or 'no readable cap' }} · <strong>today:</strong> {{ T.today or 'not known' }} of {{ T.day_cap or 'no day cap' }}</p>
+      <input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}">
+      <span class="op-act">{{ ai_button(ct, 'Troubleshoot with AI', 'Troubleshooting…', ask, A) }}</span>
+    </form>
+    {{ ai.reason(ct) }}
+    {%- elif S == 'ready' and A.refused %}
+    <div class="notice notice-warn fixit-capped" role="status">{{ icon('warn', 16) }}<div><strong>{{ A.refused }}</strong> (Settings › Installation › AI, AI troubleshooting).</div></div>
+    {%- endif %}
     {%- if R.offered %}
     <details class="fixit-retry" data-keep="fixit-retry-{{ x.id }}">
       <summary>Retry with more information…</summary>
       <form class="fixit-form" hx-post="{{ url_for('fixit_v2.retry', incident_id=x.id, list=x.network) }}" hx-target="#inc-ai" hx-swap="outerHTML">
         <label class="heal-field" for="fixit-note-{{ x.id }}">What do you know that Mercury doesn't? (optional; masked, and kept with the retry)<textarea id="fixit-note-{{ x.id }}" name="note" rows="3" maxlength="2000" autocomplete="off"></textarea></label>
-        <p class="small muted">Mercury's diagnosis does not read words; they are kept for the hand-over and for the AI, once built.</p>
-        <p class="small fixit-cost"><strong>This retry:</strong> Mercury's own diagnosis re-plans, with no AI call ($0.00); the cap holds it as an AI retry, at most {{ R.worst }} · <strong>this incident so far:</strong> {{ T.spent or 'not known' }} · after it, at most {{ R.after or 'not known' }} of {{ T.cap or 'no readable cap' }} · <strong>today:</strong> {{ T.today or 'not known' }} of {{ T.day_cap or 'no day cap' }}</p>
+        <p class="small muted">Mercury's diagnosis does not read words; the AI does, masked before it is sent, and they are kept for the hand-over.</p>
+        <p class="small fixit-cost"><strong>Ask Mercury's diagnosis:</strong> no AI call ($0.00){% if A.offered %} · {{ ai_cost(A) }}{% endif %} · <strong>this incident so far:</strong> {{ T.spent or 'not known' }} · after it, at most {{ R.after or 'not known' }} of {{ T.cap or 'no readable cap' }} · <strong>today:</strong> {{ T.today or 'not known' }} of {{ T.day_cap or 'no day cap' }}</p>
         <details class="small" data-keep="fixit-sent-{{ x.id }}"><summary>What the AI would be sent, once it is asked</summary>
-          <ul class="fixit-sent">{% for s in R.sent %}<li class="mono">{{ s }}</li>{% else %}<li class="muted">No attempt and no proposal yet.</li>{% endfor %}<li class="muted">Mercury's diagnosis, Seen before and your note, masked, every person a stable label.</li></ul>
+          <ul class="fixit-sent">{% for s in R.sent %}<li class="mono">{{ s }}</li>{% else %}<li class="muted">No attempt and no proposal yet.</li>{% endfor %}<li class="muted">The incident's evidence pack, Mercury's diagnosis, Seen before and your note, masked, every person a stable label.</li></ul>
         </details>
         <input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}">
-        <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-disabled-elt="this" title="Mercury's own diagnosis names its fix again, checked against this incident, the heal guards and committed intent; nothing runs until you approve it in its card"{{ gate('configure') }}><span class="op-idle">Ask Mercury's diagnosis to re-plan</span><span class="op-busy">Re-planning…</span></button>{{ how('fixit-troubleshoot', 'retry', compact=True, op='Retry with more information') }}</span>
+        <span class="op-act"><button type="submit" class="btn btn-small" data-op="fixit-troubleshoot" hx-disabled-elt="this" title="Mercury's own diagnosis names its fix again, checked against this incident, the heal guards and committed intent; no AI call; nothing runs until you approve it in its card"{{ gate('configure') }}><span class="op-idle">Ask Mercury's diagnosis to re-plan</span><span class="op-busy">Re-planning…</span></button>{{ how('fixit-troubleshoot', 'retry', compact=True, op='Retry with more information') }}</span>
+        {%- if A.offered %}
+        {%- set ct = ai_control('fixit_troubleshoot') %}
+        <span class="op-act">{{ ai_button(ct, 'Ask the AI to re-plan', 'Asking the AI…', ask, A) }}</span>
+        {{ ai.reason(ct) }}
+        {%- endif %}
       </form>
     </details>
     {%- elif R.in_state and R.refused %}

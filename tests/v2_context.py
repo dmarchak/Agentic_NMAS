@@ -4615,6 +4615,20 @@ def _fixit_section(client, _lab, _mp):
         opened = client.get(f"{base}?list=Lab&subs=101,102&fixit={iid}&proposal={line['proposal']}",
                             headers=hx).get_data(as_text=True)
         assert "A variation of attempt 1" in opened and 'name="fixit"' in opened, opened[:400]
+        # An AI answer, as Troubleshoot with AI keeps it (the fix-it plan's S5): a gap, what is
+        # shown of the answer (its hypotheses, each with what it cites) and its call, by the
+        # record's own writer.
+        F.record_proposal(F.Incident("Lab", iid, "nb:3", "r3", t0 - 3600, ("101", "102")),
+                          "ai", calls=["ai-walk00000000"], prompt="fixit_troubleshoot.v1",
+                          words="No Mercury operation does what the fix needs yet (a gap): close "
+                                "the collector's session from r3",
+                          shown={"rationale": "r3 cannot open a new session while the old one "
+                                              "stands.",
+                                 "hypotheses": [{"claim": "The collector holds r3's old session.",
+                                                 "cites": ["attempt:1"]}],
+                                 "gap": "close the collector's session from r3", "passes": 1})
+        gap = client.get(page).get_data(as_text=True)
+        assert "checked against what was sent" in gap and "attempt:1" in gap, gap[:400]
         # A hand-over to a team whose relay refuses: kept, Send again offered; then its page.
         r = client.post(f"/v2/incident/{iid}/fixit/handover?list=Lab", headers=hx,
                         data={"team": "t-walk", "note": "read the collector's sessions"})

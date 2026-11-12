@@ -79,12 +79,16 @@ attention item, or from a proposal in AI troubleshooting below.
 
 The fixes tried in this incident, one line each, with what each cost in AI and **Open the
 run**; this incident's AI spend against its cap and today's against the day cap; and what may
-be done next. After a fix that did not pass, the section stops: **Retry with more
-information…**, **Cancel** and **Hand over…**. Retry asks Mercury's own diagnosis to plan
-again, with no AI call yet, and draws its proposal with **Open the fix's card…**; a proposal
-that repeats a failed attempt is flagged. Past the per-incident cap, Retry is not offered and
-the section says both figures. Once the incident is resolved, the section is read-only. Each
-step is on [AI troubleshooting: Retry, Cancel and Hand over](fixit-troubleshoot).
+be done next. With nothing tried, **Troubleshoot with AI** asks the AI once, as you, its
+estimate and the caps drawn before you press. After a fix that did not pass, the section stops:
+**Retry with more information…**, **Cancel** and **Hand over…**. Retry asks Mercury's own
+diagnosis to plan again, with no AI call, or the AI (**Ask the AI to re-plan**). Either
+proposal is drawn with **Open the fix's card…**, the AI's with what it found and what it cites;
+a proposal that repeats a failed attempt is flagged; a gap (no Mercury operation does what the
+fix needs) and an answer that couldn't be checked are said, with no Approve. Past the
+per-incident cap, neither is offered and the section says both figures. Once the incident is
+resolved, the section is read-only. Each step is on [AI troubleshooting: Troubleshoot with AI,
+Retry, Cancel and Hand over](fixit-troubleshoot).
 
 An AI analysis kept for the incident is drawn under it, labelled advisory: self-healing never
 reads it.

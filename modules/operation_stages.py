@@ -550,6 +550,10 @@ HISTORY = {
     "fixit_v2.retry": ("n/a: a re-plan is one proposal line of the incident's troubleshooting "
                        "record (modules/fixit/incident.py), drawn on the incident's page; the "
                        "fix it proposes runs only through its operation's own confirm"),
+    "fixit_v2.troubleshoot": ("n/a: at most two AI calls kept in the fleet's ai_calls record, "
+                              "and one proposal line of the incident's troubleshooting record "
+                              "(modules/fixit/incident.py), drawn on the incident's page; the "
+                              "fix it proposes runs only through its operation's own confirm"),
     "fixit_v2.handover": ("n/a: a hand-over is one line of the incident's troubleshooting "
                           "record and a kept write-up, linked from the incident's page; its send "
                           "is in the notifications' delivery log, never one device's record"),

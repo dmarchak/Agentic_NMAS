@@ -1745,18 +1745,19 @@ def incident_timeline():
 
 def fixit_troubleshoot():
     return svg(440, (
-        "AI troubleshooting on an incident's page, with no AI call yet: an attempt is a "
-        "catalogue operation's run on the incident's device, read from the operation's own "
-        "record; a failed attempt stops the section, and nothing more runs until a person "
-        "chooses. Retry with more information asks the per-incident cap again at the press, "
-        "then Mercury's own diagnosis names its fix as one catalogue operation, checked against "
-        "the incident, the heal guards and committed intent, and kept as one proposal line "
-        "with the person's note; a proposal that repeats a failed attempt is flagged. The fix "
-        "runs only through its operation's own card, previewed and confirmed by hash, and its "
-        "run's record names the incident, the attempt and the proposal. Cancel and Hand over "
-        "each record one line, and Hand over keeps a write-up and sends its link to the teams "
-        "chosen. Nothing in the section reaches the device but the operation a person "
-        "confirmed."), [
+        "AI troubleshooting on an incident's page: an attempt is a catalogue operation's run "
+        "on the incident's device, read from the operation's own record; a failed attempt "
+        "stops the section, and nothing more runs until a person chooses. Troubleshoot with AI, "
+        "or Retry with more information, asks the per-incident cap again at the press; then "
+        "either Mercury's own diagnosis, with no AI, or one AI investigation the person's press "
+        "asked for (at most two calls, its answer checked against what was sent) names a fix "
+        "as one catalogue operation, checked against the incident, the heal guards and "
+        "committed intent, and kept as one proposal line with the person's note; a proposal "
+        "that repeats a failed attempt is flagged. The fix runs only through its operation's "
+        "own card, previewed and confirmed by hash, and its run's record names the incident, "
+        "the attempt and the proposal. Cancel and Hand over each record one line, and Hand "
+        "over keeps a write-up and sends its link to the teams chosen. Nothing in the section "
+        "reaches the device but the operation a person confirmed."), [
         lanes(20, 434),
         device(262, 40, 118, 250, "The device", "only through its operation", top=True),
         doc("box", 14, 40, 186, 36, "An attempt failed", "the run's own record"),
@@ -1764,7 +1765,7 @@ def fixit_troubleshoot():
         t(14, 96, "Stopped: nothing more runs", "sm"),
         person(14, 108, 186, 30, "Retry with more information"), num(14, 108, 2),
         t(14, 156, "the cap asked again at the press", "sm"),
-        store(14, 166, 186, 36, "Mercury's diagnosis", "names one catalogue operation"),
+        store(14, 166, 186, 36, "Mercury's diagnosis or the AI", "names one catalogue operation"),
         num(14, 166, 3),
         t(14, 220, "checked: incident, guards, intent", "sm"),
         store(14, 230, 186, 36, "The incident's record", "one proposal line, flagged"),
@@ -1773,7 +1774,7 @@ def fixit_troubleshoot():
         t(36, 322, "its run names the incident", "sm"),
         store(14, 340, 186, 36, "Cancel, Hand over", "one line each; nothing runs"),
         num(14, 340, 6),
-        nosend(320, 340, ("no AI call, no job", "without a person's press")),
+        nosend(320, 340, ("no AI call, no run", "without a person's press")),
     ])
 
 
