@@ -401,6 +401,10 @@
       var hovered = region.querySelectorAll(':hover');
       if (hovered.length) el = hovered[hovered.length - 1].closest(POINTED);
     } catch (x) { el = null; }
+    // A disabled control takes no press, so there is none to land: one busy on itself (Run the
+    // check again's "Checking…" under the pointer that pressed it) is drawn with its answer,
+    // never kept busy until the pointer moves and another redraw comes (C3360).
+    if (el && el.disabled) el = null;
     if (el && region.contains(el)) return el;
     var a = root.document.activeElement;
     return a && a.tagName === 'BUTTON' && a !== region && region.contains(a) ? a : null;
@@ -597,7 +601,13 @@
 
   /* A swap that was not a merge drew a region afresh (its first load, a person's own request,
      a hold's redraw): remember it as drawn. Content a person loaded INTO a region (a row's
-     body, Load more's page) is the page's own and stays unremembered, so a merge keeps it. */
+     body, Load more's page) is the page's own and stays unremembered, so a merge keeps it.
+     Except a part the region itself draws, answered in place by a press (`data-live-part`:
+     Needs attention's Run the check again): its answer is the server's drawing of that part,
+     remembered as such, so the region's next redraw brings it to what the server draws then.
+     Left unremembered, the merge kept the answer as the page's own and drew the server's new
+     control beside it: two controls after one press (C3360). */
+  var LIVE_PART = 'data-live-part';
   var merging = false;
   function captureSwapped(e) {
     if (merging || !drawnFrom) return;
@@ -609,6 +619,7 @@
     var now = t.isConnected ? t : (t.id ? root.document.getElementById(t.id) : null);
     if (!now) return;
     if (isRegion(now)) { capture(now); return; }
+    if (now.hasAttribute(LIVE_PART)) { capture(now); return; }
     var up = now.parentNode;
     while (up && up.nodeType === 1) {
       if (isRegion(up)) return;                     // loaded into a region: the page's own

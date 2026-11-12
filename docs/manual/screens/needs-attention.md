@@ -142,12 +142,19 @@ again**.
   fresh reading no longer finds the problem, or still there with the new reading's age
   ("read 3 s ago"). A check that failed says **The check failed** with its error, beside the
   button.
+- **When the check is already reading** (its schedule's run, another person's press, or the
+  run after an operation), your press waits for that run rather than starting a second: the
+  button reads **Checking…** until it ends, and the item is drawn again with its reading.
+- **When the check read just now** (within its minimum spacing, 15 seconds, or its own interval
+  for the checks that read every 5 seconds) and you did not ask for that read, that reading is
+  the answer: **Checked just now (HH:MM): still found**, or **no longer found** (the item then
+  leaves the list), or **the check failed** with its error. It is as fresh as a new read would
+  be.
 - **When it is not run**, it says why beside the button, naming both sides of the comparison:
-  - the check is already running (its schedule's run, another person's press, or the run after
-    an operation), and since when; the item is drawn again when that run ends;
-  - it began a read within its minimum spacing, 15 seconds (or its own interval, for the
-    checks that read every 5 seconds), so that reading is as fresh as a new one, and from when
-    it can be asked again;
+  - your own press is still running (from another tab), and since when; the item is drawn
+    again when that run ends;
+  - your own press began a read within the minimum spacing, and from when it can be asked
+    again;
   - its last read found its service not answering (NetBox still starting, say), and its next
     try is on its backoff, 15 seconds doubling to 5 minutes, at the time it names: a press
     does not jump the backoff.

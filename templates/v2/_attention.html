@@ -363,8 +363,9 @@
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
         {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
             press, here beside the reading's age (the row's evidence), never beside its one
-            action; busy while it runs (`r.recheck`, modules/recheck.py). -#}
-        {%- if r.reader %} · {{ recheck(r.reader, r.recheck) }}{% endif %}
+            action; busy while it runs (`r.recheck`, modules/recheck.py). The row's id names
+            the control, so its press's answer is drawn in its place (C3360, C3361). -#}
+        {%- if r.reader %} · {{ recheck(r.reader, r.recheck, row=r.id) }}{% endif %}
       </p>
       {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
           operands, its ids, hashes and steps, under a collapsed "Details for the record", last;

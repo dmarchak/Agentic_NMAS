@@ -58,10 +58,12 @@ def announced(monkeypatch):
 def planted(monkeypatch, inline, announced):
     """A registered reader whose read returns what the test sets, counting its reads; the
     readers "running" in this process; no press or end left over from another test."""
-    state = {"bad": True, "reads": 0}
+    state = {"bad": True, "reads": 0, "during": None}
 
     def read():
         state["reads"] += 1
+        if state["during"]:
+            state["during"]()                 # a press while this run is in progress (C3361)
         return {"bad": state["bad"]}
 
     reader_job.register(reader_job.Reader(
@@ -69,9 +71,46 @@ def planted(monkeypatch, inline, announced):
         interval_basis="the test's own choice", read=read, invalidates=("logs",)))
     monkeypatch.setattr(reader_job, "running", lambda name: True)
     monkeypatch.setattr(reader_job, "_REQUESTS", {})
-    monkeypatch.setattr(RC, "_ENDED", {})
     yield state
     reader_job.unregister(NAME)
+
+
+@pytest.fixture(autouse=True)
+def _no_press_left_over(monkeypatch):
+    """No press's end, joined run or read answered is left from another test (memory only).
+    The three records C3361 added are set even where the module lacks them (`raising=False`),
+    so on a parent without them each test's own body runs, and fails, rather than this
+    fixture erroring first (scripts/nmas-red-green reads a setup error as not red);
+    `test_the_isolated_records_exist` holds that the module has each one."""
+    monkeypatch.setattr(RC, "_ENDED", {})
+    monkeypatch.setattr(RC, "_JOINED", {}, raising=False)
+    monkeypatch.setattr(RC, "_CHECKED", {}, raising=False)
+    monkeypatch.setattr(reader_job, "_AT_RUN_END", {}, raising=False)
+
+
+def test_the_isolated_records_exist():
+    # The fixture above sets these with raising=False, so while it runs they exist whatever
+    # the module says; a record renamed would leave the real one shared between tests. So each
+    # is read from the module's own source: a top-level assignment of that name.
+    import ast
+    import inspect
+    for mod, name in ((RC, "_JOINED"), (RC, "_CHECKED"), (reader_job, "_AT_RUN_END")):
+        tree = ast.parse(inspect.getsource(mod))
+        names = {t.id for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+                 for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                 if isinstance(t, ast.Name)}
+        assert name in names, f"{mod.__name__} assigns no top-level {name}"
+
+
+def _attempt_by(kind: str, by: str = ""):
+    """Rewrite the planted reader's stored last attempt as caused by *kind* (and *by*)."""
+    import json
+
+    path = reader_job.store_path(NAME)
+    doc = json.loads(open(path, encoding="utf-8").read())
+    doc["last_attempt"]["trigger"] = {"kind": kind, "by": by, "run": "t1"}
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc))
 
 
 def _attempt_at(seconds_ago: float, now: float, **extra):
@@ -242,24 +281,28 @@ class TestThePress:
         monkeypatch.setitem(reader_job._IN_PROGRESS, NAME,
                             {"since": time.time() - 4, "kind": "scheduled", "by": "", "run": ""})
         got = RC.ask(NAME, "")
-        assert not got["ok"] and got["refused"] == "running"
-        assert got["operands"]["since"] and got["operands"]["cause"] == "the scheduled check"
-        assert planted["reads"] == reads, "refused, never queued behind the run"
+        # C3361: a run the person did not start is joined (busy until it ends), not refused.
+        assert got["ok"] and got["joined"] and not got["started"]
+        assert got["since"] and got["cause"] == "the scheduled check"
+        assert planted["reads"] == reads, "joined, never queued behind the run"
 
     def test_a_press_while_another_press_runs_is_refused(self, planted, monkeypatch):
         import time
+        # The person's own press, in another tab (C3361: another person's is joined instead).
         monkeypatch.setitem(reader_job._REQUESTS, NAME,
-                            {"run": "abc", "by": "someone@example.com", "since": time.time(),
+                            {"run": "abc", "by": "operator@example.com", "since": time.time(),
                              "done": False})
         got = RC.ask(NAME, "operator@example.com")
         assert not got["ok"] and got["refused"] == "running" and planted["reads"] == 0
-        assert "someone@example.com" in got["operands"]["cause"]
+        assert got["operands"]["cause"] == "checked on your request"
 
     def test_within_its_minimum_spacing_it_is_refused_naming_both(self, planted):
         reader_job.run_once(RC._reader(NAME))
         import time
         now = time.time()
         _attempt_at(5, now)
+        # The person's own read (C3361: a read they did not start is the answer instead).
+        _attempt_by("request", "")
         got = RC.ask(NAME, "", now=now)
         assert not got["ok"] and got["refused"] == "spacing" and planted["reads"] == 1
         o = got["operands"]
@@ -388,7 +431,7 @@ class TestWhereItSits:
         page = open(os.path.join(ROOT, "templates", "v2", "_attention.html"),
                     encoding="utf-8").read()
         meta = page.split('class="att-meta"')[1].split("</p>")[0]
-        assert "recheck(r.reader, r.recheck)" in meta
+        assert "recheck(r.reader, r.recheck, row=r.id)" in meta
         primary = page.split("{%- macro primary(r, nets) -%}")[1].split("{%- endmacro -%}")[0]
         assert "recheck" not in primary
         assert page.count("recheck(") == 1
@@ -442,8 +485,10 @@ class TestWhereItSits:
         live = A.needs_attention
         monkeypatch.setattr(A, "needs_attention", lambda sources=None: live(sources=[_source]))
         reader_job.run_once(RC._reader(NAME))
+        # The viewer's own press (the test client's verified person): C3361 joins another's.
         monkeypatch.setitem(reader_job._REQUESTS, NAME,
-                            {"run": "r9", "by": "", "since": time.time(), "done": False})
+                            {"run": "r9", "by": "test-person@example.invalid",
+                             "since": time.time(), "done": False})
         client = APP.app.test_client()
         page = client.get("/v2/attention").get_data(as_text=True)
         control = page.split('class="att-recheck')[1].split("</span>")[0]
@@ -473,3 +518,179 @@ class TestWhereItSits:
         assert route_gates.GATES["v2.attention_recheck"].kind == route_gates.NOT_DEVICE
         assert isinstance(I.DECLARED["v2.attention_recheck"], I.Nothing)
         assert I.ANNOUNCERS[RC.ANNOUNCER] == RC.ANNOUNCE_KEYS == ("attention",)
+
+
+# ---------------------------------------------------------------------------
+# (4) A read the person did not start is the press's answer, never a refusal (C3361)
+# ---------------------------------------------------------------------------
+
+ROW = "job_health:planted.service"
+
+
+def _client(monkeypatch):
+    import app as APP
+
+    live = A.needs_attention
+    monkeypatch.setattr(A, "needs_attention", lambda sources=None: live(sources=[_source]))
+    return APP.app.test_client()
+
+
+class TestAReadThePersonDidNotStartIsTheAnswer:
+    """The operator's test of item 2 (2026-11-12): "When a read began or finished within the
+    spacing, a first press should say "Checked just now (HH:MM): <result>" and update the row's
+    age, not read as a refusal. "Not run again…" is only for a person's own repeat press".
+    Counted, never timed: each case's reads are counted and its clock is passed in."""
+
+    def test_a_first_press_within_the_spacing_of_a_scheduled_read(self, planted, monkeypatch):
+        import time
+        reader_job.run_once(RC._reader(NAME))             # the schedule's read
+        now = time.time()
+        _attempt_at(5, now)
+        _rewrite_value_at(5, now)
+        got = RC.ask(NAME, "operator@example.com", now=now)
+        assert got["ok"] and got["checked"] and not got["started"], got
+        assert got["at"] == reader_job._iso(now - 5) and got["read_ok"] is True
+        assert got["cause"] == "the scheduled check" and planted["reads"] == 1, "nothing re-read"
+        # Drawn so on the row's redraws while it settles, busy only until the list has it.
+        at = reader_job._iso(now - 5)
+        assert RC.state(NAME, at, now=now) == {"checked": {"at": at}}
+        older = RC.state(NAME, reader_job._iso(now - 3600), now=now)
+        assert older["busy"] and older["taking"], older
+        assert RC.state(NAME, at, now=now + RC.SETTLE_S + 1) is None
+        # On the page: "Checked just now (HH:MM): still found", in place, never a refusal.
+        client = _client(monkeypatch)
+        r = client.post("/v2/attention/recheck", data={"reader": NAME, "row": ROW})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200, body
+        assert "Checked just now (" in body and "still found." in body
+        assert "Not run again" not in body and planted["reads"] == 1
+        assert f'id="att-recheck-{ROW}"' in body and "data-live-part" in body
+
+    def test_a_first_press_after_a_read_that_cleared_it_says_so(self, planted, monkeypatch,
+                                                                announced):
+        import time
+        planted["bad"] = False
+        reader_job.run_once(RC._reader(NAME))
+        now = time.time()
+        _attempt_at(5, now)
+        client = _client(monkeypatch)
+        r = client.post("/v2/attention/recheck", data={"reader": NAME, "row": ROW})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Checked just now (" in body, body
+        assert "no longer found" in body and planted["reads"] == 1
+        assert [m["by"] for m in announced].count(RC.ANNOUNCER) == 1, "the list told to redraw"
+
+    def test_a_person_s_own_repeat_press_is_refused_and_another_person_s_is_answered(
+            self, planted):
+        import time
+        assert RC.ask(NAME, "operator@example.com")["started"] and planted["reads"] == 1
+        now = time.time()
+        again = RC.ask(NAME, "operator@example.com", now=now)
+        assert not again["ok"] and again["refused"] == "spacing", again
+        other = RC.ask(NAME, "someone@example.com", now=now)
+        assert other["ok"] and other["checked"] and planted["reads"] == 1, other
+        assert other["cause"] == "checked on request by operator@example.com"
+
+    def test_another_person_s_press_in_flight_is_joined(self, planted, monkeypatch):
+        import time
+        since = time.time()
+        monkeypatch.setitem(reader_job._REQUESTS, NAME,
+                            {"run": "abc", "by": "someone@example.com", "since": since,
+                             "done": False})
+        got = RC.ask(NAME, "operator@example.com")
+        assert got["ok"] and got["joined"] and planted["reads"] == 0, got
+        assert "someone@example.com" in got["cause"]
+        busy = RC.state(NAME)
+        assert busy["busy"] and busy["cause"] == got["cause"]
+
+    def test_a_read_in_progress_is_joined_and_busy_until_it_ends(self, planted, monkeypatch,
+                                                                 announced):
+        seen = {}
+
+        def press():
+            seen["got"] = RC.ask(NAME, "operator@example.com")
+            seen["during"] = RC.state(NAME)
+            client = _client(monkeypatch)
+            r = client.post("/v2/attention/recheck", data={"reader": NAME, "row": ROW})
+            seen["page"] = (r.status_code, r.get_data(as_text=True))
+
+        planted["during"] = press
+        doc = reader_job.run_once(RC._reader(NAME))       # the schedule's, in progress
+        got = seen["got"]
+        assert got["ok"] and got["joined"] and got["cause"] == "the scheduled check", got
+        assert seen["during"]["busy"] and seen["during"]["cause"] == "the scheduled check"
+        status, body = seen["page"]
+        assert status == 202 and 'aria-busy="true"' in body and "is reading now" in body, body
+        assert "Not run again" not in body
+        assert planted["reads"] == 1, "joined, never a second read"
+        # Its end, told by the run itself: the list asked to redraw once per joining press,
+        # and the control idle once the held list has the new reading.
+        assert [m["by"] for m in announced].count(RC.ANNOUNCER) == 2
+        assert RC._ENDED[NAME]["ok"] is True
+        new = doc["last_good"]["value_at"]
+        assert RC.state(NAME, new) is None
+        assert RC.state(NAME, reader_job._iso(1_000_000_000))["busy"], "not yet in the list"
+
+
+# ---------------------------------------------------------------------------
+# (5) In a real browser: one press, one control (C3360)
+# ---------------------------------------------------------------------------
+
+def test_one_press_leaves_one_control_after_its_answer_and_after_the_list_s_redraw(
+        planted, monkeypatch):
+    """C3360 (the operator's test on the NMAS host, 2026-11-12: "After one press, the row shows
+    two Run the check again buttons"). The press's answer replaced the control, and the list's
+    next live redraw merged into the row (C2810's merge) took that answer for something the
+    page made itself, so it kept it and drew the server's new control beside it. Pressed in a
+    real browser: exactly one control in the row once the answer is drawn (busy on itself), and
+    exactly one after the list's live redraw (idle, the new reading's age)."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tests above still run")
+    import time
+
+    import app as nmas
+
+    monkeypatch.setattr(A, "SOURCES", (_source,))
+    reader_job.run_once(RC._reader(NAME))
+    now = time.time()
+    _attempt_at(3600, now)
+    _rewrite_value_at(3600, now)
+    row = "document.querySelector('details.att[data-attention-row=\"job_health:planted.service\"]')"
+    controls = f"return {row}.querySelectorAll('.att-recheck').length"
+    buttons = f"return {row}.querySelectorAll('.att-recheck button').length"
+    idle = f"!!{row}.querySelector('.att-recheck button[hx-post]:not([aria-busy])')"
+    with browser.Served(nmas.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url("/v2/"))
+            b.wait_for(f"return !!window.htmx && !!{row}", 15)
+            b.js(f"{row}.open = true; return 1")
+            drawn = (b.js(controls), b.js(buttons))
+            b.click('details.att .att-recheck button[hx-post]')
+            b.wait_for(f"return !!{row}.querySelector('.att-recheck button[aria-busy=\"true\"]')"
+                       " && !document.querySelector('.htmx-request')", 10)
+            answered = (b.js(controls), b.js(buttons))
+            assert planted["reads"] == 2, "the press ran the check"
+            # The list's live redraw, as the run's end announces it (`recheck._done`), with the
+            # pointer still on the control it pressed.
+            b.js("htmx.trigger(document.body, 'nmas:attention'); return 1")
+            b.wait_for(f"return {idle} && !document.querySelector('.htmx-request')", 15)
+            redrawn = (b.js(controls), b.js(buttons))
+            age = b.js(f"return {row}.querySelector('.att-meta time.stamp')"
+                       ".getAttribute('datetime')")
+            # The redrawn control is live: the person's own repeat press is answered in place.
+            b.click('details.att .att-recheck button[hx-post]')
+            b.wait_for(f"return !!{row}.querySelector('.att-recheck .refusal')"
+                       " && !document.querySelector('.htmx-request')", 10)
+            repeated = (b.js(controls), b.js(buttons),
+                        b.js(f"return {row}.querySelector('.att-recheck .refusal').textContent"))
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert drawn == (1, 1), drawn
+    assert answered == (1, 1), f"the answer drawn beside the control: {answered}"
+    assert redrawn == (1, 1), f"the list's redraw drew a second control: {redrawn}"
+    assert reader_job._parse_iso(age) > now - 60, f"the new reading's age: {age}"
+    assert repeated[:2] == (1, 1) and "within its minimum spacing" in repeated[2], repeated
+    assert planted["reads"] == 2, "the repeat ran nothing"

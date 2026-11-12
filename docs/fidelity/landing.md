@@ -35,9 +35,24 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html
-Templates sha256: `6bd7a689cdf2a7a2164120e15e5288b691024e5160e11a14e545fd50c26e8440`
+Templates sha256 then (local times' included): `6bd7a689cdf2a7a2164120e15e5288b691024e5160e11a14e545fd50c26e8440`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_attention.html` and `_heal_analysis.html`, a row's "Clears when … (by …)" time, a Grafana silence's end, Seen before's times and the can't-fix analysis's call time are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; a row's words that Python builds keep theirs (C3290). Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`.
+Templates sha256: `38c26a97b54f9e8d8b31d716a193a6ab3e99c32696d9fd6480c32c3c484baeb5`
+(Run the check again's fix alone hashed `697ab1d52342ff21f6d78b0fc1bfb166e0b03f2d6820692592cc3b0c189d9cb7`;
+this is the set over local times, which touched `_attention.html` too.)
+
+**Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
+2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and
+`data-live-part`, so one press leaves one control after its answer and after the list's live
+redraw; and a press answered by a read the person did not start says, in the same place,
+"Checked just now (HH:MM): still found" (or "no longer found", or "the check failed: …"), or
+is busy on itself while a run it joined ends. Place, words of the idle and busy control and
+every other region as compared; the control was already a logged deviation of board NA-R
+(docs/STANDING_APPROVAL_LOG.md, "Needs attention: Run the check again on a row's Details
+line"), and these are its states, no new region. Compared by the template diff and the real
+browser test tests/test_recheck.py presses, not a new shot. Templates sha256 before:
+`a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`.
 
 **Hashed again 2026-11-12, the same day, at the merge:** Run the check again posts to
 `/v2/attention/recheck` (`v2.attention_recheck`) where it posted to `/attention/recheck`: a

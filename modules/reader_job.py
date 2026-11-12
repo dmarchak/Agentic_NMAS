@@ -713,12 +713,39 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
                     out = doc
             return out
         finally:
-            _IN_PROGRESS.pop(reader.name, None)
+            with _RUN_END_LOCK:
+                ended = _IN_PROGRESS.pop(reader.name, None)
+                steps = _AT_RUN_END.pop(reader.name, [])
+            for step in steps:
+                try:
+                    step(dict(ended or {}))
+                except Exception as exc:                # noqa: BLE001 (the run itself stands)
+                    log.error("reader %s: a step waiting for its run to end failed: %s: %s",
+                              reader.name, type(exc).__name__, exc)
 
 
 #: reader name -> the run holding its run lock in THIS process now (`run_once`):
 #: ``{"since", "kind", "by", "run"}``. Memory only: read by a press, never by a page.
 _IN_PROGRESS: dict = {}
+
+#: reader name -> the steps waiting for the run in progress now to end (`when_run_ends`).
+#: Memory only; taken with the run's entry under one lock, so each step is called once.
+_AT_RUN_END: dict = {}
+_RUN_END_LOCK = threading.Lock()
+
+
+def when_run_ends(name: str, step) -> dict:
+    """Call *step* once the run of *name* in progress in this process now ends (stored or
+    raised), on that run's thread, with a copy of its entry; a step that fails is logged.
+    Returns the run waited on (a copy), or None when none is in progress, and *step* is then
+    never called. A person's Run the check again that finds a run it did not start
+    (modules/recheck.py) is told so when that run ends, rather than asking on a timer."""
+    with _RUN_END_LOCK:
+        got = _IN_PROGRESS.get(name)
+        if not got:
+            return None
+        _AT_RUN_END.setdefault(name, []).append(step)
+        return dict(got)
 
 
 def in_progress(name: str) -> dict:

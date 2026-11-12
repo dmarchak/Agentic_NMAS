@@ -42,9 +42,12 @@ def recheck():
     a press on the person's own page). The operator's overnight item 9, 2026-11-12: the reader a row's
     reading came from (form ``reader``, a registered reader's name, never a command) runs once
     now through its own run path (`reader_job.request_run`, recorded as this person's request)
-    on its own thread. Answers at once: the control busy (202), or the refusal naming both
-    operands (409); the row is drawn again when the run's value is assembled
-    (modules/recheck.py)."""
+    on its own thread. Answers at once, the control drawn again in place (form ``row``, the
+    row it is on, keeps its id): busy (202) on a run started, or on a run in progress the person
+    did not start, which it waits for; "Checked just now" (200) on a read within the spacing
+    the person did not start, in the row's words; or the refusal naming both operands (409).
+    The row is drawn again when the run's value is assembled (modules/recheck.py, C3360,
+    C3361)."""
     from flask import render_template
 
     from modules import identity
@@ -52,12 +55,21 @@ def recheck():
     from routes.device_v2 import _strict
 
     who = identity.viewer()
+    row = str(request.form.get("row") or "")
     got = R.ask(str(request.form.get("reader") or ""),
                 who.actor if who.is_identified else "")
-    if got["ok"]:
+    if got["ok"] and got.get("checked"):
+        rc = R.checked_answer(got, row)
         return _strict(render_template("v2/_attention_recheck.html", reader=got["reader"],
-                                       rc={"busy": True, "since": got["since"]},
-                                       refused=None), 202)
+                                       rc=rc, refused=None, row=row),
+                       202 if rc.get("busy") else 200)
+    if got["ok"]:
+        rc = {"busy": True, "since": got["since"]}
+        if got.get("joined"):
+            rc["cause"] = got["cause"]
+        return _strict(render_template("v2/_attention_recheck.html", reader=got["reader"],
+                                       rc=rc, refused=None, row=row), 202)
     return _strict(render_template("v2/_attention_recheck.html",
-                                   reader=got["reader"] or "unknown", rc=None, refused=got),
+                                   reader=got["reader"] or "unknown", rc=None, refused=got,
+                                   row=row),
                    409)
