@@ -38,7 +38,7 @@ STEP_NAMES = ("advisories", "record_advisory")
 #: Who may import the loop: its router read family, and the one feature asked through it.
 #: AI troubleshooting's feature and its read family (S5, S6; the operator's W2, 2026-11-12).
 KNOWN_LOOP = {"modules/ai/router_reads.py", "modules/ai/heal_analysis.py", "modules/ai/sdn_analyst_tools.py",
-              "modules/ai/fixit_troubleshoot.py"}
+              "modules/ai/fixit_troubleshoot.py", "modules/ai/fixit_reads.py"}
 #: Who may import the analysis (its answer, its kept rows): the notifier and the pages.
 KNOWN_ANALYSIS = {"modules/heal_notice.py", "modules/heal_page.py", "modules/attention.py",
                   "routes/v2.py"}

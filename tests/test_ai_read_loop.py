@@ -246,7 +246,7 @@ def test_a_planted_write_operation_is_refused_when_the_family_is_declared(transp
      "device_state, topology)"),
     ({"limit": 4}, "its limit 4 is not 1 to 3, the most reads a pass may ask for"),
     ({"limit": True}, "its limit True is not 1 to 3, the most reads a pass may ask for"),
-    ({"transport": "snmp"}, "its transport 'snmp' has no read rule (cli, http, seal)"),
+    ({"transport": "snmp"}, "its transport 'snmp' has no read rule (cli, http, local, seal)"),
     ({"run": "not callable"}, "its run is not callable"),
 ])
 def test_a_family_out_of_shape_is_refused_when_declared(over, said):

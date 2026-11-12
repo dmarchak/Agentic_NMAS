@@ -46,7 +46,11 @@ GET only, a path on the controller with no URL or query; over a device CLI, the 
 passing `readonly_commands.refusal` with no extras and its verb one of show, ping and
 traceroute (never dir or more: 19.5's "left out on purpose"); over the seal (``seal``, Lab 9
 B4's SDN analyst), one line naming the section of a KEPT snapshot it reads (``snapshot <section>
-<arguments>``), answered from that sealed snapshot and never sent anywhere. A planted write is
+<arguments>``), answered from that sealed snapshot and never sent anywhere; over ``local`` (AI
+troubleshooting's reads, `modules/ai/fixit_reads.py`), one line naming a read Mercury makes of
+what it and its host already hold (``local <what> <arguments>``), never a command. An operation
+may name a transport other than its family's (`Operation.transport`), and is held to that
+transport's rule, so one family can hold the router CLI reads beside the local ones. A planted write is
 refused when the family is declared, by its method or its command, before anything could run
 it. The same rule is asked again of every rendered request.
 
@@ -143,6 +147,8 @@ _NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 _PATH = re.compile(r"/[A-Za-z0-9_./{}:-]*")
 #: A sealed read: ``snapshot``, the section it reads, and its arguments, one token each.
 _SEAL = re.compile(r"snapshot [a-z_]{1,40}( [A-Za-z0-9_.:{}-]{1,80}){0,6}")
+#: A local read's one line: ``local <what>`` and its arguments, each one token.
+_LOCAL = re.compile(r"local [a-z_]{1,40}( [A-Za-z0-9_.:{}-]{1,80}){0,6}")
 
 
 class Undeclarable(ValueError):
@@ -320,8 +326,10 @@ class Arg:
 class Operation:
     """One read: its *name*, its arguments by name (`Arg`), every request it sends
     (*sends*: over HTTP ``(method, path)`` pairs, over a CLI command strings, each naming
-    required arguments as ``{name}``), its egress class when not the family's, and *against*,
-    a comparison across its arguments (``against(args, scope) -> ""`` or why not)."""
+    required arguments as ``{name}``), its egress class when not the family's, *against*,
+    a comparison across its arguments (``against(args, scope) -> ""`` or why not), and its
+    *transport* when not the family's (a family of two transports: AI troubleshooting's, the
+    router CLI reads beside Mercury's own local reads), held to that transport's read rule."""
 
     name: str
     args: dict
@@ -329,6 +337,7 @@ class Operation:
     egress_class: Optional[str] = None
     against: Optional[Callable] = None
     words: str = ""
+    transport: Optional[str] = None
 
 
 # ── The transports' read rules (at declaration, and again on every rendered request) ──────────
@@ -379,8 +388,22 @@ def _seal_rule(op: str, send, args=None) -> str:
     return ""
 
 
+def _local_rule(op: str, send, args=None) -> str:
+    if not isinstance(send, str):
+        return (f"the operation {op} reads {_shown(send)}: a local read is one line naming what "
+                "Mercury already holds or reads on its own host")
+    text = send.format(**{k: str(v) for k, v in args.items()}) if args is not None else send
+    if not _LOCAL.fullmatch(text):
+        return (f"the operation {op} reads {text!r}: a local read is 'local <what>' and its "
+                "arguments, each one token, answered by Mercury's own read of it, never a "
+                "command")
+    return ""
+
+
 #: Each transport's read rule: ``rule(op, send, args=None) -> ""`` or why it is not a read.
-TRANSPORTS = {"cli": _cli_rule, "http": _http_rule, "seal": _seal_rule}
+#: ``local`` (AI troubleshooting's S6): one line naming a read Mercury makes of what it and its
+#: host already hold (the collector's sockets, a stream's series), never sent anywhere.
+TRANSPORTS = {"cli": _cli_rule, "http": _http_rule, "seal": _seal_rule, "local": _local_rule}
 
 
 def _render(transport: str, send, args: dict):
@@ -419,6 +442,9 @@ class ReadFamily:
     def class_of(self, op: Operation) -> str:
         return op.egress_class or self.egress_class
 
+    def transport_of(self, op: Operation) -> str:
+        return op.transport or self.transport
+
 
 def _declare(family: ReadFamily) -> dict:
     name = family.name if isinstance(family.name, str) else ""
@@ -443,7 +469,6 @@ def _declare(family: ReadFamily) -> dict:
         refuse("its run is not callable")
     if not family.operations:
         refuse("it declares no operation")
-    rule = TRANSPORTS[family.transport]
     out = {}
     for op in family.operations:
         if not isinstance(op, Operation):
@@ -468,6 +493,10 @@ def _declare(family: ReadFamily) -> dict:
                    f"a read goes out under ({', '.join(sorted(CLASSES))})")
         if op.against is not None and not callable(op.against):
             refuse(f"the operation {op.name}'s against is not callable")
+        if op.transport is not None and op.transport not in TRANSPORTS:
+            refuse(f"the operation {op.name}'s transport {_shown(op.transport)} has no read rule "
+                   f"({', '.join(sorted(TRANSPORTS))})")
+        rule = TRANSPORTS[family.transport_of(op)]
         sends = tuple(op.sends or ())
         if not sends:
             refuse(f"the operation {op.name} sends nothing: it names each request it sends")
@@ -682,13 +711,14 @@ def _judge(family: ReadFamily, raw, n: int, network: str, scope: dict, off: dict
             why = f"its arguments could not be compared ({type(exc).__name__})"
         if why:
             return refused(f"{op.name}: {why}", op=op.name, args=args)
-    rule = TRANSPORTS[family.transport]
+    transport = family.transport_of(op)
+    rule = TRANSPORTS[transport]
     requests = []
     for send in op.sends:
         why = rule(op.name, send, args)
         if why:
             return refused(f"the request rendered is not a read: {why}", op=op.name, args=args)
-        requests.append(_render(family.transport, send, args))
+        requests.append(_render(transport, send, args))
     return {"verdict": "allowed", "op": op.name, "args": args, "requests": requests,
             "reason": ""}
 

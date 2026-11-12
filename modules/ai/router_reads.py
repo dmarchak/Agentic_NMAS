@@ -21,7 +21,10 @@ every rendered request is held to it again before it runs.
     operation's family, and of the network: an address its committed intent holds, or one
     inside a subnet intent's interfaces carry;
   - **a BGP peer** is an address the device's committed intent names as a neighbour;
-  - **a MAC** is in IOS's dotted form.
+  - **a MAC** is in IOS's dotted form;
+  - **a telemetry subscription** is 1 to 10 digits, one the device's committed intent
+    declares, and one the incident names when the scope carries the incident's own
+    (AI troubleshooting's, `modules/ai/fixit_reads.py`).
 
 **The whole command is matched** (`match`, N21): verb, words and arguments, against one shape,
 token by token; a word the shape does not name is refused, naming it. Output modifiers are
@@ -92,6 +95,8 @@ class Family(RL.Shape):
 IFACE = RL.Text(IFNAME, "an interface name in the platform's interface-name shape", most=48)
 V4, V6 = Family(4), Family(6)
 MAC = RL.Mac(dotted=True)
+#: A telemetry subscription id, as the stream runbook takes one (`diagnose_stream.SUBSCRIPTION`).
+SUBSCRIPTION = RL.Text(r"[0-9]{1,10}", "a telemetry subscription id, 1 to 10 digits", most=10)
 
 
 # ── The comparisons with what Mercury holds (`scope_for`) ─────────────────────────────────────
@@ -150,6 +155,21 @@ def _peer_named(args, scope) -> str:
     named = (((scope or {}).get("devices") or {}).get(host) or {}).get("peers") or ()
     if peer not in set(named):
         return (f"{peer} is not a BGP peer {host}'s intent names (it names "
+                f"{_listed(named)})")
+    return ""
+
+
+def _subscription_named(args, scope) -> str:
+    """A telemetry subscription the device's committed intent declares, and, when the scope
+    names the incident's own (``subscriptions``: AI troubleshooting's), one of those."""
+    host, sub = args["device"], args["subscription"]
+    declared = (((scope or {}).get("devices") or {}).get(host) or {}).get("subscriptions") or ()
+    if sub not in set(declared):
+        return (f"subscription {sub} is not one {host}'s intent declares (it declares "
+                f"{_listed(declared)})")
+    named = (scope or {}).get("subscriptions")
+    if named is not None and sub not in set(named):
+        return (f"subscription {sub} is not one the incident names (it names "
                 f"{_listed(named)})")
     return ""
 
@@ -240,6 +260,14 @@ SHAPES = (
      "the path toward an address"),
     ("traceroute6", "traceroute ipv6 {address} " + _TRACE, _ADDR6, _address_of_network, None,
      "the path toward an address (IPv6)"),
+    # AI troubleshooting's S6 (the fix-it plan): a lost stream's two device reads, each the
+    # stream runbook's own command (`diagnose.COMMANDS`), measured on captures read through
+    # Mercury's reads engine (tests/fixtures/diagnose/: one brief, two devices' receivers).
+    ("telemetry_brief", "show telemetry ietf subscription all", (), None, None,
+     "every telemetry subscription the device holds, and its state"),
+    ("telemetry_receiver", "show telemetry ietf subscription {subscription} receiver",
+     (("subscription", SUBSCRIPTION),), _subscription_named, None,
+     "one subscription's receiver: its address, port, connection and state"),
     ("running_config", "show running-config", (), None, "configuration",
      "the running configuration (the configuration class's)"),
     ("running_config_interface", "show running-config interface {interface}", _IF, None,
@@ -339,10 +367,19 @@ def run(op: str, args: dict, requests: list, scope: dict) -> RL.Answered:
                        signed_in_as=dict(signed))
 
 
+#: The shapes AI troubleshooting's family alone asks for (`modules/ai/fixit_reads.py`, S6):
+#: the heal analysis's read set stays as its released pass-1 schema (heal_analysis v2)
+#: declares it, so a feature's reads widen only with its own schema.
+TELEMETRY = ("telemetry_brief", "telemetry_receiver")
+#: Those shapes' operations, declared over the same rule as every other.
+TELEMETRY_OPS = tuple(_operation(*s) for s in SHAPES if s[0] in TELEMETRY)
+
 #: The router read family: answers go out under the device state class (N20), the
-#: configuration forms under the configuration class.
+#: configuration forms under the configuration class. The heal analysis's and the SDN
+#: analyst's set: every shape but `TELEMETRY`.
 AI_READS = RL.ReadFamily(name="router_cli", transport="cli", egress_class="device_state",
-                         operations=tuple(_operation(*s) for s in SHAPES), run=run,
+                         operations=tuple(_operation(*s) for s in SHAPES
+                                          if s[0] not in TELEMETRY), run=run,
                          words="the AI read set for routers and switches")
 
 
@@ -391,12 +428,23 @@ def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = ""
             "interfaces": golden_interfaces((goldens or {}).get(host) or ""),
             "peers": [str(a) for a, _ in bgp_peers((intents or {}).get(host) or {})],
             "dialect": (dialects or {}).get(host) or "",
+            "subscriptions": _declared_subscriptions((intents or {}).get(host) or {}),
             "read_account": accounts[host][0], "read_account_why": accounts[host][1]}
     actor = (f"the AI analysis of incident {incident}, turned on by "
              f"{turned_on_by or 'nobody named'}") if incident else "the AI analysis"
     return {"network": network, "devices": devices,
             "addresses": sorted(str(a) for a in addresses(intents or {})),
             "prefixes": sorted(prefixes), "actor": actor}
+
+
+def _declared_subscriptions(hv: dict) -> list:
+    """The telemetry subscription ids the device's committed intent declares, as text."""
+    out = []
+    for s in (hv or {}).get("telemetry") or []:
+        sub = str((s or {}).get("subscription") or "") if isinstance(s, dict) else ""
+        if sub and sub not in out:
+            out.append(sub)
+    return out
 
 
 def _dialect_of(platform, host: str) -> str:

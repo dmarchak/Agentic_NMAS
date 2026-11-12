@@ -336,7 +336,12 @@ def test_the_loops_form_is_judged_by_the_same_family(lab):
 
 def test_the_family_is_declared_over_the_cli_rule_with_its_verbs_and_bounds():
     assert R.AI_READS.transport == "cli" and R.AI_READS.egress_class == "device_state"
-    assert len(R.AI_READS.operations) == len(R.SHAPES) == 30      # the floor: 19.5's set
+    # The floor: 19.5's set, 30; SHAPES also holds AI troubleshooting's two (S6), which only
+    # its own family asks for (`R.TELEMETRY`, `modules/ai/fixit_reads.py`).
+    assert len(R.AI_READS.operations) == 30 and len(R.SHAPES) == 32
+    assert {o.name for o in R.TELEMETRY_OPS} == set(R.TELEMETRY) == {
+        "telemetry_brief", "telemetry_receiver"}
+    assert not set(R.TELEMETRY) & {o.name for o in R.AI_READS.operations}
     for op in R.AI_READS.operations:
         (send,) = op.sends
         assert send.split()[0] in RL.CLI_VERBS, send

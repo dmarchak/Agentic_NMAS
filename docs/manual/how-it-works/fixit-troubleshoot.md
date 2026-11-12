@@ -88,9 +88,15 @@ Pressing it runs these steps, as you, one investigation:
    note (`note:1`), masked as it leaves and said back to you when something in it was masked.
 5. `ask`: one call through the AI gateway, under the day cap and the per-call cap. With the
    network's device state class on (Settings › AI), the AI may ask Mercury for up to three
-   read-only reads of the incident's device (each command whole on the read-only allowlist,
-   each read recorded in the send log and on History), and a second call carries them; it
-   cannot ask again. With the class off, no read is asked for.
+   read-only reads, and a second call carries them; it cannot ask again. A read is either of
+   the incident's device (each command whole on the read-only allowlist, among them its
+   telemetry subscriptions' states and one subscription's receiver, run through Mercury's reads
+   engine as the device's read-only account and kept on History › Reads), or Mercury's own:
+   the collector's side of one of the incident's streams on Mercury's host (its listener and the
+   device's sessions on the port intent gives its receiver, IPv4 or IPv6), or whether the
+   stream has data in Prometheus now. Each is held to the incident's device and subscriptions,
+   and each is a row in the send log and on History beside the two calls. With the class off,
+   no read is asked for.
 6. `check`: the answer is checked against what was sent: every reference it cites must be
    there (a past incident Seen before does not hold is refused), every confirming step must be
    a read-only read, a device it names must be cited, and its fix must be exactly one catalogue

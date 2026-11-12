@@ -56,11 +56,13 @@ session, holds no device, starts no job and sends to no device; the proposal's A
 operation's own card and confirm (tests/test_ai_fix_rule.py). A failed attempt STOPs the section;
 the AI is asked again only by a person's Retry with more information.
 
-**The reads** go only through Mercury's read families: here `router_reads.AI_READS` (each
-command whole on its allowlist, on the incident's device, as the read-only account), while the
-network's device state class is on (off by default: then pass 1 is the plain pass, "reads not
-asked"). Each read is in the send log (`read_log`) and on History (`history_sources.ai_reads`).
-The model composes no command.
+**The reads** go only through Mercury's read families, `fixit_reads.FAMILY` (S6): the router
+read set's (each command whole on its allowlist, on the incident's device, as the read-only
+account, through the reads engine and on History › Reads), the lost stream's two among them,
+and Mercury's own (the collector's sessions on its host and the stream's series, held to the
+incident's device and subscriptions), while the network's device state class is on (off by
+default: then pass 1 is the plain pass, "reads not asked"). Each read is in the send log
+(`read_log`) and on History (`history_sources.ai_reads`). The model composes no command.
 """
 
 import json
@@ -70,17 +72,21 @@ from typing import Optional
 
 from modules.ai import calls, gateway
 from modules.ai import read_loop as RL
+from modules.ai import fixit_reads as FR
 from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
 
-#: The task (`profiles.TASKS`'s pin) and its prompts: v1 the plain pass (no read class on), v2
-#: the read loop's first pass, v3 its second.
+#: The task (`profiles.TASKS`'s pin) and its prompts: v1 the plain pass (no read class on), v4
+#: the read loop's first pass over AI troubleshooting's own read family (S6), v3 its second.
+#: v2 is S5's first pass over the router read set alone: no longer asked, kept with its schema
+#: so a call recorded under it stays readable (expand, then contract).
 FEATURE = "fixit_troubleshoot"
 PROMPT = (FEATURE, 1)
-PROMPT_READS = (FEATURE, 2)
+PROMPT_READS_V2 = (FEATURE, 2)
+PROMPT_READS = (FEATURE, 4)
 PROMPT_SECOND = (FEATURE, 3)
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
@@ -146,10 +152,13 @@ class Troubleshoot(StrictModel):
     why_not: str
 
 
-#: One entry of pass 1's ``reads`` field (`read_loop.request_model` over the router read set).
+#: One entry of S5's pass 1 ``reads`` field (`read_loop.request_model` over the router read
+#: set): v2's, kept as it shipped so a call recorded under it is read by it.
 ReadAsk = RL.request_model(RR.AI_READS)
 
 
+#: S5's pass 1 (v2), no longer asked (v4 is): kept, its docstring and fields as it shipped
+#: (they are its committed schema), so a call recorded under it stays readable.
 @register(FEATURE, 2)
 class TroubleshootReads(Troubleshoot):
     """Pass 1 of the read loop: `Troubleshoot`, plus at most 3 reads asked of Mercury."""
@@ -161,7 +170,20 @@ class TroubleshootSecond(Troubleshoot):
     """Pass 2: `Troubleshoot`, the reads that ran attached; it cannot ask again."""
 
 
-SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond}
+#: One entry of S6's pass 1 ``reads`` field, over AI troubleshooting's read family
+#: (`fixit_reads.FAMILY`: the router read set, the stream's two shapes, Mercury's own reads).
+FixitReadAsk = RL.request_model(FR.FAMILY)
+
+
+@register(FEATURE, 4)
+class TroubleshootFixitReads(Troubleshoot):
+    """Pass 1 of the read loop (S6): `Troubleshoot`, plus at most 3 reads of AI
+    troubleshooting's read family."""
+    reads: list[FixitReadAsk] = []
+
+
+SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
+             4: TroubleshootFixitReads}
 
 
 class Refused(ValueError):
@@ -284,17 +306,20 @@ def fixit_format() -> str:
 
 def read_set() -> str:
     """The reads pass's context block ``read_set``: what the model may ask Mercury to read (the
-    router read set's operations and their arguments), the same bytes on every call."""
+    read family's operations and their arguments, `fixit_reads.FAMILY`), the same bytes on
+    every call."""
     lines = [
-        "read_set is the read-only reads Mercury may run for this investigation, each on the "
-        "incident's device, as that device's read-only account. To ask for one, add it to "
+        "read_set is the read-only reads Mercury may run for this investigation: the device's "
+        "own (each on the incident's device, as its read-only account), and Mercury's own of "
+        "what it holds (collector_sessions: the collector's side of a subscription's stream on "
+        "Mercury's host; stream_series: whether the stream has data now). To ask for one, add it to "
         "reads: op is one of the operations below, args its arguments by name (device always, "
         "and null for an argument the operation does not take), why one line on what it would "
         "show, and hypothesis the hypothesis it tests. Ask for at most 3; ask for none when the "
         "evidence says enough. Mercury checks each request against what it holds and runs only "
         "those it allows; the next message carries the answers, or why a request was refused.",
         "The operations:"]
-    for op in RR.AI_READS.operations:
+    for op in FR.FAMILY.operations:
         args = ", ".join(f"{a} ({spec.shape.words})" for a, spec in op.args.items())
         lines.append(f"- {op.name}: {op.words}; args: {args}")
     return "\n".join(lines)
@@ -440,19 +465,10 @@ def check(answer, pack: dict, sections: list, topo: dict) -> str:
 
 # ── The investigation ───────────────────────────────────────────────────────────────────────
 
-def _scope(network: str, incident, actor: str) -> dict:
-    """What the router read set's comparisons read: the incident's device alone, the reads
-    recorded as the press's."""
-    try:
-        scope = RR.scope_for(network, [incident.device], incident=incident.id,
-                             turned_on_by=actor)
-    except Exception as exc:                          # noqa: BLE001 (closed: no device named)
-        log.error("fixit troubleshoot: the read scope of %s could not be built: %s",
-                  incident.id, exc)
-        scope = {"network": network, "devices": {}, "addresses": [], "prefixes": []}
-    scope["actor"] = (f"AI troubleshooting of incident {incident.id}, pressed by "
-                      f"{actor or 'nobody named'}")
-    return scope
+def _scope(network: str, incident, actor: str, collector=None, series=None) -> dict:
+    """What the read family's comparisons read (`fixit_reads.scope_for`): the incident's device
+    and subscriptions alone, the reads recorded as the press's."""
+    return FR.scope_for(network, incident, actor=actor, collector=collector, series=series)
 
 
 def reads_said(got: dict) -> dict:
@@ -502,7 +518,8 @@ def _person(actor: str, actor_verified: str, person: bool) -> str:
 def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verified: str,
                  person: bool, note: str = "", resolved: float = None, send=None,
                  today: str = None, now: float = None, sources=None, planned=None,
-                 seen: dict = None, loki=None, prometheus=None) -> dict:
+                 seen: dict = None, loki=None, prometheus=None, collector=None,
+                 series=None) -> dict:
     """One investigation of *incident* (a `fixit.incident.Incident`, the one *found* resolves),
     asked by *actor*, a person verified as *actor_verified* (`STEPS`):
 
@@ -512,7 +529,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     answer for a fix (its preview and hash, or its refusal). Raises `Refused` with nothing sent
     for a press that is not a verified person's, the mode off or unreadable, the per-incident
     cap, or a marking that forces AI off. *send* replaces the provider (tests); *sources* and
-    *planned* are the proposal check's seams; *seen*, *loki* and *prometheus* the pack's."""
+    *planned* are the proposal check's seams; *seen*, *loki* and *prometheus* the pack's;
+    *collector* and *series* the two local reads' (`fixit_reads.scope_for`)."""
     from modules.ai import fix_proposal, triggers
     from modules.fixit import incident as F
     from modules.fixit import policy as P
@@ -538,7 +556,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                              "pieces": [{"ref": r} for r in read_ids]})
         return check(answer, prep["pack"], sections, prep["topo"])
 
-    feature = RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootReads),
+    feature = RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootFixitReads),
                              second=(PROMPT_SECOND, TroubleshootSecond),
                              plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
                              acts_on=acts_on)
@@ -551,9 +569,14 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             memo["typed_masked"] = got["typed_masked"]
         return got
 
-    plain = bool(RL.reads_off(RR.AI_READS, network))
-    scope = None if plain else _scope(network, incident, actor)
-    got = RL.run(RR.AI_READS, feature, ask=ask, network=network,               # ask, check
+    # The loop names the network by its one id (`listref.network_id`), as the heal analysis's
+    # does: the send log's rows and the calls are keyed by it, and History draws a network's
+    # reads by it (C3344: by the list's name, none was drawn).
+    from modules.nsot import listref
+    net_id = listref.network_id(network)
+    plain = bool(RL.reads_off(FR.FAMILY, net_id))
+    scope = None if plain else _scope(network, incident, actor, collector, series)
+    got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
                  data=prep["data"], actor=actor, trigger=triggers.person(actor),
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,

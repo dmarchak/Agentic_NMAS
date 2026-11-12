@@ -4220,3 +4220,48 @@ Baseline: 70 passed. **Runs:** 2026-11-12 20:20:49 to 20:22:46 UTC.
 own tier entries; the build's 8 other controls (the actable rule, the catalogue's schema, a fix
 and a gap together, the cap, the mode, the person, the proposer scan's seed, the kept answer)
 are outside the tier and are listed with the build's report.
+
+## 2026-11-12: AI troubleshooting's reads, the `local` transport and an operation's own transport (the fix-it plan's S6), by hand
+
+**What changed in the tier:** what a model's read sends and what of it leaves the host.
+- `read_loop`: a family's operation may name its own transport (`Operation.transport`), held to
+  that transport's rule when declared (`_declare`) and on every rendered request (`_judge`); a
+  new transport, `local` (`_local_rule`: one line, ``local <what>`` and its tokens, never a
+  command).
+- `modules/ai/fixit_reads.py` (new): `FAMILY`, the router read set over `cli` beside two local
+  reads, the collector's sessions and the stream's series, each held to the incident's device and
+  subscription; the collector's address and port are intent's receiver, its sessions the
+  device's own addresses'. Their answers pass the loop's egress mask and send log unchanged.
+- `router_reads`: two shapes added to `SHAPES` (`telemetry_brief`, `telemetry_receiver`), in
+  AI troubleshooting's family alone (`TELEMETRY`), the heal analysis's set unchanged.
+
+The danger the hand check guards: a write or a command declared or rendered as a read; a read
+of another device, another subscription, another collector or port; the heal analysis's read set
+widened under its released schema.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/fixit-s6/mut.sh`), in a `scripts/nmas-control` throwaway worktree over c9ce0364
+(the change rebased there and staged, pass 1 on the new prompt and schema v4); then
+tests/test_fixit_reads.py, tests/test_ai_router_reads.py and tests/test_ai_read_loop.py, no
+`-x`, in CI's interpreter, confined, two workers; each worktree removed after its run.
+Baseline: 174 passed. **Runs:** 2026-11-12 22:04:45 to 22:05:42 UTC (a first run over 14bcf1c8,
+21:48:39 to 21:49:31 UTC, killed the first ten the same way).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the local executor raises first | killed (5 failed) | every local read's test |
+| T1 a rendered request judged by the family's transport, not the operation's | killed | `test_each_shape_is_allowed_whole` |
+| T2 the local rule allows any line | killed (3 failed) | `test_a_planted_command_is_refused_when_declared` (each case) |
+| T3 an operation's declared sends held to no rule but local's | killed (8 failed) | `test_a_planted_write_operation_is_refused_when_the_family_is_declared` (each case) |
+| T4 the local reads' device not compared with the incident's | killed | `test_held_to_the_incident_s_device_and_its_stream[another device]` |
+| T5 the local reads' subscription not compared with the incident's | killed | `…[another subscription]` |
+| T6 the collector read handed no source addresses | killed (2 failed) | `test_it_reads_the_collector_s_side_on_the_kernel_s_tables` (IPv4, IPv6) |
+| K1 a receiver read of a subscription the incident does not name | killed | `test_a_planted_request_is_refused_by_name[not the incident's]` |
+| K2 a receiver read of a subscription intent does not declare | killed | `…[not declared]` |
+| K3 the telemetry shapes in the heal analysis's set | killed (4 failed) | the router read set's count, its runbook exceptions, the shapes' family and the whole-command match |
+| K4 the loop's network named by the list's name, not its id (C3344) | killed | `test_each_read_is_in_the_send_log_and_on_history` |
+| K5 pass 1 asked under S5's v2 (prompt and schema, the router read set alone) | killed | `test_each_read_is_in_the_send_log_and_on_history` |
+
+**The result: 11 mutants and the canary, all killed.** Not mutated: `readonly_commands.refusal`,
+`redact.redact_egress`, `read_loop.masked` and `capped`, and `diagnose_stream.read_collector`
+and `series_of`, unchanged here and checked with their own entries or tests.
