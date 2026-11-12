@@ -300,6 +300,16 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   tests/test_page_requests_resolve.py] [why](docs/LESSONS.md#every-carried-field-is-drawn)
 - **Enterprise scale: no per-device work per request;** a per-device question is a job.
   [tests/test_scale.py; the fixed-read test in tests/test_devices_v2.py] [why](docs/LESSONS.md#enterprise-scale)
+- **No page load or badge poll waits on Grafana, Loki, NetBox, a device or a computation: every
+  page draws at once from data the background already holds, shows each source's age ("checked
+  20 s ago"), and updates itself while open; there is no refresh button** (the operator,
+  2026-11-12; C3166: Needs attention's badge queued from 1.6 s to 26 s during a heal, and a
+  device's Logs tab waited 5 to 15 s on Loki). Each source refreshes on its own cadence, fast
+  while viewed or alerting and slowly while idle; an event recomputes only the sources it
+  touches, debounced, so a heal's step announcements cause one recompute; a fix made through
+  Mercury still clears its row within seconds. Cost: one background refresh per source, and
+  the CPU and memory it adds on the host, stated. Prevents: a page as slow as its slowest
+  source, and a request storm whenever a heal announces. [not mechanised yet: C3166]
 - **A board-built screen is compared with its board before it is called done:** the board
   and the page shot side by side (tests/test_board_shots.py) at the board's width, 1280
   and phone width, compared region by region in docs/fidelity/<screen>.md, every deviation
