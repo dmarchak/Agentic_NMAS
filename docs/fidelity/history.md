@@ -38,7 +38,24 @@ new "Fault drill declared" row appears without a reload; the kind filter gains "
 declared" under What happened to a device, from the server's table. Nothing drawn moved;
 compared by the template diff, not a new shot. Templates sha256 before:
 `c5934949831ac771dec940997d03f4533f00c2d1078d7ebe01bc8287a43fb728`.
-Templates sha256: `17c280b27676405a0eadaf22ce50beade84c016f426993005c8f47086009e187`
+Hashed again 2026-11-12 (board E2a, the gate's findings): a row's "The identity as recorded"
+is drawn after the row's own record, closed, with its key (`data-keep`), where it followed the
+By line; nothing else on a row moves. Compared by the template diff, not a new shot. Templates
+sha256 before: `0f6b4254f0101d560cab3289ac66306ee840770edb8001d86b70eed01bbf9706`.
+Templates sha256: `81d816682befcba75169984a2372e68c3fd4e3a6175670c71f8e41424d57e89c`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place
+that draws a person now draws them through the `people` filter, by display name (the name the
+person set, else the part of their identity before the "@"): a row's who, the words of its
+line and its marks, its detail, its By, who acknowledged it, an open record's values, and who
+last pushed or verified the remote; the Person filter lists the same names
+(`history_sources._kept`). In the same element and position, with no other word changed; where
+the board draws an identity the built screen draws the name, a deviation logged once for every
+screen (log: Display names: a person is drawn by display name on every screen). One element is
+new: under an opened row's By, where the recorded actor holds an identity, a closed disclosure
+"The identity as recorded" holding it (log: Board E2a built, 6). A self-healing row's "Details
+for the record" stays as recorded. Every other verdict stands.
 
 Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10: "The
 History record's Device column says 'fleet' instead of the switch", "the History 'What' column

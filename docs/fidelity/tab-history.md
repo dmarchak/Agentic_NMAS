@@ -25,7 +25,23 @@ Hashed again 2026-11-11 for declared fault drills (the operator's decision of th
 so its "Fault drill declared" row appears without a reload. Nothing drawn moved; compared by
 the template diff, not a new shot. Templates sha256 before:
 `53a8b6f37937d8cddee580ff3b58e06d8c06ee1aca170e39e89459561bfb98e7`.
-Templates sha256: `a894d63f0920c85fb2e9ee2b546e38f8761497d684066ad67653c205173d10d4`
+Hashed again 2026-11-12 (board E2a, the gate's findings): a row's "The identity as recorded"
+is drawn after the row's own record, closed, with its key (`data-keep`), where it followed the
+By line; nothing else on a row moves. Compared by the template diff, not a new shot. Templates
+sha256 before: `5691061858da3dd121bbe823255a4b7a02ff0733c93d3b35a703905fcf610383`.
+Templates sha256: `e9b6df42068ea6324e37a2f6c3f9223a0c3dff25dbd61e6fe2ad357731ff15ca`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_timeline.html`, each place that draws a person now
+draws them through the `people` filter, by display name (the name the person set, else the
+part of their identity before the "@"): a row's who, the words of its line and its marks, its
+detail, its By, who acknowledged it, and an open record's values. In the same element and
+position, with no other word changed; where the board draws an identity the built screen draws
+the name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). One element is new: under an opened row's By, where the
+recorded actor holds an identity, a closed disclosure "The identity as recorded" holding it
+(log: Board E2a built, 6). A self-healing row's "Details for the record" stays as recorded.
+Every other verdict stands.
 
 Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10), by the
 template diff: the region and its reading are history.md's of the same date (one template,

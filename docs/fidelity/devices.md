@@ -26,7 +26,16 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
-Templates sha256: `eb4a539d1aab2084a3269f027942ad9d7ecb431b7fce117e45def99754807202`
+Templates sha256: `91cfa028f19a4b550062b3ca43d19fe7e346b98d79c567e82e512e058f943ac9`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_console_kick.html` and `_in_progress_panel.html`, each
+place that draws a person (who ran a console survey, who holds a device) now draws them through
+the `people` filter, by display name (the name the person set, else the part of their identity
+before the "@"), in the same element and position; no region is added, removed or moved, and no
+other word changes. Where the board draws an identity the built screen draws the name, a
+deviation logged once for every screen (log: Display names: a person is drawn by display name
+on every screen). Every other verdict stands.
 (Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of
 `_devices.html` carries `data-key`, its stable key, which the live merge matches rows by;
 nothing drawn moves. Compared by reading the diff, with no new shot. Before:

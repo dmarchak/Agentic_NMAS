@@ -49,7 +49,7 @@
     <thead><tr><th>Policy</th><th>Rules</th><th>Switch</th><th>Flows</th><th>Confirmed</th></tr></thead>
     <tbody>
     {%- for p in g.committed.rows %}
-    <tr><td><span class="mono">{{ p.id }}</span><div class="small">{{ p.words }}</div></td><td>{% for r in p.rules %}<div>{{ r }}</div>{% endfor %}</td><td>{% for s in p.switches %}<a class="mono" href="{{ url_for('sdn_v2.flows', list=net) }}" title="SDN › Flows, where its flows are listed and each one's Remove withdraws it">{{ s }}</a> {% endfor %}</td><td>{{ p.flows }}</td><td>{{ p.by }}, {{ stamp(p.at) }}{% if p.operation %}<div class="faint small">operation <span class="mono">{{ p.operation }}</span>, on History</div>{% endif %}</td></tr>
+    <tr><td><span class="mono">{{ p.id }}</span><div class="small">{{ p.words }}</div></td><td>{% for r in p.rules %}<div>{{ r }}</div>{% endfor %}</td><td>{% for s in p.switches %}<a class="mono" href="{{ url_for('sdn_v2.flows', list=net) }}" title="SDN › Flows, where its flows are listed and each one's Remove withdraws it">{{ s }}</a> {% endfor %}</td><td>{{ p.flows }}</td><td>{{ p.by | people }}, {{ stamp(p.at) }}{% if p.operation %}<div class="faint small">operation <span class="mono">{{ p.operation }}</span>, on History</div>{% endif %}</td></tr>
     {%- endfor %}
     </tbody>
   </table></div>

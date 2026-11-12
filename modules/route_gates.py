@@ -338,6 +338,7 @@ GATES = {
     "settings_v2.platforms_preview": _g(K, "previews a platform or role map change: every device it moves, from each NetBox list's last inventory; writes nothing (board F4)"),
     "settings_v2.platforms_test": _g(R, "reads one device through the reads engine with a proposed driver, show version only (board F4's platform map Test)"),
     "settings_v2.platforms_apply": _g(K, "writes the platform or role map as previewed, bound to its fingerprint, recorded, and refreshes each NetBox list (board F4)"),
+    "settings_v2.display_name": _g(K, "sets one person's display name, or returns it to the default (board E2a, Settings › Installation › Access and identity's Display names): how that person is named on Mercury's screens and exports, kept per verified person with who set it; the verified identity in every record is untouched; a verified person, checked again by the route (a service token never sets one)", "display_name"),
     "settings_v2.install_ratify": _g(K, "records a decision about an access or identity setting: writes the value already in force, never a change, recorded (board F4, C625)", "ratify_setting"),
     "settings_v2.diag_drift_interval": _g(K, "sets the drift schedule for every network, recorded (board F4, Diagnostics)"),
     # The local account's sign-in and sign-out (modules/local_account.py): the request that

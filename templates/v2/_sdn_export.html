@@ -33,7 +33,7 @@
   {%- endif %}
   {%- if x.state != 'none' %}
   <dl class="sdn-kv">
-    <dt>Committed</dt><dd>{% if x.sha256 %}{{ short(x.sha256) }} in {% endif %}commit <span class="mono">{{ x.commit[:7] }}</span>, {{ stamp(x.at) }}{% if x.actor %} by {{ x.actor }}{% endif %}{% if x.netbox_version %}, from NetBox {{ x.netbox_version }}{% endif %}</dd>
+    <dt>Committed</dt><dd>{% if x.sha256 %}{{ short(x.sha256) }} in {% endif %}commit <span class="mono">{{ x.commit[:7] }}</span>, {{ stamp(x.at) }}{% if x.actor %} by {{ x.actor | people }}{% endif %}{% if x.netbox_version %}, from NetBox {{ x.netbox_version }}{% endif %}</dd>
     {%- if x.counts %}<dt>Holds</dt><dd>{% for k, label in kinds.items() %}{{ x.counts.get(k, 0) }} {{ label if label in ('VLANs',) else label | lower }}{{ ', ' if not loop.last }}{% endfor %}</dd>{% endif %}
     <dt>Read by</dt><dd>this tab's controller hosts and the expected switches and links of every controller app deploy; never NetBox live</dd>
   </dl>
@@ -52,7 +52,7 @@
   <div class="sdn-ctl-hd"><h2 id="h-nsot-export">Commit {{ net }}'s NSOT export from NetBox</h2>{{ badge(x.changes.total ~ ' change' ~ ('s' if x.changes.total != 1 else ''), 'warn') }}</div>
   <dl class="sdn-kv">
     <dt>This export</dt><dd>{{ short(x.sha256) }}, read from NetBox{% if x.netbox_version %} {{ x.netbox_version }}{% endif %} now</dd>
-    <dt>The committed one</dt><dd>{% if c.blob and c.readable %}{{ short(c.sha256) }}, commit <span class="mono">{{ c.commit[:7] }}</span>{% if c.at %} ({{ stamp(c.at) }}{% if c.actor %}, {{ c.actor }}{% endif %}){% endif %}{% elif c.blob %}can't be read ({{ c.error }}): this commit replaces it{% else %}none: this is {{ net }}'s first export{% endif %}</dd>
+    <dt>The committed one</dt><dd>{% if c.blob and c.readable %}{{ short(c.sha256) }}, commit <span class="mono">{{ c.commit[:7] }}</span>{% if c.at %} ({{ stamp(c.at) }}{% if c.actor %}, {{ c.actor | people }}{% endif %}){% endif %}{% elif c.blob %}can't be read ({{ c.error }}): this commit replaces it{% else %}none: this is {{ net }}'s first export{% endif %}</dd>
     <dt>Goes to</dt><dd><span class="mono">nsot/export.json</span> in {{ net }}'s configuration repository, one commit as you (<span class="mono">Source: nsot_export</span>, <span class="mono">Export-Sha256</span>); nothing is written to NetBox or to any device</dd>
   </dl>
   <div class="table-wrap"><table class="table export-changes">
@@ -93,7 +93,7 @@
   <div class="sdn-ctl-hd"><h2 id="h-nsot-export">{% if x.state_card == 'committed' %}Committed {{ net }}'s NSOT export{% else %}{{ net }}'s NSOT export: nothing to commit{% endif %}</h2>{{ badge('committed' if x.state_card == 'committed' else 'unchanged', 'ok' if x.state_card == 'committed' else 'muted') }}</div>
   <dl class="sdn-kv">
     <dt>Export</dt><dd>{{ short(x.sha256) }}{% if x.before_sha256 and x.before_sha256 != x.sha256 %} (was {{ short(x.before_sha256) }}){% elif not x.before_sha256 and x.state_card == 'committed' %} (the first){% endif %}</dd>
-    {%- if x.commit %}<dt>Commit</dt><dd><span class="mono">{{ x.commit[:7] }}</span> in {{ net }}'s configuration repository, as {{ x.actor }}{% if x.actor_verified %}, verified by {{ x.actor_verified }}{% endif %} · <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></dd>{% endif %}
+    {%- if x.commit %}<dt>Commit</dt><dd><span class="mono">{{ x.commit[:7] }}</span> in {{ net }}'s configuration repository, as {{ x.actor | people }}{% if x.actor_verified %}, verified by {{ x.actor_verified }}{% endif %} · <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></dd>{% endif %}
     {%- if x.changes %}<dt>Changed</dt><dd>{% for k in x.changes %}{{ kinds[k.kind] }}: {{ k.added_n }} added, {{ k.removed_n }} removed, {{ k.changed_n }} changed{{ '; ' if not loop.last }}{% endfor %}</dd>{% endif %}
   </dl>
   <div class="apps-acts"><a class="btn" href="{{ back }}" hx-get="{{ back_get }}" hx-target="#nsot-export" hx-swap="outerHTML">Close</a>{{ how('nsot-export', 'commit') }}</div>

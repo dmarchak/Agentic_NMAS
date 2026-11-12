@@ -10,7 +10,7 @@
 {%- set blank = kick.survey.blank is sameas true -%}
 <div class="ob-console" id="ob-console">
   <h3 class="set-label">Console</h3>
-  <p class="small">{{ kick.hostname }}'s console survey of {{ stamp(kick.survey.at) }} by {{ kick.survey.by or 'someone' }} is recorded ({% if blank %}factory-blank{% elif kick.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}).
+  <p class="small">{{ kick.hostname }}'s console survey of {{ stamp(kick.survey.at) }} by {{ (kick.survey.by or 'someone') | people }} is recorded ({% if blank %}factory-blank{% elif kick.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}).
     {%- if blank %} Kick-start it: the lines make it ask for its reservation and fetch its bootstrap.{% else %} A kick-start types only on a device its survey found factory-blank: survey it again once it is.{% endif %}</p>
   <div id="console-ztp-card"><span class="op-act">
     {%- if blank %}<button type="button" class="btn btn-small btn-primary" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='kickstart', hostname=kick.hostname, list=kick.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start {{ kick.hostname }} through the console…</button>{{ how('onboard', 'console-kick-start', compact=True, op='the console kick-start') }}

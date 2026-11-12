@@ -54,7 +54,7 @@
   <div class="op-hd"><h2 id="tpl-h">{{ op.path }} {{ badge('approved', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('approve-template') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>Done</h3><div>
-    <p>Approved by {{ r.actor }}, fingerprint <span class="mono">{{ (r.fingerprint or '')[:12] }}</span>, commit <span class="mono">{{ (r.commit or '')[:10] }}</span>. Validated: {{ r.evidence.validated | join(', ') or 'none' }}. Failed: {% for f in r.evidence.failed %}{{ f.device }} ({{ f.reason }}){{ '; ' if not loop.last }}{% else %}none{% endfor %}. Not validated: {% for n in r.evidence.not_validated %}{{ n.device }} ({{ n.reason }}){{ ', ' if not loop.last }}{% else %}none{% endfor %}.</p>
+    <p>Approved by {{ r.actor | people }}, fingerprint <span class="mono">{{ (r.fingerprint or '')[:12] }}</span>, commit <span class="mono">{{ (r.commit or '')[:10] }}</span>. Validated: {{ r.evidence.validated | join(', ') or 'none' }}. Failed: {% for f in r.evidence.failed %}{{ f.device }} ({{ f.reason }}){{ '; ' if not loop.last }}{% else %}none{% endfor %}. Not validated: {% for n in r.evidence.not_validated %}{{ n.device }} ({{ n.reason }}){{ ', ' if not loop.last }}{% else %}none{% endfor %}.</p>
     {%- if r.evidence.validated %}
     <p class="muted">{% for d in r.evidence.validated %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %} can now be deployed to (Plan a deploy… on {{ 'its' if r.evidence.validated | length == 1 else 'each' }} page). Nothing was sent to any device.</p>
     {%- endif %}</div></div>
@@ -72,7 +72,7 @@
   <div class="op-part"><h3>Why</h3><div>
     <label class="tpl-why">The reason, recorded with the revocation and shown on its row
       <input type="text" name="reason" value="{{ op.reason or '' }}" autocomplete="off" required></label>
-    <p class="faint">Every deploy through this template is refused until it is approved again{% if op.status.actor %} (approved by {{ op.status.actor }}{% if op.status.approved_at %}, {{ stamp(op.status.approved_at) }}{% endif %}){% endif %}. A revocation is the only record of why the template stopped deploying.</p></div></div>
+    <p class="faint">Every deploy through this template is refused until it is approved again{% if op.status.actor %} (approved by {{ op.status.actor | people }}{% if op.status.approved_at %}, {{ stamp(op.status.approved_at) }}{% endif %}){% endif %}. A revocation is the only record of why the template stopped deploying.</p></div></div>
   <div class="op-ft">
     {%- if op.may.may %}
     <p class="op-note">{{ op.may.statement }} Nothing is sent to any device.</p>
@@ -89,7 +89,7 @@
   <div class="op-hd"><h2 id="tpl-h">{{ op.path }} {{ badge('revoked', 'danger') }}</h2>
     <div class="op-hd-actions">{{ how('approve-template', 'revoke') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>Done</h3><div>
-    <p>Revoked by {{ r.actor }}: "{{ r.reason }}", commit <span class="mono">{{ (r.commit or '')[:10] }}</span>{% if not r.was_approved %} (it was not approved: the revocation is recorded all the same){% endif %}.</p>
+    <p>Revoked by {{ r.actor | people }}: "{{ r.reason }}", commit <span class="mono">{{ (r.commit or '')[:10] }}</span>{% if not r.was_approved %} (it was not approved: the revocation is recorded all the same){% endif %}.</p>
     <p class="muted">Every deploy through {{ op.path }} is refused until it is approved again: Approve… on its row. Nothing was sent to any device.</p></div></div>
 </section>
 {%- elif op.state == 'bring' %}
@@ -160,7 +160,7 @@
   <div class="op-hd"><h2 id="tpl-h"><span class="mono">{{ op.path }}</span> is the shipped version {{ badge('committed', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('bring-template') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>Next</h3><div>
-    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span>, as {{ op.actor }}.{% if r.revoked %} Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}: approve each again with Approve… on its row before a deploy renders through it.{% endif %}</p>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span>, as {{ op.actor | people }}.{% if r.revoked %} Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}: approve each again with Approve… on its row before a deploy renders through it.{% endif %}</p>
     <p class="muted">Then Coverage shows what each device lacks: <a href="{{ url_for('v2.coverage', list=op.list) }}">Open Coverage</a>. Nothing was sent to any device.</p></div></div>
 </section>
 {%- elif op.state == 'edited' %}
@@ -172,7 +172,7 @@
     <div class="op-hd-actions">{{ how('edit-template') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
     {%- if r.changed %}
-    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: {{ op.path }} {{ op.summary }}", as {{ op.actor }}. Nothing was sent to any device.</p>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: {{ op.path }} {{ op.summary }}", as {{ op.actor | people }}. Nothing was sent to any device.</p>
     {%- if r.revoked %}<p>Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}, in the same commit: a deploy renders through {{ 'it' if r.revoked | length == 1 else 'them' }} only once approved again.</p>{% endif %}
     {%- if r.not_revoked %}<p class="notice notice-warn">{{ icon('warn', 16) }} Not revoked: {{ r.not_revoked | join(', ') }}. The deploy gate counts an edited template as unapproved whatever its record says.</p>{% endif %}
     {%- else %}
@@ -213,7 +213,7 @@
   <div class="op-hd"><h2 id="tpl-h">{{ op.list }}'s library {{ badge('seeded', 'ok') if op.added else badge('unchanged', 'muted') }}</h2>
     <div class="op-hd-actions">{{ how('edit-template', 'seed') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
-    {%- if op.added %}<p>Commit <span class="mono">{{ (op.commit or '')[:10] }}</span> "template: seed library ({{ op.added | length }} file(s))", as {{ op.actor }}: {% for f in op.added %}<span class="mono">{{ f }}</span>{{ ', ' if not loop.last }}{% endfor %}. Approve each template on its row before a deploy renders through it.</p>
+    {%- if op.added %}<p>Commit <span class="mono">{{ (op.commit or '')[:10] }}</span> "template: seed library ({{ op.added | length }} file(s))", as {{ op.actor | people }}: {% for f in op.added %}<span class="mono">{{ f }}</span>{{ ', ' if not loop.last }}{% endfor %}. Approve each template on its row before a deploy renders through it.</p>
     {%- else %}<p>Nothing was added: the network had every shipped file.</p>{% endif %}
     {%- if op.left %}<p class="notice notice-warn">{{ icon('warn', 16) }} Left for their own commit (edited, not committed): {{ op.left | join(', ') }}.</p>{% endif %}</div></div>
 </section>
@@ -224,7 +224,7 @@
   <div class="op-hd"><h2 id="tpl-h">Bindings {{ badge('committed', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('edit-template', 'bindings') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
-    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: bindings {{ op.summary }}", as {{ op.actor }}. Nothing was sent to any device.</p>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: bindings {{ op.summary }}", as {{ op.actor | people }}. Nothing was sent to any device.</p>
     {%- if r.moves %}<p>{{ r.moves | length }} device{{ '' if r.moves | length == 1 else 's' }} now render{{ 's' if r.moves | length == 1 else '' }} through another template: {% for m in r.moves %}<a href="{{ url_for('device_v2.device', name=m.device) }}">{{ m.device }}</a> (<span class="mono">{{ m.after }}</span>{% if not m.approved %}, not approved{% endif %}){{ ', ' if not loop.last }}{% endfor %}. Each is checked against it at its own deploy.</p>
     {%- else %}<p>No device changed template.</p>{% endif %}</div></div>
 </section>

@@ -73,7 +73,9 @@ class TestTheDeletedNetwork_sPage:
                .read_text().splitlines()][-1]
         assert rec["kind"] == "network_delete" and rec["folder"] == \
             f"lists_removed/{gone['moved'][0].name}", "the delete's record names the folder"
-        assert rec["actor_label"] and f"by {rec['actor_label']}" in main
+        # Drawn by display name (board E2a), the record keeping the identity.
+        assert rec["actor_label"] and f"by {rec['actor_label'].split('@')[0]}" in main
+        assert f"by {rec['actor_label']}" not in main, "the identity is never the page's words"
 
     def test_it_offers_no_action(self, gone):
         """Only the scope bar's navigation: no card, no form, nothing that posts, no switch."""

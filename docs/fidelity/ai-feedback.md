@@ -13,7 +13,16 @@ it is compared by its template and tests/test_ai_feedback.py (Yes, No, the refus
 disabled buttons, the store unreadable, drawn under an Explain answer and never under a refused
 one) and reached by tests/v2_context.py's `_ai_feedback`.
 Templates compared: templates/v2/_ai_feedback.html, templates/v2/_ai_feedback_review.html, templates/v2/_ai_feedback_row.html, templates/v2/_ai_feedback_detail.html
-Templates sha256: `e7c43a1cc1c4b4ea9fe36f3b8878d6bc57e7ebeb6da0b707ab596c0b197433ee`
+Templates sha256: `2f77d7867500d25ba7a46548d0eb27b8caace2c29a346a1135e3baf00e97fa93`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_ai_feedback.html`, `_ai_feedback_row.html` and
+`_ai_feedback_detail.html`, each place that draws a person (who said it, who asked, who
+reviewed) now draws them through the `people` filter, by display name (the name the person set,
+else the part of their identity before the "@"), in the same element and position; no region is
+added, removed or moved, and no other word changes. Where the board draws an identity the built
+screen draws the name, a deviation logged once for every screen (log: Display names: a person
+is drawn by display name on every screen). Every other verdict stands.
 (2026-10-28 ~21:4x UTC: each `<details>` given its `data-keep` key, so a live redraw keeps it
 open (C472's rule, refused in the gate); nothing drawn changed, so no region was shot again.
 Before: `a0ae8fe7abdffc9d1535aa780ec7e62b4f5320d9eb46fdc3351fdeb8735365ce`.)

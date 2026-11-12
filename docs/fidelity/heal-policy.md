@@ -12,7 +12,17 @@ docs/boards. The states the shots do not draw (a network not marked lab, a refus
 answer, the kill switch stopped and its resume card, Who is told's refusals) are compared by
 the templates and tests/test_heal_tab_v2.py.
 Templates compared: templates/v2/_heal.html, templates/v2/_heal_change.html, templates/v2/_heal_preview.html
-Templates sha256: `1393f21d1068c6aca020603ddb85b92be2fce2bc77df1846336113bc5e51fc57`
+Templates sha256: `3931d9d31667763c08ddcf713c27d783bb7525aa4773466bf156040a4f1aabb3`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_heal.html`, each place that draws a person (who
+confirmed the policy, who made each change in its history, and the words "stopped everywhere
+by", "Now: … by" and "Turned off" that name one) now draws them through the `people` filter, by
+display name (the name the person set, else the part of their identity before the "@"), in the
+same element and position; no region is added, removed or moved, and no other word changes.
+Where the board draws an identity the built screen draws the name, a deviation logged once for
+every screen (log: Display names: a person is drawn by display name on every screen). Every
+other verdict stands.
 
 **Compared again 2026-11-07 for C2647:** Who is told's "AI analysis of a can't-fix" row, fixed
 text written before H8 ("the advisory analysis is not built yet"), now draws the background

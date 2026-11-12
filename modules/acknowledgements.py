@@ -109,8 +109,12 @@ def _until_words(ack: dict) -> str:
 
 
 def in_force_words(ack: dict) -> str:
-    """"Acknowledged by <name> until the next scheduled run (<when>): <reason>"."""
-    return (f"Acknowledged by {ack.get('by') or 'an unnamed person'} until "
+    """"Acknowledged by <name> until the next scheduled run (<when>): <reason>"; the person
+    by display name (board E2a), the record keeping their identity."""
+    from modules import display_names
+
+    who = display_names.people(ack.get("by") or "") or "an unnamed person"
+    return (f"Acknowledged by {who} until "
             f"{EXPIRIES.get(ack.get('expires'), 'its expiry')} ({_until_words(ack)}): "
             f"{ack.get('why') or ''}")
 

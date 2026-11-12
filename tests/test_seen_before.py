@@ -877,7 +877,9 @@ class TestTheRow:
         assert d["state"] == "refused", d["state"]
         said = text_of(drawn(rows_of(lost())))
         assert "Mercury's diagnosis: not made. It was asked for " in said
-        assert f"by {ACTOR}, and answered: {d['words']}." in said
+        # Board E2a: who asked, by display name (the part before the "@").
+        assert f"by {ACTOR.split('@')[0]}, and answered: {d['words']}." in said
+        assert ACTOR not in said
 
     def test_a_value_stored_before_the_search_says_not_searched_yet(self, world):
         (row,) = rows_of(lost(), streams=False)

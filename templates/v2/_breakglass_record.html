@@ -20,7 +20,7 @@
     {%- if r.checked_at %}<p class="muted small">Judged {{ stamp(r.checked_at) }} by job health, which compares the record's digests with the credentials in use every 5 minutes.</p>{% endif %}</div></div>
   {%- if r.last %}
   <div class="op-part"><h3>Last export</h3><div>
-    <p>{{ stamp(r.last.at) }}, {% if r.last.via == 'browser' %}downloaded by {{ r.last.actor or 'nobody recorded' }}{% else %}written on this host{% endif %}: {{ r.last.devices }} device(s), the key {{ r.last.key_fingerprint or 'not recorded' }}{% if r.last.sha256 %}, sha256 <span class="mono">{{ r.last.sha256[:12] }}…</span>{% endif %}.</p>
+    <p>{{ stamp(r.last.at) }}, {% if r.last.via == 'browser' %}downloaded by {{ (r.last.actor or 'nobody recorded') | people }}{% else %}written on this host{% endif %}: {{ r.last.devices }} device(s), the key {{ r.last.key_fingerprint or 'not recorded' }}{% if r.last.sha256 %}, sha256 <span class="mono">{{ r.last.sha256[:12] }}…</span>{% endif %}.</p>
     {%- if r.intact is true %}<p class="small">{{ badge('downloaded intact', 'ok') }} the browser's sha256 of what it received is the one the server sent.</p>
     {%- elif r.intact is false %}<p class="small">{{ badge('not intact', 'danger') }} the browser's sha256 of what it received is not the one the server sent.</p>
     {%- elif r.last.via == 'browser' %}<p class="muted small">The browser did not report whether it arrived intact (an export made before the check existed).</p>{% endif %}

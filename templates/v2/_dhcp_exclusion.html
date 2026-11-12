@@ -18,7 +18,7 @@
     {{ run_stepper(xop.run) }}
     <p>Subnet {{ p.id }}'s pools written as the pieces to Mercury's subnet file (<span class="mono">{{ p.path }}</span>), tested by Kea's own check first, Kea reloaded through its API, and read back: {{ r.read_back }}.</p></div></div>
   <div class="op-part"><h3>Recorded</h3><div>
-    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ xop.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ xop.actor | people }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
 </div>
 {%- else %}
 <div class="op-card{{ ' op-danger' if xop.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">

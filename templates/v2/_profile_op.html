@@ -77,7 +77,7 @@
   <div class="op-hd"><h2 id="prof-h">The profile is committed {{ badge('committed', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('monitoring-templates', 'propose') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>Next</h3><div>
-    <p>Commit <span class="mono">{{ (op.r.commit or '')[:10] }}</span>, as {{ op.actor }}. Nothing was sent to any device.</p>
+    <p>Commit <span class="mono">{{ (op.r.commit or '')[:10] }}</span>, as {{ op.actor | people }}. Nothing was sent to any device.</p>
     <p class="muted">Coverage shows what each device lacks, and Apply sends it: <a href="{{ url_for('v2.coverage') }}">Open Coverage</a>.</p></div></div>
 </section>
 {%- else %}

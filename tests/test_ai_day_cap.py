@@ -337,7 +337,8 @@ def test_no_cap_with_a_reason_keeps_it_in_the_record_and_history_draws_it(networ
     assert f"<dt>Reason</dt><dd>{WHY_KEPT}</dd>" in page
     card = re.sub(r"\s+", " ", unescape(_page(networks)))
     assert re.search(r"No cap is set: Mercury does not stop AI spend; the provider's own limit "
-                     r"is the backstop\.</strong> Chosen by " + re.escape(row["actor_label"])
+                     r"is the backstop\.</strong> Chosen by "
+                     + re.escape(row["actor_label"].split("@")[0])
                      + r" <[^>]+>[^<]*</[^>]+>, with the reason “" + re.escape(WHY_KEPT)
                      + "”", card), card[card.find("No cap is set"):][:600]
     assert I.no_cap_record() == {"state": "ok", "actor_label": row["actor_label"],

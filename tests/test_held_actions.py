@@ -32,6 +32,8 @@ from tests.test_in_flight import no_hold_survives_a_test  # noqa: F401 (autouse)
 from tests.test_sdn_connections import networks  # noqa: F401 (the lab builds on it)
 
 WHO = "ops@example.invalid"
+#: WHO as a screen names them (board E2a): by display name, the part before the "@".
+SHOWN = WHO.split("@")[0]
 CHANGING = ("Plan a deploy…", "Capture", "Seed intent…", "Restore from…",
             "Remove lines (Mode B)…", "Revert intent…", "Retry rolled-back change…",
             "Rotate credential…", "Persist", "Run a privileged command…", "Reload…",
@@ -91,8 +93,8 @@ class TestOneOwner:
         with device_ops.hold(NET, "r2", "rotate", WHO):
             started = device_ops.holder(NET, "r2")["started"]
             got = in_flight.held_action(NET, "r2", TEST_PERSON)
-            assert got["words"] == f"Rotate credential running since {clock_of(started)}, by {WHO}"
-            assert (got["by"], got["name"]) == (WHO, "Rotate credential")
+            assert got["words"] == f"Rotate credential running since {clock_of(started)}, by {SHOWN}"
+            assert (got["by"], got["name"]) == (SHOWN, "Rotate credential")
             assert got["since"] == time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started))
             assert in_flight.held_action(NET, "r2", WHO)["by"] == "you"
             refused = []
@@ -166,7 +168,7 @@ class TestTheActionsMenu:
             said = re.sub(r"<svg.*?</svg>", "", html, flags=re.S)
             said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", said)).strip()
             assert re.fullmatch(r"r2 is held: Re-subscribe telemetry since \d\d:\d\d UTC, "
-                                rf"by {re.escape(WHO)} · Open the run", said), said
+                                rf"by {re.escape(SHOWN)} · Open the run", said), said
             assert f'<a href="/v2/device/r2?list={NET}">Open the run</a>' in html
             page = world.get(f"/v2/device/r2?list={NET}").get_data(as_text=True)
             at = page.index('id="device-held"')
@@ -229,7 +231,7 @@ class TestANeedsAttentionRow:
             rows = self.lost()
             html = attention(rows)
             assert rows[0]["held"]["words"] == (
-                f"Deploy running since {clock_of(started)}, by {WHO}")
+                f"Deploy running since {clock_of(started)}, by {SHOWN}")
             assert offer not in html, "the action is not offered on a held device"
             # The operator, 2026-11-11: "the run's text on a SECOND line under the title;
             # only 'Open the run' on the right"; each fact once on the screen.
@@ -239,7 +241,7 @@ class TestANeedsAttentionRow:
                 < line.index('class="att-primary"'), "under the title, before the right side"
             assert re.search(r'<span class="att-running" role="status" data-held="r2"[^>]*>'
                              r'Deploy running since <time[^>]*>[^<]+</time>, by '
-                             rf"{re.escape(WHO)}</span>", line)
+                             rf"{re.escape(SHOWN)}</span>", line)
             right = line[line.index('class="att-primary"'):].split(">", 1)[1]
             assert re.sub(r"<[^>]+>", "", right).strip() == "Open the run", \
                 "the right side holds Open the run alone"
@@ -337,9 +339,9 @@ class TestARefreshMidRun:
             started = device_ops.holder(NET, "r2")["started"]
             _r, html = card(world, subs="101")
             assert "resubscribe/confirm" not in html, "no confirm on a held device"
-            assert f'title="Deploy running since {clock_of(started)}, by {WHO}"' in html
+            assert f'title="Deploy running since {clock_of(started)}, by {SHOWN}"' in html
             assert "Not offered while r2 is held: Deploy running since" in html
-            assert f", by {WHO}. One operation per device at a time." in html
+            assert f", by {SHOWN}. One operation per device at a time." in html
             assert f'href="/v2/device/r2?list={NET}">Open the run</a>' in html
             assert device_ops.busy_text(NET, "r2"), "the hold the confirm would be refused by"
         _r, html = card(world, subs="101")

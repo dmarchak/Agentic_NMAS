@@ -149,8 +149,11 @@ History only, because a query that mentions a device is not an exact claim about
 it is. A read of Grafana that failed, or whose rules came back incomplete, records nothing.
 Rows appear when the page next loads.
 
-A row's **who** is a verified person's email, or, for a host command, the host login labelled
-"host login, not a verified identity". A deploy of part of intent is named by what it sent:
+A row's **who** is a verified person's display name (the name set for them in Settings ›
+Installation › Access and identity, else the part of their identity before the "@"), or, for a
+host command, the host login labelled "host login, not a verified identity". The **Person**
+filter lists the same names. Opened, a row's "By" names the person the same way, and **The
+identity as recorded** under it, closed until you open it, holds the identity the record keeps. A deploy of part of intent is named by what it sent:
 **Monitoring profile applied**, **IP SLA probes sent** or **Monitoring templates deployed**,
 never "Deployed". A withdrawn approval names what withdrew it and why.
 

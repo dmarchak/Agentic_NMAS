@@ -41,7 +41,7 @@
   <div class="op-hd"><h2 id="mode-done">{{ list_name }} {{ 'is standalone' if result.to == 'standalone' else 'inherits from Default' }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions"><a class="btn" href="{{ url_for('settings_v2.network', list_name=list_name) }}">See its settings</a></div></div>
   <div class="op-part"><h3>What happened</h3><div>
-    <p>Switched by {{ result.actor_label }} {{ stamp(result.at) }}.</p>
+    <p>Switched by {{ result.actor_label | people }} {{ stamp(result.at) }}.</p>
     {%- for w in result.what %}<p>{{ w }}.</p>{% endfor %}
     {%- if result.moved %}<ul class="op-list">{% for m in result.moved %}<li>{{ m[0] }}: {{ m[1] }} → {{ m[2] }}</li>{% endfor %}</ul>{% endif %}
     {%- if not result.recorded %}<p><strong>The switch is made, and its record could not be written:</strong> {{ result.record_error }}.</p>{% endif %}
@@ -51,7 +51,7 @@
 <div class="banner-mode notice {{ 'notice-warn' if s.mode == 'standalone' else 'notice-muted' }}" id="settings-mode-banner">
   {{ icon('info', 16) }}
   <div class="grow"><strong>{% if s.mode == 'standalone' %}{{ s.network }} is standalone: it takes nothing from Default.{% else %}{{ s.network }} inherits from Default.{% endif %}</strong>
-    {%- if s.since and s.since.at %} Since {{ stamp(s.since.at) }}, {{ s.since.by }}.{% elif s.since and s.since.state == 'unreadable' %} Its settings record could not be read: {{ s.since.error }}.{% endif %}
+    {%- if s.since and s.since.at %} Since {{ stamp(s.since.at) }}, {{ s.since.by | people }}.{% elif s.since and s.since.state == 'unreadable' %} Its settings record could not be read: {{ s.since.error }}.{% endif %}
     {%- set sm = s.summary %}
     {%- if sm.not_configured %} {{ sm.not_configured | join(', ') }} {{ 'is' if sm.not_configured | length == 1 else 'are' }} not configured here.{% endif %}
     {%- if sm.own %} Its own: {{ sm.own | join(', ') }}.{% endif %}

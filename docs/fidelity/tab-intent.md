@@ -27,7 +27,18 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `c6913d7d746d8155ccba95440ed51669baa6233291ba788afb360e1105680e33`
+Templates sha256: `88b16e5fd0b2ee63c061a5d8a0d1abad4235aaddc4c98b7c8c1156f00bee5f73`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_intent_edit.html`, `_intent_words.html` and
+`_intent_secrets.html`, each place that draws a person (who a commit was made as, who last
+committed the file, who set a typed secret) now draws them through the `people` filter, by
+display name (the name the person set, else the part of their identity before the "@"), in the
+same element and position; the confirm's "You are confirming as <name>." names the person the
+same way. No region is added, removed or moved, and no other word changes. Where the board
+draws an identity the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 
 **Compared again 2026-11-03 ~04:4x UTC for C2331 and C2332** (the operator's walk on r8): a
 commit's result that names a reference with no value now holds the Secret references card

@@ -555,7 +555,9 @@ class TestTheOfflineDrill:
         r, html = self._record(page, line)
         from tests.conftest import TEST_PERSON
         assert r.status_code == 200 and "due in 89 days" in html, html[:400]
-        assert f"by {TEST_PERSON}" in html and "Not recorded" not in html
+        # Board E2a: who ran the drill, by display name (the part before the "@").
+        assert f"by {TEST_PERSON.split('@')[0]}" in html and "Not recorded" not in html
+        assert TEST_PERSON not in html
         row = self._rows(page)[-1]
         assert row["sha256"] == d["sha256"] and row["devices"] == 2 and row["list"] == LIST
 

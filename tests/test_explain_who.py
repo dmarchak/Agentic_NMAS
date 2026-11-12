@@ -474,12 +474,14 @@ def test_the_card_draws_who_added_by_mercury_after_the_claim(world):  # noqa: F8
                      body, re.S)
     assert line, body
     by, actor, refs, title, drawn = line.groups()
-    assert (by, actor, refs) == ("mercury", "operator@example.com", ref)
+    # Board E2a: the card names the actor by display name, the part before the "@"; the kept
+    # answer holds the actor as recorded.
+    assert (by, actor, refs) == ("mercury", "operator", ref)
     # Who, on hover: each actor of its changes and whose words said it.
-    assert title.startswith("Who: operator@example.com") and \
+    assert title.startswith("Who: operator (") and \
         title.endswith(f"({ref}, added by Mercury)")
     # Mercury's words after the claim, under their own chip, naming the piece as a citation.
-    assert re.match(r'<span class="faint">Who:</span> (operator@example\.com[^<]*) '
+    assert re.match(r'<span class="faint">Who:</span> (operator \([^<@]*\)) '
                     r'<span class="badge badge-neutral" title="[^"]*">who, added by Mercury'
                     r'</span> <span class="faint">from</span> <a class="pack-ref cite-chip" '
                     rf'href="#{re.escape(world.pack["id"])}-{re.escape(ref)}"', drawn), drawn

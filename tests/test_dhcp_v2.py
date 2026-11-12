@@ -593,7 +593,10 @@ def test_the_confirm_writes_reads_back_and_records_in_place(board_b, monkeypatch
     assert r.status_code == 200, html
     assert "h5's reservation added" in html
     assert "exactly the change shown" in html
-    assert "5e7b21c" in html and "Actor: operator@example.invalid" in html
+    # Board E2a: the card names the commit's actor by display name; the commit's own trailer
+    # (asserted below, in what was recorded) keeps the identity.
+    assert "5e7b21c" in html and "Actor: operator, Source: dhcp" in html
+    assert "operator@example.invalid" not in html
     assert board_b["recorded"] == [("dhcp: h5 reserved 10.10.20.150 by MAC aa:c1:ab:5d:20:9e",
                                     "operator@example.invalid", "h5 is the printer")]
     assert json.load(open(board_b["files"][("dhcp4", 20)], encoding="utf-8")) == [

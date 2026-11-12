@@ -504,7 +504,10 @@ class TestAHealsOutcome:
         assert recorded(d) == "healed" and src.apply_kw["actor"] == SETTER
         assert 'class="ip-chip ip-ok"' in html and "In progress: 1 done" in html
         assert "<strong>edge-b</strong> · Self-healing" in html and "healed" in html
-        assert "steps recorded" in html and SETTER in html, "started by the policy's setter"
+        # Board E2a: the setter is drawn by display name, the part before the "@".
+        assert "steps recorded" in html and SETTER.split("@")[0] in html, \
+            "started by the policy's setter"
+        assert SETTER not in html
         body = page(heal, "edge-b", "Default")
         assert "op-card op-ok" in body and "Self-healing on edge-b" in body
         assert 'data-outcome="healed"' in body and "The steps taken" in body

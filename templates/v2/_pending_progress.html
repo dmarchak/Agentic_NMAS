@@ -26,7 +26,7 @@
     <div><dt>ZTP</dt><dd>{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}</dd></div>
     {%- endif %}
     {%- if last_run %}
-    <div><dt>Last {{ last_run.kind }}</dt><dd>{{ stamp(last_run.at) }} by {{ last_run.by or 'nobody recorded' }}: {{ last_run.result.happened.summary }}</dd></div>
+    <div><dt>Last {{ last_run.kind }}</dt><dd>{{ stamp(last_run.at) }} by {{ (last_run.by or 'nobody recorded') | people }}: {{ last_run.result.happened.summary }}</dd></div>
     {%- elif runs_error %}
     <div><dt>Last run</dt><dd>its record could not be read: {{ runs_error }}</dd></div>
     {%- endif %}

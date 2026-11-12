@@ -255,7 +255,8 @@ class TestARunInProgress:
             assert 'aria-busy="true"' in region
             assert 'hx-trigger="nmas:reads from:body"' in region and f"job={job}" in region
             assert "1 command on 2 devices" in html and ">running<" in html
-            assert f"By {record['actor']}," in html and record["actor"]
+            # By display name (board E2a).
+            assert f"By {record['actor'].split('@')[0]}," in html and record["actor"]
             assert "Asking r3, r9: 0 of 2 read so far, still reading r3, r9." in html
             assert '<td class="mono">show clock</td>' in html
             assert sc["fleet"].sent == []

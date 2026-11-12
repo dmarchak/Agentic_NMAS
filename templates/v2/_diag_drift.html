@@ -31,7 +31,7 @@
     {%- for n in dr.rows %}
     <tr>
       <td>{{ n.name }}</td>
-      <td>{{ badge(STATE[n.state][0], STATE[n.state][1]) }}{% if n.state == 'disabled' and n.disabled_by %} <span class="muted small">by {{ n.disabled_by }}{% if n.disabled_at %} {{ n.disabled_at }}{% endif %}</span>{% endif %}{% if n.why %} <span class="muted small">{{ n.why }}</span>{% endif %}</td>
+      <td>{{ badge(STATE[n.state][0], STATE[n.state][1]) }}{% if n.state == 'disabled' and n.disabled_by %} <span class="muted small">by {{ n.disabled_by | people }}{% if n.disabled_at %} {{ n.disabled_at }}{% endif %}</span>{% endif %}{% if n.why %} <span class="muted small">{{ n.why }}</span>{% endif %}</td>
       {#- C666: how long ago, nothing more; what the run found is on hover (and a failed run says
           "failed", its words on hover). -#}
       {#- An unreadable state is not "never run" and its schedule is paused (R19): absent and

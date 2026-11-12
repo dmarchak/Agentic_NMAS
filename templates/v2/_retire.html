@@ -36,7 +36,7 @@
     {%- for a in c.advisories %}<p class="op-wait">Advisory: {{ a }}</p>{% endfor %}</div></div>
   </form>
   <div class="op-part"><h3>What retire changes, in order</h3><div>
-    <ol class="op-list">{% for s in c.steps %}<li>{% if s.done %}<span class="muted">{{ s.what }} (already done)</span>{% else %}{{ s.what }}{% endif %}</li>{% endfor %}</ol>
+    <ol class="op-list">{% for s in c.steps %}<li>{% if s.done %}<span class="muted">{{ s.what | people }} (already done)</span>{% else %}{{ s.what | people }}{% endif %}</li>{% endfor %}</ol>
     <p class="muted small">Each step is skipped if already done, so a retirement that stopped part way is finished by running it again. Nothing is sent to {{ c.host }}.</p></div></div>
   <div class="op-part"><h3>Generated, so dropped</h3><div>
     {%- for w in c.generated %}<p><strong>{{ w.what[0] | upper }}{{ w.what[1:] }}</strong>: {{ w.how }}.</p>{% endfor %}</div></div>

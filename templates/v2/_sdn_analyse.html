@@ -29,7 +29,7 @@
     <input type="hidden" name="snapshot" value="{{ s.id or '' }}">
     {{ ai.mark(c) }} <button class="btn" type="submit" id="sdn-analyse-ask" data-op="sdn-analyse" hx-disabled-elt="this"{% if not s.id %} disabled aria-disabled="true"{% else %}{{ ai.attrs(c, 'configure') }}{% endif %} title="One recorded AI call ({{ c.model_words }}), capped; it reads the snapshot named beside it, and nothing else, and sends nothing to a switch"><span class="op-idle">Analyse this network</span><span class="op-busy">Analysing…</span></button>{{ how('sdn-analyse', op='Analyse this network') }}
   </form>
-  <span class="muted small sdn-an-line">{% if s.id %}<span title="snapshot {{ s.id }}, collected by {{ s.by }}; {{ s.links }} link{{ 's' if s.links != 1 }} ({{ s.links_down }} not up), {{ s.ports_down }} port{{ 's' if s.ports_down != 1 }} down{% if s.unread %}, {{ s.unread }} part{{ 's' if s.unread != 1 }} not read{% endif %}">{{ s.switches }} switch{{ 'es' if s.switches != 1 }}, collected {{ stamp(s.collected_at) }}</span>{% if s.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %} · {{ an.model_words }} · <span title="{{ s.estimate.tokens }} input tokens by the fallback over-estimate, and an allowance for the answer; the call is capped at ${{ '%.4f' | format(c.per_call) }}">about ${{ '%.4f' | format(s.estimate.usd) }}</span>{% else %}No collection yet: Collect now reads the network's switches first.{% endif %}</span>
+  <span class="muted small sdn-an-line">{% if s.id %}<span title="snapshot {{ s.id }}, collected by {{ s.by | people }}; {{ s.links }} link{{ 's' if s.links != 1 }} ({{ s.links_down }} not up), {{ s.ports_down }} port{{ 's' if s.ports_down != 1 }} down{% if s.unread %}, {{ s.unread }} part{{ 's' if s.unread != 1 }} not read{% endif %}">{{ s.switches }} switch{{ 'es' if s.switches != 1 }}, collected {{ stamp(s.collected_at) }}</span>{% if s.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %} · {{ an.model_words }} · <span title="{{ s.estimate.tokens }} input tokens by the fallback over-estimate, and an allowance for the answer; the call is capped at ${{ '%.4f' | format(c.per_call) }}">about ${{ '%.4f' | format(s.estimate.usd) }}</span>{% else %}No collection yet: Collect now reads the network's switches first.{% endif %}</span>
   <form class="op-act" hx-post="{{ url_for('sdn_analyse_v2.collect') }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="list" value="{{ an.network }}">
     <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{% if an.running and not an.running.stale %} disabled aria-disabled="true"{% else %}{{ gate('configure') }}{% endif %} title="Reads every switch's flows, port counters twice, port descriptions and the controller's links now, as a job, and keeps them as a snapshot; sends nothing to a switch">{% if an.running and not an.running.stale %}Collecting…{% else %}<span class="op-idle">Collect now</span><span class="op-busy">Starting…</span>{% endif %}</button>{{ how('sdn-analyse', 'collect', compact=True, op='Collect now') }}
@@ -37,22 +37,22 @@
 </div>
 {{ ai.reason(c) }}
 {%- if an.running and not an.running.stale %}
-<p class="small muted" role="status">Collecting since {{ stamp(an.running.at) }}, started by {{ an.running.by }}; this redraws when it is kept (at the latest {{ an.running.until }}).</p>
+<p class="small muted" role="status">Collecting since {{ stamp(an.running.at) }}, started by {{ an.running.by | people }}; this redraws when it is kept (at the latest {{ an.running.until }}).</p>
 {%- elif an.running.stale %}
-<p class="small notice notice-warn" role="status">A collection started by {{ an.running.by }} {{ stamp(an.running.at) }} did not finish within its bound, so it is not counted as running: Collect now starts another.</p>
+<p class="small notice notice-warn" role="status">A collection started by {{ an.running.by | people }} {{ stamp(an.running.at) }} did not finish within its bound, so it is not counted as running: Collect now starts another.</p>
 {%- endif %}
 {%- if said.collect and not said.collect.ok %}
 <p class="small notice notice-warn" role="alert">Couldn't collect: {{ said.collect.error }}.</p>
 {%- endif %}
 {%- if an.collect_failed %}
-<p class="small notice notice-warn" role="status">The last collection, started by {{ an.collect_failed.by }} {{ stamp(an.collect_failed.at) }}, kept nothing: {{ an.collect_failed.error }}.{% if s.id %} The snapshot above is the last one kept.{% endif %}</p>
+<p class="small notice notice-warn" role="status">The last collection, started by {{ an.collect_failed.by | people }} {{ stamp(an.collect_failed.at) }}, kept nothing: {{ an.collect_failed.error }}.{% if s.id %} The snapshot above is the last one kept.{% endif %}</p>
 {%- endif %}
 {#- C3001: the snapshot the bar names, by its id as text (what Analyse and the evaluation are
     given), with when it was collected in UTC and what it holds; a collection History could
     not be given a record of; and every kept snapshot, a collapsed list that reads one page
     (`sdn_analyse_v2.snapshots`) when it is opened. -#}
 {%- if s.id %}
-<p class="small sdn-an-snap" id="sdn-an-snap">Snapshot <code class="mono">{{ s.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ s.id }}" x-on:click="copy" x-text="label">Copy</button> collected <time datetime="{{ s.collected_at }}">{{ s.collected_at | replace('T', ' ') | replace('Z', ' UTC') }}</time> by {{ s.by }}{% if s.flows is number %}: {{ s.switches }} switch{{ 'es' if s.switches != 1 }}, {{ s.flows }} flow{{ 's' if s.flows != 1 }}{% if s.flows_read != s.flows %} of the {{ s.flows_read }} read{% endif %}{% endif %}.</p>
+<p class="small sdn-an-snap" id="sdn-an-snap">Snapshot <code class="mono">{{ s.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ s.id }}" x-on:click="copy" x-text="label">Copy</button> collected <time datetime="{{ s.collected_at }}">{{ s.collected_at | replace('T', ' ') | replace('Z', ' UTC') }}</time> by {{ s.by | people }}{% if s.flows is number %}: {{ s.switches }} switch{{ 'es' if s.switches != 1 }}, {{ s.flows }} flow{{ 's' if s.flows != 1 }}{% if s.flows_read != s.flows %} of the {{ s.flows_read }} read{% endif %}{% endif %}.</p>
 {%- endif %}
 {%- if an.unrecorded %}
 <p class="small notice notice-warn" role="status">The last collection could not be recorded for History: {{ an.unrecorded }}.</p>
@@ -79,7 +79,7 @@
 <div class="sdn-an-cols">
 <section class="card sdn-an-findings" aria-labelledby="sdn-an-f">
   {%- if x and x.ok %}
-  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">{{ x.findings | length }} finding{{ 's' if x.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(x.at) }} by {{ x.model }} for {{ x.actor }} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a></span></div>
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">{{ x.findings | length }} finding{{ 's' if x.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(x.at) }} by {{ x.model }} for {{ x.actor | people }} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a></span></div>
   {%- if an.stale %}<p class="small notice notice-muted" role="status">This answer is about the snapshot of {{ stamp(x.collected_at) }} ({{ x.snapshot_id }}); a newer one is collected: Analyse this network asks about it.</p>{% endif %}
   {%- if x.findings %}
   <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
@@ -102,7 +102,7 @@
     <p class="small notice notice-warn" role="alert">Couldn't check again: {{ rcs.error }}.</p>
     {%- endif %}
     {%- if rc %}
-    <h3 id="sdn-an-rc">Checked again {{ stamp(rc.at) }} by {{ rc.by }}, no new AI call: {{ rc.findings | length }} finding{{ 's' if rc.findings | length != 1 }}</h3>
+    <h3 id="sdn-an-rc">Checked again {{ stamp(rc.at) }} by {{ rc.by | people }}, no new AI call: {{ rc.findings | length }} finding{{ 's' if rc.findings | length != 1 }}</h3>
     {%- if rc.findings %}
     <div class="table-wrap"><table class="table sdn-an-tbl" aria-labelledby="sdn-an-rc"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
     {%- for f in rc.findings %}
@@ -116,7 +116,7 @@
     {%- endif %}
   </div>
   {%- elif x %}
-  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">No findings</h2><span class="faint small">asked {{ stamp(x.at) }} by {{ x.actor }}{% if x.call_id %} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a>{% endif %}</span></div>
+  <div class="sdn-ctl-hd"><h2 id="sdn-an-f">No findings</h2><span class="faint small">asked {{ stamp(x.at) }} by {{ x.actor | people }}{% if x.call_id %} · <a href="{{ url_for('v2.history_page', call=x.call_id) }}" title="{{ x.call_id }}, ${{ '%.4f' | format(x.cost_usd or 0) }}">the call</a>{% endif %}</span></div>
   <p class="small notice notice-warn" role="status">Couldn't analyse the snapshot {{ x.snapshot_id }}: {{ x.detail or x.error }}. Nothing of an answer is used{% if x.findings %} ({{ x.findings | length }}){% endif %}{% if x.dropped %}, {{ x.dropped }} dropped{% endif %}{% if x.dropped_words %} ({{ x.dropped_words }}){% endif %}{% if x.removed_ids %}; {{ x.removed_ids }} ids removed{% endif %}; {{ x.model }}, collected {{ x.collected_at }}.</p>
   {%- else %}
   <div class="sdn-ctl-hd"><h2 id="sdn-an-f">Findings</h2></div>
@@ -129,13 +129,13 @@
   <p class="small notice notice-danger" role="alert">The planted issues cannot be read ({{ an.planted_error }}); none is drawn as found or missed.</p>
   {%- elif an.planted %}
   {%- if x and x.ok and x.rechecked %}
-  <p class="small notice notice-muted" role="status" id="sdn-an-marks-from">Found and missed are marked from the answer as checked again {{ stamp(x.rechecked.at) }} by {{ x.rechecked.by }} (no new AI call), not from its first check.</p>
+  <p class="small notice notice-muted" role="status" id="sdn-an-marks-from">Found and missed are marked from the answer as checked again {{ stamp(x.rechecked.at) }} by {{ x.rechecked.by | people }} (no new AI call), not from its first check.</p>
   {%- endif %}
   <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Planted</th><th>Found</th><th>Why</th></tr></thead><tbody>
   {%- for p in an.planted %}
     {%- set edit_failed = said.edit and said.edit.pid == p.id and not said.edit.ok %}
     {%- set remove_failed = said.remove and said.remove.pid == p.id and not said.remove.ok %}
-    <tr id="sdn-pl-{{ p.id }}"><td data-l="Planted">{{ p.name }}<br><span class="faint small mono" title="added by {{ p.by }} {{ p.at }}{% if p.edited_by %}; corrected by {{ p.edited_by }} {{ p.edited_at }}{% endif %}">{{ p.evidence | join(' ') }}</span>
+    <tr id="sdn-pl-{{ p.id }}"><td data-l="Planted">{{ p.name }}<br><span class="faint small mono" title="added by {{ p.by | people }} {{ p.at }}{% if p.edited_by %}; corrected by {{ p.edited_by | people }} {{ p.edited_at }}{% endif %}">{{ p.evidence | join(' ') }}</span>
       <div class="sdn-an-row-acts">
       <details class="sdn-an-row-act" data-keep="sdn-pl-edit-{{ p.id }}"{% if edit_failed %} open{% endif %}>
         <summary class="btn btn-small">Edit…</summary>
@@ -158,7 +158,7 @@
       </details>
       </div></td>
       <td data-l="Found">{% if p.found == 'found' %}{{ badge('found', 'ok', title=p.by | join('; ')) }}{% elif p.found == 'missed' %}{{ badge('missed', 'danger') }}{% if p.in_collection == false %} <span class="faint small">its evidence is not in the snapshot</span>{% endif %}{% elif p.found == 'planted after this analysis' %}{{ badge('planted after this analysis', 'muted', title='planted ' ~ p.at ~ ', after the analysis of ' ~ x.at ~ ': it was not there to be found, so it is neither found nor missed') }}{% else %}{{ badge('not analysed', 'muted') }}{% endif %}</td>
-      <td data-l="Why"><form class="op-act sdn-an-why" hx-post="{{ url_for('sdn_analyse_v2.planted_why', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="list" value="{{ an.network }}"><label class="sr-only" for="sdn-why-{{ p.id }}">Why it was {{ p.found }}</label><input id="sdn-why-{{ p.id }}" name="why" type="text" maxlength="600" value="{{ p.why }}" placeholder="why it was found or missed"{% if p.why_by %} title="saved by {{ p.why_by }} {{ p.why_at }}"{% endif %}> <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('sdn-analyse', 'planted', compact=True, op='Save a why') }}</form>
+      <td data-l="Why"><form class="op-act sdn-an-why" hx-post="{{ url_for('sdn_analyse_v2.planted_why', pid=p.id) }}" hx-target="#sdn-analyse" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="list" value="{{ an.network }}"><label class="sr-only" for="sdn-why-{{ p.id }}">Why it was {{ p.found }}</label><input id="sdn-why-{{ p.id }}" name="why" type="text" maxlength="600" value="{{ p.why }}" placeholder="why it was found or missed"{% if p.why_by %} title="saved by {{ p.why_by | people }} {{ p.why_at }}"{% endif %}> <button class="btn btn-small" type="submit" data-op="sdn-analyse" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('sdn-analyse', 'planted', compact=True, op='Save a why') }}</form>
         {%- if said.why and said.why.pid == p.id and not said.why.ok %}<p class="small notice notice-warn" role="alert">Couldn't save: {{ said.why.error }}.</p>{% endif %}</td></tr>
   {%- endfor %}
   </tbody></table></div>
@@ -187,7 +187,7 @@
     <summary class="small">Changes to the sheet ({{ an.changes | length }}){% if an.removed %}, {{ an.removed }} removed{% endif %}</summary>
     <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>
     {%- for c in an.changes[:20] %}
-      <tr data-action="{{ c.action }}"><td data-l="When">{{ stamp(c.at) }}</td><td data-l="Who">{{ c.by }}</td><td data-l="What">{{ c.words }}</td></tr>
+      <tr data-action="{{ c.action }}"><td data-l="When">{{ stamp(c.at) }}</td><td data-l="Who">{{ c.by | people }}</td><td data-l="What">{{ c.words }}</td></tr>
     {%- endfor %}
     </tbody></table></div>
     {%- if an.changes | length > 20 %}<p class="small muted">{{ an.changes | length - 20 }} earlier: every change is in the downloaded sheet.</p>{% endif %}

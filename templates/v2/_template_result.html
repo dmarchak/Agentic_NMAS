@@ -41,7 +41,7 @@
     {%- endif %}
     {%- if r.intent.error %}<p class="notice notice-warn">{{ icon('warn', 16) }} {{ r.intent.error }}: its acknowledgements could not be read, so none is counted.</p>{% endif %}
     {%- if r.acknowledged and not r.unacknowledged %}
-    <p class="faint">Acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %}, commit {{ r.intent.commit.commit }}{% if r.intent.commit.by %} by {{ r.intent.commit.by }}{% endif %}: "{{ r.intent.commit.subject }}"{% endif %}: <span class="mono">{{ r.acknowledged | join('; ') }}</span></p>
+    <p class="faint">Acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %}, commit {{ r.intent.commit.commit }}{% if r.intent.commit.by %} by {{ r.intent.commit.by | people }}{% endif %}: "{{ r.intent.commit.subject }}"{% endif %}: <span class="mono">{{ r.acknowledged | join('; ') }}</span></p>
     {%- endif %}
     {%- if r.device_owned %}
     <p class="faint">Device-owned, not counted: {% for h in r.device_owned %}<span class="mono">{{ h }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>

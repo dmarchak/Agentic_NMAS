@@ -78,7 +78,7 @@
   <div class="ie-split">
     <div>
       {%- if c.r.changed %}
-      <p>Commit <span class="mono">{{ (c.r.commit or '')[:10] }}</span> "host_vars: {{ host }} {{ c.summary }}", as {{ c.actor }}.</p>
+      <p>Commit <span class="mono">{{ (c.r.commit or '')[:10] }}</span> "host_vars: {{ host }} {{ c.summary }}", as {{ c.actor | people }}.</p>
       {%- if c.r.formatting_only %}
       <div class="notice notice-ok ie-normalised-done">{{ icon('check', 16) }}<p>{{ host }}'s intent: formatting normalised, proved before it was written. The render is unchanged. Change it in words is available now.</p></div>
       {%- elif c.r.reformatted %}
@@ -137,7 +137,7 @@
 <section class="card intent intent-edit intent-moved" id="intent" aria-labelledby="mv-h">
   <div class="ie-hd"><h2 id="mv-h">Editing {{ host }}'s intent: not saved</h2>
     <div class="ie-hd-actions">{{ how('edit-intent') }}<button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div></div>
-  <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened document <span class="mono">{{ (m.base or '')[:7] }}</span>; it is now document <span class="mono">{{ (m.current or '')[:7] }}</span>{% if m.last_commit %}, in commit <span class="mono" title="{{ m.last_commit.commit }}">{{ (m.last_commit.commit or '')[:10] }}</span> by {{ m.last_commit.by or 'someone' }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened document <span class="mono">{{ (m.base or '')[:7] }}</span>; it is now document <span class="mono">{{ (m.current or '')[:7] }}</span>{% if m.last_commit %}, in commit <span class="mono" title="{{ m.last_commit.commit }}">{{ (m.last_commit.commit or '')[:10] }}</span> by {{ (m.last_commit.by or 'someone') | people }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
   <div class="ie-split">
     <div><h3 class="ie-k">Your edit, kept</h3><pre class="op-diff">{{ m.your_change or 'not shown: ' ~ m.error }}</pre></div>
     <div><h3 class="ie-k">Their change</h3><pre class="op-diff">{{ m.their_change or '(none shown)' }}</pre></div>

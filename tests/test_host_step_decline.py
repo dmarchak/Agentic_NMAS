@@ -33,6 +33,8 @@ STEPS = ("install the slice and the units, rendered fresh and installed by name"
          "keep 487ed333's false red, marked and set aside, never deleted")
 REASON = "CI stays on GitHub-hosted runners"
 PERSON = "p@example.invalid"
+#: PERSON as a screen names them (board E2a): by display name, the part before the "@".
+SHOWN = PERSON.split("@")[0]
 
 
 def _log(*commits):
@@ -87,7 +89,7 @@ class TestDecliningAStep:
         html = r.get_data(as_text=True)
         assert r.status_code == 200, html
         card = html.split('id="update-declined"')[1].split("</section>")[0]
-        assert f"{INSTALL} <span class=\"muted\">· Declined by {PERSON} at <time" in card
+        assert f"{INSTALL} <span class=\"muted\">· Declined by {SHOWN} at <time" in card
         assert f": {REASON}. It is no longer owed; History keeps it." in card
         (row,) = _rows(host / "done.jsonl")
         assert (row["sha"], row["step"], row["by"], row["decision"], row["why"]) == (
@@ -154,7 +156,7 @@ class TestRefusals:
         r = _decline(RUNNER, INSTALL, why="a second reason for the same step")
         html = r.get_data(as_text=True)
         assert r.status_code == 409
-        assert f"that step was already declined by {PERSON} at 20" in html
+        assert f"that step was already declined by {SHOWN} at 20" in html
         assert f"UTC: {REASON}" in html
         assert len(_rows(host / "done.jsonl")) == 1
 
@@ -163,7 +165,7 @@ class TestRefusals:
                               data={"sha": SLICE, "step": STEPS[3]}).status_code == 200
         r = _decline(SLICE, STEPS[3])
         assert r.status_code == 409
-        assert f"that step was already said done by {PERSON} at 20" in r.get_data(as_text=True)
+        assert f"that step was already said done by {SHOWN} at 20" in r.get_data(as_text=True)
         assert len(_rows(host / "done.jsonl")) == 1
 
     def test_a_step_not_owed_is_refused(self, host):

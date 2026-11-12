@@ -30,6 +30,8 @@ ROW = "scheduled_jobs:mutation-nightly.yml"
 RUN_68 = "41337732668"
 WHY = "the mutation canary is being reworked this week (C2551)"
 PERSON = "test-person@example.invalid"
+#: PERSON as a screen names them (board E2a): by display name, the part before the "@".
+SHOWN = PERSON.split("@")[0]
 
 
 def _epoch(stamp):
@@ -131,7 +133,7 @@ class TestAcknowledgingAFailedRun:
         assert rec["expires"] == "next_scheduled_run"
         assert rec["until"] in {_iso(before), _iso(after)}
         when = f"{rec['until'][:10]} 14:00 UTC"
-        said = f"Acknowledged by {PERSON} until the next scheduled run ({when}): {WHY}"
+        said = f"Acknowledged by {SHOWN} until the next scheduled run ({when}): {WHY}"
         assert got.get_json()["words"] == (f"Recorded: {said}. If that run has not succeeded "
                                            "by then, the row comes back by itself.")
         a = _attention()
@@ -149,7 +151,7 @@ class TestAcknowledgingAFailedRun:
                    kind="scheduled_jobs/failed", what="w", expires=ACK.NEXT_SCHEDULED_RUN,
                    until_at=time.time() - 60)
         (r,) = [x for x in _attention()["rows"] if x["id"] == ROW]
-        assert f"Acknowledged by {PERSON} until the next scheduled run (" in r["cause"]
+        assert f"Acknowledged by {SHOWN} until the next scheduled run (" in r["cause"]
         assert r["cause"].endswith(f"): {WHY}; that time has passed and the row's condition "
                                    "stands, so it is shown again")
 

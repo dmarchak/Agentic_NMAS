@@ -59,7 +59,7 @@
     </ul></details>
   {%- endfor %}
   {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
-  <p class="small">Recorded by {{ r.actor }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
+  <p class="small">Recorded by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
   {%- if not ok %}
   {#- The next action: the card again, which leads with Re-add the receiver for each one a
       run left removed, and else offers the re-subscribe once more. A read: nothing is sent. -#}
@@ -74,7 +74,7 @@
   {%- set L = c.last %}
   <details class="resub-last resub-last-{{ L.level }}" data-last-run="{{ L.run }}" data-keep="{{ cid }}-last">
     <summary><strong>The last run, {{ stamp(L.at) }}: {{ L.words }}</strong> · {{ L.steps.trail | length }} step{{ 's' if L.steps.trail | length != 1 }} · <span class="resub-show">Show</span></summary>
-    <p class="small">Run by {{ L.actor or 'nobody recorded' }}.</p>
+    <p class="small">Run by {{ (L.actor or 'nobody recorded') | people }}.</p>
     {{ run_stepper(L.steps) }}
   </details>
   {%- endif %}

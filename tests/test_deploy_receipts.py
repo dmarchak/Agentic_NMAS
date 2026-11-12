@@ -434,8 +434,62 @@ class TestRecentChangesShowsTheDeployItMissed:
         self._deploy()
         _r, part = _get(lab, url)
         assert "Deploy r3 · deployed · 4 lines" in _text(part), _text(part)
-        assert "by test-person@example.invalid" in _text(part)
+        assert "by test-person" in _text(part)           # by display name (board E2a)
+        assert "test-person@example.invalid" not in _text(part)
         assert "No deploy or restore recorded" not in part
+
+    def test_a_heal_reads_as_mercury_s_self_healing_with_the_lines_it_re_applied(self, lab):  # noqa: F811
+        """The operator, 2026-11-12: "Recent changes shows the heal as "Deploy r3 · 4 lines · by
+        <the operator's email>". A heal reads "Heal r3 · by Mercury's self-healing"". A heal's
+        receipt, written by the deploy path's own writers as the heal writes it (as the policy,
+        its setter the actor), with the program the host's heal sent: an applet's three lines
+        and the ``exit`` closing its sub-mode. Through the real Recent changes route: Mercury's
+        self-healing is the doer, the setter by display name after it, the three lines the card
+        says were re-applied, and no address anywhere on the card."""
+        from routes.deploy import _pending_receipts, _write_receipts
+        from tests.test_device_v2 import _get, _text
+
+        applet = ["event manager applet NMAS-HEARTBEAT", " event timer watchdog time 60",
+                  " action 1.0 syslog msg \"NMAS heartbeat\"", "exit"]
+        setter = "policy-setter@example.invalid"
+        hashes = {"r3": command_fingerprint(applet, [])}
+        record, pending = _pending_receipts("Lab", "deploy", {}, hashes, actor=setter,
+                                            actor_kind="policy")
+        result = record(_sent(commands=applet, authorised=[],
+                              program_hash=command_fingerprint(applet, [])))
+        report = {"results": [result], "golden": {"commit": "abc123", "batch_id": "b-1",
+                                                  "devices": ["r3"]}}
+        assert _write_receipts("Lab", report, "deploy", {}, hashes, actor=setter,
+                               actor_kind="policy", pending=pending)["ok"]
+        from html import unescape
+
+        _r, part = _get(lab, "/v2/recent?list=Lab")
+        text = unescape(_text(part))
+        assert "Heal r3 · deployed · 3 lines re-applied" in text, text
+        assert "by Mercury's self-healing, policy set by policy-setter" in text, text
+        assert "@" not in part, "no address on the card"
+        assert "Deploy r3" not in text and "4 lines" not in text, "one fact, said once"
+        # The device's History lists the same receipt the same way.
+        _r, hist = _get(lab, "/v2/device/r3/history?list=Lab")
+        said = unescape(_text(hist))
+        assert "Mercury's self-healing" in said and "3 line(s) re-applied" in said, said
+        assert "4 line(s) sent" not in said
+        # The record the screens read keeps the policy's setter and the program as sent
+        # (4 commands): drawing names Mercury and counts 3, and rewrites nothing.
+        (row,) = receipts.read("Lab", device="r3")["rows"]
+        assert (row["actor"], row["actor_kind"], row["program_lines"]) == (setter, "policy", 4)
+        assert receipts.is_heal(row) and receipts.config_lines(row) == 3
+
+    def test_a_person_s_deploy_still_reads_as_theirs(self, lab):  # noqa: F811
+        """The control: a deploy a person confirmed is theirs, by display name, its lines as
+        sent."""
+        from tests.test_device_v2 import _get, _text
+        self._deploy()
+        _r, part = _get(lab, "/v2/recent?list=Lab")
+        assert "Deploy r3 · deployed · 4 lines" in _text(part)
+        assert "by test-person" in _text(part) and "self-healing" not in _text(part)
+        (row,) = receipts.read("Lab", device="r3")["rows"]
+        assert row["actor_kind"] == "person" and not receipts.is_heal(row)
 
     def test_a_page_opened_after_the_deploy_draws_it(self, lab):  # noqa: F811
         """The control: the read itself was right (a fresh page draws the deploy path's

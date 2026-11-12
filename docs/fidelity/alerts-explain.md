@@ -15,7 +15,17 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `53456fc8cbfe112b3563141f598bfca193c0c295c9b28d6d071674f9fba4cce7`
+Templates sha256: `5137eb26bb5dd2f6501375f094cc7c54812ed4027903d325d767c376645eccc8`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_evidence_pack.html` and `_explain.html`, each place
+that draws a person (a history piece's who, a silence's author, who last committed the intent,
+a hypothesis's Who line and its hover, who the kept answer was explained by) now draws them
+through the `people` filter, by display name (the name the person set, else the part of their
+identity before the "@"), in the same element and position; no region is added, removed or
+moved, and no other word changes. Where the board draws an identity the built screen draws the
+name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). Every other verdict stands.
 Hashed again 2026-11-09 for the replan's item 4 ("the SDN network's AI uses Haiku"): Explain's
 control and its answer's header draw the pack's own task, `sdn_explain` for an SDN detection's
 pack and `explain` otherwise (two literal `ai_control` names, so the registry's scan sees both),

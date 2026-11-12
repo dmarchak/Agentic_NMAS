@@ -274,7 +274,9 @@ class TestTheConfirm:
         assert "Retired-Device: r5" in msg and f"Actor: {TEST_PERSON}" in msg
         r, page_html = _get(exported, "/v2/device/r5")
         assert r.status_code == 200 and "Its record" in page_html
-        assert f"Retired by {TEST_PERSON}" in page_html and REASON in page_html
+        # By display name (board E2a); the record keeps the identity.
+        assert f"Retired by {TEST_PERSON.split('@')[0]}" in page_html and REASON in page_html
+        assert f"Retired by {TEST_PERSON}" not in page_html, "the identity is never the words"
         head = exported["R"].git(exported["repo"], "rev-parse", "HEAD")[1]
         assert head[:12] in page_html
         assert "/v2/history?device=r5" in page_html.replace("&amp;", "&")

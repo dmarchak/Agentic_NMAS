@@ -105,7 +105,7 @@
   {%- if rec.error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }} {{ rec.error }}: each restart is shown as recorded, not judged against the planned windows.</p>{% endif %}
   {%- if rec.rows %}
   <ul class="hq-restarts">
-    {%- for r in rec.rows %}<li>{{ badge('planned' if r.planned else 'unplanned', 'neutral' if r.planned else 'warn') }} {{ r.words }}{% if r.planned and r.planned_by %} <span class="muted small">(window by {{ r.planned_by }}{% if r.planned_why %}: {{ r.planned_why }}{% endif %})</span>{% endif %}</li>{% endfor %}
+    {%- for r in rec.rows %}<li>{{ badge('planned' if r.planned else 'unplanned', 'neutral' if r.planned else 'warn') }} {{ r.words }}{% if r.planned and r.planned_by %} <span class="muted small">(window by {{ r.planned_by | people }}{% if r.planned_why %}: {{ r.planned_why }}{% endif %})</span>{% endif %}</li>{% endfor %}
   </ul>
   {%- else %}
   <p class="muted small">No restart recorded in this range{% if s.d %} for {{ s.d }}{% endif %}.</p>

@@ -552,7 +552,9 @@ def test_the_trace_tool_s_recorded_answer_is_checked_again_against_the_reads_tha
     card = html[html.index('aria-labelledby="sdn-an-t"'):]
     assert ">With the trace tool: 1 finding</h2>" in card
     region = card[card.index('id="sdn-an-recheck-tools"'):card.index(">Tool calls</h3>")]
-    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by " + re.escape(again["by"])
+    # The person by display name (board E2a).
+    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by "
+                     + re.escape(again["by"].split("@")[0])
                      + r", no new AI call: 2 findings</h3>", region)
     assert "A drop flow on OVS 3" in region and "no claim was dropped" in region
     assert "1 found · 0 missed, marked from the answer as checked again (no new AI call)" in card

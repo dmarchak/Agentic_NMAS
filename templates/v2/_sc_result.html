@@ -21,7 +21,7 @@
   {%- else %}
   <div class="sc-hd"><h2 id="sc-result-h">{{ r.record.commands | length }} command{{ 's' if r.record.commands | length != 1 }} on {{ r.record.total }} device{{ 's' if r.record.total != 1 }}
     {% if r.state == 'running' %}{{ badge('running', 'warn') }}{% elif r.failed %}{{ badge('failed', 'danger') }}{% else %}{{ badge('done', 'ok') }}{% endif %}</h2></div>
-  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}.{% if r.record.reason %}{% if r.record.urgent %} Level {{ r.record.urgent }}, allowed by the reason.{% endif %} Why: {{ r.record.reason }}.{% endif %} Recorded in History.</p>
+  <p class="muted">By {{ r.record.who | people }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}.{% if r.record.reason %}{% if r.record.urgent %} Level {{ r.record.urgent }}, allowed by the reason.{% endif %} Why: {{ r.record.reason }}.{% endif %} Recorded in History.</p>
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ r.error }}</p></div>{% endif %}
   {%- if r.failed %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The run failed before it finished:</strong> {{ r.failed }} {{ r.record.done }} of {{ r.record.total }} devices had been read and are kept below; the others were not read. Run it again from <a href="{{ url_for('reads_v2.show_commands', list=r.list) }}">Show commands</a>.</p></div>{% endif %}
   {%- if r.lost %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this run was reading: {{ r.record.done }} of {{ r.record.total }} devices had answered and are kept below; the others were not read.</p></div>{% endif %}
@@ -69,7 +69,7 @@
   </div>
   {%- else %}
   {%- for c in r.commands %}
-  <div class="sc-cmdh"><h3 class="mono">{{ c.command }}</h3><span class="muted small">{% if c.ignore %}Ignored when grouping: <span class="mono">{{ c.ignore | join(', ') }}</span>, by {{ c.ignored_by }}{% if c.ignored_at %} at {{ stamp(c.ignored_at) }}{% endif %}{% else %}Grouped when the whole answer is the same; nothing is ignored.{% endif %}{% if c.reference %} · against <span class="badge badge-info">{{ c.reference.devices[0] if r.against != '@common' else 'the most common answer' }}</span>, your choice{% endif %}</span></div>
+  <div class="sc-cmdh"><h3 class="mono">{{ c.command }}</h3><span class="muted small">{% if c.ignore %}Ignored when grouping: <span class="mono">{{ c.ignore | join(', ') }}</span>, by {{ c.ignored_by | people }}{% if c.ignored_at %} at {{ stamp(c.ignored_at) }}{% endif %}{% else %}Grouped when the whole answer is the same; nothing is ignored.{% endif %}{% if c.reference %} · against <span class="badge badge-info">{{ c.reference.devices[0] if r.against != '@common' else 'the most common answer' }}</span>, your choice{% endif %}</span></div>
   {%- if c.columns and r.state == 'done' %}
   <form class="sc-cols" hx-post="{{ url_for('reads_v2.show_commands_ignore', run_id=r.run, list=r.list, against=r.against, show=r.show) }}" hx-target="#sc-result" hx-swap="outerHTML">
     <input type="hidden" name="command" value="{{ c.command }}">

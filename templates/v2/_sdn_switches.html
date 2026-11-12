@@ -66,7 +66,7 @@
           <dl class="sdn-kv">
             <dt>NetBox</dt><dd>{% if r.values_ok %}instance {{ r.instance or 'none' }} · OpenFlow ports {{ r.ports | join(', ') or 'none' }}{% if r.defaults %} · defaults: {{ r.defaults | join('; ') }}{% endif %}{% else %}refused: {{ r.values_error }}{% endif %}{% if r.excluded %}<br><span class="faint">{{ r.excluded | join('; ') }}</span>{% endif %}</dd>
             <dt>Driver</dt><dd>{% if r.in_inventory %}{{ r.driver }} ({{ r.platform_words }}){% else %}not in {{ net }}'s inventory, so Mercury has no login to reach it{% endif %}</dd>
-            <dt>Last configured</dt><dd>{% if r.record %}{{ stamp(r.record.at) }} by {{ r.record.actor }}: {{ r.record.outcome }}{% if r.record.error %} ({{ r.record.error }}){% endif %}{% if r.record.export_sha256 and r.record.export_sha256 != g.export.sha256 %}, from the export <span class="mono">{{ r.record.export_sha256[:7] }}</span>, not the committed one{% endif %} · <a href="{{ url_for('v2.history_page', kind='sdn') }}">its record on History</a>{% else %}never, by Mercury{% endif %}</dd>
+            <dt>Last configured</dt><dd>{% if r.record %}{{ stamp(r.record.at) }} by {{ r.record.actor | people }}: {{ r.record.outcome }}{% if r.record.error %} ({{ r.record.error }}){% endif %}{% if r.record.export_sha256 and r.record.export_sha256 != g.export.sha256 %}, from the export <span class="mono">{{ r.record.export_sha256[:7] }}</span>, not the committed one{% endif %} · <a href="{{ url_for('v2.history_page', kind='sdn') }}">its record on History</a>{% else %}never, by Mercury{% endif %}</dd>
             {%- if r.record.verify %}<dt>Its verify</dt><dd>{{ r.record.verify | join('; ') }}</dd>{% endif %}
           </dl></details></td>
         <td data-l="Platform">{{ r.platform_words }}</td>
@@ -110,7 +110,7 @@
     <tr>
       <td data-l="Template" class="mono">{{ t.name }}</td>
       <td data-l="Switches">{% if t.switches %}{{ t.switches | join(', ') }}{% else %}<span class="muted">none on this network</span>{% endif %}</td>
-      <td data-l="Status">{% if t.status.status == 'confirmed' %}{{ badge('confirmed', 'ok') }} by {{ t.status.by }} {{ stamp(t.status.at) }}, against the capture <span class="mono">{{ t.status.capture }}</span>{% else %}{{ badge('draft', 'warn') }}: nothing is sent on it until it is confirmed ({{ t.status.why }}){% endif %}{% if not t.vendor_driver %} <span class="faint">· no vendor driver: rendered, never sent</span>{% endif %}{% if not t.ipv6 %} <span class="faint">· IPv4 controller only</span>{% endif %}</td>
+      <td data-l="Status">{% if t.status.status == 'confirmed' %}{{ badge('confirmed', 'ok') }} by {{ t.status.by | people }} {{ stamp(t.status.at) }}, against the capture <span class="mono">{{ t.status.capture }}</span>{% else %}{{ badge('draft', 'warn') }}: nothing is sent on it until it is confirmed ({{ t.status.why }}){% endif %}{% if not t.vendor_driver %} <span class="faint">· no vendor driver: rendered, never sent</span>{% endif %}{% if not t.ipv6 %} <span class="faint">· IPv4 controller only</span>{% endif %}</td>
       <td data-l="Action">{%- if t.status.status != 'confirmed' %}
         {#- C3012: the picker offers the captures of the command the template is confirmed
             against (the device's configuration read, or the command its earlier confirmation

@@ -31,7 +31,17 @@ Shots: `tab-ask-board-1440`, `-1280` beside `tab-ask-page-1440`, `-1280` (idle);
 `tab-ask-t2-preview-page-*`, `tab-ask-t2-result-page-*` and `tab-ask-t2-nothing-page-1440`.
 Compared 2026-10-16.
 Templates compared: templates/v2/_ask.html, templates/v2/_ask_check.html, templates/v2/_ask_reason.html, templates/v2/_privileged.html
-Templates sha256: `3cd10e0dcf9d1df334faac1639284b0588f939f10bdd316c08d76661e5d8fb4e`
+Templates sha256: `6ba9db4cb7cd06790999d7a1b1d720596c531ebfe4edc92b14328ca50bb500a1`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_ask.html` and `_privileged.html`, each place that draws
+a person (the hover "read by <who>" on an answer's time and on the answer it is compared with,
+a privileged run's "By <who>") now draws them through the `people` filter, by display name (the
+name the person set, else the part of their identity before the "@"), in the same element and
+position; no region is added, removed or moved, and no other word changes. Where the board
+draws an identity the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 
 Compared again 2026-10-17 (C1023) after Run (`_ask_check.html`) became busy on itself from the
 press until the run's card draws ("Starting the read…"); the card's own running state, "Reading…"

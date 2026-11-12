@@ -25,7 +25,16 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `70006e10ea294cbfb7a2a2b3969339d4b115877837b01e24a60e7bada425fb1b`
+Templates sha256: `15f551360fba43e74a92660b72ec0a50ffd6dbcaffc313858eb8fd28a5a0bdb4`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_overview.html`, the Committed intent and Golden rows'
+Actor now draws the person through the `people` filter, by display name (the name the person
+set, else the part of their identity before the "@"), in the same element and position; no
+region is added, removed or moved, and no other word changes. Where the board draws an
+identity ("by whom") the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 
 **Compared again 2026-11-09 for C2824 and C2807**, by the template diff against board
 C342Drift's What to do (no new shot): the drift card's What to do first says, in one line,

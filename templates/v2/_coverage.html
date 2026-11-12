@@ -154,7 +154,7 @@
     {%- endfor %}
     {%- for x in c.declined %}
     <tr id="decl-{{ x.host }}-{{ x.section }}" data-device="{{ x.host }}" data-declined="{{ x.section }}"><th scope="row"><a href="{{ url_for('device_v2.device', name=x.host) }}">{{ x.host }}</a></th>
-      <td>{{ badge('Declined', 'muted') }} <strong>{{ x.section_words }}</strong> <span class="why">Declined by {{ x.by }}, {{ x.at[:16] | replace('T', ' ') }} UTC: "{{ x.reason }}". Not a gap: the summary counts it as declined, never as covered or missing.</span></td>
+      <td>{{ badge('Declined', 'muted') }} <strong>{{ x.section_words }}</strong> <span class="why">Declined by {{ x.by | people }}, {{ x.at[:16] | replace('T', ' ') }} UTC: "{{ x.reason }}". Not a gap: the summary counts it as declined, never as covered or missing.</span></td>
       <td class="cov-fix"><button type="button" class="btn btn-small" data-op="decline-section" hx-get="{{ url_for('v2.decline_card', list=c.list, device=x.host, section=x.section, undo=1) }}" hx-target="#decline-card" hx-swap="outerHTML">Undo decline…</button>{{ how('decline-section', compact=True, op='a decline') }}</td></tr>
     {%- endfor %}
     </tbody></table></div>

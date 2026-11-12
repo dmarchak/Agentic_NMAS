@@ -92,18 +92,20 @@
       {%- if t.dests %}
       <div class="table-wrap"><table class="table ntf-table"><tbody>
         {%- for d in t.dests %}
-        <tr><td>{{ d.label }}{% if d.channel == 'webhook' %} <span class="faint">(webhook)</span>{% endif %}</td>
+        {#- Board E2a: a destination is a setting's value, read whole to check it, never a
+            person Mercury names: each element that draws one says so (`data-address`). -#}
+        <tr><td><span data-address="destination">{{ d.label }}</span>{% if d.channel == 'webhook' %} <span class="faint">(webhook)</span>{% endif %}</td>
           <td>{{ badge(d.chip[0], d.chip[1]) }}</td>
           <td class="set-row-acts">
             {%- if o.what == 'remove' and o.dest == d.id %}
-            <span class="small">Remove {{ d.label }}? It receives nothing{% if d.channel == 'webhook' %} and its signing secret is erased{% endif %}; its delivery log rows stay in History.</span>
+            <span class="small">Remove <span data-address="destination">{{ d.label }}</span>? It receives nothing{% if d.channel == 'webhook' %} and its signing secret is erased{% endif %}; its delivery log rows stay in History.</span>
             <span class="op-act"><button type="button" class="btn btn-small btn-danger" data-op="settings" hx-post="{{ url_for('notify_v2.dest_remove', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button>{{ how('settings', 'notifications', compact=True, op='removing a destination') }}</span>
             <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Keep it</a>
             {%- else %}
             {%- if not d.verified_at %}
             <form class="ntf-inline" method="post" action="{{ url_for('notify_v2.code_verify', team=t.id, dest=d.id) }}" hx-post="{{ url_for('notify_v2.code_verify', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
               {%- if d.code_waiting %}
-              <input type="text" name="code" class="ntf-code" placeholder="code" size="7" inputmode="numeric" autocomplete="one-time-code" aria-label="Verification code for {{ d.label }}">
+              <input type="text" name="code" class="ntf-code" placeholder="code" size="7" inputmode="numeric" autocomplete="one-time-code" data-address="destination" aria-label="Verification code for {{ d.label }}">
               <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Verify</span><span class="op-busy">Checking…</span></button>{{ how('settings', 'notifications', compact=True, op='verifying a destination') }}</span>
               {%- endif %}
               <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('notify_v2.code_send', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Send again' if d.code_waiting else 'Send a code' }}</span><span class="op-busy">Sending…</span></button>{{ how('settings', 'notifications', compact=True, op='sending a code') }}</span>

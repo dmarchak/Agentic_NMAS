@@ -484,10 +484,14 @@ def apply(network: str, decision: dict, *, now: float = None, sources=None) -> d
     now = src.clock() if now is None else float(now)
     pol = decision.get("policy") or {}
     setter = pol.get("by") or ""
-    by = f"self-healing (policy set by {setter or 'nobody recorded'})"
+    # Board E2a: the words name the policy's setter by display name; their identity is kept
+    # beside them, in its own field (`policy_by`), on the row and the step that names them.
+    from modules.heal import steplog
+    by = steplog.policy_words("self-healing", setter)
     why = heal_act._stops(_ActSources(src), network, decision, now)
     return _act(network, decision, src, now=now, by=by, actor=setter or ACTOR,
-                reason=(decision.get("clear") or {}).get("reason") or "", stops=why)
+                reason=(decision.get("clear") or {}).get("reason") or "", stops=why,
+                policy_by=setter)
 
 
 def apply_approved(network: str, decision: dict, approval: dict, *, now: float = None,
@@ -507,7 +511,7 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
 
 
 def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, reason: str,
-         stops: str, taken: str = "", approval: dict = None) -> dict:
+         stops: str, taken: str = "", approval: dict = None, policy_by: str = "") -> dict:
     from modules.heal import steplog
     from modules.nsot import privileged
     from modules.redact import redact_text
@@ -515,7 +519,8 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
     c, device = decision.get("clear") or {}, decision["device"]
     out = {"decision": decision.get("id"), "device": device, "outcome": "refused", "words": "",
            "sent": False, "records": {},
-           "steps": [{"step": "take", "result": "ok", "words": taken or f"taken by {by}"}]}
+           "steps": [dict({"step": "take", "result": "ok", "words": taken or f"taken by {by}"},
+                          **({"policy_by": policy_by} if policy_by else {}))]}
 
     def note(step, result, words):
         out["steps"].append({"step": step, "result": result, "words": redact_text(words),
@@ -523,7 +528,8 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
 
     def finish(outcome, words):
         out.update(outcome=outcome, words=words)
-        return _record(network, decision, out, by=by, now=src.clock(), approval=approval)
+        return _record(network, decision, out, by=by, now=src.clock(), approval=approval,
+                       policy_by=policy_by)
 
     def refuse(step, words, result="refused"):
         note(step, result, words + ". Nothing was sent")
@@ -595,7 +601,7 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
                              + (f", naming {c['interface']}" if c.get("interface") else ""))
         try:
             steplog.record_started(network, decision, list(out["steps"]), [plan["command"]], h,
-                                   by=by, now=src.clock())
+                                   by=by, policy_by=policy_by, now=src.clock())
         except Exception as exc:
             return {"state": "refused", "step": "send",
                     "why": f"the step log's started row could not be written ({exc})"}
@@ -639,7 +645,7 @@ def _act(network: str, decision: dict, src, *, now: float, by: str, actor: str, 
 
 
 def _record(network: str, decision: dict, out: dict, *, by: str, now: float,
-            approval: dict = None) -> dict:
+            approval: dict = None, policy_by: str = "") -> dict:
     """``record``: what the clear did, in the decisions store (a halt, guard 14, for a soft
     clear that reset its session), its change record (H23), the step log (History) and the
     announcement."""
@@ -666,7 +672,7 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float,
     out["records"]["change_record"] = change_record.build_action(
         network, decision, out, approval=approval, at=_iso(now))
     try:
-        steplog.record_act(network, decision, out, by=by, now=now)
+        steplog.record_act(network, decision, out, by=by, policy_by=policy_by, now=now)
     except Exception as exc:
         log.error("heal: %s's clear %s is not in the step log: %s", network,
                   decision.get("id"), exc)

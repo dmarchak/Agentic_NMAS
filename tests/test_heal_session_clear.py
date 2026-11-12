@@ -675,6 +675,28 @@ class TestTheAct:
         assert run["actor"] == "op@example.invalid" and "under the policy fp-1" in run["reason"]
         assert run["before"] == down(), "the session before kept in the record"
 
+    def test_its_rows_name_the_setter_by_display_name_and_keep_the_identity_beside(
+            self, stores, measured):
+        """Board E2a: the clear's words name the policy's setter by display name (the part of
+        their identity before the "@"); the identity is each row's own `policy_by`, and the
+        take step's. The session it opens and the run it records still act as the identity."""
+        from modules.heal import steplog
+        src = auto(Conn([down(), down(state="Connect"), back()]))
+        d = taken(src)
+        out = S().apply(NET, d, sources=src)
+        assert out["outcome"] == "cleared", out["steps"]
+        setter = d["policy"]["by"]
+        assert setter == "op@example.invalid"
+        rows = {r["row"]: r for r in steplog.read(NET)["rows"] if r["row"] in ("started", "act")}
+        for name in ("started", "act"):
+            assert rows[name]["by"] == "self-healing (policy set by op)", name
+            assert rows[name].get("policy_by") == setter, name
+            assert setter not in rows[name]["by"]
+        take = out["steps"][0]
+        assert (take["step"], take["words"], take.get("policy_by")) == (
+            "take", "taken by self-healing (policy set by op)", setter)
+        assert P().get(NET, out["records"]["privileged"])["actor"] == setter
+
     def test_a_window_that_cannot_be_recorded_sends_nothing(self, stores, measured):
         conn = Conn([down()])
         src = auto(conn, window={"ok": False, "error": "the store is unreadable"})

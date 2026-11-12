@@ -399,7 +399,11 @@ class TestTheDryRunRecord:
         wrong = re.search(r'<summary class="btn btn-small btn-outline"[^>]*>', card).group(0)
         assert 'aria-pressed="false"' in wrong
         mark = DS.find("Default", d["id"])["mark"]
-        assert (f'Marked right by {mark["by"]} at <time class="clock" datetime="{mark["at"]}" '
+        # Board E2a: who marked it, by display name (the part before the "@"); the mark's
+        # record keeps the identity.
+        assert "@" in mark["by"]
+        assert (f'Marked right by {mark["by"].split("@")[0]} at <time class="clock" '
+                f'datetime="{mark["at"]}" '
                 f'data-clock title="{mark["at"][:19].replace("T", " ")} UTC">') in card
         assert "Marked again" not in card
 

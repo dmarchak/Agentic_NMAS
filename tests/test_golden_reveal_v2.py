@@ -34,7 +34,8 @@ def test_a_person_sees_the_version_and_it_is_recorded_first(lab, monkeypatch):  
     assert r.status_code == 200, html[:300]
     assert seen and seen[0]["what"] == "golden_config" and seen[0]["target"] == "r2"
     assert seen[0]["detail"] == sha
-    assert "unmasked: revealed to test-person@example.invalid" in html
+    # Board E2a: who it was revealed to, by display name (the part before the "@").
+    assert "unmasked: revealed to test-person and recorded" in html
     masked = redact_text(lab["captured"])
     assert masked != lab["captured"], "the fixture holds no secret, so this proves nothing"
     secret_line = next(l for l, m in zip(lab["captured"].splitlines(), masked.splitlines())

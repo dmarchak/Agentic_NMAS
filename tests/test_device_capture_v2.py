@@ -137,7 +137,8 @@ class TestThePreview:
         assert re.search(r"This read</dt><dd class=\"mono\">capture [0-9a-f]+", ops)
         assert re.search(r"host_vars/r2.yml at [0-9a-f]{7,}", ops)
         checks = html[html.index("Checks"):html.index("op-ft")]
-        assert "You are a verified person: test-person@example.invalid" in checks
+        # Board E2a: the person is named by display name, the part before the "@".
+        assert "You are a verified person: test-person</span>" in checks
         assert "badge-danger" not in checks
         assert "device read" in checks
         foot = html[html.index("op-ft"):]
@@ -205,7 +206,9 @@ class TestTheConfirm:
         # r2 departs from its intent: recorded, never green over that (C1273).
         assert "op-card op-warn" in out and "Captured" in out and "badge-warn" in out
         assert "Recorded; departs from intent" in out and "op-ok" not in out
-        assert f">{after[:10]}</a>" in out and "test-person@example.invalid (verified)" in out
+        # Board E2a: who recorded it, by display name (the part before the "@").
+        assert f">{after[:10]}</a>" in out and "test-person (verified)" in out
+        assert "test-person@example.invalid" not in out
         assert re.search(r'title="[^"]*read again at confirm: capture [0-9a-f]+, unchanged since '
                          r'the preview; [^"]+"', out)
         still = out[out.index("Still true"):]

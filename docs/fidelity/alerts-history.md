@@ -15,7 +15,17 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html, templates/v2/_explain_beta.html, templates/v2/_explain_ask.html
-Templates sha256: `797bbac2570cc1a3f7889f5895df9e8fdf0a78c1c7daea0f4778003ccb20cf84`
+Templates sha256: `b233eb75c781d6440e0882e82c94de012b291d3dcc575cd8b4a2f5ae33654b5b`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_evidence_pack.html`, each place that draws a person (a
+history piece's who, a silence's author, who last committed the intent, who a pack was built
+from the alert history by) now draws them through the `people` filter, by display name (the
+name the person set, else the part of their identity before the "@"), in the same element and
+position; no region is added, removed or moved, and no other word changes. Where the board
+draws an identity the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 Hashed again 2026-11-09 for the replan's item 4: `_explain_ask.html` and `_explain.html`, which
 this record compares, draw the pack's own Explain task (`sdn_explain` for an SDN detection's
 pack); a past alert's History row draws Explain's, unchanged. Nothing drawn here moves (the

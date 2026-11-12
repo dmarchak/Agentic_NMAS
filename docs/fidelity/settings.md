@@ -94,7 +94,19 @@ Templates sha256 before: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad1115
 | CR: Saved | D: Saved in green, saying to press Fetch now | the same words, drawn muted | **deviation** (log: D8-R 4) |
 | CR: phone width | F: fields stacked, Save and Fetch now below | the card's set-field layout, as every Settings card at phone width; not shot | **later** (C2858: the card's board shot at 390) |
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html, templates/v2/_code_repo.html
-Templates sha256: `1bf350fb0a9a4befd3826cc9ecaf1e9b5a07facc0f187bdee8e08eb457a667ac`
+Templates sha256: `f2fe868369275da2bb37ae6b52713768b2c8bab8398e33be29206089210f127a`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `settings.html`, `_settings_mode.html`,
+`_settings_card.html`, `_ai_classes.html` and `_code_repo.html`, each place that draws a
+person (who deleted a network, who switched the mode and since whom, who declared or saved a
+group, who turned a class of evidence on, who last fetched the code repository) now draws them
+through the `people` filter, by display name (the name the person set, else the part of their
+identity before the "@"), in the same element and position; no region is added, removed or
+moved, and no other word changes. Where the board draws an identity the built screen draws the
+name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). The Display names card itself is on Settings › Installation
+(`settings_installation.html`), its own page, not this record's. Every other verdict stands.
 Hashed again 2026-11-09 for C2854 (board app-publish E, self-signed, docs/STANDING_APPROVAL_LOG.md
 "C2854 P 1"): the Code repository card gains Who may publish, its own form with its Save under
 the location's, and Saved's words for it; nothing else on the card moves. Compared by reading

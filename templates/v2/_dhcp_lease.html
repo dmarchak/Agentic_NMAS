@@ -18,7 +18,7 @@
     {{ run_stepper(lop.run) }}
     <p><span class="mono">{{ 'lease4-del' if p.family == 'IPv4' else 'lease6-del' }} {{ p.address }}</span> sent through Kea's control agent, and Kea's leases read back: {{ r.read_back }}.</p></div></div>
   <div class="op-part"><h3>Recorded</h3><div>
-    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ lop.actor }}, your reason in its body, in <span class="mono">dhcp/released-leases.yml</span>. In History.</p></div></div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ lop.actor | people }}, your reason in its body, in <span class="mono">dhcp/released-leases.yml</span>. In History.</p></div></div>
 </div>
 {%- else %}
 <div class="op-card{{ ' op-danger' if lop.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">

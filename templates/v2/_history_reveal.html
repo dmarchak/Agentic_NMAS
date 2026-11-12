@@ -4,7 +4,7 @@
     was recorded; or why not, with nothing shown. -#}
 <div class="lq-rv-out" id="{{ c.slot }}">
 {%- if c.state == 'revealed' %}
-  <p class="small" title="The line received at {{ c.line_at }}"><strong>Unmasked</strong>, read from Loki again: revealed to {{ c.by }} {{ stamp(c.at) }} and recorded in History with your reason, never the value.</p>
+  <p class="small" title="The line received at {{ c.line_at }}"><strong>Unmasked</strong>, read from Loki again: revealed to {{ c.by | people }} {{ stamp(c.at) }} and recorded in History with your reason, never the value.</p>
   <pre class="mono lq-rv-line">{{ c.text }}</pre>
 {%- else %}
   <p class="lq-bad" role="alert">{{ icon('warn', 14) }} Not revealed: {{ c.refused }}. Nothing was shown.</p>

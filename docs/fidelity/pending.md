@@ -32,7 +32,16 @@ its Verify preview and its result (screenshots 60 and 61), read beside the shots
 regions.
 Compared 2026-10-18.
 Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html, templates/v2/_oob_outcome.html
-Templates sha256: `ec9c7b5a304acc6f63868a2cad3ca6d5582372e11f7a44a2a5e3f85122684351`
+Templates sha256: `e2e67eb94bb1688e97a57cf6b2f8768d2357641e1107076e5723c00f49db70ca`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_pending_progress.html` and `_console_kick.html`, each
+place that draws a person (who ran the last Verify or Abandon, who ran the console survey) now
+draws them through the `people` filter, by display name (the name the person set, else the
+part of their identity before the "@"), in the same element and position; no region is added,
+removed or moved, and no other word changes. Where the board draws an identity the built
+screen draws the name, a deviation logged once for every screen (log: Display names: a person
+is drawn by display name on every screen). Every other verdict stands.
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 Compared again 2026-10-24 (C1642, C1643; the overnight run): for a device the one-decision

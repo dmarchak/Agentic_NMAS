@@ -47,7 +47,7 @@
 <section class="card intent intent-edit intent-moved" id="tpl-card" aria-labelledby="tm-h">
   <div class="ie-hd"><h2 id="tm-h">Editing <span class="mono">{{ c.path }}</span>: not saved</h2>
     <div class="ie-hd-actions"><button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">Discard the edit</button></div></div>
-  <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened <span class="mono">{{ (m.base or '')[:7] or 'a version not yet committed' }}</span>; it is now <span class="mono">{{ (m.current or '')[:7] or 'nothing' }}</span>{% if m.last_commit %}, committed by {{ m.last_commit.by or 'someone' }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened <span class="mono">{{ (m.base or '')[:7] or 'a version not yet committed' }}</span>; it is now <span class="mono">{{ (m.current or '')[:7] or 'nothing' }}</span>{% if m.last_commit %}, committed by {{ (m.last_commit.by or 'someone') | people }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
   <div class="ie-split"><div><h3 class="ie-k">Your edit, kept</h3><pre class="op-diff">{{ c.text }}</pre></div>
     <div><p>Open the template again to make your edit on their version; copy yours from here first.</p>
       <p><a class="btn" href="{{ url_for('templates_v2.page', list=c.list) }}" hx-get="{{ url_for('templates_v2.edit_form', list=c.list, path=c.path) }}" hx-target="#tpl-op" hx-swap="innerHTML">Open it again</a></p></div></div>

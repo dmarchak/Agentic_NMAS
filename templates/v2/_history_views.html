@@ -13,7 +13,7 @@
   {%- for v in views.views %}
   <div class="hq-q hq-view">
     <a href="{{ v.address }}{{ '&' if '?' in v.address else '?' }}list={{ list_name | urlencode }}"><strong>{{ v.title }}</strong></a>
-    <span class="hq-src">saved by {{ v.by }}, {{ stamp(v.at) }}{% if v.pinned %} · {{ badge('pinned', 'neutral') }}{% endif %}</span>
+    <span class="hq-src">saved by {{ v.by | people }}, {{ stamp(v.at) }}{% if v.pinned %} · {{ badge('pinned', 'neutral') }}{% endif %}</span>
     {%- if op.state == 'removing' and op.id == v.id %}
     <form class="hq-view-acts" method="post" action="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}">
       <span class="small">Removes the saved link only; the history it asks is untouched.</span>

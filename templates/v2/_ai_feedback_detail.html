@@ -9,28 +9,28 @@
 {%- else %}
 {%- set v = d.v %}{% set c = d.call %}
 <dl class="ai-fb-kv">
-  <dt>The call</dt><dd><span class="mono">{{ v.call_id }}</span> · {{ v.feature_words }} · <span class="mono">{{ v.model }}</span> · prompt <span class="mono">{{ v.prompt }}</span>{% if c %} · asked by {{ c.actor }} {{ stamp(c.at) }} · <a href="{{ url_for('v2.history_page', call=v.call_id) }}">this call in History</a>{% endif %}</dd>
+  <dt>The call</dt><dd><span class="mono">{{ v.call_id }}</span> · {{ v.feature_words }} · <span class="mono">{{ v.model }}</span> · prompt <span class="mono">{{ v.prompt }}</span>{% if c %} · asked by {{ c.actor | people }} {{ stamp(c.at) }} · <a href="{{ url_for('v2.history_page', call=v.call_id) }}">this call in History</a>{% endif %}</dd>
   <dt>What was asked</dt><dd>the request as it left the host, sha256 <span class="mono" title="{{ v.request_sha256 }}">{{ v.request_sha256[:8] or 'none recorded' }}</span>{% if v.subject %}; about {% for k, val in v.subject.items() %}<span class="mono">{{ k }} {{ val }}</span>{{ ', ' if not loop.last }}{% endfor %}{% endif %}</dd>
   <dt>The answer as kept</dt><dd>
   {%- if c %}<details class="ai-fb-ans" data-keep="ai-fb-ans-{{ v.id }}"><summary>Received, masked, {{ '{:,}'.format(d.received | length) }} characters, sha256 <span class="mono" title="{{ v.answer_sha256 }}">{{ v.answer_sha256[:8] }}</span></summary><pre class="hist-diff">{{ d.received }}</pre></details>
   {%- else %}<span class="warn-text">{{ d.call_error | capitalize }}.</span> Kept with the verdict: the answer's sha256 <span class="mono" title="{{ v.answer_sha256 }}">{{ v.answer_sha256[:8] }}</span>.{% endif %}</dd>
   {%- if v.verdict == 'no' %}
-  <dt>What was wrong</dt><dd>{{ v.kind_words }}: “{{ v.words }}” <span class="faint">· {{ v.actor }} {{ stamp(v.at) }}</span></dd>
+  <dt>What was wrong</dt><dd>{{ v.kind_words }}: “{{ v.words }}” <span class="faint">· {{ v.actor | people }} {{ stamp(v.at) }}</span></dd>
   {%- endif %}
   <dt>Status</dt><dd>{{ {'to_review': 'to review', 'accepted': 'accepted as a case draft', 'dismissed': 'dismissed', 'right': 'said right'}[v.status] }}</dd>
-  <dt>Others on this call</dt><dd>{% if d.others %}{% for o in d.others %}{{ o.actor }} said {{ o.said }}{% if o.verdict == 'no' %} ({{ o.words | truncate(60) }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}{% else %}<span class="faint">none</span>{% endif %}</dd>
+  <dt>Others on this call</dt><dd>{% if d.others %}{% for o in d.others %}{{ o.actor | people }} said {{ o.said }}{% if o.verdict == 'no' %} ({{ o.words | truncate(60) }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}{% else %}<span class="faint">none</span>{% endif %}</dd>
 </dl>
 {%- if rv_refused is defined and rv_refused %}<p class="notice notice-warn small" role="alert"><strong>Not recorded:</strong> {{ rv_refused }}.</p>{% endif %}
 {%- set rv = v.review %}
 {%- if v.verdict == 'yes' %}
 <p class="small faint">Said right: nothing to review.</p>
 {%- elif rv and rv.outcome == 'accepted' %}
-<p>{{ badge('accepted', 'ok') }} by {{ rv.actor }} {{ stamp(rv.at) }}, draft <span class="mono" title="{{ rv.draft_sha256 }}">{{ rv.draft_sha256[:8] }}</span></p>
+<p>{{ badge('accepted', 'ok') }} by {{ rv.actor | people }} {{ stamp(rv.at) }}, draft <span class="mono" title="{{ rv.draft_sha256 }}">{{ rv.draft_sha256[:8] }}</span></p>
 <pre class="hist-diff ai-fb-draft">{{ d.draft }}</pre>
 <p class="op-act"><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ d.draft }}" data-label="Copy the draft" x-on:click="copy" x-text="label">Copy the draft</button> <a href="{{ url_for('ai_feedback_v2.drafts', task=v.task) }}" download>Download {{ v.feature_words }}'s {{ d.accepted_of_task }} accepted draft{{ '' if d.accepted_of_task == 1 else 's' }} (JSON)</a></p>
 <p class="small faint">A draft becomes a recorded case when a maintainer adds it to the task's case file with its expect written; it is then judged in CI like every case. Mercury writes no case file.</p>
 {%- elif rv %}
-<p>{{ badge('dismissed', 'neutral') }} by {{ rv.actor }} {{ stamp(rv.at) }}: “{{ rv.reason }}”</p>
+<p>{{ badge('dismissed', 'neutral') }} by {{ rv.actor | people }} {{ stamp(rv.at) }}: “{{ rv.reason }}”</p>
 {%- else %}
 <div class="ai-fb-acts">
   <details class="ai-fb-act" data-keep="ai-fb-accept-{{ v.id }}">

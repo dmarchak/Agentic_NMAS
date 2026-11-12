@@ -136,7 +136,28 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `50a32ea0e10c56fdd1b532c62777d378752ff882096cd8781e0ddcaaa3bcee65`
+Templates sha256: `8cbd5ec11735aca0ed19c68c32b8a296ee0ed4b5845dfcfc264c4344c7a44b01`
+
+**Hashed again 2026-11-12 (board E2a, the gate's findings):** `_sdn_app_draft.html`'s closed
+commit message carries its key (`data-keep`), so a redraw keeps it as the person left it;
+nothing drawn moves. Compared by the template diff, not a new shot. Templates sha256 before:
+`1b63991f52145ea4ac7299fe4e5fcb5983434c2c3094f6912b99151445a26f1b`.
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_sdn_responses.html`, `_sdn_log.html`, `_sdn_apps.html`,
+`_sdn_app_deploy.html`, `_sdn_export.html`, `_sdn_app_publish.html`, `_sdn_app_draft.html`,
+`_sdn_analyse.html`, `_sdn_analyse_tools.html` and `_sdn_snapshots.html`, each place that draws
+a person now draws them through the `people` filter, by display name (the name the person set,
+else the part of their identity before the "@"): who started or stopped the loop and the
+mode's words, each line of the loop's log, who dismissed or classified a response, who
+published, reviewed, tested, drafted or holds an app, who exported, and who collected, asked,
+checked again or corrected an analysis. In the same element and position, with no other word
+changed; where the board draws an identity the built screen draws the name, a deviation logged
+once for every screen (log: Display names: a person is drawn by display name on every screen).
+One element is new: in Add an app as a Draft's preview (`_sdn_app_draft.html`), the commit's
+message, whose trailers hold the identity, is under a closed disclosure "The commit's message,
+as it is recorded (it names you by your verified identity)" (log: Board E2a built, 6). Every
+other verdict stands.
 Hashed again 2026-11-11 for C2995 (the operator's Lab 9 sitting, 2026-11-10: "Preview
 steering…" stays enabled while steering "can't compile"; expected, in the operator's report,
 "disabled with the reason on hover (no committed NSOT export)"; the same work order as the

@@ -65,8 +65,16 @@ nearer board AI1's case 5 ("An admin turns it on in Settings › AI"). Every sho
 `test_ai_spend` taken again: nothing drawn moved (the hover is not shot; its words are
 tests/test_ai_spend_v2.py's). No row below changes.
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `4a67e6a59a47a0ddf5637a79603fea1bcfca3b7a254de43e988bea7f902e49c7`
-Templates sha256 before: `9c9433c65243b0cd539eb0a52323cb8a5e37bfe6fac7cac4c30827df21ace641`.
+Templates sha256: `158dba33bedb58292979ad3aed54466b2c47c7b9396e12e263076e2cd928a023`
+Templates sha256 before: `4a67e6a59a47a0ddf5637a79603fea1bcfca3b7a254de43e988bea7f902e49c7`.
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_ai_spend.html`, who turned a feature off is now drawn
+through the `people` filter, by display name (the name the person set, else the part of their
+identity before the "@"), in the same element and position; no region is added, removed or
+moved, and no other word changes. Where the board draws an identity the built screen draws the
+name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). Every other verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

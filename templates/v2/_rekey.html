@@ -61,7 +61,7 @@
     {%- if c.outcome != 'rekeyed' %}
     <p><button type="button" class="btn" data-op="rekey" hx-get="{{ url_for('device_v2.rekey', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rekey', compact=True, op='re-key') }}</p>
     {%- endif %}</div></div>
-  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record | people }}</p></div></div>
   <div class="op-part"><h3>Still true</h3><div><p>{{ c.not_watched }}</p></div></div>
   <div class="op-ft"><p class="op-note">This card goes when you close it or leave the page; the record stays, and the device's History draws it.</p></div>
 </section>

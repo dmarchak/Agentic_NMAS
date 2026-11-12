@@ -70,13 +70,16 @@ def confirm_part(request, action: str = "confirm") -> dict:
     # No `actor` field: the apply records the VERIFIED actor from the request,
     # never one the browser echoes back, and the statement names the person.
     # A separate field was carried to every preview and read by nothing.
+    # The person by their display name (board E2a, `identity.display_name`): the record the
+    # confirm writes keeps the verified identity; the screen names the person.
+    shown = identity.display_name(ident.actor)
     if allowed and ident.is_identified:
         return {"may": True, "kind": ident.kind,
-                "statement": f"You are confirming as {ident.actor}."}
+                "statement": f"You are confirming as {shown}."}
     return {"may": bool(allowed),
             "kind": ident.kind,
             "statement": ("You may not confirm: " + (reason or "no verified person"))
-            if not allowed else f"You are confirming as {ident.actor or 'an unverified caller'}."}
+            if not allowed else f"You are confirming as {shown or 'an unverified caller'}."}
 
 
 def control_gate(kind: str):

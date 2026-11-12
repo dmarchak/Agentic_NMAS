@@ -335,7 +335,8 @@ class TestOverview:
         sha = R.git(lab["repo"], "log", "-1", "--format=%h", "--", "golden/r3.cfg")[1].strip()
         assert sha and sha in html
         text = _text(html)
-        assert "capture" in text and "operator@example.com" in text
+        # Board E2a: who recorded it, by display name (the part before the "@").
+        assert "capture · operator" in text and "operator@example.com" not in text
         assert "none committed · nothing declares what it should look like" in text
 
     def test_each_check_is_drawn_and_an_absent_source_is_unknown_never_a_pass(self, lab):
@@ -779,7 +780,9 @@ class TestTheShippedScripts:
         # +2 2026-11-09: nsot_export (SDN › Apps' export card redraws when a network's NSOT
         # export is committed, C2777) and code_repo (the Code repository card and SDN › Apps
         # redraw on a save or a fetch, decision 8's registry).
-        assert len(keys) == 57
+        # +1 2026-11-11: people (a display name set or returned to its default, board E2a: the
+        # name chip and Needs attention read again).
+        assert len(keys) == 58
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {
@@ -867,14 +870,17 @@ class TestTheViewerIsTheVerifiedIdentity:
         for url in ("/v2/device/r3", "/v2/who"):
             html = self._ask(lab, url, token)
             assert 'data-identified="yes"' in html, url
-            assert "operator@example.com" in html and "unauthenticated" not in html, url
+            # Board E2a: the verified person, by display name (the part before the "@").
+            assert ">operator<" in html and "unauthenticated" not in html, url
+            assert "operator@example.com" not in html, url
 
     def test_it_agrees_with_the_path_todays_pages_use(self, lab, access, signing_key):
         token = _assertion(signing_key, email="second@example.com")
         status = lab["client"].get("/identity/status", headers={"Cf-Access-Jwt-Assertion": token},
                                    environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
         assert status["is_identified"] and status["actor"] == "second@example.com"
-        assert status["actor"] in self._ask(lab, "/v2/who", token)
+        # Board E2a: the chip draws that same person by display name.
+        assert ">second<" in self._ask(lab, "/v2/who", token)
 
     def test_no_assertion_is_refused_and_says_why(self, lab, access):
         for url in ("/v2/device/r3", "/v2/who"):

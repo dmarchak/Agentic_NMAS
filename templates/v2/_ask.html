@@ -52,7 +52,7 @@
     {%- elif a.state %}
     <p class="ask-cut">{{ badge('failed', 'danger') }} {{ a.why }}</p>
     {%- endif %}
-    <div class="ask-meta"><span title="{{ c.who }} at {{ c.at }}{% if a.took_s is not none %}, {{ a.took_s }} s{% endif %}">{{ stamp(c.at, '', 'read by ' ~ c.who) }}{% if a.took_s is not none %} · {{ a.took_s }} s{% endif %}</span>
+    <div class="ask-meta"><span title="{{ c.who | people }} at {{ c.at }}{% if a.took_s is not none %}, {{ a.took_s }} s{% endif %}">{{ stamp(c.at, '', ('read by ' ~ c.who) | people) }}{% if a.took_s is not none %} · {{ a.took_s }} s{% endif %}</span>
       {%- if a.state == 'answered' %}{{ badge('answered', 'ok') }}{% endif %}
       {%- if c.reason_recorded %}<span class="muted small">Why: {{ c.reason_recorded }}</span>{% endif %}
       {%- if a.previous and not a.archived %}<button type="button" class="btn btn-small" hx-get="{{ url_for('device_v2.ask', name=c.host, run=c.run, compare=a.command) }}" hx-target="#ask" hx-swap="outerHTML">Compare with the last answer</button>{% endif %}</div>
@@ -60,7 +60,7 @@
   {%- endfor %}
   {%- if c.compare %}
   <div class="ask-compare" id="ask-compare">
-    <h3><span class="mono">{{ c.compare.command }}</span>: now against {% if c.compare.previous %}{{ stamp(c.compare.previous.at, '', 'read by ' ~ c.compare.previous.who) }}{% else %}nothing earlier{% endif %}</h3>
+    <h3><span class="mono">{{ c.compare.command }}</span>: now against {% if c.compare.previous %}{{ stamp(c.compare.previous.at, '', ('read by ' ~ c.compare.previous.who) | people) }}{% else %}nothing earlier{% endif %}</h3>
     {%- if not c.compare.previous %}<p class="muted">No earlier answer to this command from {{ c.host }} is kept.</p>
     {%- elif not c.compare.lines %}<p>No line changed.</p>
     {%- else %}
@@ -79,7 +79,7 @@
       <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Command</th><th scope="col">Outcome</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
       <tbody>
       {%- for r in c.recent.rows %}
-      <tr><td>{{ stamp(r.at) }}</td><td>{{ r.who }}</td><td class="mono">{{ r.commands | join('; ') }}{% if r.devices > 1 %} <span class="muted">(with {{ r.devices - 1 }} other device{{ 's' if r.devices != 2 }})</span>{% endif %}</td>
+      <tr><td>{{ stamp(r.at) }}</td><td>{{ r.who | people }}</td><td class="mono">{{ r.commands | join('; ') }}{% if r.devices > 1 %} <span class="muted">(with {{ r.devices - 1 }} other device{{ 's' if r.devices != 2 }})</span>{% endif %}</td>
         <td>{{ badge(r.words if r.state in ('answered', 'cut') else r.state, 'ok' if r.state == 'answered' else 'warn' if r.state in ('cut', 'skipped', 'running') else 'danger', title=r.words) }}</td>
         <td><a href="{{ url_for('device_v2.device', name=c.host, tab='ask', run=r.id) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, run=r.id) }}" hx-target="#ask" hx-swap="outerHTML">Open</a></td></tr>
       {%- endfor %}

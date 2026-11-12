@@ -157,6 +157,20 @@ def service_label(client_id: str) -> str:
     return labels.get(client_id, "") or client_id
 
 
+def display_name(actor: str) -> str:
+    """How *actor* is drawn on a screen, a record's summary and an export (board E2a, the
+    operator, 2026-11-11): the name the person set (`modules/display_names.py`, per verified
+    person), else the part of their identity before the "@", else the label a host login or a
+    service already has (`service_label`). Never the domain.
+
+    **A name, never an identity.** What a record keeps, what a gate compares and what a commit's
+    ``Actor:`` says is still the verified actor (`request_actor`); this only decides how that
+    person reads where a person is looking."""
+    from modules import display_names
+
+    return display_names.shown(actor)
+
+
 def _setting(key, default=None):
     from modules.settings_schema import get_setting
     return get_setting(key, default)

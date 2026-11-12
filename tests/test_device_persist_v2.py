@@ -72,7 +72,8 @@ class TestThePreview:
         assert "cisco_xe" in ops and "cisco_iosxe" in ops and "Account" in ops
         assert "Startup config, last checked" in ops and "Plan hash" in ops
         checks = html[html.index("Checks"):html.index("op-ft")]
-        assert "You are a verified person: test-person@example.invalid" in checks
+        # Board E2a: the person is named by display name, the part before the "@".
+        assert "You are a verified person: test-person</span>" in checks
         assert "badge-danger" not in checks
         foot = html[html.index("op-ft"):]
         h = re.search(r'"hash": "([0-9a-f]+)"', foot).group(1)

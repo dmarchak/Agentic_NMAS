@@ -422,6 +422,25 @@ class _Recorder:
 
     def __init__(self, app):
         self.app, self.buf, self.routes = app, [], {}
+        # Board E2a: each HTML response's addresses ("@") outside a collapsed record
+        # (tests/people_drawn.py), by the route and templates that drew them, and how many
+        # responses were read for them (tests/test_display_names_drawn.py).
+        # and how many of them kept an identity inside a collapsed record.
+        self.addresses, self.bodies, self.records = {}, 0, 0
+
+    def _people(self, out) -> None:
+        from tests.people_drawn import scan
+
+        if getattr(out, "mimetype", "") != "text/html":
+            return
+        self.bodies += 1
+        found, kept = scan(out.get_data(as_text=True))
+        self.records += 1 if kept else 0
+        if found:
+            route = sorted({r for r, _n, _c in self.buf}) or [
+                f"{out.request.method} {out.request.path}"]
+            key = (", ".join(route), ", ".join(sorted({n for _r, n, _c in self.buf})))
+            self.addresses.setdefault(key, set()).update(found)
 
     def __call__(self, sender, template, context, **_extra):
         from flask import request
@@ -440,6 +459,7 @@ class _Recorder:
         (an out-of-band part beside its card) draws its context across all of them."""
         self.buf.clear()
         out = call()
+        self._people(out)
         env = self.app.jinja_env
         merged = Reads()
         for _route, name, _ctx in self.buf:
@@ -582,7 +602,9 @@ def measure() -> dict:
         mp.undo()
         _store_back(aside)
     _CACHE["m"] = {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
-                   "providers": len(PROVIDERS), "upstream": upstream, "drew": drew}
+                   "providers": len(PROVIDERS), "upstream": upstream, "drew": drew,
+                   "addresses": recorder.addresses, "bodies": recorder.bodies,
+                   "records": recorder.records}
     return _CACHE["m"]
 
 
@@ -1197,6 +1219,61 @@ def _intent_normalise(client, lab, _mp):
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(before)
         assert save_host_vars("Lab", ["r3"], actor="t", source="extraction")["ok"]
+
+
+def _attention_scheduled_ack(client, _lab, _mp):
+    """Needs attention with a scheduled job's failed run acknowledged until the workflow's
+    next scheduled run (the operator, 2026-11-11): the mutation workflow's captured runs
+    (tests/test_scheduled_jobs.py's), acknowledged through the real route by the walk's
+    person, so the page lists "Acknowledged by <name> until the next scheduled run". The
+    reader's value and the acknowledgement are this provider's alone, then undone."""
+    import os
+    import shutil
+    import tempfile
+    import time as _time
+
+    import pytest
+
+    from modules import acknowledgements, attention, reader_job
+    from modules.readers import scheduled_jobs as SJ
+    from tests.test_scheduled_jobs import ROOT as REPO_ROOT, SLUG, _git, _github
+
+    folder = tempfile.mkdtemp(prefix="nmas-walk-sj-")
+    store = acknowledgements._path()
+    had_store = os.path.exists(store)
+    kept = open(store, encoding="utf-8").read() if had_store else None
+    mp = pytest.MonkeyPatch()
+    try:
+        _git(folder, "init", "-q", "-b", "main")
+        _git(folder, "remote", "add", "origin", f"https://github.com/{SLUG}.git")
+        os.makedirs(os.path.join(folder, ".github", "workflows"))
+        for name in ("mutation-nightly.yml", "coverage-nightly.yml", "ci.yml"):
+            shutil.copy(os.path.join(REPO_ROOT, ".github", "workflows", name),
+                        os.path.join(folder, ".github", "workflows", name))
+        value = SJ.read(folder, get=_github())
+        at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        fresh = {"state": "ok", "doc": {"last_good": {"value": value, "value_at": at},
+                                        "stale_after_seconds": 3600}}
+        real = reader_job.read_cached
+        mp.setattr(reader_job, "read_cached",
+                   lambda name: fresh if name == SJ.NAME else real(name))
+        mp.setattr(attention, "SOURCES", [attention.scheduled_jobs_source])
+        got = client.post("/attention/acknowledge",
+                          json={"row": "scheduled_jobs:mutation-nightly.yml",
+                                "event": "41337732668", "why": "the canary is being reworked"})
+        assert got.status_code == 200, got.get_json()
+        r = client.get("/v2/attention")
+        assert r.status_code == 200 and "until the next scheduled run" in r.get_data(
+            as_text=True), r.status_code
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+        if kept is None:
+            if os.path.exists(store):
+                os.remove(store)
+        else:
+            with open(store, "w", encoding="utf-8") as fh:
+                fh.write(kept)
 
 
 def _persist_read(client, _lab, mp):
@@ -1977,6 +2054,47 @@ def _lab9_sitting_findings(client, _lab, _mp):
                                             in card.get_data(as_text=True)), card.status_code
     finally:
         mp.undo()
+
+
+def _display_names(client, _lab, _mp):
+    """Settings › Installation › Access and identity's Display names card (board E2a) in the
+    states the walk's own store does not hold: another person's row (set by them, then
+    returned to its default by the viewer), the viewer's own name saved and returned, a
+    refusal with what was typed kept in its row, and the store unreadable. Each through the
+    real store (`modules/display_names.py`) and the card's own route; the store's file is
+    removed after, so every later provider draws people by their defaults again."""
+    import os as _os
+
+    from modules import config, display_names
+    from tests.conftest import TEST_PERSON
+
+    path = _os.path.join(config.DATA_DIR, display_names.FILENAME)
+    url, hx = "/v2/settings/installation/display-names", {"HX-Request": "true"}
+    other = "walk-other@example.invalid"
+
+    def card():
+        return client.get(url, headers=hx).get_data(as_text=True)
+
+    try:
+        display_names.set_name(other, "Walker", by=other, actor_verified="access")
+        drawn = card()
+        assert "another person" in drawn and "set by Walker" in drawn, drawn[:400]
+        saved = client.post(url + "/save", data={"name": "Tess"}, headers=hx)
+        assert saved.status_code == 200 and "now shown as" in saved.get_data(as_text=True)
+        refused = client.post(url + "/save", data={"name": "walker"}, headers=hx)
+        assert refused.status_code == 409, refused.status_code
+        assert "is already Walker" in refused.get_data(as_text=True)
+        back = client.post(url + "/save", data={"use_default": "1"}, headers=hx)
+        assert "(the default" in back.get_data(as_text=True)
+        display_names.set_name(other, "", by=TEST_PERSON, actor_verified="access", admin=True)
+        assert "returned to it by test-person" in card()
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("{")
+        assert "could not be read" in card()
+    finally:
+        for left in (path, path + ".lock"):
+            if _os.path.exists(left):
+                _os.remove(left)
 
 
 def _netbox_lag(client, _lab, _mp):
@@ -4266,12 +4384,13 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_heal_analysis,
                    _attention_withheld,
-                   _attention_quiet_period,
+                   _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,
+                   _display_names,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,

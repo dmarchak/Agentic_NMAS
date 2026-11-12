@@ -1008,7 +1008,8 @@ def test_check_this_answer_again_pressed_on_the_card_draws_both_checks_and_marks
     # The first check's findings and counts as they are, and the re-check's under them.
     assert ">0 findings</h2>" in html and "Nothing abnormal was reported in this snapshot." in html
     again = html[html.index('id="sdn-an-rc"'):html.index('aria-labelledby="sdn-an-p"')]
-    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by " + re.escape(by)
+    # The person by display name (board E2a).
+    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by " + re.escape(by.split("@")[0])
                      + r", no new AI call: 1 finding</h3>", html)
     assert "Port 3 is down" in again and port in again
     assert "1 cited as a whole snapshot line; its id kept" in again

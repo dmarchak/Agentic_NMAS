@@ -768,6 +768,85 @@ def install_ratify():
     return _fragment("v2/_install_access.html", acc=I.access_view(ident), done=out)
 
 
+# ── Board E2a, Display names (the operator, 2026-11-11): how each person is named on
+#    Mercury's screens, records' summaries and exports (modules/display_names.py). ───────────
+
+def _display_names(status: int = 200, **ctx):
+    """The Display names card for this request's viewer: their own row, then every other
+    person who has one. A verified person may change their own; an admin anyone's, and Mercury
+    holds no roles yet, so every verified person is an admin (NSOT_AUTHORIZATION section 6); a
+    service or an unverified request changes none."""
+    from modules import display_names, identity
+
+    ident = identity.viewer()
+    person = bool(ident.is_identified and ident.kind == "person")
+    how = {identity.LOCAL_ACCOUNT: "with this installation's local account",
+           identity.ACCESS: "through Cloudflare Access"}.get(
+               identity.verification_of(ident), "") if person else ""
+    return _fragment("v2/_display_names.html", status,
+                     dn=display_names.view(ident.actor if person else "", how, admin=person),
+                     **ctx)
+
+
+@bp.route("/installation/display-names", methods=["GET"])
+def display_names_card():
+    """The Display names card at rest, read again when a response or an announcement names
+    `people`; a result (saved or refused) stays where its Save drew it."""
+    return _display_names()
+
+
+@bp.route("/installation/display-names/save", methods=["POST"])
+def display_name():
+    """Set one person's display name, or return it to the default (Use the default, or an
+    empty name): the viewer's own, or another listed person's by the key their row carries
+    (never their identity, which the page does not hold outside its record). Recorded in the
+    store's row with who set it and how they were verified. Refused, naming both sides, with
+    nothing changed: a name holding an "@", one over 32 printable characters, one another
+    person already has, a name Mercury uses for itself, an unreadable store, and a request
+    that is no verified person's."""
+    from modules import display_names, identity, invalidation
+
+    ident = identity.verified_identity()
+    if ident is None or ident.kind != "person":
+        return _display_names(403, refused=(
+            "A display name is set by a verified person: this request's identity is not "
+            "verified." if ident is None else
+            "A display name is set by a verified person: this request is a "
+            f"{ident.kind or 'requester of unknown kind'} "
+            f"({identity.display_name(ident.actor)}), not a person."))
+    actor, form = identity.request_actor(), request.form
+    # What was typed stays in its row's form through a refusal (the viewer's own row when
+    # the key names nobody).
+    kept = {"typed": form.get("name", ""), "typed_for": display_names.person_key(actor)}
+    try:
+        person = display_names.resolve(form.get("person", ""), actor)
+        if person:
+            kept["typed_for"] = display_names.person_key(person)
+        if not person:
+            raise display_names.Refused(
+                "No person on this card was named: it was drawn before a change, and is "
+                "drawn again here.")
+        out = display_names.set_name(
+            person, "" if form.get("use_default") else form.get("name", ""), by=actor,
+            actor_verified=_verified(), admin=True)
+    except display_names.Refused as exc:
+        return _display_names(403 if str(exc).startswith("Only an admin") else 409,
+                              refused=str(exc), **kept)
+    except display_names.Unreadable as exc:
+        return _display_names(409, refused=(f"The display names could not be read "
+                                            f"({exc.kind}), so nothing was saved."), **kept)
+    if not out["nothing"]:
+        # Every other open page draws people too (its chip, Needs attention): told at once.
+        try:
+            invalidation.announce(invalidation.ANNOUNCERS["display-names"], by="display-names")
+        except Exception as exc:                        # noqa: BLE001 (the name is saved)
+            log.warning("display names: the change was not announced (%s); each page draws "
+                        "it at its next read", type(exc).__name__)
+    return _display_names(done={"you": person == actor, "shown": out["shown"],
+                                "was": out["was"] or display_names.default(person),
+                                "default": out["default"], "nothing": out["nothing"]})
+
+
 # ── The installation's one local account (modules/local_account.py): its card, sign-in and
 #    sign-out. Off by default, and only where Mercury listens on loopback only. ─────────────
 

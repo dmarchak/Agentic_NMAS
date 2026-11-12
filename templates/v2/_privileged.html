@@ -84,6 +84,6 @@
     <div><h4>Before{% if r.before %} (kept){% endif %}</h4>{% if r.before %}<pre class="ask-pre">{{ r.before }}</pre>{% else %}<p class="muted">Not kept for this command.</p>{% endif %}</div>
     <div><h4>After</h4><pre class="ask-pre">{{ r.after }}</pre></div></div></div>
   {%- endif %}
-  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor }}, {{ stamp(r.at) }}: "{{ r.reason }}". In History.</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor | people }}, {{ stamp(r.at) }}: "{{ r.reason }}". In History.</p></div></div>
   {%- endif %}
 </section>

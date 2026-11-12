@@ -203,7 +203,9 @@ class TestAcknowledgingARestart:
 
         after = _attention()
         assert after["rows"] == []
-        assert after["acknowledged"][0]["by"] == "test-person@example.invalid"
+        # Board E2a: the page's model names the person by display name (the part before the
+        # "@"); the acknowledgement's record, read above, keeps the identity.
+        assert after["acknowledged"][0]["by"] == "test-person"
         page = _client().get("/v2/attention").get_data(as_text=True)
         assert "Acknowledged, so not listed" in page and "see C289" in page
 

@@ -216,9 +216,12 @@ def record_declared(network: str, device: str, *, minutes, expects: str, by: str
         open_drill = next((r for r in reversed(rows) if r.get("device") == device
                            and float(r.get("until_epoch") or 0) >= now), None)
         if open_drill:
+            from modules import display_names           # board E2a: a person by display name
+
+            who = display_names.people(open_drill.get("by") or "") or "an unnamed person"
             return {"ok": False, "error": (f"{device} has a fault drill declared until "
                                            f"{open_drill.get('until')} ({open_drill.get('id')}, "
-                                           f"by {open_drill.get('by')}): one drill per device "
+                                           f"by {who}): one drill per device "
                                            f"at a time; this one, at {_iso(now)}, is not "
                                            "declared")}
         if inc:

@@ -54,7 +54,7 @@
     <div class="op-hd-actions"><button type="button" class="btn" hx-get="{{ close }}" hx-target="#decline-card" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
     {%- if o.outcome == 'declined' %}
-    <p>Recorded in {{ d.device }}'s intent as {{ o.entry.by }}, commit <span class="mono">{{ (o.save.commit or '')[:8] }}</span>: "{{ o.entry.reason }}". {{ d.device }}'s {{ d.words }} now reads Declined on Coverage and the IP SLA page, never as a gap.</p>
+    <p>Recorded in {{ d.device }}'s intent as {{ o.entry.by | people }}, commit <span class="mono">{{ (o.save.commit or '')[:8] }}</span>: "{{ o.entry.reason }}". {{ d.device }}'s {{ d.words }} now reads Declined on Coverage and the IP SLA page, never as a gap.</p>
     {%- elif o.outcome == 'undone' %}
     <p>Removed from {{ d.device }}'s intent, commit <span class="mono">{{ (o.save.commit or '')[:8] }}</span>. Its {{ d.words }} reads as not in intent again; the decline's commit stays in history.</p>
     {%- else %}

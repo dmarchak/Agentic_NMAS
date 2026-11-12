@@ -93,7 +93,10 @@ class TestTheTab:
             assert words in row, words
         unset = html.split("In NetBox, with no record")[1]
         assert "port 6" in unset and "Set up…" in unset and "port 5" not in unset
-        assert "Port %d added (command_bridge) by %s" % (lab.ports[0]["id"], PERSON) in html
+        # Board E2a: who added it is drawn by display name, the part before the "@".
+        assert "Port %d added (command_bridge) by %s" % (
+            lab.ports[0]["id"], PERSON.split("@")[0]) in html
+        assert PERSON not in html
 
     def test_an_unreadable_netbox_is_said_and_each_record_shown_by_its_id(self, lab, client,
                                                                           monkeypatch):

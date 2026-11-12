@@ -119,7 +119,8 @@ class TestThePreview:
         ops = html[html.index("Operands"):html.index("Checks")]
         assert "admin (privilege 15)" in ops and "32 characters" in ops and "fp-abc123" in ops
         checks = html[html.index("Checks"):html.index("op-ft")]
-        assert "You are a verified person: test-person@example.invalid" in checks
+        # Board E2a: the person is named by display name, the part before the "@".
+        assert "You are a verified person: test-person</span>" in checks
         assert "badge-danger" not in checks
         foot = html[html.index("op-ft"):]
         assert "accepts ONLY the new password" in foot and "Bound to plan fp-abc123" in foot

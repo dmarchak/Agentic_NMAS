@@ -123,7 +123,10 @@ def _closed_words(owed: dict, sha: str, step: str) -> str:
     for key, verb in (("said_done", "said done"), ("declined", "declined")):
         for s in owed.get(key) or []:
             if sha in (s.get("shas") or [s.get("sha")]) and s.get("step") == step:
-                return (f"that step was already {verb} by {s.get('by') or 'an unnamed person'} "
+                from modules import display_names       # board E2a: a person by display name
+
+                who = display_names.people(s.get("by") or "") or "an unnamed person"
+                return (f"that step was already {verb} by {who} "
                         f"at {str(s.get('at') or 'an unrecorded time').replace('T', ' ')[:16]}"
                         f"{' UTC' if s.get('at') else ''}"
                         + (f": {s['why']}" if s.get("why") else ""))

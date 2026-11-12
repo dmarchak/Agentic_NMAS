@@ -235,7 +235,7 @@ class TestThePage:
         assert 'class="op-idle">Save 1 device<' in foot and 'class="op-busy">' in foot
         assert 'hx-disabled-elt="this"' in foot and 'data-op="save"' in foot
         assert 'aria-label="How does Save work?"' in foot
-        assert "You are confirming as test-person@example.invalid." in foot
+        assert "You are confirming as test-person." in foot          # board E2a
         assert f"Bound to plan {form['hash']}" in foot
 
     def test_nothing_to_save_offers_no_confirm(self, lab):

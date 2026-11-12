@@ -427,7 +427,7 @@ class TestTheNotice:
         assert "run #9, attempt 1, https://github.com/owner/repo/actions/runs/9" in text
         assert "failed at Tests (R1, R4), confined to loopback, measured by tier, in test (a)" \
             in text
-        assert ("Deployed by pat@example.invalid at 2026-11-11T20:00:00Z (the Update button). "
+        assert ("Deployed by pat at 2026-11-11T20:00:00Z (the Update button). "
                 "The release keeps running: this is no outage.") in text
         assert f"scripts/nmas-rollback {B[:10]} --push, then Update" in text
         assert "Open in Mercury: /v2/history?kind=updates" in text
@@ -470,4 +470,6 @@ class TestTheNotice:
         (msg,) = [_mail(raw) for s in env.smtp for raw in s.sent]
         assert "CI disagrees with the deployed release" in msg["Subject"]
         body = msg.get_body(("plain",)).get_content()
-        assert A[:10] in body and "pat@example.invalid" in body and "test (a)" in body
+        # The deployer by display name (board E2a), never their address.
+        assert A[:10] in body and "Deployed by pat at" in body and "test (a)" in body
+        assert "pat@example.invalid" not in body

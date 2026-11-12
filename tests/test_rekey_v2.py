@@ -120,7 +120,8 @@ class TestThePreview:
         assert "Plan hash" in ops
         checks = html[html.index("Checks"):html.index("op-ft")]
         assert "badge-danger" not in checks
-        assert "You are a verified person: test-person@example.invalid" in checks
+        # Board E2a: the person is named by display name, the part before the "@".
+        assert "You are a verified person: test-person</span>" in checks
         foot = html[html.index("op-ft"):]
         h = re.search(r'"hash": "([0-9a-f]+)"', foot).group(1)
         assert h == rekey_op.plan("Lab", "r2")["hash"]

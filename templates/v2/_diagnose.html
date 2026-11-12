@@ -64,7 +64,7 @@
   <div class="op-part" id="diagnose-run"><h3>Run</h3><div>
     {%- if c.busy %}
     {%- for b in c.busy %}
-    <p class="notice notice-warn">{{ icon('warn', 16) }}<span>{{ b.host }} is in diagnosis {{ b.diagnosis }} (started {{ b.started }} UTC by {{ b.actor }}); Diagnose… is offered when it ends.</span></p>
+    <p class="notice notice-warn">{{ icon('warn', 16) }}<span>{{ b.host }} is in diagnosis {{ b.diagnosis }} (started {{ b.started }} UTC by {{ b.actor | people }}); Diagnose… is offered when it ends.</span></p>
     {%- endfor %}
     {%- else %}
     <form hx-post="{{ url_for('device_v2.diagnose_run', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
@@ -93,7 +93,7 @@
 <section class="op-card{{ ' op-warn' if d.level in ('warn', 'danger') }}" id="device-op" aria-labelledby="op-title">
   <div class="op-hd"><h2 id="op-title">Diagnosis: {{ d.runbook_words }}{{ ', ' ~ d.devices | join(' and ') if d.devices }}</h2>
     <div class="op-hd-actions">{{ badge(d.chip, d.level, title=('In progress counts it ' ~ {'ok': 'done', 'warn': 'partial'}.get(c.level, c.level) ~ ': ' ~ c.words) if c.level else '') }}{{ how('diagnose', 'the-result') }}{{ close_button('Close') }}</div></div>
-  <p class="muted">{{ stamp(d.started_at) }} to {{ stamp(d.finished_at) }} · {{ 'automatic, incident ' ~ d.incident if d.incident else 'on demand by ' ~ (d.actor or 'no one recorded') }} · {{ d.commands }} of at most {{ d.cap }} device commands · diagnosis {{ d.id }}, {{ 'recorded' if d.recorded else 'not recorded' }}</p>
+  <p class="muted">{{ stamp(d.started_at) }} to {{ stamp(d.finished_at) }} · {{ ('automatic, incident ' ~ d.incident if d.incident else 'on demand by ' ~ (d.actor or 'no one recorded')) | people }} · {{ d.commands }} of at most {{ d.cap }} device commands · diagnosis {{ d.id }}, {{ 'recorded' if d.recorded else 'not recorded' }}</p>
   <div class="op-part op-focus"><h3>What it found</h3><div>
     <p>{{ d.words }}{{ '; ' ~ d.stopped if d.stopped }}</p>
     {%- if d.hypotheses %}

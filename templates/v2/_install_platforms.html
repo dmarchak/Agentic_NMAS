@@ -11,7 +11,7 @@
   {%- endif %}
   {%- if applied %}
   <div class="notice notice-{{ 'muted' if applied.recorded else 'warn' }} set-result set-card-wide" role="status">{{ icon('tick', 16) }}<div>
-    <strong>Saved</strong> by {{ applied.actor_label }}: the {{ 'platform' if applied.kind == 'platforms' else 'role' }} map, {{ applied.changes | length }} device{{ '' if applied.changes | length == 1 else 's' }} changing, recorded in the installation's settings record.
+    <strong>Saved</strong> by {{ applied.actor_label | people }}: the {{ 'platform' if applied.kind == 'platforms' else 'role' }} map, {{ applied.changes | length }} device{{ '' if applied.changes | length == 1 else 's' }} changing, recorded in the installation's settings record.
     {%- if applied.refreshed %} Refreshing {{ applied.refreshed | join(', ') }} from NetBox now, so the devices take it.{% else %} No network takes its devices from NetBox, so no device changes now.{% endif %}
     {%- if not applied.recorded %} Its record could not be written: {{ applied.record_error }}.{% endif %}</div></div>
   {%- endif %}

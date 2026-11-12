@@ -95,6 +95,10 @@
               // An access or identity decision recorded (Record this decision): Settings ›
               // Installation › Access and identity, at rest, reads again (P7-05).
               'posture',
+              // A person's display name set or returned to its default (board E2a): the name
+              // chip on every page, Needs attention and Settings' Display names card read
+              // again; every other region draws the name at its next read.
+              'people',
               // A break-glass export, its intact check or a drill logged: Credentials' record
               // card reads the log again at once; job health's judgement follows (P7-05).
               'breakglass',
@@ -1371,6 +1375,7 @@
   function relayLists() { relay('lists'); }
   function relayActiveList() { relay('active_list'); }
   function relayPosture() { relay('posture'); }
+  function relayPeople() { relay('people'); }
   function relayBreakglass() { relay('breakglass'); }
   function relayInProgress() { relay('in_progress'); }
   function relayConsoleZtp() { relay('console_ztp'); }
@@ -1595,6 +1600,7 @@
     NMAS.subscribe('lists', 'v2Lists', relayLists);
     NMAS.subscribe('active_list', 'v2ActiveList', relayActiveList);
     NMAS.subscribe('posture', 'v2Posture', relayPosture);
+    NMAS.subscribe('people', 'v2People', relayPeople);
     NMAS.subscribe('breakglass', 'v2Breakglass', relayBreakglass);
     NMAS.subscribe('in_progress', 'v2InProgress', relayInProgress);
     NMAS.subscribe('console_ztp', 'v2ConsoleZtp', relayConsoleZtp);

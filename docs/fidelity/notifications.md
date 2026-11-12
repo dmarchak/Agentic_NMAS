@@ -11,7 +11,18 @@ beside the board's shot from `test_heal_tab` (`heal-tab-board-1440`, artboard B)
 shots do not draw (each form open, a refusal, a code typed, an edit to a new URL, a removal's
 question) are compared by the templates and tests/test_notify_v2.py.
 Templates compared: templates/v2/_notify.html, templates/v2/_notify_relay.html
-Templates sha256: `550af5f42a12d7e802eedb99a1f63898443344bb0110fc6eab59ee05619c8b97`
+Templates sha256: `cd468e69751a6502a653868135858fdcf3ab961036558b1d97ccb91a3bfb7901`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_notify_relay.html`, who set the relay's password is now
+drawn through the `people` filter, by display name (the name the person set, else the part of
+their identity before the "@"), in the same badge; where the board draws an identity the built
+screen draws the name, a deviation logged once for every screen (log: Display names: a person
+is drawn by display name on every screen). In `_notify.html` and `_notify_relay.html`, each
+element that draws a destination address (a team's row, Remove's question, the verification
+code's label, the relay test's choice) is marked as a setting's value
+(`data-address="destination"`), which draws nothing: a destination is still drawn whole (log:
+Board E2a built, 7). No region is added, removed or moved. Every other verdict stands.
 
 **Compared again 2026-11-07 (board H, H10):** a webhook's **Test send** keeps its words and
 place; its "How does this work?" (i) now opens the manual's new page on notifications (its

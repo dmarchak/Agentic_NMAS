@@ -98,8 +98,13 @@ class TestRightWrong:
         assert by, "the test's policy names who confirmed it"
         assert e["who"] == f"Mercury's self-healing, under Default's policy confirmed by {by}"
         from html import unescape
-        assert f"By Mercury's self-healing, under Default's policy confirmed by {by}</p>" in \
-            unescape(_timeline(e))
+        # Board E2a: the row's By names the confirmer by display name (the part before the
+        # "@"); the identity is under it, in the closed "The identity as recorded".
+        drawn = unescape(_timeline(e))
+        assert "By Mercury's self-healing, under Default's policy confirmed by " \
+            f"{by.split('@')[0]}</p>" in drawn
+        assert ("<summary>The identity as recorded</summary>Mercury's self-healing, under "
+                f"Default's policy confirmed by {by}</details>") in drawn
 
     def test_history_draws_right_and_wrong_each_busy_on_itself(self, app_client):
         d = dry_run()
@@ -127,7 +132,10 @@ class TestRightWrong:
         assert DS.dry_run_counts("Default")["added_line"]["right"] == 1
         assert _rows("would_heal") == [], "the record's item leaves"
         assert _event()["heal_mark"]["mark"]["right"] is True
-        assert f"Marked right by {TEST_PERSON}" in _timeline(_event())
+        # Board E2a: who marked it, by display name (the part before the "@").
+        drawn = _timeline(_event())
+        assert f"Marked right by {TEST_PERSON.split('@')[0]} at <time" in drawn
+        assert TEST_PERSON not in drawn
 
     def test_wrong_needs_why_and_keeps_what_was_typed(self, app_client):
         d = dry_run()

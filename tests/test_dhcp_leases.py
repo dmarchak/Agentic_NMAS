@@ -424,7 +424,8 @@ def test_the_confirm_releases_reads_back_and_records_in_place(page, monkeypatch)
     done = r.get_data(as_text=True)
     assert r.status_code == 200, done
     assert "released" in done and "a1b2c3d" in done
-    assert "Actor: operator@example.invalid" in done
+    assert "Actor: operator" in done                      # by display name (board E2a)
+    assert "operator@example.invalid" not in done
     assert page["kea"].dels == [("lease4-del", {"ip-address": "10.10.10.102"})]
     assert page["kept"][0][2]["reason"] == "VM recreated"
     # The same preview confirmed again: the lease is gone, so nothing is sent again.

@@ -21,7 +21,7 @@
 {%- if turned_off %}
 <div class="notice notice-muted ai-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
   {%- if turned_off.nothing %}<strong>Already off:</strong> {{ turned_off.feature }} was not on for {{ off_network }}; nothing was written.
-  {%- else %}<strong>{{ turned_off.feature }} turned off for {{ off_network }}</strong> by {{ turned_off.actor_label }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
+  {%- else %}<strong>{{ turned_off.feature }} turned off for {{ off_network }}</strong> by {{ turned_off.actor_label | people }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
 {%- endif %}
 {%- if s.hosted %}
 <p class="ai-sec ai-off-note">{{ icon('info', 15) }} {{ s.hosted }} Nothing is sent to a model; what was spent before is below.</p>

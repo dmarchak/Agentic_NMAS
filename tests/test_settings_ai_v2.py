@@ -122,7 +122,8 @@ def test_the_tab_draws_every_feature_off_by_default_under_the_strict_policy(ai):
     for feature in ("fake_loop", "sdn_classify"):
         state, row = _row(html, feature)
         assert state == "off" and ">off<" in row and "Turn on…" in row and "Turn off" not in row
-    assert 'id="card-ai"' in html and "allowed by admin@example.com" in html
+    # Board E2a: who allowed it, by display name (the part before the "@").
+    assert 'id="card-ai"' in html and "allowed by admin " in html
     assert ai.sent == [] and B.switches() == {}
 
 
@@ -140,7 +141,7 @@ def test_the_hosted_ai_card_is_on_this_tab_whole_and_connections_points_here(ai)
     card = _section(html, "card-ai")
     assert card, "the AI (hosted) card is on the AI tab"
     assert html.index('id="card-ai"') < html.index('id="ai-bg"'), "first, above the features"
-    for part in ("allowed by admin@example.com", ">Turn off<", ">Test<", "Replace…",
+    for part in ("allowed by admin ", ">Turn off<", ">Test<", "Replace…",
                  'name="ai_cap_usd_per_day"', 'name="ai_cap_day_boundary"', "per million tokens"):
         assert part in card, part
     assert 'id="ai-hosted"' not in html, "no read-only copy of the card"

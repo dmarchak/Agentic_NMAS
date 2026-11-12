@@ -1020,6 +1020,26 @@ def _network_words(network: str) -> str:
     return "every network" if network == EVERY else network
 
 
+#: What every file says of the people in it (board E2a, the operator, 2026-11-11): a file
+#: leaves the host, so it names each person as the screens do, and the identity stays in
+#: Mercury's own records.
+PEOPLE = ("people are named by their display name; the full verified identity of each is in "
+          "Mercury's own records, not in this file")
+
+
+def _people(value):
+    """A cell as the file writes it: a text with each person named by display name
+    (`display_names.people`); a number or an empty cell as it is."""
+    from modules import display_names
+
+    return display_names.people(value) if isinstance(value, str) else value
+
+
+def _rows(got: dict) -> list:
+    """The log's rows as the file writes them: every text cell through `_people`."""
+    return [{k: _people(v) for k, v in r.items()} for r in got["rows"]]
+
+
 def header(kind: str, got: dict, *, by: str, now: float = None) -> list:
     """The first lines every file opens with, ``[(label, value...)]``: the log, its range, its
     network, when it was made and by whom, what its amounts are (the call log), what is not
@@ -1028,7 +1048,8 @@ def header(kind: str, got: dict, *, by: str, now: float = None) -> list:
     lines = [("log", TITLES[kind]),
              ("range", rng["start"], rng["end"], f"{rng['days']} whole UTC days, inclusive"),
              ("network", _network_words(got["network"])),
-             ("made", _iso(_now() if now is None else now), "by", by or "unknown")]
+             ("made", _iso(_now() if now is None else now), "by", _people(by) or "unknown"),
+             ("people", PEOPLE)]
     if kind == "calls":
         lines.append(("amounts", AMOUNTS))
         lines.append(("in the range", calls_words(got["summary"])))
@@ -1063,7 +1084,7 @@ def to_csv(kind: str, got: dict, *, by: str, now: float = None) -> str:
         w.writerow(["# " + line[0]] + [_cell(v) for v in line[1:]])
     columns = CALL_COLUMNS if kind == "calls" else FAILURE_COLUMNS
     w.writerow(columns)
-    for r in got["rows"]:
+    for r in _rows(got):
         w.writerow([_cell(r[c]) for c in columns])
     if kind == "calls":
         for key, words in (("day", "by UTC day"), ("feature", "by feature")):
@@ -1082,13 +1103,13 @@ def to_json(kind: str, got: dict, *, by: str, now: float = None) -> str:
     doc = {"log": TITLES[kind], "range": {"from": rng["start"], "to": rng["end"],
                                           "days": rng["days"], "days_are": "UTC, inclusive"},
            "network": _network_words(got["network"]),
-           "made_at": lines[3][1], "made_by": lines[3][3]}
+           "made_at": lines[3][1], "made_by": lines[3][3], "people": PEOPLE}
     if kind == "calls":
         doc.update(amounts=AMOUNTS, summary=got["summary"], unattributed=got["unattributed"])
     else:
         doc.update(counts={k: n for k, _w, n in got["counts"]}, not_recorded=NOT_RECORDED)
     doc.update(errors=got["errors"], rows_left_out=got["cut"], max_rows=MAX_ROWS,
-               rows=got["rows"])
+               rows=_rows(got))
     if kind == "calls":
         doc.update(by_day=got["by_day"], by_feature=got["by_feature"])
     return json.dumps(doc, indent=1, ensure_ascii=False) + "\n"

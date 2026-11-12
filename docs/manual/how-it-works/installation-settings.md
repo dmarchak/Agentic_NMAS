@@ -279,6 +279,43 @@ Each value is **defaulted** (nobody decided), **recorded** (agreed, equal to the
 3. `record`: who, when and the names of the settings are appended to the installation's
    settings record; the gate then reads "recorded by" that person, on that day.
 
+## Display names {#display-names}
+
+Every screen, every record's summary and every exported file names a person by their
+**display name**, never by the identity they signed in with. With nothing set, the display name
+is the part of the identity before the "@" (the identity `alex@…` is drawn as "alex"); a service
+token is drawn by its label, and a host login as it is. The domain is never drawn.
+
+The **Display names** card, on the Access and identity tab, lists you first and then every
+other person who has set a name. Each row shows how that person is drawn and whether it is the
+default or a name somebody set (who set it, and when). **The verified identity** under a row is
+closed until you open it: it is the only place the page holds the identity itself.
+
+- **Change…** opens the row's form. Type a name and press **Save**, or press **Use the
+  default** to return to the part before the "@". An empty name is the default too.
+- You set your own name. An admin sets anyone's; Mercury holds no roles yet, so every verified
+  person is an admin. A service token and a request that is not verified set none.
+- A name is refused, with nothing changed and what you typed kept in the form, when it holds an
+  "@" (a display name holds no address), when it is longer than 32 printable characters or
+  holds one that cannot be printed, when another person already has it or it is another
+  person's default (two people are never drawn alike), and when it is a name Mercury uses for
+  itself, a service or nobody. The refusal names the name and what it was compared with.
+- If the file that holds the names cannot be read, the card says so, nothing is saved, and
+  every person is drawn by their default until the file is put right.
+
+A saved name is drawn at once on the name chip in the top bar, on Needs attention and on this
+card, on every open page; every other part of a page draws it the next time it is read.
+
+**What does not change.** Each record keeps the verified identity: a commit's `Actor:`, a
+receipt, an acknowledgement, a self-healing step. Words recorded before display names existed
+("as the policy set by <identity>, holding edge1") are never rewritten; they are drawn with the
+name in place of the identity each time a screen reads them. Where a screen shows a record
+exactly as it was written, the part that holds an identity is closed until you open it: **The
+identity as recorded** under a History row's "By", a folded part of an AI call's prompt or
+answer, and a commit's message in a preview. History › Export writes its files with display
+names, and each file says so in its first lines. A notification's destination address is a
+setting's value, not a person: Settings › Installation › Notifications draws it whole.
+
 ## The local account {#local-account}
 
 An installation that listens on its own machine only (the laptop kit) has no access proxy in
@@ -295,7 +332,8 @@ kept. Behind an access proxy none of this applies, and identity is the proxy's.
   makes the next attempt wait longer (2 seconds, doubling, to 5 minutes). The password is never
   shown again, logged or kept.
 - Signed in, you are recorded as "<name> (local account, kit)" on everything you do, never as a
-  verified sign-in through an access proxy. The name chip in the top bar shows the name.
+  verified sign-in through an access proxy. The name chip in the top bar shows the name (or
+  the display name set for it).
 - The session ends 30 minutes after its last use, 12 hours after the sign-in, or when the
   password is set again.
 - **Sign out** ends it at once.

@@ -341,9 +341,17 @@ def ai_call(call_id: str) -> dict:
     r = got["row"]
     body = r.get("request") or {}
 
+    from modules import display_names
+
+    def names(text):
+        """Whether *text* names a person by their identity (board E2a): such a part is the
+        record exactly as sent, so it is drawn folded, a collapsed record, never rewritten."""
+        return bool(display_names.EMAIL.search(text or ""))
+
     def part(name, text):
         text = redact_text(text or "")
-        return {"name": name, "text": text, "size": len(text), "fold": len(text) > AI_BLOCK_FOLD}
+        return {"name": name, "text": text, "size": len(text), "names": names(text),
+                "fold": len(text) > AI_BLOCK_FOLD or names(text)}
     sent = []
     for block in body.get("system") or []:
         text = block.get("text") or ""
@@ -369,7 +377,7 @@ def ai_call(call_id: str) -> dict:
             ("Thinking", (r.get("thinking") or "the model's default") if body else ""),
             ("Stopped", STOP_WORDS.get(stop, stop))]
     return {"ok": True, "error": "", "meta": [(k, v) for k, v in meta if v not in (None, "")],
-            "sent": sent, "received": received, "raw": raw,
+            "sent": sent, "received": received, "raw": raw, "received_names": names(received),
             "not_sent": not body, "verdict": r.get("verdict") or "", "id": call_id}
 
 
@@ -678,8 +686,12 @@ def receipts(ctx):
                    f"{R.past(r)}: "
                    f"{r.get('outcome', '?').replace('_', ' ')}"
                    + (f", {R.PENDING_WORDS}" if pending else ""), [r.get("device", "")],
-                   who=r.get("actor", ""),
-                   detail=(f"{r.get('program_lines', 0)} line(s) sent"
+                   # A heal's receipt is Mercury's work, under the policy its setter confirmed
+                   # (the operator, 2026-11-12), and counts the lines it re-applied.
+                   who=(f"{R.HEAL_DOER} (policy set by {r.get('actor') or 'nobody recorded'})"
+                        if R.is_heal(r) else r.get("actor", "")),
+                   detail=((f"{R.config_lines(r)} line(s) re-applied" if R.is_heal(r) else
+                            f"{r.get('program_lines', 0)} line(s) sent")
                            + (f"; {len(removals)} removed (Mode B)" if removals else "")
                            + (f"; {m(r['reason'])}" if r.get("reason") else "")),
                    sha=r.get("golden_commit", ""), outcome=r.get("outcome", ""),
@@ -3009,8 +3021,18 @@ MAX_LIMIT = 800
 
 def short_who(who: str) -> str:
     """A person's name for a one-line summary: "alex" for "alex (host login, not a verified
-    identity)". How they were identified is said in full where the row expands."""
+    identity)". How they were identified is said in full where the row expands. The line draws
+    it by display name (`shown_who`); this is the recorded actor, which an evidence pack
+    keeps."""
     return (who or "").split(" (", 1)[0].strip()
+
+
+def shown_who(who: str) -> str:
+    """`short_who` as History's line, its people filter and an export draw it (board E2a): the
+    person's display name (`identity.display_name`), never their identity."""
+    from modules import display_names
+
+    return display_names.people(short_who(who))
 
 
 def devices_words(devices: list, subject: str = "") -> str:
@@ -3335,12 +3357,15 @@ def _kept(reads, ctx, device, person, wanted, unverified, call, before, reused) 
         # name; the full wording, who with how they were identified, expands under the row.
         e["who_short"] = short_who(e.get("who", ""))
         e["devices_words"] = devices_words(e["devices"], e.pop("subject", ""))
-    people = sorted({e["who_short"] for e in events if e["who_short"]})
+    # The people filter names each person as the line draws them, by display name.
+    people = sorted({shown_who(e["who_short"]) for e in events if e["who_short"]})
     counts = {}
     for e in events:
         counts[e["kind"]] = counts.get(e["kind"], 0) + 1
     if person:
-        events = [e for e in events if e["who_short"] == person]
+        # The filter names a person as the line draws them, by display name; an address kept
+        # from before display names carries the identity, and still finds the same rows.
+        events = [e for e in events if shown_who(e["who_short"]) == shown_who(person)]
     if wanted:
         events = [e for e in events if e["kind"] in wanted]
     if call:

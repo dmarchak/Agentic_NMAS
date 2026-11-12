@@ -156,8 +156,10 @@ def test_the_card_names_the_snapshot_by_its_id_and_counts_the_kept(client):
     when = snap["collected_at"].replace("T", " ").replace("Z", " UTC")
     assert f'Snapshot <code class="mono">{snap["id"]}</code>' in html, "the id as text"
     assert f'data-copy="{snap["id"]}"' in html and ">Copy</button>" in html
-    assert f'collected <time datetime="{snap["collected_at"]}">{when}</time> by {TEST_PERSON}' \
-        in html
+    # By display name (board E2a).
+    assert (f'collected <time datetime="{snap["collected_at"]}">{when}</time> by '
+            f'{TEST_PERSON.split("@")[0]}') in html
+    assert f"</time> by {TEST_PERSON}" not in html, "the identity is never the card's words"
     assert f": 5 switches, {held['flows']} flow" in html
     assert "Kept snapshots (1), the newest collected " in html
     assert ('hx-get="/v2/sdn/analyse/snapshots?list=Default" hx-trigger="toggle once" '

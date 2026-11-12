@@ -24,7 +24,7 @@
   {%- if done %}
   <div class="notice notice-{{ 'muted' if done.recorded else 'warn' }} set-result set-card-wide" role="status">{{ icon('tick', 16) }}<div>
     {%- if done.nothing %}<strong>Nothing to record:</strong> each was already in the settings file.
-    {%- else %}<strong>Recorded</strong> by {{ done.actor_label }}: {{ done.written | join(', ') }}, each the value already in force{% if not done.recorded %}, and its record could not be written: {{ done.record_error }}{% endif %}.{% endif %}</div></div>
+    {%- else %}<strong>Recorded</strong> by {{ done.actor_label | people }}: {{ done.written | join(', ') }}, each the value already in force{% if not done.recorded %}, and its record could not be written: {{ done.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
   {%- if not acc.readable %}
   <p class="notice notice-danger set-card-wide" role="alert">{{ icon('warn', 16) }}<span>The settings file could not be read: every gate below is its default, and nothing on this tab may be assumed. {{ acc.read_failure.error or '' }}</span></p>
@@ -76,11 +76,14 @@
     <div class="card-head"><h2 id="h-you">You</h2>{{ badge('this request', 'neutral') }}
       {{ badge('verified ' ~ (acc.you.kind or 'nobody') if acc.you.verified else 'not verified', 'ok' if acc.you.verified else 'warn') }}</div>
     <dl class="facts">
-      <div><dt>Signed in as</dt><dd>{{ acc.you.actor or 'nobody verified' }}</dd></div>
+      <div><dt>Signed in as</dt><dd>{{ (acc.you.actor or 'nobody verified') | people }}{% if acc.you.verified %} <span class="set-origin">your display name; the verified identity is in your row under Display names</span>{% endif %}</dd></div>
       <div><dt>From</dt><dd>{{ 'a trusted peer' if acc.you.peer_trusted else 'a peer that is not trusted' }}</dd></div>
       <div><dt>You may</dt><dd>{% set allowed = acc.you.may | selectattr('1') | map(attribute='0') | list %}{{ (allowed | join(', ') | lower) if allowed else 'none of the gated actions' }}</dd></div>
     </dl>
   </section>
+  {#- Board E2a: the Display names card draws itself (modules/display_names.py), so its Save
+      answers in its own region and the tab's redraw on `posture` leaves its result alone. -#}
+  <div id="card-display-names" hx-get="{{ url_for('settings_v2.display_names_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
   {#- The local account's card draws itself (modules/local_account.py): off by default. -#}
   <div id="card-local-account" hx-get="{{ url_for('settings_v2.local_account_card') }}" hx-trigger="load" hx-swap="outerHTML"></div>
 </div>

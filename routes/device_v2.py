@@ -66,8 +66,10 @@ def _who() -> dict:
                 "why": ident.reason or ident.outcome,
                 "note": "you can look; a gated action will refuse",
                 "sign_in": sign_in, "local": local}
-    name = (identity.service_label(ident.service_id) if ident.kind == "service"
-            else ident.actor)
+    # Board E2a: the person's display name (the name they set, else the part of their identity
+    # before the "@"; a service by its label), and their initials from it. The verified
+    # identity itself is drawn only in a collapsed record (Settings › Installation › Access).
+    name = identity.display_name(ident.actor)
     # How they were verified, in the identity's own word (`identity.verification_of`, which
     # fails closed): an identity that does not say is drawn with no claim about it.
     how = {identity.LOCAL_ACCOUNT: "with this installation's local account",
@@ -787,6 +789,8 @@ def _attention_trigger():
     # And a hold's start and end (`HELD_KEYS`): a row's action greys while a run holds its
     # device and returns when the run ends, without a reload.
     keys = ATTENTION_KEYS + tuple(k for k in HELD_KEYS if k not in ATTENTION_KEYS)
+    # And a display name's change (board E2a): its rows name people by display name.
+    keys += ("people",)
     return {"attention_trigger": ", ".join(f"nmas:{k} from:body" for k in keys + (DUE_EVENT,))}
 
 

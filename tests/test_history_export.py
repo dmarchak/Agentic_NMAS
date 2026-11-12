@@ -45,6 +45,8 @@ from tests.test_sdn_connections import networks  # noqa: F401 (the fixture)
 from tests.test_sdn_flow_ops import ask, ctl, drop, run  # noqa: F401 (the fixture)
 
 NET = "Default"
+#: PERSON as a file names them (board E2a): by display name, the part before the "@".
+SHOWN = PERSON.split("@")[0]
 URL_SECRET = "SeCrEt-Tok3n"
 PLANTED = f"fatal: https://x-access-token:{URL_SECRET}@example.invalid/o/r.git denied"
 
@@ -696,11 +698,12 @@ def test_each_file_opens_with_its_log_range_network_and_who_made_it(world):  # n
     now = time.time()
     made = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     c = X.download("calls", "csv", NET, YESTERDAY, TODAY, by=PERSON, default=NET, now=now)
-    head = _rows(c["body"])[:5]
+    head = _rows(c["body"])[:6]
+    # Board E2a: who made the file is written by display name, and the file says so.
     assert head == [["# log", "Mercury: AI calls and cost"],
                     ["# range", YESTERDAY, TODAY, "2 whole UTC days, inclusive"],
-                    ["# network", NET], ["# made", made, "by", PERSON],
-                    ["# amounts", X.AMOUNTS]]
+                    ["# network", NET], ["# made", made, "by", SHOWN],
+                    ["# people", X.PEOPLE], ["# amounts", X.AMOUNTS]]
     assert c["filename"] == f"mercury-ai-calls-Default-{YESTERDAY}-to-{TODAY}.csv"
     f = X.download("failures", "json", X.EVERY, YESTERDAY, TODAY, by=PERSON, default=NET,
                    now=now)
@@ -709,13 +712,61 @@ def test_each_file_opens_with_its_log_range_network_and_who_made_it(world):  # n
                          ' "range": {']
     doc = json.loads(f["body"])
     assert (doc["range"]["from"], doc["range"]["to"], doc["network"], doc["made_at"],
-            doc["made_by"]) == (YESTERDAY, TODAY, "every network", made, PERSON)
+            doc["made_by"]) == (YESTERDAY, TODAY, "every network", made, SHOWN)
+    assert doc["people"] == X.PEOPLE and "display name" in X.PEOPLE
     assert doc["not_recorded"] == X.NOT_RECORDED and doc["rows"] == []
     j = json.loads(X.download("calls", "json", NET, YESTERDAY, TODAY, by=PERSON,
                               default=NET, now=now)["body"])
     assert list(j)[:5] == ["log", "range", "network", "made_at", "made_by"]
     assert j["summary"]["calls"] == 1 and j["by_day"][0]["day"] == TODAY
     assert len(calls.read()["rows"]) == 1
+
+
+def test_each_file_names_people_by_display_name_and_holds_no_identity(world):  # noqa: F811
+    """Board E2a (the operator, 2026-11-11): a file leaves the host, so who made it, who
+    pressed a call and who dismissed a detection are written by display name (the name the
+    person set, else the part of their identity before the "@"), in the CSV and the JSON, and
+    the file says so. The logs' own rows, and so Mercury's records, keep the identity."""
+    import os
+
+    from modules import config, display_names
+    from tests.people_drawn import identities
+
+    _responses(time.time() - 60)                # two detections dismissed by op@example.com
+    _analyst_calls(world)                       # three calls a person (PERSON) pressed
+    store = os.path.join(config.DATA_DIR, display_names.FILENAME)
+    try:
+        assert display_names.set_name("op@example.com", "Opal", by="op@example.com",
+                                      actor_verified="access")["name"] == "Opal"
+        files = {(kind, fmt): X.download(kind, fmt, NET, YESTERDAY, TODAY, by=PERSON,
+                                         default=NET)
+                 for kind in ("calls", "failures") for fmt in ("csv", "json")}
+        for which, f in files.items():
+            assert f["ok"], (which, f["error"])
+            assert identities(f["body"]) == [], which
+            assert PERSON not in f["body"] and "op@example.com" not in f["body"], which
+        made = [r for r in _rows(files["calls", "csv"]["body"]) if r[:1] == ["# made"]]
+        assert made[0][2:] == ["by", SHOWN]
+        assert ["# people", X.PEOPLE] in _rows(files["failures", "csv"]["body"])
+        pressed = [r for r in json.loads(files["calls", "json"]["body"])["rows"]
+                   if r["trigger"] == "person"]
+        assert len(pressed) == 3 and {r["by"] for r in pressed} == {SHOWN}
+        doc = json.loads(files["failures", "json"]["body"])
+        assert doc["people"] == X.PEOPLE and doc["made_by"] == SHOWN
+        dismissed = [r for r in doc["rows"] if r["kind"] == "dismissed"]
+        assert [r["who"] for r in dismissed] == ["Opal", "Opal"], "the name they set"
+        columns = _rows(files["failures", "csv"]["body"])
+        head = columns.index(list(X.FAILURE_COLUMNS))
+        who = X.FAILURE_COLUMNS.index("who")
+        assert [r[who] for r in columns[head + 1:head + 3]] == ["Opal", "Opal"]
+        # What the logs read is untouched: the record keeps the identity.
+        assert X.failures(NET, YESTERDAY, TODAY)["rows"][0]["who"] == "op@example.com"
+        assert {r["by"] for r in X.calls(NET, YESTERDAY, TODAY)["rows"]
+                if r["trigger"] == "person"} == {PERSON}
+    finally:
+        for left in (store, store + ".lock"):
+            if os.path.exists(left):
+                os.remove(left)
 
 
 def test_an_unknown_log_format_or_network_is_refused_naming_it(world):  # noqa: F811

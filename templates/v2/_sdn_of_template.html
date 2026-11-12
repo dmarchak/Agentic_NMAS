@@ -26,7 +26,7 @@
 {%- elif d.state_card == 'confirmed' %}
 <div class="card sdn-op of-op" id="of-template-op" data-holds-live="review" aria-label="Template confirmed">
   <h3>Confirmed {{ d.template }} on {{ net }} {{ badge('confirmed', 'ok') }}</h3>
-  <p class="small">Committed as {{ d.actor }} (<span class="mono">{{ d.path }}</span>{% if d.commit %}, commit <span class="mono">{{ d.commit[:7] }}</span>{% endif %}) against <span class="mono">{{ d.capture }}</span>. Configure from NetBox… now sends it to {{ d.template }}'s switches. <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></p>
+  <p class="small">Committed as {{ d.actor | people }} (<span class="mono">{{ d.path }}</span>{% if d.commit %}, commit <span class="mono">{{ d.commit[:7] }}</span>{% endif %}) against <span class="mono">{{ d.capture }}</span>. Configure from NetBox… now sends it to {{ d.template }}'s switches. <a href="{{ url_for('v2.history_page', kind='commits') }}">Open History's commits</a></p>
   <div class="apps-acts">{{ close() }}</div>
 </div>
 {%- else %}

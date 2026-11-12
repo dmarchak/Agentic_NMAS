@@ -120,7 +120,7 @@
   {%- endif %}
   {%- if r.ai %}{% set a = r.ai %}
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
-    <p class="small">{% if a.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305): the evidence settles it') }}{% else %}{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }}{% endif %} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · {% if a.by_code %}decided in code, no AI call{% else %}<span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span>{% endif %}</span></p>
+    <p class="small">{% if a.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305): the evidence settles it') }}{% else %}{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }}{% endif %} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by | people }}{% if a.who %} ({{ a.who | people }}){% endif %} {{ stamp(a.at) }} · {% if a.by_code %}decided in code, no AI call{% else %}<span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span>{% endif %}</span></p>
     <p class="small">{{ a.reasoning }}</p>
     <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
     {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}
@@ -196,7 +196,7 @@
     <dl class="kv small">
       <dt>Seen</dt><dd>{{ stamp(c.at) }}: {{ c.words }} <span class="faint">(confidence {{ c.confidence }})</span></dd>
       <dt>Hosts behind it</dt><dd>{% if c.affected %}{% for h in c.affected %}<span class="mono">{{ h.address or h.mac }}</span> <span class="faint">on {{ h.dpid_hex }} port {{ h.port_no }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="faint">none the controller lists on either switch</span>{% endif %}</dd>
-      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.pairs %}
+      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor | people }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.pairs %}
         <details class="sdn-also" data-keep="link-{{ c.id }}-pairs"><summary class="small">Each host pair traced ({{ c.verify.checked }} of {{ c.verify.total }})</summary>
           <ul class="sdn-also-list small">{% for p in c.verify.pairs %}<li><span class="mono">{{ p.source }}</span> to <span class="mono">{{ p.destination }}</span>: {{ p.state | replace('_', ' ') }}: {{ p.words }}</li>{% endfor %}</ul>
         </details>{% endif %}{% else %}not verified yet: the forwarding app reroutes by itself on a port down, and Mercury sends nothing{% endif %}</dd>
@@ -225,7 +225,7 @@
 
 <section class="card sdn-mode" aria-labelledby="sdn-mode-h">
   <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
-  <p class="small">{{ m.words }}.</p>
+  <p class="small">{{ m.words | people }}.</p>
   {#- C2009 (PHASE8_PLAN 17.7's guard): AUTO is turned on, and runs, only on a network marked lab
       until the AUTO production-readiness gate is complete. -#}
   {%- set st = g.stage %}
@@ -262,7 +262,7 @@
       {%- if g.loop.running %}<input type="hidden" name="run" value="stop"><button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Stop</span><span class="op-busy">Stopping…</span></button>{{ how('sdn', 'responses', compact=True, op='Stop') }}
       {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <label class="small">run for <select name="run_for">{% for m in g.run_for.choices %}<option value="{{ m }}"{% if m == g.run_for.default %} selected{% endif %}>{{ m }} minute{{ 's' if m != 1 }}</option>{% endfor %}</select></label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
     </form></div>
-  <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
+  <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by | people }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | people | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
   {%- if g.loop.running and g.loop.until %}
   <p class="small sdn-loop-bound"><strong>Stops by itself</strong> {{ stamp(g.loop.until) }} (run for {{ (g.loop.run_for_s / 60) | int }} minutes), or after {{ g.loop.max_passes }} passes ({{ g.loop.passes }} so far), or on Stop.</p>
   {%- else %}

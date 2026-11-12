@@ -143,7 +143,8 @@ class TestTheGroupSwitch:
                                       data=_form(prev))
         html = out.get_data(as_text=True)
         assert out.status_code == 200 and "inherits from Default" in html
-        assert "by test-person@example.invalid" in html
+        # Board E2a: the person is drawn by display name, the part before the "@".
+        assert "by test-person" in html and "test-person@example.invalid" not in html
         assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.10:3000", L.INHERITED)
         rec = L.changes("Branch")["rows"][0]
         assert rec["kind"] == "group" and rec["actor_verified"] == "access"

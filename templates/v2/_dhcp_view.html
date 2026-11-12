@@ -74,7 +74,7 @@
   </table></div>
   {%- set lc = g.families | map(attribute='lifetime_classes') | sum(start=[]) %}
   {%- if lc %}
-  <p class="note small" data-lifetime-classes>A client class's lease time beats its subnet's: {% for c in lc %}<span class="mono">{{ c.name }}</span> ({{ c.family }}, {{ c.who }}) {{ g.duration(c.valid) }}{% if c.preferred %} · preferred {{ g.duration(c.preferred) }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  <p class="note small" data-lifetime-classes>A client class's lease time beats its subnet's: {% for c in lc %}<span class="mono">{{ c.name }}</span> ({{ c.family }}, {{ c.who | people }}) {{ g.duration(c.valid) }}{% if c.preferred %} · preferred {{ g.duration(c.preferred) }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
   {%- endif %}
   {%- if g.subnets and g.subnets | selectattr('held', 'equalto', 'kea-file') | list %}
   <p class="note small">Kea's subnets are written by hand in Kea's own files today. Before Mercury's first change to them, one host step moves every subnet and its reservations into Mercury's own files, unchanged, with Kea's running configuration compared before and after (board C). From then on Mercury writes only its own files and applies them with <span class="mono">config-reload</span>.</p>
@@ -193,7 +193,7 @@
     <thead><tr><th scope="col">Range</th><th scope="col">Subnet</th><th scope="col">Reason</th><th scope="col">Source</th><th scope="col">In a pool?</th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
     <tbody>{% for e in g.exclusions %}<tr>
       <td class="mono">{{ e.range }}</td><td class="mono">{{ e.prefix }}</td><td>{{ e.reason }}</td>
-      <td class="small">{{ e.source }}{% if e.detail %} <span class="faint">{{ e.detail }}</span>{% endif %}<br><span class="faint">{{ e.by }}, {{ (e.at or '')[:10] }}</span></td>
+      <td class="small">{{ e.source }}{% if e.detail %} <span class="faint">{{ e.detail }}</span>{% endif %}<br><span class="faint">{{ e.by | people }}, {{ (e.at or '')[:10] }}</span></td>
       <td class="small">{{ 'yes: the pool is split around it' if e.inside else 'outside the pool today; kept out if it grows' }}</td>
       <td>{% if g.writable %}<a class="btn btn-small" href="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-get="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-exclusion" aria-label="Remove the exclusion {{ e.range }}">Remove…</a>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}{% endif %}</td>
     </tr>{% endfor %}</tbody>

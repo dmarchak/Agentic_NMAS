@@ -76,6 +76,8 @@ VOCABULARY = {
     "netbox": "the NetBox objects Mercury shows or counts",
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
+    "people": "how each person is named on a screen: a display name set or returned to its "
+              "default (modules/display_names.py, board E2a)",
     "device_state": "what a device runs: anything read live from it",
     "host_keys": "the SSH host key Mercury keeps for each device: kept on first contact, "
                  "refused when it changed, replaced by a re-key (modules/host_keys.py, C906)",
@@ -157,6 +159,9 @@ VOCABULARY = {
 #: they send are senders to `keys_in_use`, exactly as a reader's are.
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
+    # routes/settings_v2.display_name (board E2a): a display name changed, for every open
+    # page's name chip and Needs attention; the posting page hears its own response.
+    "display-names": ("people",),
     # modules/apps/deploy_op.py (P6): each step of a controller app deploy, and at its end the
     # receipt, the SDN region and the planned-restart window it declared and ended.
     "controller-deploy": ("controller_deploy", "sdn", "restarts"),
@@ -391,6 +396,7 @@ DECLARED = {
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
     "settings_v2.install_ratify": ("posture", "settings"),
+    "settings_v2.display_name": ("people",),
     "settings_v2.local_sign_in": ("posture",),
     "settings_v2.local_sign_out": ("posture",),
     "settings_v2.platforms_test": ("reads",),

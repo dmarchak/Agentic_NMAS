@@ -6,7 +6,7 @@
 {%- if c.refused %}
   <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Not revealed: {{ c.refused }}. Nothing was shown.</span></p>
 {%- else %}
-  <p class="small">{{ c.host }}'s golden at <code>{{ c.sha[:10] }}</code>, unmasked: revealed to {{ c.by }} and recorded in the reveal record. Its secrets are in the clear below.</p>
+  <p class="small">{{ c.host }}'s golden at <code>{{ c.sha[:10] }}</code>, unmasked: revealed to {{ c.by | people }} and recorded in the reveal record. Its secrets are in the clear below.</p>
   <pre class="mono small set-config">{{ c.text }}</pre>
 {%- endif %}
 </div>

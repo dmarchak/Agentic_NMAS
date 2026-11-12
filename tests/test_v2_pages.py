@@ -264,7 +264,9 @@ class TestTheLanding:
                                      "at": "2026-09-30T04:10:00Z", "actor": "operator@example.com",
                                      "program_lines": 4}]})
         text = _text(_client().get("/v2/").get_data(as_text=True))
-        assert "Deploy r6 · deployed · 4 lines" in text and "by operator@example.com" in text
+        # Board E2a: who deployed, by display name (the part before the "@").
+        assert "Deploy r6 · deployed · 4 lines" in text and "by operator " in text
+        assert "operator@example.com" not in text
         monkeypatch.setattr("modules.nsot.receipts.read", lambda list_name, device="", limit=50: {
             "state": "unreadable", "rows": []})
         assert "could not be read. This is not the same as no changes" in \

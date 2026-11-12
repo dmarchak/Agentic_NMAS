@@ -609,7 +609,8 @@ def test_a_move_is_the_network_s_layout_for_everyone_and_recorded(web):
     assert log[-1]["action"] == "moved" and log[-1]["device"] == "r1"
     html = _get(web)
     assert _places(html)["r1"] == tuple(float(v) for v in stored["positions"]["r1"])
-    assert "Arranged by test-person@example.invalid" in html
+    # Board E2a: who arranged it, by display name (the part before the "@").
+    assert "Arranged by test-person" in html and "test-person@example.invalid" not in html
     # A move draws no notice: its result is the device where it was dropped (no narration).
     assert "set-result" not in r.get_data(as_text=True).split('id="topo-result"')[-1]
     # History: the move, by whom, on the network's History and on r1's own.

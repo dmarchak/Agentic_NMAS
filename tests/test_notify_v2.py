@@ -213,7 +213,9 @@ def test_the_relays_password_is_stored_never_drawn_and_says_who_set_it(n):
     assert r.status_code == 200 and "Password replaced" in card
     assert RELAY_PW not in card and credentials.get_notify_secret("relay") == RELAY_PW
     _r, card = _get(n, "/v2/settings/installation/card/relay")
-    assert "never shown" in card and "by test-person@example.invalid" in card
+    # Board E2a: who set it, by display name (the part before the "@").
+    assert "never shown" in card and "by test-person, never shown" in card
+    assert "test-person@example.invalid" not in card
     assert RELAY_PW not in n.client.get(TAB).get_data(as_text=True)
     r, card = _post(n, BASE + "/relay/password", {"password": ""})
     assert r.status_code == 409 and credentials.get_notify_secret("relay") == RELAY_PW
@@ -252,7 +254,9 @@ def test_an_address_is_verified_by_its_code_then_on(n):
     r, tab = _post(n, f"{BASE}/teams/{team}/{dest}/enabled", {"on": ""})
     assert r.status_code == 200 and not teams.read()["teams"][team]["destinations"][dest]["enabled"]
     _r, tab = _get(n, f"{BASE}/teams/{team}/{dest}/remove/ask")
-    assert "Remove noc@example.com?" in tab and dest in teams.read()["teams"][team]["destinations"]
+    # Board E2a: a destination is drawn whole, in an element that says it is a setting's value.
+    assert 'Remove <span data-address="destination">noc@example.com</span>?' in tab
+    assert dest in teams.read()["teams"][team]["destinations"]
     r, tab = _post(n, f"{BASE}/teams/{team}/{dest}/remove")
     assert r.status_code == 200 and not teams.read()["teams"][team]["destinations"]
 

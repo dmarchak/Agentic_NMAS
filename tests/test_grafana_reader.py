@@ -438,7 +438,8 @@ class TestASilenceStaysARow:
         monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
         from tests.test_needs_attention import _panel
         html = _panel(A.needs_attention())
-        assert "<strong>silenced in Grafana</strong> by operator@example.com until 2026-09-30" in html
+        # Board E2a: the silence's author by display name, the part before the "@".
+        assert "<strong>silenced in Grafana</strong> by operator until 2026-09-30" in html
         assert "send log 2 test &lt;b&gt;" in html and "test <b>" not in html
 
     def test_v2s_panel_draws_it_on_the_member_and_escapes_the_comment(self, inventory,
@@ -454,7 +455,8 @@ class TestASilenceStaysARow:
         html = APP.app.test_client().get("/v2/attention").get_data(as_text=True)
         members = html[html.index('<ul class="att-members">'):]
         members = members[:members.index("</ul>")]
-        assert ("<strong>silenced in Grafana</strong> by operator@example.com until "
+        # Board E2a: the silence's author by display name, the part before the "@".
+        assert ("<strong>silenced in Grafana</strong> by operator until "
                 "2026-09-30 10:15 UTC") in members, members
         assert "(&ldquo;send log 2 test &lt;b&gt;&rdquo;)" in members, members
         assert "test <b>" not in html

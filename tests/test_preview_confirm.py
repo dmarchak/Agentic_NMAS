@@ -198,7 +198,8 @@ class TestConfirmSaysWho:
         # The person is named in the statement; there is no separate `actor`
         # echo (7.1: read by nothing, since the apply records the verified one).
         assert c["may"] is True and "actor" not in c
-        assert c["statement"].startswith("You are confirming as ") and "@" in c["statement"]
+        # Board E2a: named by display name (the part of the identity before the "@").
+        assert c["statement"] == "You are confirming as test-person."
 
     def test_no_identity_is_a_stated_refusal_and_the_button_says_it(self, monkeypatch):
         """With nobody verified the part refuses in words, and v2's Deploy… card fails its

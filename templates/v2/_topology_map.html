@@ -198,7 +198,7 @@
     space to pan, the wheel or a pinch zooms at the pointer, a device dragged on a wide screen is
     moved and the map saved for everyone through the form below (C661). -#}
 <p class="topo-how small"><span class="topo-wide-inline">Drag a device to move it: saved for everyone on {{ t.list }}, recorded on History. </span>Drag empty space to pan; the wheel or a pinch zooms at the pointer. <span class="topo-narrow-inline">Devices are moved on a wider screen.</span>
-  {%- if t.arranged.state == 'ok' %} <span class="topo-faint">Arranged by {{ t.arranged.by }}, {{ stamp(t.arranged.at) }}; a device added since is placed near its neighbours.</span>
+  {%- if t.arranged.state == 'ok' %} <span class="topo-faint">Arranged by {{ t.arranged.by | people }}, {{ stamp(t.arranged.at) }}; a device added since is placed near its neighbours.</span>
   {%- elif t.arranged.state == 'unreadable' %} <span class="topo-warn-t">The saved layout cannot be read ({{ t.arranged.error }}): the map is laid out by the cabling; a move is refused until Reset layout sets it aside (kept, under a dated name).</span>{% endif %}</p>
 <div class="topo-scroll" data-topo-view="{{ t.list }}">
 <svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}"{% if t.s.snap == '1' %} data-snap="{{ t.grid }}"{% endif %} role="img" aria-label="{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read">
@@ -329,7 +329,7 @@
     <summary>{{ t.group_words.weak }} ({{ c.weak }}{% if c.accepted %}, {{ c.accepted }} accepted{% endif %})</summary>
     {%- for w in at.groups.weak %}
     <div class="topo-ent topo-weak">
-      {%- if w.kind == 'accepted' %}<span class="mono">{{ w.device if w.was == 'spof' else w.title }} {{ badge('accepted', 'neutral') }}</span><span class="topo-what">Accepted: {{ w.expected.reason }} ({{ w.expected.by }}, {{ stamp(w.expected.at) }}). {{ w.words }}</span>
+      {%- if w.kind == 'accepted' %}<span class="mono">{{ w.device if w.was == 'spof' else w.title }} {{ badge('accepted', 'neutral') }}</span><span class="topo-what">Accepted: {{ w.expected.reason }} ({{ w.expected.by | people }}, {{ stamp(w.expected.at) }}). {{ w.words }}</span>
       <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.key }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an accepted weak point') }}</span></form>
       {%- elif w.kind in ('spof', 'bridge') %}<span class="mono">{% if w.kind == 'spof' %}{{ w.device }} {{ badge('SPOF', 'warn') }}{% else %}{{ w.title }} {{ badge('only link', 'warn') }}{% endif %}</span><span class="topo-what">{{ w.words }}{% if w.changed %} Accepted on {{ stamp(w.changed.at) }} when it cut off {{ w.changed.holds | join(', ') }}; it now cuts off {{ w.holds | join(', ') }}, so it warns again.{% endif %}</span>
         {#- C1487: a weak point the design intends is accepted with why, as an island is declared
@@ -372,7 +372,7 @@
   <details class="topo-grp" data-keep="topo-att-apart">
     <summary>{{ t.group_words.apart }} ({{ at.groups.apart | length }})</summary>
     {%- for w in at.groups.apart %}
-    <div class="topo-ent topo-weak"><span class="mono">{{ w.device }} {{ badge('expected', 'neutral') }}</span><span class="topo-what">{{ w.why }}. Declared apart on purpose: {{ w.expected.reason }} ({{ w.expected.by }}, {{ stamp(w.expected.at) }}).</span>
+    <div class="topo-ent topo-weak"><span class="mono">{{ w.device }} {{ badge('expected', 'neutral') }}</span><span class="topo-what">{{ w.why }}. Declared apart on purpose: {{ w.expected.reason }} ({{ w.expected.by | people }}, {{ stamp(w.expected.at) }}).</span>
       <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.device }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span></form>
     </div>
     {%- endfor %}

@@ -12,7 +12,17 @@ a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
 Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html
-Templates sha256: `b6d669208a84fb722a83bb86a8125f434f3356644530c91deb75381a86ab6568`
+Templates sha256: `56f1640c85c6296c15d7eb814dde4956d93f947af49d32bcf8077455800007c5`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_settings_ai_bg.html` and `_install_card.html`, each
+place that draws a person (who turned a feature on or off or changed its caps, who allowed or
+turned off hosted AI, who saved, replaced or chose a card's value) now draws them through the
+`people` filter, by display name (the name the person set, else the part of their identity
+before the "@"), in the same element and position; no region is added, removed or moved, and no
+other word changes. Where the board draws an identity the built screen draws the name, a
+deviation logged once for every screen (log: Display names: a person is drawn by display name
+on every screen). Every other verdict stands.
 
 **Compared again 2026-10-29 (the operator's order of that day, item 5: no cap asks for a
 reason):** `_install_card.html`'s no-cap confirmation adds a one-line Reason field beside the

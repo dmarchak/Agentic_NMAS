@@ -142,7 +142,9 @@ def notice(r: dict, deployed: dict, now: float = None) -> dict:
     sha, run = r["sha"], r.get("run") or {}
     where = CV.failed_words({"failed_at": r.get("failed_at")})
     mine = deployed if (deployed or {}).get("to") == sha else {}
-    by = mine.get("requested_by") or "nobody recorded"
+    from modules import display_names                   # board E2a: a person by display name
+
+    by = display_names.people(mine.get("requested_by") or "") or "nobody recorded"
     at = mine.get("ended_at") or "an unrecorded time"
     route = {"terminal": "nmas-deploy", "updater": "the Update button"}.get(mine.get("route"),
                                                                           "")

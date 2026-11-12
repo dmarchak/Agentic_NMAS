@@ -88,7 +88,7 @@ class TestTheResultIsDrawnFromTheRecord:
         assert "notice-muted set-result" in card
         assert "1 object(s) deleted from NetBox for Branch." in card
         assert "Left alone" in card and "dcim/devices #9 r9" in card
-        assert f"by {TEST_PERSON}" in _removals(networks)
+        assert f"by {TEST_PERSON.split('@')[0]}<" in _removals(networks)   # board E2a
 
     def test_forget_is_recorded_and_says_nothing_was_deleted(self, networks, removal):
         """Stop tracking's result, through the same record (`netbox_ops.remove`'s forget_only,
@@ -111,7 +111,7 @@ class TestTheResultIsDrawnFromTheRecord:
         summary = "1 object(s) deleted from NetBox for Branch; NetBox REFUSED 1"
         assert summary in card and summary in back
         assert "notice-warn set-result" in back, "the record read back is drawn green"
-        assert f"by {TEST_PERSON}" in back
+        assert f"by {TEST_PERSON.split('@')[0]}<" in back                  # board E2a
 
 
 class TestTheRemovalsRead:

@@ -117,7 +117,7 @@
       {%- elif rc.commit_error %}{{ badge('NOT committed', 'warn') }} <span>record: written, NOT committed: {{ rc.commit_error }}</span>
       {%- else %}{{ badge('done', 'ok') }} <span>record: written and committed{% if rc.commit %} (commit <span class="mono">{{ rc.commit[:7] }}</span>){% endif %}</span>{% endif %}</li>{% endif %}</ol>
     {%- if r.error %}<p>{{ r.error }}</p>{% endif %}
-    <p>By {{ r.by or 'nobody recorded' }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>
+    <p>By {{ (r.by or 'nobody recorded') | people }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>
     {%- if r.record and not r.record.ok %}<p class="notice notice-warn">{{ icon('warn', 16) }} The reload's record was not written ({{ r.record.error }}): the restart is still in History.</p>{% endif %}</div></div>
   {{ effects_part(c.effects) }}
   {%- if r.outcome == 'not_back' %}
@@ -139,7 +139,7 @@
     <div class="op-hd-actions">{{ how('reload', 'verify-again') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
     {%- if c.rec %}
-    <p>Its reload of {{ stamp(c.rec.at) }}, by {{ c.rec.by or 'nobody recorded' }}, ended not verified{% if c.detail %}: {{ c.detail }}{% endif %}.</p>
+    <p>Its reload of {{ stamp(c.rec.at) }}, by {{ (c.rec.by or 'nobody recorded') | people }}, ended not verified{% if c.detail %}: {{ c.detail }}{% endif %}.</p>
     {%- else %}
     <p>{{ c.host }}'s newest reload record did not end not verified{% if c.rec_error %} ({{ c.rec_error }}){% endif %}: there is nothing to verify again.</p>
     {%- endif %}</div></div>

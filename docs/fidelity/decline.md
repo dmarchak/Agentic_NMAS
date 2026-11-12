@@ -9,7 +9,16 @@ the lab having no IP SLA policy), then the Decline… card opened as its button 
 reason typed. The board draws no phone width; at 390 the rows stack (label, why, then the
 controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
-Templates sha256: `c67d54294d4875faad9432fbb0856c306406466f7f443c328ab4355d529d54e0`
+Templates sha256: `6d288ff1ce3e89ba264ef82d8c82f5a1679c1b653ea152e1f3eb911b6c3c9cc4`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_decline.html` and `_coverage.html`, each place that
+draws a person (who a decline is recorded as, "Declined by") now draws them through the
+`people` filter, by display name (the name the person set, else the part of their identity
+before the "@"), in the same element and position; no region is added, removed or moved, and no
+other word changes. Where the board draws an identity the built screen draws the name, a
+deviation logged once for every screen (log: Display names: a person is drawn by display name
+on every screen). Every other verdict stands.
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of
 `_coverage.html` carries `data-key` (its stable key, which the live merge matches rows by), so
 a live redraw changes only the rows that changed; nothing drawn moves. Compared by reading the

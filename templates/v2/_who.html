@@ -2,9 +2,13 @@
     Not identified, it is a button that asks again, so a person who has just signed in
     to Access sees it without reloading the page; where the installation's local account may
     sign in (modules/local_account.py) it is a link to that sign-in, and where that is not
-    possible on a loopback-only installation it says why. -#}
+    possible on a loopback-only installation it says why. Identified, it names the person by
+    their display name (board E2a: `identity.display_name`, the name they set, else the part of
+    their identity before the "@"), its initials from that name, and reads again when a display
+    name changes (`people`); the verified identity is drawn only in a collapsed record, on
+    Settings › Installation › Access and identity. -#}
 {%- if who.identified -%}
-<span class="who" id="nmas-who" data-identified="yes" title="Signed in{% if who.how %} {{ who.how }}{% endif %} as {{ who.name }}"><span class="avatar">{{ who.initials }}</span><span class="who-name">{{ who.name }}</span></span>
+<span class="who" id="nmas-who" data-identified="yes" title="Signed in{% if who.how %} {{ who.how }}{% endif %} as {{ who.name }}" hx-get="{{ url_for('device_v2.who') }}" hx-trigger="nmas:people from:body" hx-swap="outerHTML"><span class="avatar">{{ who.initials }}</span><span class="who-name">{{ who.name }}</span></span>
 {%- elif who.sign_in -%}
 <a class="who who-none" id="nmas-who" data-identified="no" href="{{ who.sign_in }}" title="{{ who.why }}: {{ who.note }}. Sign in with this installation's local account."><span class="avatar">{{ who.initials }}</span><span class="who-name">{{ who.name }}</span></a>
 {%- else -%}

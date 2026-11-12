@@ -594,8 +594,12 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     device = decision["device"]
     pol = decision.get("policy") or {}
     setter = pol.get("by") or ""
-    via = f"heal to intent (policy set by {setter or 'nobody recorded'})"
-    steps = [{"step": "take", "result": "ok", "words": f"taken by {via}"}]
+    # Board E2a: the words name the policy's setter by display name; the identity is kept
+    # beside them, in its own field (`policy_by`), on each row and each step that names them.
+    via = steplog.policy_words("heal to intent", setter)
+    setter_shown = identity.display_name(setter) if setter else ""
+    by_field = {"policy_by": setter} if setter else {}
+    steps = [dict({"step": "take", "result": "ok", "words": f"taken by {via}"}, **by_field)]
     # What the records need once the act ends (H6: the change record, the journal entry), as
     # each becomes known.
     held = {"dev": {}, "prog": None, "read": "", "entry": {}, "authorise": [], "platform": "",
@@ -633,7 +637,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
         result["records"] = _records(network, decision, result, src, held, now)
         try:
-            steplog.record_act(network, decision, result, by=via, now=now)
+            steplog.record_act(network, decision, result, by=via, policy_by=setter, now=now)
             result["records"]["step_log"] = "written"
         except Exception as exc:
             log.error("heal: %s's act on %s is not in the step log: %s", network, device, exc)
@@ -760,14 +764,16 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     # so a heal whose job ends mid-apply leaves what it was sending (H6).
     try:
         steplog.record_started(network, decision, steps + [{
-            "step": "apply", "result": "running",
-            "words": f"as the policy set by {setter}, holding {device}"}],
-            [redact_text(x) for x in prog["commands"]], prog["hash"], by=via, now=now)
+            "step": "apply", "result": "running", **by_field,
+            "words": f"as the policy set by {setter_shown}, holding {device}"}],
+            [redact_text(x) for x in prog["commands"]], prog["hash"], by=via,
+            policy_by=setter, now=now)
     except Exception as exc:
         return refuse("apply", (f"the program could not be written to the step log before it "
                                 f"is sent ({type(exc).__name__}: {exc}), and a heal sends "
                                 "nothing it has not recorded"))
-    step("apply", "running", f"as the policy set by {setter}, holding {device}")
+    step("apply", "running", f"as the policy set by {setter_shown}, holding {device}",
+         **by_field)
     with identity.carried_policy(setter, pol.get("fingerprint") or ""):
         report = src.apply(
             device, confirmations={device: entry.get("capture_hash")},

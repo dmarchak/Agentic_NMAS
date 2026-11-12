@@ -15,7 +15,7 @@
 </div>
 <section class="card retired-card">
   <h2>Its record</h2>
-  <p>Retired by {{ r.actor or 'nobody recorded' }}{% if r.verified %} ({{ r.verified }}){% endif %}{% if r.reason %}: &ldquo;{{ r.reason }}&rdquo;{% endif %}. Commit <span class="mono">{{ r.sha[:12] }}</span>; its last intent and golden are in history, the parent of that commit.</p>
+  <p>Retired by {{ (r.actor or 'nobody recorded') | people }}{% if r.verified %} ({{ r.verified }}){% endif %}{% if r.reason %}: &ldquo;{{ r.reason }}&rdquo;{% endif %}. Commit <span class="mono">{{ r.sha[:12] }}</span>; its last intent and golden are in history, the parent of that commit.</p>
   <p class="dev-actions"><a class="btn" href="{{ url_for('v2.history_page', device=name, since='') }}">Its history (the same timeline, filtered to {{ name }})</a>
     <a class="btn" data-op="onboard" href="{{ url_for('onboard_v2.new', list=list_name, hostname=name) }}" hx-get="{{ url_for('onboard_v2.new', list=list_name, hostname=name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Onboard it again…</a>{{ how('onboard') }}</p>
   <p class="muted small">To manage {{ name }} again is onboarding or adopt, not an undo: its credential survives only in the break-glass record.</p>

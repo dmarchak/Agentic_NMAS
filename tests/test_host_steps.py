@@ -211,7 +211,8 @@ class TestSayingItIsDone:
         # The answer is the Update panel drawn again (C850), the step said done by its person.
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and 'id="update-said-done"' in html
-        assert "said done by p@example.invalid" in html
+        # Board E2a: who said it done, by display name (the part before the "@").
+        assert "said done by p," in html and "p@example.invalid" not in html
         row = json.loads((store / "done.jsonl").read_text().splitlines()[0])
         assert row["by"] == "p@example.invalid" and row["step"] == "tell the team"
         r = c.post("/update/host-step/done", data={

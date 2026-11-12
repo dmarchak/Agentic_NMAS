@@ -187,7 +187,8 @@ def _clock(iso: str) -> str:
 
 
 def _who(actor: str, viewer: str) -> str:
-    return "you" if actor and actor == viewer else (actor or "unknown")
+    from modules import display_names                   # board E2a: a person by display name
+    return "you" if actor and actor == viewer else (display_names.people(actor) or "unknown")
 
 
 def _step(row: dict) -> str:

@@ -503,6 +503,29 @@ class TestTheAct:
         assert rows.count("started") == 1 and rows.count("act") == 1
         assert dev.saves == [] and not any(SAVE.match(x) for x in dev.sent)
 
+    def test_its_rows_name_the_setter_by_display_name_and_keep_the_identity_beside(
+            self, act_world):
+        """Board E2a: the bounce's words name the policy's setter by display name (the part
+        of their identity before the "@"); the identity is each row's own `policy_by`, and
+        the take step's, so no screen needs to read it out of the words."""
+        from modules.heal import steplog
+        clock = Clock()
+        src = auto_src(FakeRouter(clock), clock)
+        d = taken(src)
+        out = B().apply(NET, d, sources=src)
+        assert out["outcome"] == "bounced", out["steps"]
+        setter = d["policy"]["by"]
+        assert setter == "op@example.invalid"
+        rows = {r["row"]: r for r in steplog.read(NET)["rows"] if r["row"] in ("started", "act")}
+        for name in ("started", "act"):
+            assert rows[name]["by"] == "self-healing (policy set by op)", name
+            assert rows[name].get("policy_by") == setter, name
+            assert rows[name]["policy"]["by"] == setter, "the policy the row stands on, as before"
+            assert setter not in rows[name]["by"]
+        take = out["steps"][0]
+        assert (take["step"], take["words"], take.get("policy_by")) == (
+            "take", "taken by self-healing (policy set by op)", setter)
+
     def test_a_window_that_cannot_be_recorded_sends_nothing(self, act_world, monkeypatch):
         clock = Clock()
         dev = FakeRouter(clock)

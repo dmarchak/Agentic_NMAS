@@ -18,7 +18,15 @@ the device it retired, and the history its link opens (screenshots 52, 53 and 55
 the shots: the same regions, the same words.
 Compared 2026-10-18.
 Templates compared: templates/v2/retired.html
-Templates sha256: `49c1e42fcf2f34ba273dc4ac7f9c9719283d71eb075565ecbd19f505b99fc84b`
+Templates sha256: `caecb6915a592997c43cd619b6b5e4b44df355506b958eb364ed1c3cc2229561`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `retired.html`, "Retired by <who>" now draws the person
+through the `people` filter, by display name (the name the person set, else the part of their
+identity before the "@"), in the same element and position; no region is added, removed or
+moved, and no other word changes. Where the board draws an identity the built screen draws the
+name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). Every other verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

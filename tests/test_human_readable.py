@@ -440,7 +440,7 @@ KNOWN_BARE_IDENTIFIERS = {
     ('history', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
     ('history', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
     ('history', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s Open'): 1,
-    ('history', 'incident_id', 'confirmed by admin@example.com job:heal-notice-<incident_id> Kind Every kind The repository'): 1,
+    ('history', 'incident_id', 'policy confirmed by admin job:heal-notice-<incident_id> Kind Every kind The repository'): 1,
     ('history', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
 }
 

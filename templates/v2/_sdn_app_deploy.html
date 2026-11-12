@@ -135,7 +135,7 @@
 
 {%- elif d.state == 'running' %}
 <div class="sdn-ctl-hd"><h3>Deploy to {{ d.controller }}</h3>{{ badge('Running', 'info') }}</div>
-<p class="sub">{{ d.controller }} held by {{ d.actor or 'unknown' }} · plan <span class="mono" title="{{ d.hash }}">sha256:{{ d.short }}</span></p>
+<p class="sub">{{ d.controller }} held by {{ (d.actor or 'unknown') | people }} · plan <span class="mono" title="{{ d.hash }}">sha256:{{ d.short }}</span></p>
 {{ run_stepper(d.run) }}
 <p class="apps-act"><button class="btn btn-primary" type="button" disabled aria-disabled="true" aria-busy="true" data-op="controller-app-deploy" title="Runs to its receipt; the restart cannot be taken back mid-way">Deploying…</button>{{ how('controller-app-deploy', 'running') }}</p>
 <p class="small muted">No Cancel once the command is sent: the restart cannot be taken back mid-way. Closing the tab changes nothing; the operation runs to its receipt either way.</p>

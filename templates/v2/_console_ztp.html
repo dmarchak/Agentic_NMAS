@@ -49,7 +49,7 @@
   <div class="op-part"><h3>Checks ({{ p.refusals | length }} refused)</h3><div>
     <ul class="op-gates">
       {%- for key, why in p.refused_by.items() %}
-      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'list': 'The network', 'profile': 'The console profile', 'device': 'The device', 'netbox': 'NetBox', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'survey': 'The survey it stands on', 'params': 'The parameters'}.get(key, key) }}:</strong> {{ why }}</span></li>
+      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'list': 'The network', 'profile': 'The console profile', 'device': 'The device', 'netbox': 'NetBox', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'survey': 'The survey it stands on', 'params': 'The parameters'}.get(key, key) }}:</strong> {{ why | people }}</span></li>
       {%- endfor %}
     </ul>
     {%- if p.refused_by.port %}<p class="small">Console-server ports are set up on <a href="{{ url_for('settings_v2.installation', tab='console') }}">Settings › Installation › Console servers</a>.</p>{% endif %}</div></div>
@@ -71,7 +71,7 @@
       <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Preview the survey</span><span class="op-busy">Reading NetBox…</span></button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}</span></div>
     {%- else %}
     <div class="op-part"><h3>Stands on</h3><div>
-      {%- if c.survey %}<p>The survey of {{ stamp(c.survey.at) }} by {{ c.survey.actor or 'someone' }}: {% if c.survey.blank is sameas true %}factory-blank{% elif c.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}{% if c.survey.mac %}, MAC <span class="mono">{{ c.survey.mac }}</span>{% endif %}; profile <span class="mono">{{ c.profile }}</span>.</p>
+      {%- if c.survey %}<p>The survey of {{ stamp(c.survey.at) }} by {{ (c.survey.actor or 'someone') | people }}: {% if c.survey.blank is sameas true %}factory-blank{% elif c.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}{% if c.survey.mac %}, MAC <span class="mono">{{ c.survey.mac }}</span>{% endif %}; profile <span class="mono">{{ c.profile }}</span>.</p>
       {%- else %}<p class="muted">No survey of this device is recorded.</p>{% endif %}</div></div>
     <div class="op-part"><h3>Lines</h3><div>
       <p>The hostname is {{ c.hostname or "the device's NetBox name" }}, NetBox's name for it.</p>
@@ -96,7 +96,7 @@
     </ul>
     <p class="faint small">It ends at the {{ p.program.ends }} prompt. Otherwise: {{ p.program.stops }}.</p></div></div>
   {%- else %}
-  <div class="op-part"><h3>Stands on</h3><div><p>{{ p.survey_words }}{% if p.survey and p.survey.mac %}, which read MAC <span class="mono">{{ p.survey.mac }}</span>{% endif %}.</p></div></div>
+  <div class="op-part"><h3>Stands on</h3><div><p>{{ p.survey_words | people }}{% if p.survey and p.survey.mac %}, which read MAC <span class="mono">{{ p.survey.mac }}</span>{% endif %}.</p></div></div>
   <div class="op-part"><h3>The lines</h3><div>
     <p>Exactly these, in this order, after the wake, the prelude and the blank check again:</p>
     <pre class="ask-pre">{% for line in p.lines %}{{ line }}
@@ -136,7 +136,7 @@
   <div class="op-part"><h3>What happened</h3><div>
     {%- if survey %}
     <p>{% if r.blank is sameas true %}Factory-blank{% elif r.blank is sameas false %}Not factory-blank{% else %}Whether it is blank is not known{% endif %}{% if r.attach_state %}: the console was found at {{ r.attach_state }}{% endif %}{% if r.outcome not in ('surveyed', 'stopped') %} ({{ r.outcome }}){% endif %}.</p>
-    {%- for why in r.reasons or [] %}<p class="muted">{{ why }}</p>{% endfor %}
+    {%- for why in r.reasons or [] %}<p class="muted">{{ why | people }}</p>{% endfor %}
     {%- if r.reason and r.reason not in (r.reasons or []) %}<p class="muted">{{ r.reason }}</p>{% endif %}
     <dl class="op-ops">
       <dt>MAC</dt><dd class="mono">{{ r.mac or ('unknown: ' ~ (r.mac_reason or 'not read')) }}</dd>
@@ -174,7 +174,7 @@
     <p>Read the transcript. Lines typed on a console cannot be taken back, and nothing was saved: a reload returns {{ who }} to its factory state, then survey it again.</p>
     <p>{{ again('survey', 'Survey again…') }}</p>
     {%- endif %}</div></div>
-  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor or 'someone' }} (verified: {{ r.actor_verified or 'none' }}), {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>{% if r.survey_id %}, on survey <span class="mono">{{ r.survey_id }}</span>{% endif %}. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ (r.actor or 'someone') | people }} (verified: {{ r.actor_verified or 'none' }}), {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>{% if r.survey_id %}, on survey <span class="mono">{{ r.survey_id }}</span>{% endif %}. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
 
   {%- else %}
   <div class="op-part"><h3>What happened</h3><div>

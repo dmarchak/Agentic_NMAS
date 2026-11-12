@@ -38,7 +38,7 @@
   {%- if nb.mods.error %}
   <p class="muted">{{ brand.short }}'s record of its writes to NetBox could not be read ({{ nb.mods.error }}).</p>
   {%- elif nb.mods.count %}
-  <p class="muted">{{ brand.short }} has recorded {{ nb.mods.count }} write(s) to this record, the last {{ stamp(nb.mods.last.at) }} by {{ nb.mods.last.actor }}.</p>
+  <p class="muted">{{ brand.short }} has recorded {{ nb.mods.count }} write(s) to this record, the last {{ stamp(nb.mods.last.at) }} by {{ nb.mods.last.actor | people }}.</p>
   {%- else %}
   <p class="muted">{{ brand.short }} has recorded no write to this record.</p>
   {%- endif %}

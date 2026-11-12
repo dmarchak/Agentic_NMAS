@@ -170,13 +170,16 @@ def test_who_a_hypothesis_names_is_the_model_s_or_mercury_s(world):  # noqa: F81
     chip = (rf'<span class="faint">from</span> <a class="pack-ref cite-chip" '
             rf'href="#{re.escape(pid)}-{re.escape(ref)}"')
     likely = re.search(r'data-part="most-likely".*?</section>', html, re.S).group(0)
-    assert re.search(r'data-who-by="mercury" data-actor="' + re.escape(piece["who"])
+    # Board E2a: the card names the actor by display name, the part before the "@".
+    shown = piece["who"].split("@")[0]
+    assert shown and shown != piece["who"]
+    assert re.search(r'data-who-by="mercury" data-actor="' + re.escape(shown)
                      + r'" data-refs="' + re.escape(ref) + r'"[^>]*><span class="faint">Who:'
-                     r'</span> ' + re.escape(piece["who"]) + r' \([^)<]+\) <span class="badge '
+                     r'</span> ' + re.escape(shown) + r' \([^)<]+\) <span class="badge '
                      r'badge-neutral"[^>]*>who, added by Mercury</span> ' + chip, likely), likely
     others = re.search(r'<details class="answer-others".*?</details>', html, re.S).group(0)
     assert re.search(r'data-who-by="model"[^>]*><span class="faint">Who:</span> '
-                     + re.escape(piece["who"]) + r' \([^)<]+\) ' + chip, others), others
+                     + re.escape(shown) + r' \([^)<]+\) ' + chip, others), others
     assert "added by Mercury" not in others
     assert html.count("Who:</span>") == 2, "the third cites no change and carries none"
     # An answer kept before who existed (no `who` on its hypotheses) draws none.

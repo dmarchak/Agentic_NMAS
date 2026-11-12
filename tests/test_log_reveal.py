@@ -176,7 +176,8 @@ class TestARevealByAPerson:
         html = r.get_data(as_text=True)
         assert r.status_code == 200, html
         assert f"snmp-server community {PLANTED} RO" in unescape(html)
-        assert "revealed to test-person@example.invalid" in html
+        # Board E2a: who it was revealed to, by display name (the part before the "@").
+        assert "revealed to test-person" in html and "test-person@example.invalid" not in html
         assert "reveals" in r.headers.get("X-NMAS-Invalidates", "")
         # C840: the unmasked line is an answer no cache keeps.
         assert r.headers.get("Cache-Control") == "no-store, no-transform"

@@ -31,7 +31,7 @@
       <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal" hx-post="{{ url_for('heal_proposal_v2.mark', list_name=list_name, decision_id=decision_id) }}" hx-vals='{"right": "no"}' hx-include="#{{ mid }}-why" hx-target="#{{ mid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records that what self-healing would have done was wrong, with your reason and name; sends nothing to a device"{{ gate('configure') }}><span class="op-idle">Mark it wrong</span><span class="op-busy">Marking…</span></button>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}</span>
     </details>
     {%- if mark %}
-    <span class="small heal-mark-said">Marked {{ 'right' if mark.right else 'wrong' }} by {{ 'you' if marked else (mark.by or 'an unrecorded person') }} at {{ clock(mark.at) }}{% if mark.why %}, “{{ mark.why }}”{% endif %}</span>
+    <span class="small heal-mark-said">Marked {{ 'right' if mark.right else 'wrong' }} by {{ 'you' if marked else ((mark.by or 'an unrecorded person') | people) }} at {{ clock(mark.at) }}{% if mark.why %}, “{{ mark.why }}”{% endif %}</span>
     {%- endif %}
   </div>
 </div>

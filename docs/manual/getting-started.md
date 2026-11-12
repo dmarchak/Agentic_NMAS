@@ -203,8 +203,10 @@ Who sees the amounts is not a choice yet: everyone who can make AI calls sees th
   anywhere outside a field puts the cursor in it.
 - **The theme menu**: **System** (follows this device's setting), **Light** or **Dark**. The
   choice is kept in this browser only.
-- **The name chip**: who {{product}} established you are, with "Signed in through Cloudflare
-  Access as <name>" on hover. When you are not identified it reads **Not identified** and is a
+- **The name chip**: who {{product}} established you are, by your display name (the name set
+  for you in Settings › Installation › Access and identity, else the part of your identity
+  before the "@"), with "Signed in through Cloudflare Access as <name>" on hover. When you are
+  not identified it reads **Not identified** and is a
   button: its hover, **<reason>: <note>. Click to check again.**, says why and that you can
   look but a gated action will refuse, and pressing it asks again, so a sign-in made since
   shows without reloading the page.

@@ -82,7 +82,9 @@ class TestItSaysHowItWasPublished:
         assert '<span class="badge badge-neutral">auto</span>' in render(networks, AUTO_TAG_ONLY)
 
     def test_the_actor_is_still_named(self, networks):  # noqa: F811
-        assert "by operator@example.com" in text_of(render(networks, MANUAL_COMMIT))
+        # By display name (board E2a), never the address.
+        said = text_of(render(networks, MANUAL_COMMIT))
+        assert "by operator:" in said and "operator@example.com" not in said
 
 
 class TestEdges:

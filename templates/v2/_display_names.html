@@ -1,0 +1,60 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board E2a (the operator, 2026-11-11: "Display names: configurable per person; default the
+    part before "@""): Settings › Installation › Access and identity's Display names card, from
+    modules/display_names.view through routes/settings_v2. One row per person: the viewer
+    first, then every other person who has set a name. Each row names the person as every
+    screen does, by display name; the verified identity is in the row's own collapsed record
+    and nowhere else on the page (a form names a person by a key, never by their identity).
+    Change… opens the row's form in place: Save, or Use the default. The result (saved or
+    refused, naming both sides) is drawn here, in place; at rest the card reads again when a
+    response or an announcement names `people`. -#}
+{%- set live = not done and not refused -%}
+<section class="card set-card set-card-wide" id="card-display-names" aria-labelledby="h-display-names"
+  {%- if live %} hx-disinherit="*" hx-get="{{ url_for('settings_v2.display_names_card') }}" hx-trigger="nmas:people from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="card-head"><h2 id="h-display-names">Display names</h2>{{ badge('every network', 'neutral') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not saved:</strong> {{ refused }} Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if done.nothing %}<strong>Nothing changed:</strong> {{ 'you are' if done.you else 'that person is' }} already shown as <strong>{{ done.shown }}</strong>{% if done.default %} (the default){% endif %}.
+    {%- else %}<strong>Saved:</strong> {{ 'you are' if done.you else 'that person is' }} now shown as <strong>{{ done.shown }}</strong>{% if done.default %} (the default){% endif %}, in place of {{ done.was }}. Every screen draws it from its next read.{% endif %}</div></div>
+  {%- endif %}
+  <p class="muted small">How each person is named on Mercury's screens, records' summaries and exports: the name set here, else the part of their identity before the “@” (the default). Every record keeps the verified identity.</p>
+  {%- if not dn.readable %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The display names could not be read, so each person is drawn by their default and nothing can be saved until the file is put right: {{ dn.why }}</span></p>
+  {%- endif %}
+  {%- if not dn.viewer %}
+  <p class="muted small">This request is no verified person's, so it has no name to set: a display name is set by a verified person.</p>
+  {%- endif %}
+  {%- if dn.rows %}
+  <table class="table set-table">
+    <thead><tr><th>Person</th><th>Shown as</th><th></th></tr></thead>
+    <tbody>
+    {#- The card's help in words once, beside the first Save drawn; (i) alone after that. -#}
+    {%- set said = namespace(how=false) %}
+    {%- for r in dn.rows %}
+    <tr data-person="{{ r.key }}">
+      <td>{% if r.you %}you{% if r.how %} (verified {{ r.how }}){% endif %}{% else %}another person{% endif %}
+        <details class="id-record small muted" data-keep="dn-id-{{ r.key }}"><summary>The verified identity</summary><span class="mono">{{ r.identity }}</span></details></td>
+      <td><strong>{{ r.shown }}</strong> <span class="set-origin">{% if r.set %}set by {{ r.set_by }}, {{ stamp(r.at) }}{% elif r.at %}the default; returned to it by {{ r.set_by }}, {{ stamp(r.at) }}{% else %}the default{% endif %}</span></td>
+      <td>
+        {%- if r.may_change %}
+        <details class="set-replace" data-keep="dn-change-{{ r.key }}"{% if refused and typed_for == r.key %} open{% endif %}><summary class="btn btn-small">Change…</summary>
+          <form class="set-inline" method="post" action="{{ url_for('settings_v2.display_name') }}"
+                hx-post="{{ url_for('settings_v2.display_name') }}" hx-target="#card-display-names" hx-swap="outerHTML" autocomplete="off">
+            <input type="hidden" name="person" value="{{ r.key }}">
+            <label for="dn-{{ r.key }}">Shown as</label>
+            <input id="dn-{{ r.key }}" name="name" type="text" value="{{ typed if refused and typed_for == r.key else r.set }}" placeholder="{{ r.default }}" title="At most {{ dn.max }} printable characters, no “@”, and no name another person has">
+            <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'display-names', compact=said.how, op='a display name' if said.how else '') }}{% set said.how = true %}</span>
+            <span class="op-act"><button type="submit" name="use_default" value="1" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{% if not r.set %} disabled title="Already the default: {{ r.default }}"{% else %} title="Returns to the default: {{ r.default }}"{{ gate('configure') }}{% endif %}><span class="op-idle">Use the default</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'display-names', compact=True, op='the default name') }}</span>
+          </form>
+        </details>
+        {%- endif %}
+      </td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+</section>

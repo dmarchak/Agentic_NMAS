@@ -8,7 +8,7 @@
   <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The removal record cannot be read: {{ error }}.</span></p>
   {%- else %}
   {%- for r in rows %}
-  <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.result.level, 'danger') }} set-result">{{ icon('tick' if r.result.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.result.happened.summary }}</strong> <span class="muted small">{{ stamp(r.at) }}{% if r.by %} by {{ r.by }}{% endif %}</span></div></div>
+  <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.result.level, 'danger') }} set-result">{{ icon('tick' if r.result.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.result.happened.summary }}</strong> <span class="muted small">{{ stamp(r.at) }}{% if r.by %} by {{ r.by | people }}{% endif %}</span></div></div>
   {%- else %}
   <p class="muted">None recorded.</p>
   {%- endfor %}

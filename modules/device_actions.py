@@ -24,6 +24,13 @@ log = logging.getLogger(__name__)
 VERIFIED_GATE = "You are a verified person"
 
 
+def _shown(actor: str) -> str:
+    """A person as a card draws them (board E2a): their display name, never their identity."""
+    from modules import identity
+
+    return identity.display_name(actor or "")
+
+
 def _golden_now(repo: str, host: str) -> dict:
     """The device's committed golden now: ``{"commit", "at"}``, or {} when it has none."""
     from modules.nsot import manifest as _m
@@ -96,8 +103,8 @@ def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
     gates = list(target.get("gates") or [])
     gates.append({"name": VERIFIED_GATE, "state": "pass" if viewer.get("may") else "fail",
                   # The person by name when they may (the mockup); else why not.
-                  "detail": (viewer.get("actor") if viewer.get("may") and viewer.get("actor")
-                             else viewer.get("statement", ""))})
+                  "detail": (_shown(viewer.get("actor")) if viewer.get("may")
+                             and viewer.get("actor") else viewer.get("statement", ""))})
     # A shrink committed intent does not explain is answered by the person's reason, taken on
     # this card (C486): its gate fails until then, and it alone does not withhold the confirm.
     acknowledge = (target.get("acknowledge") or {}).get("prompt", "")
@@ -190,8 +197,8 @@ def _one_target(preview: dict, host: str, viewer: dict) -> dict:
     viewer = viewer or {"may": False, "statement": "nobody is identified"}
     gates = list(target.get("gates") or [])
     gates.append({"name": VERIFIED_GATE, "state": "pass" if viewer.get("may") else "fail",
-                  "detail": (viewer.get("actor") if viewer.get("may") and viewer.get("actor")
-                             else viewer.get("statement", ""))})
+                  "detail": (_shown(viewer.get("actor")) if viewer.get("may")
+                             and viewer.get("actor") else viewer.get("statement", ""))})
     failing = [g for g in gates if g.get("state") == "fail"]
     return {"target": target, "chosen": chosen, "gates": gates, "failing": failing,
             "what_not": [i.get("text", "") for i in (preview.get("what_not") or {}).get("items")
@@ -1117,8 +1124,10 @@ def job_card(ref, host: str, card: str, job_id: str) -> dict:
 def reopened_words(job: dict, viewer: str) -> str:
     """What the reopened card says about itself (board C): who started it and when while it
     runs; when it finished once it has."""
+    from modules import display_names                   # board E2a: a person by display name
+
     who = "you" if job.get("actor") and job.get("actor") == viewer else (
-        job.get("actor") or "an unknown person")
+        display_names.people(job.get("actor") or "") or "an unknown person")
     if job.get("state") == "running":
         return f"Reopened: started by {who} at {_iso(job['started_at'])[11:16]} UTC"
     return (f"Finished at {_iso(job.get('finished_at') or 0)[11:16]} UTC, while you were "

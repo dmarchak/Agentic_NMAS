@@ -54,8 +54,9 @@ def test_the_panel_draws_the_whole_run_in_a_box_that_scrolls(client):
     box = re.search(r'<pre class="mono sdn-log"[^>]*>(.*?)</pre>', html, re.S).group(1)
     lines = [ln for ln in box.splitlines() if ln.strip()]
     assert len(lines) == 122, len(lines)
-    assert lines[0].endswith("stop: stopped by op@example.com")          # newest first
-    assert lines[-1].endswith(f"start: started by op@example.com, every 5 s, as job {job}")
+    # Newest first; the person by display name on the page (board E2a), the log kept as written.
+    assert lines[0].endswith("stop: stopped by op")
+    assert lines[-1].endswith(f"start: started by op, every 5 s, as job {job}")
     assert "All 122 lines of this run, newest first." in html
     assert f'<option value="{job}" selected>{job} · started 2026-09-21 14:13:20 UTC' in html
 

@@ -14,7 +14,17 @@ region beside the shots. The states the shot does not draw (a reset not measured
 place with the reason kept, Approved, Declined, a proposal no longer held) are compared by the
 template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
-Templates sha256: `95570340b4bc6f8570eb298986ac18e0fe52ebb0abd44566a7618b1e871af392`
+Templates sha256: `dca9ac32a9dc6ca2f4dbf136852fd08fee86dfdb1e272d68e38b92ad031f5711`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person
+(who confirmed the policy, in the foot and in the record; who ran or is running Mercury's
+diagnosis) now draws them through the `people` filter, by display name (the name the person
+set, else the part of their identity before the "@"), in the same element and position; the
+confirm's "You are confirming as <name>." names the person the same way. No region is added,
+removed or moved, and no other word changes. Where the board draws an identity the built
+screen draws the name, a deviation logged once for every screen (log: Display names: a person
+is drawn by display name on every screen). Every other verdict stands.
 
 **Compared again 2026-11-09 (C2817 and C2823):** the card and its row are redrawn as the
 operator's first template ("The three templates are right as drawn", 2026-11-09;

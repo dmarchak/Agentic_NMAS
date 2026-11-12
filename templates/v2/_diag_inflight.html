@@ -14,7 +14,7 @@
     <thead><tr><th>Device</th><th>Network</th><th>Operation</th><th>By</th><th>Step</th><th>Held for</th></tr></thead>
     <tbody>
     {%- for r in fl.running %}
-    <tr><td>{{ r.device or '—' }}</td><td>{{ r.list or '' }}</td><td>{{ r.words or r.operation }}</td><td>{{ r.actor }}</td>
+    <tr><td>{{ r.device or '—' }}</td><td>{{ r.list or '' }}</td><td>{{ r.words or r.operation }}</td><td>{{ r.actor | people }}</td>
       <td>{{ r.step_words or r.step or '' }}{% if r.stalled %} {{ badge('stalled', 'warn') }}{% endif %}</td>
       <td>{% if r.held_for_s is not none %}{{ (r.held_for_s // 60) | int }} min {{ (r.held_for_s % 60) | int }} s{% endif %}</td></tr>
     {%- endfor %}
@@ -29,7 +29,7 @@
     {%- if fl.recent %}
     <ul class="set-list">
       {%- for r in fl.recent %}
-      <li>{{ stamp(r.at) }} {{ r.device }} ({{ r.list }}): {{ r.action }}, {{ badge(r.outcome or '?', 'ok' if r.outcome in ('ok', 'success', 'succeeded') else 'warn') }}{% if r.actor %} by {{ r.actor }}{% endif %}</li>
+      <li>{{ stamp(r.at) }} {{ r.device }} ({{ r.list }}): {{ r.action }}, {{ badge(r.outcome or '?', 'ok' if r.outcome in ('ok', 'success', 'succeeded') else 'warn') }}{% if r.actor %} by {{ r.actor | people }}{% endif %}</li>
       {%- endfor %}
     </ul>
     {%- endif %}

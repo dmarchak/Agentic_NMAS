@@ -94,6 +94,32 @@ def past(row: dict) -> str:
     return scope[1] if scope else _PAST.get(row.get("action") or "", "Changed")
 
 
+#: Who did a heal's work (the operator, 2026-11-12: a heal reads "Heal <device> · by Mercury's
+#: self-healing"): Mercury, under the policy a verified person confirmed, never that person.
+HEAL_DOER = "Mercury's self-healing"
+
+
+def is_heal(row: dict) -> bool:
+    """Whether *row* is a heal's receipt (board H, H6): a deploy written as the policy, its
+    setter the actor (`actor_kind` ``policy``; its commit's `Source: heal_to_intent`,
+    routes.deploy.HEAL_SOURCE). Assumes what holds today: receipts are written by the deploy
+    and restore paths alone (routes.deploy), and only `heal.act.apply_decision` deploys as a
+    policy (a scheduled rotation acts as one too, but writes no receipt)."""
+    row = row or {}
+    return row.get("actor_kind") == "policy" and row.get("action") == "deploy"
+
+
+def config_lines(row: dict) -> int:
+    """The configuration lines *row*'s program sent: each line under its header, never the
+    ``exit`` that closes a sub-mode (`deploy.program_lines`), so a heal's row counts the lines
+    its card says it re-applied (an applet's header, ``event`` and ``action`` are 3, its
+    program 4 with the ``exit``). A row kept without its program counts its program's size."""
+    from modules.nsot.deploy import program_lines
+
+    program = (row or {}).get("program") or []
+    return len(program_lines(program)) if program else int((row or {}).get("program_lines") or 0)
+
+
 def operation(scope: str) -> str:
     """The hold's operation for a batch of *scope*: its noun, or ``deploy`` unscoped."""
     return SCOPES[scope][0] if scope in SCOPES else "deploy"

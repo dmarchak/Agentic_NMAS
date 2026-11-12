@@ -347,10 +347,12 @@ class TestThePage:
         html = client.get("/v2/history/remote").get_data(as_text=True)
         failed = re.search(r'<p class="hist-remote-said bad" id="remote-push-failed">(.*?)</p>',
                            html, re.S).group(1)
-        assert "Last push failed" in failed and "(a@b)" in failed and "auth failed" in failed
+        # Board E2a: who pushed is drawn by display name, the part before the "@".
+        assert "Last push failed" in failed and "(a)" in failed and "auth failed" in failed
+        assert "a@b" not in html and "c@d" not in html
         assert "hunter2" not in html, "masked on the way out, the remedy too (C1016)"
         verify = re.search(r'id="remote-last-verify">(.*?)</div>', html, re.S).group(1)
-        assert "failed:" in verify and "(c@d)" in verify
+        assert "failed:" in verify and "(c)" in verify
         assert re.search(r"<li><code>read_works</code> \(ls-remote failed\)<br>"
                          r"<strong>To fix:</strong> the key <redacted> cannot read", verify.replace(
                              "&lt;", "<").replace("&gt;", ">")), verify

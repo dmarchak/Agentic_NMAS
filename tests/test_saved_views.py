@@ -126,7 +126,9 @@ class TestTheRoutes:
         assert re.findall(r'<a href="[^"]+"><strong>([^<]+)</strong></a>', html)[:2] == \
             ["Older", "Newer"]
         assert 'href="/v2/history/query/syslog?d=r4&amp;list=Lab"' in html
-        assert f"saved by {ME}" in html and "pinned</span>" in html
+        # Board E2a: who saved it, by display name (the part before the "@").
+        assert f"saved by {ME.split('@')[0]}," in html and "pinned</span>" in html
+        assert ME not in html
         assert 'hx-trigger="nmas:saved_views from:body"' in html
 
     def test_pin_and_remove_redraw_the_list_and_say_what_they_did_out_of_band(self, web):

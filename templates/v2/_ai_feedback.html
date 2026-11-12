@@ -11,7 +11,7 @@
   {%- set m = fb.mine %}
   {%- if m.verdict == 'yes' %}{{ badge('you said right', 'ok') }}
   {%- else %}{{ badge('you said wrong', 'warn') }} <span class="small ai-fb-said">{{ m.kind_words }}: “{{ m.words }}”</span>{% endif %}
-  <span class="faint small" title="Recorded as {{ m.actor }} against call {{ m.call_id }}">{{ stamp(m.at) }}</span>
+  <span class="faint small" title="Recorded as {{ m.actor | people }} against call {{ m.call_id }}">{{ stamp(m.at) }}</span>
   {%- if m.verdict == 'no' %}<span class="faint small"> · a candidate case, <a href="{{ url_for('settings_v2.installation', tab='ai') }}#ai-feedback">to review in Settings › AI</a></span>{% endif %}
   {{- how('ai-feedback', 'answer', compact=True, op='Was this right?') }}
 {%- else %}

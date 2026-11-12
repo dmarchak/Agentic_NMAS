@@ -154,7 +154,7 @@
     <p>Read what it compared above. Nothing was saved on {{ who }}: a reload returns it to its factory state. Then review it again.</p>
     <p><a class="btn btn-small" data-op="onboard" href="{{ url_for('onboard_v2.new', list=c.list_name, hostname=who) }}">Add {{ who }} again…</a>{{ how('onboard', 'out-of-band-onboarding', compact=True, op='the out-of-band onboarding') }}</p>
     {%- endif %}</div></div>
-  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor or 'someone' }} (verified: {{ r.actor_verified or 'none' }}){% if r.reason_given %}, &ldquo;{{ r.reason_given }}&rdquo;{% endif %}, {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ (r.actor or 'someone') | people }} (verified: {{ r.actor_verified or 'none' }}){% if r.reason_given %}, &ldquo;{{ r.reason_given }}&rdquo;{% endif %}, {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
 
   {%- else %}
   <div class="op-part"><h3>What happened</h3><div>

@@ -60,6 +60,31 @@ def masked_parts(text) -> list:
     return out
 
 
+@bp.app_template_filter("people")
+def people(text) -> str:
+    """A recorded text, or a recorded actor, as a screen draws it (board E2a): each email-shaped
+    token replaced by that person's display name (`identity.display_name`: the name they set,
+    else the part before the "@"), and a service token by its label. Every other word is left
+    as recorded; the record itself is never rewritten."""
+    from html import escape as _esc
+
+    from modules import display_names
+
+    class Markup(str):
+        """Already-escaped HTML: Jinja's autoescape honours `__html__` (as
+        `preview_confirm.control_gate` draws its own; no third import for one class)."""
+
+        def __html__(self):
+            return str(self)
+
+    if hasattr(text, "__html__"):
+        # Markup a macro already drew: each name is escaped as it goes in, as the page's own
+        # text would be (a display name is a person's typed text).
+        return Markup(display_names.EMAIL.sub(
+            lambda m: _esc(display_names.shown(m.group(0))), str(text)))
+    return display_names.people(text)
+
+
 @bp.app_template_filter("utc_when")
 def utc_when(ts, fmt="dt", to=None) -> dict:
     """An instant (epoch seconds or an ISO time), or the span *ts* to *to*, as History › Query's
@@ -126,7 +151,9 @@ def _attention() -> dict:
 
     # Rows quote their sources' own words: masked on the way out. One computation serves every
     # tab until a change is announced (C1262).
-    a = mask_payload(needs_attention_shared())
+    from modules import display_names
+    # And every person in those words by display name (board E2a): a copy, as the mask's is.
+    a = display_names.people_payload(mask_payload(needs_attention_shared()))
     # A row whose action would change a device a run holds NOW draws it disabled, with the
     # run (the operator, 2026-11-11): read for this request from the holds themselves, never
     # kept with the shared computation, which a hold's start does not announce.
@@ -155,6 +182,10 @@ def _recent() -> dict:
     # and program_lines.
     rows = [dict(r, reason=redact_text(str(r["reason"]))) if r.get("reason") else r
             for r in got.get("rows") or []]
+    # A heal's receipt (the operator, 2026-11-12): "Heal <device> · by Mercury's self-healing",
+    # the policy's setter after it, and the lines it re-applied as its card counts them.
+    rows = [dict(r, heal=True, doer=receipts.HEAL_DOER, config_lines=receipts.config_lines(r))
+            if receipts.is_heal(r) else r for r in rows]
     return {"state": got["state"], "rows": rows, "list": ref.name}
 
 
@@ -325,7 +356,11 @@ def _history_filters(request) -> dict:
     # The Commits tab became a kind (board D): its old links open the timeline on commits.
     if a.get("tab") == "commits" and not kinds:
         kinds = ["commits"]
-    f = {"device": a.get("device", "").strip(), "person": a.get("person", "").strip(),
+    from modules import display_names
+    # The person filter is a display name (board E2a); an address kept from before, naming an
+    # identity, is drawn and filtered as that person's name.
+    f = {"device": a.get("device", "").strip(),
+         "person": display_names.people(a.get("person", "").strip()),
          "kinds": kinds,
          "since": since if since in [s for s, _w in HS.SINCE_CHOICES] else "7",
          "limit": a.get("limit", ""), "error": "",

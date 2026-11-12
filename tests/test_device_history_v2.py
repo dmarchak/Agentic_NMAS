@@ -46,9 +46,14 @@ class TestTheTimeline:
         text = _text(html)
         assert "Golden recorded (capture)" in text
         summary = _text(re.search(r'<summary class="hist-sum">(.*?)</summary>', html, re.S).group(1))
-        assert "Golden recorded (capture)" in summary and summary.strip().endswith("operator@example.com")
+        # Board E2a: the line names the person by display name, the part before the "@".
+        assert "Golden recorded (capture)" in summary and summary.strip().endswith(" operator")
         more = _text(re.search(r'<div class="hist-detail tl-more">(.*?)</div>', html, re.S).group(1))
-        assert "By operator@example.com" in more
+        # Opened, By names the person the same way; the identity the record keeps is after
+        # the row's record, in the closed "The identity as recorded", kept across redraws.
+        assert "By operator (not verified)" in more
+        assert "The identity as recorded operator@example.com (not verified)" in more
+        assert '<details class="id-record small muted" data-keep="tl-who-' in html
 
     def test_a_long_note_expands_under_its_row_and_never_widens_the_summary(self, lab, monkeypatch):
         """The operator, 2026-10-02: r1's redeploy restart carried its reason, the window's

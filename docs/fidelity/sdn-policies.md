@@ -15,7 +15,15 @@ result, the committed list), beside the board's HTML. A shot at 1440, 1280 and 3
 step of this record.
 
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
-Templates sha256: `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`
+Templates sha256: `44de5b7ad9a63298de43ea7b7eabd7734d1dfb568cf865f02df56b8358d835c0`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_sdn_policies.html`, the policies table's "by" column
+now draws the person through the `people` filter, by display name (the name the person set,
+else the part of their identity before the "@"), in the same cell; no region is added, removed
+or moved, and no other word changes. Where the board draws an identity the built screen draws
+the name, a deviation logged once for every screen (log: Display names: a person is drawn by
+display name on every screen). Every other verdict stands.
 Hashed again 2026-11-10: the answer card draws Was this right? under an AI-drafted policy (the
 shared control every AI answer carries; none under an answer Mercury gave in code).
 Hashed again 2026-11-11 ~07:5x UTC for C2944 (History › Export read 0 protected-flow refusals

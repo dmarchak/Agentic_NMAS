@@ -14,7 +14,7 @@
       </dd></div>
       <div><dt>Committed intent</dt><dd>
         {%- if records.intent %}<span class="mono">{{ records.intent.sha }}</span>, {{ stamp(records.intent.at) }}
-        <span class="muted">· {{ records.intent.source or 'no Source trailer' }}{% if records.intent.actor %} · {{ records.intent.actor }}{% endif %}</span>
+        <span class="muted">· {{ records.intent.source or 'no Source trailer' }}{% if records.intent.actor %} · {{ records.intent.actor | people }}{% endif %}</span>
         {%- else %}none committed <span class="muted">· nothing declares what it should look like, so it is not deployable</span>{% endif -%}
       </dd></div>
       {%- if records.profile %}
@@ -23,7 +23,7 @@
       {%- endif %}
       <div><dt>Golden</dt><dd>
         {%- if records.golden %}<span class="mono">{{ records.golden.sha }}</span>, {{ stamp(records.golden.at) }}
-        <span class="muted">· {{ records.golden.source or 'no Source trailer' }}{% if records.golden.actor %} · {{ records.golden.actor }}{% endif %}</span>
+        <span class="muted">· {{ records.golden.source or 'no Source trailer' }}{% if records.golden.actor %} · {{ records.golden.actor | people }}{% endif %}</span>
         {%- else %}none committed <span class="muted">· capture it to record what it runs</span>{% endif -%}
       </dd></div>
       <div><dt>Last measured</dt><dd>

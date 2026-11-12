@@ -171,7 +171,18 @@ and the operator's words for the card, as tests/test_fault_drills.py renders it;
 (tests/test_board_shots.py has none of it yet): the table "Declare a fault drill… and its
 card" below. Templates sha256 before (without `_declare_drill.html` in the list):
 `a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`.
-Templates sha256: `1e0b8178d465dc5f47e5c38476ef13e06eecd26e3ff6cb1e64396f6c58753f11`
+Templates sha256: `61e0ce89028786ad01347c2e77a133efd1c6a86c0137bb16719dc4aa6b35be89`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_capture.html`, `_retire.html` and `_diagnose.html`,
+each place that draws a person (who a capture was recorded by, a retirement step's words naming
+who kept a host key, who a diagnosis was started by or asked for on demand) now draws them
+through the `people` filter, by display name (the name the person set, else the part of their
+identity before the "@"), in the same element and position; no region is added, removed or
+moved, and no other word changes. The cards' "You are a verified person: <name>" check names
+the person the same way (`device_actions`). Where the board draws an identity the built screen
+draws the name, a deviation logged once for every screen (log: Display names: a person is
+drawn by display name on every screen). Every other verdict stands.
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it

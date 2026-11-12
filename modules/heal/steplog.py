@@ -251,21 +251,41 @@ def record_decision(network: str, decision: dict, now: float = None) -> dict:
         headline=decision.get("headline") or "", cause=decision.get("cause") or None), now)
 
 
+def policy_words(what: str, setter: str) -> str:
+    """"<what> (policy set by <name>)": how a heal run as the policy names itself in its rows'
+    words, the policy's setter by display name (board E2a, `identity.display_name`). The
+    setter's identity is kept beside the words, in the row's own field (`policy_by`), so a
+    row written from now on needs no filter to be drawn; a row from before, whose words hold
+    the identity, is drawn through `display_names.people`."""
+    from modules import identity
+
+    return f"{what} (policy set by {identity.display_name(setter) if setter else 'nobody recorded'})"
+
+
+def _policy_by(policy_by: str) -> dict:
+    """The row's ``policy_by``: the policy setter's identity, beside words that name them by
+    display name. Expand only: a row whose writer names none carries no key."""
+    return {"policy_by": policy_by} if policy_by else {}
+
+
 def record_started(network: str, decision: dict, steps: list, program: list,
-                   program_hash: str, *, by: str, now: float = None) -> dict:
+                   program_hash: str, *, by: str, policy_by: str = "",
+                   now: float = None) -> dict:
     """The ``started`` row: the act's steps so far and the program (masked) and its hash,
     BEFORE anything is sent. Raises when it is not kept: the act then refuses the heal."""
     return append(network, dict(_of(decision), row="started", steps=list(steps),
-                                program=list(program), program_hash=program_hash, by=by), now)
+                                program=list(program), program_hash=program_hash, by=by,
+                                **_policy_by(policy_by)), now)
 
 
-def record_act(network: str, decision: dict, result: dict, *, by: str,
+def record_act(network: str, decision: dict, result: dict, *, by: str, policy_by: str = "",
                now: float = None) -> dict:
     """The ``act`` row: the act's every step, its outcome and words, and its records."""
     return append(network, dict(
         _of(decision), row="act", outcome=result.get("outcome") or "",
         words=result.get("words") or "", steps=list(result.get("steps") or []),
-        sent=bool(result.get("sent")), records=dict(result.get("records") or {}), by=by), now)
+        sent=bool(result.get("sent")), records=dict(result.get("records") or {}), by=by,
+        **_policy_by(policy_by)), now)
 
 
 def record_raised(network: str, decision: dict, words: str, now: float = None) -> dict:

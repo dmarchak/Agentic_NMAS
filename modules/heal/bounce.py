@@ -1086,11 +1086,15 @@ def _announce() -> None:
 class _Act:
     """One act's record as it runs: its steps, each with its result, words and time."""
 
-    def __init__(self, network: str, decision: dict, src, via: str):
+    def __init__(self, network: str, decision: dict, src, via: str, policy_by: str = ""):
         self.network, self.decision, self.src, self.via = network, decision, src, via
+        # Board E2a: *via*'s words name the policy's setter by display name; their identity
+        # is kept beside them, in its own field, on the row and on the step that names them.
+        self.policy_by = policy_by
         self.out = {"decision": decision.get("id"), "device": decision.get("device"),
                     "outcome": "refused", "words": "", "sent": False, "records": {},
-                    "steps": [{"step": "take", "result": "ok", "words": f"taken by {via}"}]}
+                    "steps": [dict({"step": "take", "result": "ok", "words": f"taken by {via}"},
+                                   **({"policy_by": policy_by} if policy_by else {}))]}
 
     def note(self, step: str, result: str, words: str) -> None:
         self.out["steps"].append({"step": step, "result": result, "words": words,
@@ -1099,7 +1103,7 @@ class _Act:
     def finish(self, outcome: str, words: str) -> dict:
         self.out.update(outcome=outcome, words=words)
         return _record(self.network, self.decision, self.out, by=self.via,
-                       now=self.src.clock())
+                       now=self.src.clock(), policy_by=self.policy_by)
 
     def refuse(self, step: str, words: str, result: str = "refused") -> dict:
         self.note(step, result, words + ". Nothing was sent")
@@ -1131,8 +1135,9 @@ def apply(network: str, decision: dict, *, now: float = None, sources=None) -> d
     device, interface, kind = decision["device"], a.get("interface") or "", a.get("kind") or ""
     pol = decision.get("policy") or {}
     setter = pol.get("by") or ""
-    run = _Act(network, decision, src,
-               f"self-healing (policy set by {setter or 'nobody recorded'})")
+    from modules.heal import steplog as _steplog
+    run = _Act(network, decision, src, _steplog.policy_words("self-healing", setter),
+               policy_by=setter)
     why = heal_act._stops(_ActSources(src), network, decision, now)
     if why:
         return run.refuse("stops", why)
@@ -1223,7 +1228,8 @@ def _held(run: _Act, s, prog: list, h: str, kind: str, interface: str, dev: dict
                                  f"{w.get('far_end_words')}")
         try:
             steplog.record_started(network, decision, list(run.out["steps"]),
-                                   [redact_text(x) for x in prog], h, by=run.via, now=clock())
+                                   [redact_text(x) for x in prog], h, by=run.via,
+                                   policy_by=run.policy_by, now=clock())
         except Exception as exc:
             return {"done": run.refuse("send", f"the step log's started row could not be "
                                                f"written ({exc})")}
@@ -1419,7 +1425,8 @@ def _stable(run: _Act, device: str, interface: str, times: dict) -> dict:
                                   f"stable for {minutes} min"))
 
 
-def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> dict:
+def _record(network: str, decision: dict, out: dict, *, by: str, now: float,
+            policy_by: str = "") -> dict:
     """``record``: what the bounce did, in the decisions store (a halt, guard 14, for one undone
     or not restored), the step log (History) and the announcement."""
     from modules.heal import decisions, steplog
@@ -1448,7 +1455,7 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float) -> 
     out["records"]["change_record"] = change_record.build_action(network, decision, out,
                                                                  at=utc(now))
     try:
-        steplog.record_act(network, decision, out, by=by, now=now)
+        steplog.record_act(network, decision, out, by=by, policy_by=policy_by, now=now)
     except Exception as exc:
         log.error("heal: %s's bounce %s is not in the step log: %s", network,
                   decision.get("id"), exc)

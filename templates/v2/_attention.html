@@ -117,8 +117,8 @@
         {%- endif %}
         {%- set d = fx.diagnosis %}
         <p class="fix-diag"><strong>Mercury's diagnosis:</strong>
-          {%- if d.state == 'read' %} {{ d.words }} <span class="muted small">Read {{ stamp(d.at) }}{% if d.by %} by {{ d.by }}{% endif %}, with no AI{% if d.more %}; {{ d.more }} more hypothes{{ 'is' if d.more == 1 else 'es' }} in its record{% endif %}.</span>{% if d.next %} <span class="fix-next">Next, as the diagnosis says: {{ d.next }}.</span>{% endif %}
-          {%- elif d.state == 'not_made' %} <span class="warn-text">not made. It was asked for {{ stamp(d.at) }}{% if d.by %} by {{ d.by }}{% endif %}, and answered: {{ d.why }}.</span>
+          {%- if d.state == 'read' %} {{ d.words }} <span class="muted small">Read {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, with no AI{% if d.more %}; {{ d.more }} more hypothes{{ 'is' if d.more == 1 else 'es' }} in its record{% endif %}.</span>{% if d.next %} <span class="fix-next">Next, as the diagnosis says: {{ d.next }}.</span>{% endif %}
+          {%- elif d.state == 'not_made' %} <span class="warn-text">not made. It was asked for {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, and answered: {{ d.why }}.</span>
           {%- elif d.state == 'absent' %} <span class="muted">not read for this loss: {{ d.why }}. Self-healing reads it by itself, where it is on for the device's network, before it tells the team about a lost stream; no control on this row reads it yet.</span>
           {%- else %} <span class="warn-text">couldn't be read: {{ d.why }}.</span>
           {%- endif %}
@@ -279,7 +279,7 @@
         <h3>Mercury's diagnosis</h3>
         {%- if hd.state == 'done' %}
         {%- set dd = hd.result %}
-        <p>{{ badge(dd.chip, dd.level) }} <span class="small muted">{{ dd.runbook_words }}{% if dd.actor %}, by {{ dd.actor }}{% endif %}, {{ dd.commands }} read(s) on {{ dd.devices | join(' and ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}{% if dd.incident %}, incident <span class="mono">{{ dd.incident }}</span>{% endif %}</span></p>
+        <p>{{ badge(dd.chip, dd.level) }} <span class="small muted">{{ dd.runbook_words }}{% if dd.actor %}, by {{ dd.actor | people }}{% endif %}, {{ dd.commands }} read(s) on {{ dd.devices | join(' and ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}{% if dd.incident %}, incident <span class="mono">{{ dd.incident }}</span>{% endif %}</span></p>
         {%- if dd.hypotheses %}
         <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
         {%- else %}
@@ -291,7 +291,7 @@
         {%- elif hd.state == 'not' %}
         <p class="small warn-text">{{ hd.result.words }}.</p>
         {%- elif hd.state == 'running' %}
-        <p class="small muted">Running now: diagnosis <span class="mono">{{ hd.running.diagnosis }}</span> on {{ hd.device }}, by {{ hd.running.actor }}{% if hd.running.since %}, since {{ stamp(hd.running.since) }}{% endif %}. It is drawn here when it ends.</p>
+        <p class="small muted">Running now: diagnosis <span class="mono">{{ hd.running.diagnosis }}</span> on {{ hd.device }}, by {{ hd.running.actor | people }}{% if hd.running.since %}, since {{ stamp(hd.running.since) }}{% endif %}. It is drawn here when it ends.</p>
         {%- elif hd.state == 'unreadable' %}
         <p class="small warn-text">The diagnosis cannot be read: {{ hd.error }}.</p>
         {%- elif hd.auto %}
@@ -327,7 +327,7 @@
             silence's id and matchers are its provenance, on hover. -#}
         {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
           {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
-          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ s.created_by or 'an unnamed account' }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
+          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ (s.created_by or 'an unnamed account') | people }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
         </li>{% endfor %}
       </ul>
       {%- endif %}
@@ -377,7 +377,7 @@
       {#- An acknowledgement that expires at a moment its row's source names (the operator,
           2026-11-11: a scheduled job's failed run, until the workflow's next scheduled run) is
           said in those words, from `acknowledgements.in_force_words`. -#}
-      {%- for k in a.acknowledged %}<li>{% if k.said %}{{ k.what }} — {{ k.said }}{% else %}{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}{% endif %}</li>{% endfor %}
+      {%- for k in a.acknowledged %}<li>{% if k.expires and k.said %}{{ k.what }} — {{ k.said }}{% else %}{{ k.what }} — by {{ k.by | people }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}{% endif %}</li>{% endfor %}
     </ul>
   </details>
   {%- endif %}
@@ -401,7 +401,7 @@
         not; listed so a person can find and review it even when it hides nothing now. -#}
     <p class="att-acked" id="att-in-force">Acknowledgements in force, hiding nothing now:</p>
     <ul class="att-members">
-      {%- for k in a.in_force %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }} ({{ k.band }})</li>{% endfor %}
+      {%- for k in a.in_force %}<li>{{ k.what }} — by {{ k.by | people }}, {{ stamp(k.at) }}: {{ k.why }} ({{ k.band }})</li>{% endfor %}
     </ul>
     {%- endif %}
   </details>

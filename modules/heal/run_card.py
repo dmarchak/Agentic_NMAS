@@ -87,6 +87,16 @@ def heal_tables(approved: bool = False) -> tuple:
         (bounce.STEPS, bounce.STEP_LABELS), (session_clear.STEPS, session_clear.STEP_LABELS))
 
 
+def _drawn(steps: list) -> list:
+    """*steps* as a screen draws them (board E2a): each step's recorded words with every
+    person named by display name (`display_names.people`: "as the policy set by <identity>"
+    reads "as the policy set by <name>"). Copies; the recorded steps are never rewritten."""
+    from modules import display_names
+
+    return [dict(s, words=display_names.people(s.get("words") or ""))
+            if isinstance(s, dict) and s.get("words") else s for s in steps]
+
+
 def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = None,
               prefix: str = "", host: str = "") -> dict:
     """An act's recorded *steps* on the stepper (`run_stepper.from_record`): a symptom read
@@ -98,7 +108,7 @@ def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = 
 
     table, labels = _declared(steps, approved)
     return run_stepper.from_record(
-        table, steps, ended=ended, now=now, prefix=prefix,
+        table, _drawn(steps), ended=ended, now=now, prefix=prefix,
         good=HEALED + ("gone", "none"),
         bad=("present", "rolled_back", "interrupted", "rejected", "cant_fix"),
         conditional=("repair", "rollback", "reset"),
@@ -112,7 +122,7 @@ def decision_phase(steps: list, *, now: float = None, prefix: str = "d-",
     from modules.heal import decide
 
     return run_stepper.from_record(
-        decide.STEPS, steps, ended=True, now=now, prefix=prefix, good=DECISION_GOOD,
+        decide.STEPS, _drawn(steps), ended=True, now=now, prefix=prefix, good=DECISION_GOOD,
         bad=DECISION_BAD,
         labels=run_stepper.labels_for(decide.STEP_LABELS, device=host or "the device"))
 

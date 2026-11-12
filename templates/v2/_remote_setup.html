@@ -16,7 +16,7 @@
   <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Connected:</strong> {{ s.remote.owner_repo }} is recorded as this network's remote. Nothing is pushed until the write probe passes and a person pushes.</div></div>
   {%- endif %}
   {%- if acknowledged %}
-  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Acknowledged:</strong> {{ s.acknowledged.kinds | join(', ') }}, recorded as {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }} with the commit it was measured at.</div></div>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Acknowledged:</strong> {{ s.acknowledged.kinds | join(', ') }}, recorded as {{ s.acknowledged.by | people }} {{ stamp(s.acknowledged.at) }} with the commit it was measured at.</div></div>
   {%- endif %}
   {%- if auto %}
   <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Automatic pushing is on:</strong> each commit pushes itself, unless it would publish a secret nobody acknowledged, which holds it for a person.</div></div>
@@ -47,14 +47,14 @@
   <dl class="set-facts">
     <dt>Repository</dt><dd class="mono">{{ r.owner_repo }} · {{ r.branch }}</dd>
     <dt>SSH alias</dt><dd class="mono">{{ r.ssh_alias }}{% if r.key_path %} <span class="muted small">({{ r.key_path }})</span>{% endif %}</dd>
-    <dt>Recorded</dt><dd>{{ 'set up by Mercury' if r.managed else 'adopted' }}{% if r.adopted_at %} {{ stamp(r.adopted_at) }}{% endif %}{% if r.adopted_by %} by {{ r.adopted_by }}{% endif %}</dd>
+    <dt>Recorded</dt><dd>{{ 'set up by Mercury' if r.managed else 'adopted' }}{% if r.adopted_at %} {{ stamp(r.adopted_at) }}{% endif %}{% if r.adopted_by %} by {{ r.adopted_by | people }}{% endif %}</dd>
     <dt>Write probe</dt><dd>{% if r.verified_at %}passed {{ stamp(r.verified_at) }}{% else %}{{ badge('never passed', 'warn') }} Push refuses until it has{% endif %}</dd>
-    <dt>Acknowledged</dt><dd>{% if s.acknowledged %}{{ s.acknowledged.kinds | join(', ') or 'nothing gated' }} by {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }}
+    <dt>Acknowledged</dt><dd>{% if s.acknowledged %}{{ s.acknowledged.kinds | join(', ') or 'nothing gated' }} by {{ s.acknowledged.by | people }} {{ stamp(s.acknowledged.at) }}
       {%- if s.acknowledged['values'] is none %}<br><span class="muted small">recorded before secrets had fingerprints: acknowledge once more to list each one here</span>
       {%- elif s.acknowledged['values'] %}<ul class="small">{% for v in s.acknowledged['values'] %}<li><code>{{ v.kind }}</code> <span class="mono">{{ v.fingerprint }}</span> in {{ v.devices | join(', ') or '?' }}</li>{% endfor %}</ul>{% endif %}
       {%- else %}nothing yet{% endif %}</dd>
     <dt>Automatic pushing</dt><dd>{% if r.auto_push %}on{% elif r.last_push %}off{% else %}off: offered after a successful push{% endif %}</dd>
-    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }} {{ badge(r.last_push.how, 'neutral') }}{% if r.last_push.by %} by {{ r.last_push.by }}{% endif %}: {{ r.last_push.what }}{% else %}none yet{% endif %}</dd>
+    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }} {{ badge(r.last_push.how, 'neutral') }}{% if r.last_push.by %} by {{ r.last_push.by | people }}{% endif %}: {{ r.last_push.what }}{% else %}none yet{% endif %}</dd>
   </dl>
   <div class="set-foot">
     <form method="post" action="{{ url_for('remote_v2.write_probe') }}" hx-post="{{ url_for('remote_v2.write_probe') }}" hx-target="#remote-setup" hx-swap="outerHTML">

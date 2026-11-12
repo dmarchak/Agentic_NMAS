@@ -30,7 +30,15 @@ screen), `show-commands-logpath` (board F and the page at 1440), `show-commands-
 C582 and the page at 1440 and 390), `show-commands-reason-given` (the page at 1440).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands.html, templates/v2/_sc_pick.html, templates/v2/_sc_devices.html, templates/v2/_sc_check.html, templates/v2/_sc_reason.html, templates/v2/_sc_run.html
-Templates sha256: `efad9e2480c155d7a4cc54f4df7c4bd45a89c04ca4de009b12ff544c976e5882`
+Templates sha256: `cd8ab99122b99528beac9dc077d3eebc9d42143acfb6692710a65e31a667489b`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `show_commands.html`, the runs table's who now draws the
+person through the `people` filter, by display name (the name the person set, else the part of
+their identity before the "@"), in the same cell; no region is added, removed or moved, and no
+other word changes. Where the board draws an identity the built screen draws the name, a
+deviation logged once for every screen (log: Display names: a person is drawn by display name
+on every screen). Every other verdict stands.
 
 Compared again 2026-10-17 (C1023) after Run, Test the logging path (`_sc_run.html`) and Save the
 set (`_sc_pick.html`) became busy on themselves while their request is out ("Starting the run…",

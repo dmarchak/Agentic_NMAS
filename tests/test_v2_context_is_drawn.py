@@ -522,7 +522,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_ask.html c.compare.lines": _OP + " (Ask the device's comparison of two answers)",
     "v2/_ask.html c.recent.rows": "Ask the device's recent reads: no read has run on the walk's store",
     "v2/_ask.html c.sets": "Ask the device's saved sets: no saved set exists on the walk's store",
-    "v2/_attention.html a.acknowledged": _ATTENTION,
     "v2/_attention.html a.in_force": _ATTENTION,
     "v2/_breakglass_check.html c.devices": _OP + " (a break-glass file checked)",
     "v2/_breakglass_drill.html d.errors": _OP + " (a drill's receipt refused)",
@@ -854,7 +853,7 @@ EMPTY_IN_FIXTURE = {
 #: controller layer, so 27 of `_topology_map.html`'s loops drew, measured.
 #: 330 with the Update provider's said-done and declined host steps (the operator, 2026-11-11:
 #: a host step declined with a reason): "Host steps said done" and its commits drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 330
+EMPTY_IN_FIXTURE_CEILING = 329
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

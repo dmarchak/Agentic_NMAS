@@ -65,7 +65,8 @@ def test_the_tab_check_and_card(lab):  # noqa: F811
     card = c.get(f"/v2/templates/coverage/card?list=Lab&job={job}").get_data(as_text=True)
     said = re.search(r"Measured .*?</p>", card, re.S)
     assert said, card[:600]
-    assert "for test-person@example.invalid" in said.group(0), said.group(0)
+    # Board E2a: who asked, by display name (the part before the "@").
+    assert "for test-person," in said.group(0), said.group(0)
     assert _head(lab["repo"])[:12] in card and "has moved since" not in card
     assert re.search(r'<details class="sc-grp" data-keep="cov-(reproduced|partly)"', card)
     assert ">r2</a>" in card

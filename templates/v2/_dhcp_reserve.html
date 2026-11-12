@@ -20,7 +20,7 @@
     <p>Written to Mercury's file for subnet {{ p.subnet_id }} (<span class="mono">{{ p.path }}</span>), Kea reloaded through its API, and read back: {{ r.read_back }}.</p>
     {%- for n in p.not_done %}<p class="muted">{{ n }}</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Recorded</h3><div>
-    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ op.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/reservations.yml</span>. In History.</p></div></div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ op.actor | people }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/reservations.yml</span>. In History.</p></div></div>
 </section>
 {%- else %}
 <section class="op-card{{ ' op-danger' if op.state == 'refused' or (p and not p.ok) }}" id="dh-op" data-holds-live="review" aria-labelledby="dh-op-h">

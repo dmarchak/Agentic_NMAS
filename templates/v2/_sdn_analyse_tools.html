@@ -31,7 +31,7 @@
 <p class="small notice notice-warn" role="alert">Couldn't analyse with the trace tool: {{ said.ask_tools.detail or said.ask_tools.error }}. Nothing of an answer is used.</p>
 {%- endif %}
 {%- if y and y.ok %}
-<div class="sdn-ctl-hd" data-technique="{{ y.technique }}"><h2 id="sdn-an-t">With the trace tool: {{ y.findings | length }} finding{{ 's' if y.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(y.at) }} by {{ y.model }} for {{ y.actor }} after {{ y.passes }} pass{{ 'es' if y.passes != 1 }}, {{ y.calls | length }} call{{ 's' if y.calls | length != 1 }} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% if an.planted %} · {{ t.found }} found · {{ t.missed }} missed{% if y.rechecked %}, marked from the answer as checked again (no new AI call){% endif %}{% endif %}</span></div>
+<div class="sdn-ctl-hd" data-technique="{{ y.technique }}"><h2 id="sdn-an-t">With the trace tool: {{ y.findings | length }} finding{{ 's' if y.findings | length != 1 }}</h2><span class="faint small">answered {{ stamp(y.at) }} by {{ y.model }} for {{ y.actor | people }} after {{ y.passes }} pass{{ 'es' if y.passes != 1 }}, {{ y.calls | length }} call{{ 's' if y.calls | length != 1 }} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% if an.planted %} · {{ t.found }} found · {{ t.missed }} missed{% if y.rechecked %}, marked from the answer as checked again (no new AI call){% endif %}{% endif %}</span></div>
 {%- if t.stale %}<p class="small notice notice-muted" role="status">This answer is about the snapshot of {{ stamp(y.collected_at) }} ({{ y.snapshot_id }}); a newer one is collected: Analyse with the trace tool asks about it.</p>{% endif %}
 {%- if y.findings %}
 <div class="table-wrap"><table class="table sdn-an-tbl"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
@@ -54,7 +54,7 @@
   <p class="small notice notice-warn" role="alert">Couldn't check again: {{ said.recheck.error }}.</p>
   {%- endif %}
   {%- if rc %}
-  <h3 id="sdn-an-rc-tools">Checked again {{ stamp(rc.at) }} by {{ rc.by }}, no new AI call: {{ rc.findings | length }} finding{{ 's' if rc.findings | length != 1 }}</h3>
+  <h3 id="sdn-an-rc-tools">Checked again {{ stamp(rc.at) }} by {{ rc.by | people }}, no new AI call: {{ rc.findings | length }} finding{{ 's' if rc.findings | length != 1 }}</h3>
   {%- if rc.findings %}
   <div class="table-wrap"><table class="table sdn-an-tbl" aria-labelledby="sdn-an-rc-tools"><thead><tr><th>Finding</th><th>Why</th><th>Evidence</th></tr></thead><tbody>
   {%- for f in rc.findings %}
@@ -68,7 +68,7 @@
   {%- endif %}
 </div>
 {%- elif y %}
-<div class="sdn-ctl-hd"><h2 id="sdn-an-t">With the trace tool: no findings</h2><span class="faint small">asked {{ stamp(y.at) }} by {{ y.actor }}{% if y.call_id %} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% endif %}</span></div>
+<div class="sdn-ctl-hd"><h2 id="sdn-an-t">With the trace tool: no findings</h2><span class="faint small">asked {{ stamp(y.at) }} by {{ y.actor | people }}{% if y.call_id %} · <a href="{{ url_for('v2.history_page', call=y.call_id) }}" title="{{ y.calls | join(', ') }}, ${{ '%.4f' | format(y.cost_usd or 0) }} in all">the call</a>{% endif %}</span></div>
 <p class="small notice notice-warn" role="status">Couldn't analyse the snapshot {{ y.snapshot_id }} with the trace tool: {{ y.detail or y.error }}. Nothing of an answer is used; {{ y.model }}, collected {{ y.collected_at }}.</p>
 {%- else %}
 <div class="sdn-ctl-hd"><h2 id="sdn-an-t">With the trace tool</h2></div>

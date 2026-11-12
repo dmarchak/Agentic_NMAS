@@ -159,7 +159,9 @@ class TestTheHeal:
         assert got["outcome"] == "healed", got["words"]
         kw = src.apply_kw
         assert (kw["actor"], kw["actor_kind"]) == (SETTER, "policy")
-        assert "heal to intent (policy set by admin@example.com)" == kw["hold_detail"]
+        # Board E2a: the words name the policy's setter by display name (the part of their
+        # identity before the "@"); the identity itself is the actor, and each row's own field.
+        assert "heal to intent (policy set by admin)" == kw["hold_detail"]
         entry = src.plan("edge-b", **src.plan_kw)
         assert entry["commands"] == [line] == d["program"]
         assert kw["command_hashes"] == {"edge-b": entry["command_hash"]}
@@ -171,6 +173,29 @@ class TestTheHeal:
         assert applied(d["id"])["outcome"] == "healed"
         (inc,) = I.read("Default")["incidents"]
         assert inc["state"] == "closed" and d["id"] in inc["closed_why"]
+
+    def test_its_rows_name_the_setter_by_display_name_and_keep_the_identity_beside(self, lab):
+        """Board E2a: a heal's words name the policy's setter by display name (the part of
+        their identity before the "@"); the identity is each row's own `policy_by`, and each
+        step's that names them, so no screen needs to read it out of the words. The apply
+        still acts as the identity."""
+        from modules.heal import steplog
+        got, src, _d = act(GOLDEN + ROUTE4)
+        assert got["outcome"] == "healed", got["words"]
+        assert src.apply_kw["actor"] == SETTER
+        rows = {r["row"]: r for r in steplog.read("Default")["rows"]
+                if r["row"] in ("started", "act")}
+        for name in ("started", "act"):
+            assert rows[name]["by"] == "heal to intent (policy set by admin)", name
+            assert rows[name].get("policy_by") == SETTER, name
+            assert rows[name]["policy"]["by"] == SETTER, "the policy the row stands on, as before"
+        named = [s for s in got["steps"] if "policy set by" in s["words"]]
+        assert [s["step"] for s in named] == ["take", "apply"]
+        assert [s["words"] for s in named] == [
+            "taken by heal to intent (policy set by admin)",
+            "as the policy set by admin, holding edge-b"]
+        assert all(s.get("policy_by") == SETTER for s in named)
+        assert SETTER not in " ".join(s["words"] for s in got["steps"])
 
     def test_a_missing_line_is_re_applied_from_the_golden(self, lab):
         running = changed(("logging host 192.0.2.50\n", ""))

@@ -45,7 +45,7 @@
   </form>
   {%- if r.location %}
   <dl class="sdn-kv code-repo-facts">
-    <dt>Last fetch</dt><dd>{% if r.last %}{% if r.last.ok %}commit <span class="mono">{{ r.last.commit[:7] }}</span> of <span class="mono">{{ r.last.branch or 'its default branch' }}</span>, {{ stamp(r.last.at) }} by {{ r.last.by }}{% else %}{{ badge('failed', 'danger') }} {{ stamp(r.last.at) }} by {{ r.last.by }}: {{ r.last.error }}{% if r.last_ok %} · the last good one: <span class="mono">{{ r.last_ok.commit[:7] }}</span>, {{ stamp(r.last_ok.at) }}{% endif %}{% endif %}{% else %}none yet: press Fetch now{% endif %}</dd>
+    <dt>Last fetch</dt><dd>{% if r.last %}{% if r.last.ok %}commit <span class="mono">{{ r.last.commit[:7] }}</span> of <span class="mono">{{ r.last.branch or 'its default branch' }}</span>, {{ stamp(r.last.at) }} by {{ r.last.by | people }}{% else %}{{ badge('failed', 'danger') }} {{ stamp(r.last.at) }} by {{ r.last.by | people }}: {{ r.last.error }}{% if r.last_ok %} · the last good one: <span class="mono">{{ r.last_ok.commit[:7] }}</span>, {{ stamp(r.last_ok.at) }}{% endif %}{% endif %}{% else %}none yet: press Fetch now{% endif %}</dd>
     {%- if r.registered_state == 'ok' %}
     <dt>Registered</dt><dd>{{ r.versions }} version{{ 's' if r.versions != 1 }} of {{ r.apps }} app{{ 's' if r.apps != 1 }}, each a Draft until it is published · <a href="{{ url_for('sdn_v2.apps', list=r.network) }}">Open SDN › Apps</a></dd>
     {%- endif %}

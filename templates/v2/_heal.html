@@ -13,7 +13,7 @@
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}. Nothing was changed.</p></div>
   {%- endif %}
   {%- if h.stopped.stopped %}
-  <div class="notice notice-danger set-result" role="status" id="heal-stopped">{{ icon('warn', 16) }}<div><p><strong>Self-healing is stopped everywhere.</strong> {{ h.stopped.words }}. No network heals, whatever its mode below, until a person resumes it.</p>
+  <div class="notice notice-danger set-result" role="status" id="heal-stopped">{{ icon('warn', 16) }}<div><p><strong>Self-healing is stopped everywhere.</strong> {{ h.stopped.words | people }}. No network heals, whatever its mode below, until a person resumes it.</p>
     {%- if not resuming %}
     <p class="set-foot"><span class="op-act"><button type="button" class="btn btn-small" data-op="settings" hx-post="{{ url_for('heal_v2.resume_preview', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this" title="Says what each network does once resumed; nothing resumes until you confirm"{{ gate('configure') }}><span class="op-idle">Resume self-healing…</span><span class="op-busy">Previewing…</span></button>{{ how('settings', 'self-healing', compact=True, op='resuming self-healing') }}</span></p>
     {%- endif %}</div></div>
@@ -29,15 +29,15 @@
     <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p><strong>Confirmed:</strong> {{ net }}'s self-healing is {{ {'off': 'off', 'dry_run': 'dry run', 'auto': 'Auto'}[saved.mode] }}{% if saved.until %} until {{ saved.until }}, then dry run{% endif %}, policy <span class="mono">{{ saved.policy_fingerprint }}</span>, {{ saved.changes | length }} value(s) changed, recorded with your reason {{ stamp(saved.at) }}. Nothing was sent to a device.{% if not saved.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %}</p></div>
     {%- endif %}
     {%- if off %}
-    <div class="notice notice-{{ 'muted' if off.recorded or off.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if off.nothing %}<strong>{{ off.words }}.</strong>{% else %}<strong>Turned off</strong> {{ stamp(off.at) }}: {{ off.words }}.{% if not off.recorded %} <strong>Turned off, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+    <div class="notice notice-{{ 'muted' if off.recorded or off.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if off.nothing %}<strong>{{ off.words | people }}.</strong>{% else %}<strong>Turned off</strong> {{ stamp(off.at) }}: {{ off.words | people }}.{% if not off.recorded %} <strong>Turned off, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
     {%- endif %}
     {%- if cur.state != 'ok' %}
     <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ cur.error }}. A policy that cannot be read is never read as on, and every change is refused until it can be read.</p></div>
     {%- endif %}
     <dl class="heal-kv">
       <dt>Mode</dt><dd><strong>{{ h.means.split(':')[0] }}</strong>:{{ h.means.split(':', 1)[1] }}{% if cur.mode == 'auto' and h.until_words %} ({{ h.until_words }}){% endif %}
-        <span class="set-origin heal-why">Now: {{ cur.words }}</span></dd>
-      <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}</dd>
+        <span class="set-origin heal-why">Now: {{ cur.words | people }}</span></dd>
+      <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by | people }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}</dd>
       <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }} <span class="muted">(Auto is allowed only on a network marked lab, until the AUTO production-readiness gate)</span></dd>
       <dt>Production's bar</dt><dd>{{ h.bar }}. <span class="muted">Lab drills never count toward it.</span></dd>
       <dt>Policy fingerprint</dt><dd class="mono">{{ cur.fingerprint or 'none' }}{% if cur.confirmed.fingerprint and cur.confirmed.fingerprint != cur.fingerprint %} <span class="set-origin">(confirmed {{ cur.confirmed.fingerprint }})</span>{% endif %}</dd>
@@ -57,7 +57,7 @@
       {%- else %}
       <ul class="set-list small">
         {%- for r in h.history.rows %}
-        <li>{{ stamp(r.at) }} {{ r.who }}: {% if r.kind == 'heal_off' %}turned off (was {{ r.before }}){% elif r.kind == 'heal_auto_expired' %}Auto reached its expiry {{ r.until }}: dry run{% elif r.kind == 'heal_notify' %}Who is told saved{% else %}confirmed {{ r.mode }}{% if r.until %} until {{ r.until }}{% endif %} (policy <span class="mono">{{ r.policy_fingerprint }}</span>), “{{ r.reason }}”{% endif %}</li>
+        <li>{{ stamp(r.at) }} {{ r.who | people }}: {% if r.kind == 'heal_off' %}turned off (was {{ r.before }}){% elif r.kind == 'heal_auto_expired' %}Auto reached its expiry {{ r.until }}: dry run{% elif r.kind == 'heal_notify' %}Who is told saved{% else %}confirmed {{ r.mode }}{% if r.until %} until {{ r.until }}{% endif %} (policy <span class="mono">{{ r.policy_fingerprint }}</span>), “{{ r.reason }}”{% endif %}</li>
         {%- endfor %}
       </ul>
       {%- endif %}
@@ -143,7 +143,7 @@
 
   <div class="heal-kill" id="heal-kill">
     {%- if stopped_now %}
-    <div class="notice notice-{{ 'muted' if stopped_now.recorded or stopped_now.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if stopped_now.nothing %}<strong>{{ stopped_now.words }}.</strong>{% else %}<strong>Stopped everywhere</strong> {{ stamp(stopped_now.at) }}: {{ stopped_now.words }}.{% if not stopped_now.recorded %} <strong>Stopped, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
+    <div class="notice notice-{{ 'muted' if stopped_now.recorded or stopped_now.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if stopped_now.nothing %}<strong>{{ stopped_now.words | people }}.</strong>{% else %}<strong>Stopped everywhere</strong> {{ stamp(stopped_now.at) }}: {{ stopped_now.words | people }}.{% if not stopped_now.recorded %} <strong>Stopped, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
     {%- endif %}
     {%- if resuming %}
     {%- set rp = resuming %}

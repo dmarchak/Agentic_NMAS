@@ -35,7 +35,16 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `f114ddb32c319e579cff6762a8c98aef947387c6b254d94fcfe7c2633727f28b`
+Templates sha256: `17d74797f049ce151f7f797f8e1f9624f70d1b8468238d122106b29c0a0a6e8f`
+
+**Hashed again 2026-11-12 for a heal's row in Recent changes** (the operator, that day: "A heal
+reads "Heal r3 · by Mercury's self-healing""). `_recent.html`: a heal's receipt is drawn "Heal
+<device> · <outcome> · N lines re-applied", by Mercury's self-healing, the policy's setter by
+display name after it, N its configuration lines (never the `exit` closing a sub-mode); every
+other row as compared. Compared by the template diff and the rows tests/test_deploy_receipts.py
+draws, not a new shot; logged in docs/STANDING_APPROVAL_LOG.md. Templates sha256 before:
+`b5e4bf34a6fb63674c7eefe797e6dbdf6a2ff6d0b6cc9af559d99531e8d71617`.
+
 
 **Hashed again 2026-11-11 for a lost stream's severity** (C2970; the operator, 2026-11-10:
 "Severity follows impact on service, not 'something broke'… Fix it in the provisioned Grafana
@@ -84,6 +93,18 @@ held row's "Open the run" takes its address from the one macro that builds it (`
 `_macros.html`), the same address as before. Nothing else on a row moves. Compared by the
 template diff and the row tests/test_run_outcomes.py draws, not a new shot. Templates sha256
 before: `8dc969d036f434576a2ac665d0a3c0f84c1aac1f0b4c67b46df31516ad3c21fe`.
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_attention.html` and `_recent.html`, each place that
+draws a person (who read or asked for Mercury's diagnosis, who runs one now, a Grafana
+silence's author, who acknowledged a row, who made a recent change) now draws them through the
+`people` filter, by display name (the name the person set, else the part of their identity
+before the "@"), in the same element and position; the rows' own words, which their sources
+write naming people by identity, reach the page through the same filter over the page's model
+(`routes/v2._attention`). No region is added, removed or moved, and no other word changes.
+Where the board draws an identity the built screen draws the name, a deviation logged once for
+every screen (log: Display names: a person is drawn by display name on every screen). Every
+other verdict stands.
 
 **Hashed again 2026-11-11 for a held device's actions** (the operator, that day: "While a
 device is held by a run, its actions must be disabled, saying 'running since <time>, by

@@ -13,7 +13,17 @@ card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of
 (the register row the main thread names for it).
 
 Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html, templates/v2/_sdn_built_from.html
-Templates sha256: `e304bade82241ccd1b346c73ee00576bae3471f6bffb1f0f3a83e2ed60c8527d`
+Templates sha256: `12424ca74b099d6c6d5a60f613adc8c1e303afbc35f9f6d591ade97f9ed8ee81`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_sdn_switches.html` and `_sdn_of_template.html`, each
+place that draws a person (who a configuration's record is by, who confirmed a template, who a
+template was committed as) now draws them through the `people` filter, by display name (the
+name the person set, else the part of their identity before the "@"), in the same element and
+position; no region is added, removed or moved, and no other word changes. Where the board
+draws an identity the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 Hashed again 2026-11-11 for the operator's work order from the Lab 9 sitting (2026-11-10: "the
 capture picker default and re-confirm; 'Differs from intent' says NetBox changed; the OVS
 preview shows its transaction and 'already as intended'; Retire on observe devices says what it

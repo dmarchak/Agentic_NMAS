@@ -10,7 +10,16 @@ this page yet (its first real run on the lab is its walk). There is no phone boa
 the console card's layout (`op-card`, `op-part`), which reflows at phone width.
 Compared 2026-10-23.
 Templates compared: templates/v2/oob_run.html, templates/v2/_oob_onboard.html, templates/v2/_oob_outcome.html
-Templates sha256: `1c87a0edd99f4094e81768e178bb9bd50c3d77c688f5546d7c97b525ead103f1`
+Templates sha256: `7557a81ff036dc5adb407876163760a7a5747956c8f6a13e6fdb1e66c7c30670`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
+regions below, not from new shots. In `_oob_onboard.html`, each place that draws a person (the
+run's "By <who> (verified: …)") now draws them through the `people` filter, by display name
+(the name the person set, else the part of their identity before the "@"), in the same element
+and position; no region is added, removed or moved, and no other word changes. Where the board
+draws an identity the built screen draws the name, a deviation logged once for every screen
+(log: Display names: a person is drawn by display name on every screen). Every other verdict
+stands.
 Hash rewritten 2026-10-24 (C1642, the overnight run): the result chip's words and level moved,
 unchanged, from `_oob_onboard.html` into `_oob_outcome.html` (now compared here too), so a
 pending device's page draws the same words; no drawn text, region or control moved, every

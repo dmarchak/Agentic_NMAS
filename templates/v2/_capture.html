@@ -99,7 +99,7 @@
   <div class="op-hd"><h2 id="op-title">{{ 'Captured' if c.outcome == 'captured' else 'Capture ' ~ c.host }} {{ badge(c.chip, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div><p>
-    {%- if c.outcome == 'captured' %}{{ c.host }}'s golden is recorded at commit <a class="mono" href="{{ url_for('v2.history_page', device=c.host) }}">{{ c.commit }}</a>, as {{ c.actor }}{{ ' (verified)' if c.verified }}, {{ stamp(c.at, c.at[11:19] ~ ' UTC', 'read again at confirm: capture ' ~ c.confirmed ~ ', unchanged since the preview; ' ~ c.read_in) }}.{% if c.reason_given %} Its structure shrank, and your reason is recorded on the commit: &ldquo;{{ c.reason_given }}&rdquo;.{% endif %}
+    {%- if c.outcome == 'captured' %}{{ c.host }}'s golden is recorded at commit <a class="mono" href="{{ url_for('v2.history_page', device=c.host) }}">{{ c.commit }}</a>, as {{ c.actor | people }}{{ ' (verified)' if c.verified }}, {{ stamp(c.at, c.at[11:19] ~ ' UTC', 'read again at confirm: capture ' ~ c.confirmed ~ ', unchanged since the preview; ' ~ c.read_in) }}.{% if c.reason_given %} Its structure shrank, and your reason is recorded on the commit: &ldquo;{{ c.reason_given }}&rdquo;.{% endif %}
     {%- elif c.outcome == 'unchanged' %}{{ c.host }}'s running configuration still equals its golden: nothing was recorded, and no commit was made. {{ stamp(c.at, 'Measured ' ~ c.at[11:19] ~ ' UTC', c.read_in) }}
     {%- elif c.outcome == 'moved' %}Nothing was recorded: the read at confirm is capture {{ c.current }}, and you confirmed {{ c.confirmed }}. Nothing was committed.
     {%- elif c.outcome == 'busy' %}Nothing was recorded: {{ c.reason }}. Nothing is queued.

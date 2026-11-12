@@ -16,7 +16,7 @@
   <div class="op-part"><h3>Why not yet</h3><div><p>No export of {{ list_name }}'s record is logged, so there is no file to drill. Export the record first.</p></div></div>
   {%- else %}
   <div class="op-part"><h3>Last done</h3><div>
-    {%- if d.last %}<p>{{ stamp(d.last.at) }}, by {{ d.last.actor or 'nobody recorded' }}: the file made {{ stamp(d.last.created) if d.last.created else '(no date)' }} opened on the machine that keeps it, without the tool, {{ d.last.devices }} device(s). The next is {{ d.due.full }}, 90 days after it.</p>
+    {%- if d.last %}<p>{{ stamp(d.last.at) }}, by {{ (d.last.actor or 'nobody recorded') | people }}: the file made {{ stamp(d.last.created) if d.last.created else '(no date)' }} opened on the machine that keeps it, without the tool, {{ d.last.devices }} device(s). The next is {{ d.due.full }}, 90 days after it.</p>
     {%- else %}<p>Never: nothing has shown the record opens without the tool. {{ d.due.full | capitalize }}: 90 days after the first export.</p>{% endif %}</div></div>
   <div class="op-part"><h3>To do it</h3><div>
     <p>On the machine that keeps the file, with nothing of the tool running, give it the .bg file you kept:</p>

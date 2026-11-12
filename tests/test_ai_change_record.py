@@ -247,7 +247,10 @@ class TestThePress:
         assert 'name="cr"' in page and 'form="deploy-form"' in page
         assert "Was this right?" in page
         actor = calls.read()["rows"][0]["actor"]
-        assert f"trigger person ({actor})" in page and "@" in actor
+        # Board E2a: the draft's line and its Copy as text name the person by display name
+        # (the part before the "@"); the call's record keeps the identity.
+        assert f"trigger person ({actor.split('@')[0]})" in page and "@" in actor
+        assert actor not in page
 
     def test_the_call_is_a_person_s_about_the_device_and_its_program(self, world):
         _press(world)

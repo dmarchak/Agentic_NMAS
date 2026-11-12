@@ -14,7 +14,7 @@
   <div class="card-head"><h2 id="h-records-db">Records database</h2>{{ badge(WORDS[r.state][0], WORDS[r.state][1]) }}
     {%- if r.stale %}{{ badge('changed since that Test: Test again', 'warn') }}{% endif %}</div>
   {%- if r.state in ('answering', 'failing') %}
-  <p class="muted small set-meta">{% if r.state == 'answering' and r.version %}{{ r.version }} · {% endif %}tested {{ stamp(r.test.at_iso) }} by {{ r.test.actor_label }}</p>
+  <p class="muted small set-meta">{% if r.state == 'answering' and r.version %}{{ r.version }} · {% endif %}tested {{ stamp(r.test.at_iso) }} by {{ r.test.actor_label | people }}</p>
   {%- endif %}
   {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not saved:</strong> {{ refused }}. Nothing was changed.</div></div>
@@ -22,12 +22,12 @@
   {%- if saved %}
   <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
-    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}), in the installation's settings for every network. Recorded in the installation's settings record, a file, never in the database it configures.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label | people }} {{ stamp(saved.at_iso) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}), in the installation's settings for every network. Recorded in the installation's settings record, a file, never in the database it configures.
     {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
   {%- endif %}
   {%- if replaced %}
   <div class="notice notice-{{ 'muted' if replaced.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
-    <strong>Password replaced</strong> by {{ replaced.actor_label }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
+    <strong>Password replaced</strong> by {{ replaced.actor_label | people }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
   {%- endif %}
   {%- if tested %}
   <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>

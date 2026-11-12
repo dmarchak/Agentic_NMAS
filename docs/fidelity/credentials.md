@@ -27,7 +27,17 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
-Templates sha256: `d8259e2f232a9483de6f01c10edbc0f8a4f84b6afa4028ab6e8aecbb445a1fe5`
+Templates sha256: `80e5913eeebd6ad52195fefb7c5c03c7ed0d0facdff6b6721c7194866add65ef`
+
+**Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
+regions below, not from new shots. In `_breakglass_record.html`, `_breakglass_done.html`,
+`_breakglass_drill.html` and `_credential_read_account.html`, each place that draws a person
+(who exported, checked or drilled, who set the read-only account) now draws them through the
+`people` filter, by display name (the name the person set, else the part of their identity
+before the "@"), in the same element and position; no region is added, removed or moved, and no
+other word changes. Where the board draws an identity the built screen draws the name, a
+deviation logged once for every screen (log: Display names: a person is drawn by display name
+on every screen). Every other verdict stands.
 Templates sha256 before: `4cf8d5aded5ffe96b1d64a610b0e492727e8fbce3e4ce3288570513e942cbbfa`.
 
 Compared again 2026-10-17 (C1023) after Check it (`_breakglass_check.html`) and Record the drill

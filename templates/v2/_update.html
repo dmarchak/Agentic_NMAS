@@ -17,8 +17,8 @@
   <div class="card-head"><h2>The last update</h2>{{ badge(words.get(o.outcome, o.outcome)|truncate(40, True), OUT_KIND.get(o.outcome, 'muted')) }}</div>
   <dl class="facts">
     {%- if o.to %}<div><dt>From, to</dt><dd><span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ o.to[:10] }}</span></dd></div>{% endif %}
-    {%- if o.requested_by and o.route != 'terminal' %}<div><dt>Requested by</dt><dd>{{ o.requested_by }}{% if o.requested_at %} <span class="muted">· {{ stamp(o.requested_at) }}</span>{% endif %}</dd></div>{% endif %}
-    {%- if o.route == 'terminal' %}<div><dt>How</dt><dd>a terminal deploy (nmas-deploy) by {{ o.requested_by or 'someone' }}</dd></div>{% endif %}
+    {%- if o.requested_by and o.route != 'terminal' %}<div><dt>Requested by</dt><dd>{{ o.requested_by | people }}{% if o.requested_at %} <span class="muted">· {{ stamp(o.requested_at) }}</span>{% endif %}</dd></div>{% endif %}
+    {%- if o.route == 'terminal' %}<div><dt>How</dt><dd>a terminal deploy (nmas-deploy) by {{ (o.requested_by or 'someone') | people }}</dd></div>{% endif %}
     <div><dt>Outcome</dt><dd>{{ words.get(o.outcome, o.outcome) }}{% if o.step and o.outcome != 'updated' %}, at the step "{{ step_words.get(o.step, o.step)|replace('<target>', (o.to or '')[:10]) }}"{% endif %}{% if o.ended_at %} <span class="muted">· {{ stamp(o.ended_at) }}</span>{% endif %}</dd></div>
     {%- if o.reason %}<div><dt>Why</dt><dd>{{ o.reason }}</dd></div>{% endif %}
     {%- for n in o.notes or [] %}<div><dt>Note</dt><dd>{{ n }}</dd></div>{% endfor %}
@@ -53,7 +53,7 @@
   {%- if f.commits %}
   <h3 class="sub-head">The commits it would run</h3>
   <ul class="commit-list" id="update-commits">
-    {%- for c in f.commits %}<li><span class="mono">{{ c.sha[:10] }}</span> {{ c.subject }} <span class="muted">· {{ c.author }}, {{ stamp(c.at) }}</span></li>{% endfor %}
+    {%- for c in f.commits %}<li><span class="mono">{{ c.sha[:10] }}</span> {{ c.subject }} <span class="muted">· {{ c.author | people }}, {{ stamp(c.at) }}</span></li>{% endfor %}
   </ul>
   {%- if f.commits_cut %}<p class="muted">Showing the newest {{ f.commits|length }} of {{ f.behind }}.</p>{% endif %}
   {%- endif %}
@@ -99,7 +99,7 @@
        data-status-url="{{ url_for('update.status') }}"
        data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
        data-waiting="{{ 'yes' if p.waiting.target else 'no' }}"{% if p.following %} data-follow-id="{{ p.following }}"{% endif %}
-       data-waiting-words="{% if p.waiting.target %}Waiting for CI: the update to {{ p.waiting.target[:10] }} starts when CI passes (asked by {{ p.waiting.requested_by }}, {{ p.waiting.requested_at }}).{% endif %}"
+       data-waiting-words="{% if p.waiting.target %}Waiting for CI: the update to {{ p.waiting.target[:10] }} starts when CI passes (asked by {{ p.waiting.requested_by | people }}, {{ p.waiting.requested_at }}).{% endif %}"
        data-refusal="{{ refusal }}"{% if refusal %} data-update-hold="result"{% elif p.following %} data-update-hold="yes"{% endif %}>
     <p>{{ confirm.statement }}</p>
     {%- if p.wait_ended %}
@@ -183,7 +183,7 @@
 <section class="card" id="update-declined">
   <div class="card-head"><h2>Host steps declined</h2></div>
   <ul class="plain-list">
-    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by }} at {{ clock(d.at) }} on {{ (d.at or '')[:10] }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by | people }} at {{ clock(d.at) }} on {{ (d.at or '')[:10] }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}
@@ -191,7 +191,7 @@
 <section class="card" id="update-said-done">
   <div class="card-head"><h2>Host steps said done</h2></div>
   <ul class="plain-list">
-    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by }}, {{ stamp(d.at) }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by | people }}, {{ stamp(d.at) }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}
@@ -213,7 +213,7 @@
   <div class="card-head"><h2>Earlier updates</h2></div>
   <ul class="plain-list">
     {%- if p.wait_ended_earlier %}{% set w = p.wait_ended_earlier %}<li id="update-wait-ended-earlier">{{ badge('wait ended', 'muted') }} <span class="mono">{{ (w.target or '')[:10] }}</span> <span class="muted">· {{ w.words }} · {{ stamp(w.ended_at) }}</span></li>{% endif %}
-    {%- for o in hist.rows[1:] %}<li>{{ badge(words.get(o.outcome, o.outcome)|truncate(30, True), OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ o.requested_by or '' }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
+    {%- for o in hist.rows[1:] %}<li>{{ badge(words.get(o.outcome, o.outcome)|truncate(30, True), OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ (o.requested_by or '') | people }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}

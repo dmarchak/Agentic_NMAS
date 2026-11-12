@@ -21,7 +21,7 @@
     <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Commands</th><th scope="col">Devices</th><th scope="col">Outcome</th></tr></thead>
     <tbody>
     {%- for r in runs.rows %}
-    <tr><td><a href="{{ url_for('reads_v2.show_commands_result', run_id=r.id, list=list_name) }}">{{ stamp(r.at) }}</a></td><td>{{ r.who }}</td>
+    <tr><td><a href="{{ url_for('reads_v2.show_commands_result', run_id=r.id, list=list_name) }}">{{ stamp(r.at) }}</a></td><td>{{ r.who | people }}</td>
       <td class="mono">{{ r.commands | join('; ') }}</td><td>{{ r.devices }}</td>
       <td>{% if r.state == 'refused' %}{{ badge('refused', 'danger', title=r.refused) }}{% elif r.state == 'running' %}{{ badge('running', 'warn') }}{% else %}{{ r.words }}{% endif %}</td></tr>
     {%- endfor %}

@@ -130,7 +130,8 @@ class TestRevealRequiresAPersonAndIsAudited:
         page = H.unescape(r.get_data(as_text=True))
         assert r.status_code == 200, page[:300]
         assert _secret_line(client) in page
-        assert "revealed to operator@example.com" in page
+        # Board E2a: who it was revealed to, by display name (the part before the "@").
+        assert "revealed to operator and recorded" in page
 
     def test_the_reveal_is_recorded(self, client, keys):
         from modules import reveal_audit

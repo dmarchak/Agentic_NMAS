@@ -89,6 +89,9 @@ The landing page answers one question: does anything need you?
   credentials, NetBox against the committed goldens, and the NetBox API token's expiry.
 - **Recent changes**: the last deploys and restores, from their receipts. It reads itself again
   when a deploy or restore finishes, so a page left open shows the new one without a reload.
+  A heal reads "Heal edge1 · … · 3 lines re-applied", by {{product}}'s self-healing, with the
+  person whose policy allowed it after: the lines are the configuration lines it re-applied,
+  never the `exit` that closes a sub-mode.
 
 ## The count in the sidebar {#count}
 

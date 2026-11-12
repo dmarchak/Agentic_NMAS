@@ -71,14 +71,14 @@
   {%- if v.dry_run and v.confirmable %}
   <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Watching only on {{ v.network }} (dry run):</strong> Mercury sends nothing by itself. <strong>Approving this sends it.</strong></p></div>
   {%- endif %}
-  <p class="small muted">Mercury proposed this {% if v.at %}at {{ clock(v.at) }}{% else %}at an unrecorded time{% endif %} under {{ v.network }}'s policy{% if v.policy.by %}, confirmed by {{ v.policy.by }}{% endif %}. Approving sends exactly the commands shown, recorded as approved by you.</p>
+  <p class="small muted">Mercury proposed this {% if v.at %}at {{ clock(v.at) }}{% else %}at an unrecorded time{% endif %} under {{ v.network }}'s policy{% if v.policy.by %}, confirmed by {{ v.policy.by | people }}{% endif %}. Approving sends exactly the commands shown, recorded as approved by you.</p>
   {#- Board H's amendment, artboard E's insert (H17; 19.3, N14): Mercury's diagnosis, run
       once the fix was proposed, read-only; it never withdraws the proposal. -#}
   {%- set dg = v.diagnosis or {} %}
   <div class="heal-diag">
   {%- if dg.state == 'done' %}
   {%- set dd = dg.result %}
-  <p class="small"><strong>Mercury's diagnosis</strong>, run before this was offered: <span title="by {{ dd.actor }}">{{ dd.runbook_words }}</span>, {{ dd.commands }} read(s) on {{ dd.devices | join(', ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}: {{ badge(dd.chip, dd.level) }}</p>
+  <p class="small"><strong>Mercury's diagnosis</strong>, run before this was offered: <span title="by {{ dd.actor | people }}">{{ dd.runbook_words }}</span>, {{ dd.commands }} read(s) on {{ dd.devices | join(', ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}: {{ badge(dd.chip, dd.level) }}</p>
   {%- if dd.hypotheses %}
   <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
   {%- else %}
@@ -91,7 +91,7 @@
   {%- elif dg.state == 'not' %}
   <p class="small warn-text"><strong>Mercury's diagnosis:</strong> {{ dg.result.words }}.</p>
   {%- elif dg.state == 'running' %}
-  <p class="small muted"><strong>Mercury's diagnosis</strong> is running on {{ host }}, by {{ dg.running.actor }}{% if dg.running.since %}, since {{ stamp(dg.running.since) }}{% endif %}; it is drawn here when it ends. Approving does not wait for it.</p>
+  <p class="small muted"><strong>Mercury's diagnosis</strong> is running on {{ host }}, by {{ dg.running.actor | people }}{% if dg.running.since %}, since {{ stamp(dg.running.since) }}{% endif %}; it is drawn here when it ends. Approving does not wait for it.</p>
   {%- elif dg.state == 'unreadable' %}
   <p class="small warn-text"><strong>Mercury's diagnosis</strong> cannot be read: {{ dg.error }}.</p>
   {%- else %}
@@ -131,7 +131,7 @@
       <dt>Program</dt><dd><span class="mono">{{ v.program_hash or 'no hash' }}</span>, {{ v.lines | length }} line(s) on {{ host }} ({{ v.platform or 'platform unknown' }})</dd>
       <dt>Fix</dt><dd>{{ v.kind_words }} (<span class="mono">{{ v.kind }}</span>) · {{ badge('Propose', 'warn') }} (Tier {{ v.tier }}){% for u in v.units %}<span class="set-origin heal-why">{{ u }}</span>{% endfor %}</dd>
       {%- if v.reset %}<dt>Reset</dt><dd><span class="mono">{{ v.reset.key }}</span>: {{ v.reset.command }}, read by {{ v.reset.read }}{% if v.reset.measured %}, measured on {{ v.reset.measured.device }} at {{ v.reset.measured.at }}{% endif %}{% if v.reset.bound_s %}; verify waits up to {{ v.reset.bound_s }} s{% endif %}{% if v.reset.refused %}; {{ v.reset.refused }}{% endif %}</dd>{% endif %}
-      <dt>Policy</dt><dd><span class="mono">{{ v.policy.fingerprint or 'no fingerprint recorded' }}</span>{% if v.policy.by %}, confirmed by {{ v.policy.by }}{% if v.policy.reason %} (“{{ v.policy.reason }}”){% endif %}{% endif %}</dd>
+      <dt>Policy</dt><dd><span class="mono">{{ v.policy.fingerprint or 'no fingerprint recorded' }}</span>{% if v.policy.by %}, confirmed by {{ v.policy.by | people }}{% if v.policy.reason %} (“{{ v.policy.reason }}”){% endif %}{% endif %}</dd>
       <dt>Proposed</dt><dd>{{ v.at or 'not recorded' }}</dd>
       <dt>The decision</dt><dd>{{ v.words or 'No words are recorded with this decision.' }}{% if v.outcome_words and v.outcome_words != v.words %} ({{ v.outcome_words }}){% endif %}</dd>
       {%- if v.person %}<dt>The change's person</dt><dd>{{ v.person }}</dd>{% endif %}

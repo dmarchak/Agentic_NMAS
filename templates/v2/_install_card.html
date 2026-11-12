@@ -26,27 +26,27 @@
   {%- if saved %}
   <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
-    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}, for every network{% if saved.reason %}, with the reason “{{ saved.reason }}”{% endif %}. Recorded in the installation's settings record, old and new, and drawn on History.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label | people }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}, for every network{% if saved.reason %}, with the reason “{{ saved.reason }}”{% endif %}. Recorded in the installation's settings record, old and new, and drawn on History.
     {%- if saved.restart %} <strong>Bind and port take effect at the next restart:</strong> Mercury still listens where it did until then.{% endif %}
     {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
   {%- endif %}
   {%- if replaced %}
   <div class="notice notice-{{ 'muted' if replaced.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
-    <strong>{{ s.secret[1] }} replaced</strong> by {{ replaced.actor_label }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
+    <strong>{{ s.secret[1] }} replaced</strong> by {{ replaced.actor_label | people }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
   {%- endif %}
   {%- if writes_off %}
   <div class="notice notice-{{ 'muted' if writes_off.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if writes_off.nothing %}<strong>Already off:</strong> nothing was written.
-    {%- else %}<strong>NetBox writes turned off</strong> by {{ writes_off.actor_label }} {{ stamp(writes_off.at_iso) }}, for every network{% if not writes_off.recorded %}, and its record could not be written: {{ writes_off.record_error }}{% endif %}.{% endif %}</div></div>
+    {%- else %}<strong>NetBox writes turned off</strong> by {{ writes_off.actor_label | people }} {{ stamp(writes_off.at_iso) }}, for every network{% if not writes_off.recorded %}, and its record could not be written: {{ writes_off.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
   {%- if ai_allowed %}
   <div class="notice notice-{{ 'muted' if ai_allowed.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
-    <strong>Hosted AI allowed</strong> by {{ ai_allowed.actor_label }} {{ stamp(ai_allowed.at_iso) }}, with the reason below{% if not ai_allowed.recorded %}, and its record could not be written: {{ ai_allowed.record_error }}{% endif %}. Calls go to the model, masked, within the caps; each is recorded under History › AI calls.</div></div>
+    <strong>Hosted AI allowed</strong> by {{ ai_allowed.actor_label | people }} {{ stamp(ai_allowed.at_iso) }}, with the reason below{% if not ai_allowed.recorded %}, and its record could not be written: {{ ai_allowed.record_error }}{% endif %}. Calls go to the model, masked, within the caps; each is recorded under History › AI calls.</div></div>
   {%- endif %}
   {%- if ai_off %}
   <div class="notice notice-{{ 'muted' if ai_off.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if ai_off.nothing %}<strong>Already off:</strong> nothing was written.
-    {%- else %}<strong>Hosted AI turned off</strong> by {{ ai_off.actor_label }} {{ stamp(ai_off.at_iso) }}: every call is refused until a person allows it again{% if not ai_off.recorded %}, and its record could not be written: {{ ai_off.record_error }}{% endif %}.{% endif %}</div></div>
+    {%- else %}<strong>Hosted AI turned off</strong> by {{ ai_off.actor_label | people }} {{ stamp(ai_off.at_iso) }}: every call is refused until a person allows it again{% if not ai_off.recorded %}, and its record could not be written: {{ ai_off.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
   {%- if tested %}
   <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
@@ -87,7 +87,7 @@
   {%- if k.no_cap and k.no_cap.set %}
   {%- set nb = k.no_cap.by %}
   <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>{{ k.no_cap.words }}.</strong>
-    {%- if nb.state == 'ok' %} Chosen by {{ nb.actor_label }} {{ stamp(nb.at_iso) }}{% if nb.reason %}, with the reason “{{ nb.reason }}”{% else %}, before a reason was asked{% endif %}.
+    {%- if nb.state == 'ok' %} Chosen by {{ nb.actor_label | people }} {{ stamp(nb.at_iso) }}{% if nb.reason %}, with the reason “{{ nb.reason }}”{% else %}, before a reason was asked{% endif %}.
     {%- elif nb.state == 'unreadable' %} Who chose it is not known: the installation's settings record could not be read ({{ nb.error }}).
     {%- else %} Who chose it is not recorded: no Save of this card set it.{% endif %} Untick No cap and give an amount to set one again.</div></div>
   {%- endif %}
@@ -121,14 +121,14 @@
       {%- if k.writes.on %}
       <span class="set-origin">the master switch for every network's NetBox writes; turned on by confirming an authorised NetBox write, never from this card</span>
       {%- else %}
-      <span class="set-origin">{% if k.writes.last_off %}turned off by {{ k.writes.last_off.actor_label }} {{ stamp(k.writes.last_off.at_iso) }}; {% endif %}no NetBox write runs until a person confirms an authorised one with writes permitted, which turns it on</span>
+      <span class="set-origin">{% if k.writes.last_off %}turned off by {{ k.writes.last_off.actor_label | people }} {{ stamp(k.writes.last_off.at_iso) }}; {% endif %}no NetBox write runs until a person confirms an authorised one with writes permitted, which turns it on</span>
       {%- endif %}</div>
     {%- endif %}
     {%- if k.hosted %}
     <span class="set-label">Hosted AI</span>
     <div>{%- if k.hosted.allowed %}<span class="set-inline">{{ badge('allowed', 'ok') }}
       <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_ai_off') }}" hx-target="#card-ai" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'ai-off', compact=True, op='turning hosted AI off') }}</span></span>
-      <span class="set-origin">allowed by {{ k.hosted.by }} {{ stamp(k.hosted.at) }}: “{{ k.hosted.reason }}”</span>
+      <span class="set-origin">allowed by {{ k.hosted.by | people }} {{ stamp(k.hosted.at) }}: “{{ k.hosted.reason }}”</span>
       {%- else %}{{ badge('off', 'neutral') }}
       <span class="set-origin">every call is refused until a person allows hosted AI, below, with a reason of {{ k.reason_bounds[0] }} to {{ k.reason_bounds[1] }} characters, recorded</span>
       {%- endif %}</div>

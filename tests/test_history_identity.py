@@ -92,8 +92,8 @@ def test_the_filter_keeps_the_others_survives_show_and_is_undone(lab):  # noqa: 
 def test_a_narrowed_window_says_so_and_none_is_never_zero_of_zero(lab):  # noqa: F811
     _plant(lab["repo"])
     _r, page = _get(lab, "/v2/history?person=p0@example.com")
-    assert "The one commit shown (person: p0@example.com) carries a verified identity." in \
-        _text(page)
+    # The person filter's person by display name (board E2a).
+    assert "The one commit shown (person: p0) carries a verified identity." in _text(page)
     _r, page = _get(lab, "/v2/history?person=nobody")
     text = _text(page)
     assert "No commit shown (person: nobody), so no identity to count." in text

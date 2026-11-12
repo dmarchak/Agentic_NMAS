@@ -63,6 +63,7 @@ EXCEPTIONS = {
     "modules/history_sources.py": (SUPPORT, "History's event sources"),
     "modules/host_helpers.py": (SUPPORT, "host-side helpers for the app"),
     "modules/host_steps.py": (SUPPORT, "the host steps' page"),
+    "modules/display_names.py": (SUPPORT, "how each person is named on a screen, per person"),
     "modules/identity.py": (SUPPORT, "who is asking: the access proxy's assertion"),
     "modules/in_flight.py": (SUPPORT, "what is running, for the pages"),
     "modules/installation_diagnostics.py": (SUPPORT, "Settings › Installation › Diagnostics"),

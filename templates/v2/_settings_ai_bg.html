@@ -22,17 +22,17 @@
   {%- if turned_on %}
   {%- set e = turned_on.entry %}
   <div class="notice notice-ok set-result" role="status" data-result="on">{{ icon('tick', 16) }}<div>
-    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps ${{ '%.2f' % e.day_cap_usd }} a day, ${{ '%.2f' % e.month_cap_usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
+    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by | people }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps ${{ '%.2f' % e.day_cap_usd }} a day, ${{ '%.2f' % e.month_cap_usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if turned_off %}
   <div class="notice notice-muted set-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
     {%- if turned_off.nothing %}<strong>Already off:</strong> {{ turned_off.feature }} was not on for {{ ai.network }}; nothing was written.
-    {%- else %}<strong>{{ turned_off.feature }} turned off for {{ ai.network }}</strong> by {{ turned_off.actor_label or turned_off.actor }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
+    {%- else %}<strong>{{ turned_off.feature }} turned off for {{ ai.network }}</strong> by {{ (turned_off.actor_label or turned_off.actor) | people }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
   {%- if caps_set %}
   {%- set e = caps_set.entry %}
   <div class="notice notice-muted set-result" role="status" data-result="caps">{{ icon('tick', 16) }}<div>
-    <strong>{{ caps_set.feature }}'s caps on {{ ai.network }}</strong> are now ${{ '%.2f' % e.day_cap_usd }} a day and ${{ '%.2f' % e.month_cap_usd }} a month, by {{ e.caps_by }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
+    <strong>{{ caps_set.feature }}'s caps on {{ ai.network }}</strong> are now ${{ '%.2f' % e.day_cap_usd }} a day and ${{ '%.2f' % e.month_cap_usd }} a month, by {{ e.caps_by | people }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if not ai.hosted_allowed %}
   <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div><strong>Hosted AI is off for the installation</strong>, so no AI call runs, background or pressed, whatever is on here. It is allowed, with a recorded reason, on <a href="{{ ai.card_href }}">the AI (hosted) card</a> above.</div></div>
@@ -52,8 +52,8 @@
     <div class="ai-f-name"><strong>{{ f.words }}</strong> <span class="mono small faint">{{ f.name }}</span>
       <div class="ai-f-state">
       {%- if f.state == 'off' %}{{ badge('off', 'neutral') }}
-      {%- elif f.state == 'ended' %}{{ badge('approval ended', 'warn') }} <span class="set-origin">turned on by {{ f.entry.by }} {{ stamp(f.entry.at) }}; its approval ended {{ stamp(f.ends_iso) }}, so its calls are refused until an admin turns it on again</span>
-      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
+      {%- elif f.state == 'ended' %}{{ badge('approval ended', 'warn') }} <span class="set-origin">turned on by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; its approval ended {{ stamp(f.ends_iso) }}, so its calls are refused until an admin turns it on again</span>
+      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
       {%- endif %}</div>
     </div>
     <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capitalize }}; {{ f.calls_per_finding }} call per finding</span></div>

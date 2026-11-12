@@ -592,6 +592,9 @@ HISTORY = {
     "settings_v2.code_repo_save": NOT_A_DEVICE,
     "settings_v2.code_repo_fetch": NOT_A_DEVICE,
     "settings_v2.code_review_save": NOT_A_DEVICE,
+    # Board E2a: a person's display name, kept in the installation's display names store with
+    # who set it and when (its card on Settings › Installation draws that), never a device's.
+    "settings_v2.display_name": NOT_A_DEVICE,
     # C2777: the network's NSOT export, one commit in its repository (History › Commits), never
     # one device's record.
     "sdn_v2.export_confirm": NOT_A_DEVICE,
