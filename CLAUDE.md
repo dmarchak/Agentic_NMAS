@@ -328,7 +328,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   the CPU and memory it adds on the host, stated. Prevents: a page as slow as its slowest
   source, a request storm whenever a heal announces, and a decision made on a page's stale
   copy. [the routes still waiting, named and only shrinking: tests/test_no_page_waits.py;
-  display only: tests/test_attention_display_only.py]
+  display only: tests/test_attention_display_only.py, tests/test_heal_detect_read.py
+  (`TestNoHealModuleReadsTheDisplayStore`)]
 - **A board-built screen is compared with its board before it is called done:** the board
   and the page shot side by side (tests/test_board_shots.py) at the board's width, 1280
   and phone width, compared region by region in docs/fidelity/<screen>.md, every deviation
