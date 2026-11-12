@@ -304,7 +304,7 @@ class TestTheGate:
         assert code == 0 and _head(world) == sha and restarted
         assert sum(1 for c in calls if "head_sha=" in c) == 4
         assert out.count("waiting ") == 2, out
-        assert "typically ~7.5 min" in out and "of at most 1100 s" in out
+        assert "typically 13.5 to 19.5 min" in out and "of at most 2900 s" in out
         assert "waited " in out and "CI passed" in out
 
     def test_wait_stops_at_the_bound_and_says_so(self, world, capsys):
@@ -313,7 +313,7 @@ class TestTheGate:
                                   wait=True)
         err = capsys.readouterr().err
         assert code == 7 and _head(world) == world.base and not restarted
-        assert "still PENDING after waiting" in err and "the bound, 1100 s" in err
+        assert "still PENDING after waiting" in err and "the bound, 2900 s" in err
 
     def test_wait_ends_at_once_on_a_failure(self, world, capsys):
         """The gate is unchanged: a run that fails while followed refuses."""
@@ -442,6 +442,32 @@ class TestTheWalkAsksEachAncestor:
         world.advance({"docs/X.md": "x\n"}, "docs")
         code, _, _ = _run(world, {running: _run_entry(running, None, "in_progress")})
         assert code == 7 and "is still running" in capsys.readouterr().err
+
+    @staticmethod
+    def _numbered(sha, *spec):
+        return [dict(_run_entry(sha, c, s)[0], run_number=n, run_attempt=1, id=36367580000 + n,
+                     html_url=f"https://github.com/owner/repo/actions/runs/{n}")
+                for n, c, s in spec]
+
+    def test_a_pass_beside_main_s_own_live_run_deploys_naming_both(self, world, capsys):
+        """C3395 (2026-11-12): the branch's run passed the exact sha and main's own run, started by
+        the fast-forward, was still running; the deploy waited 803 s, then refused at its bound
+        once. The completed pass deploys, naming the live run and what a red from it means."""
+        sha = world.advance({"app.py": "v = 2\n"}, "passed on its branch")
+        code, _, _ = _run(world, {sha: self._numbered(sha, (1655, "success", "completed"),
+                                                      (1659, None, "in_progress"))})
+        said = capsys.readouterr()
+        words = said.out + said.err
+        assert code == 0, words
+        assert "run #1655" in words and "#1659" in words and "CI disagrees" in words
+
+    def test_a_failure_after_the_pass_refuses_though_a_run_is_live(self, world, capsys):
+        """The dangerous direction holds beside a live run: the latest completed run failed."""
+        sha = world.advance({"app.py": "v = 2\n"}, "passed, then failed")
+        code, _, _ = _run(world, {sha: self._numbered(sha, (10, "success", "completed"),
+                                                      (11, "failure", "completed"),
+                                                      (12, None, "in_progress"))})
+        assert code != 0, capsys.readouterr().err
 
     def test_a_code_commit_with_no_run_is_passed_over_and_its_change_refuses(self, world, capsys):
         """No run is only expected for ignored paths: the diff from the pass
@@ -1080,6 +1106,21 @@ class TestTheVerdictIsOfTheSetOfRuns:
                                                    (11, None, "in_progress")))
         assert state == "PENDING"
 
+    def test_the_deploy_takes_a_completed_pass_beside_a_live_run_and_nothing_else(self):
+        """C3395: `passed_beside_live`, the deploy's own reading; `verdict_of_runs` above, which
+        the CI-agreement reader shares, still says PENDING for the same runs."""
+        mod = _script()
+        got = mod.passed_beside_live(_runs((10, "success", "completed"), (11, None, "in_progress")))
+        assert got and got["run_number"] == 10
+        assert mod.passed_beside_live(_runs((10, "success", "completed"),
+                                            (11, "cancelled", "completed"),
+                                            (12, None, "queued")))["run_number"] == 10
+        assert mod.passed_beside_live(_runs((10, "success", "completed"),
+                                            (11, "failure", "completed"),
+                                            (12, None, "in_progress"))) is None
+        assert mod.passed_beside_live(_runs((10, None, "in_progress"))) is None
+        assert mod.passed_beside_live(_runs((10, "success", "completed"))) is None
+
     def test_only_cancelled_runs_are_cancelled_not_failed(self):
         mod = _script()
         state, _run, _ = mod.verdict_of_runs(_runs((10, "cancelled", "completed"),
@@ -1183,17 +1224,18 @@ class TestTheApiAllowance:
 
     def test_a_typical_run_costs_few_enough_calls_for_several_deploys_an_hour(self):
         mod = _script()
-        typical_s = 454                            # push to green, #638, measured 2026-10-11
+        typical_s = 1170                           # push to green, #1662, measured 2026-11-12
         per_deploy = -(-typical_s // mod.WAIT_POLL_S) + 1
         assert 60 // per_deploy >= 5, (mod.WAIT_POLL_S, per_deploy)
 
     def test_the_bound_is_about_two_and_a_half_times_the_measured_run(self):
-        """C679: push to green measured 454 s (#638) and each job at most 7.3 minutes over runs
-        #629 to #638 (2026-10-11); the bound is about 2.5x, and the words say the same."""
+        """C3395: push to green measured 13.5 to 19.5 minutes (#1659, #1662: 1170 s) and the
+        slowest job at most 18.1 minutes over runs #1646 to #1665 (2026-11-12; C679's 454 s of
+        2026-10-11 before it); the bound is about 2.5x, and the words say the same."""
         mod = _script()
-        assert 2.2 <= mod.WAIT_BOUND_S / 454 <= 2.8, mod.WAIT_BOUND_S
-        assert mod.WAIT_BOUND_S > 7.3 * 60 * 1.5, "a slow job alone must fit with room"
-        assert "measured 2026-10-11" in mod.MEASURED_TYPICAL
+        assert 2.2 <= mod.WAIT_BOUND_S / 1170 <= 2.8, mod.WAIT_BOUND_S
+        assert mod.WAIT_BOUND_S > 18.1 * 60 * 1.5, "a slow job alone must fit with room"
+        assert "measured 2026-11-12" in mod.MEASURED_TYPICAL
 
     def test_a_rate_limited_answer_says_when_the_allowance_comes_back(self, monkeypatch):
         import email.message
@@ -1655,11 +1697,12 @@ class TestTheLocalWaitBound:
         store = _local_store(tmp_path)
         shas = [world.advance({"app.py": f"v = {i}\n"}) for i in range(12)]
         for i, sha in enumerate(shas):
-            # The two oldest are long (and fall outside the last ten); the rest take 1,000 s.
+            # The two oldest are long (and fall outside the last ten); the rest take 2,000 s, so
+            # 2.5 times their median is above GitHub's bound (2900 s since C3395).
             _local_record(store, world, sha, "passed" if i % 3 else "failed",
-                          duration=(9_000.0 if i < 2 else 1_000.0),
+                          duration=(9_000.0 if i < 2 else 2_000.0),
                           ended=f"2026-11-03T{10 + i:02d}:00:00Z")
-        assert mod.local_wait_bound(store) == 2_500
+        assert mod.local_wait_bound(store) == 5_000
 
     def test_no_finished_run_or_short_runs_keep_githubs_bound(self, world, tmp_path):
         mod = _script()

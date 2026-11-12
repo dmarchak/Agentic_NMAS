@@ -154,9 +154,14 @@ LOCK_REL = os.path.join("data", "update", "lock")
 #: an hour at a 20 s poll, about 18 calls each with the Update page's checks, spent all 60,
 #: and the third deploy was refused as unverified). One call a poll; at 45 s a run of about
 #: 6 minutes costs about 8, so about 7 deploys fit an hour.
-WAIT_BOUND_S = 1100
-WAIT_POLL_S = 45
-MEASURED_TYPICAL = "typically ~7.5 min, each job 4 to 7.3 min (measured 2026-10-11)"
+#: Measured again 2026-11-12 (C3395, `nmas-ci-log times` over runs #1646 to #1665): the slowest
+#: test job 14.5 to 18.1 minutes, then the coverage job about 1.5; push to green 13.5 minutes
+#: (#1659) to 19.5 minutes (#1662, 1170 s). The bound is about 2.5x the slower, 2900 s, and the
+#: poll 110 s, so a run of 1170 s costs 12 calls and five deploys still fit an hour, and the
+#: longest wait 27.
+WAIT_BOUND_S = 2900
+WAIT_POLL_S = 110
+MEASURED_TYPICAL = "typically 13.5 to 19.5 min, the slowest job up to 18.1 min (measured 2026-11-12)"
 
 
 def can_restart(run=subprocess.run, isatty=None):
@@ -440,6 +445,27 @@ def verdict_of_runs(runs):
         return "CANCELLED", max(runs, key=_run_order), runs
     latest = max(conclusive, key=_run_order)
     return ("PASSED" if latest.get("conclusion") == "success" else "FAILED"), latest, runs
+
+
+def passed_beside_live(runs):
+    """The run that passed this SHA while another run for it is still live, or None (C3395).
+
+    For the DEPLOY's decision alone (`github_verdict`), never `verdict_of_runs`, which the
+    CI-agreement reader shares: a SHA's runs with one still running are PENDING there, as before.
+    The deploy bar is a green verdict on the exact SHA (CLAUDE.md, "The deploy bar"), so the
+    latest COMPLETED conclusive run deploys when it passed, though a newer run for the same SHA
+    (main's own, after a fast-forward under the CI-path rule) is still running. The dangerous
+    direction holds: a completed run that failed after the pass refuses, as in `verdict_of_runs`;
+    and a red from the live run after the deploy is the CI-agreement reader's "CI disagrees with
+    the deployed release" notice, which stops new work (CLAUDE.md, "Never stack a commit on a RED
+    CI")."""
+    live = [r for r in runs if r.get("status") != "completed"]
+    done = [r for r in runs if r.get("status") == "completed"
+            and r.get("conclusion") not in ABANDONED + (None, "")]
+    if not live or not done:
+        return None
+    latest = max(done, key=_run_order)
+    return latest if latest.get("conclusion") == "success" else None
 
 
 def _others(runs, chosen):
@@ -1068,6 +1094,13 @@ def github_verdict(repo, target, get=github_get, store=None):
         state, run, _all = verdict_of_runs(runs)
         url, num = run.get("html_url", ""), run.get("run_number", "?")
         others = _others(runs, run)
+        passed = passed_beside_live(runs) if state == "PENDING" else None
+        if passed is not None:
+            return OK, (f"CI passed for {short}: run #{passed.get('run_number', '?')}, "
+                        f"{passed.get('html_url', '')}; run #{num} for the same commit is still "
+                        f"{run.get('status')} (a red from it after this deploy is the 'CI "
+                        f"disagrees with the deployed release' notice, and stops new work)"
+                        f"{_others(runs, passed)}")
         if state == "PENDING":
             return CI_PENDING, (f"PENDING: CI run #{num} is still {run.get('status')} for {short}: "
                                 f"{url}{others}. Wait, and run nmas-deploy again when it completes, or run "
