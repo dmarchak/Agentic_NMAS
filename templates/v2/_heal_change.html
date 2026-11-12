@@ -35,6 +35,7 @@
       <div class="heal-kind-pick">
         {%- for k in c.kinds %}
         <label class="set-switch"><input type="checkbox" name="{{ 'heal_kinds_auto' if k.tier == 1 else 'heal_kinds_propose' }}" value="{{ k.kind }}"{% if k.on %} checked{% endif %}> {{ k.on_words }}: {{ k.label }}</label>
+        {%- if k.keep %}<input type="hidden" name="{{ k.keep }}" value="{{ k.kind }}">{% endif %}
         {%- endfor %}
       </div>
       {%- else %}

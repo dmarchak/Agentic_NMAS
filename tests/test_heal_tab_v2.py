@@ -200,6 +200,45 @@ def test_the_fix_kinds_and_a_hard_stop_are_changed_the_same_way(networks):
     assert r.status_code == 404
 
 
+def test_a_kind_in_both_lists_is_drawn_once_at_its_networks_tier(networks):
+    """The BGP session clear is Auto only on a network marked lab and proposed elsewhere
+    (`actions.tier_of`), so it is in both policy lists; Fix kinds draws it once, at the tier
+    its network gives it, and the change card carries its other list's setting unchanged
+    (the operator's overnight item 9, 2026-11-12: it was listed twice)."""
+    words = "BGP session clear: one named neighbour"
+
+    def kinds_card(network):
+        tab = networks["client"].get(f"/v2/settings/network/{network}?tab=heal")
+        fix = tab.get_data(as_text=True).split('id="h-heal-kinds"', 1)[1].split("</table>")[0]
+        _r, card = _get(networks, BASE.format(n=network) + "/change?part=kinds")
+        return fix, card.split('id="h-heal-change"', 1)[1].split("</form>")[0]
+
+    fix, card = kinds_card("Branch")
+    assert fix.count(words) == 1 and card.count(words) == 1
+    row = fix.split(words, 1)[1].split("</tr>")[0]
+    assert "2 propose" in row and "Alert only" in row
+    assert 'name="heal_kinds_propose" value="session_clear"' in card
+    assert 'name="heal_kinds_auto" value="session_clear"' not in card
+    # Marked lab, it is Tier 1, and its proposal setting rides in the card as it was.
+    p = H.plan("Default", {"heal_kinds_propose": ["qos_policy", "session_clear"]})
+    H.apply("Default", {"heal_kinds_propose": ["qos_policy", "session_clear"]},
+            p["fingerprint"], reason="kinds", actor="admin@example.com",
+            actor_verified="access", person=True)
+    _mark_lab()
+    fix, card = kinds_card("Default")
+    assert fix.count(words) == 1 and card.count(words) == 1
+    row = fix.split(words, 1)[1].split("</tr>")[0]
+    assert "1 auto" in row and "Dry run only" in row
+    assert '<input type="checkbox" name="heal_kinds_auto" value="session_clear">' in card
+    assert '<input type="hidden" name="heal_kinds_propose" value="session_clear">' in card
+    r, _tab = _preview_and_confirm(networks, "Default", {
+        "part": "kinds", "heal_kinds_auto": ["", "session_clear"],
+        "heal_kinds_propose": ["", "qos_policy", "session_clear"]})
+    assert r.status_code == 200
+    assert H.current("Default")["kinds_auto"] == ["session_clear"]
+    assert H.current("Default")["kinds_propose"] == ["qos_policy", "session_clear"]
+
+
 def test_turn_off_is_one_press(networks):
     _preview_and_confirm(networks, "Default", {"part": "mode", "heal_mode": "dry_run"})
     r, tab = _post(networks, BASE.format(n="Default") + "/off")

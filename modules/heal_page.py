@@ -33,7 +33,8 @@ KIND_LABELS = {
     "port_bounce": "Port bounce: a port down while admin up, its far end up (an action)",
     "ospf_reset": "OSPF adjacency reset: the bounce on its one-neighbour interface (an action)",
     # The action H21 built (19.4, N16): one named BGP neighbour, a measured privileged clear;
-    # Auto only on a network marked lab, a proposal elsewhere, so it is drawn in both lists.
+    # Auto only on a network marked lab, a proposal elsewhere: in both policy lists, drawn
+    # once at the tier its network gives it (`_kinds`).
     "session_clear": "BGP session clear: one named neighbour, not Established in two reads "
                      "(Auto only on a network marked lab; an action)",
     # The proposal H22 built (19.4): a change to intent, a person's; its Approve is refused on
@@ -150,18 +151,31 @@ def _guards(cur: dict, lab: bool) -> list:
     return rows
 
 
-def _kinds(cur: dict) -> list:
+#: Each tier's policy list: (the current policy's key, the form's field, on and off words).
+KIND_LISTS = {1: ("kinds_auto", "heal_kinds_auto", "Heal", "Dry run only"),
+              2: ("kinds_propose", "heal_kinds_propose", "Propose", "Alert only")}
+
+
+def _kinds(cur: dict, lab: bool) -> list:
+    """One row per kind, at the tier this network gives it (`actions.tier_of`): a kind in
+    both policy lists (the BGP session clear) is drawn once, Tier 1 on a network marked lab
+    and Tier 2 elsewhere, and its setting in the other list is carried unchanged (``keep``,
+    the other list's form field when the kind is on there)."""
+    from modules.heal import actions
     from modules.heal import policy as H
 
+    both = set(H.TIER1_KINDS) & set(H.TIER2_KINDS)
     rows = []
-    for k in H.TIER1_KINDS:
-        rows.append({"kind": k, "label": KIND_LABELS[k], "tier": 1,
-                     "on": k in cur.get("kinds_auto", []), "on_words": "Heal",
-                     "off_words": "Dry run only"})
-    for k in H.TIER2_KINDS:
-        rows.append({"kind": k, "label": KIND_LABELS[k], "tier": 2,
-                     "on": k in cur.get("kinds_propose", []), "on_words": "Propose",
-                     "off_words": "Alert only"})
+    for tier, kinds in ((1, H.TIER1_KINDS), (2, H.TIER2_KINDS)):
+        key, _field, on_words, off_words = KIND_LISTS[tier]
+        other_key, other_field = KIND_LISTS[3 - tier][:2]
+        for k in kinds:
+            if k in both and actions.tier_of(k, lab) != tier:
+                continue
+            keep = other_field if k in both and k in cur.get(other_key, []) else ""
+            rows.append({"kind": k, "label": KIND_LABELS[k], "tier": tier,
+                         "on": k in cur.get(key, []), "on_words": on_words,
+                         "off_words": off_words, "keep": keep})
     return rows
 
 
@@ -306,7 +320,7 @@ def view(network: str, now: float = None) -> dict:
         "chip": _chip(cur), "means": MODE_MEANS.get(cur["mode"], ""),
         "until_words": utc_words(cur["until"]) if cur["until"] else "",
         "confirmed_words": utc_words(cur["confirmed"].get("at", "")),
-        "kinds": _kinds(cur), "fixed": FIXED_KINDS, "guards": _guards(cur, lab),
+        "kinds": _kinds(cur, lab), "fixed": FIXED_KINDS, "guards": _guards(cur, lab),
         "always": ALWAYS, "bar": PRODUCTION_BAR, "stopped": cur["stopped"],
         "told": told, "told_loaded": heal_notify.drawn(told), "choices": heal_notify.CHOICES,
         "teams": [{"id": k, "name": t.get("name", "")}

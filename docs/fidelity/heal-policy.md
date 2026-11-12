@@ -12,7 +12,15 @@ docs/boards. The states the shots do not draw (a network not marked lab, a refus
 answer, the kill switch stopped and its resume card, Who is told's refusals) are compared by
 the templates and tests/test_heal_tab_v2.py.
 Templates compared: templates/v2/_heal.html, templates/v2/_heal_change.html, templates/v2/_heal_preview.html
-Templates sha256: `3931d9d31667763c08ddcf713c27d783bb7525aa4773466bf156040a4f1aabb3`
+Templates sha256: `e46799b907c6edc567067ac1793092456ddd9a3641c9e277111ce668a643d7d8`
+
+**Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
+diff against the Fix kinds region, not from new shots. The table and the change card draw a
+kind in both policy lists once, at the tier its network gives it (Tier 1 on a network marked
+lab, as the shots' Default is; Tier 2 elsewhere), where they drew it in both tiers; the change
+card carries that kind's setting in the other list as a hidden field, drawn nowhere. The
+board's table draws each kind once, so the region is closer to it; no region is added, removed
+or moved, and every other verdict stands.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal.html`, each place that draws a person (who
