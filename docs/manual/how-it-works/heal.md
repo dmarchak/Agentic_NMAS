@@ -209,7 +209,9 @@ at its stage, with why, in one line ("Apply failed: …"); Done is never green o
 failure. What a step that did not pass read sits under that step alone, closed, as **What it
 read** (its checks, one line saying its reads, and every read one level further down); a step
 that passed shows no checks. The card is kept for 30 minutes in the running app's memory; after
-that the same steps are on the device's History.
+that, or after Mercury restarts, the run's row on the device's History (or on History, kind
+Self-healing) has **Open the card**, which opens the same card on the device's page, drawn
+from the step log: the same five stages, its outcome and who it was by.
 
 A **can't-fix** is a decision, not a run: nothing ran, so nothing is listed as finished. Its
 outcome is its Needs attention row, which stays until a person acknowledges it or a later heal
@@ -226,7 +228,9 @@ back, a proposal, can't fix) leads with what happened in plain words. Opened, th
 happened (each fact at its time, then a likely cause labelled as a hypothesis where Mercury
 holds both ends of one) and what Mercury did or would do. **Details for the record**, closed
 until you open it, holds every step and its result (a step that read says its reads after its
-words, counted: how many, of what, how they went and the last one), the incident and decision
+words, counted: how many, of what, how they went and the last one; in a finished record no step reads
+running: a step recorded as begun with no end of its own reads done, ended when the next step
+began, or names the later step that holds its outcome), the incident and decision
 ids, the program
 (masked) and its hash, the policy, and the records the incident wrote: the deploy receipt, the
 golden commit (`Source: heal_to_intent`, `Actor-Verified: policy`), the golden read again, the

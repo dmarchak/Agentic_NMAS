@@ -42,7 +42,16 @@ Hashed again 2026-11-12 (board E2a, the gate's findings): a row's "The identity 
 is drawn after the row's own record, closed, with its key (`data-keep`), where it followed the
 By line; nothing else on a row moves. Compared by the template diff, not a new shot. Templates
 sha256 before: `0f6b4254f0101d560cab3289ac66306ee840770edb8001d86b70eed01bbf9706`.
-Templates sha256: `81d816682befcba75169984a2372e68c3fd4e3a6175670c71f8e41424d57e89c`
+Hashed again 2026-11-12 (C3172, C3175: the operator's findings of that day): an opened row's
+body in `_timeline.html` gains **Open the card**, above its links, for an operation's run whose
+record keeps its steps (a self-healing run, a telemetry re-subscribe or re-add), opening that
+run's card on its device's page (`run_href`); no board draws it: **deviation** (log: History
+rows open their run's card). A self-healing row's closed "Details for the record" now draws
+each person by display name, as an open record's values are; the identity stays under "The
+identity as recorded". Nothing else on a row moves. Compared by the template diff, not a new
+shot. Templates sha256 before:
+`81d816682befcba75169984a2372e68c3fd4e3a6175670c71f8e41424d57e89c`.
+Templates sha256: `c7001f001587bf7f384d82ff84c9e93321b0f2ff43d2f5b7d39f6390b672c946`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

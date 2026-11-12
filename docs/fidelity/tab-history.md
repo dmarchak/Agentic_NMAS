@@ -29,7 +29,14 @@ Hashed again 2026-11-12 (board E2a, the gate's findings): a row's "The identity 
 is drawn after the row's own record, closed, with its key (`data-keep`), where it followed the
 By line; nothing else on a row moves. Compared by the template diff, not a new shot. Templates
 sha256 before: `5691061858da3dd121bbe823255a4b7a02ff0733c93d3b35a703905fcf610383`.
-Templates sha256: `e9b6df42068ea6324e37a2f6c3f9223a0c3dff25dbd61e6fe2ad357731ff15ca`
+Hashed again 2026-11-12 (C3172, C3175: the operator's findings of that day): an opened row's
+body gains **Open the card** for a run whose record keeps its steps (a self-healing run, a
+telemetry re-subscribe or re-add), which replaces this tab with that run's card on the same
+page; no board draws it: **deviation** (log: History rows open their run's card). A
+self-healing row's closed "Details for the record" draws each person by display name. Nothing
+else on a row moves. Compared by the template diff, not a new shot. Templates sha256 before:
+`e9b6df42068ea6324e37a2f6c3f9223a0c3dff25dbd61e6fe2ad357731ff15ca`.
+Templates sha256: `0e2cffcd1a0461b1f655b1db15854992c3200f973ebf2c91e33540f82e992321`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_timeline.html`, each place that draws a person now

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how, heal_cause -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, heal_cause, run_href -%}
 {#- History as ONE timeline (C369; board D, signed off 2026-10-03): the rows of
     modules/history_sources.timeline(), drawn the SAME way on the History page and on a device's
     History tab, which is the same timeline filtered to the device. One line per record (when,
@@ -88,11 +88,17 @@
         {%- if e.heal_mark %}{% with list_name=e.heal_mark.list, decision_id=e.heal_mark.decision, mark=e.heal_mark.mark, unreadable=e.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endif %}
         {#- C2817, C2820 (rule 2): a self-healing record's ids, hashes and steps under a
             collapsed "Details for the record", its times UTC as the record keeps them; every
-            other record drawn open, as before. -#}
-        {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 if e.record_closed else (v2 | people) }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
+            other record drawn open, as before. C3175 (the operator, 2026-11-12: "4. Step lines
+            use display names. An email appears only under "The identity as recorded"."): each
+            line names a person by display name, closed or open. -#}
+        {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 | people }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
         {#- Board E2a: the identity a row's By names, as recorded, closed and after the row's own
             record (a row's line names the person by display name). -#}
         {%- if e.who and '@' in e.who %}<details class="id-record small muted" data-keep="tl-who-{{ e.id }}"><summary>The identity as recorded</summary>{{ e.who }}</details>{% endif %}
+        {#- C3172: an operation's run opens its card, with its five-stage stepper, on its
+            device's page, drawn from the run's own record (the one address, `run_href`); the
+            card replaces the tab there, as the In progress row's Open the result does. -#}
+        {%- if e.card %}<p class="small tl-links tl-card"><a class="btn btn-small" href="{{ run_href(e.card.device, e.card.list, e.card.run) }}" title="This run's card on {{ e.card.device }}'s page, drawn from its record">Open the card</a></p>{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {#- A read an AI call asked for (19.5, H26; board M): linked to both passes' calls and to its read on History › Reads. -#}
         {%- if e.read_of %}<p class="small tl-links">

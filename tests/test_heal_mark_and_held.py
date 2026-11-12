@@ -96,15 +96,17 @@ class TestRightWrong:
         e = _event()
         by = (d.get("policy") or {}).get("by")
         assert by, "the test's policy names who confirmed it"
-        assert e["who"] == f"Mercury's self-healing, under Default's policy confirmed by {by}"
+        # Premise corrected (the operator, 2026-11-12: "3. One attribution for one heal: the
+        # receipt, self-healing and measured rows all read "Mercury's self-healing · policy
+        # set by <the operator's display name>"", C3174): a decision's row reads the one attribution too.
+        assert e["who"] == f"Mercury's self-healing · policy set by {by}"
         from html import unescape
         # Board E2a: the row's By names the confirmer by display name (the part before the
         # "@"); the identity is under it, in the closed "The identity as recorded".
         drawn = unescape(_timeline(e))
-        assert "By Mercury's self-healing, under Default's policy confirmed by " \
-            f"{by.split('@')[0]}</p>" in drawn
-        assert ("<summary>The identity as recorded</summary>Mercury's self-healing, under "
-                f"Default's policy confirmed by {by}</details>") in drawn
+        assert f"By Mercury's self-healing · policy set by {by.split('@')[0]}</p>" in drawn
+        assert ("<summary>The identity as recorded</summary>Mercury's self-healing · policy "
+                f"set by {by}</details>") in drawn
 
     def test_history_draws_right_and_wrong_each_busy_on_itself(self, app_client):
         d = dry_run()

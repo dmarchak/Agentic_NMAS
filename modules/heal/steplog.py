@@ -382,6 +382,9 @@ def _fold(rows: list) -> list:
             e[fault_drills.FIELD] = fault_drills.tag_of(r)
         if (r.get("policy") or {}).get("fingerprint"):
             e["policy"] = r["policy"]
+        # The setter an act ran as the policy of, as the row keeps them beside its words.
+        if r.get("policy_by"):
+            e["policy_by"] = r["policy_by"]
         row = r.get("row")
         steps = [dict(s, row=row, decision=r.get("decision") or "") for s in r.get("steps") or []]
         if row == "decision":
@@ -423,6 +426,48 @@ def _fold(rows: list) -> list:
             e["steps"] += e.pop("started")
         out.append(e)
     return out
+
+
+#: The entry states whose record is finished: nothing it holds is still running.
+FINISHED = ("decided", "done", "interrupted")
+
+
+def finished_steps(entry: dict) -> list:
+    """*entry*'s steps as a FINISHED record reads them (the operator, 2026-11-12: "2. The
+    self-healing row's details still say "14. apply: running" for a heal that finished and
+    verified. A finished record never shows a step as running; fix it and add a test."), as
+    copies, the recorded steps never rewritten. The act records its apply as ``running`` when
+    it sends (`act.apply_decision`, before the program goes out) and writes no end of its own
+    when the send lands, so a finished record held that step as running. In a finished entry
+    (`FINISHED`) a step recorded ``running``:
+
+    - that a later record of the SAME step follows ends there: its outcome is that record's,
+      and it says so, naming the step that holds it;
+    - followed only by other steps ended when the next step began: it reads ``done``, its end
+      that step's time (`ended_at`);
+    - with nothing after it (the record ended inside it) reads ``ended in this step``.
+
+    An entry still applying (its act started and has not ended) is drawn as recorded."""
+    steps = [dict(s) for s in entry.get("steps") or [] if isinstance(s, dict)]
+    if entry.get("state") not in FINISHED:
+        return steps
+    for n, s in enumerate(steps):
+        if s.get("result") != "running":
+            continue
+        later = steps[n + 1:]
+        same = next((m for m, x in enumerate(later, n + 2) if x.get("step") == s.get("step")),
+                    None)
+        end = next((x.get("began") or x.get("at") for x in later
+                    if x.get("began") or x.get("at")), "")
+        if same is not None:
+            s.update(result="ended", ended_at=end,
+                     words=(f"{s.get('words') or ''}; its outcome is step {same}'s")
+                     .lstrip("; "))
+        elif later:
+            s.update(result="done", ended_at=end)
+        else:
+            s.update(result="ended in this step")
+    return steps
 
 
 def diagnoses(network: str, device: str = "", incident: str = "") -> dict:

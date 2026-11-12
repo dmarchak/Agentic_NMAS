@@ -98,6 +98,14 @@ Open a line for the full record underneath. It shows:
   such as a bounce), **Download the change record (.md)** saves Mercury's change record for it,
   masked, as a Markdown file ([How self-healing works](heal#records)); a dry run
   and a heal refused before its program have none, and draw no link;
+- for an operation's run whose record keeps its steps (a self-healing run, a telemetry
+  re-subscribe or **Re-add the receiver**), **Open the card** opens that run's card on its
+  device's page, in place of the tab, with its five-stage stepper, drawn from the run's own
+  record: it opens the same at any age and after Mercury restarts. A self-healing decision that
+  ran nothing (a dry run, a proposal, a can't-fix) is no run, and has no card. The operations
+  whose card is drawn only while their job is kept (a deploy, a reload, a credential rotation,
+  a Tier 2 command and the rest) have no **Open the card** yet: their rows hold the record
+  alone;
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 
@@ -153,7 +161,13 @@ A row's **who** is a verified person's display name (the name set for them in Se
 Installation › Access and identity, else the part of their identity before the "@"), or, for a
 host command, the host login labelled "host login, not a verified identity". The **Person**
 filter lists the same names. Opened, a row's "By" names the person the same way, and **The
-identity as recorded** under it, closed until you open it, holds the identity the record keeps. A deploy of part of intent is named by what it sent:
+identity as recorded** under it, closed until you open it, holds the identity the record keeps;
+every other line, a self-healing record's steps under **Details for the record** among them,
+names a person by display name. Every row of one heal (its self-healing row, its deploy
+receipt, and the commits it made: the golden it recorded, or the measurement when the golden
+was unchanged) reads one attribution, **Mercury's self-healing · policy set by <name>**; an
+approved proposal ran as the person who approved it, so its rows name that person. A deploy of
+part of intent is named by what it sent:
 **Monitoring profile applied**, **IP SLA probes sent** or **Monitoring templates deployed**,
 never "Deployed". A withdrawn approval names what withdrew it and why.
 

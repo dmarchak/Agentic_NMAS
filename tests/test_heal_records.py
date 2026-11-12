@@ -312,8 +312,13 @@ class TestHistory:
         record = dict(e["record"])
         assert record["Incident"] == d["incident"] and d["id"] in record["Decisions"]
         assert record["Program lines (masked)"] == ROUTE6.strip().join(("no ", ""))
+        # Premise corrected (the operator, 2026-11-12: "A finished record never shows a step as
+        # running", C3173): the act records its apply as running and writes no end of it, so
+        # in this finished record that step reads done; every other step as recorded.
+        assert [s["result"] for s in got["steps"]].count("running") == 1
         assert [v.split(":", 1)[0] for k, v in e["record"] if k[0].isdigit()] == \
-            [s["result"] for s in got["steps"]], "every step of the act, in order"
+            [("done" if s["result"] == "running" else s["result"]) for s in got["steps"]], \
+            "every step of the act, in order"
 
     def test_a_device_s_history_draws_its_own_rows_and_the_window_holds(self, lab):
         from modules import history_sources as HS

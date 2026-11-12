@@ -486,8 +486,8 @@ def _reopened(ref, dev, back, card: str = "", after: float = None, result: str =
 
 def _named_result(ref, dev, back, result: str):
     """The card of the one run *result* names on *dev* (a kept job's id, else a run's record
-    id, `run_card.named_record`), drawn as `_reopened` draws one, or None when it names
-    neither here."""
+    id, `run_card.named_record`, or a heal's incident or decision id, `run_card.named_heal`),
+    drawn as `_reopened` draws one, or None when it names none of them here."""
     from modules import device_actions
     from modules.heal import run_card
     from modules.nsot import capture_job
@@ -507,7 +507,11 @@ def _named_result(ref, dev, back, result: str):
             _run_opened(c, viewer)
         return c
     try:
-        found = run_card.named_record(ref.name, host, result)
+        # A re-subscribe's record (`privileged`), else a heal's (its step log's entry, by its
+        # incident's or a decision's id, `run_card.named_heal`): History's Open the card
+        # reopens either from what is kept, at any age and after any restart (C3172).
+        found = (run_card.named_record(ref.name, host, result)
+                 or run_card.named_heal(ref.name, host, result))
     except Exception as exc:                          # noqa: BLE001 (the tab is drawn as usual)
         log.warning("device_v2: %s's run %s could not be read: %s", host, result, exc)
         return None
@@ -516,7 +520,8 @@ def _named_result(ref, dev, back, result: str):
     c, as_job = found
     c.update(back=back, ip=dev.get("ip", ""),
              reopened=device_actions.reopened_words(as_job, viewer))
-    run_card.mark_opened(c["run"], viewer)
+    if c.get("state") != "running":
+        run_card.mark_opened(c.get("run") or "", viewer)
     return c
 
 

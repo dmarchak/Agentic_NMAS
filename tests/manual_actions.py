@@ -436,6 +436,12 @@ NOT_AN_OPERATION = {
     ("_timeline.html", "Download the change record (.md)"): (
         "saves a self-healing incident's change record as text, masked, read from the step "
         "log, a read"),
+    # C3172 (the operator, 2026-11-12: "Every operation row in History (device and fleet) has
+    # "Open the card""): a link to the device's page, which draws the run's card from its
+    # record.
+    ("_timeline.html", "Open the card"): ("opens the run's card on its device's page, drawn "
+                                          "from the run's own record, a read; no device is "
+                                          "touched"),
 }
 
 

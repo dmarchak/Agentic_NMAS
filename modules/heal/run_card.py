@@ -36,6 +36,7 @@ A READ throughout: it reads this process's jobs and the networks' records, and w
 
 import logging
 import os
+import re
 import threading
 import time
 
@@ -155,18 +156,45 @@ def _lines_words(n) -> str:
     return f"{n} line{'s' if n != 1 else ''}" if isinstance(n, int) and n > 0 else "the fix"
 
 
+def recorded_by(actor: str, kind: str = "policy") -> str:
+    """Who a self-heal is by, as a RECORD names it: `by_words` with the person's identity as
+    recorded, for History's rows (the operator, 2026-11-12: "3. One attribution for one heal:
+    the receipt, self-healing and measured rows all read "Mercury's self-healing · policy set
+    by <the operator's display name>". Not "heal to intent", and not "<the operator's display
+    name> (by the policy they confirmed)"."). A
+    screen draws it through the `people` filter, so it reads the display name, and the
+    identity itself is kept under "The identity as recorded"; an export keeps the actor."""
+    from modules.nsot.receipts import HEAL_DOER
+
+    lead = "approved by" if kind == "approval" else "policy set by"
+    return f"{HEAL_DOER} · {lead} {actor or 'nobody recorded'}"
+
+
 def by_words(actor: str, kind: str = "policy") -> str:
     """Who a self-heal is by (the operator, 2026-11-12: "A self-heal is never "by <person>" or
     "started by you": the chip, the banner and the card read "by Mercury's self-healing ·
     policy set by <display name>""): Mercury's own, and the person whose decision it ran
     under, by display name (`identity.display_name`), never their identity. *kind*
-    ``approval``: an approved proposal, which runs once a person approved it."""
+    ``approval``: an approved proposal, which runs once a person approved it. The same words
+    as History's (`recorded_by`), the name in place of the identity."""
     from modules import identity
 
-    name = identity.display_name(actor) if actor else ""
-    if kind == "approval":
-        return "Mercury's self-healing · approved by " + (name or "nobody recorded")
-    return "Mercury's self-healing · policy set by " + (name or "nobody recorded")
+    return recorded_by(identity.display_name(actor) if actor else "", kind)
+
+
+def entry_by(entry: dict) -> tuple:
+    """``(actor, kind)`` for a step-log entry (`steplog.incidents`'): the policy's setter as
+    the act recorded them (``policy_by``), or the person an approved proposal ran as (its
+    ``by``, a person's identity), else the policy's own setter (a decision that never acted,
+    or a row written before ``policy_by`` was kept)."""
+    if entry.get("policy_by"):
+        return entry["policy_by"], "policy"
+    by = str(entry.get("by") or "")
+    # The act's own words when it ran as the policy (`steplog.policy_words`, or a withdrawal's
+    # "heal to intent"); any other ``by`` is the person who approved it (`propose.approve`).
+    if by and "(policy set by" not in by and not by.startswith("heal to intent"):
+        return by, "approval"
+    return (entry.get("policy") or {}).get("by") or "", "policy"
 
 
 def job_by(job: dict) -> str:
@@ -391,6 +419,93 @@ def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
                     host=host, facts=facts, ended=True),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                        time.gmtime(got.get("finished_at") or 0)))
+
+
+#: A heal run's id, as History's row and the device page's ``?result=`` name it: its
+#: incident's (``hi-``) or one of its decisions' (``hd-``), `incidents.new_id`'s and
+#: `decisions.record`'s shape.
+HEAL_RUN_ID = re.compile(r"h[id]-[0-9a-f]{12}")
+#: An entry's states in which an act ran (`steplog.incidents`): only these are a RUN. A
+#: decision alone (a dry run, a can't-fix, a proposal) ran nothing, so it has no run card.
+ACTED = ("done", "applying", "interrupted")
+
+
+def acted_entry(entry: dict) -> bool:
+    """Whether step-log *entry* is a run (its act started), so its card can be reopened."""
+    return entry.get("state") in ACTED
+
+
+def record_heal_card(network: str, host: str, entry: dict) -> dict:
+    """A heal's card drawn from its RECORD, the step log's entry (`steplog.incidents`), as its
+    job's card draws a finished heal (`heal_card`): the same five stages, from what was seen
+    and the decision through the act's every step to its outcome, with who it is by
+    (`by_words`). The operator, 2026-11-12: "1. Every operation row in History (device and
+    fleet) has "Open the card", which opens that run's card with the five-stage stepper. Same
+    pattern for every operation." A job is kept in memory (C3080), so the card a History row
+    opens is drawn from what is kept on disk: it reopens after any restart, at any age.
+
+    The act's steps are its acting decision's (an incident checked again later holds more than
+    one); an entry whose act started and recorded no end (``applying``, no heal job holding
+    the device: its job ended with the process) is drawn as ended inside its last step, never
+    as still running."""
+    from modules import run_stepper
+    from modules.heal import steplog
+
+    steps = [s for s in entry.get("steps") or [] if isinstance(s, dict)]
+    acted = [s for s in steps if s.get("row") in ("started", "act", "interrupted")]
+    did = (acted[-1].get("decision") if acted else "") or (
+        (entry.get("decisions") or [""])[-1])
+    acted = [s for s in acted if not did or s.get("decision") in (did, "")]
+    outcome = entry.get("outcome") or ""
+    stopped = entry.get("state") == "applying"
+    phases, facts = _decided(network, did, host)
+    phases.append(act_phase(acted, ended=True, host=host))
+    level = "danger" if stopped else level_of(outcome)
+    words = ("ended before it recorded its outcome" if stopped else
+             steplog.mark(outcome, entry.get("kind") or ""))
+    facts.update(outcome="" if stopped else outcome,
+                 act_kind=entry.get("kind") or facts.get("act_kind") or "")
+    actor, kind = entry_by(entry)
+    times = [t for t in (run_stepper._epoch(s.get("began") or s.get("at")) for s in acted)
+             if t is not None]
+    started = (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(min(times))) if times
+               else entry.get("first_at") or entry.get("at") or "")
+    run = entry.get("incident") or did
+    return {"op": HEAL_CARD, "host": host, "list": network, "job": "", "run": run,
+            "state": "result", "level": level, "outcome": outcome, "words": words,
+            "by": by_words(actor, kind), "started": started,
+            "finished": entry.get("at") or "",
+            "steps": heal_stages(
+                run_stepper.record_card(host, f"Self-healing on {host}", phases, ended=True,
+                                        level=level, key=f"heal-run-{run[-12:]}"),
+                host=host, facts=facts, ended=True)}
+
+
+def named_heal(network: str, host: str, run_id: str):
+    """``(card, job)`` as `named_record` gives them, for the heal run *run_id* names on *host*
+    (its incident's id or one of its decisions'): its card from its record
+    (`record_heal_card`), and what a job row would say of it; a heal job still running on
+    *host* for that decision draws its live card instead (`heal_card`). None when *run_id* is
+    no heal's id, the step log holds no run of it on *host*, or the log cannot be read."""
+    from modules.heal import steplog
+    from modules.nsot import capture_job
+
+    if not HEAL_RUN_ID.fullmatch(run_id or ""):
+        return None
+    got = steplog.incidents(network, device=host)
+    if got["state"] == "unreadable":
+        log.info("run_card: %s's step log could not be read: %s", network, got["error"])
+        return None
+    entry = next((e for e in got["entries"] if acted_entry(e) and (
+        e.get("incident") == run_id or run_id in (e.get("decisions") or []))), None)
+    if entry is None:
+        return None
+    if entry.get("state") == "applying":
+        job = capture_job.for_device(network, host, HEAL_CARD)
+        if job and job["state"] == "running":
+            return heal_card(network, host, job["job"]), dict(job, card=HEAL_CARD)
+    card = record_heal_card(network, host, entry)
+    return card, {"card": HEAL_CARD, "actor": entry_by(entry)[0], "state": "done"}
 
 
 def _decision_steps(network: str, decision: dict) -> list:
@@ -786,11 +901,24 @@ def reopened_record(network: str, host: str, viewer: str, now: float = None):
 def named_record(network: str, host: str, run_id: str, now: float = None):
     """``(card, job)`` as `reopened_record` gives them, for the ended run *run_id* on *host*
     started inside `FINISHED_KEEP_S`, opened or not: the run a person pressed Open the result
-    on (`routes/v2.seen_run`), never the device's newest. None when there is none."""
+    on (`routes/v2.seen_run`), never the device's newest; or a History row's Open the card,
+    at any age (the operator, 2026-11-12: "Every operation row in History (device and fleet)
+    has "Open the card""), read by its id from the record store. None when there is none."""
+    from modules.heal import resubscribe as R
+    from modules.nsot import privileged
+
     now = time.time() if now is None else now
     rec = next((r for r in _records(network, now - FINISHED_KEEP_S)
                 if r.get("id") == run_id and r.get("device") == host
                 and r.get("state") != "running"), None) if run_id else None
+    if rec is None and run_id:
+        try:
+            got = privileged.get(network, run_id)
+        except (ValueError, OSError):                 # no run's id, or an unreadable record
+            got = None
+        if (isinstance(got, dict) and got.get("key") in (R.KEY, R.READD_KEY)
+                and got.get("device") == host and got.get("state") != "running"):
+            rec = got
     return _as_reopened(network, host, rec)
 
 

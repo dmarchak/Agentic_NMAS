@@ -236,7 +236,7 @@ def _log(ctx, paths, *extra, follow=False, count=None):
                      "devices_trailer": split(parts[4]) | split(parts[5]),
                      "measured": split(parts[6]), "baseline": parts[7].strip(),
                      "subject": parts[8], "files": files,
-                     "who": _who(parts[3].strip(), parts[9].strip()),
+                     "who": _commit_who(parts[2].strip(), parts[3].strip(), parts[9].strip()),
                      "verified": parts[9].strip(),
                      "tags": [d.strip()[len("tag: "):] for d in parts[10].split(",")
                               if d.strip().startswith("tag: ")],
@@ -391,6 +391,20 @@ def _who(actor: str, verified: str) -> str:
     login, not verified)". The line draws the name; the detail draws it whole."""
     w = actor_words(actor, verified)
     return w["who"] + (f" ({w['how']})" if w["how"] else "")
+
+
+def _commit_who(source: str, actor: str, verified: str) -> str:
+    """A commit's who: a heal's commit (`Source: heal_to_intent`, routes.deploy.HEAL_SOURCE,
+    made as the policy, `Actor-Verified: policy`) in the one attribution every row of a heal
+    reads (C3174, `run_card.recorded_by`), never "<setter> (by the policy they confirmed)";
+    every other commit as `_who` says it."""
+    from routes.deploy import HEAL_SOURCE
+
+    if source == HEAL_SOURCE and verified == "policy":
+        from modules.heal import run_card
+
+        return run_card.recorded_by(actor)
+    return _who(actor, verified)
 
 
 def _known_wrong(sha: str) -> str:
@@ -671,6 +685,7 @@ def receipts(ctx):
     are masked at write, and this is the second layer, as GET /deploy/receipts's was until it
     left with today's device page at 7.8 (P7-22, 2026-10-17). A row written before masking,
     or by hand, never draws a secret."""
+    from modules.heal import run_card
     from modules.nsot import receipts as R
     from modules.redact import redact_text
 
@@ -692,8 +707,9 @@ def receipts(ctx):
                    f"{r.get('outcome', '?').replace('_', ' ')}"
                    + (f", {R.PENDING_WORDS}" if pending else ""), [r.get("device", "")],
                    # A heal's receipt is Mercury's work, under the policy its setter confirmed
-                   # (the operator, 2026-11-12), and counts the lines it re-applied.
-                   who=(f"{R.HEAL_DOER} (policy set by {r.get('actor') or 'nobody recorded'})"
+                   # (the operator, 2026-11-12), in the one attribution every row of a heal
+                   # reads (C3174, `run_card.recorded_by`), and counts the lines it re-applied.
+                   who=(run_card.recorded_by(r.get("actor") or "")
                         if R.is_heal(r) else r.get("actor", "")),
                    detail=((f"{R.config_lines(r)} line(s) re-applied" if R.is_heal(r) else
                             f"{r.get('program_lines', 0)} line(s) sent")
@@ -2054,6 +2070,12 @@ def privileged(ctx):
                                      ("Verify", (r.get("verify") or {}).get("words")),
                                      ("Why", r.get("why")), ("Verified by", how)]
                              + _run_reads(r.get("steps"))))
+        # C3172: a re-subscribe or re-add opens its card, drawn from this record on its
+        # device's page (`run_card.named_record`). A Tier 2 run's card is drawn only from its
+        # job, so its row has none yet (C3177).
+        from modules.heal import resubscribe as RS
+        if r.get("key") in (RS.KEY, RS.READD_KEY) and r.get("id") and host:
+            events[-1]["card"] = {"device": host, "list": ctx["ref"].name, "run": r["id"]}
     return _out(events, errors)
 
 
@@ -2451,7 +2473,7 @@ def heal(ctx):
     markdown downloadable from the row when it was made, C2773) and the NetBox journal entry.
     The network's own store: a device's History draws its device's rows. Every
     text masked again on the way out."""
-    from modules.heal import said, steplog
+    from modules.heal import run_card, said, steplog
     from modules.redact import redact_text
 
     def m(value):
@@ -2480,12 +2502,17 @@ def heal(ctx):
         cr = rec.get("change_record") or {}
         journal = rec.get("journal") or {}
         pol = e.get("policy") or {}
+        by_whom = run_card.entry_by(e)
         # A step's own reads (a decision's fresh reads, an act's reads of the symptom) follow
         # its words in one line, counted (`reads.reads_words`; the operator, 2026-11-11).
         from modules.nsot import reads as reads_store
+        # C3173: a finished record reads every step's outcome, never "running"
+        # (`steplog.finished_steps`: a step with no end of its own ended when the next began).
         steps = [(f"{i}. {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}"
+                  + (f" (ended {s['ended_at']}, when the next step began)"
+                     if s.get("result") == "done" and s.get("ended_at") else "")
                   + (f". Reads: {m(said)}" if said else ""))
-                 for i, s in enumerate(e["steps"], 1)
+                 for i, s in enumerate(steplog.finished_steps(e), 1)
                  for said in [reads_store.reads_words(s)]]
         # C2817 (the mocks' History lines): an entry its decision ended leads with what
         # happened and what Mercury did or would do, in plain words; an act's end, an action
@@ -2500,11 +2527,13 @@ def heal(ctx):
             e["at"], "heal", ("Fault drill: " if drill else "") + (
                 m(plain) if plain else
                 f"Self-healing ({mode}): {steplog.subject(e)} {mark}"), [host] + far,
-            # C2808: a decision self-healing made is Mercury's, under the network's policy, and
-            # never drawn as the policy's confirmer's own act; a person who ran the act (an
-            # approved proposal's) is named as themself.
-            who=e.get("by") or (f"Mercury's self-healing, under {ctx['ref'].name}'s policy"
-                                + (f" confirmed by {pol['by']}" if pol.get("by") else "")),
+            # C2808, C3174: a heal run as the policy is Mercury's, under the policy its setter
+            # confirmed, in ONE attribution on every row of it (this one, its receipt and its
+            # commits): "Mercury's self-healing · policy set by <name>" (`run_card.recorded_by`;
+            # the line draws the name, "The identity as recorded" the identity). An approved
+            # proposal's act ran as the person who approved it, as its receipt and commits
+            # say, so its row names them as themself.
+            who=(by_whom[0] if by_whom[1] == "approval" else run_card.recorded_by(*by_whom)),
             detail=m((e.get("outcome_words") if plain and e.get("cause") else "")
                      or e.get("words")),
             sha=rec.get("golden") or "", outcome=outcome,
@@ -2534,6 +2563,11 @@ def heal(ctx):
         # "Details for the record" (`_timeline.html`); the cause drawn above it, facts first,
         # its times in the viewer's zone (C2823).
         events[-1]["record_closed"] = True
+        # C3172: a run (its act started) opens its card, drawn from this record on its
+        # device's page (`run_card.named_heal`); a decision alone ran nothing, and has none.
+        if run_card.acted_entry(e) and (e["incident"] or e.get("decisions")):
+            events[-1]["card"] = {"device": host, "list": ctx["ref"].name,
+                                  "run": e["incident"] or e["decisions"][-1]}
         # C2773 (board H, artboards C and K): "Download the change record (.md)", for a heal to
         # intent and an action alike, only when its record was made (a dry run or a refusal
         # before its program has none, C2442); `heal_proposal_v2.change_record_md` serves it.
