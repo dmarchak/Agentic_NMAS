@@ -199,6 +199,21 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   its result file cleared first, the verdict, the message's first line, commit, push): one
   program for the five rules above. [tests/test_nmas_gate.py]
 
+- **When the laptop's free memory is under the gate's 2-worker threshold, don't wait and don't
+  ask: commit to a `ci/` branch with `git commit -F` (the hooks run), push it, take GitHub CI on
+  that exact sha as the verdict, then fast-forward main to it and deploy** (the operator,
+  2026-11-12; the deploy bar's "gate or CI"). If main has moved since the push, rebase onto it:
+  the new sha needs its own verdict (CI or a gate); nothing is deployed on a verdict for a
+  different sha. What the local gate checks that CI does not: the publication denylist and the
+  lab hosts comparison in tests/test_nothing_personal_is_published.py, which
+  tests/skip_reasons.py lets CI skip (their files are local by design); so
+  `scripts/nmas-pregate --message` runs first in the checkout, where those files are, and a
+  change it cannot pass there waits for a local gate. Everything else the gate runs, CI runs
+  too (the suite with its browser tests, root's files, the coverage ratchet, the container
+  harness); a step the gate gains that CI lacks joins this list. Cost: CI's minutes in place of
+  the laptop's. Prevents: gates waiting 45 minutes for memory an everyday desktop holds, and a
+  deploy on another sha's verdict. [not mechanised]
+
 ### Publication (the repository is public, its history unrewritten)
 
 - **Nothing personal or installation-specific is published.** Neutral voice (the operator, the
