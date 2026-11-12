@@ -39,6 +39,13 @@
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capitalize }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
 {%- elif d.state == 'error' %}
 {%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
+{%- elif d.state == 'reading' %}
+{#- C3166: the choices come from the loki-labels reader; before its first value lands this
+    notice redraws the region when the reader announces. -#}
+<div class="notice notice-muted" role="status" hx-get="{{ region }}{{ q.qs(change) }}" hx-target="#lq" hx-swap="outerHTML" hx-trigger="nmas:logs from:body">{{ icon('info', 16) }}<p>Reading Loki's labels: {{ brand.short }}'s background has not read them yet{% if d.failed %} (its last attempt failed: {{ d.failed }}){% endif %}. The choices fill themselves when it has.</p></div>
+{%- endif %}
+{%- if d.held %}
+<p class="muted small lq-held">The choices are what Loki held over the last {{ d.held.words }}{% if not d.held.covers %} (the longest range kept, shorter than this one){% endif %}, read {{ stamp(d.held.value_at, note="when Mercury's background last read Loki's labels") }}{% if d.held.failed %}; its last refresh failed ({{ d.held.failed }}), so these are from the last read{% endif %}.</p>
 {%- endif %}
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'anycase', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>

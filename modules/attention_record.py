@@ -2,15 +2,18 @@
 the operator, 2026-10-18: "the record only: rows built when each reader finishes, a store safe
 across workers, tests including the appear-and-clear case").
 
-The page computes its rows when it is read, so a row that appeared and cleared between two
-reads of the page was never seen by anyone, and nothing kept it (five such items across the
-walks W2 to W4). This module SIGHTS the rows whenever a reader whose value Needs attention draws
-finishes (`reader_job`, after its store; the readers whose `invalidates` meet
-`attention.ATTENTION_KEYS`, the one list the page itself redraws on). A page read never writes
-here: a read writes nothing.
+A row that appeared and cleared between two reads of the page was never seen by anyone, and
+nothing kept it (five such items across the walks W2 to W4). This module SIGHTS the rows each
+time Needs attention's background store assembles the installation's page
+(`attention_store._sight`, C3182): after the sources a reader's finish feeds are computed
+(within its debounce), and at each source's cadence. A page read never writes here: a read
+writes nothing.
 
-Each sighting is `needs_attention()` itself, the page's own rows, so the record holds exactly
-what the page would have shown at that moment. Per row id, a LIFE:
+Each sighting is the page the store assembled, the rows the page draws, so the record holds
+exactly what the page showed at that moment. Until C3182 each reader the page draws computed
+every source again when it finished (`needs_attention()`: 100 full computations in 10 idle
+minutes, counted by tests/test_attention_store_idle_work.py), beside the store that already
+held them. Per row id, a LIFE:
 
 - **first seen**, **last seen** and how many sightings;
 - **cleared at** and **how**: ``acknowledged`` (a person's acknowledgement hid it: who and
@@ -22,11 +25,12 @@ what the page would have shown at that moment. Per row id, a LIFE:
 
 A row folded into another (attached) is still present: it is sighted by its own id. A row
 first seen in the sighting after the one that would have caught it is first seen THEN: the
-record is as fine as the readers' rhythm, never finer, and says so in `observed`.
+record is as fine as the store's passes (a reader's marks within IDLE_DEBOUNCE_S while nothing
+is viewed, DEBOUNCE_S otherwise), never finer, and says so in `observed`.
 
 **Across processes:** one JSON store under the data folder, read-modify-written under a
-`filestore.PathLock` (an exclusive `flock`) and replaced atomically. In one process, sightings
-coalesce: a reader finishing while a sighting runs asks for one more, never a queue.
+`filestore.PathLock` (an exclusive `flock`) and replaced atomically. In one process, the
+store's one worker sights, one pass at a time.
 
 **Kept:** open lives, and cleared lives for `KEPT_DAYS` days, at most `KEPT_MAX` (the oldest
 dropped first, counted in `dropped`). What a row says is masked at rest (`redact.redact_text`).
@@ -37,7 +41,6 @@ The screen that reads this record is C1319 (Stage 7's tail); `read()` is its rea
 import json
 import logging
 import os
-import threading
 import time
 
 from modules import filestore
@@ -48,10 +51,6 @@ FILE = "attention_record.json"
 KEPT_DAYS = 30
 KEPT_MAX = 5000
 HOWS = ("resolved", "acknowledged", "time")
-
-_coalesce = threading.Lock()
-_pending = threading.Event()
-_installed = {"on": False}
 
 
 def path() -> str:
@@ -172,13 +171,11 @@ def apply(doc: dict, result: dict, now: float) -> dict:
             "opened": opened, "cleared": closed}
 
 
-def observe(result: dict = None, now: float = None) -> dict:
-    """One sighting, stored: *result* is the page's answer (computed here when None), *now*
-    the sighting's time. Locked across processes; the store replaced atomically. An unreadable
-    store is preserved aside and refused, never overwritten."""
-    if result is None:
-        from modules import attention
-        result = attention.needs_attention()
+def observe(result: dict, now: float = None) -> dict:
+    """One sighting, stored: *result* is the page as assembled (`attention_store`'s, or
+    `attention.assemble`'s shape; never computed here, C3182), *now* the sighting's time.
+    Locked across processes; the store replaced atomically. An unreadable store is preserved
+    aside and refused, never overwritten."""
     now = time.time() if now is None else float(now)
     p = path()
     with filestore.PathLock(p):
@@ -190,53 +187,3 @@ def observe(result: dict = None, now: float = None) -> dict:
         got = apply(doc, result, now)
         filestore.write_atomic(p, json.dumps(got["doc"], indent=1, sort_keys=True))
     return {"ok": True, "error": "", "opened": got["opened"], "cleared": got["cleared"]}
-
-
-def sight(trigger: str = "") -> None:
-    """A reader whose value the page draws finished: take a sighting. In one process,
-    sightings coalesce: one running, at most one more asked for. A failure is logged and never
-    stops the reader."""
-    _pending.set()
-    if not _coalesce.acquire(blocking=False):
-        return                           # the running sighting takes one more
-    try:
-        while _pending.is_set():
-            _pending.clear()
-            try:
-                observe()
-            except Exception as exc:                    # noqa: BLE001
-                log.error("attention record: a sighting after %s failed: %s: %s",
-                          trigger or "a reader", type(exc).__name__, exc)
-    finally:
-        _coalesce.release()
-
-
-def draws(reader) -> bool:
-    """Does Needs attention draw *reader*'s value? Its announcement redraws the page: one of
-    its `invalidates` keys is in `attention.ATTENTION_KEYS`."""
-    from modules.attention import ATTENTION_KEYS
-    return bool(set(getattr(reader, "invalidates", ()) or ()) & set(ATTENTION_KEYS))
-
-
-def install() -> None:
-    """Sight after every reader the page draws (`reader_job.after_any_store`). Installed where
-    the readers start (`reader_job.start`), so a process that runs no readers sights nothing."""
-    from modules import reader_job
-    if not _installed["on"]:
-        reader_job.after_any_store(_after_store)
-        _installed["on"] = True
-
-
-def uninstall() -> None:
-    from modules import reader_job
-    reader_job.after_any_store(_after_store, remove=True)
-    _installed["on"] = False
-
-
-def _after_store(reader, moved: bool = True) -> None:
-    """A reader the page draws finished. One that announces only on change (the 5 s
-    reachability probe, the 10 s onboarding progress) is sighted only when its value moved:
-    measured on the host, 2026-10-19, a sighting takes about 0.17 s warm and the drawn
-    readers finish about 25 times a minute, most of them those two."""
-    if draws(reader) and moved:
-        sight(reader.name)

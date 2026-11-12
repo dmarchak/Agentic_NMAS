@@ -1,16 +1,18 @@
 """C1192 (the operator, 2026-10-18): Needs attention's RECORD, each row's life from its first
-sighting to how it cleared, built when each reader finishes, safe across workers.
+sighting to how it cleared, built when each reader finishes, safe across workers. Since C3182
+(2026-11-12) a sighting is the page Needs attention's background store assembled after the
+reader's finish (`attention_store._sight`), never a computation of every source of its own.
 
 - the appear-and-clear case: a row that appears at one reader's finish and is gone at the
   next, with no read of the page between, is recorded: first seen, last seen, cleared, how;
-- a reader the page does not draw takes no sighting; a process that starts no readers
-  installs nothing;
+- a reader the page does not draw takes no sighting; a process that starts no store worker
+  sights nothing;
 - how a row cleared: resolved (its source read, the row gone), acknowledged (who and why), or
   by time (its due time passed); a row whose source could not be read stays open;
 - a row that comes back starts a new life; a row folded into another is still present;
 - what a row says is masked at rest; cleared lives are kept 30 days, at most KEPT_MAX;
 - two processes sighting at once lose no sighting (an exclusive lock, an atomic replace);
-  in one process sightings coalesce, never queue.
+  in one process a burst of finishes is one pass and one sighting, never a queue.
 """
 
 import json
@@ -18,13 +20,14 @@ import os
 import subprocess
 import sys
 import textwrap
-import threading
 import time
 
 import pytest
 
 from modules import attention as A
 from modules import attention_record as AR
+from modules import attention_store as S
+from modules import invalidation as I
 from modules import reader_job as RJ
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +38,35 @@ T0 = 1_800_000_000.0
 def data(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
     yield tmp_path
-    AR.uninstall()
+
+
+@pytest.fixture
+def store(data, monkeypatch):
+    """Needs attention's background store in the worker's process (`attention_store.start`
+    has run): its clock, its network (Lab, the installation's), and the real announcement
+    path from a reader's finish to its marks. Returns the clock."""
+    clock = {"now": T0}
+    monkeypatch.setattr(S, "COMPUTE_ON_READ", False)
+    monkeypatch.setattr(S, "_clock", lambda: clock["now"])
+    monkeypatch.setattr(S, "_network", lambda: "Lab")
+    monkeypatch.setattr(S, "_current", lambda: "Lab")
+    monkeypatch.setattr(S, "_head", lambda name: "h1")
+    monkeypatch.setattr(S, "_exists", lambda name: name == "Lab")
+    monkeypatch.setattr(S, "_room_emit", lambda event, msg, room: None)
+    monkeypatch.setattr(S, "_started", [True])
+    monkeypatch.setattr(I, "_emitter", lambda event, msg: None)
+    monkeypatch.setattr(RJ, "store_path", lambda name: str(data / f"{name}.json"))
+    S.clear()
+    yield clock
+    S.clear()
+
+
+def _finish(reader, clock):
+    """A reader's finish through the real path (its store and its announcement), then the
+    store's worker once its marks are due (the idle collection window, nothing viewed)."""
+    RJ.run_once(reader, announce=RJ.announce_via_page, clock=lambda: clock["now"])
+    clock["now"] += S.IDLE_DEBOUNCE_S
+    S.step()
 
 
 def _row(rid="remote:Lab", source="remote", what="1 commit(s) on Lab not pushed to origin",
@@ -59,11 +90,12 @@ def _stored(data):
 # ---------------------------------------------------------------- the appear-and-clear case
 
 class TestARowSeenOnlyBetweenTwoPageReadsIsRecorded:
-    """Through the real path: a reader the page draws finishes (`reader_job.run_once`), and
-    the page's own rows (`attention.needs_attention`) are sighted. No read of the page."""
+    """Through the real path: a reader the page draws finishes (`reader_job.run_once`), its
+    announcement marks the sources it feeds, the background store computes them and assembles
+    the page, and that page's rows are sighted (C3182). No read of the page."""
 
     @pytest.fixture
-    def world(self, data, monkeypatch):
+    def world(self, store, monkeypatch):
         state = {"pushed": False}
 
         def remote_source():
@@ -80,16 +112,20 @@ class TestARowSeenOnlyBetweenTwoPageReadsIsRecorded:
                            endpoints=("git ls-remote",), interval_seconds=120,
                            interval_basis="a test", read=lambda: {"pushed": state["pushed"]},
                            invalidates=("remote",))
-        AR.install()
         return state, reader
 
-    def test_a_row_that_appears_and_clears_between_two_reads_is_recorded(self, world, data):
+    def test_a_row_that_appears_and_clears_between_two_reads_is_recorded(self, world, data,
+                                                                          store):
         state, reader = world
-        RJ.run_once(reader)
+        state["pushed"] = True
+        S.step()                                            # the first value: no row
+        assert _stored(data)["open"] == {}
+        state["pushed"] = False
+        _finish(reader, store)
         doc = _stored(data)
         assert list(doc["open"]) == ["remote:Lab"], "floor: the first finish sighted the row"
         state["pushed"] = True
-        RJ.run_once(reader)
+        _finish(reader, store)
         doc = _stored(data)
         assert doc["open"] == {}
         (life,) = doc["cleared"]
@@ -97,51 +133,74 @@ class TestARowSeenOnlyBetweenTwoPageReadsIsRecorded:
         assert life["what"] == "1 commit(s) on Lab not pushed to origin"
         assert life["first_seen"] and life["last_seen"] and life["cleared_at"]
         assert life["first_seen"] <= life["last_seen"] <= life["cleared_at"]
-        assert life["seen"] == 1 and doc["observed"]["count"] == 2
+        assert life["seen"] == 1 and doc["observed"]["count"] == 3
 
-    def test_a_reader_the_page_does_not_draw_takes_no_sighting(self, world, data):
-        _state, reader = world
+    def test_a_reader_the_page_does_not_draw_takes_no_sighting(self, world, data, store):
+        state, reader = world
         import dataclasses
-        RJ.run_once(dataclasses.replace(reader, name="test-logs", invalidates=("logs",)))
-        assert not (data / AR.FILE).exists()
+        state["pushed"] = True                  # no row: the source is not read fast
+        S.step()                                            # the first value, sighted
+        assert _stored(data)["observed"]["count"] == 1
+        _finish(dataclasses.replace(reader, name="test-logs", invalidates=("logs",)), store)
+        assert _stored(data)["observed"]["count"] == 1
 
     def test_a_reader_that_announces_only_on_change_is_sighted_only_on_change(self, world,
-                                                                               data):
+                                                                               data, store):
         """The 5 s reachability probe's shape: `announce_if` says whether the page's value
         moved, and an unchanged finish takes no sighting."""
         import dataclasses
         state, reader = world
         fast = dataclasses.replace(reader, announce_if=lambda before, now: before != now,
                                    announce_at_least_every=300)
-        RJ.run_once(fast)                                   # first value: moved
-        assert _stored(data)["observed"]["count"] == 1
-        RJ.run_once(fast)                                   # the same value: no sighting
-        assert _stored(data)["observed"]["count"] == 1
-        state["pushed"] = True
-        RJ.run_once(fast)                                   # moved: sighted, and it cleared
+        state["pushed"] = True                  # no row: the source is not read fast
+        S.step()                                            # the first value, sighted
+        _finish(fast, store)                                # first value: moved
+        assert _stored(data)["observed"]["count"] == 2
+        _finish(fast, store)                                # the same value: no sighting
+        assert _stored(data)["observed"]["count"] == 2
+        state["pushed"] = False
+        _finish(fast, store)                                # moved: sighted, and it opened
         doc = _stored(data)
-        assert doc["observed"]["count"] == 2 and doc["cleared"][0]["how"] == "resolved"
+        assert doc["observed"]["count"] == 3 and list(doc["open"]) == ["remote:Lab"]
 
-    def test_nothing_is_sighted_unless_installed(self, world, data):
+    def test_nothing_is_sighted_unless_installed(self, world, data, store, monkeypatch):
+        """Installed means the store's worker started in this process (`attention_store.
+        start`): a process that started none sights nothing."""
         _state, reader = world
-        AR.uninstall()
-        RJ.run_once(reader)
+        monkeypatch.setattr(S, "_started", [False])
+        S.step()
+        _finish(reader, store)
         assert not (data / AR.FILE).exists()
 
     def test_which_readers_the_page_draws_is_attention_keys(self):
-        drawn = [r for r in RJ.readers() if AR.draws(r)]
+        """A reader the page draws is one whose keys meet `attention.ATTENTION_KEYS`: its
+        finish marks a source in the store, and a reader of other keys marks none."""
+        drawn = [r for r in RJ.readers() if set(r.invalidates) & set(A.ATTENTION_KEYS)]
         assert len(drawn) >= 10, "floor: most readers feed Needs attention"
-        assert all(set(r.invalidates) & set(A.ATTENTION_KEYS) for r in drawn)
-        assert not AR.draws(RJ.Reader(name="x", what="x", endpoints=(), interval_seconds=5,
-                                      interval_basis="x", read=dict, invalidates=("logs",)))
+        assert all(S._touched(r.invalidates) - {S._UNDECLARED} for r in drawn)
+        assert S._touched(("logs",)) == set()
 
 
 class TestTheReadersInstallIt:
-    def test_start_installs_the_sighting(self, monkeypatch, data):
+    def test_start_installs_the_sighting(self, monkeypatch, store, data):
+        """The store's start installs it (C3182); the readers' start installs no step of the
+        record's, so no reader's finish computes the page again."""
+        def remote_source():
+            return A.source_result("remote", "Publication to the remote", read_at=time.time(),
+                                   took_ms=0, checked="Lab's remote")
+
+        monkeypatch.setattr(A, "SOURCES", (remote_source,))
         monkeypatch.setattr(RJ, "readers", lambda: [])
-        assert AR._after_store not in RJ._AFTER_ANY_STORE
+        monkeypatch.setattr(RJ, "_AFTER_ANY_STORE", [])
+        monkeypatch.setattr(S, "_started", [False])
         RJ.start()
-        assert AR._after_store in RJ._AFTER_ANY_STORE
+        assert not [s for s in RJ._AFTER_ANY_STORE if s.__module__ == AR.__name__]
+        S.step()
+        assert not (data / AR.FILE).exists(), "no worker started: nothing sighted"
+        S.start(spawn=lambda target: None)
+        store["now"] += S.SLOW_S
+        S.step()
+        assert _stored(data)["observed"]["count"] == 1
 
 
 # ---------------------------------------------------------------- how a row cleared
@@ -276,30 +335,40 @@ class TestTwoProcessesAtOnce:
 
 
 class TestSightingsCoalesceInOneProcess:
-    def test_a_finish_during_a_sighting_asks_for_one_more_never_a_queue(self, monkeypatch):
-        started, release, runs = threading.Event(), threading.Event(), []
+    @pytest.fixture
+    def reader(self, store, monkeypatch):
+        def remote_source():
+            return A.source_result("remote", "Publication to the remote", read_at=time.time(),
+                                   took_ms=0, checked="Lab's remote")
 
-        def slow(result=None, now=None):
-            runs.append(time.time())
-            if len(runs) == 1:
-                started.set()
-                release.wait(10)
-            return {"ok": True}
+        monkeypatch.setattr(A, "SOURCES", (remote_source,))
+        return RJ.Reader(name="test-remote-publication", what="a test's remote reader",
+                         endpoints=("git ls-remote",), interval_seconds=120,
+                         interval_basis="a test", read=lambda: {"at": time.time()},
+                         invalidates=("remote",))
 
-        monkeypatch.setattr(AR, "observe", slow)
-        t = threading.Thread(target=AR.sight, args=("first",))
-        t.start()
-        assert started.wait(10)
+    def test_a_finish_during_a_sighting_asks_for_one_more_never_a_queue(self, reader, store,
+                                                                        monkeypatch):
+        """Five finishes within one collection window: one pass, one sighting (C3182)."""
+        runs = []
+        observe = AR.observe
+        monkeypatch.setattr(AR, "observe", lambda *a, **kw: runs.append(1) or observe(*a, **kw))
+        S.step()                                            # the first value
+        assert len(runs) == 1
         for _ in range(5):
-            AR.sight("during")              # each returns at once
-        release.set()
-        t.join(10)
+            RJ.run_once(reader, announce=RJ.announce_via_page, clock=lambda: store["now"])
+            store["now"] += 1
+        store["now"] += S.IDLE_DEBOUNCE_S
+        S.step()
         assert len(runs) == 2, runs
 
-    def test_a_failing_sighting_is_logged_and_never_raises(self, monkeypatch, caplog):
+    def test_a_failing_sighting_is_logged_and_never_raises(self, reader, store, monkeypatch,
+                                                           caplog):
         def boom(result=None, now=None):
-            raise RuntimeError("the page could not be computed")
+            raise RuntimeError("the record could not be written")
 
         monkeypatch.setattr(AR, "observe", boom)
-        AR.sight("a reader")
-        assert any("the page could not be computed" in r.getMessage() for r in caplog.records)
+        S.step()
+        assert S.read("Lab")["store"]["state"] == "read", "the page is still held"
+        assert any("the record could not be written" in r.getMessage()
+                   for r in caplog.records)

@@ -276,14 +276,21 @@ def test_a_device_opened_draws_its_filters_trend_and_lines(web, monkeypatch):
                 return lines
         return {"ok": True, "response": R()}
     monkeypatch.setattr("modules.integrations.loki.LokiIntegration._get", get)
+    monkeypatch.setattr("modules.logs_page._OLDER", {})
     html = _get(web, "&range=7d&sev=all&d=r4")
     assert "aria-label=\"Filter r4's lines\"" in html and "Trend by mnemonic" in html
     assert html.count('<polyline class="lg-line') >= 1
     assert "%DBAL-4-DELAYED_BATCH" in html
-    rows = re.findall(r'<tr><td class="mono">(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)</td>', html)
-    assert len(rows) == 50 and rows == sorted(rows, reverse=True)
     assert "href=\"/v2/device/r4?list=Lab&amp;tab=logs\">Open r4's Logs tab" in html
-    assert "the next 50" in html
+    # C3166: the region draws what the logs-tail reader holds (nothing here: it has not read)
+    # and asks Loki nothing; the lines before it are the part it loads once drawn.
+    assert asked == []
+    older = re.search(r'<tbody id="lg-older" hx-get="([^"]+)" hx-trigger="load"', html)
+    assert older and "Loading older lines" in html
+    part = web.get(older.group(1).replace("&amp;", "&")).get_data(as_text=True)
+    rows = re.findall(r'<tr><td class="mono">(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)</td>', part)
+    assert len(rows) == 50 and rows == sorted(rows, reverse=True)
+    assert "the next 50" in part
     q = asked[-1]["query"]
     assert '|= "r4:"' in q and "!~ `%HA_EM-" in q and int(asked[-1]["limit"]) == 50
     span = (int(asked[-1]["end"]) - int(asked[-1]["start"])) / 1e9

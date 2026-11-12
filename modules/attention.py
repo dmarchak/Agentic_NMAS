@@ -7892,21 +7892,22 @@ def _with_networks(rows: list) -> list:
     return rows
 
 
-def _standing_acknowledgements(hiding: list) -> list:
+def _standing_acknowledgements(hiding: list, held: tuple = None) -> list:
     """The band acknowledgements IN FORCE that hide nothing now (C433, the operator,
     2026-10-05: s3's discards were acknowledged, the alert stopped, and the acknowledgement
     showed nowhere). Each holds while its series stays at or under its band, firing or not,
     so a person can find and review it. One already listed as hiding a row is not repeated.
-    An unreadable record lists nothing here: the row that says so is `_without_acknowledged`'s."""
+    An unreadable record lists nothing here: the row that says so is `_without_acknowledged`'s.
+    *held*: `_acknowledgements_now`'s, read here when not given."""
     from modules import acknowledgements as ACK
 
-    got = ACK.read()
+    got, current = _acknowledgements_now() if held is None else held
     if got["state"] == "unreadable":
         return []
     shown = {k.get("id") for k in hiding}
     out = []
     # One made for an earlier device of the name is in force for nothing (C1476).
-    for a in ACK.standing_bands(ACK.current(got["rows"])):
+    for a in ACK.standing_bands(current):
         if a.get("row") in shown:
             continue
         value = a.get("value")
@@ -7952,17 +7953,29 @@ def coverage_words(ack: dict, cover: dict) -> str:
             + f", and this came after, at {when} UTC, so it is shown")
 
 
-def _without_acknowledged(rows: list):
+def _acknowledgements_now() -> tuple:
+    """``(the record as read, the acknowledgements current for it)``: `acknowledgements.read`
+    and `acknowledgements.current` once, for one assembly's two uses of them (C3230: `current`
+    reads every network's name cuts, two `git log` each, and an assembly read them twice).
+    The current list is empty when the record cannot be read."""
+    from modules import acknowledgements as ACK
+
+    got = ACK.read()
+    return got, ([] if got["state"] == "unreadable" else ACK.current(got["rows"]))
+
+
+def _without_acknowledged(rows: list, held: tuple = None):
     """``(rows, acknowledged, problem)``: the rows a person has not acknowledged, the ones
     they have (each with who, why and when, for the page's evidence), and a source result
     naming the record when it cannot be read. Unreadable hides NOTHING: every row stays,
-    and the page says the record could not be read."""
+    and the page says the record could not be read. *held*: `_acknowledgements_now`'s, read
+    here when not given."""
     from modules import acknowledgements as ACK
 
     if not any(r.get("acknowledge") for r in rows):
         return rows, [], None
     started = time.time()
-    got = ACK.read()
+    got, acks = _acknowledgements_now() if held is None else held
     if got["state"] == "unreadable":
         return rows, [], source_result(
             "acknowledgements", "Acknowledgements", read_at=started,
@@ -7971,8 +7984,7 @@ def _without_acknowledged(rows: list):
                    "row is shown, acknowledged or not"))
     kept, gone = [], []
     # An acknowledgement made for an earlier device of a name hides none of the new one's rows
-    # (C1476, `acknowledgements.current`): it can only hide less.
-    acks = ACK.current(got["rows"])
+    # (C1476, `acknowledgements.current`, in *acks*): it can only hide less.
     for r in rows:
         a = ACK.covering(r["id"], r.get("event"), acks) if r.get("acknowledge") else None
         events = (r.get("operands") or {}).get("events")
@@ -8332,8 +8344,9 @@ def run_source(src) -> tuple:
 def needs_attention(sources=None) -> dict:
     """The page, computed now: every row from every source, worst first, and every source
     with its read time, so an empty page says what it looked at. A LIVE computation, for the
-    callers that must read live (the record of sightings, a test); a page draws the value
-    the background holds (`modules.attention_store.read`, C3166)."""
+    callers that must read live (a test); a page draws the value the background holds
+    (`modules.attention_store.read`, C3166), and the record of sightings takes the store's
+    own assemblies (C3182)."""
     return assemble([run_source(src)[0]
                      for src in (every_source() if sources is None else sources)])
 
@@ -8356,10 +8369,12 @@ def assemble(results: list) -> dict:
     for r in rows:
         if r.get("folded"):
             r["folded"] = _with_networks(r["folded"])
-    rows, acknowledged, ack_result = _without_acknowledged(rows)
+    # The acknowledgement record and its current list read ONCE for both uses (C3230).
+    held = _acknowledgements_now()
+    rows, acknowledged, ack_result = _without_acknowledged(rows, held)
     if ack_result:
         results.append(ack_result)
-    in_force = _standing_acknowledgements(acknowledged)
+    in_force = _standing_acknowledgements(acknowledged, held)
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     # A source waiting out its dependency's start (C2568) is not unreadable: its own line says.
     unreadable = [res["label"] for res in results if res["state"] not in ("read", WAITING)]

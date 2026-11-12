@@ -28,14 +28,24 @@
       {%- if d.golden.sha %}Its golden is <a class="mono" href="{{ url_for('v2.history_page', device=host, list=d.list) }}">{{ d.golden.sha }}</a>, {{ stamp(d.golden.at) }}.{% endif %}</p>
     {%- endif %}
   </div>
-  <div class="drift-part">
+  {#- The log part redraws itself when the logs reader announces (C3166: it draws the reader's
+      buffer, never Loki on the request), so a line arriving, or the buffer reading back, fills
+      it in place. -#}
+  <div class="drift-part" id="drift-log" hx-disinherit="*" hx-get="{{ url_for('device_v2.drift', name=host) }}" hx-select="#drift-log" hx-trigger="nmas:logs from:body" hx-swap="outerHTML">
     <h3 class="drift-k">What {{ host }}'s log says</h3>
     {%- set g = d.logs %}
+    {%- set h = g.held or {} %}
     {%- if not g.configured %}
     <p class="notice notice-muted">No log store is configured, so {{ host }}'s own lines cannot be read here.</p>
     {%- elif g.error %}
     <p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't load: {{ g.error }}.</span></p>
+    {%- elif h.state == 'never' and h.failed %}
+    <p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't load: the logs reader could not read Loki yet: {{ h.failed }}. This part fills itself when it can.</span></p>
+    {%- elif h.state == 'never' %}
+    <p class="drift-sum" role="status">Reading Loki: the logs reader has not read it yet. This part fills itself when it has.</p>
     {%- else %}
+    {%- if h.failed %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</span></p>{% endif %}
+    {%- if h.loading %}<p class="drift-note" role="status">Loading older lines: held from {{ stamp(h.from_iso) }}; the logs reader is reading back, and this part fills itself as it does.</p>{% endif %}
     <p class="drift-sum">{% if g.capped %}In the last {{ g.max_days }} days{% else %}Since its golden was recorded ({{ stamp(g.start_iso) }}){% endif %}: {{ g.lines | length }}{% if g.cut %} (the newest {{ g.limit }}; there are more){% endif %} line{{ '' if g.lines | length == 1 else 's' }} about its configuration or a restart.</p>
     {%- if g.lines %}
     <ul class="drift-logs">
@@ -45,7 +55,7 @@
       {%- endfor %}
     </ul>
     {%- endif %}
-    <p class="drift-note">Each at the time Mercury received it; {{ host }}'s own time is on hover{% if g.unsync %} ({{ g.unsync }} with a clock IOS marks as not set){% endif %}. <a href="{{ url_for('device_v2.device', name=host, tab='logs') }}">Every line from {{ host }}: its Logs tab</a></p>
+    <p class="drift-note">Each at the time Mercury received it; {{ host }}'s own time is on hover{% if g.unsync %} ({{ g.unsync }} with a clock IOS marks as not set){% endif %}{% if h.value_at %}; held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}. <a href="{{ url_for('device_v2.device', name=host, tab='logs') }}">Every line from {{ host }}: its Logs tab</a></p>
     {%- endif %}
   </div>
   <div class="drift-part">

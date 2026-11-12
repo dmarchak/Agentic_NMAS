@@ -3,9 +3,12 @@ board C, `AskLogs.dc.html`, "Syslog by device", signed off 2026-10-04; compared 
 in docs/fidelity/logs.md).
 
 The counts are the `logs-summary` reader's, kept per day (modules/readers/logs_summary.py): this
-sums the days the range asks for and never counts per request. A device opened is the one read
-here: its lines, one Loki query of at most 50 lines from at most 30 days (Loki's query limit),
-filtered by severity, mnemonic, time and text, each line masked before it is drawn.
+sums the days the range asks for and never counts per request. A device opened draws its lines
+from the `logs-tail` reader's buffer (modules/logs_buffer.py, its last 24 h; C3166: no page load
+waits on Loki), filtered by severity, mnemonic, time and text; only when the range reaches before
+what the buffer holds, and it holds fewer than a page, the lines before it are one Loki query of
+at most 50 lines from at most 30 days (Loki's query limit), asked by a part of the page after it
+has drawn (`older`, `logs_v2.older`), each line masked before it is drawn.
 
 The coverage is said, never implied: a range reaching before the store's first line, or past
 the network's Logs retention, says how many of its days hold nothing and why; Loki holding lines
@@ -197,11 +200,56 @@ def _when(text: str, default: float):
     return float(calendar.timegm(time.strptime(text, fmt))), ""
 
 
-def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
-    """A device opened: its filters, the trend by mnemonic, and its lines from Loki."""
+def _bounds(s: dict, start_day: str, now: float) -> tuple:
+    """``(start, end, errors)``: the opened device's window, from its range, From, To and the
+    page's `before`, and what in the address cannot be read."""
+    errors = []
+    start, e1 = _when(s["from"], _ts(start_day) if s["range"] != "24h" else now - 86400)
+    end, e2 = _when(s["to"], now)
+    if s["before"]:
+        try:
+            end = min(end, int(s["before"]) / 1e9)
+        except ValueError:
+            pass
+    for e in (e1, e2):
+        if e:
+            errors.append(e)
+    if s["mn"] and not _MN_OK.match(s["mn"]):
+        errors.append(f"{s['mn']!r} is not a mnemonic (%FACILITY-SEVERITY-NAME)")
+    if not _TEXT_OK.match(s["text"]):
+        errors.append("the text may not hold a quote, a backtick or a backslash, and is "
+                      "at most 120 characters")
+    return start, end, errors
+
+
+def _row(e: dict) -> dict:
+    """A held line (modules/logs_buffer.py) as the opened device draws one."""
     from modules import device_logs
-    from modules.integrations.loki import LokiIntegration
-    from modules.redact import redact_text
+
+    row = device_logs._held_row(e)                      # noqa: SLF001 (one row shape)
+    row["at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(row["ns"] / 1e9))
+    return row
+
+
+def _matches(e: dict, s: dict) -> bool:
+    """Whether a held line answers the filters as the Loki query's stages would: a mnemonic at
+    or worse than the severity, the mnemonic chosen, and the text in the line."""
+    limit = SEVERITIES[s["sev"]][1]
+    sev = _sev(e.get("mn") or "")
+    if limit < 7 and (sev is None or sev > limit):
+        return False
+    line = " ".join(x for x in (e.get("devts"), e.get("mn"), e.get("text")) if x)
+    if s["mn"] and s["mn"] not in line:
+        return False
+    return not s["text"] or s["text"] in line
+
+
+def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
+    """A device opened: its filters, the trend by mnemonic, and its lines: those the logs-tail
+    reader's buffer holds (C3166: never Loki on the request), and, when the range reaches
+    before the buffer and it holds fewer than a page, ``older``: the part that asks Loki for
+    the lines before it, after the page has drawn (`older`, `logs_v2.older`)."""
+    from modules import device_logs, logs_buffer
 
     dev = s["d"]
     out = {"device": dev, "errors": [], "lines": [], "row": row}
@@ -213,25 +261,97 @@ def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
     # day the reader has not counted yet is unknown, never zero (the notice says both).
     counted = min(v.get("days") or {today: 0})
     out["trend"] = _trend(row, max(start_day, v.get("first_day") or start_day, counted), today, s)
-    start, e1 = _when(s["from"], _ts(start_day) if s["range"] != "24h" else now - 86400)
-    end, e2 = _when(s["to"], now)
-    if s["before"]:
-        try:
-            end = min(end, int(s["before"]) / 1e9)
-        except ValueError:
-            pass
-    for e in (e1, e2):
-        if e:
-            out["errors"].append(e)
-    if s["mn"] and not _MN_OK.match(s["mn"]):
-        out["errors"].append(f"{s['mn']!r} is not a mnemonic (%FACILITY-SEVERITY-NAME)")
-    if not _TEXT_OK.match(s["text"]):
-        out["errors"].append("the text may not hold a quote, a backtick or a backslash, and is "
-                             "at most 120 characters")
+    start, end, out["errors"] = _bounds(s, start_day, now)
     if out["errors"]:
         return out
     out["cut_window"] = end - start > WINDOW_DAYS * 86400
     start = max(start, end - WINDOW_DAYS * 86400)
+    out["window"] = (time.strftime("%Y-%m-%d %H:%M", time.gmtime(start)),
+                     time.strftime("%Y-%m-%d %H:%M", time.gmtime(end)))
+    # The whole count is known only for the range as kept, whole days and no text.
+    if row and not (s["text"] or s["from"] or s["to"] or s["before"]):
+        out["matching"] = row["mn"].get(s["mn"], 0) if s["mn"] else row["lines"]
+    h = logs_buffer.held(list_name, dev, now=now)
+    out["held"] = device_logs._held_words(h, "lines")             # noqa: SLF001
+    held_from = end
+    if h["state"] == "ok":
+        held_from = min(end, h["cover"]["lines"]["from"] or end)
+        lo, hi = int(max(start, held_from) * 1e9), int(end * 1e9)
+        rows = [_row(e) for e in h["lines"] if lo <= int(e.get("ns") or 0) < hi
+                and _matches(e, s)]
+        out["lines"] = rows[:PAGE]
+        if len(rows) >= PAGE:
+            out["more"] = True
+            out["next_before"] = str(rows[PAGE - 1]["ns"] - 1)
+            return out
+    out["more"] = False
+    out["next_before"] = ""
+    if start < held_from:
+        # The boundary on the next whole minute, so the part's question stays the same while
+        # the buffer moves under it, and `older` answers it from what it asked (`OLDER_KEEP`);
+        # the held lines are drawn from the same boundary, so none is drawn twice or missed.
+        edge = min(end, -(-held_from // 60) * 60)
+        if h["state"] == "ok":
+            lo = int(max(start, edge) * 1e9)
+            out["lines"] = [r for r in out["lines"] if r["ns"] >= lo]
+        out["older"] = {"before": str(int(edge * 1e9)),
+                        "from_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(edge))}
+    return out
+
+
+#: How long an older part's answer is kept, per question (the device, its filters, the range and
+#: the boundary): the boundary moves by whole minutes, so a region redrawn when the logs reader
+#: announces (every 5 s while lines arrive) asks Loki at most once a minute for it. The most
+#: kept, the oldest let go first.
+OLDER_KEEP = 60
+OLDER_MOST = 256
+_OLDER = {}
+
+
+def older(list_name: str, values, now: float = None) -> dict:
+    """The opened device's lines older than the buffer (`_open`'s ``older``): one Loki query of
+    at most `PAGE` lines before `before`, in the range and filters asked. The part a page asks
+    for after it has drawn, never the page (C3166: "only a query older than the buffer goes to
+    Loki, as a part of the page that says 'loading older lines'"); the same question within
+    `OLDER_KEEP` seconds is answered from what was asked (``asked_at`` says when). Never
+    raises."""
+    s = ask(values)
+    now = time.time() if now is None else now
+    key = (list_name, tuple(sorted(s.items())))
+    got = _OLDER.get(key)
+    if got and now - got[0] < OLDER_KEEP:
+        return got[1]
+    out = _older(list_name, s, now)
+    if not out["errors"]:
+        _OLDER[key] = (now, out)
+        while len(_OLDER) > OLDER_MOST:
+            _OLDER.pop(min(_OLDER, key=lambda k: _OLDER[k][0]))
+    return out
+
+
+def _older(list_name: str, s: dict, now: float) -> dict:
+    from modules import device_logs
+    from modules.integrations.loki import LokiIntegration
+    from modules.redact import redact_text
+
+    out = {"qs": lambda over=None: qs(list_name, s, over),
+           "device": s["d"], "errors": [], "lines": [], "more": False, "next_before": "",
+           "asked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))}
+    dev = s["d"]
+    if dev not in set(_devices(list_name)) or not device_logs._NAME.match(dev):  # noqa: SLF001
+        out["errors"].append(f"{dev or 'no device'} is not a device of {list_name}")
+        return out
+    _words, n_days = RANGES[s["range"]]
+    start_day = _day(now - 86400) if s["range"] == "24h" else _day(_ts(_day(now))
+                                                                   - (n_days - 1) * 86400)
+    start, end, out["errors"] = _bounds(s, start_day, now)
+    if not s["before"]:
+        out["errors"].append("no time to read before was given")
+    if out["errors"]:
+        return out
+    start = max(start, end - WINDOW_DAYS * 86400)
+    if end <= start:
+        return out
     loki = LokiIntegration(list_name=list_name)
     try:
         sel = device_logs.selector(dev, start=start, client=loki)
@@ -263,14 +383,11 @@ def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
             p.update(ns=int(ns), at=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(int(ns) / 1e9)))
             rows.append(p)
     rows.sort(key=lambda r_: r_["ns"], reverse=True)
-    out["lines"] = rows[:PAGE]
+    # What the part draws of each line, and no more (its time, severity, mnemonic, text).
+    out["lines"] = [{k: r_.get(k) for k in ("at", "sev", "sev_word", "kind", "mnemonic", "text")}
+                    for r_ in rows[:PAGE]]
     out["more"] = len(rows) >= PAGE
     out["next_before"] = str(rows[-1]["ns"] - 1) if rows else ""
-    out["window"] = (time.strftime("%Y-%m-%d %H:%M", time.gmtime(start)),
-                     time.strftime("%Y-%m-%d %H:%M", time.gmtime(end)))
-    # The whole count is known only for the range as kept, whole days and no text.
-    if row and not (s["text"] or s["from"] or s["to"] or s["before"]):
-        out["matching"] = row["mn"].get(s["mn"], 0) if s["mn"] else row["lines"]
     return out
 
 

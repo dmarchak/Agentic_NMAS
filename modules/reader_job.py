@@ -333,6 +333,7 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.topology_graph",
                            "modules.readers.logs_summary",
                            "modules.readers.logs_tail",
+                           "modules.readers.loki_labels",
                            "modules.readers.dhcp",
                            "modules.readers.ztp_discovery",
                            "modules.readers.host_key_windows",
@@ -616,7 +617,12 @@ CHANGE_ONLY = {
     "logs-tail": ("it reads every 5 s and Logs redraws its lines on its announcement; the page "
                   "says it checks every 5 s and draws the newest line's time, the read's only on "
                   "hover: a window with nothing new redraws nothing (its 300 s keepalive proves "
-                  "it alive)"),
+                  "it alive). A device's Logs tab, its drift row and Syslog by device draw the "
+                  "buffer's read time as the page's copy holds it, at most one keepalive old, "
+                  "and redraw when a line or a heartbeat arrives (C3166)"),
+    "loki-labels": ("it reads every 300 s and the logs builder draws its choices from it, the "
+                    "read's time beside them: unchanged labels redraw nothing (its 1800 s "
+                    "keepalive proves it alive; C3166)"),
     "dhcp": ("it reads every 300 s and DHCP redraws its tabs on its announcement; the read's "
              "time is drawn only on hover: an unchanged Kea redraws nothing (its 1800 s "
              "keepalive proves it alive)"),
@@ -1043,10 +1049,9 @@ def start(announce=None) -> list:
     operator, 2026-10-15, after the 18:40 UTC restart; not reproduced by two threads alone).
     A package imported whole before the threads start is one no thread has to initialise."""
     import modules.integrations  # noqa: F401 (imported for its effect: every client loaded)
-    from modules import attention_record
 
-    # C1192: Needs attention's rows sighted whenever a reader it draws finishes.
-    attention_record.install()
+    # C1192's record of Needs attention's rows is sighted by the background store's passes
+    # (`attention_store._sight`, C3182), never by computing every source after a reader.
     # Board H, H2: the heal triggers ride on the readers' stores ("check this device now").
     from modules.heal import triggers as heal_triggers
     heal_triggers.install()

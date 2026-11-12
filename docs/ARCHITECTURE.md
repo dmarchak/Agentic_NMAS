@@ -490,7 +490,16 @@ and others have left since too.
   network's Socket.IO room (`nmas_attention`), the list hears `attention`; an acknowledgement
   re-assembles at once (no source read) and the acting page's list and count re-read on its
   response's `acknowledgements`. Display only: the heal
-  pipeline and deploys read live (tests/test_attention_display_only.py).
+  pipeline and deploys read live (tests/test_attention_display_only.py). Idle cost (C3230,
+  2026-11-12: as first built it added about 18 points of one CPU on the host with nothing
+  viewed): a reader's finish is the one event on a timer, so while its network is not viewed its
+  marks are collected for 30 s (the fastest periodic reader the page draws) and computed in one
+  pass, and never reach the template check (a reader commits nothing); any other mark, and a
+  viewed network's, is due within 2 s; a pass that runs anyway takes along each source due
+  within a quarter of its cadence; each pass is one assembly, which reads the acknowledgement
+  record and its name cuts once, and is what Needs attention's record sights. Counted over 10
+  idle minutes through the real readers (tests/test_attention_store_idle_work.py): 204 full
+  assemblies and 5,130 source computations before, 18 and 392 after.
 - **[modules/attention.py](modules/attention.py)** — Stage 7.2: Needs
   attention. One row constructor (what, devices, since, cause, operands,
   the one action, a level, an empty triage slot for Stage 8) that refuses a
@@ -940,10 +949,11 @@ and others have left since too.
   window through **[routes/restarts.py](routes/restarts.py)** (`POST /restarts/planned`, gate
   configure, operation `planned_restart`), recorded as the verified caller
 - **[modules/attention_record.py](modules/attention_record.py)** — C1192 (2026-10-19, the first
-  job after Phase 7): Needs attention's RECORD. When a reader the page draws finishes
-  (`reader_job.after_any_store`, installed by `reader_job.start`), the page's own rows are
-  sighted, and each row's life is kept: first and last seen, when and how it cleared (resolved,
-  acknowledged, by time). A row whose source was unread stays open. The store is
+  job after Phase 7): Needs attention's RECORD. Each time the background store assembles the
+  installation's page (`attention_store._sight`, after a reader's finish within its debounce,
+  and at each cadence; C3182, 2026-11-12: until then every reader the page draws computed every
+  source again at its finish), that page's rows are sighted, and each row's life is kept: first
+  and last seen, when and how it cleared (resolved, acknowledged, by time). A row whose source was unread stays open. The store is
   `attention_record.json`, locked across processes and replaced atomically. The page read
   writes nothing. Its screen is C1319.
 - **[modules/acknowledgements.py](modules/acknowledgements.py)** — C344 (2026-10-02): a person

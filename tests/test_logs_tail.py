@@ -49,7 +49,15 @@ NOW = max(int(ns) for s in _streams() for ns, _l in s["values"]) / 1e9 + 30
 
 
 def _read(loki=None):
-    return T.read("Lab", loki=loki or FakeLoki(), clock=lambda: NOW)
+    # A first read each time (no previous value): the window, as the page tests draw it.
+    return T.read("Lab", loki=loki or FakeLoki(), clock=lambda: NOW, previous={})
+
+
+@pytest.fixture(autouse=True)
+def _own_store(tmp_path, monkeypatch):
+    """A read keeps each device's buffer beside the reader's store (C3166): this test's own."""
+    monkeypatch.setattr("modules.reader_job.store_path",
+                        lambda name: str(tmp_path / "readers" / f"{name}.json"))
 
 
 class TestTheReader:

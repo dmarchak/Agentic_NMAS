@@ -181,21 +181,52 @@ class TestSourcesThatCannotBeRead:
 from tests.test_profile_apply import lab  # noqa: E402,F401 (the fixture)
 
 
+def fill_buffer(now: float, reads: int = 6) -> dict:
+    """C3166: the logs-tail reader's reads, 5 s apart up to *now*, from the Loki the test holds
+    (its fake), stored as the reader stores them: what the tab draws."""
+    from modules import reader_job
+    from modules.readers import logs_tail
+    v, error = {}, ""
+    try:
+        for i in range(reads):
+            v = logs_tail.read("Lab", clock=lambda i=i: now - 5 * (reads - 1 - i), previous=v)
+    except RuntimeError as exc:                         # stored, as run_once stores a failure
+        error = f"{type(exc).__name__}: {exc}"
+    path = reader_job.store_path(logs_tail.READER_NAME)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    at = logs_tail._iso(now)                              # noqa: SLF001
+    doc = {"last_attempt": {"at": at, "ok": not error, "error": error}}
+    if v:
+        doc["last_good"] = {"value": v, "value_at": at}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    return v
+
+
 @pytest.fixture
-def page(lab, loki, monkeypatch):
-    from modules import device_logs, device_page
+def page(lab, loki, tmp_path, monkeypatch):
+    from modules import device_page, reader_job
     from modules.nsot import listref
     monkeypatch.setattr(device_page, "find_device", lambda name, ref=None: (
         listref.resolve("Lab"), {"hostname": name, "ip": "192.0.2.1", "platform": "cisco_ios"}))
-    real = device_logs.for_device
-    monkeypatch.setattr(device_logs, "for_device", lambda dev, now=None: real(dev, now=_now()))
+    # C3166: the tab draws the logs-tail reader's buffer, never Loki; the reader fills it from
+    # this test's fake Loki first (as the host's does in the background), into its own store,
+    # and the buffer is read at the corpus's time.
+    monkeypatch.setattr("modules.reader_job.store_path",
+                        lambda name: str(tmp_path / "readers" / f"{name}.json"))
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: reader_job.read_cached(name))
+    monkeypatch.setattr("modules.logs_buffer.time.time", _now)
 
     def no_session(*a, **k):
         raise AssertionError("the Logs tab opened a session to a device")
     monkeypatch.setattr("modules.connection.open_ssh", no_session)
 
     def get(url):
+        fill_buffer(_now())
+        asked = len(loki["asked"])
         r = lab["client"].get(url)
+        assert len(loki["asked"]) == asked, "the page asked Loki"
         return r, r.get_data(as_text=True)
     return get
 
@@ -308,9 +339,10 @@ class TestTheSyslogJobIsMeasured:
         held["jobs"] = []
         r, html = page("/v2/device/r3/logs")
         assert r.status_code == 200
-        assert ("The syslog job could not be found: no job in Loki holds a device&#39;s syslog "
-                "line (a device&#39;s own name, its time and a mnemonic) in the last 24 h. "
-                "Not the same as r3 having sent nothing.") in html, html[-1500:]
+        # C3166: the logs-tail reader's read failed on it, and the tab says so in its words.
+        assert ("The logs reader could not read Loki yet: NoSyslogJob: no job in Loki holds a "
+                "device&#39;s syslog line (a device&#39;s own name, its time and a mnemonic) "
+                "in the last 24 h. Not the same as r3 having sent nothing") in html, html[-1500:]
         assert [q for _p, q in loki["asked"]] == [device_logs.job_query()]
 
     def test_a_refused_ask_is_said_with_lokis_words(self, held, loki):

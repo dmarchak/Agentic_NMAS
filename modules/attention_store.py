@@ -29,6 +29,22 @@ a source), and the marked sources are computed once DEBOUNCE_S after the first m
 many step announcements are one recompute, and a fix made through Mercury clears its row
 within one debounce. A key no source reads (a running card's `device_progress`) marks nothing.
 
+**Idle costs little** (C3230: slice 1 as first built added about 18 points of one CPU on the
+host while nothing was viewed, against a budget of 5). A READER's finish (its announcement,
+`invalidation.READER_BY`) is the one event that comes on a timer: most readers' values move
+at every run (their probe times, measured on the host 2026-11-12), so each finish marked its
+sources and each was a pass of its own, about 70 full assemblies in 10 idle minutes. So
+while its network is not viewed, a reader's marks are collected for IDLE_DEBOUNCE_S and
+computed in one pass; any other mark (a person's change, a job's end) still comes due within
+DEBOUNCE_S, and a viewed network's within DEBOUNCE_S whatever marked it. A reader commits
+nothing, so its marks never reach an ON_HEAD source (its head check does). A pass that runs
+anyway takes along each source whose cadence comes due within EARLY_FRACTION of it, so the
+sources' cadences do not drift apart into passes of their own. Each pass is ONE assembly,
+and it is what Needs attention's record sights (`attention_record.observe`, the
+installation's network, C3182): the record no longer computes every source after every
+reader. tests/test_attention_store_idle_work.py counts the idle work through the real
+readers, store and announcements.
+
 **Display only** (the operator, 2026-11-12): the held values draw pages. The heal pipeline
 (detect, decide, guards, apply, verify, can't-fix), deploys and their before and after reads
 read live and never come here; `reads()` counts every read of a held value, and
@@ -57,6 +73,16 @@ log = logging.getLogger(__name__)
 #: within a second of each other (the smoke heal's end, 2026-11-12 03:46:22 to 03:47:27 UTC,
 #: in flask-app's request lines).
 DEBOUNCE_S = 2.0
+#: How long a reader's marks are collected while their network is not viewed, before its
+#: sources are computed in one pass (C3230). 30 s is the fastest periodic reader the page
+#: draws (`sdn-controllers`, every 30 s), so a row a reader holds for one interval is still
+#: in a pass, and Needs attention's record still sights it; in 10 idle minutes the readers'
+#: finishes are at most 20 passes, against about 70 when each finish was a pass.
+IDLE_DEBOUNCE_S = 30.0
+#: A pass that runs anyway takes along each source whose cadence comes due within this share
+#: of it (30 s of an idle source's 120 s, 5 s of a fast one's 20 s): a source is read early by
+#: at most that, never late, and the cadences stay together in one pass.
+EARLY_FRACTION = 0.25
 #: A viewed or alerting source's cadence. The host measured the 47 sources at about 1 s warm
 #: together (C3166, 2026-11-12), so a viewed network costs about 1 s of one CPU in 20 s (5%)
 #: before the template check, which is ON_HEAD.
@@ -109,7 +135,9 @@ class _Net:
 
     def __init__(self):
         self.results, self.read_at, self.failed, self.timed = {}, {}, {}, {}
-        self.dirty, self.deadline = set(), None
+        # The marks of a burst: when its first mark came, and its first mark that was not a
+        # reader's finish (due within DEBOUNCE_S whatever is viewed), `_marks_due_at`.
+        self.dirty, self.marked_at, self.urgent_at = set(), None, None
         self.value, self.value_at, self.assemble_at = None, 0.0, None
         self.head, self.head_at = None, 0.0
         self.viewed_at = 0.0
@@ -217,11 +245,13 @@ def read(network: str = None) -> dict:
         _reads[0] += 1
         n = _net(name)
         n.viewed_at = _clock()
-        held = n.value
+        held, pending = n.value, n.marked_at is not None
     if COMPUTE_ON_READ:
         return _live(name)
-    if held is None:
+    if held is None or pending:
+        # Viewed now: marks collected while it was not are due within DEBOUNCE_S (C3230).
         _wake.set()
+    if held is None:
         return reading(name)
     return copy.deepcopy(held)
 
@@ -238,9 +268,10 @@ def badge(network: str = None):
         _reads[0] += 1
         n = _net(name)
         n.viewed_at = _clock()
-        held = n.value
-    if held is None:
+        held, pending = n.value, n.marked_at is not None
+    if held is None or pending:
         _wake.set()
+    if held is None:
         return None
     return dict(held["badge"], at=held["store"]["checked_at"])
 
@@ -279,16 +310,29 @@ def mark(keys, by: str = "") -> None:
     every held network at once, reading no source: the acknowledged row has left the held
     value before the response is sent, so the acting page's redraw and its count are already
     right, and every other open page is told. Only when no computation holds the store: one
-    that does assembles after it from the same mark, so the press never waits on it."""
+    that does assembles after it from the same mark, so the press never waits on it.
+
+    A reader's finish (*by* `invalidation.READER_BY`) marks no ON_HEAD source (a reader
+    commits nothing; the head check reads them), and is collected for IDLE_DEBOUNCE_S while
+    its network is not viewed (C3230); every other mark comes due within DEBOUNCE_S."""
+    from modules.invalidation import READER_BY
+
+    reader = str(by or "").startswith(READER_BY)
     touched = _touched(keys)
+    if reader:
+        touched -= set(ON_HEAD)
+        if not touched - {_UNDECLARED} and not _undeclared_sources():
+            touched = set()
     if not touched:
         return
     now = _clock()
     with _lock:
         for n in _nets.values():
             n.dirty |= touched
-            if n.deadline is None:
-                n.deadline = now + DEBOUNCE_S
+            if n.marked_at is None:
+                n.marked_at = now
+            if not reader and n.urgent_at is None:
+                n.urgent_at = now
         held = [name for name, n in _nets.items() if n.value is not None]
     if _ASSEMBLE in touched and held and _compute.acquire(blocking=False):
         try:
@@ -373,7 +417,27 @@ def refresh(network: str, names=None, *, publish: bool = True, compute: bool = T
             n.assemble_at = _ack_ends(page)
     if publish:
         _publish(network, page)
+    if compute:
+        _sight(network, page, now)
     return page
+
+
+def _sight(network: str, page: dict, now: float) -> None:
+    """Needs attention's record of sightings takes this assembly (C1192, C3182): what the page
+    now draws, for the installation's own network, in the worker's process (a process that
+    started no worker sights nothing, as one that started no readers did). Outside the
+    computation's hold, so a person's acknowledgement never waits on the record's write. An
+    acknowledgement's own assembly (`mark`, no source read) is sighted by the pass after its
+    debounce. A failure is logged and never stops the store."""
+    if not _started[0]:
+        return
+    try:
+        if network != _current():
+            return
+        from modules import attention_record
+        attention_record.observe(page, now=now)
+    except Exception as exc:                          # noqa: BLE001 (the next pass sights)
+        log.error("attention store: %s's sighting was not recorded: %s", network, exc)
 
 
 def _clears_at(result: dict):
@@ -467,10 +531,11 @@ def _plan(now: float) -> list:
                     out.append((name, None, False))
                 continue
             todo = set()
-            if n.deadline is not None and now >= n.deadline:
-                todo |= n.dirty
-                n.dirty, n.deadline = set(), None
             viewed = _viewed(name, n, now)
+            due_at = _marks_due_at(n, viewed)
+            if due_at is not None and now >= due_at:
+                todo |= n.dirty
+                n.dirty, n.marked_at, n.urgent_at = set(), None, None
             for key, at in n.read_at.items():
                 every = cadence(n, key, viewed)
                 if every is not None and now - at >= every:
@@ -479,9 +544,29 @@ def _plan(now: float) -> list:
             if n.assemble_at and now >= n.assemble_at:
                 todo.add(_ASSEMBLE)
             head_due = now - n.head_at >= (FAST_S if viewed else SLOW_S)
+            if todo:
+                # A pass that runs anyway takes along each source due within EARLY_FRACTION of
+                # its cadence: one pass, one assembly, where they would drift into several.
+                for key, at in n.read_at.items():
+                    every = cadence(n, key, viewed)
+                    if every is not None and now - at >= every * (1 - EARLY_FRACTION):
+                        todo.add(key)
             if todo or head_due:
                 out.append((name, todo, head_due))
     return out
+
+
+def _marks_due_at(n: _Net, viewed: bool):
+    """When network *n*'s marked sources are computed: DEBOUNCE_S after the burst's first
+    mark while it is viewed, or after its first mark that was not a reader's finish (a
+    person's change, a job's end); otherwise IDLE_DEBOUNCE_S after its first mark (C3230).
+    None when nothing is marked."""
+    if n.marked_at is None:
+        return None
+    at = n.marked_at + (DEBOUNCE_S if viewed else IDLE_DEBOUNCE_S)
+    if n.urgent_at is not None:
+        at = min(at, n.urgent_at + DEBOUNCE_S)
+    return at
 
 
 def step(now: float = None) -> int:
@@ -518,8 +603,9 @@ def _seconds_to_next(now: float) -> float:
                 soon.append(0.0 if n.tried_at is None else n.tried_at + FAST_S - now)
                 continue
             viewed = _viewed(name, n, now)
-            if n.deadline is not None:
-                soon.append(n.deadline - now)
+            due_at = _marks_due_at(n, viewed)
+            if due_at is not None:
+                soon.append(due_at - now)
             for key, at in n.read_at.items():
                 every = cadence(n, key, viewed)
                 if every is not None:

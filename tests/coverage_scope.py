@@ -75,6 +75,7 @@ EXCEPTIONS = {
     "modules/list_settings.py": (SUPPORT, "per-network settings access"),
     "modules/local_account.py": (SUPPORT, "who is asking: a loopback-only installation's one "
                                           "local account"),
+    "modules/logs_buffer.py": (SUPPORT, "each device's syslog held for the Logs pages (C3166)"),
     "modules/logs_page.py": (SUPPORT, "the Logs page's model"),
     "modules/logs_tail_page.py": (SUPPORT, "the live log tail's model"),
     "modules/manual.py": (SUPPORT, "the manual's pages"),

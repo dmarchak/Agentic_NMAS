@@ -154,7 +154,7 @@ def _netbox_ctx(ref, dev):
 
 def _logs_ctx(ref, dev):
     from modules import device_logs
-    return {"device": dev, "list_name": ref.name, "g": device_logs.for_device(dev)}
+    return {"device": dev, "list_name": ref.name, "g": device_logs.held_tab(ref.name, dev)}
 
 
 def _ask_ctx(ref, dev):
@@ -907,8 +907,9 @@ def neighbours(name):
 
 @bp.route("/device/<name>/logs", methods=["GET"])
 def logs(name):
-    """The Logs tab: the device's syslog as Loki holds it, heartbeats folded.
-    Opens no session to the device."""
+    """The Logs tab: the device's syslog as the logs-tail reader's buffer holds it, heartbeats
+    folded, and the buffer's age (C3166: never Loki on the request). Opens no session to the
+    device."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal

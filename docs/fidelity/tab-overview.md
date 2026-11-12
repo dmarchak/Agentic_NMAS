@@ -25,7 +25,16 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `15f551360fba43e74a92660b72ec0a50ffd6dbcaffc313858eb8fd28a5a0bdb4`
+Templates sha256: `f8a5568311056af4edf062c64a8c9c58aaac357ef30f52417a677bba88ba2782`
+(2026-11-12, C3166 slice 2, by the template diff and the part tests/test_logs_buffer.py draws,
+not a new shot: in `_drift_detail.html` the "What r3's log says" part draws the logs-tail
+reader's buffer, never Loki when the row opens, and redraws itself in place when the reader
+announces `logs` (its own select, inheriting nothing); its note gains the reader's read time; it
+gains a failed refresh's notice, "Loading older lines: held from <time>" while the reader reads
+back, and before the reader's first read "Reading Loki" or "Couldn't load: the logs reader could
+not read Loki yet: …". The board draws none of these: **deviation** (log: The Logs pages draw
+the logs-tail reader's buffer). Every other region as compared. Before:
+`15f551360fba43e74a92660b72ec0a50ffd6dbcaffc313858eb8fd28a5a0bdb4`.)
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_overview.html`, the Committed intent and Golden rows'

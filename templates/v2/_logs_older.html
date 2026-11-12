@@ -1,0 +1,14 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- An opened device's lines older than the logs-tail reader's buffer (C3166), from
+    modules/logs_page.older(): the rows Syslog by device's "Loading older lines" part draws in
+    its own place once Loki has answered, and the next page after them. One Loki query; a
+    failure is said in place, never drawn as no lines. -#}
+<tbody id="lg-older">
+  {%- for e in o.errors %}
+  <tr><td colspan="4"><div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>Couldn't load the older lines: {{ e }}.</p></div></td></tr>
+  {%- endfor %}
+  {%- if not o.errors %}
+  {%- for l in o.lines %}<tr><td class="mono">{{ l.at }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}
+  <tr class="lg-older-end"><td colspan="4" class="muted small">{% if o.lines %}{{ o.lines | length }} older line{{ 's' if o.lines | length != 1 }}, from Loki, asked {{ stamp(o.asked_at, note='when Loki was asked for these lines') }}{% if o.more %} · <a href="{{ url_for('v2.history_query_syslog') }}{{ o.qs({'before': o.next_before}) }}" hx-get="{{ url_for('logs_v2.region') }}{{ o.qs({'before': o.next_before}) }}" hx-target="#logs" hx-swap="outerHTML" hx-push-url="{{ url_for('v2.history_query_syslog') }}{{ o.qs({'before': o.next_before}) }}">the next 50</a>{% endif %}{% else %}No older line of {{ o.device }} matches in this range.{% endif %}</td></tr>
+  {%- endif %}
+</tbody>

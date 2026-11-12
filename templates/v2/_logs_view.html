@@ -45,7 +45,7 @@
   {%- if c.older_than_setting %} <strong>Loki holds lines from {{ c.first }}, older than this network's Logs retention ({{ c.retention }} days) says:</strong> the setting may be lower than what Loki keeps (<a href="{{ url_for('settings_v2.network', list_name=g.list) }}">Settings</a>).{% endif %}
 </p></div>
 {%- endif %}
-<p class="faint small lg-prov">Counted per day by Mercury's logs reader from Loki, the newest day to the read; a device's lines are asked from Loki when it is opened, at most 30 days at a time (one log query spans at most 30 days 1 hour).</p>
+<p class="faint small lg-prov">Counted per day by Mercury's logs reader from Loki, the newest day to the read; a device's lines are those the logs reader holds (its last 24 h), and older ones are asked from Loki once the view has drawn, at most 30 days at a time (one log query spans at most 30 days 1 hour).</p>
 
 <section class="card lg-answer" aria-label="The answer">
   <div class="lg-sum"><strong>{{ g.total }} line{{ 's' if g.total != 1 }} at {{ g.sev_words.split(' (')[0] }}, {{ g.rows | length }} device{{ 's' if g.rows | length != 1 }}</strong><span class="muted">{{ 'a row opens its lines' if g.rows else '' }}</span></div>
@@ -90,13 +90,20 @@
       </div>
       {%- endif %}
       {%- if not o.errors %}
-      {%- if o.lines %}
+      {%- set h = o.held or {} %}
+      {%- if h.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The logs reader's last refresh failed ({{ h.failed }}): the lines held are those read from Loki {{ stamp(h.value_at) }}.</p></div>{% endif %}
+      {%- if o.lines or o.older %}
       <div class="table-wrap"><table class="table lg-lines" aria-label="{{ r.device }}'s lines, newest first">
         <thead><tr><th scope="col">Received (UTC)</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
         <tbody>{% for l in o.lines %}<tr><td class="mono">{{ l.at }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+        {#- C3166: the lines before what the logs reader holds are asked of Loki by this part,
+            after the region has drawn; it draws them in its own place. -#}
+        {%- if o.older %}
+        <tbody id="lg-older" hx-get="{{ url_for('logs_v2.older') }}{{ g.qs({'before': o.older.before}) }}" hx-trigger="load" hx-swap="outerHTML"><tr><td colspan="4" class="muted small" role="status">Loading older lines: those before {{ stamp(o.older.from_iso) }}, older than the logs reader holds, from Loki.</td></tr></tbody>
+        {%- endif %}
       </table></div>
       {%- else %}<p class="small">No line of {{ r.device }} matches, {{ o.window[0] }} to {{ o.window[1] }} UTC.</p>{% endif %}
-      <p class="muted small">Showing {{ o.lines | length }}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}
+      <p class="muted small">Showing {{ o.lines | length }}{% if o.older %} held{% endif %}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.older %}, older ones below as Loki answers{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}{% if h.value_at %} · held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}
         {%- if o.more %} · {{ go(g, {'before': o.next_before}, 'the next 50') }}{% endif %}
         · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a>
         · <a href="{{ url_for('logs_v2.page', list=g.list, d=r.device, sev=g.s.sev, mn=g.s.mn, text=g.s.text, **{'from': 'query'}) }}">Open these lines on Logs</a></p>

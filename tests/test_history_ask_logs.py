@@ -256,9 +256,40 @@ def web(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.history_logq._client", lambda list_name, wait=65.0: loki)
     Q.forget()
     import app as A
+    from modules import reader_job
+    from modules.readers import loki_labels
     client = A.app.test_client()
     client.loki = loki
     client.asked = loki.asked
+    # C3166: the builder's page draws Loki's bounds and labels from the loki-labels reader's
+    # store, never asking Loki on the request. The reader reads the fake Loki once when the
+    # fixture is made (what a page served to a real browser draws), and again before each
+    # test-client request, so a test that changes the fake first is drawn from what it holds
+    # then (as the host's reader reads it in the background), into this test's own store; the
+    # answer, when Ask is pressed, asks the same fake itself.
+    monkeypatch.setattr("modules.reader_job.store_path",
+                        lambda name: str(tmp_path / "readers" / f"{name}.json"))
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: reader_job.read_cached(name))
+
+    def fill():
+        Q.forget()
+        value = loki_labels.read("Lab", clock=lambda: NOW)
+        path = reader_job.store_path(loki_labels.READER_NAME)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"last_attempt": {"at": Q._iso(NOW), "ok": True},
+                       "last_good": {"value": value, "value_at": Q._iso(NOW)}}, fh)
+        Q.forget()
+
+    real_get = client.get
+
+    def get(*args, **kwargs):
+        fill()
+        return real_get(*args, **kwargs)
+    fill()
+    client.get = get
+    client.fill_labels = fill
     yield client
     Q.forget()
 
@@ -293,9 +324,11 @@ class TestDiscovered:
         assert "all 1" in html
 
     def test_the_labels_are_asked_for_the_range(self, web):
-        _page(web, range="7d")
+        html = _page(web, range="7d")
         got = [p for path, p in web.asked if path.endswith("/labels")]
-        assert got and int(got[0]["end"]) - int(got[0]["start"]) == 7 * 86400 * 10 ** 9
+        # C3166: the loki-labels reader asks each chip's range; the page draws the 7 days'.
+        assert any(int(p["end"]) - int(p["start"]) == 7 * 86400 * 10 ** 9 for p in got)
+        assert "The choices are what Loki held over the last 7 days" in html
 
     def test_a_label_is_used_only_where_it_covers_the_range(self, web):
         # 24 h: the device label began 13 Oct, before the range, so it is used; severity began
@@ -890,13 +923,12 @@ class TestScopeFirst:
         assert 'name="job" value="no-such-kind"' in html and 'name="dev" value="r99"' in html
 
     def test_the_devices_are_read_for_the_kinds_chosen(self, web):
+        # C3166: the loki-labels reader reads every kind's devices, and every device; the page
+        # offers the kinds chosen.
         _page(web, job="snmptrapd")
         got = [p for path, p in web.asked if path.endswith("/label/device/values")]
-        assert got and got[-1].get("query") == '{job="snmptrapd"}', got
-        web.asked.clear()
-        _page(web)
-        got = [p for path, p in web.asked if path.endswith("/label/device/values")]
-        assert got and "query" not in got[-1], "every kind: no narrowing"
+        assert any(p.get("query") == '{job="snmptrapd"}' for p in got), got
+        assert any("query" not in p for p in got), "every kind: no narrowing"
 
 
 def _re2_as_python(pat):

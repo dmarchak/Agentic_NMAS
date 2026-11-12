@@ -834,6 +834,9 @@ def test_logs_tail(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.reader_job.read_cached_for",
                         lambda name, list_name: reader_job.read_cached(name))
+    # The reader keeps each device's buffer beside its store (C3166): both in this test's own.
+    monkeypatch.setattr("modules.reader_job.store_path",
+                        lambda name: str(tmp_path / "readers" / f"{name}.json"))
     path = reader_job.store_path("logs-tail")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     walked = os.environ.get("NMAS_BOARD_TAIL_DOC", "")

@@ -5,8 +5,10 @@ device (C652; board C, AskLogs).
 `/v2/logs` is the sidebar's Logs, the live tail (the operator, 2026-10-11): the logs-tail
 reader's stored 15-minute window, filtered (modules/logs_tail_page.py), redrawn when the reader
 announces `logs`. `/v2/logs/view` is Syslog by device's region, which History › Query draws
-(modules/logs_page.py: the logs reader's counts; a device opened asks Loki for its lines, a
-read). Mercury's own log stays in Settings › Installation › Diagnostics.
+(modules/logs_page.py: the logs reader's counts; a device opened draws the lines the logs-tail
+reader's buffer holds, C3166, and `/v2/logs/older` is the part that asks Loki for the lines
+before the buffer, after the region has drawn; all reads). Mercury's own log stays in Settings ›
+Installation › Diagnostics.
 """
 
 import logging
@@ -59,3 +61,14 @@ def region():
     """The view alone: re-read when `logs` is announced, and asked again with a range, a
     severity, a device opened or its filters. Writes nothing."""
     return _strict(render_template("v2/_logs_view.html", **_ctx()))
+
+
+@bp.route("/older", methods=["GET"])
+def older():
+    """An opened device's lines older than the logs-tail reader's buffer: the part Syslog by
+    device asks for once it has drawn ("Loading older lines"), one Loki query of at most 50
+    lines (C3166: the only Loki read of a Logs page, never the page itself). Writes nothing."""
+    from modules import logs_page
+
+    return _strict(render_template("v2/_logs_older.html",
+                                   o=logs_page.older(_list_name(), request.args)))

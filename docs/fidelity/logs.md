@@ -12,12 +12,22 @@ Compared again 2026-10-10 after the host walk: Newest follows the severity asked
 Compared again 2026-10-11 after C667 moved the view to its board's home, History › Query (`/v2/history/query/syslog`; the sidebar's Logs draws the same page): History's heading, its four tabs with Query on, and the crumb "Query › Syslog by device" now as the board draws them; the shots at 1440 and 390 again; no other region's verdict changed.
 Compared again 2026-10-11 (C675): the sidebar's Logs became the live tail (board D, its own record, docs/fidelity/logs-tail.md); this page is History › Query's alone, its template renamed `history_syslog.html`, and the drill-down's footer gains the board's "Open these lines on Logs", which opens the tail filtered; the title's (i) opens the manual's Syslog by device section (nothing drawn moved). No other region's verdict changed.
 Compared again 2026-10-11 (C667's saved views): "Save this view…" beside Copy the link, as the board draws it; the title-and-actions row now the same. No other region's verdict changed.
-Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
+Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html, templates/v2/_logs_older.html
 Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the line under the timeline tab's filters, a branch the syslog view never draws; nothing on this board's page moved.
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `525374eae31677bfc480c89199b4e6bb9a28b3b8460ba70d50f8248ec0f6b01d`
+Templates sha256: `6fea2a28da645e3f5d5fceaadf2db0a6f0c1622cd15f787a61df231427772d15`
+(2026-11-12, C3166 slice 2, by the template diff against the regions below and the pages
+tests/test_logs_buffer.py draws, not a new shot: an opened device's lines are those the
+logs-tail reader holds, drawn at once, with its read time in the lines' foot ("held by the logs
+reader, read <age>") and a failed refresh's notice above them; a range reaching before them
+gains one more body in the lines' table, "Loading older lines: those before <time>, older than
+the logs reader holds, from Loki", which `_logs_older.html` (now compared here) replaces in
+place with those lines, when Loki was asked for them and "the next 50"; the one-window note says a device's lines are the
+reader's last 24 h and older ones asked once the view has drawn. The board draws no read time,
+no loading row: **deviation** (log: The Logs pages draw the logs-tail reader's buffer). Every
+other region as compared. Before: `525374eae31677bfc480c89199b4e6bb9a28b3b8460ba70d50f8248ec0f6b01d`.)
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `a1c0c8448fc3c0adf67b4df0c828bc19f516a9b7a639bcee835fea73966dbbe0`.)
@@ -66,7 +76,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Range | 24 h, 7 d, 30 d, 120 d | the same four | **same** |
 | Severity | in the opened device's filters | the same, and beside the range for the table | **deviation** (log: Logs' severity beside the range) |
 | Coverage notice | "Part of this range holds nothing yet: … keeps logs 2 years (its Logs retention setting, Settings), but its log store began on 7 Sep, so the first 93 days … never kept; nothing to show is not nothing happened" | the same words from the setting and the store's first day; also days still being counted, and Loki holding more than the setting says | **same** |
-| The one-window note | "The 27 days since were asked in one window (one log query spans at most 30 days 1 hour)" | "Counted per day by Mercury's logs reader … a device's lines are asked from Loki when it is opened, at most 30 days at a time" | **deviation** (log: Logs counts per day in a reader) |
+| The one-window note | "The 27 days since were asked in one window (one log query spans at most 30 days 1 hour)" | "Counted per day by Mercury's logs reader … a device's lines are those the logs reader holds (its last 24 h), and older ones are asked from Loki once the view has drawn, at most 30 days at a time" (C3166) | **deviation** (log: Logs counts per day in a reader) |
 | Headline | "142 lines at error or worse, 4 devices · a row opens its lines" | the same, for the range and severity asked | **same** |
 | Device table | Device (a button opening it), Lines, Newest, Most frequent (with the interface: "%LINK-3-UPDOWN Gi0/3 (61)") | Device, Lines, Newest, Most frequent by mnemonic ("%DBAL-4-DELAYED_BATCH (1826)") | **deviation** (log: Logs counts by mnemonic) |
 | Opened device's filters | Severity, Mnemonic (with counts), From, To, Text contains | the same five, and Show | **same** |

@@ -19,6 +19,7 @@ import datetime
 import json
 import os
 import re
+import sys
 
 import pytest
 
@@ -73,9 +74,19 @@ def _overview(lab):  # noqa: F811
     return r.get_data(as_text=True)
 
 
+#: C3166: the drift row's log part draws the logs-tail reader's buffer, never Loki. A test that
+#: holds the fake Loki (`loki`) has the reader fill the buffer from it before each detail is
+#: asked for, as the host's reader does in the background (`_fill`).
+_FILL = []
+
+
 def _detail(lab):  # noqa: F811
+    for fill in _FILL:
+        fill()
+    asked = [len(f.state["asked"]) for f in _FILL]
     r = lab["client"].get("/v2/device/r3/drift?list=Lab")
     assert r.status_code == 200, r.status_code
+    assert [len(f.state["asked"]) for f in _FILL] == asked, "the drift row's part asked Loki"
     return r.get_data(as_text=True)
 
 
@@ -145,7 +156,37 @@ def loki(monkeypatch):
 
     monkeypatch.setattr(LokiIntegration, "is_configured", lambda self: True)
     monkeypatch.setattr(LokiIntegration, "_get", fake_get)
-    return state
+
+    # C3166: the reader's store and buffer filled from this fake before each detail
+    # (`_detail`), at the corpus's time, and removed when the test ends (the lab's own stores
+    # are its fixture's to remove, so the store's path is not moved under it).
+    import shutil
+
+    from modules import logs_buffer, reader_job
+    from modules.readers import logs_tail
+    from tests.test_device_logs import fill_buffer
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: reader_job.read_cached(name))
+    monkeypatch.setattr(sys.modules[__name__], "_FILL",
+                        [_Filler(state, lambda: fill_buffer(_now_after_corpus()))])
+    from modules import device_logs
+    held = device_logs.held_changes
+    monkeypatch.setattr(device_logs, "held_changes",
+                        lambda list_name, dev, since=None, now=None: held(
+                            list_name, dev, since, now=_now_after_corpus()))
+    yield state
+    path = reader_job.store_path(logs_tail.READER_NAME)
+    if os.path.exists(path):
+        os.remove(path)
+    shutil.rmtree(os.path.dirname(logs_buffer.root(logs_tail.READER_NAME)), ignore_errors=True)
+
+
+class _Filler:
+    def __init__(self, state, fill):
+        self.state, self._fill = state, fill
+
+    def __call__(self):
+        self._fill()
 
 
 def _config_lines():
@@ -325,7 +366,9 @@ class TestTheLog:
         _drift(monkeypatch)
         loki["fail"] = "connection refused"
         text = _text(_detail(lab))
-        assert "Couldn't load: Loki could not be asked: connection refused" in text
+        # C3166: the logs-tail reader's read failed on it; the part says so in Loki's words.
+        assert ("Couldn't load: the logs reader could not read Loki yet: RuntimeError: Loki "
+                "could not be asked (loki/api/v1/query_range): connection refused") in text
         assert "line about" not in text and "lines about" not in text
         # The other parts are drawn.
         assert "only on r3" in text and "What to do" in text

@@ -352,8 +352,11 @@ the network like any other view.
 
 The rows run in the order a question depends on them: the scope first (**Range**, then
 **Kind**, then **Devices**), then the choices read over that scope (**Severity**,
-**Mnemonic**, **Text**, **Show**). Changing the range or a kind reads the lists below it
-again. A choice the new scope no longer holds (a kind, a device or a mnemonic) is kept, its
+**Mnemonic**, **Text**, **Show**). Changing the range or a kind draws the lists below it
+again, from what Mercury's background read of Loki's labels and bounds (every 5 minutes, for
+1 hour, 24 hours, 7 days and 30 days: the smallest that covers the range, said with when it was
+read), so a choice never waits on Loki; only **Ask** asks it. A choice the new scope no longer
+holds (a kind, a device or a mnemonic) is kept, its
 chip still on and in the address, and marked **not seen in this range**; it is never dropped
 without a word, so choosing the old range again brings it back.
 

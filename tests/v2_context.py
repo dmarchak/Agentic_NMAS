@@ -1865,6 +1865,21 @@ def _logs_builder_leftovers(client, _lab, _mp):
         mp.setattr(Q, "_client", lambda *a, **k: loki)
         mp.setattr(Q, "_now", lambda: T.NOW)
         Q.forget()
+        # C3166: the builder draws the loki-labels reader's store; the reader reads the same
+        # stand-in first, as the host's does in the background, and its store is removed below.
+        import json
+        import os
+
+        from modules import reader_job
+        from modules.readers import loki_labels
+        mp.setattr(reader_job, "read_cached_for",
+                   lambda name, list_name: reader_job.read_cached(name))
+        store = reader_job.store_path(loki_labels.READER_NAME)
+        os.makedirs(os.path.dirname(store), exist_ok=True)
+        with open(store, "w", encoding="utf-8") as fh:
+            json.dump({"last_attempt": {"ok": True}, "last_good": {
+                "value": loki_labels.read("Lab", clock=lambda: T.NOW),
+                "value_at": Q._iso(T.NOW)}}, fh)               # noqa: SLF001
         r = client.get("/v2/history/query/ask/logs?list=Lab&job=no-such-kind"
                        "&mn=%25LINK-3-UPDOWN&has=OSPF-5-ADJCHG", headers={"Accept": "text/html"})
         html = r.get_data(as_text=True)
@@ -1873,6 +1888,55 @@ def _logs_builder_leftovers(client, _lab, _mp):
     finally:
         mp.undo()
         Q.forget()
+        import os
+
+        from modules import reader_job
+        from modules.readers import loki_labels
+        store = reader_job.store_path(loki_labels.READER_NAME)
+        if os.path.exists(store):
+            os.remove(store)
+
+
+def _logs_older(client, _lab, _mp):
+    """Syslog by device's part for lines older than the logs-tail reader's buffer (C3166):
+    r3 opened over 7 days, Loki answering with r4's captured lines (tests/fixtures/loki/), the
+    part drawn with its rows and "the next 50". Its patches are undone before the next
+    provider."""
+    import pytest
+
+    from modules import logs_page
+    from tests import test_logs_v2 as L
+
+    mp = pytest.MonkeyPatch()
+    try:
+        answer = L._fx("lines_r4.json")["answer"]                  # noqa: SLF001
+
+        class _Resp:
+            def json(self):
+                return answer
+        mp.setattr("modules.integrations.loki.LokiIntegration.is_configured", lambda self: True)
+        mp.setattr("modules.integrations.loki.LokiIntegration._get",
+                   lambda self, path, **params: {"ok": True, "response": _Resp()})
+        mp.setattr(logs_page, "_OLDER", {})
+        # The lab's network as the Logs view reads it (its inventory holds no devices.csv).
+        mp.setattr(logs_page, "_devices", lambda list_name: ["r3"])
+        # The lab's syslog job, as tests/conftest.py's stand-in answers it for a test.
+        mp.setattr("modules.device_logs.syslog_jobs",
+                   lambda client=None, now=None: ["network_syslog"])
+        mp.setattr("modules.device_logs.label_since", lambda now=None, ask=None: None)
+        import time
+
+        before = int(time.time() * 1e9)
+        r = client.get(f"/v2/logs/older?list=Lab&d=r3&range=7d&sev=all&before={before}",
+                       headers={"Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "from Loki, asked" in html, (r.status_code, html[-600:])
+        # A device the network does not hold: the part says why in place.
+        r = client.get(f"/v2/logs/older?list=Lab&d=r99&range=7d&before={before}",
+                       headers={"Accept": "text/html"})
+        assert "Couldn't load the older lines" in r.get_data(as_text=True), r.status_code
+    finally:
+        mp.undo()
 
 
 def _alert_history(client, _lab, _mp):
@@ -4585,7 +4649,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _silenced_alert,
-                   _alert_evidence, _logs_builder_leftovers, _alert_history,
+                   _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,
                    _display_names,

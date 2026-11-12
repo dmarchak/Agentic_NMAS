@@ -17,7 +17,14 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `8437910b986312fd6722f7e0472ec57ddc80ae0b81442d6f779c418322c38920`
+Templates sha256: `94071534b2ed87a0faf4e00d1cb62fb5a244b1086bd005e5b66b299637e340f7`
+(2026-11-12, C3166 slice 2, by the template diff and the pages tests/test_history_ask_logs.py
+draws, not a new shot: `_history_ask_logs.html`'s choices come from the loki-labels reader,
+never Loki on the request; under the notices one line says so, "The choices are what Loki held
+over the last <range>, read <age>" (and its failed refresh); before its first read a notice,
+"Reading Loki's labels …", that redraws the region when the reader announces. The board draws
+neither: **deviation** (log: The Logs pages draw the logs-tail reader's buffer). Every other
+region as compared. Before: `8437910b986312fd6722f7e0472ec57ddc80ae0b81442d6f779c418322c38920`.)
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `bfc5592287cf55df06734ed8a4aab1f2aa6f6b253b75186107806964d25a7769`.)

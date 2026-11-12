@@ -99,7 +99,10 @@ reason: whether the device is at its golden is then not known, which is neither 
   back, newest first, 50 at most) in which it was configured (`%SYS-5-CONFIG_I`,
   `%SYS-5-CONFIG_P`, a logged command) or restarted (`%SYS-5-RESTART`, `%SYS-5-RELOAD`), each
   at the time Mercury received it, the device's own time on hover (a clock IOS marks as not set
-  is said). Loki not answering is "Couldn't load", never "no lines"; the Logs tab has every line.
+  is said). They are what Mercury's logs reader keeps (each device's configuration lines for 30
+  days), never asked of Loki when the row opens; while the reader is still reading back the part
+  says from when it holds them. Loki not answering is "Couldn't load", never "no lines"; the
+  Logs tab has every line.
 - **What to do**: keep it (**Capture**, its golden becomes what it runs), put intent back
   (**Plan a deploy…**) or remove lines (**Remove lines (Mode B)…**), each opening the device
   page's own card as the Actions menu does. A deploy is planned against the golden, and a
@@ -279,6 +282,13 @@ foot line says so; with none set, such a range is refused, naming the setting.
 
 The device's syslog for the last 24 hours, from Loki. Heartbeats are folded into a count; an
 error that names the heartbeat is still listed.
+
+The tab never waits on Loki: Mercury's logs reader reads Loki every 5 seconds, every device in
+one ask, only what arrived since its last line, and keeps each device's last 24 hours (at most
+200 lines). The tab draws what it keeps, says when it was read, and redraws itself when a line
+arrives. Just after Mercury starts the reader is still reading back: the tab says from when it
+holds lines and fills itself as it reads further back. A refresh that failed keeps the lines
+last read and says so.
 
 Which of Loki's jobs holds the syslog is read from Loki, never set: every job whose lines carry
 a device's syslog form (its own name, its time and a mnemonic) in the last 24 hours, asked at

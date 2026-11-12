@@ -456,9 +456,9 @@ def _epoch(iso: str):
 def drift_detail(ref, dev: dict, now: float = None) -> dict:
     """What the Drift row opens onto (C342, board C342Drift): the lines the drift run kept
     for the device (masked), what its own log says about when and how it changed since its
-    golden was recorded (Loki: `device_logs.change_lines`, each line at its receive time),
-    and the three choices' context (its network, its golden). A READ of stored records and
-    one Loki ask for one device, on a person's request: nothing reaches the device (the
+    golden was recorded (the logs-tail reader's buffer, `device_logs.held_changes`, each line
+    at its receive time), and the three choices' context (its network, its golden). A READ of
+    stored records only (C3166: never Loki on the request): nothing reaches the device (the
     lines are the drift run's; a fresh read is Capture's preview, a job)."""
     from modules import device_logs
 
@@ -472,7 +472,7 @@ def drift_detail(ref, dev: dict, now: float = None) -> dict:
                {}) if not last.get("_error") else {}
     run_lines = run.get("changed_lines") if "changed_lines" in run else None
     golden = _last_commit(ref.repo_dir, f"golden/{host}.cfg")
-    logs = device_logs.change_lines(dev, since=_epoch(golden.get("at")), now=now)
+    logs = device_logs.held_changes(ref.name, dev, since=_epoch(golden.get("at")), now=now)
     # What the part draws of each line: its receive time, the device's own time and its mark.
     logs["lines"] = [{k: line.get(k) for k in ("at_iso", "devts", "unsync", "mnemonic", "text")}
                      for line in logs["lines"]]

@@ -36,15 +36,13 @@ import pytest
 #: The routes that still wait on a source on a request (the survey of 2026-11-12, C3166), by
 #: endpoint, each with what it waits on and the slice that converts it. Only shrinks: a slice
 #: removes its own routes; slice 1 removed Needs attention's three (`v2.landing`,
-#: `v2.attention_list`, `device_v2.attention_count`).
+#: `v2.attention_list`, `device_v2.attention_count`); slice 2 removed the Logs tab, the drift
+#: row's part and Syslog by device's two (`LOGS_CONVERTED`).
 NOT_YET_CONVERTED = {
-    # Slice 2: Logs, from one shared Loki tail.
-    "device_v2.logs": "Loki (three queries and the selector): slice 2, logs-tail's buffer",
-    "device_v2.drift": "Loki (the change lines): slice 2, a lazy part or a change-line reader",
-    "v2.history_query_syslog": "Loki when a device is named: slice 2, logs-tail inside 15 min",
-    "logs_v2.region": "Loki when a device is named: slice 2, logs-tail inside 15 min",
-    "v2.history_ask_logs": "Loki's limits, labels and mnemonics: slice 2, a limits reader",
-    "v2.history_ask_logs_region": "Loki's limits, labels and mnemonics: slice 2, a reader",
+    # Slice 2 moved the builder's bounds and labels to the loki-labels reader; Ask's answer,
+    # in the same routes when the address carries ask=1, still reads Loki on the request.
+    "v2.history_ask_logs": "Loki for Ask's answer when the address asks (ask=1): a job, C3204",
+    "v2.history_ask_logs_region": "Loki for Ask's answer when the address asks: a job, C3204",
     # Slice 3: the rest.
     "device_v2.device": "Prometheus (drained), git and a render: slice 3, a drained reader",
     "device_v2.drained": "Prometheus (drained): slice 3, a drained reader",
@@ -114,6 +112,12 @@ PRESSES = {
 
 #: Needs attention's three routes, converted by slice 1: they read the background store.
 CONVERTED = ("v2.landing", "v2.attention_list", "device_v2.attention_count")
+#: Slice 2's four (C3166): they draw the logs-tail reader's buffer. The walk reaches the Logs tab;
+#: the drift row's part and Syslog by device with a device opened are counted by
+#: tests/test_logs_buffer.py on a seeded buffer (`TestNoPageAsksLoki`), which this walk's lab
+#: does not reach.
+LOGS_CONVERTED = ("device_v2.logs", "device_v2.drift", "v2.history_query_syslog",
+                  "logs_v2.region")
 
 #: The integrations are configured at their own names under `.invalid` (RFC 6761: nothing
 #: resolves it), so a counted call names its service: grafana, loki, prometheus, netbox, kea.
@@ -276,6 +280,12 @@ class TestNoPageWaits:
         for e in CONVERTED:
             assert not measured["calls"].get(e), (e, measured["calls"].get(e))
 
+    def test_the_logs_tab_calls_nothing(self, measured):
+        """Slice 2: the device's Logs tab, reached by the walk, draws the logs-tail reader's
+        buffer; it called Loki four times a load before (three queries and the job's)."""
+        assert "device_v2.logs" in measured["requested"], "the walk did not reach the Logs tab"
+        assert not measured["calls"].get("device_v2.logs"), measured["calls"]["device_v2.logs"]
+
     def test_no_route_calls_out_unaccounted(self, measured):
         unaccounted = {e: c for e, c in _calling(measured).items()
                        if e not in NOT_YET_CONVERTED and e not in PRESSES}
@@ -296,3 +306,5 @@ class TestNoPageWaits:
                 assert e in gets, f"{e} is not a GET route (a removed one leaves its list)"
         assert not set(NOT_YET_CONVERTED) & set(PRESSES)
         assert not set(CONVERTED) & (set(NOT_YET_CONVERTED) | set(PRESSES))
+        assert not set(LOGS_CONVERTED) & (set(NOT_YET_CONVERTED) | set(PRESSES))
+        assert set(LOGS_CONVERTED) <= gets

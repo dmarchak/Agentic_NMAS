@@ -328,6 +328,102 @@ def lines_held(dev: dict, start: float, end: float) -> dict:
         return dict(out, error=f"Loki's answer could not be read: {exc}")
 
 
+def _held_row(e: dict) -> dict:
+    """A buffer line (modules/logs_buffer.py) as the tab and the drift row draw it."""
+    sev = e.get("sev")
+    return {"ns": int(e.get("ns") or 0), "at_iso": e.get("at", ""), "devts": e.get("devts", ""),
+            "unsync": bool(e.get("unsync")), "mnemonic": e.get("mn", ""), "sev": sev,
+            "sev_word": SEVERITY.get(sev, "") if sev is not None else "", "kind": _kind(sev),
+            "text": e.get("text", "")}
+
+
+def _held_words(h: dict, kind: str, start: float = None) -> dict:
+    """What a view says about the buffer it drew: its age (``value_at``), its last refresh
+    (``failed``), and ``loading`` with ``from_iso`` while the background has not yet read back
+    to *start* (the kind's whole horizon when none)."""
+    c = (h.get("cover") or {}).get(kind) or {}
+    reach = c.get("reach")
+    short = (not c.get("whole")) if start is None else bool(reach) and reach > start + 1
+    return {"state": h.get("state"), "value_at": h.get("value_at", ""),
+            "failed": h.get("failed", ""), "from_iso": _iso(int(reach * 1e9)) if reach else "",
+            "loading": h.get("state") == "ok" and short}
+
+
+def held_tab(list_name: str, dev: dict, *, now: float = None) -> dict:
+    """The Logs tab's view from the device's buffer, which the `logs-tail` reader keeps (C3166:
+    no page load waits on Loki): `for_device`'s shape, and ``held``, what the buffer is and how
+    old. Never raises and never asks Loki; a buffer not yet read, or one still reading back, is
+    said, never drawn as a quiet device."""
+    from modules import logs_buffer
+
+    host = dev.get("hostname", "")
+    view = {"configured": True, "errors": [], "lines": [], "cut": False, "heartbeat": None,
+            "window_hours": WINDOW_HOURS, "limit": LIMIT, "unsync": 0, "held": {}}
+    if not _NAME.match(host or ""):
+        view["errors"].append(f"the name {host!r} cannot be matched safely in a log query")
+        return view
+    h = logs_buffer.held(list_name, host, now=now)
+    view["held"] = _held_words(h, "lines")
+    if h["state"] == "not_configured":
+        view["configured"] = False
+        return view
+    if h["state"] in ("not_applicable", "unreadable"):
+        view["errors"].append(f"The logs reader's buffer cannot be read: {h['why']}")
+        return view
+    if h["state"] != "ok":
+        return view
+    rows = [_held_row(e) for e in h["lines"]]
+    view["lines"] = rows[:LIMIT]
+    view["cut"] = len(rows) > LIMIT
+    view["unsync"] = sum(1 for r in view["lines"] if r["unsync"])
+    beats = h["cover"].get("beats") or {}
+    if beats.get("to"):
+        view["heartbeat"] = {"count": len(h["beats"]),
+                             "last_iso": _iso(max(h["beats"])) if h["beats"] else "",
+                             "loading": not beats.get("whole"),
+                             "from_iso": _iso(int(beats["reach"] * 1e9)) if beats.get("reach")
+                             else ""}
+    return view
+
+
+def held_changes(list_name: str, dev: dict, since: float = None, *, now: float = None) -> dict:
+    """`change_lines`' view from the device's buffer (C3166): its configuration and restart
+    lines from *since* (its golden's time) to the buffer's read, newest first, at most
+    `CHANGE_LIMIT`, and ``held``: the buffer's age, and ``loading`` while the buffer does not
+    yet reach back to *since* (the background is reading back; the part redraws when it has).
+    Never raises and never asks Loki."""
+    from modules import logs_buffer
+
+    host = dev.get("hostname", "")
+    now = time.time() if now is None else now
+    floor = now - CHANGE_MAX_DAYS * 86400
+    start = floor if since is None or since < floor else since
+    view = {"configured": True, "error": "", "lines": [], "cut": False, "limit": CHANGE_LIMIT,
+            "start_iso": _iso(int(start * 1e9)), "capped": since is None or since < floor,
+            "max_days": CHANGE_MAX_DAYS, "unsync": 0, "held": {}}
+    if not _NAME.match(host or ""):
+        view["error"] = f"the name {host!r} cannot be matched safely in a log query"
+        return view
+    h = logs_buffer.held(list_name, host, now=now)
+    view["held"] = _held_words(h, "changes", start)
+    if h["state"] == "not_configured":
+        view["configured"] = False
+        return view
+    if h["state"] in ("not_applicable", "unreadable"):
+        view["error"] = f"the logs reader's buffer cannot be read: {h['why']}"
+        return view
+    if h["state"] != "ok":
+        return view
+    c = h["cover"].get("changes") or {}
+    rows = [_held_row(e) for e in h["changes"] if int(e.get("ns") or 0) >= int(start * 1e9)]
+    view["lines"] = rows[:CHANGE_LIMIT]
+    # More than are held: the device's list is full and its oldest is after *start*.
+    view["cut"] = len(rows) > CHANGE_LIMIT or (bool(c.get("full")) and
+                                               (c.get("from") or 0) > start)
+    view["unsync"] = sum(1 for x in view["lines"] if x["unsync"])
+    return view
+
+
 def for_device(dev: dict, *, now: float = None) -> dict:
     """The Logs tab's view. Never raises; a source that could not be read is
     said, never drawn as a quiet device."""

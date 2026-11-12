@@ -1,27 +1,40 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
-    modules/device_logs.for_device(): what the device sent to syslog, as Loki
-    holds it, newest first, heartbeats folded into one line. Read from Loki,
-    never from the device. A cut list says it is cut. -#}
+    modules/device_logs.held_tab(): what the device sent to syslog, as the
+    logs-tail reader's buffer holds it (C3166: never Loki on the request), newest
+    first, heartbeats folded into one line, the buffer's age drawn. Redrawn when
+    the reader announces `logs`. A cut list says it is cut; a buffer still
+    reading back says from when it holds. -#}
 <section class="card logs" id="logs" hx-get="{{ url_for('device_v2.logs', name=device.hostname) }}"
-         hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:logs from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'logs-tab', 'About this tab') }}</p>
+  {%- set h = g.held %}
   {%- for e in g.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as {{ device.hostname }} having sent nothing.</p></div>
   {%- endfor %}
   {%- if not g.configured %}
   <p class="cov-head">{{ icon('info') }} Loki is not configured, so {{ device.hostname }}'s logs cannot be read here (Settings &gt; Integrations).</p>
+  {%- elif not g.errors and h.state == 'never' and h.failed %}
+  <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The logs reader could not read Loki yet: {{ h.failed }}. Not the same as {{ device.hostname }} having sent nothing; this tab fills itself when it can.</p></div>
+  {%- elif not g.errors and h.state == 'never' %}
+  <p class="cov-head" role="status">{{ icon('info') }} Reading Loki: {{ brand.short }}'s logs reader has not read it yet. This tab fills itself when it has.</p>
   {%- elif not g.errors %}
+  {%- if h.failed %}
+  <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</p></div>
+  {%- endif %}
+  {%- if h.loading %}
+  <p class="muted" role="status">Loading older lines: held from {{ stamp(h.from_iso) }}; the logs reader is reading back to {{ g.window_hours }} h, and this tab fills itself as it does.</p>
+  {%- endif %}
   {%- if g.heartbeat %}
-  <p class="cov-head">{% if g.heartbeat.count %}{{ icon('check') }} {{ g.heartbeat.count }} heartbeat(s) in the last {{ g.window_hours }} h, the last {{ stamp(g.heartbeat.last_iso) }}. They are folded here; any other line about the heartbeat applet is listed below.{% else %}{{ icon('warn') }} No heartbeat line from {{ device.hostname }} in the last {{ g.window_hours }} h.{% endif %}</p>
+  <p class="cov-head">{% if g.heartbeat.count %}{{ icon('check') }} {{ g.heartbeat.count }} heartbeat(s) {% if g.heartbeat.loading %}since {{ stamp(g.heartbeat.from_iso) }} (older ones are loading){% else %}in the last {{ g.window_hours }} h{% endif %}, the last {{ stamp(g.heartbeat.last_iso) }}. They are folded here; any other line about the heartbeat applet is listed below.{% elif g.heartbeat.loading %}{{ icon('info') }} No heartbeat line from {{ device.hostname }} since {{ stamp(g.heartbeat.from_iso) }}; older ones are loading.{% else %}{{ icon('warn') }} No heartbeat line from {{ device.hostname }} in the last {{ g.window_hours }} h.{% endif %}</p>
   {%- endif %}
   {%- if g.unsync %}
   <p class="muted">{{ g.unsync }} line(s) carry a device time {{ device.hostname }} marks unsynchronised (*): its clock is not trusted, so each line is placed by when {{ brand.short }} received it.</p>
   {%- endif %}
   {%- if not g.lines %}
-  <p class="cov-head">{{ icon('info') }} {{ device.hostname }} sent nothing but heartbeats in the last {{ g.window_hours }} h.</p>
+  <p class="cov-head">{{ icon('info') }} {{ device.hostname }} sent nothing but heartbeats {% if h.loading %}since {{ stamp(h.from_iso) }}{% else %}in the last {{ g.window_hours }} h{% endif %}.</p>
   {%- else %}
-  {%- if g.cut %}<p class="muted">Showing the newest {{ g.limit }} of the last {{ g.window_hours }} h; older lines are in Loki.</p>{% endif %}
+  {%- if g.cut %}<p class="muted">Showing the newest {{ g.limit }} of the last {{ g.window_hours }} h; older lines are in Loki (History › Query › Syslog by device).</p>{% endif %}
   <div class="table-wrap">
     <table class="table log-table">
       <thead><tr><th scope="col">Received</th><th scope="col">Severity</th><th scope="col">Message</th><th scope="col">Device time</th></tr></thead>
@@ -39,5 +52,5 @@
   </div>
   {%- endif %}
   {%- endif %}
-  <p class="muted nb-limits">From Loki: the lines {{ device.hostname }} names itself in (its origin-id), as {{ brand.short }} received them. Nothing here opens a session to the device.</p>
+  <p class="muted nb-limits">From Loki, held by {{ brand.short }}'s logs reader{% if h.value_at %} (read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}){% endif %}: the lines {{ device.hostname }} names itself in (its origin-id), as {{ brand.short }} received them. Nothing here opens a session to the device.</p>
 </section>

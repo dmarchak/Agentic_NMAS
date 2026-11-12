@@ -307,6 +307,58 @@ def discover(list_name: str, start: float, end: float, client=None, now: float =
     return out
 
 
+#: The reader that holds Loki's bounds and labels for the builder (C3166).
+LABELS_READER = "loki-labels"
+
+
+def held(list_name: str, rng: dict, jobs, now: float) -> tuple:
+    """``(limits, disc)`` as `limits` and `discover` answer them, from what the `loki-labels`
+    reader holds (modules/readers/loki_labels.py; C3166: never Loki on a page load). The range
+    is the smallest the reader holds that covers *rng* (from its read), said in ``disc["held"]``
+    with the read's time and a failed refresh; ``state`` ``reading`` before its first value."""
+    from modules import reader_job
+
+    base = {"state": "ok", "error": "", "labels": [], "values": {"job": [], "device": []},
+            "since": {}, "read_at": "", "failed": ""}
+    unset = dict(base, state="not_configured",
+                 error="no log store is configured for this network (its Loki card in Settings)")
+    got = reader_job.read_cached_for(LABELS_READER, list_name)
+    if got.get("state") in ("not_applicable", "not_configured"):
+        return {}, unset
+    if got.get("state") == "unreadable":
+        return {}, dict(base, state="error", error=f"the store of Loki's labels cannot be read: "
+                                                   f"{got.get('why') or 'unreadable'}")
+    doc = got.get("doc") or {}
+    attempt = doc.get("last_attempt") or {}
+    failed = "" if attempt.get("ok", True) else (attempt.get("error") or "the last read failed")
+    last = doc.get("last_good") or {}
+    value = last.get("value") or {}
+    if not last:
+        return {}, dict(base, state="reading", failed=failed,
+                        error="Loki's labels have not been read yet")
+    if not value.get("configured"):
+        return {}, unset
+    at = value.get("read_at_ts") or now
+    reach = at - rng["start"]
+    ordered = sorted(RANGES.items(), key=lambda kv: kv[1][1])
+    key = next((k for k, (_w, secs) in ordered if secs + 60 >= reach), ordered[-1][0])
+    r = (value.get("ranges") or {}).get(key) or {}
+    values = {"job": list((r.get("values") or {}).get("job") or []),
+              "device": list((r.get("values") or {}).get("device") or [])}
+    by_job = r.get("device_by_job") or {}
+    if jobs and any(j in by_job for j in jobs):
+        values["device"] = sorted({d for j in jobs for d in by_job.get(j) or []})
+    disc = dict(base, labels=list(r.get("labels") or []), values=values,
+                since=dict(r.get("since") or {}), read_at=value.get("read_at", ""),
+                failed=failed,
+                held={"range": key, "words": RANGES[key][0], "covers": RANGES[key][1] + 60 >= reach,
+                      "value_at": last.get("value_at", ""), "failed": failed})
+    import copy
+
+    # Copies: the view adds its words to them, never to the stored value.
+    return copy.deepcopy(value.get("limits") or {}), copy.deepcopy(disc)
+
+
 # ---------------------------------------------------------------------------- the range
 
 def window(spec: dict, now: float) -> dict:
@@ -740,12 +792,14 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     rng = window(spec, now)
     if rng["error"]:
         errors.append(rng["error"])
-    probe = client or _client(list_name, 15.0)
-    lim = limits(list_name, client=probe, now=now) if probe.is_configured() else {}
-    # The wait is Loki's own query_timeout and 5 s (its default, 1 min, when it is not read).
-    client = client or _client(list_name, wait(lim))
-    disc = discover(list_name, rng["start"], rng["end"], client=client, now=now,
-                    jobs=spec["job"])
+    if client is None:
+        # C3166: a page draws Loki's bounds and labels as the loki-labels reader holds them,
+        # never asking Loki on the request; only Ask's answer asks it (below).
+        lim, disc = held(list_name, rng, spec["job"], now)
+    else:
+        lim = limits(list_name, client=client, now=now) if client.is_configured() else {}
+        disc = discover(list_name, rng["start"], rng["end"], client=client, now=now,
+                        jobs=spec["job"])
     devices = list(spec["dev"])
     role_devices = _devices_of_role(list_name, spec["role"]) if spec["role"] else []
     if spec["role"]:
@@ -807,7 +861,7 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     if spec["ask"] != "1":
         return out
     if errors or disc["state"] != "ok":
-        out["answer"] = {"state": "error" if disc["state"] == "error" else "refused",
+        out["answer"] = {"state": "error" if disc["state"] in ("error", "reading") else "refused",
                          "error": disc["error"] if disc["state"] != "ok" else "",
                          "refusals": [(e, []) for e in errors], "asked_at": _iso(now),
                          "last_good": _last_good(list_name)}
@@ -827,6 +881,9 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
                 over["role"] = ""
         return page + qs(spec, list_name, over)
 
+    # Ask's answer, the person's question: Loki asked now, its wait Loki's own query_timeout
+    # and 5 s (its default, 1 min, when it is not read).
+    client = client or _client(list_name, wait(lim))
     if spec["show"] == "counts":
         ans = counts(list_name, spec, built, rng, client, now, href=href)
     else:

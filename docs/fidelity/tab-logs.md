@@ -14,7 +14,17 @@ Shots: the operator's capture above; the board at 1440, rendered in the same hea
 (no shot test to run it).
 Compared 2026-10-17.
 Templates compared: templates/v2/_logs.html
-Templates sha256: `b5c9be412875294ecddb0f95be6aa9d25ad1e21c081c4651132a7fc4824ec3c0`
+Templates sha256: `ed1e22fda5747fd2371d94ae7a0a4da70d8a279852521ae3fba9fdc908a7ca0f`
+(2026-11-12, C3166 slice 2, by the template diff and the pages tests/test_logs_buffer.py draws,
+not a new shot: the tab draws the logs-tail reader's buffer, never Loki on the request; the
+card's foot names the reader and its read time ("From Loki, held by Mercury's logs reader (read
+<age>)"); above the heartbeats a failed refresh's notice, or "Loading older lines: held from
+<time>" while the reader reads back (the heartbeat line then counts "since <time> (older ones
+are loading)"); before the reader's first read one line, "Reading Loki", or the reader's failure
+"The logs reader could not read Loki yet: …"; the cut list's note names History › Query ›
+Syslog by device; the tab redraws when the reader announces `logs`. The board draws none of
+these: **deviation** (log: The Logs pages draw the logs-tail reader's buffer). Every other
+region as compared. Before: `b5c9be412875294ecddb0f95be6aa9d25ad1e21c081c4651132a7fc4824ec3c0`.)
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

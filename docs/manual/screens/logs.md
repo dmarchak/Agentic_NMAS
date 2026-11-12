@@ -83,7 +83,10 @@ Open a device to filter its lines by severity, mnemonic, time (From and To, UTC:
 `2026-10-04` or `2026-10-04 09:30`, or `now`) and text, see its trend by mnemonic (lines per
 day, from the first day counted, for its three most frequent mnemonics; none over 24 h), and read its lines newest first, 50 at a time (**the next
 50**). Each line is drawn at the time Mercury's collector received it, never the device's own
-clock, and masked like every other configuration text. Its lines are asked from Loki when you
-open it, at most 30 days at a time; a longer range shows the newest 30 days and says so.
+clock, and masked like every other configuration text. The lines of its last 24 hours are the
+ones Mercury's logs reader keeps, drawn at once; when the range reaches further back, the lines
+before them are asked from Loki after the view has drawn ("Loading older lines", in place), at
+most 30 days at a time, and the same ask within a minute is answered from the last one; a longer
+range shows the newest 30 days and says so.
 **Open the device's Logs tab** goes to its own page; **Open these lines on Logs** opens the tail
 above, filtered to the device and the severity, mnemonic and text you set.
