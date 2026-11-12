@@ -124,18 +124,18 @@ def _iso(epoch: float) -> str:
 def incident_href(network: str, incident_id: str, *, device: str) -> str:
     """The incident's page, as Mercury's own path (the ONE place an incident's address is
     built: the operator, 2026-11-12, objective 2: "the can't-fix email ... links to the
-    incident"). Until the incident's own page exists, that is its device's page on its
-    network, opened on History with the incident's card (``result``: `run_card.named_heal`
-    draws it from the step log, a can't-fix decision's as a run's, after any restart), so a
-    card that cannot be drawn still leaves the reader on History, where the incident's row
-    is. The incident page's slice changes this function alone. ``""`` without a device or an
-    id: no link is better than one to the wrong page."""
+    incident"; overnight item 5: "so the email and Needs attention link to one place per
+    incident"). That is the incident's own page, /v2/incident/<id> on its network
+    (routes/incident_v2.py, its first slice in 331722b5), which draws the incident's
+    five-stage card from the step log after any restart. ``""`` without a device or an id: no
+    link is better than one to the wrong page (*device* stays required, so a caller that
+    knows no device links nowhere)."""
     from urllib.parse import quote
 
     if not device or not incident_id:
         return ""
-    return (f"/v2/device/{quote(device, safe='')}?list={quote(network or '', safe='')}"
-            f"&tab=history&result={quote(incident_id, safe='')}")
+    return (f"/v2/incident/{quote(incident_id, safe='')}"
+            f"?list={quote(network or '', safe='')}")
 
 
 def _dir(network: str) -> str:

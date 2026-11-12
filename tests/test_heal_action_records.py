@@ -283,8 +283,7 @@ class TestTheNotices:
             far_interface=a.get("far_interface") or "")
         # Premise corrected (the operator, 2026-11-12, objective 2: the email "links to the
         # incident"): the incident's address, its card on the device's page, on History.
-        assert ev["link"] == (f"/v2/device/{d['device']}?list={NET}&tab=history"
-                              f"&result={d['incident']}")
+        assert ev["link"] == f"/v2/incident/{d['incident']}?list={NET}"
         message.check_event(ev)
         assert N().actions_due(NET, now=T0 + 60) == [], "a told end is no longer due"
         assert N().run(NET, now=T0 + 60, action_starter=inline(events))["told"] == [], \

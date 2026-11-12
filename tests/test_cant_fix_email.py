@@ -204,12 +204,14 @@ def check_email(mail, incident, client):
     # (c) People by display name, never by identity.
     from modules import display_names
     assert not display_names.EMAIL.search(text), text
-    # (d) The incident's absolute address, and the incident's card at it.
-    path = f"/v2/device/{HOST}?list={NET}&tab=history&result={incident}"
+    # (d) The incident's absolute address, and the incident's own page at it, its stages drawn
+    # (the operator's overnight item 5: "the email and Needs attention link to one place per
+    # incident": /v2/incident/<id>, landed in 331722b5).
+    path = f"/v2/incident/{incident}?list={NET}"
     assert f"\nOpen in Mercury: {BASE}{path}\n" in text
     page = client.get(path).get_data(as_text=True)
-    assert 'id="device-op"' in page and f"Self-healing on {HOST}" in page, \
-        "the link opens the incident's card"
+    assert 'id="incident-live"' in page and 'data-stage="decided"' in page, \
+        "the link opens the incident's page with its stages"
     return text
 
 
