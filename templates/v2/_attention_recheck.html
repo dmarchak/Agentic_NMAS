@@ -1,0 +1,22 @@
+{%- from "v2/_macros.html" import how, clock, stamp -%}
+{#- Needs attention's Run the check again (the operator's overnight item 9, 2026-11-12;
+    modules/recheck.py): on the row's Details line beside the reading it stands on, never beside
+    its one action. Busy on itself while the reader runs, and until the held list has taken its
+    value (`recheck.state`); the list's redraw draws it idle with the new reading's age. A
+    refusal names both operands, in place. -#}
+{%- macro recheck(reader, rc=none, refused=none) -%}
+<span class="att-recheck op-act" data-recheck="{{ reader }}">
+  {%- if rc and rc.busy %}<button type="button" class="btn btn-small btn-outline" data-op="needs-attention" disabled aria-disabled="true" aria-busy="true" title="The {{ reader }} check is running, since {{ rc.since[11:19] }} UTC; this item is drawn again with its new reading when it lands">Checking…</button>{{ how('needs-attention', 'run-the-check-again', compact=True, op='a re-check') }}
+  {%- else %}<button type="button" class="btn btn-small btn-outline" data-op="needs-attention" hx-post="{{ url_for('v2.attention_recheck') }}" hx-vals='{{ {"reader": reader} | tojson }}' hx-target="closest .att-recheck" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs the {{ reader }} check now, as its schedule does; this item is drawn again with what it finds"><span class="op-idle">Run the check again</span><span class="op-busy">Checking…</span></button>{{ how('needs-attention', 'run-the-check-again', compact=True, op='a re-check') }}
+  {%- endif %}
+  {%- if rc and rc.failed %} <span class="refusal" role="alert">The check failed {{ stamp(rc.at) }}: {{ rc.failed }}.</span>{% endif %}
+  {%- if refused %} <span class="refusal" role="alert">Not run again:
+    {%- set o = refused.operands or {} %}
+    {%- if refused.refused == 'running' %} {{ refused.reader }} is already running ({{ o.cause }}), since {{ stamp(o.since) }}; this item is drawn again when it ends.
+    {%- elif refused.refused == 'spacing' %} {{ refused.reader }} began a read {{ stamp(o.last) }}, within its minimum spacing of {{ o.spacing }} s; it can be asked again from {{ clock(o.next) }}.
+    {%- elif refused.refused == 'backoff' %} {{ refused.reader }}'s last read {{ stamp(o.last) }} found nothing answering, and its next try, every {{ o.retry_seconds }} s on its backoff, is at {{ clock(o.next) }}; a press does not jump it.
+    {%- else %} {{ refused.reason }}.{% endif %}</span>
+  {%- endif %}
+</span>
+{%- endmacro -%}
+{%- if reader is defined and reader %}{{ recheck(reader, rc, refused) }}{% endif -%}

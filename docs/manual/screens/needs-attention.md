@@ -109,8 +109,12 @@ schedule, and the page draws what was last read, at once. So every value says ho
   is read only after a commit to the network's repository. Anything {{product}} does that can
   move a row (a deploy, a heal, an approval decided) has its sources read again within about
   2 seconds of it, once however many steps it announced, so a fix you make clears its row
-  within seconds. An acknowledgement you record takes its row off the list at once, on your
-  page and on every other open page.
+  within seconds. The check that raised the row runs again too: each background check whose
+  answer the operation changes (the baselines after a Save All, NetBox's stored credentials
+  after an import, job health after a rotation) runs once about 2 seconds after the
+  operation's first announcement, however many it makes, and the row clears, or stays with
+  its new reading's age, on what that fresh run finds. An acknowledgement you record takes
+  its row off the list at once, on your page and on every other open page.
 - **"Reading Needs attention …"** is drawn when {{product}} has just started and has not read
   the sources yet. The page fills itself when the first read lands; there is nothing to press.
 - **"Its refresh … failed"** on a source's line, and "N refreshes failed, the last value kept"
@@ -118,7 +122,39 @@ schedule, and the page draws what was last read, at once. So every value says ho
   and its Checked time says how old it is. A source whose value is older than it promised is a
   row of its own ("… has not been read within its promise").
 
-There is no refresh button: a page left open updates itself as the reads land.
+There is no refresh button: a page left open updates itself as the reads land. One item's own
+check can be run again from its Details, below.
+
+## Run the check again {#run-the-check-again}
+
+A row a background check raised stands on that check's last reading, and some checks read
+only every half hour or hour (the scheduled workflows, NetBox's stored credentials, the
+credential health). When the cause was fixed outside {{product}} (a workflow re-run on GitHub,
+NetBox back up), the row would stand until the check's next run. Open the item: its
+**Details** line ends with when its reading was taken ("read 40 min ago") and **Run the check
+again**.
+
+- **What it runs:** that check once, now, exactly as its schedule runs it: the same reads, the
+  same time limits, recorded as your request ("checked on your request" on its hover). It
+  never changes a device, NetBox or a setting.
+- **While it runs** the button reads **Checking…** and cannot be pressed again; nothing else on
+  the page waits for it. When its answer lands the item is drawn again in place: gone if the
+  fresh reading no longer finds the problem, or still there with the new reading's age
+  ("read 3 s ago"). A check that failed says **The check failed** with its error, beside the
+  button.
+- **When it is not run**, it says why beside the button, naming both sides of the comparison:
+  - the check is already running (its schedule's run, another person's press, or the run after
+    an operation), and since when; the item is drawn again when that run ends;
+  - it began a read within its minimum spacing, 15 seconds (or its own interval, for the
+    checks that read every 5 seconds), so that reading is as fresh as a new one, and from when
+    it can be asked again;
+  - its last read found its service not answering (NetBox still starting, say), and its next
+    try is on its backoff, 15 seconds doubling to 5 minutes, at the time it names: a press
+    does not jump the backoff.
+- **Where it is offered:** on an item whose reading is a background check's. An item
+  {{product}} reads for every page (drift, approvals, deploys) is read again every 20 seconds
+  while the page is open, so it has none; nor has a job-health item about a check that has
+  stopped or keeps failing: its row is job health's judgement, read again on its own.
 
 ## The count in the sidebar {#count}
 

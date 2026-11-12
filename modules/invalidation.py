@@ -166,6 +166,9 @@ ANNOUNCERS = {
     # routes/settings_v2.display_name (board E2a): a display name changed, for every open
     # page's name chip and Needs attention; the posting page hears its own response.
     "display-names": ("people",),
+    # modules/recheck.py (the overnight item 9): a Run the check again's run ended, so the list
+    # draws its control again (idle with the new reading, or the failure) for every viewer.
+    "recheck": ("attention",),
     # modules/apps/deploy_op.py (P6): each step of a controller app deploy, and at its end the
     # receipt, the SDN region and the planned-restart window it declared and ended.
     "controller-deploy": ("controller_deploy", "sdn", "restarts"),
@@ -550,6 +553,9 @@ DECLARED = {
     "intent_v2.reopen": Nothing("opens the editor again; writes nothing"),
     "update.check": Nothing("starts the app-pushed reader, which announces app_version itself "
                             "when it finishes"),
+    "v2.attention_recheck": Nothing("starts the row's reader, which announces its own keys when it "
+                                 "finishes (Needs attention's store re-reads the row's source "
+                                 "on them); the press draws its control busy in its answer"),
     "jobs.job_finished": Nothing("starts the job-health reader, which announces job_health "
                                  "itself when it finishes"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),

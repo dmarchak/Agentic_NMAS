@@ -34,8 +34,28 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-dark-page-1440`; `landing-phone-board-LandingPhone-390` and `-NavPhone-390` beside
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
-Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `cdc42b110331edb52496d05e40f8dc7fa880f5325088ba594b86209cf946f070`
+Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html
+Templates sha256: `a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`
+
+**Hashed again 2026-11-12, the same day, at the merge:** Run the check again posts to
+`/v2/attention/recheck` (`v2.attention_recheck`) where it posted to `/attention/recheck`: a
+press on the person's own page is a v2 route (tests/test_no_new_v1_capability.py). The control's
+words, place and states are unchanged. Templates sha256 before:
+`5d1ec52d7685515e31844b44ea3c13194009d3b21cd48ac32075d0b55952735d`.
+
+**Hashed again 2026-11-12 for Run the check again** (the operator's overnight item 9: "A fix
+made through Mercury re-runs the check that raised its row; the row offers 'Run the check
+again'"; C3240). An opened row whose reading is a background check's ends its Details line
+("since … · read <age> · <source>") with **Run the check again** and its (i), drawn by a new
+macro, `templates/v2/_attention_recheck.html`, now compared with the rest: pressed, it is
+**Checking…**, disabled and busy on itself, until the list is drawn again with the fresh
+reading; a refusal ("Not run again: …", both operands) or a failed run ("The check failed …")
+is said beside it, in place. The row's one line, What to do and every other region are as
+compared; a row from a source read for every page draws nothing new. Board NA-R draws no such
+control: **deviation**, logged in docs/STANDING_APPROVAL_LOG.md ("Needs attention: Run the
+check again on a row's Details line"). Compared by the template diff and the page
+tests/test_recheck.py draws and presses, not a new shot. Templates sha256 before (the four
+templates then compared): `cdc42b110331edb52496d05e40f8dc7fa880f5325088ba594b86209cf946f070`.
 
 **Hashed again 2026-11-12 for the background store** (C3166 slice 1; the operator's rule that
 day: "every page draws at once from data the background already holds, shows each source's age

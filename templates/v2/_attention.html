@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, stamp, how, badge, clock, heal_cause, run_href -%}
+{%- from "v2/_attention_recheck.html" import recheck -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key).
     Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
@@ -360,6 +361,10 @@
         {% if r.since %}since {{ stamp(r.since) }}{% else %}its source does not track when it began{% endif %}
         {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
+        {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
+            press, here beside the reading's age (the row's evidence), never beside its one
+            action; busy while it runs (`r.recheck`, modules/recheck.py). -#}
+        {%- if r.reader %} · {{ recheck(r.reader, r.recheck) }}{% endif %}
       </p>
       {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
           operands, its ids, hashes and steps, under a collapsed "Details for the record", last;

@@ -35,3 +35,29 @@ def acknowledge():
               hours=str(data.get("hours") or ""))
     # The row's words quote its source (a device's reason, an authorised line): masked.
     return jsonify(mask_payload(got)), (200 if got["ok"] else 409)
+
+
+def recheck():
+    """The handler of Run the check again, served at `/v2/attention/recheck` (`v2.attention_recheck`,
+    a press on the person's own page). The operator's overnight item 9, 2026-11-12: the reader a row's
+    reading came from (form ``reader``, a registered reader's name, never a command) runs once
+    now through its own run path (`reader_job.request_run`, recorded as this person's request)
+    on its own thread. Answers at once: the control busy (202), or the refusal naming both
+    operands (409); the row is drawn again when the run's value is assembled
+    (modules/recheck.py)."""
+    from flask import render_template
+
+    from modules import identity
+    from modules import recheck as R
+    from routes.device_v2 import _strict
+
+    who = identity.viewer()
+    got = R.ask(str(request.form.get("reader") or ""),
+                who.actor if who.is_identified else "")
+    if got["ok"]:
+        return _strict(render_template("v2/_attention_recheck.html", reader=got["reader"],
+                                       rc={"busy": True, "since": got["since"]},
+                                       refused=None), 202)
+    return _strict(render_template("v2/_attention_recheck.html",
+                                   reader=got["reader"] or "unknown", rc=None, refused=got),
+                   409)

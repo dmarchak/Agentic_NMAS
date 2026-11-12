@@ -2345,7 +2345,7 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
               {"label": "Take a current baseline: Save All captures every device, and earns "
                         "a baseline if each is at its committed intent; if not, it records "
                         "the denial and names the device and its lines"})
-    return {"rows": [row(
+    unusable = row(
         source="baseline", kind="unusable", key=f"{lst}:unusable", level="warning",
         what=("No stored baseline can be re-applied, and a new one cannot be earned yet"
               if blocker else "No stored baseline can be re-applied"),
@@ -2353,8 +2353,13 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
         action=action,
         operands={"list": lst, "baselines": str(value["count"]),
                   "newest": newest["tag"] if newest else "none"},
-        since=_ts(good.get("value_at")))],
-        "checked": "no baseline can be re-applied"}
+        since=_ts(good.get("value_at")),
+        # The reading it stands on is the reader's, never the baseline source's live read.
+        read_at=_ts(good.get("value_at")))
+    # Its check is the baseline-usability reader's (its Run the check again, the overnight
+    # item 9), though its source reads the decision log live.
+    unusable["reader"] = "baseline-usability"
+    return {"rows": [unusable], "checked": "no baseline can be re-applied"}
 
 
 # ---------------------------------------------------------------------------
@@ -8363,6 +8368,13 @@ def assemble(results: list) -> dict:
         for r in [x for top in res["rows"] for x in [top] + (top.get("folded") or [])]:
             if not r.get("read_at"):
                 r["read_at"] = res.get("value_at") or res.get("read_at")
+            # The overnight item 9 (2026-11-12): the reader whose reading the row stands on,
+            # for its Run the check again (modules/recheck.py). A job-health row about a
+            # reader's own liveness stands on job health's judgement of that reader, which
+            # its source reads again on its own cadence, so it names none (C3241).
+            if not r.get("reader") and res.get("reader") and not r["id"].startswith(
+                    "job_health:reader:"):
+                r["reader"] = res["reader"]
     rows = _with_networks(_attach(_fold_drift_into_heal(_fold_known_unmonitored(_fold_one_cause(
         [r for res in results for r in res["rows"]]
         + _past_promise_rows(results, time.time()))))))

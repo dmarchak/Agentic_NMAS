@@ -69,6 +69,10 @@ def _bodies(v):
                                        "cleared"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
+        # Run the check again (the operator's overnight item 9, 2026-11-12): a reader is named
+        # by its registered name only; an unknown one is refused naming it, and nothing runs.
+        "v2.attention_recheck": (409, ("form", {"reader": "no-such-check"}),
+                                 "no check by that name: refused naming it, nothing runs"),
         "sdn_v2.flow_preview": (400, ("form", {"list": LIST, "do": "add"}),
                                 "no controller connection named: refused before any read"),
         "sdn_v2.response_preview": (404, ("form", {"list": LIST}),

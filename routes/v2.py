@@ -165,6 +165,13 @@ def _attention() -> dict:
                              for x in [r] + (r.get("folded") or [])], viewer_key())
     except Exception as exc:                          # noqa: BLE001 (the server still refuses)
         log.warning("v2: which rows' devices are held could not be read: %s", exc)
+    # A row whose check is running again draws its Run the check again busy (the overnight
+    # item 9): from this process's memory of the runs, for this request, never the store.
+    from modules import recheck
+    try:
+        recheck.mark(a.get("rows") or [])
+    except Exception as exc:                          # noqa: BLE001 (the control stays idle)
+        log.warning("v2: which rows' checks are running again could not be read: %s", exc)
     return a
 
 
@@ -2918,3 +2925,12 @@ def seen_run():
     draws again."""
     from routes import operations
     return operations.mark_seen()
+
+
+@bp.route("/attention/recheck", methods=["POST"])
+def attention_recheck():
+    """Run the check again on a Needs attention row (the operator's overnight item 9,
+    2026-11-12): a v2 route, so the press is one of the page's own; its one handler is
+    `routes.attention.recheck`, beside the row's acknowledge."""
+    from routes import attention
+    return attention.recheck()

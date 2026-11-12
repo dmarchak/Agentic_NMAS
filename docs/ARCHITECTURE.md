@@ -686,6 +686,14 @@ and others have left since too.
   failing closed with reasons; the baseline tag carries the claim and the
   snapshot, and `golden-state/<ts>` marks only a working fleet.
   `scripts/nmas-golden-state` takes one (dry-run by default)
+- **[modules/recheck.py](modules/recheck.py)** and
+  **[modules/reader_wakes.py](modules/reader_wakes.py)** — the check that raised a Needs
+  attention row runs again (C539; C3240, 2026-11-12): an operation's announcements mark the
+  readers whose answer they change, each run once at its burst's end (Needs attention's 2 s
+  debounce) through `reader_job.request_run`; a person's Run the check again on the row's
+  Details line runs the row's reader the same way, refused by name while it runs, within its
+  minimum spacing or inside its backoff, its control busy from memory until the held list has
+  the fresh value.
 - **[modules/reader_job.py](modules/reader_job.py)** — Stage 7.2: the
   READER JOB, one background read of an outside service, stored with the
   time of its value, a failed read keeping the last good value, its

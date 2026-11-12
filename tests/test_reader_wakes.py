@@ -121,6 +121,10 @@ class TestTheMechanism:
         monkeypatch.setattr(reader_job, "request_run",
                             lambda reader, by, **kw: got.append((reader.name, by, kw["kind"]))
                             or {"started": True, "run": "r"})
+        # The overnight item 9 (2026-11-12): a wake runs its reader at its burst's end, after
+        # the debounce; here the burst ends at once (tests/test_recheck.py counts the burst).
+        monkeypatch.setattr(W, "_schedule", lambda seconds, fn: fn())
+        monkeypatch.setattr(W, "_BURSTS", {})
         return got
 
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
@@ -292,3 +296,23 @@ class TestEveryRowHasItsReading:
                                  "_attention.html"), encoding="utf-8").read()
         meta = page.split('class="att-meta"')[1].split("</p>")[0]
         assert "read {{ stamp(r.read_at" in meta and "r.read_at[11:16]" not in meta
+
+
+def test_a_burst_s_end_is_a_daemon_timer_that_calls_it():
+    """The real schedule every other test replaces (`_schedule`): a burst's end runs its
+    function on a daemon thread named for it, so a wake never holds the request that made it
+    and never keeps the process alive at exit."""
+    import threading
+
+    assert W._schedule is W._timer
+    called = threading.Event()
+    seen = {}
+
+    def end():
+        me = threading.current_thread()
+        seen.update(daemon=me.daemon, name=me.name, main=me is threading.main_thread())
+        called.set()
+
+    W._timer(0, end)
+    assert called.wait(10), "the timer never called its function"
+    assert seen == {"daemon": True, "name": "reader-wake", "main": False}

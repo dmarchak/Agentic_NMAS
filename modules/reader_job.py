@@ -110,7 +110,9 @@ produced it.
     `request_run()` starts one at a time per reader; `request_in_flight()` says
     a run is still owed an answer until the store holds it, so a page drawn
     mid-run stays busy; `answer_bound()` is how long a page waits before
-    saying the answer is late, 2.5x the slowest recorded run.
+    saying the answer is late, 2.5x the slowest recorded run. Needs attention's
+    **Run the check again** is such a run (modules/recheck.py), refused while
+    the reader is `in_progress` or inside its minimum spacing or its backoff.
 
 14. **A read that fails because its dependency is not answering YET is retried
     on a short backoff, and within a start grace it is waiting, never failing**
@@ -666,19 +668,43 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
     scheduled loop, a run on request and the post-commit refresh could all run one reader
     at once, each reading before the store's lock, so a slower run that started first
     stored last over a fresher value, and two `app-pushed` runs fetched one checkout at
-    once. A run now waits for the one in progress, so it reads after that one stored."""
+    once. A run now waits for the one in progress, so it reads after that one stored.
+
+    While it holds the reader's run lock, the run is `in_progress` in this process (its
+    start and cause), so a person's Run the check again is refused by name rather than
+    queued behind it (modules/recheck.py)."""
     with _filestore.PathLock(store_path(reader.name) + ".run"):
-        if not reader.per_group:
-            return _run_once(reader, announce, clock, trigger)
-        # P.8 step 5: one run per distinct configuration. Each is a reader of its own in the
-        # store (its last good value, its failing streak, its runs), so every rule above holds
-        # per configuration; Default's keeps the reader's own name and is returned.
-        out = None
-        for v in configuration_readers(reader):
-            doc = _run_once(v, announce, clock, trigger)
-            if v.name == reader.name:
-                out = doc
-        return out
+        t = dict(trigger or SCHEDULED)
+        # The wall clock, never *clock*: a test's clock counts its own calls.
+        _IN_PROGRESS[reader.name] = {"since": time.time(), "kind": t.get("kind") or "",
+                                     "by": t.get("by") or "", "run": t.get("run") or ""}
+        try:
+            if not reader.per_group:
+                return _run_once(reader, announce, clock, trigger)
+            # P.8 step 5: one run per distinct configuration. Each is a reader of its own in
+            # the store (its last good value, its failing streak, its runs), so every rule
+            # above holds per configuration; Default's keeps the reader's own name and is
+            # returned.
+            out = None
+            for v in configuration_readers(reader):
+                doc = _run_once(v, announce, clock, trigger)
+                if v.name == reader.name:
+                    out = doc
+            return out
+        finally:
+            _IN_PROGRESS.pop(reader.name, None)
+
+
+#: reader name -> the run holding its run lock in THIS process now (`run_once`):
+#: ``{"since", "kind", "by", "run"}``. Memory only: read by a press, never by a page.
+_IN_PROGRESS: dict = {}
+
+
+def in_progress(name: str) -> dict:
+    """The run of *name* in progress in this process now (scheduled, on request or after an
+    operation), or None. A copy; nothing waits on it."""
+    got = _IN_PROGRESS.get(name)
+    return dict(got) if got else None
 
 
 def configuration_readers(reader: Reader) -> list:
@@ -1093,12 +1119,14 @@ _REQUESTS_LOCK = threading.Lock()
 
 
 def request_run(reader: Reader, by: str, announce=None, clock=time.time,
-                kind: str = "request") -> dict:
+                kind: str = "request", on_done=None) -> dict:
     """Run *reader* once now, on its own thread, for *by*. One at a time per
     reader: a second request while one runs gets that run back
     (``started: False``), so its page waits for the same answer. *kind* is the
     cause recorded (rule 13): ``request`` for a person, ``job_finished`` for a
-    host job that just ended (*by* naming the unit)."""
+    host job that just ended (*by* naming the unit). *on_done*, when given, is called
+    once the run is done (stored and announced, or raised) with a copy of its entry and
+    ``raised``, on the run's own thread; its failure is logged and changes nothing."""
     import uuid
 
     with _REQUESTS_LOCK:
@@ -1116,10 +1144,12 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time,
 
     def _go():
         t0 = time.monotonic()
+        raised = False
         try:
             run_once(reader, announce=announce, clock=clock,
                      trigger={"kind": kind, "by": entry["by"], "run": entry["run"]})
         except Exception:                               # noqa: BLE001
+            raised = True
             log.exception("reader %s: run %s on request by %s raised; nothing was stored",
                           reader.name, entry["run"], entry["by"] or "nobody identified")
         finally:
@@ -1132,9 +1162,22 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time,
             # Done last (C1758): a run is done once its record of lateness is written, so
             # whoever waits on `done` reads that record too (CI #1190 read it in between).
             entry["done"] = True
+            if on_done is not None:
+                try:
+                    on_done(dict(entry, raised=raised))
+                except Exception as exc:                # noqa: BLE001
+                    log.error("reader %s: run %s's step after it ended failed: %s: %s",
+                              reader.name, entry["run"], type(exc).__name__, exc)
 
     threading.Thread(target=_go, name=f"request:{reader.name}", daemon=True).start()
     return {**entry, "started": True}
+
+
+def last_request(name: str) -> dict:
+    """The latest run on request of *name* in this process, done or not (a copy), or None:
+    memory only, so a page drawing a press's state reads no store."""
+    entry = _REQUESTS.get(name)
+    return dict(entry) if entry is not None else None
 
 
 def request_in_flight(name: str) -> dict:

@@ -18,10 +18,20 @@ two (`tests/test_reader_wakes.py`), so a new reader declares its wakes the day i
 **A run in progress may have read before the write.** A wake that finds one waits for it and
 runs once more, so the answer stored last is read after the operation.
 
+**One run per burst** (the operator's overnight item 9, 2026-11-12: "A fix made through Mercury
+re-runs the check that raised its row"): an operation announces many times as it goes (a heal's
+steps, a deploy's devices), and each announcement woke every reader its keys name, so an hourly
+NetBox read could run several times for one fix. A wake now marks the reader, and the reader
+runs once `DEBOUNCE_S` after the first mark of its burst, through `reader_job.request_run` (its
+own run path, recorded `after_operation` with every operation of the burst named), the same
+debounce Needs attention's store gives the sources it recomputes. A mark after the run has
+started opens the next burst, so the answer stored last is still read after the last write.
+
 A wake runs only where the readers run (`reader_job.running`): the app starts them; a CLI, a
 test or another process asks nothing, as `/jobs/finished` does.
 """
 
+import functools
 import logging
 import threading
 
@@ -160,25 +170,97 @@ def _after(reader, by: str, sleep=None, clock=None, spawn=None) -> None:
     threading.Thread(target=go, name=f"wake-after:{reader.name}", daemon=True).start()
 
 
-def wake(keys, by: str) -> list:
-    """Run, now, each reader *keys* wake that runs in this process; ``[names]`` woken. Never
-    raises: a wake that cannot start is logged, and the reader's own schedule still holds."""
+def debounce_s() -> float:
+    """How long after the first wake of a burst its reader runs: Needs attention's own
+    debounce (`attention_store.DEBOUNCE_S`, about 2 s: a heal's steps announce within a second
+    of each other), so a fix's row is read again and recomputed on the same burst."""
+    from modules import attention_store
+    return float(attention_store.DEBOUNCE_S)
+
+
+#: reader name -> the operations whose wakes this burst holds, in order (`wake`, `_fire`).
+_BURSTS: dict = {}
+_BURSTS_MU = threading.Lock()
+
+
+def _timer(seconds: float, fn) -> None:
+    t = threading.Timer(seconds, fn)
+    t.daemon = True
+    t.name = "reader-wake"
+    t.start()
+
+
+#: How a burst's end is scheduled: ``(seconds, fn)``. A daemon timer; a test replaces it.
+_schedule = _timer
+
+
+def _by_words(ops: list) -> str:
+    """The operations of one burst, for the run's recorded cause (`trigger_words`)."""
+    if len(ops) <= 3:
+        return " and ".join(ops) if len(ops) <= 2 else f"{ops[0]}, {ops[1]} and {ops[2]}"
+    return f"{ops[0]}, {ops[1]} and {len(ops) - 2} more"
+
+
+def _fire(name: str) -> bool:
+    """The end of *name*'s burst: run it once, through its own run path; True when asked."""
     from modules import reader_job
 
-    woke = []
+    with _BURSTS_MU:
+        ops = _BURSTS.pop(name, None)
+    if not ops:
+        return False
+    by = _by_words(ops)
+    try:
+        reader = _reader(name)
+        if reader is None:
+            return False
+        got = reader_job.request_run(reader, by, kind="after_operation",
+                                     announce=reader_job.announce_via_page)
+        if not got.get("started"):
+            _after(reader, by)
+    except Exception as exc:                              # noqa: BLE001
+        log.warning("reader wake: %s after %s did not start (%s); its schedule holds",
+                    name, by, exc)
+        return False
+    log.info("reader wake: %s re-read after %s", name, by)
+    return True
+
+
+def pending() -> dict:
+    """The bursts not yet run: ``{reader: [operations]}`` (a copy)."""
+    with _BURSTS_MU:
+        return {k: list(v) for k, v in _BURSTS.items()}
+
+
+def wake(keys, by: str) -> list:
+    """Mark each reader *keys* wake that runs in this process, ``[names]`` marked: each runs
+    once, `debounce_s` after the first mark of its burst. Never raises: a wake that cannot be
+    marked is logged, and the reader's own schedule still holds."""
+    from modules import reader_job
+
+    woke, first = [], []
     for name in readers_for(keys):
         try:
             reader = _reader(name)
             if reader is None or not reader_job.running(name):
                 continue
-            got = reader_job.request_run(reader, by, kind="after_operation",
-                                         announce=reader_job.announce_via_page)
-            if not got.get("started"):
-                _after(reader, by)
-            woke.append(name)
         except Exception as exc:                          # noqa: BLE001
-            log.warning("reader wake: %s after %s did not start (%s); its schedule holds",
+            log.warning("reader wake: %s after %s was not marked (%s); its schedule holds",
                         name, by, exc)
-    if woke:
-        log.info("reader wake: %s re-read after %s", ", ".join(woke), by)
+            continue
+        with _BURSTS_MU:
+            ops = _BURSTS.get(name)
+            if ops is None:
+                _BURSTS[name] = [by]
+                first.append(name)
+            elif by not in ops:
+                ops.append(by)
+        woke.append(name)
+    for name in first:
+        try:
+            _schedule(debounce_s(), functools.partial(_fire, name))
+        except Exception as exc:                          # noqa: BLE001
+            log.warning("reader wake: %s's run after %s could not be scheduled (%s); it runs "
+                        "now", name, by, exc)
+            _fire(name)
     return woke
