@@ -15,7 +15,7 @@
 {{ timeline_page(h, here=device.hostname, more_url=more_url, page_url=page_url, appended=True) }}
 {%- else %}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname, kind=kinds or None, on=on or None, before=before or None) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:fault_drills from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }} <a class="small" href="{{ url_for('v2.history_page', device=device.hostname, since='', kind=kinds or None) }}">The fleet's timeline, filtered to {{ device.hostname }}</a></p>
 <div class="seg hist-quick" role="group" aria-label="Kind">
   <a class="seg-btn{% if not kinds %} on{% endif %}" aria-pressed="{{ 'true' if not kinds else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', on=on or None) }}">All</a>

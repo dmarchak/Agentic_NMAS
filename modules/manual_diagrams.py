@@ -1022,6 +1022,34 @@ def rekey():
     ])
 
 
+def fault_drill():
+    return svg(470, (
+        "Declaring a fault drill. Before you inject a fault, you declare it on one device: the "
+        "fault in words, at most 15 minutes, as you. It is refused when the device already has "
+        "an incident open or a drill open, and nothing is sent, silenced or held. An incident "
+        "that opens on the device before the drill ends is tagged a fault drill in the write "
+        "that opens it. Self-healing then treats it as a real fault: every guard, the verify "
+        "and the rollback, except the per-device rate and the same change healed twice; its "
+        "heal is counted as a drill's, never in the real figures."), [
+        lanes(20, 464),
+        band(20, 196, "Before the fault · nothing sent"),
+        person(14, 44, 186, 30, "You declare it, before"), num(14, 44, 1),
+        doc("box", 14, 88, 186, 40, "Checked", "an open incident or drill: refused"),
+        num(14, 88, 2),
+        store(14, 142, 186, 40, "The declaration", "recorded, at most 15 min"), num(14, 142, 3),
+        device(240, 60, 140, 48, "The device", "not contacted", off=True),
+        nosend(310, 150, ("nothing is sent,", "silenced or held")),
+        band(226, 238, "The fault · inside the drill"),
+        device(262, 250, 118, 60, "The device", "you inject the fault", top=True),
+        *rows([(284, "read", None, "The incident opens", "tagged a drill, same write")]),
+        doc("box", 14, 320, 186, 46, "Every guard but 9 and 11", "the verify, the rollback"),
+        _down(107, 296, 318),
+        store(14, 382, 186, 40, "The heal, recorded", "counted as a drill's"),
+        _down(107, 366, 380),
+        t(14, 444, "After the drill ends, an incident is real.", "sm"),
+    ])
+
+
 def set_secret_value():
     return svg(400, (
         "Setting a secret reference's value, write-only. You type the value twice with a "
@@ -2325,6 +2353,7 @@ DIAGRAMS = {
     "fleet-change": fleet_change,
     "drift": drift,
     "drift-check": drift_check,
+    "fault-drill": fault_drill,
     "netbox-import": netbox_import,
     "baselines": baselines,
     "merge-and-mode-b": merge_and_mode_b,

@@ -1452,6 +1452,28 @@ def _diagnose(client, _lab, _mp):
         mp.undo()
 
 
+def _declare_drill(client, _lab, _mp):
+    """Declare a fault drill… (the operator's decision, 2026-11-11) on r3: the card's press
+    declared and drawn in place, then the same press refused in place (one drill per device at
+    a time). The declaration is removed afterwards, so no later provider's incident on r3 is a
+    drill."""
+    import os
+
+    from modules import fault_drills
+
+    form = {"list": "Lab", "device": "r3", "back": "overview", "minutes": "10",
+            "expects": "the EEM heartbeat applet removed on r3", "reason": "a rehearsal"}
+    try:
+        ok = client.post("/v2/fault-drills/declared", data=form)
+        assert "Declared: a drill on r3 until" in ok.get_data(as_text=True), ok.status_code
+        refused = client.post("/v2/fault-drills/declared", data=form)
+        assert "Couldn't declare the drill" in refused.get_data(as_text=True), refused.status_code
+    finally:
+        path = fault_drills.path("Lab")
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def _in_progress(client, _lab, mp):
     """The top bar's In progress chip (C537) while r3 is held by a deploy: the walk's pages
     ask for it with nothing running, when it draws nothing. Its list carries the running row;
@@ -4228,7 +4250,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _attention_expected, _attention_explain, _attention_heal_analysis,
                    _attention_withheld,
                    _attention_quiet_period,
-                   _persist_read, _unlinked, _rekey, _drift, _diagnose,
+                   _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,

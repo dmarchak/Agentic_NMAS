@@ -70,7 +70,7 @@ compared" where intent was not compared), where board 2 (`DevCaptureResult`) dre
 which `preview_confirm.capture_result` already calls "partial". A capture at its intent is
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
-Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html, templates/v2/_diagnose.html, templates/v2/_held_banner.html
+Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html, templates/v2/_diagnose.html, templates/v2/_held_banner.html, templates/v2/_declare_drill.html
 Compared again 2026-11-05 (the main session, H16's gate): `_diagnose.html`'s "not offered"
 `<details>` gains `data-keep` (C472: a live region's details keeps its state across a redraw),
 an attribute no region draws; every region reads as before.
@@ -162,7 +162,16 @@ menu with its first paragraph and no banner: **deviation**, logged in STANDING_A
 diff and the page tests/test_held_actions.py draws, not a new shot. Templates sha256 before
 (without `_held_banner.html` in the list):
 `9dbd158eb1321bc0b62b8f8daa6eaca0a876fc738918cdab42622d01a945de41`.
-Templates sha256: `a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`
+
+**Hashed again 2026-11-11 for Declare a fault drill…** (the operator's decision of that day,
+built ahead of the evening's rehearsal): `_actions_menu.html` gains one row after Diagnose…,
+always offered, opening `_declare_drill.html` (compared from this hash on) in place of the
+tab, op `declare_drill`. Compared region by region with the incident page's board, section I1,
+and the operator's words for the card, as tests/test_fault_drills.py renders it; no shot
+(tests/test_board_shots.py has none of it yet): the table "Declare a fault drill… and its
+card" below. Templates sha256 before (without `_declare_drill.html` in the list):
+`a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`.
+Templates sha256: `1e0b8178d465dc5f47e5c38476ef13e06eecd26e3ff6cb1e64396f6c58753f11`
 
 **Compared again 2026-11-05 for H16's second part** (board H's amendment, artboards I and J),
 by reading the artboards against `_diagnose.html` as tests/test_heal_diagnose_v2.py renders it
@@ -467,3 +476,34 @@ controls, region by region.
 | Can't reach's path | a hop table: Hop, Read, Against intent, the diverging hop marked; the chip "diverges at r6" | (H16's second part) "The path, hop by hop": Hop, Read, Against intent, each verdict a chip (as intent, diverges, not read), the diverging hop's claim in bold, the hops after it "not read"; hop 0 the ping, "not interpreted" where the board reads "0 of 5 · fails" (the ping has no capture, C2414); the chip "diverges at <device>"; every step still drawn below | **deviation** (log: H16's Diagnose… card) |
 | The result's controls | Run again, Open in History, "16 reads on History › Reads", How does this work?; Open r6's can't-fix row | (H16's second part) Run again…, Open in History (the device's History tab on the kind Diagnoses and the day it ran, in the diagnosis's own network), a link to each reads run on History › Reads, How does this work? | **later** Open <device>'s can't-fix row: a diagnosis on demand names no incident |
 | Diagnose… on an alert's card and on a can't-fix row | drawn (Monitoring › Alerts, Needs attention) | (H16's second part) drawn on both: docs/fidelity/alerts-explain.md and docs/fidelity/landing.md compare them | **same** |
+
+## Declare a fault drill… and its card (the operator's decision, 2026-11-11)
+
+Compared 2026-11-11 by reading the incident page's board, section I1 ("The declaration: before
+the fault, through Mercury"; text only, kept with the operator's reports), and the operator's
+words for the button ("on the device page's Actions menu, 'Declare a fault drill…' opening a
+small card (device fixed, the expected fault, minutes 1 to 15 default 10, a reason optional),
+one primary action 'Declare the drill', the result in place ... busy on itself, no toast")
+against `_actions_menu.html` and `_declare_drill.html` as tests/test_fault_drills.py renders
+them (edge-b of Default). No shot: the board is words, so the comparison is of its words
+against the rendered menu and card, region by region.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Actions menu: Declare a fault drill… | a row on the device page's Actions menu | after Diagnose…, before Re-key…, with its (i); always offered (it sends nothing) | **same** |
+| The card's head | a small card | "Declare a fault drill on <device>", How does this work?, Close in the head as every op card draws it | **same** |
+| The device | fixed | in the head and carried by the form, never a field | **same** |
+| The expected fault | the fault in words, at least 3 words | a text field, "The expected fault", its placeholder "the EEM heartbeat applet removed on <device>"; under three words refused by the server, naming the count | **same** |
+| Minutes | 1 to 15, 10 by default | a number field "Minutes (1 to 15)", 10 by default, 1 to 15 held by the field and by the server | **same** |
+| Reason | optional | a text field "Reason (optional)" | **same** |
+| The one primary action | "Declare the drill" | "Declare the drill", busy on itself ("Declaring…") until the answer arrives | **same** |
+| The result in place | "Declared: a drill on r3 until HH:MM: <expects>. Inject the fault now; an incident on r3 before HH:MM is a drill." | the same words, green, HH:MM the page's clock element (UTC on hover), in place of the form; no toast | **same** |
+| A refusal | a late declaration refused, naming both times (I1) | "Couldn't declare the drill: <why>." in red above the form, the form kept with what was typed: after the fault, a second open drill, a bound or words out of shape | **same** |
+| The route | `POST /fault-drills/declared` | `POST /v2/fault-drills/declared` (device_v2.fault_drill_declare), the card's form and a script's JSON body alike | **deviation** (log: Declare a fault drill…) |
+| History | the kind "Fault drill declared" (I3) | History's kind filter "Fault drills declared" under What happened to a device, one row per declaration; a drill heal's row begins "Fault drill:" | **deviation** (log: Declare a fault drill…) |
+| The chip on the page and the card, the list's filter | the Fault drill chip, Real / Fault drills / Both (I3, I4) | not built: the incident page is not on main yet | **later** the incident page's S9 rest: its chip, filter, strip and CSV |
+
+Compared again 2026-11-12 after `_declare_drill.html`'s "Declare the drill" gained
+`gate('configure')`, as every posting control carries (tests/test_controls_consult_may.py
+refused it in the slice's first gate): an attribute the page reads to disable the control for
+a viewer who may not configure; nothing drawn moves, and every region above is as compared.

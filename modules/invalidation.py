@@ -65,6 +65,7 @@ VOCABULARY = {
     "baselines": "baseline tags",
     "adjacencies": "the routing adjacencies intent implies, against what each device reports (C38)",
     "restarts": "a device restart the restarts reader found, planned or not (modules/restarts.py)",
+    "fault_drills": "a fault drill declared on a device (modules/fault_drills.py)",
     "acknowledgements": "a person acknowledged a Needs attention event row (modules/acknowledgements.py)",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
@@ -449,6 +450,7 @@ DECLARED = {
     "update.apply": ("app_version",),
     "update.step_done": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
+    "device_v2.fault_drill_declare": ("fault_drills",),
     "restarts.planned": ("restarts",),
     # C539: each writes a log job health's break-glass rows read, so it wakes that reader.
     "v2.credentials_drill": ("breakglass",),

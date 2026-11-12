@@ -356,10 +356,17 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     from modules.heal import decisions, guards, incidents, kinds, policy
     from modules.heal.guards import value
 
+    from modules import fault_drills
+
     src = sources or Sources(network)
     device = incident["device"]
     mode = mode or policy.current(network, now)
+    # A declared fault drill: the tag the incident took at its creation, never a declaration
+    # read now. Guards 9 and 11 do not apply to it; its decision carries the tag, so its heal
+    # is counted as a drill's (`guards.GUARDS_A_DRILL_PASSES`).
+    drill = fault_drills.tag_of(incident)
     base = {"incident": incident["id"], "device": device, "mode": mode.get("mode"),
+            **({fault_drills.FIELD: drill} if drill else {}),
             "policy": {"fingerprint": mode.get("fingerprint"),
                        "by": (mode.get("confirmed") or {}).get("by"),
                        "reason": (mode.get("confirmed") or {}).get("reason")},
@@ -432,11 +439,11 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     at_golden = base["settled"] == "at_golden"
     rates = () if at_golden else (
         guards.g9_device_rate(rows, device, outcome_counted, now,
-                              value(mode, "heal_max_per_device_hour")),
+                              value(mode, "heal_max_per_device_hour"), drill=drill),
         guards.g10_network_rate(rows, network, outcome_counted, now,
                                 value(mode, "heal_max_per_network_hour")),
         guards.g11_repeat(rows, device, settled_dep, outcome_counted, now,
-                          value(mode, "heal_repeat_halts_hours")))
+                          value(mode, "heal_repeat_halts_hours"), drill=drill))
     for g in (guards.g5_topology(src.topology(device, now), now),
               guards.g6_many(got["incidents"], now, grace_s,
                              value(mode, "heal_max_devices_drifting")),
@@ -448,7 +455,10 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     passed("guards", "no topology hold, not many devices at once, no person working, the grace "
                      "period settled, " + (
                          "and no rate counted: its read found it at its golden, so there is "
-                         "nothing to heal" if at_golden else "under every rate"), "read")
+                         "nothing to heal" if at_golden else
+                         "under the network's rate; a declared fault drill, so the per-device "
+                         "rate and the same-deviation guard do not apply" if drill else
+                         "under every rate"), "read")
     if at_golden:
         base["phase"] = "decide"
         symptom = _symptom(incident)

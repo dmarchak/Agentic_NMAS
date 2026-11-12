@@ -253,9 +253,12 @@ def mark(network: str, decision_id: str, right: bool, *, by: str, actor_verified
 def dry_run_counts(network: str) -> dict:
     """``{kind: {"records", "right", "wrong", "unmarked", "false_positive"}}`` over the dry-run
     records (section 7's counter): *false_positive* is wrong over marked, or None before a
-    mark."""
+    mark. A declared fault drill's records are never in it (the operator, 2026-11-11: "Drill
+    heals are recorded and counted as drills, never in the real figures"): `drill_counts`."""
+    from modules import fault_drills
+
     out = {}
-    for d in decisions(network):
+    for d in fault_drills.real_only(decisions(network)):
         if d["outcome"] != "would_heal":
             continue
         c = out.setdefault(d.get("kind") or "?", {"records": 0, "right": 0, "wrong": 0,
@@ -266,6 +269,18 @@ def dry_run_counts(network: str) -> dict:
     for c in out.values():
         marked = c["right"] + c["wrong"]
         c["false_positive"] = round(c["wrong"] / marked, 3) if marked else None
+    return out
+
+
+def drill_counts(network: str) -> dict:
+    """``{outcome: count}`` over the declared fault drills' decisions alone, apart from every
+    real figure (`dry_run_counts`, guards 9 and 11): a drill healed is counted here."""
+    from modules import fault_drills
+
+    out = {}
+    for d in decisions(network):
+        if fault_drills.is_drill(d):
+            out[d["outcome"]] = out.get(d["outcome"], 0) + 1
     return out
 
 

@@ -428,6 +428,7 @@ def device(name):
                        "list": ref.name, "back": tab} if op == "reload" else
                       _reload_verify_card(ref, dev, tab) if op == "reload_verify" else
                       _drift_check_card(ref, dev, tab) if op == "drift_check" else
+                      _declare_drill_card(ref, dev, tab) if op == "declare_drill" else
                       _diagnose_card(ref, dev, tab, _diagnose_fields(request.args, hints=True))
                       if op == "diagnose" else
                       # C537 (3), board C: no card asked for, and this device has an operation
@@ -1424,6 +1425,76 @@ def drift_check_now(name):
     got["at"] = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
     return _strict(render_template("v2/_drift_check.html",
                                    c=_drift_check_card(ref, dev, _back(request.form), got)))
+
+
+def _declare_drill_card(ref, dev, back, fields=None, got=None) -> dict:
+    """Declare a fault drill…'s card (the operator's decision, 2026-11-11; the incident page's
+    board, I1): the device fixed, the expected fault, the minutes (1 to 15, 10 by default) and
+    a reason, optional; or what the declaration answered."""
+    from modules import fault_drills
+
+    f = fields or {}
+    return {"op": "declare_drill", "host": dev.get("hostname", ""), "list": ref.name,
+            "back": back, "max": fault_drills.MAX_MINUTES,
+            "minutes": f.get("minutes") or fault_drills.DEFAULT_MINUTES,
+            "expects": f.get("expects") or "", "reason": f.get("reason") or "", "got": got}
+
+
+@bp.route("/device/<name>/fault-drill", methods=["GET"])
+def fault_drill_card(name):
+    """Declare a fault drill…'s card, as the Actions menu's row asks it in place; the device
+    page draws the same card with ``op=declare_drill``. Reads nothing."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_declare_drill.html",
+                                   c=_declare_drill_card(ref, dev, _back(request.args))))
+
+
+@bp.route("/fault-drills/declared", methods=["POST"])
+def fault_drill_declare():
+    """Declare a fault drill BEFORE its fault is injected (`fault_drills.record_declared`, the
+    one writer, which `scripts/nmas-fault-drill` calls on the host): one device, the expected
+    fault in words, at most 15 minutes, recorded as the verified caller. Its card's form gets
+    the card back with the answer in place; a JSON body (``{"list", "device", "minutes",
+    "expects", "reason"?, "script"?}``, a script's) gets ``{"ok", "record"}`` or ``{"ok":
+    false, "error"}``. Silences, holds and sends nothing."""
+    from modules import fault_drills, identity
+
+    as_json = request.is_json
+    data = (request.get_json(silent=True) or {}) if as_json else request.form
+    device = str(data.get("device") or "")
+    # The verified person, through `identity.viewer()` (this file's rule; the route's gate has
+    # already refused anyone else): who declared the drill, and how that was established.
+    ident = identity.viewer()
+    actor = ident.actor if ident.is_identified else ""
+    verified = ident.verification if ident.is_identified else ""
+    if as_json:
+        from modules.nsot import listref
+        list_name = str(data.get("list") or "")
+        if not listref.exists(list_name):
+            return jsonify({"ok": False, "error": f"no network is named {list_name!r}"}), 400
+        got = fault_drills.record_declared(
+            list_name, device, minutes=data.get("minutes"), expects=str(data.get("expects") or ""),
+            by=actor, actor_verified=verified, via="api",
+            script=str(data.get("script") or ""), reason=str(data.get("reason") or ""))
+        return jsonify(got), (200 if got["ok"] else 409)
+    ref, dev, refusal = _named_device(device, data.get("list", ""), "v2/_declare_drill.html")
+    if refusal is not None:
+        return refusal
+    fields = {"minutes": data.get("minutes"), "expects": data.get("expects") or "",
+              "reason": data.get("reason") or ""}
+    got = fault_drills.record_declared(
+        ref.name, dev.get("hostname", ""), minutes=fields["minutes"], expects=fields["expects"],
+        by=actor, actor_verified=verified, via="device page",
+        reason=fields["reason"], inventory=lambda _n, _d: dev)
+    # The card draws the drill's end and the fault; the whole record is History's.
+    got = {"ok": got["ok"], "error": got.get("error") or "",
+           "record": {k: (got.get("record") or {}).get(k) for k in ("until", "expects")}}
+    return _strict(render_template("v2/_declare_drill.html",
+                                   c=_declare_drill_card(ref, dev, _back(data), fields, got)),
+                   200 if got["ok"] else 409)
 
 
 def _diagnose_card(ref, dev, back, args) -> dict:

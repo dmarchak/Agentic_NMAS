@@ -1,0 +1,32 @@
+{%- from "v2/_macros.html" import icon, clock, how -%}
+{#- Declare a fault drill… (the operator's decision, 2026-11-11; the incident page's board, I1):
+    the card in place of the tab, opened by the Actions menu's row. It declares, BEFORE the
+    fault is injected, that an incident on this device within the bound is a drill
+    (`fault_drills.record_declared`); it sends nothing to the device, silences nothing and holds
+    nothing. One primary action; the answer replaces the form. Close puts back the tab. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+<section class="op-card" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Declare a fault drill on {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('fault-drill') }}<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">Close</button></div></div>
+  <div class="op-part" id="fault-drill-result"><h3>The drill</h3><div>
+    {%- set g = c.got %}
+    {%- if c.state in ('refused_list', 'failed') %}
+    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ c.error or ('the network ' ~ (c.list or 'none') ~ ' is not known') }}.</span></p>
+    {%- elif g and g.ok %}
+    <p class="notice notice-ok" role="status">{{ icon('check', 16) }}<span>Declared: a drill on {{ c.host }} until {{ clock(g.record.until) }}: {{ g.record.expects }}. Inject the fault now; an incident on {{ c.host }} before {{ clock(g.record.until) }} is a drill.</span></p>
+    {%- else %}
+    {%- if g %}
+    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ g.error }}.</span></p>
+    {%- endif %}
+    <form class="sc-form" hx-post="{{ url_for('device_v2.fault_drill_declare') }}" hx-target="#device-op" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="device" value="{{ c.host }}"><input type="hidden" name="back" value="{{ c.back }}">
+      <div class="sc-filters">
+      <label class="sc-f">The expected fault<input type="text" name="expects" required minlength="10" maxlength="200" autocomplete="off" value="{{ c.expects }}" placeholder="the EEM heartbeat applet removed on {{ c.host }}"></label>
+      <label class="sc-f">Minutes (1 to {{ c.max }})<input type="number" name="minutes" min="1" max="{{ c.max }}" step="1" required value="{{ c.minutes }}"></label>
+      <label class="sc-f">Reason (optional)<input type="text" name="reason" maxlength="200" autocomplete="off" value="{{ c.reason }}"></label>
+      </div>
+      <p class="op-act"><button type="submit" class="btn btn-primary" data-op="fault-drill" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Declare the drill</span><span class="op-busy">Declaring…</span></button>{{ how('fault-drill', compact=True, op='a fault drill') }}</p>
+    </form>
+    {%- endif %}
+  </div></div>
+</section>

@@ -199,13 +199,28 @@ def g8_grace(incident: dict):
 DRY_COUNTED = "dry run's would-heal decisions, counted as Auto counts heals"
 
 
+#: Declared fault drills (the operator's decision, 2026-11-11, `modules/fault_drills.py`): "exempt
+#: from guard 11 (same change healed twice in 24 h) and from the per-device rate holds. Nothing
+#: else". So guards 9 and 11 do not apply to an incident tagged a drill at its creation (its
+#: *drill*, the tag its decision carries), and for a real one they count real heals only:
+#: "Drill heals are recorded and counted as drills, never in the real figures". Guard 10
+#: counts every heal, a drill's included: it bounds the network's load, and is not exempt.
+GUARDS_A_DRILL_PASSES = (9, 11)
+
+
 def counted(rows: list, outcome: str, since: float) -> list:
     return [d for d in rows if d.get("outcome") == outcome
             and float(d.get("epoch") or 0) >= since]
 
 
-def g9_device_rate(rows: list, device: str, outcome: str, now: float, most: int):
-    got = [d for d in counted(rows, outcome, now - 3600) if d.get("device") == device]
+def g9_device_rate(rows: list, device: str, outcome: str, now: float, most: int, *,
+                   drill=None):
+    from modules import fault_drills
+
+    if drill:
+        return None
+    got = [d for d in counted(fault_drills.real_only(rows), outcome, now - 3600)
+           if d.get("device") == device]
     if len(got) >= int(most):
         did = ("was healed" if outcome == "heal" else "would have been healed")
         dry = "" if outcome == "heal" else f" ({DRY_COUNTED})"
@@ -217,6 +232,7 @@ def g9_device_rate(rows: list, device: str, outcome: str, now: float, most: int)
 
 
 def g10_network_rate(rows: list, network: str, outcome: str, now: float, most: int):
+    # Every heal, a declared fault drill's included (`GUARDS_A_DRILL_PASSES`: 9 and 11 only).
     got = counted(rows, outcome, now - 3600)
     if len(got) >= int(most):
         what = ("heal(s)" if outcome == "heal" else f"would-heal decision(s) ({DRY_COUNTED})")
@@ -227,10 +243,13 @@ def g10_network_rate(rows: list, network: str, outcome: str, now: float, most: i
     return None
 
 
-def g11_repeat(rows: list, device: str, departure: str, outcome: str, now: float, hours: int):
-    if not departure:
+def g11_repeat(rows: list, device: str, departure: str, outcome: str, now: float, hours: int,
+               *, drill=None):
+    from modules import fault_drills
+
+    if not departure or drill:
         return None
-    got = [d for d in counted(rows, outcome, now - float(hours) * 3600)
+    got = [d for d in counted(fault_drills.real_only(rows), outcome, now - float(hours) * 3600)
            if d.get("device") == device and d.get("departure") == departure]
     if got:
         did = ("was healed" if outcome == "heal" else

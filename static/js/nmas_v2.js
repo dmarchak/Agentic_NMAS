@@ -1330,6 +1330,8 @@
   function relayGoldens() { relay('goldens'); }
   function relayAdjacencies() { relay('adjacencies'); }
   function relayRestarts() { relay('restarts'); }
+  // A fault drill declared (modules/fault_drills.py): History draws each declaration.
+  function relayFaultDrills() { relay('fault_drills'); }
   function relayAcknowledgements() { relay('acknowledgements'); }
   function relayHostKeys() { relay('host_keys'); }
   // What else moves a Needs attention row (attention.SOURCE_KEYS, the operator,
@@ -1555,6 +1557,7 @@
     NMAS.subscribe('goldens', 'v2Goldens', relayGoldens);
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
+    NMAS.subscribe('fault_drills', 'v2FaultDrills', relayFaultDrills);
     NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
     NMAS.subscribe('host_keys', 'v2HostKeys', relayHostKeys);
     NMAS.subscribe('approvals', 'v2Approvals', relayApprovals);

@@ -290,7 +290,13 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
     key = VARIANT_KEY.get(variant, "")
     unit = {"kind": kind, "tier": tier, "id": f"{kind}:{peer}",
             "words": f"a {variant} clear of {device}'s BGP neighbour {peer}"}
+    # A declared fault drill (the tag its incident took at creation): guard 9 does not apply,
+    # and the decision carries the tag, so its clear is counted as a drill's.
+    from modules import fault_drills
+    from modules.heal import incidents
+    drill = incidents.drill_of(network, incident_id, device)
     base = {"incident": incident_id, "device": device, "mode": mode.get("mode"),
+            **({fault_drills.FIELD: drill} if drill else {}),
             "policy": {"fingerprint": mode.get("fingerprint"),
                        "by": (mode.get("confirmed") or {}).get("by"),
                        "reason": (mode.get("confirmed") or {}).get("reason")},
@@ -340,7 +346,7 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
         return stop(guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a "
                                              "rate that cannot be counted holds", {}))
     for g in (guards.g9_device_rate(rows, device, counted, now,
-                                    value(mode, "heal_max_per_device_hour")),
+                                    value(mode, "heal_max_per_device_hour"), drill=drill),
               guards.g10_network_rate(rows, network, counted, now,
                                       value(mode, "heal_max_per_network_hour"))):
         if g:

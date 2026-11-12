@@ -32,7 +32,13 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `c5934949831ac771dec940997d03f4533f00c2d1078d7ebe01bc8287a43fb728`
+Hashed again 2026-11-11 for declared fault drills (the operator's decision of that day):
+`_history_timeline.html`'s region also re-reads on `fault_drills` (a declaration made), so a
+new "Fault drill declared" row appears without a reload; the kind filter gains "Fault drills
+declared" under What happened to a device, from the server's table. Nothing drawn moved;
+compared by the template diff, not a new shot. Templates sha256 before:
+`c5934949831ac771dec940997d03f4533f00c2d1078d7ebe01bc8287a43fb728`.
+Templates sha256: `17c280b27676405a0eadaf22ce50beade84c016f426993005c8f47086009e187`
 
 Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10: "The
 History record's Device column says 'fleet' instead of the switch", "the History 'What' column

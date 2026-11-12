@@ -804,6 +804,36 @@ def restart_windows(ctx):
     return _out(events)
 
 
+def fault_drills(ctx):
+    """Each fault drill declared on a device of the network (modules/fault_drills.py; the
+    operator's decision, 2026-11-11): who, the device, the fault expected and until when. A
+    declaration silences, holds and explains nothing; its incident's own row says it was a
+    drill."""
+    from modules import fault_drills as FD
+    from modules.redact import redact_text
+
+    try:
+        rows = FD.declared(ctx["ref"].name)
+    except RuntimeError as exc:
+        return _out(errors=[str(exc)])
+    events = []
+    for r in rows:
+        if not _mine(ctx, r.get("device") or "") or not _recent(ctx, r.get("from")):
+            continue
+        expects = redact_text(r.get("expects") or "")
+        events.append(_event(r.get("from"), "fault_drill",
+                             f"Fault drill declared on {r.get('device')}: {expects}",
+                             [r.get("device") or ""], who=r.get("by", ""),
+                             detail=redact_text(r.get("reason") or ""),
+                             record=[("Declaration", r.get("id")), ("From", iso(r.get("from"))),
+                                     ("Until", iso(r.get("until"))), ("Expects", expects),
+                                     ("Script", redact_text(r.get("script") or "")),
+                                     ("Via", r.get("via"))]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events)
+
+
 #: A save's line (the device's own save, C362): its own words, never a rotation's.
 SAVE_WORDS = {"persisted": "Persisted: the startup config carries the running credential",
               "saved_not_persisted": "Saved: the startup config does NOT carry a running "
@@ -2409,9 +2439,14 @@ def heal(ctx):
         # and a record written before the words were kept, as before.
         plain = (e.get("headline") if e.get("state") == "decided" and outcome in (
             "would_heal", "propose", "cant_fix", "heal") else "")
+        # A declared fault drill's incident (its tag at creation) says so on its line, and its
+        # declaration in the record (the operator, 2026-11-11: counted as a drill, never real).
+        from modules import fault_drills
+        drill = fault_drills.tag_of(e)
         events.append(_event(
-            e["at"], "heal", (m(plain) if plain else
-                              f"Self-healing ({mode}): {steplog.subject(e)} {mark}"), [host] + far,
+            e["at"], "heal", ("Fault drill: " if drill else "") + (
+                m(plain) if plain else
+                f"Self-healing ({mode}): {steplog.subject(e)} {mark}"), [host] + far,
             # C2808: a decision self-healing made is Mercury's, under the network's policy, and
             # never drawn as the policy's confirmer's own act; a person who ran the act (an
             # approved proposal's) is named as themself.
@@ -2423,6 +2458,10 @@ def heal(ctx):
             marks=[mark, mode] + (["halted"] if e.get("halted") else [])
             + (["applying"] if e["state"] == "applying" else []),
             record=[("Incident", e["incident"]), ("Decisions", ", ".join(e["decisions"])),
+                    ("Fault drill", (f"{drill['id']}, declared by "
+                                     f"{short_who(drill['declared_by'])}: "
+                                     f"{m(drill['expects'])}, until {iso(drill['until'])}"
+                                     if drill else "")),
                     ("Mode", mode), ("Fix", e.get("kind")),
                     ("Policy", (f"{pol.get('fingerprint')} confirmed by {pol.get('by')}"
                                 if pol.get("fingerprint") else "")),
@@ -2838,7 +2877,8 @@ def host_keys(ctx):
 SOURCES = {
     "golden": golden, "intent": intent, "measured": measured, "commits": fleet_commits,
     "decisions": decisions, "receipts": receipts, "restarts": restarts,
-    "restart_windows": restart_windows, "rotation": rotation, "retries": retries,
+    "restart_windows": restart_windows, "fault_drills": fault_drills, "rotation": rotation,
+    "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
@@ -2872,7 +2912,8 @@ KIND_GROUPS = (
                               ("heal", "Self-healing", ("heal",)),
                               ("diagnoses", "Diagnoses", ("diagnosis",)))),
     ("What happened to a device", (("restarts", "Restarts", ("restart",)),
-                                   ("windows", "Planned windows", ("window",)))),
+                                   ("windows", "Planned windows", ("window",)),
+                                   ("fault_drills", "Fault drills declared", ("fault_drill",)))),
     ("Decisions and records", (("approvals", "Approvals", ("approval",)),
                                ("acknowledged", "Acknowledgements", ("acknowledged",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
@@ -2996,8 +3037,8 @@ def _from_reuse(events: list, device: str, reused: dict) -> list:
 SOURCE_KINDS = {
     "golden": ("golden",), "intent": ("intent",), "measured": ("measured",),
     "commits": ("commit",), "decisions": ("decision",), "receipts": ("receipt",),
-    "restarts": ("restart",), "restart_windows": ("window",), "rotation": ("rotation", "persist"),
-    "retries": ("retry",), "onboarding": ("onboarding",), "acknowledgements": ("acknowledged",),
+    "restarts": ("restart",), "restart_windows": ("window",), "fault_drills": ("fault_drill",),
+    "rotation": ("rotation", "persist"), "retries": ("retry",), "onboarding": ("onboarding",), "acknowledgements": ("acknowledged",),
     "breakglass": ("breakglass",), "interrupted": ("interrupted",), "approvals": ("approval",),
     "updates": ("update",), "show_commands": ("show_commands",), "privileged": ("privileged",),
     "reloads": ("reload",), "console_ztp": ("console",), "credential_profiles": ("credential",),

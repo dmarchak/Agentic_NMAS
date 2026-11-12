@@ -202,9 +202,14 @@ def read(network: str) -> dict:
 
 def _of(decision: dict) -> dict:
     """The fields every row names: the decision, its incident and device, its mode, policy."""
+    from modules import fault_drills
+
     pol = decision.get("policy") or {}
     a = decision.get("action") or {}
-    return {"decision": decision.get("id") or "", "incident": decision.get("incident") or "",
+    # A declared fault drill's decision (its incident's tag at creation): History says so.
+    drill = fault_drills.tag_of(decision)
+    return {**({fault_drills.FIELD: drill} if drill else {}),
+            "decision": decision.get("id") or "", "incident": decision.get("incident") or "",
             "device": decision.get("device") or "", "mode": decision.get("mode") or "",
             "kind": decision.get("kind") or "", "tier": decision.get("tier") or 0,
             "policy": {"fingerprint": pol.get("fingerprint") or "", "by": pol.get("by") or "",
@@ -352,6 +357,9 @@ def _fold(rows: list) -> list:
         for k in ("mode", "kind", "tier", "action"):
             if r.get(k):
                 e[k] = r[k]
+        from modules import fault_drills
+        if fault_drills.tag_of(r):
+            e[fault_drills.FIELD] = fault_drills.tag_of(r)
         if (r.get("policy") or {}).get("fingerprint"):
             e["policy"] = r["policy"]
         row = r.get("row")

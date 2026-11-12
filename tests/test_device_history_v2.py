@@ -131,6 +131,7 @@ class TestTheTab:
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', frag).group(1))
         # + rotation and device_state (C359): a persist and a rotation re-read History; +
         # inventory: a device marked drained or cleared (modules/drained.py); + reveals: a
-        # log line of the device revealed (C818).
-        assert keys == ["goldens", "deploy_job", "restarts", "acknowledgements", "rotation",
-                        "device_state", "inventory", "reveals"]
+        # log line of the device revealed (C818); + fault_drills: a fault drill declared on
+        # the device is a History row (C3142).
+        assert keys == ["goldens", "deploy_job", "restarts", "fault_drills", "acknowledgements",
+                        "rotation", "device_state", "inventory", "reveals"]

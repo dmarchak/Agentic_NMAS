@@ -540,6 +540,7 @@ HISTORY = {
     # C2003: a page's own stall, kept as a local record and drawn on History › Page stalls.
     "v2.stall_capture": ("page_stalls",),
     "restarts.planned": ("restart_windows",),
+    "device_v2.fault_drill_declare": ("fault_drills",),
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),

@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Declare a fault drill on one device BEFORE its fault is injected (the operator, 2026-11-11).
+
+    nmas-fault-drill <network> <device> --minutes 10 --expects "the EEM heartbeat applet removed"
+    nmas-fault-drill <network> <device> --minutes 10 --expects "..." --script "rehearsal F1"
+        --reason "tonight's rehearsal"
+
+An incident Mercury opens on the device before the drill's end (now plus --minutes, at most
+15) is tagged a fault drill when it opens, in the same write. Self-healing treats it exactly
+as a real fault, with one exemption, the operator's: guard 9 (the per-device rate) and guard
+11 (the same change healed twice in 24 hours) do not hold it, and its heal is counted as a
+drill's, never in the real figures. Every other guard (guard 10, the per-network rate,
+included), the verify, the rollback and the topology hold apply as to a real fault.
+
+The declaration silences nothing, holds nothing and sends nothing to the device. It is
+refused, naming both operands, when the device already has an incident open (a declaration
+after the fault never makes it a drill), when the device has a drill open already, when the
+bound is outside 1 to 15 minutes, and when the expected fault is under three words. It is
+recorded in the network's heal/fault_drills.jsonl (0600, append-only) as this host's login,
+labelled (`identity.host_actor`), through `fault_drills.record_declared`, the writer the
+device page's Declare a fault drill… calls. History draws it ("Fault drill declared"). No
+device is contacted.
+
+Exit 0: declared; 1: refused (named).
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("network", help="the network the device is in")
+    ap.add_argument("device", help="the device's hostname")
+    ap.add_argument("--minutes", type=int, default=10,
+                    help="how long the drill lasts, 1 to 15 (default 10)")
+    ap.add_argument("--expects", required=True,
+                    help="the fault, in three words or more")
+    ap.add_argument("--script", default="", help="the injecting script's name and step")
+    ap.add_argument("--reason", default="", help="why, optional")
+    args = ap.parse_args(argv)
+    from modules import fault_drills
+    from modules.identity import host_actor
+
+    out = fault_drills.record_declared(args.network, args.device, minutes=args.minutes,
+                                       expects=args.expects, by=host_actor(),
+                                       actor_verified="host-shell", via="nmas-fault-drill",
+                                       script=args.script, reason=args.reason)
+    if not out["ok"]:
+        print(f"refused: {out['error']}", file=sys.stderr)
+        return 1
+    r = out["record"]
+    print(f"declared: a fault drill on {r['device']} in {r['list']} from {r['from']} until "
+          f"{r['until']} ({r['id']}), by {r['by']}: {r['expects']}")
+    print(f"inject the fault now: an incident on {r['device']} that opens before {r['until']} "
+          "is a drill (guards 9 and 11 do not hold it; every other guard, the verify and the "
+          "rollback do), and its heal is counted as a drill's")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

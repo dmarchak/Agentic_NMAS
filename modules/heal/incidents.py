@@ -251,18 +251,31 @@ def _push(holder: dict, trigger: dict) -> None:
         holder["triggers"] = holder["triggers"][-TRIGGERS_KEPT:]
 
 
-def _new(network: str, device: str, trigger: dict, now: float) -> dict:
+def _drill(network: str, device: str, now: float, tag="look") -> dict:
+    """The fault-drill tag, at creation and in the same write (the operator's decision,
+    2026-11-11; `fault_drills.tag_for`): ``{"fault_drill": {...}}`` when *device* at *now* is
+    inside a declared, unexpired drill, else ``{}``. *tag* given (a member moved to an
+    incident of its own, or folded into another) is the record's own tag, carried: never
+    looked up again."""
+    from modules import fault_drills
+
+    if tag == "look":
+        tag = fault_drills.tag_for(network, device, now)
+    return {fault_drills.FIELD: tag} if tag else {}
+
+
+def _new(network: str, device: str, trigger: dict, now: float, tag="look") -> dict:
     return {"id": "hi-" + uuid.uuid4().hex[:12], "network": network, "device": device,
             "state": "watching",
             "cause": "change" if trigger["kind"] in CAUSE_KINDS else "symptom",
             "opened_at": _iso(now), "opened_epoch": now, "updated_at": _iso(now),
             "triggers": [], "triggers_seen": 0, "reads": [], "attached": [], "related": [],
-            "fold": {}, "settled": None}
+            "fold": {}, "settled": None, **_drill(network, device, now, tag)}
 
 
-def _member(device: str, trigger: dict, now: float, why: str) -> dict:
+def _member(network: str, device: str, trigger: dict, now: float, why: str) -> dict:
     return {"device": device, "attached_at": _iso(now), "why": why, "triggers": [trigger],
-            "triggers_seen": 1, "reads": []}
+            "triggers_seen": 1, "reads": [], **_drill(network, device, now)}
 
 
 def _cut(radius_of, device: str) -> tuple:
@@ -342,10 +355,14 @@ def _absorb(doc: dict, inc: dict, radius_of, now: float) -> list:
         reason = (f"{inc['device']} is the far end of its link" if linked else
                   f"{other['device']} is inside {inc['device']}'s blast radius ({why}), and "
                   f"{inc['device']} changed")
+        # A member keeps its own fault-drill tag: the one its incident took at creation.
+        from modules import fault_drills
+        tag = fault_drills.tag_of(other)
         m = {"device": other["device"], "attached_at": _iso(now), "why": reason,
              "triggers": list(other.get("triggers") or []),
              "triggers_seen": other.get("triggers_seen") or 0,
-             "reads": list(other.get("reads") or []), "from_incident": other["id"]}
+             "reads": list(other.get("reads") or []), "from_incident": other["id"],
+             **({fault_drills.FIELD: tag} if tag else {})}
         inc.setdefault("attached", []).append(m)
         inc["attached"].extend(other.get("attached") or [])
         other.update(state="closed", closed_at=_iso(now), updated_at=_iso(now),
@@ -439,22 +456,29 @@ def sight(network: str, device: str, trigger: dict, *, now: float = None,
                         "words": f"{device} is attached to {inc['id']} ({inc['device']})"}
             if inc.get("cause") != "change" and inc.get("state") == "watching":
                 # The member changed; the device it was attached to only showed a symptom.
+                # Each keeps the fault-drill tag its device took at creation: the incident
+                # now the member's device carries the member's, the old device its own.
+                from modules import fault_drills
+                was, own = fault_drills.tag_of(inc), fault_drills.tag_of(member)
                 old = {"device": inc["device"], "attached_at": _iso(now),
                        "why": f"{device} changed, and this device only showed a symptom",
                        "triggers": inc.get("triggers") or [],
                        "triggers_seen": inc.get("triggers_seen") or 0,
-                       "reads": inc.get("reads") or []}
+                       "reads": inc.get("reads") or [], **_drill(network, "", now, was)}
                 inc["attached"] = [m for m in inc["attached"] if m is not member] + [old]
+                inc.pop(fault_drills.FIELD, None)
                 inc.update(device=device, cause="change", reads=member.get("reads") or [],
                            triggers=member.get("triggers") or [],
                            triggers_seen=member.get("triggers_seen") or 0,
-                           updated_at=_iso(now))
+                           updated_at=_iso(now), **_drill(network, "", now, own))
                 _push(inc, trigger)
                 _absorb(doc, inc, radius_of, now)
                 return {"action": "promoted", "incident": inc["id"],
                         "words": f"{device} changed, so it is {inc['id']}'s device now"}
             inc["attached"] = [m for m in inc["attached"] if m is not member]
-            new = _new(network, device, trigger, now)
+            # The member's own tag, from when it was attached: never looked up again.
+            from modules import fault_drills
+            new = _new(network, device, trigger, now, tag=fault_drills.tag_of(member))
             new["reads"] = member.get("reads") or []
             new["triggers"] = member.get("triggers") or []
             new["triggers_seen"] = member.get("triggers_seen") or 0
@@ -469,7 +493,8 @@ def sight(network: str, device: str, trigger: dict, *, now: float = None,
         if not cause:
             target, why = _fold_target(doc, device, trigger, radius_of, now)
             if target is not None:
-                target.setdefault("attached", []).append(_member(device, trigger, now, why))
+                target.setdefault("attached", []).append(_member(network, device, trigger, now,
+                                                                 why))
                 target["updated_at"] = _iso(now)
                 return {"action": "attached", "incident": target["id"],
                         "words": f"{device} is attached to {target['id']} ({target['device']}): "
@@ -667,6 +692,22 @@ def take_standing(network: str, incident_id: str, *, by: str, now: float = None)
         return inc
 
     return _mutate(network, change)
+
+
+def drill_of(network: str, incident_id: str, device: str = ""):
+    """The fault-drill tag incident *incident_id* took at its creation (`fault_drills.tag_of`),
+    or None: for the guards' callers that hold an incident's id, not its record (a bounce, a
+    session clear). *device* an attached member of it: the member's own tag. An incident not
+    found, or a store that cannot be read, is real: every guard applies to it."""
+    from modules import fault_drills
+
+    got = read(network)
+    inc = next((i for i in got["incidents"] if i.get("id") == incident_id), None)
+    if not inc:
+        return None
+    member = next((m for m in inc.get("attached") or [] if device and m.get("device") == device
+                   and inc.get("device") != device), None)
+    return fault_drills.tag_of(member if member is not None else inc)
 
 
 def standing_of(network: str, device: str) -> dict:

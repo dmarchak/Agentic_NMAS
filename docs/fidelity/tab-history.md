@@ -20,7 +20,12 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `53a8b6f37937d8cddee580ff3b58e06d8c06ee1aca170e39e89459561bfb98e7`
+Hashed again 2026-11-11 for declared fault drills (the operator's decision of that day):
+`_history.html`'s region also re-reads on `fault_drills` (a declaration made on the device),
+so its "Fault drill declared" row appears without a reload. Nothing drawn moved; compared by
+the template diff, not a new shot. Templates sha256 before:
+`53a8b6f37937d8cddee580ff3b58e06d8c06ee1aca170e39e89459561bfb98e7`.
+Templates sha256: `a894d63f0920c85fb2e9ee2b546e38f8761497d684066ad67653c205173d10d4`
 
 Compared again 2026-11-11 (the operator's sitting on the lab's hardware, 2026-11-10), by the
 template diff: the region and its reading are history.md's of the same date (one template,
