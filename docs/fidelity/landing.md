@@ -35,7 +35,24 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `f073f50f12f58170494dcc643d68a952868ed410565a443d18e457760ce5132e`
+Templates sha256: `f114ddb32c319e579cff6762a8c98aef947387c6b254d94fcfe7c2633727f28b`
+
+**Hashed again 2026-11-11 for a lost stream's severity** (C2970; the operator, 2026-11-10:
+"Severity follows impact on service, not 'something broke'… Fix it in the provisioned Grafana
+alert rule (its severity label), not by overriding it in Mercury's display"; 2026-11-11:
+"Approved, for the video: C2970, telemetry loss is a WARNING while the device answers (escalate
+only by folding). Build and gate it."). `_attention.html` gains two lines under a lost stream's
+lead sentence, whether its device answers (`fx.answers`, amber when the reading cannot say or
+the device missed its last probes) and, one line, what Mercury cannot see until the stream is
+back (`fx.unseen`); and one block after What to do, drawn only on the row lost streams on
+several devices make: "N devices under this item", each device's own row inside it, closed,
+drawn by the same row markup (the row loop is `recursive`). The level's badge and section are
+the ones compared: a lost stream's row is now in Warning, by its rule's label. No other row
+moves. Board NA-R draws no row inside a row: **deviation**, logged in STANDING_APPROVAL_LOG
+("Landing: lost streams on several devices are one Warning row with each device's row under
+it"). Compared by the template diff and the rows tests/test_lost_stream_severity.py draws, not
+a new shot. Templates sha256 before:
+`f073f50f12f58170494dcc643d68a952868ed410565a443d18e457760ce5132e`.
 
 **Hashed again 2026-11-11 for recorded closes** (the operator, that day: "The seven host-step
 rows have no action, against our own rule. Add a recorded way to close one"; and for the

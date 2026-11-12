@@ -106,6 +106,18 @@ class TestTheRuleNamesItsDevice:
     def test_the_rendered_file_round_trips(self, doc):
         assert yaml.safe_load(T.render(doc)) == doc
 
+    def test_every_rule_is_labelled_a_warning_in_the_file_grafana_loads(self, doc):
+        """C2970 (the operator, 2026-11-10: "Fix it in the provisioned Grafana alert rule (its
+        severity label)"): a lost stream is visibility lost while its device answers. The
+        label is in the rendered file as the host step counts it, one per rule."""
+        rules = doc["groups"][0]["rules"]
+        assert T.SEVERITY == "warning"
+        assert len(rules) == 8 and all(r["labels"].get("severity") == "warning" for r in rules)
+        loaded = yaml.safe_load(T.render(doc))["groups"][0]["rules"]
+        assert [r["labels"].get("severity") for r in loaded] == ["warning"] * 8
+        import re
+        assert len(re.findall(r"(?m)^ +severity: warning$", T.render(doc))) == 8
+
 
 class TestRefusalsAndTheCheck:
     def test_an_empty_population_is_refused(self):

@@ -515,15 +515,46 @@ fingerprint and where its device came from, and a silence for its id and what it
 device's own page says the same in its Alerts check, in amber: "held: edge1 is restarting as
 planned …".
 
-A row whose every alert is a lost telemetry stream of one device carries **Re-subscribe
+A device's lost telemetry streams are always a row of their own, whatever began beside them.
+The row carries **Re-subscribe
 <device>'s telemetry (<ids>)…**, which opens the row to its card: what will be true afterwards,
 each subscription ticked, the exact program, a reason and the button
 ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). A device that two networks
 name is not offered it, and the row says so.
 
+### How critical an alert's row is {#alert-severity}
+
+An alert's row takes its level from its rule's own `severity` label in Grafana: `critical` is
+Critical, `warning` is Warning, and an alert whose rule is labelled `info` is a record, said
+under *What was checked* and never a row. A rule with no severity label is Critical, as every
+alert was before the label was read, so a new rule never arrives quieter; a label with any
+other value is Critical too, and the row's **Details for the record** name the value. A row
+of several alerts takes the worst of them. The level is the rule's: to change it, change the
+label on the rule.
+
+Mercury's own lost-stream rules are labelled `warning`: a lost stream is visibility lost
+while the device still answers. Critical is an outage, something down or unreachable for its
+users, so a lost stream is Critical in one case only: **its device is not answering.**
+Whether it answers is Mercury's reachability reading (a probe of each device every 5 seconds,
+taken as current for 150 seconds). A device counted as not answering has its lost streams
+drawn inside its not-answering row, as "Also: …", never as a second row.
+
+**Several devices that lost their streams together** are one row, not a row each: lost streams
+on three or more devices that began within 150 seconds of each other (or on every streaming
+device, when there are two) are one Warning, "3 devices stopped streaming telemetry together
+(edge1, edge2, edge3)". What they share is the collector, the path to it, its scrape, or one
+change made to all of them; a collector losing every stream is a monitoring gap, not an
+outage. Each device's own row is under it, closed, still offering its Re-subscribe. A device
+not answering is not counted: it is on its not-answering row.
+
+When the reachability reading cannot say whether the device answers (it could not be read,
+it is older than 150 seconds, or it holds no device of that name), the row stays a Warning
+and its title says so: "edge1: 2 telemetry streams lost (101, 102) (not known whether edge1
+answers)".
+
 ### A lost telemetry stream, opened {#a-lost-telemetry-stream}
 
-Opened, a lost telemetry stream's row says four things first, above What to do. Each is written
+Opened, a lost telemetry stream's row says six things first, above What to do. Each is written
 by Mercury's code from its own records, with no AI:
 
 - **How long, and what it costs:** "edge1 has sent no telemetry to the collector for 37 hours.
@@ -532,6 +563,15 @@ by Mercury's code from its own records, with no AI:
   telemetry" only when every lost-stream rule Grafana holds for the device is firing;
   otherwise it names the subscriptions that sent nothing. When the reading of Grafana's alerts
   is older than its promise, the sentence says so and speaks of then, not now.
+- **Whether the device answers:** "edge1 answers Mercury's reachability probe (ICMP, then TCP
+  22): it is reachable, and its telemetry is not arriving." This is why the row is a Warning
+  ([How critical an alert's row is](#alert-severity)). A device that missed its last probes
+  and is not yet counted as not answering is said with its count, in amber; a reading that
+  cannot say is "Not known whether edge1 answers: …", naming why, in amber.
+- **What Mercury cannot see until it is back:** one line naming edge1's telemetry-only panels
+  on its Monitoring tab, its Telemetry column on Monitoring › Coverage and its Telemetry
+  rates in History. Self-healing reads the stream only to say it is back (Re-subscribe's
+  Verify and the diagnosis); nothing else it checks reads it.
 - **Seen before on edge1 (when):** drawn only when a past loss on the same device matches:
   when it began and cleared, how it ended, and how long that held before telemetry was lost
   again, with **Open that incident** (Monitoring › Alerts › History, for that device). The

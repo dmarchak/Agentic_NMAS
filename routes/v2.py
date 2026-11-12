@@ -133,7 +133,9 @@ def _attention() -> dict:
     from modules import in_flight
     from routes.operations import viewer_key
     try:
-        in_flight.mark_held(a.get("rows") or [], viewer_key())
+        # With the rows folded under one (C2970's collector row): each still offers its action.
+        in_flight.mark_held([x for r in a.get("rows") or []
+                             for x in [r] + (r.get("folded") or [])], viewer_key())
     except Exception as exc:                          # noqa: BLE001 (the server still refuses)
         log.warning("v2: which rows' devices are held could not be read: %s", exc)
     return a

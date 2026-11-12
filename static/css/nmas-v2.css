@@ -684,7 +684,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-fix p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .att-fix .fix-lead { font-size: 14px; }
 .att-fix .fix-next { color: var(--ink-2); }
-.att-todo h3, .att-det h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+/* C2970: the items folded under one (lost streams on several devices under the collector's),
+   each its own closed item with its own level. */
+.att-folded { display: flex; flex-direction: column; gap: 6px; }
+.att-todo h3, .att-det h3, .att-folded h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-3); font-weight: 600; }
 @media (max-width: 700px) {
   .att-line { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }

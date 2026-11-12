@@ -98,6 +98,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C2323: the telemetry rules regenerated with their real detection time and
             # installed, Grafana restarted, every live rule as before (2026-11-03).
             "c2323-telemetry-detect.sh",
+            # C2970: the telemetry rules regenerated with `severity: warning` and installed,
+            # Grafana restarted, every live rule as before (2026-11-11).
+            "c2970-telemetry-severity.sh",
             # P6: on the controller host, the apply script installed, the unit moved to
             # User=ryu, and only then /opt/ryu-apps handed to the deploy account (C2; S3 step 1).
             "p6-controller-apply-install.sh",

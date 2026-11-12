@@ -106,6 +106,9 @@ def _present(result: dict) -> dict:
                 out.setdefault(a["id"], dict(a, level=r.get("level"), kind=a.get("kind", ""),
                                              devices=a.get("devices") or [],
                                              clears_at=None))
+        # A row folded under this one whole (C2970's collector row) is present, as itself.
+        for f in r.get("folded") or []:
+            out.setdefault(f["id"], f)
     return out
 
 

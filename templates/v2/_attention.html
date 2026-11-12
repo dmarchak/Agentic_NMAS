@@ -73,7 +73,7 @@
     {%- if group %}
     <details class="att-grp att-grp-{{ level }}" data-keep="att-grp-{{ level }}"{% if level != 'danger' %} data-remember="att-grp-{{ level }}"{% endif %} open>
       <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ group|length }}</summary>
-    {%- for r in group %}
+    {%- for r in group recursive %}
     {%- set nets = r.networks or {} %}
     <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}">
       <summary class="att-line">
@@ -98,6 +98,12 @@
       {%- set fx = r.fix %}
       <div class="att-fix">
         <p class="fix-lead">{{ fx.lead }}</p>
+        {#- C2970: a lost stream is a warning while its device answers. Whether it does is
+            the reachability reader's stored value (attention.device_answers), said here;
+            a reading that cannot say is said as that. Then, one line, what Mercury cannot
+            see while the stream is lost. -#}
+        {%- if fx.answers %}<p class="fix-answers{% if fx.answers.state != 'answers' %} warn-text{% endif %}">{{ fx.answers.words }}</p>{% endif %}
+        {%- if fx.unseen %}<p class="fix-unseen small muted">{{ fx.unseen }}</p>{% endif %}
         {%- if fx.seen and fx.seen.state == 'match' %}
         {%- set s = fx.seen %}
         <p class="fix-seen"><strong>Seen before on {{ fx.device }} ({{ when(s.from) }} to {{ when(s.to) }}):</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ when(s.ended.at) }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ when(s.held.at) }}{% endif %}{{ s.held.tail }}{% endif %} <a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
@@ -233,6 +239,14 @@
       </div>
       {%- endif %}
       </div>
+      {#- C2970: the items folded under this one (lost streams on several devices are one
+          item about the collector), each drawn as itself, closed, with its own action. -#}
+      {%- if r.folded %}
+      <div class="att-folded">
+        <h3>{{ r.folded|length }} device{{ '' if r.folded|length == 1 else 's' }} under this item</h3>
+        {{ loop(r.folded) }}
+      </div>
+      {%- endif %}
       {#- Board NA-R: an item an alert backs offers the SAME kept Explain answer Monitoring
           shows, read when the item opens (never a call; Explain itself is a press, behind its
           cost); Mercury's own findings say why from the record, written by code. -#}

@@ -105,6 +105,8 @@ ROW_KINDS = {
     ("grafana", "incident"): ("an alert is firing", "check its path, or read the rule"),
     ("grafana", "series"): ("an alert is firing on one series",
                             "read the rule, or acknowledge a chronic one within its band"),
+    ("grafana", "collector"): ("several devices stopped streaming telemetry together",
+                               "check the collector, then re-subscribe each device"),
     ("grafana", "rule"): ("a rule reads no data or cannot evaluate", "read its query in Grafana"),
     ("grafana", "heartbeat-floor"): ("a device has no heartbeat rule Grafana shows",
                                      "regenerate the rules, then check the reader's role"),
@@ -484,6 +486,9 @@ CLEARS = {
                             "naming the band and the value, when the value leaves the band, "
                             "and when the series fires again after the acknowledgement, "
                             "unless it named a planned quiet period not yet over (C2316)"),
+    ("grafana", "collector"): (("resolves",), "the streams arrive again and their alerts stop "
+                               "firing in Grafana; while fewer devices than the rule counts "
+                               "are still lost, each is an item of its own"),
     ("grafana", "rule"): (("resolves",), "the rule reads data and evaluates again"),
     ("grafana", "heartbeat-floor"): (("resolves",), "Grafana shows a heartbeat rule for the "
                                      "device"),
@@ -2609,14 +2614,253 @@ def silence_words(silences: list) -> str:
     return "; ".join(parts)
 
 
-def grafana_source(cached=None, configuration: dict = None) -> dict:
+# ── C2970: a rule's severity, and a lost stream's two folds ─────────────────────────────────
+
+#: The label a Grafana rule states its severity in, and the level each value is drawn at
+#: (C2970; the operator, 2026-11-10: "Severity follows impact on service, not 'something
+#: broke'… Fix it in the provisioned Grafana alert rule (its severity label), not by
+#: overriding it in Mercury's display"). `info` is a record: there is no information level
+#: (`LEVELS`), so its alert is said under What was checked, never a row. A rule with no label
+#: keeps the level every alert had before the label was read, critical, so a new rule never
+#: arrives quieter; a value outside these is said and drawn critical, never guessed.
+SEVERITY_LABEL = "severity"
+SEVERITY_LEVELS = {"critical": "danger", "warning": "warning"}
+SEVERITY_INFO = "info"
+
+#: Lost streams on this many devices not counted as not answering, begun within
+#: `COLLECTOR_WINDOW_SECONDS`, are ONE row about what they share, the collector (C2970), at
+#: the level of its worst folded row: a Warning while their rules carry the label. A
+#: collector losing every stream is a monitoring gap, not an outage (the operator,
+#: 2026-11-11: critical is "an outage (something down or unreachable for users)", and "a
+#: monitoring gap never pages anyone"). Three is "several"; the one event of the kind in the
+#: captures fired on
+#: four devices (tests/fixtures/grafana/alert_history/annotations_firing.json,
+#: 2026-10-21T02:00:50Z: eight lost-stream alerts, two each on four routers, in one
+#: evaluation, all normal again at 02:02:50Z). Two count when they are every device Grafana
+#: holds a lost-stream rule for (the severity review of 2026-11-10: "when every stream stops
+#: at once").
+COLLECTOR_DEVICES = 3
+#: 2.5 times the lost-stream rules' evaluation interval (60 s, the group's in
+#: scripts/nmas-telemetry-rules): one event at the collector is noticed by every rule on one
+#: evaluation or the next (measured: that capture's eight alerts began 0 s apart). NOT
+#: measured: how far apart they begin when the collector keeps running and only its sessions
+#: drop, each series expiring from its own last sample (C2323's exporter expiration).
+COLLECTOR_WINDOW_SECONDS = 150
+
+#: The reading that says a device answers: the reachability reader's stored value
+#: (modules/readers/reachability.py: ICMP, then TCP 22, each cycle; "answering" is fewer
+#: consecutive misses than the device's threshold).
+REACHABILITY_READER = "reachability"
+#: The id of the row a device not answering is on (`reachability_source`).
+NOT_ANSWERING_ROW = "reachability:not-answering"
+
+
+def rule_level(labels: dict) -> tuple:
+    """``(level, why)`` of an alerting condition, from its RULE's own labels (C2970): *level*
+    is ``danger``, ``warning`` or ``""`` (labelled info: a record, not a row); *why* is the
+    comparison in words, for the row's record."""
+    value = (labels or {}).get(SEVERITY_LABEL)
+    if value is None or str(value) == "":
+        return "danger", "no severity label on its rule in Grafana, so critical"
+    value = str(value)
+    if value == SEVERITY_INFO:
+        return "", "its rule is labelled severity info in Grafana"
+    if value in SEVERITY_LEVELS:
+        return SEVERITY_LEVELS[value], f"its rule is labelled severity {value} in Grafana"
+    return "danger", (f"its rule's severity label in Grafana is {value!r}, which is not "
+                      "critical, warning or info, so critical")
+
+
+def group_level(members: list, levels: list) -> tuple:
+    """``(level, said)`` of one row's *members*, *levels* their rules' `rule_level` answers in
+    the same order: the worst among the members whose condition holds (a no-data or error
+    member decides nothing), ``unknown`` when none does; *said* names each distinct answer
+    with its rules, or ``""``."""
+    held = [(m, lv) for m, lv in zip(members, levels)
+            if m.get("kind") == "condition" and lv[0]]
+    if not held:
+        return "unknown", ""
+    level = min((lv[0] for _m, lv in held), key=LEVELS.index)
+    by_why = {}
+    for m, (_level, why) in held:
+        by_why.setdefault(why, set()).add(str(m.get("rule") or "an unnamed rule"))
+    if len(held) == 1:
+        return level, held[0][1][1]
+    return level, "; ".join(
+        f"{why}: {', '.join(sorted(rules)[:3])}"
+        + (f" and {len(rules) - 3} more" if len(rules) > 3 else "")
+        for why, rules in by_why.items())
+
+
+def device_answers(device: str, got: dict, now: float, by_name: dict = None) -> dict:
+    """Whether *device* answers, from the reachability reader's stored value (*got*,
+    `reader_job.read_cached`'s answer), judged at *now*: ``{"state", "words", "record"}``.
+    *state* is ``answers``; ``missed`` (answering by the reader's threshold, its last probes
+    missed); ``down`` (counted as not answering); or ``unknown``: the reading absent or
+    unreadable, older than its own promise, holding no device of the name, or two networks'
+    devices of one name disagreeing. Never a guess: an unread reading is not "answers".
+    *by_name* is the reading's devices by hostname, for a caller asking about many (one pass
+    over the reading, never one per device asked)."""
+    doc = (got or {}).get("doc") or {}
+    good = doc.get("last_good") or {}
+
+    def unknown(why: str) -> dict:
+        return {"state": "unknown", "record": why,
+                "words": (f"Not known whether {device} answers: {why}. If {device} is down, "
+                          "this item does not say so.")}
+
+    if (got or {}).get("state") != "ok" or not good:
+        return unknown("Mercury's reachability reading could not be read ("
+                       + str((got or {}).get("why") or "no value stored yet") + ")")
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if value_at is None:
+        return unknown("Mercury's reachability reading carries no time")
+    if promise and now - value_at > promise:
+        return unknown(f"Mercury's reachability reading is {_span_words(now - value_at)} old, "
+                       f"past its promise of {_span_words(promise)}")
+    found = (by_name.get(device) or [] if by_name is not None else
+             [d for d in ((good.get("value") or {}).get("devices") or {}).values()
+              if d.get("hostname") == device])
+    if not found:
+        return unknown(f"Mercury's reachability reading holds no device named {device}")
+    states = {bool(d.get("answering")) for d in found}
+    if len(states) > 1:
+        return unknown(f"{len(found)} devices named {device} are probed, in different "
+                       "networks, and not all of them answer")
+    d = max(found, key=lambda x: int(x.get("consecutive_misses") or 0))
+    misses, threshold = int(d.get("consecutive_misses") or 0), d.get("threshold")
+    record = (f"the reachability reading of {good.get('value_at')}: {device} "
+              f"({d.get('address')}) {'answering' if d.get('answering') else 'not answering'}, "
+              f"{misses} consecutive miss(es), not answering at {threshold}")
+    if not d.get("answering"):
+        return {"state": "down", "record": record,
+                "words": (f"{device} is not answering Mercury's reachability probe ({misses} "
+                          "consecutive misses), so its telemetry is lost with it.")}
+    if misses:
+        return {"state": "missed", "record": record,
+                "words": (f"{device} missed Mercury's last {misses} reachability "
+                          f"probe{'' if misses == 1 else 's'}; it is counted as not answering "
+                          f"at {threshold}. If it stops answering, this becomes part of its "
+                          "not-answering item.")}
+    return {"state": "answers", "record": record,
+            "words": (f"{device} answers Mercury's reachability probe (ICMP, then TCP 22): "
+                      "it is reachable, and its telemetry is not arriving.")}
+
+
+def stream_unseen(device: str) -> str:
+    """What Mercury cannot see while *device*'s stream is lost, one line (C2970), named from
+    what reads a telemetry series: the device page's telemetry-only panels
+    (`device_page`, `panels.telemetry_only`), Monitoring › Coverage's Telemetry column
+    (`readers/coverage_reporting.telemetry`) and History's Telemetry rates
+    (`history_query`). Self-healing reads the stream only to say it is back: Re-subscribe's
+    Verify (`heal/resubscribe._stream_check`) and the diagnosis's stream check
+    (`heal/diagnose_stream.series_of`); no detection rule, topology, restart or drained read
+    takes a telemetry series (they read SNMP's)."""
+    return (f"Until it is back, Mercury cannot see what this stream carries: {device}'s "
+            "telemetry-only panels on its Monitoring tab, its Telemetry column on Monitoring "
+            "› Coverage and its Telemetry rates in History. Self-healing reads the stream "
+            "only to say it is back (Re-subscribe's Verify and the diagnosis).")
+
+
+def _collector_words(units: list, every: bool) -> dict:
+    """The ONE row lost streams on several devices make (C2970), as `grafana_source`'s
+    ``add`` takes it: about what the devices share, at the worst level of the rows folded
+    under it (a Warning when their rules carry the label; a rule with none keeps today's
+    level), each device's own row under it (``folded``), collapsed, still offering its
+    action. *units* are ``(onset,
+    device, row)``, begun within `COLLECTOR_WINDOW_SECONDS`."""
+    devices = sorted({d for _o, d, _r in units})
+    first = min(o for o, _d, _r in units)
+    names = ", ".join(devices[:3]) + (f" and {len(devices) - 3} more" if len(devices) > 3
+                                      else "")
+    return dict(
+        level=min((r["level"] for _o, _d, r in units), key=LEVELS.index),
+        devices=devices, since=first,
+        what=f"{len(devices)} devices stopped streaming telemetry together ({names})",
+        cause=(f"lost-stream alerts began on {len(devices)} devices within "
+               f"{COLLECTOR_WINDOW_SECONDS} s of each other, and none of them is counted "
+               "as not answering. What they share is the collector (its listener and the "
+               "sessions it holds), the path to it, its scrape, or one change made to "
+               "all of them; the alerts cannot say which"),
+        action={"label": "Check the collector first: whether it is listening and holds "
+                         "these devices' sessions (Mercury's diagnosis, on each device "
+                         "below, reads both where the collector is Mercury's own host). "
+                         "Re-subscribe a device once the collector answers"},
+        operands={"devices_lost": len(devices),
+                  "window_seconds": COLLECTOR_WINDOW_SECONDS,
+                  "rule": (f"every device Grafana holds a lost-stream rule for ({len(devices)})"
+                           if every and len(devices) < COLLECTOR_DEVICES else
+                           f"{COLLECTOR_DEVICES} or more devices") + " within the window"})
+
+
+def _stream_rows(rows: list, units: list, reach: dict, now: float, ruled: set) -> tuple:
+    """``(rows, collectors)`` after a lost stream's two folds (C2970): into its device's
+    not-answering row, the only way a labelled lost stream is ever critical, and into one row
+    about the collector, a Warning like its rows; *collectors* are ``[(units, every)]``, each one row for `_collector_words`
+    whose units' rows have left *rows*.
+    *units* are the lost-stream rows of one device each, ``(row, onset, silenced)``; *reach*
+    the reachability reader's stored value; *ruled* every device Grafana holds a lost-stream
+    rule for that nothing holds back.
+
+    Each row says whether its device answers (`device_answers`) and what Mercury cannot see
+    (`stream_unseen`). (a) A device counted as not answering: its row attaches to the
+    not-answering row (`_attach`), which keeps its own action. A reading that cannot say
+    marks the row's own title while the row is quieter than critical, so a warning never
+    stands on an answer nobody read. (b) Rows of devices not counted as down, not silenced,
+    begun within `COLLECTOR_WINDOW_SECONDS` of the first, on `COLLECTOR_DEVICES` devices or
+    on every ruled device when there are two: one row, theirs folded under it."""
+    live, down, by_name = [], set(), {}
+    for d in (((((reach or {}).get("doc") or {}).get("last_good") or {}).get("value") or {})
+              .get("devices") or {}).values():
+        by_name.setdefault(d.get("hostname"), []).append(d)
+    for r, onset, silenced in units:
+        device = r["fix"]["device"]
+        ans = device_answers(device, reach, now, by_name)
+        r["fix"]["answers"] = {"state": ans["state"], "words": ans["words"]}
+        r["fix"]["unseen"] = stream_unseen(device)
+        r["operands"]["device_answers"] = ans["record"]
+        if ans["state"] == "down":
+            r["attach_to"], r["attach_action"] = NOT_ANSWERING_ROW, False
+            down.add(device)
+            continue
+        if ans["state"] == "unknown" and r["level"] == "warning":
+            r["what"] += f" (not known whether {device} answers)"
+        if not silenced and onset is not None:
+            live.append((onset, device, r))
+    live.sort(key=lambda u: (u[0], u[1]))
+    clusters, current = [], []
+    for u in live:
+        if current and u[0] - current[0][0] > COLLECTOR_WINDOW_SECONDS:
+            clusters.append(current)
+            current = []
+        current.append(u)
+    if current:
+        clusters.append(current)
+    collectors = []
+    for cluster in clusters:
+        devices = {d for _o, d, _r in cluster}
+        every = len(devices) >= 2 and (set(ruled) - down) <= devices
+        if len(devices) < COLLECTOR_DEVICES and not every:
+            continue
+        folded = {id(u[2]) for u in cluster}
+        rows = [r for r in rows if id(r) not in folded]
+        collectors.append((sorted(cluster, key=lambda u: (u[1], u[0])), every))
+    return rows, collectors
+
+
+def grafana_source(cached=None, configuration: dict = None, reachability=None) -> dict:
     """Grafana's alert state, read from the reader's cache, NEVER from
     Grafana (rule 1 of modules/reader_job.py). The reader's own liveness is
     job health's row (`reader:grafana-alerts`), judged at request time.
 
     *configuration* (P.8 step 5) is another network's own Grafana: ``{"id", "lists"}``. Its
     source is named for it ("Grafana alerts (Branch)") and its rows are keyed apart, so two
-    Grafanas' rows never collide; Default's configuration is this source as it always was."""
+    Grafanas' rows never collide; Default's configuration is this source as it always was.
+
+    A condition's level is its RULE's severity label (C2970, `rule_level`); a lost telemetry
+    stream is critical only by folding (`_stream_rows`), which reads whether its device
+    answers from the reachability reader's stored value (*reachability*, tests; the cache
+    otherwise)."""
     from modules import reader_job
 
     src_name, src_label = "grafana", "Grafana alerts"
@@ -2664,6 +2908,12 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
     alerting = [dict(i) for i in v.get("instances") or [] if i.get("kind") != "pending"]
     for inst in alerting:
         inst["onset"], inst["onset_basis"] = _onset(inst)
+        # C2970: its RULE's own severity label, as the reader stored the rule.
+        inst["level"] = rule_level((rules_by_uid.get(inst.get("rule_uid")) or {}).get("labels"))
+    # A condition whose rule is labelled info is a record: said under What was checked.
+    recorded = [i for i in alerting if i.get("kind") == "condition" and not i["level"][0]]
+    raised = [i for i in alerting if not (i.get("kind") == "condition" and not i["level"][0])]
+    stream_units = []
     heartbeat_rules = {r.get("uid") for r in v.get("rules") or []
                        if (r.get("labels") or {}).get("nmas") == "heartbeat"}
     drained, drained_why = _drained_devices()
@@ -2704,10 +2954,20 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                                   f"{len(ms)} alert(s) on {d}: {rules}"))
         live = [p for p in keep if not p[1]["silences"]]
         quiet = [p for p in keep if p[1]["silences"]]
-        return [([p[0] for p in part], [p[1] for p in part], False)
-                for part in (live, quiet) if part]
+        # C2970: a device's lost telemetry streams are a row of their own, whatever began
+        # beside them, so the row carries its one action and either of its folds.
+        out = []
+        for part in (live, quiet):
+            streams, rest = {}, []
+            for p in part:
+                if p[1]["device"] and _TELEMETRY_RULE.search(str(p[1].get("rule") or "")):
+                    streams.setdefault(p[1]["device"], []).append(p)
+                else:
+                    rest.append(p)
+            out += [streams[d] for d in sorted(streams)] + ([rest] if rest else [])
+        return [([p[0] for p in part], [p[1] for p in part], False) for part in out]
 
-    for group, members, whole_pipeline in (p for g in _incidents(alerting)
+    for group, members, whole_pipeline in (p for g in _incidents(raised)
                                            for p in parts_of(g)):
         devices = sorted({m["device"] for m in members if m["device"]})
         first = group[0]
@@ -2756,9 +3016,11 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
             cause += ". " + "; ".join(
                 (", ".join(dict.fromkeys(names)) + ": " if len(members) > 1 else "")
                 + silence_words([s]) for s, names in covers.values())
-        level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
+        level, severity = group_level(members, [i["level"] for i in group])
         operands = {"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
                     "onset_basis": first["onset_basis"]}
+        if severity:
+            operands["severity"] = severity
         # The evidence gathered when it began (PHASE8_PLAN 15.9, P1), one click away: the
         # firing alert's card on Monitoring › Alerts, opened (the tab, for several). The
         # action's words are unchanged; the link is its "Open…".
@@ -2804,11 +3066,29 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
             operands=operands)
         if fix:
             rows[-1]["fix"] = fix
+            stream_units.append((rows[-1], first["onset"], bool(silenced)))
         # Board NA-R: the evidence packs of its alerts (`evidence_pack.alert_key`), so the
         # opened item draws the SAME kept Explain answer Monitoring shows (one cause, one
         # Explain: the first alert's pack).
         from modules import evidence_pack as _EP
         rows[-1]["packs"] = [_EP.pack_id(_EP.alert_key(i)) for i in group][:5]
+
+    if stream_units:
+        # C2970: a lost stream's two folds, from the reachability reader's stored value.
+        from modules.heal.diagnose_stream import TITLE
+        ruled = {m.group("device") for r in v.get("rules") or []
+                 for m in [TITLE.match(str(r.get("title") or "").strip())] if m}
+        kept, collectors = _stream_rows(
+            rows, stream_units,
+            reader_job.read_cached(REACHABILITY_READER) if reachability is None
+            else reachability, started,
+            {d for d in ruled if d not in drained and not planned_hold(d)})
+        rows[:] = kept
+        for units, every in collectors:
+            said = _collector_words(units, every)
+            add(f"collector:{_iso(said['since'])}", said.pop("what"), said.pop("cause"),
+                said.pop("action"), said.pop("level"), **said)
+            rows[-1]["folded"] = [u[2] for u in units]
 
     # A rule that cannot see its data, or cannot evaluate, with no alerting
     # instance saying so (C166, C168: rules sat in no-data for days).
@@ -2853,6 +3133,11 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                     + "; ".join(held) if held else "")
                  + ("; restarting as planned, not raised: " + "; ".join(held_planned)
                     if held_planned else "")
+                 + (f"; {len(recorded)} alert(s) whose rule is labelled severity info, a "
+                    "record and not raised: "
+                    + ", ".join(sorted({str(i.get("rule")) for i in recorded})[:5])
+                    + (" and more" if len({str(i.get("rule")) for i in recorded}) > 5 else "")
+                    if recorded else "")
                  + (f"; {drained_why}" if drained_why else "")
                  + (f"; {planned_why}" if planned_why else "")
                  + (f"; {inv_why}" if inv is None else "")))
@@ -7987,12 +8272,16 @@ def needs_attention(sources=None) -> dict:
     # C539 (3): every row shows the age of its reading. A row that names none is as old as
     # the value its source shows (a stored reader's value, or this request's live read).
     for res in results:
-        for r in res["rows"]:
+        # A row folded under another (C2970's collector row) is read as its parent was.
+        for r in [x for top in res["rows"] for x in [top] + (top.get("folded") or [])]:
             if not r.get("read_at"):
                 r["read_at"] = res.get("value_at") or res.get("read_at")
     rows = _with_networks(_attach(_fold_drift_into_heal(_fold_known_unmonitored(_fold_one_cause(
         [r for res in results for r in res["rows"]]
         + _past_promise_rows(results, time.time()))))))
+    for r in rows:
+        if r.get("folded"):
+            r["folded"] = _with_networks(r["folded"])
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)

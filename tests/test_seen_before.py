@@ -755,7 +755,11 @@ def rows_of(v, value_at=NOW, promise=None, src=None, streams=True):
         v["streams"] = SB.context(v, STORE, sources=src or Src())
     cached = {"state": "ok", "doc": {"stale_after_seconds": promise, "last_good": {
         "value_at": iso(value_at), "value": v}}}
-    return [r for r in attention.grafana_source(cached)["rows"] if r.get("fix")]
+    # C2970: the row reads whether its device answers from the reachability reader's stored
+    # value; here every router answers (the reader's own read, tests/test_lost_stream_severity.py).
+    from tests.test_lost_stream_severity import probed
+    return [r for r in attention.grafana_source(cached, reachability=probed())["rows"]
+            if r.get("fix")]
 
 
 def drawn(rows, nets=None) -> str:

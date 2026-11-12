@@ -17,7 +17,8 @@ series exists now, which would make a stopped stream its own excuse).
 
 **The rule**: ``count(last_over_time({device="<d>", subscription="<id>"}[90s]))``,
 NoData = Alerting (a stream that stopped yields no series), labelled
-``device`` and ``subscription``. 90 s is three scrapes of the ``telemetry_mdt``
+``device``, ``subscription`` and ``severity: warning`` (C2970: a lost stream is
+visibility lost while the device answers). 90 s is three scrapes of the ``telemetry_mdt``
 job (30 s, read from Prometheus's loaded config 2026-10-01), so one missed
 scrape never fires.
 
@@ -51,6 +52,13 @@ FOLDER = "NMAS"
 #: Three scrapes of the telemetry_mdt job (30 s, measured 2026-10-01).
 WINDOW_SECONDS = 90
 SUBSCRIPTION = re.compile(r"^telemetry ietf subscription (\d+)\s*$", re.M)
+#: Every lost-stream rule's `severity` label (C2970; the operator, 2026-11-10: "Severity follows
+#: impact on service, not 'something broke'… Fix it in the provisioned Grafana alert rule (its
+#: severity label), not by overriding it in Mercury's display"). A lost stream is visibility
+#: lost while its device still answers, so a warning; Needs attention reads the label
+#: (`attention.rule_level`) and escalates only by folding (into the device's not-answering
+#: row, or one row about the collector).
+SEVERITY = "warning"
 
 #: Where Telegraf reads its configuration (its own defaults), and its prometheus_client
 #: output's `expiration_interval` when the key is absent (Telegraf's documented "60s").
@@ -162,6 +170,7 @@ def rule_for(host: str, sub: str, datasource_uid: str, expiry=None) -> dict:
         # The real detection time (C2323), read from Telegraf's own configuration, for Needs
         # attention's words (`grafana_alerts.absence_words`); absent when it was not read.
         "labels": {"nmas": "telemetry", "device": host, "subscription": sub,
+                   "severity": SEVERITY,
                    **({"detect_seconds": str(expiry + WINDOW_SECONDS)}
                       if expiry is not None else {})},
         "annotations": {
