@@ -24,6 +24,18 @@ ends it read and its strength, and what was ruled out), never a value it compare
 configuration line; or that it did not finish within its bound, its result following on the
 same thread (the event ``diagnosis`` when the analysis was already final).
 
+**Local times and display names in the body** (the operator, 2026-11-12, Lab 10 objective 2:
+"Objective 2 (couldn't fix → notify an engineer with the steps taken): verify end to end with
+stand-ins that the can't-fix email lists the steps taken in plain words, with local times and
+display names, and links to the incident. Fix any gaps."). The records keep UTC; a body says
+every time in the installation's own zone, the time zone of the host Mercury runs on (Python's
+`time.localtime`, the reading `job_health` already draws by; no setting), its zone named ONCE,
+on the body's last line (`zone_line`); a time on the other side of a daylight-saving change
+says its own zone beside it. A time a recorded text holds ("at 14:02 UTC", an ISO stamp) is
+said locally too (`localised`). A person is named by display name (`display_names.people`),
+never by identity, in the text and the webhook's JSON alike: a message has no "identity as
+recorded" line, and the record keeps the identity.
+
 **The egress mask.** Everything a message carries, an email's subject and text and a
 webhook's whole JSON, goes through `redact.egress_payload` at its sender, the one place per
 channel (`relay.build`, `webhook.request`) (masked by
@@ -33,6 +45,7 @@ password, the webhook's signing secret): one found refuses the send, so nothing 
 one even where the redaction table could not be read (`carries_secret`).
 """
 
+import calendar
 import re
 import time
 
@@ -63,9 +76,10 @@ DIAGNOSIS_FIELDS = {"state": 20, "words": 400, "reads": 200, "hypotheses": 5,
                     "ruled_out": 20}
 DIAGNOSIS_HYPOTHESIS_FIELDS = {"claim": 300, "strength": 20}
 DIAGNOSIS_HYPOTHESES, DIAGNOSIS_RULED_OUT = 5, 20
-#: A step's *said* is what it does in words (`heal_notice.STEP_WORDS`), drawn in the text;
-#: *what* keeps its key, for the webhook's JSON.
-STEP_FIELDS = {"what": 200, "said": 240, "result": 200}
+#: A step's *said* is what it does in words (its operation's short label and its recorded
+#: words, `heal_notice.steps_said`), drawn in the text; *what* keeps its key, for the webhook's
+#: JSON; *at* is when it was recorded (ISO UTC, as kept), drawn in local time before it.
+STEP_FIELDS = {"what": 200, "said": 240, "result": 200, "at": 40}
 #: The AI analysis block's fields (H8) and each one's bound; its hypotheses at most
 #: `ANALYSIS_HYPOTHESES`, each `HYPOTHESIS_FIELDS`.
 ANALYSIS_FIELDS = {"state": 20, "words": 400, "label": 120, "score": 300, "rationale": 800,
@@ -114,7 +128,7 @@ def check_event(event: dict) -> dict:
         if not isinstance(s, dict) or set(s) - set(STEP_FIELDS):
             raise ValueError(f"a step carries only {', '.join(STEP_FIELDS)}")
         out["steps"].append({k: _line(s.get(k), b) for k, b in STEP_FIELDS.items()
-                             if k != "said" or s.get("said")})
+                             if k not in ("said", "at") or s.get(k)})
     return out
 
 
@@ -221,6 +235,76 @@ def carries_secret(data: bytes, held) -> bool:
     return any(v and v.encode("utf-8") in data for v in held)
 
 
+# ── Local times (the operator's order of 2026-11-12, objective 2: "with local times") ────────
+
+#: An ISO UTC stamp as the records keep it, and "HH:MM UTC" as recorded words say a time.
+_ISO = re.compile(r"(?<![\d-])(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z(?![\w])")
+_HHMM_UTC = re.compile(r"(?<![\d:])([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)? UTC\b")
+
+
+def epoch_of(iso) -> float:
+    """A record's ISO UTC time (``2026-11-12T14:02:07Z``) as epoch seconds, or None."""
+    try:
+        return float(calendar.timegm(time.strptime(str(iso or "")[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (ValueError, OverflowError):
+        return None
+
+
+def zone_name(epoch: float) -> str:
+    """The installation's zone at *epoch* (the host's own, `time.localtime`) as a person reads
+    it: its abbreviation and its offset from UTC ("IST (UTC+05:30)"), or "UTC"."""
+    t = time.localtime(float(epoch))
+    off = int(t.tm_gmtoff or 0)
+    name = t.tm_zone or ""
+    if off == 0 and name in ("UTC", "GMT", ""):
+        return "UTC"
+    sign, off = ("+", off) if off >= 0 else ("-", -off)
+    stated = f"UTC{sign}{off // 3600:02d}:{off % 3600 // 60:02d}"
+    return f"{name} ({stated})" if name and not name.startswith(("+", "-")) else stated
+
+
+def local(epoch: float, named: str, *, day: bool = True) -> str:
+    """*epoch* in the installation's zone, "2026-11-12 19:32" (or "19:32" without *day*); its
+    own zone beside it only when it is not *named*, the body's one zone (a time across a
+    daylight-saving change)."""
+    t = time.localtime(float(epoch))
+    said = time.strftime("%Y-%m-%d %H:%M" if day else "%H:%M", t)
+    own = zone_name(epoch)
+    return said if own == named else f"{said} {own}"
+
+
+def localised(words: str, ref: float, named: str) -> str:
+    """*words* with each time a record wrote in UTC said in the installation's zone: an ISO
+    stamp exactly, and an "HH:MM UTC" on the UTC day that puts it nearest *ref* (the record's
+    own time: the words were written then, so the day before, that day or the day after)."""
+    if not words:
+        return words or ""
+
+    def iso(m):
+        at = epoch_of(f"{m.group(1)}T{m.group(2)}:00Z")
+        return local(at, named) if at is not None else m.group(0)
+
+    def hhmm(m):
+        day = time.gmtime(ref)
+        base = calendar.timegm((day.tm_year, day.tm_mon, day.tm_mday, int(m.group(1)),
+                                int(m.group(2)), 0, 0, 0, 0))
+        at = min((base + d * 86400 for d in (-1, 0, 1)), key=lambda a: abs(a - ref))
+        return local(at, named, day=False)
+
+    return _HHMM_UTC.sub(hhmm, _ISO.sub(iso, words))
+
+
+def zone_line(named: str) -> str:
+    """The body's one line naming its zone."""
+    return f"Times are in {named}, the time zone of the host Mercury runs on."
+
+
+def _people(text: str) -> str:
+    """*text* with each person named by display name (`display_names.people`)."""
+    from modules import display_names
+    return display_names.people(text)
+
+
 def subject(facts: dict) -> str:
     """The subject line, unmasked: the sender masks it (`relay.build`)."""
     where = " on ".join(x for x in (facts.get("device"), facts.get("network")) if x)
@@ -229,53 +313,74 @@ def subject(facts: dict) -> str:
 
 def text(facts: dict, *, sent_at: float = None) -> str:
     """The message's text, facts first, then the link; unmasked: the sender masks it at the
-    boundary (`relay.build`), so one place per channel owns the mask."""
-    sent = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if sent_at is None
-                                                            else sent_at))
+    boundary (`relay.build`), so one place per channel owns the mask.
+
+    Every time in it is local, its zone named once on the last line, and every person is named
+    by display name (the operator, 2026-11-12, objective 2: "the can't-fix email lists the steps
+    taken in plain words, with local times and display names, and links to the incident"):
+    each step leads with its own time, "  - 14:02 Read edge-b: edge-b read again: done"."""
+    sent_epoch = time.time() if sent_at is None else float(sent_at)
+    named = zone_name(sent_epoch)
+    detected = epoch_of(facts.get("detected_at"))
+    ref = detected if detected is not None else sent_epoch
+
+    def said(words, at=None):
+        return localised(_people(words), ref if at is None else at, named)
+
     lines = [f"Mercury: {EVENTS[facts['event']]}"]
     where = " · ".join(x for x in (facts.get("network"), facts.get("device")) if x)
     if where:
         lines.append(where)
     lines.append("")
     if facts.get("happened"):
-        lines.append(f"What happened: {facts['happened']}")
+        lines.append(f"What happened: {said(facts['happened'])}")
     if facts.get("outcome"):
-        lines.append(f"Outcome: {facts['outcome']}")
+        lines.append(f"Outcome: {said(facts['outcome'])}")
     if facts.get("detected"):
-        when = f" at {facts['detected_at']}" if facts.get("detected_at") else ""
-        lines.append(f"Detected: {facts['detected']}{when}")
+        when = (f" at {local(detected, named)}" if detected is not None else
+                f" at {said(facts['detected_at'])}" if facts.get("detected_at") else "")
+        lines.append(f"Detected: {said(facts['detected'])}{when}")
     if facts.get("kind"):
         lines.append(f"Fix kind: {facts['kind']}")
     if facts.get("diagnosis"):
         # Mercury's own reads (board H's artboard L): after what was detected, before the
         # steps; by kind, never a value or a configuration line.
-        lines += diagnosis_lines(facts["diagnosis"])
+        lines += [said(x) for x in diagnosis_lines(facts["diagnosis"])]
     if facts["steps"]:
         lines.append("What Mercury tried:")
-        lines += [f"  - {s.get('said') or s['what']}: {s['result']}" for s in facts["steps"]]
+        for s in facts["steps"]:
+            at = epoch_of(s.get("at"))
+            when = f"{local(at, named, day=False)} " if at is not None else ""
+            lines.append(f"  - {when}{said(s.get('said') or s['what'], at)}: "
+                         f"{said(s['result'], at)}")
     if facts.get("todo"):
-        lines.append(f"What to do: {facts['todo']}")
+        lines.append(f"What to do: {said(facts['todo'])}")
     if facts.get("analysis"):
         # After Mercury's facts, before the link (section 12's order); advisory only.
-        lines += [""] + analysis_lines(facts["analysis"])
-    url, said = link_url(facts.get("link", ""))
+        lines += [""] + [said(x) for x in analysis_lines(facts["analysis"])]
+    url, why = link_url(facts.get("link", ""))
     if url:
-        lines += ["", f"Open in Mercury: {url}{said}"]
-    lines += ["", f"Incident {facts['incident']} · sent {sent}"]
+        lines += ["", f"Open in Mercury: {url}{why}"]
+    lines += ["", f"Incident {facts['incident']} · sent {local(sent_epoch, named)}",
+              zone_line(named)]
     return "\n".join(lines) + "\n"
 
 
 def payload(facts: dict, *, sent_at: float = None) -> dict:
     """The generic webhook's JSON: the incident's id, network, device, kind, outcome, step
-    summary and link (section 10); unmasked: the sender masks it (`webhook.request`)."""
+    summary and link (section 10); unmasked: the sender masks it (`webhook.request`). Its
+    times stay ISO UTC, for the receiver to draw in its own reader's zone; each person in its
+    words is named by display name, as in the text (`display_names.people_payload`)."""
+    from modules import display_names
+
     url, _said = link_url(facts.get("link", ""))
     sent = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if sent_at is None
                                                             else sent_at))
-    return {"incident": facts["incident"], "event": facts["event"],
+    return display_names.people_payload({"incident": facts["incident"], "event": facts["event"],
             "summary": EVENTS[facts["event"]], "network": facts.get("network", ""),
             "device": facts.get("device", ""), "kind": facts.get("kind", ""),
             "outcome": facts.get("outcome", ""), "detected": facts.get("detected", ""),
             "detected_at": facts.get("detected_at", ""), "steps": facts["steps"],
             "todo": facts.get("todo", ""), "link": url, "sent_at": sent,
             **({"analysis": facts["analysis"]} if facts.get("analysis") else {}),
-            **({"diagnosis": facts["diagnosis"]} if facts.get("diagnosis") else {})}
+            **({"diagnosis": facts["diagnosis"]} if facts.get("diagnosis") else {})})

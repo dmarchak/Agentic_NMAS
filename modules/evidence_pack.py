@@ -87,6 +87,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -1618,6 +1619,26 @@ def config_lines(entry: dict, units) -> list:
     return out
 
 
+def unnamed(text: str, entry: dict) -> str:
+    """*text*, a step's recorded words, with no person named in it, as it leaves the host (the
+    operator, 2026-11-12, objective 2: no email and no name in an AI payload; a stable label
+    instead, `display_names.label`): each email-shaped identity labelled
+    (`display_names.labelled`), and the policy's setter, whom the act names by display name
+    in its own words ("(policy set by <name>)", `steplog.policy_words`), labelled where
+    *entry* records them (``policy_by``, the policy's ``by``) and their name follows "set by"."""
+    from modules import display_names, identity
+
+    out = display_names.labelled(text)
+    for setter in {entry.get("policy_by") or "", (entry.get("policy") or {}).get("by") or ""}:
+        if not setter:
+            continue
+        name = identity.display_name(setter)
+        if name:
+            out = re.sub(r"(?<=set by )" + re.escape(name) + r"(?![\w.@-])",
+                         display_names.label(setter), out)
+    return out
+
+
 def tried_section(entry: dict, units, now: float) -> dict:
     """What Mercury tried (section 12, `tried`): each step of the incident's step log entry
     (`steplog.incident`), its decision's and its act's, in order, then each unit of what it
@@ -1632,7 +1653,8 @@ def tried_section(entry: dict, units, now: float) -> dict:
     lines = config_lines(entry, units)
     steps = list(entry.get("steps") or [])
     pieces = [{"what": "step", "step": s.get("step") or "", "result": s.get("result") or "",
-               "words": withhold(s.get("words") or "", lines), "row": s.get("row") or ""}
+               "words": unnamed(withhold(s.get("words") or "", lines), entry),
+               "row": s.get("row") or ""}
               for s in steps[:TRIED_STEPS]]
     pieces += [{"what": "unit", "words": unit_by_kind(u), "kind": u.get("kind") or "",
                 "tier": u.get("tier") or 0} for u in units or []]
@@ -1641,8 +1663,8 @@ def tried_section(entry: dict, units, now: float) -> dict:
         pieces.append({"what": "program", "words": (
             f"the program: {len(program)} line{'' if len(program) == 1 else 's'}, hash "
             f"{entry.get('program_hash') or '(none recorded)'}, content withheld")})
-    extra = {"outcome": entry.get("outcome") or "", "outcome_words": withhold(
-        entry.get("words") or "", lines), "mode": entry.get("mode") or "",
+    extra = {"outcome": entry.get("outcome") or "", "outcome_words": unnamed(withhold(
+        entry.get("words") or "", lines), entry), "mode": entry.get("mode") or "",
              "kind": entry.get("kind") or "", "total": len(steps),
              "subset": len(steps) > TRIED_STEPS}
     return _section(TRIED_SECTION, source, now, "ok", pieces=pieces, **extra)

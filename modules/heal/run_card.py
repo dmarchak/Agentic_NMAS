@@ -445,6 +445,20 @@ def acted_entry(entry: dict) -> bool:
     return entry.get("state") in ACTED
 
 
+#: A decision's outcomes whose incident a person is told about with a link to it (the
+#: can't-fix notice, `heal_notice.facts`): their card is drawn when that link names it.
+TOLD = ("cant_fix",)
+
+
+def told_entry(entry: dict) -> bool:
+    """Whether step-log *entry* is a decision a person was told about by a link to its
+    incident (the operator, 2026-11-12, objective 2: "the can't-fix email ... links to the
+    incident"): a can't-fix that ran nothing. It is never listed as finished (nothing ran),
+    but the link that names it opens its card: what was seen, the decision's steps and where
+    it stopped (`record_heal_card`)."""
+    return entry.get("state") == "decided" and entry.get("outcome") in TOLD
+
+
 def record_heal_card(network: str, host: str, entry: dict) -> dict:
     """A heal's card drawn from its RECORD, the step log's entry (`steplog.incidents`), as its
     job's card draws a finished heal (`heal_card`): the same five stages, from what was seen
@@ -469,7 +483,9 @@ def record_heal_card(network: str, host: str, entry: dict) -> dict:
     outcome = entry.get("outcome") or ""
     stopped = entry.get("state") == "applying"
     phases, facts = _decided(network, did, host)
-    phases.append(act_phase(acted, ended=True, host=host))
+    if acted or not told_entry(entry):
+        # A can't-fix ran nothing: no act's steps are drawn as not needed after it.
+        phases.append(act_phase(acted, ended=True, host=host))
     level = "danger" if stopped else level_of(outcome)
     words = ("ended before it recorded its outcome" if stopped else
              steplog.mark(outcome, entry.get("kind") or ""))
@@ -495,8 +511,10 @@ def named_heal(network: str, host: str, run_id: str):
     """``(card, job)`` as `named_record` gives them, for the heal run *run_id* names on *host*
     (its incident's id or one of its decisions'): its card from its record
     (`record_heal_card`), and what a job row would say of it; a heal job still running on
-    *host* for that decision draws its live card instead (`heal_card`). None when *run_id* is
-    no heal's id, the step log holds no run of it on *host*, or the log cannot be read."""
+    *host* for that decision draws its live card instead (`heal_card`). A can't-fix that ran
+    nothing is drawn too (`told_entry`), as its notice's link names it. None when *run_id* is
+    no heal's id, the step log holds no run or can't-fix of it on *host*, or the log cannot be
+    read."""
     from modules.heal import steplog
     from modules.nsot import capture_job
 
@@ -506,7 +524,7 @@ def named_heal(network: str, host: str, run_id: str):
     if got["state"] == "unreadable":
         log.info("run_card: %s's step log could not be read: %s", network, got["error"])
         return None
-    entry = next((e for e in got["entries"] if acted_entry(e) and (
+    entry = next((e for e in got["entries"] if (acted_entry(e) or told_entry(e)) and (
         e.get("incident") == run_id or run_id in (e.get("decisions") or []))), None)
     if entry is None:
         return None

@@ -4070,3 +4070,63 @@ workers; each worktree was removed after its run.
 **The result: 4 mutants and the canary, all killed.** Not mutated: `_prepared`'s writing of
 `row_extra` and `calls.record`, unchanged here (the batch's `row_extra` is held by its own
 tests).
+
+## 2026-11-12: the can't-fix email's steps, local times, display names and link, and no person in the analysis's request (Lab 10 objective 2; C3186 to C3190), by hand
+
+**What changed in the tier:** data off the host, twice. The notice's text and the webhook's
+JSON (`notify.message.text`, `payload`) now draw every person through `display_names.people`
+and every time locally; its steps come from `heal_notice.steps_said`. The AI analysis's pack
+(`evidence_pack.tried_section`) now sends each step's and the outcome's words through
+`evidence_pack.unnamed`, which replaces an identity, and the policy setter's display name, with
+`display_names.label`. The danger the hand check guards:
+- a person's identity or name leaving in the email, the webhook's JSON or the AI request;
+- a step said by a code key, a finished step as running, steps dropped unsaid;
+- a time leaving as UTC, or without its zone;
+- the link naming no incident or no network, or opening no card.
+
+The egress mask on every byte of a message, and `EP.withhold` on every configuration line, are
+unchanged and still run after these.
+
+**The method:** H23's. Each mutant is one exact replacement of a changed line, required to match
+once, applied in a `scripts/nmas-control` throwaway worktree over 81cc44be with the change
+uncommitted (`scratchpad/cantfix-email/mut.py`). The tests are tests/test_cant_fix_email.py,
+test_heal_action_records.py, test_heal_notice.py and test_ci_agreement.py, run with no `-x`,
+one worker, in CI's interpreter, confined. Each file was restored and compared byte for byte
+after each mutant.
+- **Baseline** (08:44:35 UTC): 108 passed.
+- **Run 1** (08:44 to 08:47 UTC): mutant 3 survived: the stepper's trail reads a running step
+  that a later record of itself ends as done, so the email read "done" with or without
+  `finished_steps`, and no test asked for its words. The fix: the captured record's case
+  asserts that step reads "ended: its outcome is its later line".
+- **Run 2** (08:47:12 to 08:47:30 UTC) ran mutant 3 again; the change was then carried onto
+  05b25a0e, its code unchanged.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `steps_said` raises | killed (20 failed) | every e2e case, and the notice's and action ends' tests |
+| 1 a step's result as its recorded key | killed (4 failed) | `test_a_decision_that_could_not_fix_says_its_steps_times_and_link` and the two rolled-back cases |
+| 2 a step said by its key, not the stepper's label | killed (5 failed) | the same three |
+| 3 the record read unfinished | killed in run 2 | `test_the_captured_record_names_nobody_by_identity_to_the_reader_or_the_ai` |
+| 4 more steps dropped unsaid | killed | `test_more_steps_than_a_message_carries_end_in_how_many_more` |
+| 5 a later record's step number left in the words | killed (2 failed) | the two rolled-back cases |
+| 6 a time drawn in UTC | killed (5 failed) | the three e2e cases |
+| 7 recorded words' UTC times left | killed (3 failed) | the decision's case, the daylight-saving case, tests/test_ci_agreement.py's notice |
+| 8 the zone not named | killed (5 failed) | the three e2e cases |
+| 9 a time across a daylight-saving change without its own zone | killed | `test_a_time_across_a_daylight_saving_change_says_its_own_zone` |
+| 10 the text names people as recorded | killed | the captured record's case |
+| 11 the webhook's JSON names people as recorded | killed | the captured record's case |
+| 12 AI: an identity in a step's words not labelled | killed (2 failed) | the captured record's case, `test_the_ai_s_record_of_what_was_tried_labels_every_person` |
+| 13 AI: the setter's display name not labelled | killed (2 failed) | the act's rolled-back case, the tried section's case |
+| 14 AI: the tried steps' words not unnamed | killed (3 failed) | the two rolled-back cases, the tried section's case |
+| 15 AI: the outcome's words not unnamed | killed | the tried section's case |
+| 16 AI: a label is the identity | killed (2 failed) | the captured record's case, the tried section's case |
+| 17 the link names no incident | killed (9 failed) | the three e2e cases |
+| 18 the link names no network | killed (9 failed) | the same |
+| 19 the device page draws no can't-fix decision's card | killed | the decision's case |
+| 20 the can't-fix's link the device's History | killed (3 failed) | the three e2e cases |
+| 21 an action end's link the device's History | killed (6 failed) | `test_each_end_is_told_once_as_the_event_its_row_needs` (its cases) |
+| 22 a can't-fix's card draws an act that never ran | killed | the decision's case |
+
+**The result: 22 mutants and the canary, all killed**, each file identical after each and the
+worktrees removed. Not mutated: `display_names.people` and `EMAIL`, unchanged here (board E2a's,
+held by tests/test_display_names.py); `EP.withhold`, H8's.

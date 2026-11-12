@@ -178,8 +178,10 @@ class TestNoConfigurationLine:
         (ev,) = events
         text = message.text(message.check_event(ev))
         # C2817: each step by what it does (its key is the webhook's), the line withheld.
+        # Premise corrected (the operator, 2026-11-12, objective 2: "the steps taken in plain
+        # words"): by the stepper's own label for the act's step, and its result in words.
         assert "192.0.2.128" not in text and \
-            "Carried the reasons the lines need: dangerous: (a configuration line, withheld)" in text
+            "Authorise removals: dangerous: (a configuration line, withheld): failed" in text
 
     def test_an_analysis_block_carries_only_its_fields(self):
         import pytest

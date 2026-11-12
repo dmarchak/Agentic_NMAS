@@ -43,6 +43,22 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
    diagnosis not finished in time is said so, and follows as its own event.
 8. `follow_up`: when a pending analysis arrives, it is sent on the same thread.
 
+The email's subject is "[Mercury] <device> on <network>: could not fix". Its text says, in
+order: what happened, the outcome, what was detected and when, the fix kind, Mercury's
+diagnosis, then **What Mercury tried**: every step the incident's record holds, in order, one
+line each, as the device page's stepper says it: the time it was recorded, the step's short
+label ("Read edge-b", "Decide"), what it recorded, and its result in words ("done", "failed",
+"not fully done"). Then what to do, the AI analysis or its state, **Open in Mercury**, the
+incident's own address (its card on the device's page, opened on History, so a card that cannot
+be drawn still leaves you at the incident's row), and the incident's id with when it was sent.
+Every time is in the time zone of the host Mercury runs on, named once on the last line ("Times
+are in …"); a time on the other side of a daylight-saving change says its own zone beside it.
+People are named by their display name, never by their sign-in identity; in what the analysis
+is sent of the steps tried, each person is a stable label ("person-3f9a1c"), never their
+identity or name. With the address Mercury is reached by not set
+(Settings › Installation › Notifications, the Email relay card), the link is the page's path
+alone, and the email says why.
+
 A can't-fix is told once per incident: an incident still standing on its decision and judged
 again later ([Standing](heal#standing)) is never told a second time. Nothing in self-healing
 reads the analysis or the notice: they are for a person.

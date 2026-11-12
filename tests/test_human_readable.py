@@ -433,8 +433,9 @@ KNOWN_BARE_IDENTIFIERS = {
     ('device', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
     ('device', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s # min'): 1,
     ('device', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
-    # The can't-fix's email: the incident's id in the foot.
-    ('email', 'incident_id', 'is not set: notify_link_base) Incident <incident_id> · sent #-#-#T#:#:#Z'): 1,
+    # The can't-fix's email: the incident's id in the foot (the same one, its context's words
+    # moved 2026-11-12, C3187: the sent time local, the zone's line after it).
+    ('email', 'incident_id', 'is not set: notify_link_base) Incident <incident_id> · sent #-#-# #:# Times are in'): 1,
     # History: the AI call and notification rows, and the Person filter's choice.
     ('history', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
     ('history', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,

@@ -31,6 +31,7 @@ import pytest
 
 from modules import attention
 from tests.test_notify import env  # noqa: F401 (the fixture: the notification stores and fakes)
+from tests.test_cant_fix_email import zone  # noqa: F401 (the installation's zone, pinned)
 
 #: C1522: the source reads reader stores; each test keeps them in its own folder.
 pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
@@ -416,7 +417,8 @@ class TestTheNotice:
                        {}, deliver=lambda e, t: sent.append(e), teams=["t1"], deployed=DEPLOYED)
         assert sent == [], "a disagreement on a commit the host does not run is no notice"
 
-    def test_its_words_name_the_sha_the_failed_job_the_deployer_and_the_history_link(self, CA):
+    def test_its_words_name_the_sha_the_failed_job_the_deployer_and_the_history_link(self, CA,
+                                                                                  zone):
         from modules.notify import message
         (r,) = CA.judge(self.RED())
         facts = message.check_event(CA.notice(r, DEPLOYED, now=0))
@@ -427,8 +429,13 @@ class TestTheNotice:
         assert "run #9, attempt 1, https://github.com/owner/repo/actions/runs/9" in text
         assert "failed at Tests (R1, R4), confined to loopback, measured by tier, in test (a)" \
             in text
-        assert ("Deployed by pat at 2026-11-11T20:00:00Z (the Update button). "
+        # Premise corrected (the operator, 2026-11-12, objective 2: a notice's body says "local
+        # times"): the record's 2026-11-11T20:00:00Z in the installation's zone (pinned to
+        # UTC+05:30), the zone named once at the end.
+        assert ("Deployed by pat at 2026-11-12 01:30 (the Update button). "
                 "The release keeps running: this is no outage.") in text
+        assert text.rstrip().endswith("Times are in IST (UTC+05:30), the time zone of the host "
+                                      "Mercury runs on.")
         assert f"scripts/nmas-rollback {B[:10]} --push, then Update" in text
         assert "Open in Mercury: /v2/history?kind=updates" in text
 

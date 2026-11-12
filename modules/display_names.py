@@ -189,6 +189,23 @@ def people_payload(value):
     return value
 
 
+def label(actor: str) -> str:
+    """A person as a text sent off the host names them: a stable label, the same for the same
+    identity in every request ("person-3f9a1c"), never their identity or a name they set."""
+    digest = hashlib.sha256(("person-label:" + str(actor).strip().lower()).encode("utf-8"))
+    return "person-" + digest.hexdigest()[:6]
+
+
+def labelled(text) -> str:
+    """*text* with each email-shaped token replaced by its person's stable label (`label`):
+    a recorded text as an AI request carries it (the operator, 2026-11-12, objective 2: no
+    identity or name in an AI payload). Every other word is left exactly as recorded."""
+    text = "" if text is None else str(text)
+    if "@" not in text:
+        return text
+    return EMAIL.sub(lambda m: label(m.group(0)), text)
+
+
 def person_key(actor: str) -> str:
     """A person's key on a form: a digest of their identity, so the page never carries the
     identity itself outside its record."""

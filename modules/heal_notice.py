@@ -47,6 +47,7 @@ may quote the intent section's masked lines: configuration lines are never in a 
 """
 
 import logging
+import re
 import threading
 import time
 
@@ -89,17 +90,6 @@ JOB_PREFIX = "heal-notice"
 EVENT, FOLLOW_UP = "cant_fix", "analysis"
 #: The follow-up that carries only Mercury's diagnosis (H17: the analysis was in the first).
 DIAGNOSIS_FOLLOW_UP = "diagnosis"
-#: Each step of a can't-fix's record by what it does, in a message (C2817, rule 3: never the
-#: step's key and number alone): the decision's steps, then the act's, then a proposal's.
-STEP_WORDS = {
-    "claim": "Took the incident", "stops": "Checked the kill switch, the mode and planned work",
-    "approved": "Found the approved state", "guards": "Checked the holds, the fleet and the rates",
-    "read": "Read the device again", "classify": "Found what changed and its tier",
-    "decide": "Decided", "record": "Recorded it", "take": "Took the approved proposal",
-    "plan": "Recomputed the fix", "authorise": "Carried the reasons the lines need",
-    "apply": "Applied it", "intent": "Checked each part at intent", "reset": "Reset the process",
-    "saved": "Saved it", "golden": "Read it against its new golden",
-    "symptom": "Read the symptom again", "verify": "Verified it", "rollback": "Put it back"}
 #: What to do, by the kind the decision found (section 9's can't-fix row: "the action the
 #: reason names").
 TODO = {
@@ -257,13 +247,18 @@ def action_facts(network: str, due_one: dict, entry: dict = None) -> dict:
             "outcome": EP.withhold(words, lines),
             "detected": EP.withhold(d.get("words") or "", lines),
             "detected_at": d.get("at") or "",
-            "steps": [{"what": EP.withhold(f"{s.get('step')}: {s.get('words') or ''}", lines),
-                       "result": s.get("result") or ""} for s in (r.get("steps") or [])[:20]],
+            # The act's steps as the stepper says them, as a can't-fix's are (`steps_said`).
+            "steps": steps_said(network, host, {"incident": r.get("incident") or "",
+                                                "state": "done",
+                                                "steps": [dict(s, row="act", decision=r.get(
+                                                    "decision") or "")
+                                                          for s in r.get("steps") or []]},
+                                lines),
             "todo": action_todo(r.get("kind") or "", r.get("outcome") or "", host,
                                 interface=a.get("interface") or "", peer=a.get("peer") or "",
                                 far_device=a.get("far_device") or "",
                                 far_interface=a.get("far_interface") or ""),
-            "link": f"/v2/device/{host}?tab=history" if host else ""}
+            "link": incident_link(network, r.get("incident") or "", host)}
 
 
 def action_notice(network: str, due_one: dict, *, deliver=None) -> dict:
@@ -407,12 +402,67 @@ def facts(network: str, entry: dict, incident: dict = None) -> dict:
             "outcome": EP.withhold(words, lines),
             "detected": EP.withhold(first.get("words") or "", lines),
             "detected_at": first.get("at") or (incident or {}).get("opened_at") or "",
-            "steps": [{"what": EP.withhold(f"{s.get('step')}: {s.get('words') or ''}", lines),
-                       "said": EP.withhold(f"{STEP_WORDS.get(s.get('step'), s.get('step'))}: "
-                                           f"{s.get('words') or ''}", lines),
-                       "result": s.get("result") or ""}
-                      for s in (entry.get("steps") or [])[:20]],
-            "todo": todo, "link": f"/v2/device/{device}?tab=history" if device else ""}
+            "steps": steps_said(network, device, entry, lines),
+            "todo": todo, "link": incident_link(network, entry.get("incident") or "", device)}
+
+
+def incident_link(network: str, incident_id: str, device: str) -> str:
+    """The incident's page, as a message links it: `incidents.incident_href`, the ONE place an
+    incident's address is built (the operator, 2026-11-12, objective 2: "links to the
+    incident")."""
+    from modules.heal import incidents
+
+    return incidents.incident_href(network, incident_id, device=device)
+
+
+def steps_said(network: str, host: str, entry: dict, lines) -> list:
+    """The steps taken, as a message lists them (the operator, 2026-11-12, objective 2: "the
+    can't-fix email lists the steps taken in plain words, with local times and display
+    names"): every step the incident's record holds, in its order, each as THE stepper says it
+    (`run_card.decision_phase` and `act_phase`'s ``trail``: its operation's two-to-four-word
+    label, "Read edge-b", and its state in words, "done", "failed"), then its recorded words,
+    the incident's configuration lines withheld, and the time it was recorded (ISO UTC, said
+    locally by the message). A finished record never says a step is running
+    (`steplog.finished_steps`, C3173). A step recorded with no time of its own takes its row's
+    (a decision's steps are timed by its row, as its card draws them). ``what`` keeps the
+    step's key, for the webhook's JSON. More steps than a message carries (`message.FIELDS`)
+    end in one line saying how many more, and where they are."""
+    from modules import evidence_pack as EP
+    from modules.heal import run_card, steplog
+    from modules.notify import message
+
+    steps = [s for s in steplog.finished_steps(entry) if isinstance(s, dict)]
+    decided = [s for s in steps if s.get("row") in ("decision", None)]
+    acted = [s for s in steps if s.get("row") not in ("decision", None)]
+    trails = {"d": iter(run_card.decision_phase(decided, host=host)["trail"] if decided else []),
+              "a": iter(run_card.act_phase(acted, ended=True, host=host)["trail"]
+                        if acted else [])}
+    stamps = {}
+    got = steplog.read(network)
+    for r in got.get("rows") or []:
+        if r.get("incident") == entry.get("incident") and r.get("at"):
+            stamps[(r.get("decision") or "", r.get("row") or "")] = r["at"]
+    out = []
+    for s in steps:
+        t = next(trails["d" if s.get("row") in ("decision", None) else "a"], {})
+        words, result = s.get("words") or "", t.get("state_words") or s.get("result") or ""
+        if s.get("result") == "ended":
+            # A step a later record of itself ends (`finished_steps`): its words name that
+            # record by its number, which a message's list does not draw.
+            words = re.sub(r"(?:; )?its outcome is step \d+'s$", "", words)
+            result = "ended: its outcome is its later line"
+        out.append({"what": EP.withhold(f"{s.get('step')}: {words}", lines),
+                    "said": EP.withhold(f"{t.get('words') or s.get('step')}"
+                                        + (f": {words}" if words else ""), lines),
+                    "result": result,
+                    "at": s.get("at") or s.get("ended_at") or stamps.get(
+                        (s.get("decision") or "", s.get("row") or ""), "")})
+    room = message.FIELDS["steps"]
+    if len(out) > room:
+        more = len(out) - room + 1
+        out = out[:room - 1] + [{"what": f"more: {more}", "said": f"{more} more steps",
+                                 "result": "on the incident's page in Mercury"}]
+    return out
 
 
 def analysis_block(result: dict, lines) -> dict:
