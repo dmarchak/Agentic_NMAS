@@ -1,0 +1,1076 @@
+#!/usr/bin/env python3
+"""Choose and run the tests a change touches, before the gate, so a gate is not refused on them
+(the operator's overnight item 9, 2026-11-12).
+
+    scripts/nmas-pregate [--range A..B] [--message FILE] [--list] [--no-wait] [--repo DIR]
+
+The change is what is staged (`git diff --cached`), or the commits of `--range A..B`.
+
+1. **The tests, each with why.** A reason is parsed, never a substring of prose:
+   - a test file that imports a changed Python module (its `import` and `from ... import`
+     statements, read by `ast`, anywhere in the file), or names it as a whole string literal;
+   - a test file naming a changed file by a whole string literal: its path, a path ending in
+     `/<its path>`, a template's name under `templates/`, or, for a template, a script or a
+     static file, its file name (`"_attention.html"`, `"nmas-gate"`);
+   - a test file naming, by a string literal anchored to the whole rule, a route that renders a
+     changed template (or a template that includes, extends or imports it), or a route of
+     `routes/` whose function the change touches; and a BROWSER file naming a route whose
+     page loads such a route by htmx (`hx-get`, `hx-post`, `src`, `href`, `action`);
+   - the changed test files themselves;
+   - the fixed convention set (CONVENTIONS), the manual and fidelity tests (MANUAL) when
+     `docs/manual/` or a template changes, and the route tests (ROUTES) when `routes/` does.
+2. **The runs**, only while no gate runs: the full-suite lock names a live process (the same
+   check the build briefs make), and then it waits, saying why every WAIT_EVERY_S, for at most
+   WAIT_BOUND_S (`scripts/nmas-workers`' gate wait), or refuses at once with `--no-wait`.
+   The confined files run through `scripts/nmas-test -n 2`; the BROWSER files (a file that
+   imports `Browser` from `tests.browser`, read by `ast`) run unconfined, in CI's interpreter
+   with the browser folder first on PATH and NMAS_REQUIRE_BROWSER=1, so a browser that cannot
+   start fails, never skips. Each run is bounded (CONFINED_BOUND, BROWSER_BOUND).
+3. **The message** (`--message FILE`): `scripts/hooks/commit-msg` on a copy of it, traced, so
+   the check that refused is named.
+4. **The summary**: each test file, why it was chosen, and passed, failed or NOT RUN (with
+   why); a file none of whose tests ran is not run, and so is a whole run that did not happen.
+
+It writes nothing in the working tree: it runs in place, reads, and every run it starts has
+PYTHONDONTWRITEBYTECODE=1 and `-p no:cacheprovider`, with pytest's folders and the JUnit files
+in a temporary folder outside it. The working tree is fingerprinted before and after
+(`scripts/nmas-control`'s fingerprint); a difference is named and the exit is 3. It runs the
+working tree's files: edits not staged are said, since the gate tests only what is staged.
+
+Exit: 0 when every chosen file ran and passed (and the message's checks passed); 1 when a test
+failed, a skip was not declared, or a message check refused; 2 when it cannot start (not a git
+checkout, an unreadable range, no message file); 3 the working tree changed; 4 when anything
+chosen did not run (a gate held the lock past the bound, a bound fired, no browser interpreter).
+`--list` runs nothing, says so, and exits 0.
+
+Cost: the chosen files' time, about a minute for the convention set (measured below).
+Prevents: a 20-minute gate refused on a check a chosen run meets first (2026-11-12: a CLAUDE.md
+quote, a device name in a docstring, tests of a touched template never run, a shared store's
+leak, a missing Bypass trailer).
+"""
+import argparse
+import ast
+import importlib.machinery
+import importlib.util
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: Every change runs these: the scans that refused gates on files a change's own tests did not
+#: reach (the operator's overnight brief, 2026-11-12).
+CONVENTIONS = (
+    "tests/test_presence_only.py",
+    "tests/test_source_index.py",
+    "tests/test_network_keys.py",
+    "tests/test_no_duplicate_definitions.py",
+    "tests/test_device_names.py",
+    "tests/test_lab_specifics.py",
+    "tests/test_claude_md.py",
+    "tests/test_doc_tests.py",
+    "tests/test_register_hygiene.py",
+    "tests/test_nothing_personal_is_published.py",
+)
+#: When docs/manual/ or a template changes.
+MANUAL = ("tests/test_manual.py", "tests/test_manual_references.py",
+          "tests/test_board_fidelity.py")
+#: When routes/ changes.
+ROUTES = ("tests/test_route_gates.py", "tests/test_invalidation_map.py",
+          "tests/test_route_reachability.py")
+
+#: The confined run's bound. Measured 2026-11-12 on the laptop at -n 2: the convention set alone
+#: took 81 s (no gate running); this tool's own first change, 18 files, took 191 s (a gate
+#: starting part way through), so about 14 s a further file. The bound is about 2.5x that
+#: estimate.
+MEASURED_CONVENTIONS_S = 81
+MEASURED_PER_FILE_S = 14
+
+
+def confined_bound(n_files):
+    """Seconds: about 2.5x the measured time of a run of *n_files* (CONVENTIONS counted)."""
+    extra = max(0, n_files - len(CONVENTIONS))
+    return int(2.5 * (MEASURED_CONVENTIONS_S + MEASURED_PER_FILE_S * extra))
+
+
+#: The browser run's bound. Measured 2026-11-12 on the laptop, serial, no gate running, each
+#: file alone with its Firefox starts: tests/test_v2_layout_in_a_browser.py 175 s (the
+#: slowest), test_attention_badge.py 27 s, test_update_button.py 19 s, test_next_steps_act.py
+#: 15 s, test_manual.py 7 s; 49 s on average.
+MEASURED_BROWSER_FILE_S = 49
+MEASURED_BROWSER_SLOWEST_S = 175
+
+
+def browser_bound(n_files):
+    """Seconds: about 2.5x the measured average a file times *n_files*, and never under 2.5x
+    the slowest file measured, which a run of one file may be."""
+    return int(2.5 * max(MEASURED_BROWSER_FILE_S * max(1, n_files), MEASURED_BROWSER_SLOWEST_S))
+
+
+#: The message's checks: red-green runs the changed tests on the parent, so it is bounded too.
+#: Measured 2026-11-12: about MEASURED_HOOK_S for a commit of a few test files.
+MEASURED_HOOK_S = 120
+HOOK_BOUND = int(2.5 * MEASURED_HOOK_S)
+
+BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
+                             os.path.expanduser("~/.local/share/nmas-browser"))
+PG_LIB = os.environ.get("NMAS_GATE_PG_LIB",
+                        os.path.expanduser("~/.local/share/nmas-pg/usr/lib/x86_64-linux-gnu"))
+#: CI's interpreter for the browser run (scripts/nmas-ci-env's venv), as scripts/nmas-test uses.
+CI_PYTHON = os.environ.get("NMAS_PREGATE_PYTHON",
+                           os.path.expanduser("~/.local/share/nmas-py312/bin/python"))
+#: The trace marker: every line `sh -x` prints for the hook starts with it.
+PS4 = "+nmas-pregate-trace+ "
+
+TEMPLATE_REF = re.compile(r"""\{%-?\s*(?:include|extends|import|from)\s+["']([^"']+)["']""")
+URL_ATTR = re.compile(r"""\b(?:hx-get|hx-post|hx-put|hx-delete|hx-patch|src|href|action)\s*=\s*"""
+                      r"""["'](/[^"'{}\s]*)""")
+ROUTE_METHODS = {"route", "get", "post", "put", "delete", "patch"}
+#: The str methods whose argument is a text searched for, never a request.
+TEXT_PROBES = {"startswith", "endswith", "find", "rfind", "index", "rindex", "count", "split",
+               "rsplit", "partition", "rpartition", "replace", "removeprefix", "removesuffix"}
+HOLE = "\x00"
+
+
+def _load(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    spec = importlib.util.spec_from_loader(name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def git(repo, *args):
+    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+
+
+# --- the change -------------------------------------------------------------------------------
+
+class Change:
+    """What a change touches: its paths, each side's changed line spans, and each side's text."""
+
+    def __init__(self, repo, files, new_spans, old_spans, new_rev, old_rev):
+        self.repo, self.files = repo, files
+        self.new_spans, self.old_spans = new_spans, old_spans
+        self._revs = {"new": new_rev, "old": old_rev}
+
+    def text(self, path, side="new"):
+        r = git(self.repo, "show", f"{self._revs[side]}:{path}")
+        return r.stdout if r.returncode == 0 else None
+
+
+def change(repo, rng=None):
+    """The Change of the index against HEAD, or of the range ``A..B``; None when git cannot
+    say."""
+    if rng:
+        if ".." not in rng:
+            return None
+        a, b = rng.split("..", 1)
+        base = ["diff", "--no-renames", a, b or "HEAD"]
+        new_rev, old_rev = b or "HEAD", a
+    else:
+        base = ["diff", "--cached", "--no-renames"]
+        new_rev, old_rev = "", "HEAD"           # ":<path>" is the index's copy
+    names = git(repo, *base, "--name-only", "-z")
+    patch = git(repo, *base, "-U0")
+    if names.returncode or patch.returncode:
+        return None
+    files = sorted(p for p in names.stdout.split("\0") if p)
+    new, old, cur_new, cur_old = {}, {}, None, None
+    for line in patch.stdout.splitlines():
+        if line.startswith("--- "):
+            cur_old = line[6:] if line.startswith("--- a/") else None
+        elif line.startswith("+++ "):
+            cur_new = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("@@"):
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+            if not m:
+                continue
+            a0, an, b0, bn = (int(m.group(1)), int(m.group(2) or 1), int(m.group(3)),
+                              int(m.group(4) or 1))
+            if cur_new:
+                new.setdefault(cur_new, []).append((b0, b0 + max(bn, 1) - 1))
+            if cur_old and an:
+                old.setdefault(cur_old, []).append((a0, a0 + an - 1))
+    return Change(repo, files, new, old, new_rev, old_rev)
+
+
+def _top_level(tree):
+    """``[(first, last, names or None, refs)]`` for each top-level statement: a def, class or
+    assignment names what it binds; any other statement (an import, an `if`) is None, the whole
+    module; *refs* are the global names it reads."""
+    out = []
+    for i, n in enumerate(tree.body):
+        first = min([n.lineno] + [d.lineno for d in getattr(n, "decorator_list", [])])
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names = {n.name}
+        elif isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+            names = {x.id for t in targets for x in ast.walk(t) if isinstance(x, ast.Name)}
+        elif i == 0 and isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) \
+                and isinstance(n.value.value, str):
+            names = set()                       # the module's docstring changes nothing run
+        else:
+            names = None
+        refs = {x.id for x in ast.walk(n) if isinstance(x, ast.Name)}
+        out.append((first, n.end_lineno, names, refs))
+    return out
+
+
+def touched_names(text, spans):
+    """The top-level names a change to *text* at *spans* touches, or None when it touches a
+    statement that binds no name (the whole module counts). Lines outside every statement
+    (comments, blank lines) touch nothing."""
+    if text is None:
+        return set()
+    try:
+        tops = _top_level(ast.parse(text))
+    except (SyntaxError, ValueError):
+        return None
+    out = set()
+    for a, b in spans:
+        for first, last, names, _r in tops:
+            if a <= last and b >= first:
+                if names is None:
+                    return None
+                out |= names
+    return out
+
+
+def affected_names(change_, path):
+    """The names of *path*'s module a test may meet changed: those the change touches on either
+    side, closed over the module's own references (a def reading an affected name is affected);
+    None for the whole module."""
+    new_text, old_text = change_.text(path, "new"), change_.text(path, "old")
+    if path not in change_.new_spans and path not in change_.old_spans:
+        return None
+    a = touched_names(new_text, change_.new_spans.get(path, []))
+    b = touched_names(old_text, change_.old_spans.get(path, []))
+    if a is None or b is None:
+        return None
+    affected = a | b
+    try:
+        tops = _top_level(ast.parse(new_text)) if new_text is not None else []
+    except (SyntaxError, ValueError):
+        return None
+    grew = True
+    while grew:
+        grew = False
+        for _f, _l, names, refs in tops:
+            if names and not names <= affected and refs & affected:
+                affected |= names
+                grew = True
+    return affected
+
+
+def unstaged(repo):
+    """Tracked files whose working-tree text differs from the index."""
+    r = git(repo, "diff", "--name-only", "-z")
+    return sorted(p for p in r.stdout.split("\0") if p)
+
+
+# --- reading the tests -----------------------------------------------------------------------
+
+def module_of(path):
+    """The dotted module a Python file is, or None (``modules/nsot/__init__.py`` -> modules.nsot)."""
+    if not path.endswith(".py"):
+        return None
+    parts = path[:-3].split("/")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    if not parts or not all(p.isidentifier() for p in parts):
+        return None
+    return ".".join(parts)
+
+
+def _pattern(node):
+    """A string expression's text, each interpolated piece a HOLE: a constant, an f-string, or
+    a `+` of them; None for anything else."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(v.value if isinstance(v, ast.Constant) else HOLE for v in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _pattern(node.left), _pattern(node.right)
+        if left is None and right is None:
+            return None
+        return (left if left is not None else HOLE) + (right if right is not None else HOLE)
+    return None
+
+
+def _dotted(node):
+    """``a.b.c`` for a chain of names, else ""."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted(node.value)
+        return f"{base}.{node.attr}" if base else ""
+    return ""
+
+
+class TestFile:
+    """One test file, parsed: what it imports, its string literals, whether it drives a browser."""
+
+    def __init__(self, path, text):
+        self.path = path
+        self.imports = set()
+        self.strings = set()
+        self.browser = False
+        self.parsed = True
+        #: ``{module: {name}}`` of `from module import name`; ``{bound name: module}`` of each
+        #: import binding a module (a `from P import X` binds P.X when that is a module).
+        self.from_names, self.aliases = {}, {}
+        #: ``{(dotted base, attribute)}`` read, and the names read bare (not as an attribute's
+        #: base).
+        self.attrs, self.bare = set(), set()
+        #: The literals that may name a request: every string literal but those a text is
+        #: searched for.
+        self.requests = set()
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError):
+            self.parsed = False
+            return
+        browser_module_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    self.imports.add(a.name)
+                    self.aliases[a.asname or a.name] = a.name
+                    if a.name == "tests.browser":
+                        browser_module_names.add(a.asname or "tests.browser")
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                self.imports.add(node.module)
+                for a in node.names:
+                    self.imports.add(f"{node.module}.{a.name}")
+                    self.from_names.setdefault(node.module, set()).add(a.name)
+                    self.aliases[a.asname or a.name] = f"{node.module}.{a.name}"
+                    if node.module == "tests.browser" and a.name == "Browser":
+                        self.browser = True
+                    if node.module == "tests" and a.name == "browser":
+                        browser_module_names.add(a.asname or "browser")
+            elif isinstance(node, ast.Attribute):
+                base = _dotted(node.value)
+                if base:
+                    self.attrs.add((base, node.attr))
+                for child in ast.iter_child_nodes(node):
+                    child._pregate_base = True
+            elif isinstance(node, ast.Name) and not getattr(node, "_pregate_base", False):
+                self.bare.add(node.id)
+            if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Name) \
+                    and (getattr(node.func, "attr", None) or getattr(node.func, "id", None)) \
+                    in ("setattr", "delattr"):
+                # monkeypatch.setattr(module, "name", ...) reads only the name it names.
+                node.args[0]._pregate_base = True
+            # A literal a text is searched for (`"/v2/" in html`, `href.startswith("/v2/")`)
+            # names no request: it counts for a file's name, never for a route.
+            if isinstance(node, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn))
+                                                     for o in node.ops):
+                node.left._pregate_probe = True
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", None) in TEXT_PROBES:
+                for arg in node.args:
+                    arg._pregate_probe = True
+            if isinstance(node, (ast.Tuple, ast.List)) and getattr(node, "_pregate_probe", False):
+                for e in node.elts:
+                    e._pregate_probe = True
+            p = _pattern(node) if isinstance(node, (ast.Constant, ast.JoinedStr, ast.BinOp)) else None
+            if p:
+                self.strings.add(p)
+                if not getattr(node, "_pregate_probe", False):
+                    self.requests.add(p)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "Browser":
+                base = node.value
+                dotted = (base.id if isinstance(base, ast.Name) else
+                          f"{base.value.id}.{base.attr}" if isinstance(base, ast.Attribute)
+                          and isinstance(base.value, ast.Name) else "")
+                if dotted in browser_module_names:
+                    self.browser = True
+
+    def imports_module(self, mod):
+        return any(i == mod or i.startswith(mod + ".") for i in self.imports)
+
+    def meets(self, mod, affected):
+        """Why this file meets *mod*'s *affected* names, or None. With *affected* None (the
+        whole module), importing it is enough. Otherwise: a `from mod import` of an affected
+        name (or `*`); an attribute read of one on a name bound to the module; an affected name
+        as a whole literal beside such an import (`monkeypatch.setattr(m, "name", ...)`); and,
+        erring toward running, a submodule imported, or the bound name used bare (passed on,
+        so any attribute may be read)."""
+        if not self.imports_module(mod):
+            return None
+        if affected is None:
+            return f"imports {mod}"
+        if any(i.startswith(mod + ".") and i not in {f"{mod}.{n}" for n in
+                                                       self.from_names.get(mod, ())}
+               for i in self.imports):
+            return f"imports a submodule of {mod}"
+        names = self.from_names.get(mod, set())
+        hit = sorted(names & affected)
+        if hit or "*" in names:
+            return f"imports {', '.join(hit) or '*'} from {mod}, changed"
+        bound = [b for b, m in self.aliases.items() if m == mod]
+        for b in bound:
+            used = {attr for base, attr in self.attrs if base == b}
+            hit = sorted(used & affected)
+            if hit:
+                return f"reads {b}.{hit[0]} of {mod}, changed"
+            named = sorted(self.strings & affected)
+            if named:
+                return f"names {named[0]!r} beside its import of {mod}, changed"
+            if "." not in b and b in self.bare:
+                return f"uses {b} ({mod}) other than by attribute, so any of it"
+            if "." in b and not used:
+                return f"imports {mod} and reads none of it by attribute, so any of it"
+        return None
+
+    def names_file(self, path):
+        """The literal naming *path*, or None."""
+        keys = {path}
+        if path.startswith("templates/"):
+            keys.add(path[len("templates/"):])
+        base = os.path.basename(path)
+        by_name = path.startswith(("templates/", "scripts/", "static/"))
+        for s in self.strings:
+            if HOLE in s:
+                continue
+            if s in keys or any(s.endswith("/" + k) for k in keys) or (by_name and s == base):
+                return s
+            mod = module_of(path)
+            if mod and s == mod:
+                return s
+        return None
+
+    def names_route(self, route):
+        """The literal anchored to the whole of *route* (a Route), or None."""
+        for s in sorted(self.requests):
+            if route.matches(s):
+                return s.replace(HOLE, "{}")
+        return None
+
+
+def data_folders(repo):
+    """tests/data_folders.py's DATA_FOLDERS, parsed (scripts/nmas-fast-checks reads it so)."""
+    try:
+        with open(os.path.join(repo, "tests", "data_folders.py"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+    except (OSError, SyntaxError, ValueError):
+        return ()
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "DATA_FOLDERS"
+                                             for t in n.targets) \
+                and isinstance(n.value, (ast.Tuple, ast.List)):
+            return tuple(e.value for e in n.value.elts if isinstance(e, ast.Constant)
+                         and isinstance(e.value, str) and e.value.startswith("tests/fixtures/"))
+    return ()
+
+
+def test_files(repo):
+    """Every tests/**/test_*.py on disk outside the data folders, parsed."""
+    out, skip = {}, data_folders(repo)
+    for root, dirs, files in os.walk(os.path.join(repo, "tests")):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+        for f in sorted(files):
+            if f.startswith("test_") and f.endswith(".py"):
+                rel = os.path.relpath(os.path.join(root, f), repo).replace(os.sep, "/")
+                if rel.startswith(skip):
+                    continue
+                with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
+                    out[rel] = TestFile(rel, fh.read())
+    return out
+
+
+# --- routes and templates --------------------------------------------------------------------
+
+class Route:
+    """A route's rule and the templates its function renders."""
+
+    def __init__(self, rule, module, first, last, templates):
+        self.rule, self.module, self.first, self.last = rule, module, first, last
+        self.templates = set(templates)
+        parts = re.split(r"(<[^>]+>)", rule)
+        rx = []
+        for p in parts:
+            if p.startswith("<") and p.endswith(">"):
+                rx.append(f"(?:[^/{HOLE}]+|{HOLE})" if not p.startswith("<path:")
+                          else f"(?:.+|{HOLE})")
+            else:
+                rx.append(re.escape(p))
+        self.regex = re.compile("".join(rx) + rf"/?(?:[?#].*|{HOLE}.*)?", re.S)
+
+    def matches(self, s):
+        # "/" and the bare prefix of a parameterised rule name everything: never matched alone.
+        if not s.startswith("/") or len(self.rule.strip("/")) == 0:
+            return False
+        return bool(self.regex.fullmatch(s))
+
+
+def _templates_in(node):
+    return {n.value for n in ast.walk(node)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and n.value.endswith(".html") and "/" in n.value}
+
+
+def routes_of(path, text):
+    """[Route] declared in a routes module: its blueprints' url_prefix parsed with each
+    decorated function's rule, line span and templates (its own, and those of the module's
+    functions it calls by name)."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    prefixes, funcs = {}, {}
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call) \
+                and getattr(n.value.func, "id", getattr(n.value.func, "attr", "")) == "Blueprint":
+            pre = next((k.value.value for k in n.value.keywords if k.arg == "url_prefix"
+                        and isinstance(k.value, ast.Constant)), "")
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    prefixes[t.id] = (pre, n.lineno)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funcs[n.name] = n
+    out = []
+    for name, fn in funcs.items():
+        for d in fn.decorator_list:
+            if not (isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                    and d.func.attr in ROUTE_METHODS and isinstance(d.func.value, ast.Name)
+                    and d.func.value.id in prefixes and d.args
+                    and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)):
+                continue
+            pre = prefixes[d.func.value.id][0].rstrip("/")
+            rule = pre + d.args[0].value if d.args[0].value != "/" or not pre else pre
+            temps = _templates_in(fn)
+            for c in ast.walk(fn):
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in funcs:
+                    temps |= _templates_in(funcs[c.func.id])
+            first = min([fn.lineno] + [x.lineno for x in fn.decorator_list])
+            out.append(Route(rule or "/", path, first, fn.end_lineno, temps))
+    return out
+
+
+def blueprint_lines(text):
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return set()
+    return {n.lineno for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call)
+            and getattr(n.value.func, "id", getattr(n.value.func, "attr", "")) == "Blueprint"}
+
+
+def all_routes(repo):
+    out = []
+    folder = os.path.join(repo, "routes")
+    for f in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if f.endswith(".py"):
+            with open(os.path.join(folder, f), encoding="utf-8", errors="replace") as fh:
+                out += routes_of(f"routes/{f}", fh.read())
+    return out
+
+
+def template_graph(repo):
+    """``(refs, urls)``: each template's name under templates/ to the templates it includes,
+    extends or imports, and to the URL paths its attributes load."""
+    refs, urls = {}, {}
+    top = os.path.join(repo, "templates")
+    for root, _d, files in os.walk(top):
+        for f in files:
+            if f.endswith(".html"):
+                rel = os.path.relpath(os.path.join(root, f), top).replace(os.sep, "/")
+                with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+                refs[rel] = set(TEMPLATE_REF.findall(text))
+                urls[rel] = set(URL_ATTR.findall(text))
+    return refs, urls
+
+
+def users_of(name, refs):
+    """*name* and every template that includes, extends or imports it, transitively."""
+    seen, todo = {name}, [name]
+    while todo:
+        t = todo.pop()
+        for parent, children in refs.items():
+            if t in children and parent not in seen:
+                seen.add(parent)
+                todo.append(parent)
+    return seen
+
+
+# --- the selection ---------------------------------------------------------------------------
+
+def select(repo, change_, tests=None, routes=None, graph=None):
+    """``{test path: [why, ...]}`` in a stable order: the change's own tests, the parsed
+    reasons, then the fixed sets."""
+    files, hunks, show = change_.files, change_.new_spans, change_.text
+    tests = test_files(repo) if tests is None else tests
+    chosen = {}
+
+    def add(t, why):
+        # A fixed set's file is chosen whether or not it exists: an absent one is said as not
+        # run, never dropped without a word.
+        chosen.setdefault(t, [])
+        if why not in chosen[t]:
+            chosen[t].append(why)
+
+    skip = data_folders(repo)
+    for f in files:
+        if f in tests or (f.startswith("tests/") and os.path.basename(f).startswith("test_")
+                          and f.endswith(".py") and not f.startswith(skip)
+                          and os.path.exists(os.path.join(repo, f))):
+            add(f, "a changed test file")
+    for f in files:
+        mod = module_of(f)
+        affected = affected_names(change_, f) if mod else None
+        for t, tf in tests.items():
+            if t == f:
+                continue
+            met = tf.meets(mod, affected) if mod else None
+            if met:
+                add(t, f"{met} ({f}" + (")" if affected is None else
+                                        f": {len(affected)} name(s) affected)"))
+                continue
+            lit = tf.names_file(f)
+            if lit:
+                add(t, f"names {f} (the literal {lit!r})")
+    # Templates and routes.
+    templates = [f[len("templates/"):] for f in files
+                 if f.startswith("templates/") and f.endswith(".html")]
+    route_files = [f for f in files if f.startswith("routes/") and f.endswith(".py")]
+    if templates or route_files:
+        routes = all_routes(repo) if routes is None else routes
+        refs, urls = template_graph(repo) if graph is None else graph
+        hit = []                                    # [(Route, why)]
+        for name in templates:
+            used = users_of(name, refs)
+            for r in routes:
+                via = sorted(r.templates & used)
+                if via:
+                    how = name if via == [name] else f"{via[0]}, which uses {name}"
+                    hit.append((r, f"renders {how}"))
+        for f in route_files:
+            text = show(f) or ""
+            spans = hunks.get(f, [])
+            bp = blueprint_lines(text)
+            whole = any(a <= ln <= b for ln in bp for a, b in spans)
+            for r in routes_of(f, text):
+                if whole or any(a <= r.last and b >= r.first for a, b in spans):
+                    hit.append((r, f"its function in {f} changed"))
+        for r, why in hit:
+            for t, tf in tests.items():
+                lit = tf.names_route(r)
+                if lit:
+                    add(t, f"names the route {r.rule} ({why}; the literal {lit!r})")
+        # One htmx hop, for the browser files: a page whose template loads a hit route.
+        loaders = set()
+        for tname, paths in urls.items():
+            if any(r.matches(u) for r, _w in hit for u in paths):
+                loaders |= users_of(tname, refs)
+        if loaders:
+            for r in routes:
+                if r.templates & loaders:
+                    for t, tf in tests.items():
+                        if tf.browser:
+                            lit = tf.names_route(r)
+                            if lit:
+                                add(t, f"a browser file naming {r.rule}, whose page loads a "
+                                       f"changed route (the literal {lit!r})")
+    for t in CONVENTIONS:
+        add(t, "the convention set")
+    if any(f.startswith("docs/manual/") for f in files) or templates:
+        why = "docs/manual/ changed" if any(f.startswith("docs/manual/") for f in files) \
+            else "a template changed"
+        for t in MANUAL:
+            add(t, f"the manual and fidelity tests ({why})")
+    if route_files:
+        for t in ROUTES:
+            add(t, "the route tests (routes/ changed)")
+    return chosen
+
+
+# --- the gate ---------------------------------------------------------------------------------
+
+def _workers():
+    return _load("nmas_workers_for_pregate", os.path.join(REPO, "scripts", "nmas-workers"))
+
+
+def gate_holder(lock):
+    """``(pid, text)`` when the full-suite lock names a live process, else None: the build
+    briefs' check (its first number, `kill -0`)."""
+    try:
+        with open(lock, encoding="utf-8", errors="replace") as fh:
+            text = fh.read().strip()
+    except OSError:
+        return None
+    m = re.search(r"\d+", text)
+    if not m:
+        return None
+    pid = int(m.group())
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    except OverflowError:
+        return None
+    return pid, text.splitlines()[0] if text else ""
+
+
+def wait_for_no_gate(lock, bound_s, every_s, no_wait, say, sleep=time.sleep):
+    """None when no gate runs (now, or within *bound_s*), else why the runs did not start."""
+    waited = 0
+    while True:
+        held = gate_holder(lock)
+        if not held:
+            return None
+        pid, text = held
+        if no_wait:
+            return f"a gate is running: {lock} names live process {pid} ({text}); --no-wait"
+        if waited >= bound_s:
+            return (f"a gate still running after {waited} s (the bound, {bound_s} s): {lock} "
+                    f"names live process {pid} ({text})")
+        say(f"nmas-pregate: waits: {lock} names live process {pid} ({text}), a gate "
+            f"running; the tests start only when none is (asking again in {every_s} s)")
+        sleep(every_s)
+        waited += every_s
+
+
+# --- the runs ---------------------------------------------------------------------------------
+
+def _bounded(cmd, cwd, env, bound_s):
+    """``(rc, fired)``: *cmd* in its own session, ended by TERM then KILL past *bound_s*."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+    try:
+        return p.wait(timeout=bound_s), False
+    except subprocess.TimeoutExpired:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(p.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                p.wait(timeout=15)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        return p.wait(), True
+
+
+def _env(extra=None):
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", NMAS_REQUIRE_PG="1")
+    # Whether a browser must start is this tool's to say, per run (the browser run sets it):
+    # a caller's own (a gate's browser shard running this tool's tests) never leaks into a
+    # confined run.
+    env.pop("NMAS_REQUIRE_BROWSER", None)
+    if os.path.isdir(PG_LIB):
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            p for p in (PG_LIB, os.environ.get("LD_LIBRARY_PATH", "")) if p)
+    env.update(extra or {})
+    return env
+
+
+def run_confined(repo, files, scratch, bound_s):
+    junit = os.path.join(scratch, "confined.xml")
+    cmd = [os.path.join(repo, "scripts", "nmas-test"), "-q", "-p", "no:cacheprovider", "-n", "2",
+           "-rEfs", f"--junitxml={junit}", "--basetemp", os.path.join(scratch, "confined-t"),
+           *files]
+    rc, fired = _bounded(cmd, repo, _env({"NMAS_TEST_TIMEOUT": str(bound_s)}), bound_s + 30)
+    return rc, fired, junit
+
+
+def run_browser(repo, files, scratch, bound_s, python=None):
+    python = python or CI_PYTHON
+    junit = os.path.join(scratch, "browser.xml")
+    if not os.access(python, os.X_OK):
+        return None, False, junit, f"no interpreter at {python} (scripts/nmas-ci-env builds it)"
+    path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
+                            os.environ.get("PATH", "")])
+    cmd = [python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-rEfs",
+           f"--junitxml={junit}", "--basetemp", os.path.join(scratch, "browser-t"), *files]
+    rc, fired = _bounded(cmd, repo, _env({"PATH": path, "NMAS_REQUIRE_BROWSER": "1"}), bound_s)
+    return rc, fired, junit, ""
+
+
+def outcomes(junit, files):
+    """``{file: {"passed": n, "failed": n, "skipped": n}}`` from a JUnit file (each case placed
+    in the chosen file its dotted classname, or a collection error's name, begins with); None
+    when the file is absent or unreadable."""
+    try:
+        tree = ET.parse(junit)
+    except (OSError, ET.ParseError):
+        return None
+    dotted = sorted(((f[:-3].replace("/", "."), f) for f in files), key=lambda x: -len(x[0]))
+    out = {f: {"passed": 0, "failed": 0, "skipped": 0} for f in files}
+    for case in tree.iter("testcase"):
+        where = case.get("classname") or case.get("name") or ""
+        where = where.replace("/", ".")
+        if where.endswith(".py"):
+            where = where[:-3]
+        f = next((f for d, f in dotted if where == d or where.startswith(d + ".")), None)
+        if f is None:
+            continue
+        tags = {c.tag for c in case}
+        if tags & {"failure", "error"}:
+            out[f]["failed"] += 1
+        elif "skipped" in tags:
+            out[f]["skipped"] += 1
+        else:
+            out[f]["passed"] += 1
+    return out
+
+
+def skip_check(repo, junits):
+    """``(rc, words)``: scripts/nmas-skip-check --where gate over the run's JUnit files."""
+    check = os.path.join(repo, "scripts", "nmas-skip-check")
+    if not os.path.exists(check):
+        return 4, f"not run: no {check}"
+    r = subprocess.run([sys.executable, check, "--where", "gate", *junits], cwd=repo,
+                       capture_output=True, text=True, env=_env())
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def refused_skips(words, files):
+    """The chosen files whose skips the skip check refused: each `REFUSED: <dotted test id>:`
+    line, placed in the file its id begins with."""
+    dotted = sorted(((f[:-3].replace("/", "."), f) for f in files), key=lambda x: -len(x[0]))
+    out = []
+    for m in re.finditer(r"REFUSED: ([\w.]+)(?:::|:)", words):
+        f = next((f for d, f in dotted if m.group(1) == d or m.group(1).startswith(d + ".")),
+                 None)
+        if f and f not in out:
+            out.append(f)
+    return out
+
+
+def run_hook(repo, message, scratch, bound_s):
+    """``(rc, refused, fired)``: the commit-msg hook traced; *refused* names each check whose
+    command was followed by the hook's `status=1`."""
+    hook = os.path.join(repo, "scripts", "hooks", "commit-msg")
+    copy = os.path.join(scratch, "message")
+    shutil.copyfile(message, copy)
+    trace = os.path.join(scratch, "hook.trace")
+    path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
+                            os.environ.get("PATH", "")])
+    env = _env({"PS4": PS4, "PATH": path})
+    with open(trace, "w", encoding="utf-8") as out:
+        p = subprocess.Popen(["sh", "-x", hook, copy], cwd=repo, env=env, stdout=out,
+                             stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            rc, fired = p.wait(timeout=bound_s), False
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            rc, fired = p.wait(), True
+    refused, last = [], None
+    with open(trace, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith(PS4):
+                cmd = line[len(PS4):].strip()
+                if cmd.startswith("status=1") and last:
+                    refused.append(last)
+                m = re.search(r"scripts/([\w.-]+)", cmd)
+                if m and not cmd.startswith(("status=", "ROOT=", "CHECKS=", "exit")):
+                    last = m.group(1)
+            else:
+                sys.stdout.write(line)
+    return rc, refused, fired
+
+
+# --- the whole -------------------------------------------------------------------------------
+
+def fingerprint(repo):
+    return _load("nmas_control_for_pregate", os.path.join(REPO, "scripts", "nmas-control")
+                 ).fingerprint(repo)
+
+
+def summary(chosen, states):
+    """The lines: each file, its state, and why it was chosen."""
+    lines = []
+    for t, whys in chosen.items():
+        state = states.get(t, "NOT RUN: no run reached it")
+        more = f" (+{len(whys) - 1} more)" if len(whys) > 1 else ""
+        lines.append(f"  {state:<34} {t}: {whys[0]}{more}")
+    return lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--range", help="A..B: the commits after A up to B, in place of the index")
+    ap.add_argument("--message", help="a commit message file for scripts/hooks/commit-msg")
+    ap.add_argument("--list", action="store_true", help="list the tests and why; run nothing")
+    ap.add_argument("--no-wait", action="store_true", help="refuse at once while a gate runs")
+    ap.add_argument("--repo", default=None, help=argparse.SUPPRESS)
+    a = ap.parse_args(argv)
+    def say(words):
+        print(words, flush=True)
+
+    top = git(a.repo or os.getcwd(), "rev-parse", "--show-toplevel")
+    repo = top.stdout.strip()
+    if top.returncode or not repo:
+        say(f"nmas-pregate: not a git checkout: {a.repo or os.getcwd()}")
+        return 2
+    if a.message and not os.path.isfile(a.message):
+        say(f"nmas-pregate: no message file at {a.message}")
+        return 2
+    got = change(repo, a.range)
+    if got is None:
+        say(f"nmas-pregate: git cannot say what {'the range ' + a.range if a.range else 'is staged'}"
+            " changes")
+        return 2
+    files = got.files
+    if not files:
+        say(f"nmas-pregate: {'the range ' + a.range if a.range else 'the index'} changes nothing")
+        return 2
+    say(f"nmas-pregate: {len(files)} changed file(s) "
+        f"({'the range ' + a.range if a.range else 'staged'})")
+    if not a.range:
+        loose = unstaged(repo)
+        if loose:
+            say(f"nmas-pregate: note: {len(loose)} file(s) differ between the index and the "
+                f"working tree, and the runs read the working tree: {', '.join(loose[:8])}"
+                f"{' ...' if len(loose) > 8 else ''}")
+    tests = test_files(repo)
+    chosen = select(repo, got, tests=tests)
+    absent = [t for t in chosen if not os.path.isfile(os.path.join(repo, t))]
+    browser = [t for t in chosen if t in tests and tests[t].browser]
+    confined = [t for t in chosen if t not in browser and t not in absent]
+    say(f"nmas-pregate: {len(chosen)} test file(s): {len(confined)} confined, "
+        f"{len(browser)} browser")
+    if a.list:
+        for line in summary(chosen, {t: "listed (--list: not run)" for t in chosen}):
+            say(line)
+        say("nmas-pregate: listed only; nothing was run")
+        return 0
+
+    w = _workers()
+    lock = os.environ.get("NMAS_FULL_LOCK", w.FULL_LOCK)
+    bound_wait = int(os.environ.get("NMAS_PREGATE_WAIT_S", w.WAIT_BOUND_S))
+    every = int(os.environ.get("NMAS_PREGATE_POLL_S", w.WAIT_EVERY_S))
+    before = fingerprint(repo)
+    states, failed, not_run, extra = {}, False, bool(absent), []
+    for t in absent:
+        states[t] = "NOT RUN: absent from the checkout"
+    scratch = tempfile.mkdtemp(prefix="nmas-pregate-")
+    try:
+        junits = []
+        for label, group in (("confined", confined), ("browser", browser)):
+            if not group:
+                continue
+            why = wait_for_no_gate(lock, bound_wait, every, a.no_wait, say)
+            if why:
+                for t in group:
+                    states[t] = "NOT RUN: a gate was running"
+                extra.append(f"the {label} run did not start: {why}")
+                not_run = True
+                continue
+            if label == "confined":
+                b = confined_bound(len(group))
+                say(f"nmas-pregate: the confined run, {len(group)} file(s), bound {b} s "
+                    f"(about 2.5x the measured {MEASURED_CONVENTIONS_S} s for the convention "
+                    f"set and {MEASURED_PER_FILE_S} s a further file)")
+                rc, fired, junit = run_confined(repo, group, scratch, b)
+                note = ""
+            else:
+                b = browser_bound(len(group))
+                say(f"nmas-pregate: the browser run, unconfined, {len(group)} file(s), bound "
+                    f"{b} s (about 2.5x the measured {MEASURED_BROWSER_FILE_S} s a file, never "
+                    f"under 2.5x the slowest file's {MEASURED_BROWSER_SLOWEST_S} s)")
+                rc, fired, junit, note = run_browser(repo, group, scratch, b)
+            if note or rc is None:
+                for t in group:
+                    states[t] = "NOT RUN: no browser interpreter"
+                extra.append(f"the {label} run did not start: {note}")
+                not_run = True
+                continue
+            if fired:
+                extra.append(f"the {label} run's bound fired ({b} s); its files are not run")
+            got = None if fired else outcomes(junit, group)
+            if got is None:
+                for t in group:
+                    states[t] = "NOT RUN: " + ("the bound fired" if fired else
+                                               f"no JUnit result (exit {rc})")
+                not_run = True
+                continue
+            junits.append(junit)
+            for t in group:
+                o = got[t]
+                ran = o["passed"] + o["failed"]
+                if o["failed"]:
+                    states[t] = f"FAILED ({o['failed']} failed, {o['passed']} passed)"
+                    failed = True
+                elif not ran:
+                    states[t] = ("NOT RUN: every test skipped" if o["skipped"] else
+                                 "NOT RUN: no test collected")
+                    not_run = True
+                else:
+                    states[t] = f"passed ({o['passed']}" + (
+                        f", {o['skipped']} skipped)" if o["skipped"] else ")")
+            if rc and not any(got[t]["failed"] for t in group):
+                extra.append(f"the {label} run exited {rc} with no test failed in its JUnit "
+                             "file (a collection or session error: read its output above)")
+                failed = True
+        if junits:
+            rc, words = skip_check(repo, junits)
+            if rc:
+                extra.append(f"the skip check (scripts/nmas-skip-check --where gate) refused: "
+                             f"{words}")
+                failed = failed or rc == 1
+                not_run = not_run or rc != 1
+                # Each file a refused skip belongs to says so, never "passed".
+                for t in refused_skips(words, list(states)):
+                    states[t] = "FAILED: a skip the gate refuses"
+        hook_line = None
+        if a.message:
+            why = wait_for_no_gate(lock, bound_wait, every, a.no_wait, say)
+            if why:
+                hook_line = f"NOT RUN: the commit-msg hook ({why})"
+                not_run = True
+            else:
+                say(f"nmas-pregate: scripts/hooks/commit-msg on a copy of {a.message}, bound "
+                    f"{HOOK_BOUND} s")
+                rc, refused, fired = run_hook(repo, a.message, scratch, HOOK_BOUND)
+                if fired:
+                    hook_line = f"NOT RUN: the commit-msg hook's bound fired ({HOOK_BOUND} s)"
+                    not_run = True
+                elif rc == 0:
+                    hook_line = "passed: the commit-msg hook"
+                else:
+                    hook_line = ("REFUSED: the commit-msg hook, by " + (", ".join(refused) or
+                                 f"no check named in its trace (exit {rc})"))
+                    failed = True
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    after = fingerprint(repo)
+    say("nmas-pregate: the summary")
+    for line in summary(chosen, states):
+        say(line)
+    if hook_line:
+        say(f"  {hook_line}")
+    for e in extra:
+        say(f"  {e}")
+    if after != before:
+        moved = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        say(f"nmas-pregate: THE WORKING TREE CHANGED during the run: {moved}")
+        return 3
+    if failed:
+        say("nmas-pregate: FAILED")
+        return 1
+    if not_run:
+        say("nmas-pregate: NOT EVERYTHING RAN: no verdict")
+        return 4
+    say("nmas-pregate: every chosen file ran and passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

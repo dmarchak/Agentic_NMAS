@@ -76,6 +76,26 @@ in its skip reason; the gate refuses a run in which any browser test was skipped
   reason in the commit (`Test-Weakened:`), and `scripts/nmas-test-weakening-check` holds every
   pushed commit to it.
 
+## The tests a change touches, before the gate {#pregate}
+
+```
+git add <the files of the change>
+scripts/nmas-pregate --message <message file>          # or --range A..B, or --list
+```
+
+It lists the test files the staged change touches, each with why: a file importing a name the
+change touched (or one that reads it), a file naming a changed file, template or route by a
+whole literal, the browser files whose pages render a changed template, the changed tests
+themselves, and a fixed set of convention scans; the manual's and the route tests join when
+`docs/manual/`, a template or `routes/` changes. Then, only while no gate runs (it waits,
+saying why), it runs them: the confined ones through `scripts/nmas-test -n 2`, the browser
+ones in CI's interpreter with the test browser, each run bounded. With `--message` it runs the
+commit-msg hook on a copy and names the check that refused. The summary gives each file's
+state: passed, failed, or not run with the reason; it exits 0 only when every file ran and
+passed. It writes nothing in your working tree, and says so if a run did. It runs your
+working tree's files, so an edit not staged is tested too, and it says when one exists. The
+gate still runs everything.
+
 ## The gate, before every commit {#gate}
 
 ```

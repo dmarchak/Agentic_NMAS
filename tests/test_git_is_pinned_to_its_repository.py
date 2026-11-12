@@ -69,6 +69,8 @@ DECLARED = {
     ("scripts/nmas_mutation.py", "moved_from"): "the APPLICATION's checkout",
     ("scripts/nmas-gate", "git"): "the APPLICATION's checkout (the developer's gate)",
     ("scripts/nmas-gate", "main"): "the APPLICATION's checkout (the developer's gate)",
+    ("scripts/nmas-pregate", "git"): "the APPLICATION's checkout (the staged change or range "
+                                     "whose tests it chooses, read-only)",
     ("scripts/nmas-stage-guard", "_git"): "the APPLICATION's checkout (what is staged)",
     ("scripts/nmas-shards", "changed_paths"): "the APPLICATION's checkout (a pushed range)",
     ("scripts/nmas-rollback", "git"): "the APPLICATION's checkout (a rollback's revert)",
