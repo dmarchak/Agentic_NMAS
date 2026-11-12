@@ -586,6 +586,27 @@ class TestInstalled:
         finally:
             T.uninstall()
 
+    @pytest.mark.parametrize("module", ["modules.heal.triggers", "modules.heal.flaps"])
+    def test_an_install_after_its_list_was_replaced_installs_it_again(self, monkeypatch, module):
+        # C3396 (CI run #1661): `reader_job.start` under a replaced store list installed the
+        # steps there, the list was then put back without them, and a later install did
+        # nothing, its flag still on: detection's steps never ran. An install registers by
+        # membership, so the step is in the list it is asked to join.
+        import importlib
+
+        from modules import reader_job as RJ
+
+        mod = importlib.import_module(module)
+        real = list(RJ._AFTER_ANY_STORE)
+        monkeypatch.setattr(RJ, "_AFTER_ANY_STORE", [])
+        mod.install()
+        monkeypatch.setattr(RJ, "_AFTER_ANY_STORE", [s for s in real if s is not mod._after_store])
+        mod.install()
+        try:
+            assert RJ._AFTER_ANY_STORE.count(mod._after_store) == 1, RJ._AFTER_ANY_STORE
+        finally:
+            mod.uninstall()
+
     def test_a_readers_store_runs_its_step_by_its_configurations_name(self, world):
         from modules import reader_job as RJ
 

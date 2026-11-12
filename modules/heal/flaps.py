@@ -79,9 +79,10 @@ def install() -> None:
     start (`reader_job.start`)."""
     from modules import reader_job
 
-    if not _installed["on"]:
-        reader_job.after_any_store(_after_store)
-        _installed["on"] = True
+    # Registered by membership (`after_any_store` adds a step once), never by this module's
+    # flag alone: a flag left on while the list was replaced would install nothing (C3396).
+    reader_job.after_any_store(_after_store)
+    _installed["on"] = True
 
 
 def uninstall() -> None:
