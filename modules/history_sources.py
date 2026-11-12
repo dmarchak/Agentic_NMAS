@@ -841,7 +841,8 @@ def fault_drills(ctx):
     """Each fault drill declared on a device of the network (modules/fault_drills.py; the
     operator's decision, 2026-11-11): who, the device, the fault expected and until when. A
     declaration silences, holds and explains nothing; its incident's own row says it was a
-    drill."""
+    drill. A drill ended early (`fault_drills.record_ended`) is a second row, "Fault drill
+    ended", with who ended it and when."""
     from modules import fault_drills as FD
     from modules.redact import redact_text
 
@@ -851,20 +852,30 @@ def fault_drills(ctx):
         return _out(errors=[str(exc)])
     events = []
     for r in rows:
-        if not _mine(ctx, r.get("device") or "") or not _recent(ctx, r.get("from")):
+        if not _mine(ctx, r.get("device") or ""):
             continue
         expects = redact_text(r.get("expects") or "")
-        events.append(_event(r.get("from"), "fault_drill",
-                             f"Fault drill declared on {r.get('device')}: {expects}",
-                             [r.get("device") or ""], who=r.get("by", ""),
-                             detail=redact_text(r.get("reason") or ""),
-                             record=[("Declaration", r.get("id")), ("From", iso(r.get("from"))),
-                                     ("Until", iso(r.get("until"))), ("Expects", expects),
-                                     ("Script", redact_text(r.get("script") or "")),
-                                     ("Via", r.get("via"))]))
-        if len(events) >= ctx["limit"]:
-            break
-    return _out(events)
+        ended = iso(r.get("ended_at")) if r.get("ended_at") else ""
+        if _recent(ctx, r.get("from")):
+            events.append(_event(r.get("from"), "fault_drill",
+                                 f"Fault drill declared on {r.get('device')}: {expects}",
+                                 [r.get("device") or ""], who=r.get("by", ""),
+                                 detail=redact_text(r.get("reason") or ""),
+                                 record=[("Declaration", r.get("id")),
+                                         ("From", iso(r.get("from"))),
+                                         ("Until", iso(r.get("until"))), ("Ended", ended),
+                                         ("Expects", expects),
+                                         ("Script", redact_text(r.get("script") or "")),
+                                         ("Via", r.get("via"))]))
+        if ended and _recent(ctx, r.get("ended_at")):
+            events.append(_event(r.get("ended_at"), "fault_drill",
+                                 f"Fault drill ended on {r.get('device')}: {expects}",
+                                 [r.get("device") or ""], who=r.get("ended_by", ""),
+                                 record=[("Declaration", r.get("id")), ("Ended", ended),
+                                         ("Its bound", iso(r.get("until"))),
+                                         ("Via", r.get("ended_via"))]))
+    events.sort(key=lambda e: e["at"], reverse=True)
+    return _out(events[:ctx["limit"]])
 
 
 #: A save's line (the device's own save, C362): its own words, never a rotation's.

@@ -171,7 +171,18 @@ and the operator's words for the card, as tests/test_fault_drills.py renders it;
 (tests/test_board_shots.py has none of it yet): the table "Declare a fault drill… and its
 card" below. Templates sha256 before (without `_declare_drill.html` in the list):
 `a531441334dc4c48d11f06cae02ea99a262c2dbfc120276991f664b25d03ae8d`.
-Templates sha256: `90dbaf2c170cfd5ed895d9a2c75cbaa98093cac47300709390dde8727c0e221d`
+
+**Hashed again 2026-11-12 for End the fault drill** (the operator's overnight item 9 of that
+day): while a drill is open on the device, `_actions_menu.html`'s fault-drill row reads "End the
+fault drill (until HH:MM)", one press, in place of Declare a fault drill…, and greys Declare a
+fault drill… with why when the drills cannot be read; `_declare_drill.html` draws the end's
+answer where it draws the declaration's; `device.html`'s menu re-reads on `fault_drills`. No
+board draws an early end: the two regions are rows in the table "Declare a fault drill… and its
+card" below, each a deviation logged in STANDING_APPROVAL_LOG ("End the fault drill"). Every
+other region as compared; compared by the templates' diff and the pages
+tests/test_fault_drills.py draws, not a new shot. Templates sha256 before:
+`90dbaf2c170cfd5ed895d9a2c75cbaa98093cac47300709390dde8727c0e221d`.
+Templates sha256: `82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and
@@ -525,6 +536,8 @@ against the rendered menu and card, region by region.
 | The one primary action | "Declare the drill" | "Declare the drill", busy on itself ("Declaring…") until the answer arrives | **same** |
 | The result in place | "Declared: a drill on r3 until HH:MM: <expects>. Inject the fault now; an incident on r3 before HH:MM is a drill." | the same words, green, HH:MM the page's clock element (UTC on hover), in place of the form; no toast | **same** |
 | A refusal | a late declaration refused, naming both times (I1) | "Couldn't declare the drill: <why>." in red above the form, the form kept with what was typed: after the fault, a second open drill, a bound or words out of shape | **same** |
+| Actions menu: End the fault drill (until HH:MM) | not drawn: the board's drill lasts its bound | (2026-11-12) while a drill is open on the device, in place of Declare a fault drill…: one press, no confirm (it sends nothing), busy on itself ("Ending the drill…"), its (i) opening Ending it early; drills that cannot be read grey Declare a fault drill… with why | **deviation** (log: End the fault drill) |
+| The end's answer in place | not drawn | (2026-11-12) the card in place of the tab, its head "End the fault drill on <device>": "Fault drill fd-… ended at HH:MM; incidents from now are real." green where the declaration's answer is drawn, HH:MM the page's clock element; a refusal "Couldn't end the drill: <why>." in red; no toast | **deviation** (log: End the fault drill) |
 | The route | `POST /fault-drills/declared` | `POST /v2/fault-drills/declared` (device_v2.fault_drill_declare), the card's form and a script's JSON body alike | **deviation** (log: Declare a fault drill…) |
 | History | the kind "Fault drill declared" (I3) | History's kind filter "Fault drills declared" under What happened to a device, one row per declaration; a drill heal's row begins "Fault drill:" | **deviation** (log: Declare a fault drill…) |
 | The chip on the page and the card, the list's filter | the Fault drill chip, Real / Fault drills / Both (I3, I4) | not built: the incident page is not on main yet | **later** the incident page's S9 rest: its chip, filter, strip and CSV |

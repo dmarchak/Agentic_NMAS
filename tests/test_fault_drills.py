@@ -23,6 +23,13 @@ neighbour hold apply to a drill exactly as to a real fault"), no network, no dev
   in place, a refusal), the JSON body, a request no verified person made refused, and the CLI
   recording the host login, labelled.
 - **History:** each declaration, and a drill heal's row says it was a drill.
+- **Ended early** (`record_ended`, overnight item 9, 2026-11-12): an end row appended, never a
+  rewrite; every reader merges it (after the end nothing is covered or tagged; an incident
+  tagged before keeps its tag, one after is real); refused naming both operands (unknown,
+  another device, ended already, past its bound, no person), recording nothing; a new drill
+  declarable after the end; an unreadable record raises, never "no drill"; History's "Fault
+  drill ended" row; the menu row swapping to End the fault drill and its press through the real
+  app; the CLI's ``--end``.
 """
 
 import importlib.machinery
@@ -470,3 +477,197 @@ class TestTheCLI:
         code = _cli().main([NET, DEV, "--minutes", "20", "--expects", EXPECTS])
         assert code == 1 and "refused: a fault drill lasts 1 to 15 minutes" in \
             capsys.readouterr().err
+
+    def test_end_ends_the_drill_open_on_the_device(self, page, monkeypatch, capsys):
+        monkeypatch.setattr("getpass.getuser", lambda: "operator")
+        assert _cli().main([NET, DEV, "--minutes", "10", "--expects", EXPECTS]) == 0
+        (row,) = FD().declared(NET)
+        capsys.readouterr()
+        assert _cli().main([NET, DEV, "--end"]) == 0
+        out = capsys.readouterr().out
+        (row,) = FD().declared(NET)
+        assert row["ended_by"] == "operator (host login, not a verified identity)"
+        assert row["ended_via"] == "nmas-fault-drill" and row["ended_at"]
+        assert f"ended: fault drill {row['id']} on {DEV} in {NET} at {row['ended_at']}" in out
+        assert FD().open_on(NET, DEV) == {}
+
+    def test_end_with_no_drill_open_exits_1_naming_it(self, page, capsys):
+        assert _cli().main([NET, DEV, "--end"]) == 1
+        assert f"refused: {DEV} in {NET} has no fault drill open now" in capsys.readouterr().err
+        assert FD().declared(NET) == []
+
+
+# ── Ended early (overnight item 9, 2026-11-12) ──────────────────────────────────────────────
+
+def end(drill_id, at, by=BY, **kw):
+    return FD().record_ended(NET, drill_id, by=by, actor_verified="access", via="test", now=at,
+                             **kw)
+
+
+def _lines():
+    with open(FD().path(NET), encoding="utf-8") as fh:
+        return fh.read().splitlines()
+
+
+def _incident(at, device=DEV):
+    got = I.sight(NET, device, {"kind": "config_change", "key": f"end:{device}:{at}",
+                                "epoch": at, "at": iso(at), "words": "x"}, now=at)
+    return got["incident"]
+
+
+def _reread(inc_id):
+    return next(i for i in I.read(NET)["incidents"] if i["id"] == inc_id)
+
+
+class TestEndedEarly:
+    def test_the_end_row_is_appended_and_merged(self, lab):  # noqa: F811
+        r = declare(T0 - 30)["record"]
+        before = _incident(T0)
+        first = _lines()
+        got = end(r["id"], T0 + 60)
+        assert got["ok"], got
+        lines = _lines()
+        assert lines[:len(first)] == first and len(lines) == len(first) + 1, "appended only"
+        assert got["record"]["ends"] == r["id"] and got["record"]["ended_at"] == iso(T0 + 60)
+        assert got["drill"]["end_epoch"] == T0 + 60
+        assert oct(os.stat(FD().path(NET)).st_mode & 0o777) == "0o600"
+        # Every reader merges it: covered before the end, nothing from it on.
+        assert FD().covering(NET, DEV, T0 + 59)["id"] == r["id"]
+        assert FD().covering(NET, DEV, T0 + 60) == {} and FD().covering(NET, DEV, T0 + 61) == {}
+        assert FD().tag_for(NET, DEV, T0 + 61) is None
+        (d,) = FD().declared(NET)
+        assert (d["id"], d["ended_at"], d["ended_by"]) == (r["id"], iso(T0 + 60), BY)
+        # The incident opened before the end keeps its tag: nothing re-tags.
+        assert FD().tag_of(_reread(before))["id"] == r["id"]
+
+    def test_an_incident_after_the_end_is_real(self, lab):  # noqa: F811
+        r = declare(T0 - 30)["record"]
+        assert end(r["id"], T0)["ok"]
+        assert FD().tag_of(_reread(_incident(T0 + 30))) is None
+        assert FD().covering(NET, DEV, T0 + 30) == {}
+
+    def test_the_refusals_name_both_operands_and_record_nothing(self, lab):  # noqa: F811
+        r = declare(T0 - 30)["record"]
+        n = len(_lines())
+        got = end("fd-nothing", T0)
+        assert not got["ok"] and "Default has no fault drill fd-nothing declared" in got["error"]
+        got = end(r["id"], T0, device="core-a")
+        assert not got["ok"] and f"{r['id']} is a drill on {DEV}, not on core-a" in got["error"]
+        got = end(r["id"], T0, by="")
+        assert not got["ok"] and "ended by a person" in got["error"]
+        got = end(r["id"], T0 + 11 * MIN)
+        assert not got["ok"] and r["until"] in got["error"] and iso(T0 + 11 * MIN) in \
+            got["error"] and "nothing to end" in got["error"], got
+        assert len(_lines()) == n, "the refusals recorded nothing"
+        assert end(r["id"], T0)["ok"]
+        got = end(r["id"], T0 + 5)
+        assert not got["ok"] and iso(T0) in got["error"] and iso(T0 + 5) in got["error"] \
+            and "op" in got["error"] and "ended once" in got["error"], got
+        assert len(_lines()) == n + 1
+
+    def test_a_new_drill_is_declarable_after_the_end(self, lab):  # noqa: F811
+        r = declare(T0 - 30)["record"]
+        assert not declare(T0)["ok"], "one drill per device at a time"
+        assert FD().open_on(NET, DEV, now=T0)["id"] == r["id"]
+        assert end(r["id"], T0 + 10)["ok"]
+        assert FD().open_on(NET, DEV, now=T0 + 10) == {}
+        second = declare(T0 + 20)
+        assert second["ok"], second
+        assert FD().open_on(NET, DEV, now=T0 + 20)["id"] == second["record"]["id"]
+        assert FD().covering(NET, DEV, T0 + 30)["id"] == second["record"]["id"]
+
+    def test_an_unreadable_record_raises_never_no_drill(self, lab):  # noqa: F811
+        r = declare(T0 - 30)["record"]
+        with open(FD().path(NET), "a", encoding="utf-8") as fh:
+            fh.write("not json\n")
+        for read in (lambda: FD().open_on(NET, DEV, now=T0),
+                     lambda: FD().covering(NET, DEV, T0), lambda: FD().declared(NET)):
+            with pytest.raises(RuntimeError, match="cannot be read"):
+                read()
+        got = end(r["id"], T0)
+        assert not got["ok"] and "cannot be told" in got["error"], got
+
+    def test_history_draws_the_end_with_who_and_when(self, lab):  # noqa: F811
+        from modules import history_sources as HS
+
+        r = declare(T0 - 30)["record"]
+        assert end(r["id"], T0 + 60)["ok"]
+        events = HS.fault_drills(_ctx())["events"]
+        assert [e["what"] for e in events] == [f"Fault drill ended on {DEV}: {EXPECTS}",
+                                               f"Fault drill declared on {DEV}: {EXPECTS}"]
+        ended = events[0]
+        assert ended["at"] == iso(T0 + 60) and ended["kind"] == "fault_drill"
+        assert ended["who"] == BY and HS.shown_who(ended["who"]) == "op"
+        assert ("Declaration", r["id"]) in ended["record"] and \
+            ("Ended", iso(T0 + 60)) in ended["record"]
+        assert ("Ended", iso(T0 + 60)) in events[1]["record"]
+
+
+class TestEndTheDrillOnThePage:
+    def _declare(self, c):
+        r = c.post("/v2/fault-drills/declared", data={
+            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS, "back": "overview"})
+        assert r.status_code == 200
+        (row,) = FD().declared(NET)
+        return row
+
+    def test_the_menu_row_swaps_and_its_press_ends_the_drill(self, page):
+        import json
+
+        c = page["client"]
+        row = self._declare(c)
+        menu = c.get(f"/v2/device/{DEV}/actions?tab=overview").get_data(as_text=True)
+        assert "Declare a fault drill…" not in menu
+        assert "End the fault drill (until " in menu and f'datetime="{row["until"]}"' in menu
+        assert 'hx-post="/v2/fault-drills/ended' in menu and "Ending the drill…" in menu
+        assert f"End the fault drill (until " in c.get(f"/v2/device/{DEV}").get_data(as_text=True)
+        # Pressed as the row sends it: its own values, and the drill ended.
+        (vals,) = re.findall(r"hx-vals='([^']*)'[^>]*>.{0,40}End the fault drill", menu)
+        sent = json.loads(vals)
+        assert sent == {"list": NET, "device": DEV, "back": "overview", "drill": row["id"]}
+        r = c.post("/v2/fault-drills/ended", data=sent)
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:400]
+        (d,) = FD().declared(NET)
+        assert d["ended_by"] == "test-person@example.invalid" and d["ended_via"] == "device page"
+        assert f"Fault drill {row['id']} ended at" in html and f"{d['ended_at'][11:16]} UTC" in html
+        assert "incidents from now are real" in html and 'id="fault-drill-result"' in html
+        assert "fault_drills" in r.headers.get("X-NMAS-Invalidates", "")
+        menu = c.get(f"/v2/device/{DEV}/actions?tab=overview").get_data(as_text=True)
+        assert "Declare a fault drill…" in menu and "End the fault drill" not in menu
+        # Pressed again: refused in place, naming both times, nothing recorded.
+        r = c.post("/v2/fault-drills/ended", data=sent)
+        html = r.get_data(as_text=True)
+        assert r.status_code == 409 and "Couldn't end the drill: " in html and "ended once" in html
+        assert len(_lines()) == 2
+
+    def test_an_unreadable_record_offers_neither_saying_why(self, page):
+        os.makedirs(os.path.dirname(FD().path(NET)), exist_ok=True)
+        with open(FD().path(NET), "w", encoding="utf-8") as fh:
+            fh.write("not json\n")
+        menu = page["client"].get(f"/v2/device/{DEV}/actions?tab=overview").get_data(as_text=True)
+        assert "End the fault drill" not in menu
+        assert "Declare a fault drill…<span class=\"sr-only\"> (not offered: Default&#39;s " \
+               "fault drills cannot be read" in menu
+        # Pressed anyway (a stale menu): refused in place, and the file is as it was.
+        r = page["client"].post("/v2/fault-drills/ended", data={
+            "list": NET, "device": DEV, "drill": "fd-x", "back": "overview"})
+        assert r.status_code == 409 and "cannot be told" in r.get_data(as_text=True)
+        assert _lines() == ["not json"]
+
+    @pytest.mark.real_identity
+    def test_a_request_no_verified_person_made_is_refused(self, page):
+        d = FD().record_declared(NET, DEV, minutes=10, expects=EXPECTS, by=BY,
+                                 actor_verified="access", via="test", inventory=_inv)["record"]
+        r = page["client"].post("/v2/fault-drills/ended", data={
+            "list": NET, "device": DEV, "drill": d["id"], "back": "overview"})
+        assert r.status_code in (401, 403), r.status_code
+        assert FD().open_on(NET, DEV)["id"] == d["id"], "the drill is still open"
+        assert len(_lines()) == 1
+
+    def test_the_route_is_gated_for_a_person(self):
+        from modules import invalidation, route_gates
+
+        g = route_gates.GATES["device_v2.fault_drill_end"]
+        assert (g.kind, g.operation) == ("configure", "fault_drill_end")
+        assert invalidation.DECLARED["device_v2.fault_drill_end"] == ("fault_drills",)

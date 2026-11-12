@@ -65,7 +65,7 @@ VOCABULARY = {
     "baselines": "baseline tags",
     "adjacencies": "the routing adjacencies intent implies, against what each device reports (C38)",
     "restarts": "a device restart the restarts reader found, planned or not (modules/restarts.py)",
-    "fault_drills": "a fault drill declared on a device (modules/fault_drills.py)",
+    "fault_drills": "a fault drill declared or ended on a device (modules/fault_drills.py)",
     "acknowledgements": "a person acknowledged a Needs attention event row (modules/acknowledgements.py)",
     "attention": "Needs attention's rows, as its background store last assembled them "
                  "(modules/attention_store.py, C3166): the list reads the held value again",
@@ -473,6 +473,9 @@ DECLARED = {
     # A person's mark seen (C3081): their In progress list and chip draw without the entry.
     "v2.seen_run": ("in_progress",),
     "device_v2.fault_drill_declare": ("fault_drills",),
+    # A fault drill ended early: History's "Fault drill ended" row, and the device's Actions
+    # menu, which offers Declare a fault drill… again.
+    "device_v2.fault_drill_end": ("fault_drills",),
     "restarts.planned": ("restarts",),
     # C539: each writes a log job health's break-glass rows read, so it wakes that reader.
     "v2.credentials_drill": ("breakglass",),

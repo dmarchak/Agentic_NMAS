@@ -31,6 +31,26 @@ the same writer.
    drill declared". The card answers in place: "Declared: a drill on <device> until HH:MM:
    <the fault>. Inject the fault now; an incident on <device> before HH:MM is a drill."
 
+## Ending it early {#end}
+
+A drill lasts until its end unless you end it first. End it once its fault is healed, so a
+later incident on the device is real again and a new drill can be declared on it. While a drill
+is open on the device, its Actions menu offers **End the fault drill (until HH:MM)** in place of
+Declare a fault drill…. It is one press, with no confirm: it sends nothing to the device and
+only stops the drill's exemption early. On the host, as Mercury's user, run
+`scripts/nmas-fault-drill <network> <device> --end`. Both record through the same writer.
+
+- **Recorded:** one more row in the network's fault drills, naming the drill, who ended it and
+  when. Nothing earlier is rewritten. History draws it as "Fault drill ended".
+- **From the end on, an incident on the device is real.** An incident that opened before the
+  end stays a drill: its tag was written when it opened, and nothing changes it.
+- **Refused, naming what was compared:** a drill that is not declared, one on another device,
+  one already ended (with when and by whom), and one already past its end. If the drills
+  cannot be read, Mercury says so and neither ends nor declares one.
+- **The answer is in place,** where the declaration's card draws its answer: "Fault drill
+  fd-… ended at HH:MM; incidents from now are real." A refusal reads "Couldn't end the drill:
+  <why>."
+
 ## What a drill changes, and what it does not {#exempt}
 
 - **The tag is written when the incident opens,** in the same write: an incident whose device
@@ -51,7 +71,8 @@ the same writer.
   9 and 11 for a real incident, nor in the dry run's Right / Wrong counts per fix kind. Its
   History row begins "Fault drill:" and names its declaration in its record.
 - **The decision is the incident's tag, never the declaration read later:** a drill that
-  expires changes no incident already tagged, and a declaration made later tags none.
+  expires or is ended changes no incident already tagged, and a declaration made later tags
+  none.
 - **A declaration silences nothing, holds nothing and sends nothing.** A drill's alerts fire
   and its rows are raised as a real fault's are.
 

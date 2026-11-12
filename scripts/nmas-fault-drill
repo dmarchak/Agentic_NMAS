@@ -4,6 +4,7 @@
     nmas-fault-drill <network> <device> --minutes 10 --expects "the EEM heartbeat applet removed"
     nmas-fault-drill <network> <device> --minutes 10 --expects "..." --script "rehearsal F1"
         --reason "tonight's rehearsal"
+    nmas-fault-drill <network> <device> --end
 
 An incident Mercury opens on the device before the drill's end (now plus --minutes, at most
 15) is tagged a fault drill when it opens, in the same write. Self-healing treats it exactly
@@ -21,7 +22,14 @@ labelled (`identity.host_actor`), through `fault_drills.record_declared`, the wr
 device page's Declare a fault drill… calls. History draws it ("Fault drill declared"). No
 device is contacted.
 
-Exit 0: declared; 1: refused (named).
+`--end` ends the drill open on the device now, before its bound (once its fault is healed),
+through `fault_drills.record_ended`, the writer the device page's End the fault drill calls: an
+end row is appended to the same file, an incident on the device from then on is real, an
+incident already tagged keeps its tag, and a new drill may be declared on it. Refused, naming
+both operands, when no drill is open on the device or its drills cannot be read. History draws
+it ("Fault drill ended").
+
+Exit 0: declared or ended; 1: refused (named).
 """
 
 import sys
@@ -43,14 +51,20 @@ def main(argv=None) -> int:
     ap.add_argument("device", help="the device's hostname")
     ap.add_argument("--minutes", type=int, default=10,
                     help="how long the drill lasts, 1 to 15 (default 10)")
-    ap.add_argument("--expects", required=True,
-                    help="the fault, in three words or more")
+    ap.add_argument("--expects", default=None,
+                    help="the fault, in three words or more (needed to declare)")
     ap.add_argument("--script", default="", help="the injecting script's name and step")
     ap.add_argument("--reason", default="", help="why, optional")
+    ap.add_argument("--end", action="store_true",
+                    help="end the drill open on the device now, before its bound")
     args = ap.parse_args(argv)
     from modules import fault_drills
     from modules.identity import host_actor
 
+    if args.end:
+        return _end(args, fault_drills, host_actor())
+    if args.expects is None:
+        ap.error("--expects is needed to declare a drill (or --end to end the open one)")
     out = fault_drills.record_declared(args.network, args.device, minutes=args.minutes,
                                        expects=args.expects, by=host_actor(),
                                        actor_verified="host-shell", via="nmas-fault-drill",
@@ -64,6 +78,36 @@ def main(argv=None) -> int:
     print(f"inject the fault now: an incident on {r['device']} that opens before {r['until']} "
           "is a drill (guards 9 and 11 do not hold it; every other guard, the verify and the "
           "rollback do), and its heal is counted as a drill's")
+    return 0
+
+
+def _end(args, fault_drills, by) -> int:
+    """``--end``: the drill open on the device now, ended through `record_ended`."""
+    from modules.nsot import listref
+
+    if not listref.exists(args.network):
+        print(f"refused: {args.network} is no network, so no drill is ended", file=sys.stderr)
+        return 1
+    try:
+        drill = fault_drills.open_on(args.network, args.device)
+    except Exception as exc:                          # noqa: BLE001 (named)
+        print(f"refused: whether {args.device} has a drill open cannot be told ({exc}), so "
+              "none is ended", file=sys.stderr)
+        return 1
+    if not drill:
+        print(f"refused: {args.device} in {args.network} has no fault drill open now, so none "
+              "is ended", file=sys.stderr)
+        return 1
+    out = fault_drills.record_ended(args.network, drill["id"], by=by,
+                                    actor_verified="host-shell", via="nmas-fault-drill",
+                                    device=args.device)
+    if not out["ok"]:
+        print(f"refused: {out['error']}", file=sys.stderr)
+        return 1
+    r = out["record"]
+    print(f"ended: fault drill {r['ends']} on {r['device']} in {r['list']} at {r['ended_at']} "
+          f"(its bound was {drill.get('until')}), by {r['by']}; incidents on {r['device']} from "
+          "now are real")
     return 0
 
 

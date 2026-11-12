@@ -52,11 +52,14 @@ it says why), Needs attention's row, and a Reload's **Review the new key** each 
 card in place of the tab ([Re-key a device](rekey)). A device whose last reload ended not
 verified offers **Verify again…** on the same menu, after Reload… (otherwise it says why), as
 its Needs attention row does: it opens the Reload card's offer ([Reload a device](reload)).
-**Declare a fault drill…**, after Diagnose…, always offered (it sends nothing), declares BEFORE
+**Declare a fault drill…**, after Diagnose…, offered whenever no drill is open (it sends nothing), declares BEFORE
 you inject a fault that an incident on this device within the next 1 to 15 minutes is a drill:
 its card takes the expected fault in words, the minutes (10 by default) and a reason if you want
 one, and **Declare the drill** answers in place with the drill's end ([Declare a fault
-drill](fault-drill)). The **Drained** badge beside its name in the header is switched
+drill](fault-drill)). While a drill is open on the device the same row reads **End the fault
+drill (until HH:MM)**: one press ends it early, once its fault is healed, and answers in place
+("Fault drill fd-… ended at HH:MM; incidents from now are real"); a new drill can then be
+declared ([Ending it early](fault-drill#end)). The **Drained** badge beside its name in the header is switched
 off for now (see [Devices](devices#drained)).
 
 ## Overview {#overview}

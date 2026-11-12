@@ -31,6 +31,15 @@ network) counts every heal, a drill's included, because it bounds the network's 
 on the same device; and a declaration made after the fault: an incident already open on the
 device is named with both times, since a declaration after the fault never makes it a drill.
 There is no back-dating.
+
+**Ended early** (`record_ended`; the operator's overnight item 9, 2026-11-12): once its fault is
+healed, a person ends the drill (the device page's Actions › End the fault drill, or
+``scripts/nmas-fault-drill <network> <device> --end``), and an end row is appended to the same
+file, naming the declaration; nothing is rewritten. Every reader merges it (`_merge`): an ended
+drill's window closes at min(its until, its end), so an incident on the device from the end on
+is real, and a new drill may be declared on it. An incident tagged before the end keeps its tag
+(the tag is the incident's, from its creation); nothing re-tags. Refused, naming both operands,
+when the drill is unknown, already ended or already past its bound, or no person ends it.
 """
 
 import json
@@ -58,6 +67,9 @@ STEPS = (("check", "Check the declaration: a person, a device of the network, th
          ("record", "Record the declaration, append-only"))
 #: The tag's keys, as the incident carries them.
 TAG_KEYS = ("id", "declared_by", "expects", "until")
+#: An end row's field: the declaration it ends (`record_ended`). A row without it is a
+#: declaration.
+ENDS = "ends"
 
 
 class Refused(ValueError):
@@ -96,12 +108,65 @@ def _rows(network: str) -> list:
     return got["rows"]
 
 
+def _merge(rows: list) -> list:
+    """The declarations among *rows*, oldest first, each with its end merged when one is
+    recorded (``ended_at``, ``ended_epoch``, ``ended_by``, ``ended_via``), and ``end_epoch``
+    on every one: its effective end, min(its until, its end). The first end row of a drill
+    counts (`record_ended` writes no second)."""
+    ends = {}
+    for r in rows:
+        if r.get(ENDS):
+            ends.setdefault(r[ENDS], r)
+    out = []
+    for r in rows:
+        if r.get(ENDS):
+            continue
+        d = dict(r)
+        until = float(d.get("until_epoch") or 0)
+        e = ends.get(d.get("id"))
+        if e:
+            d.update(ended_at=e.get("ended_at") or "",
+                     ended_epoch=float(e.get("ended_epoch") or 0),
+                     ended_by=e.get("by") or "", ended_via=e.get("via") or "")
+            d["end_epoch"] = min(until, d["ended_epoch"])
+        else:
+            d["end_epoch"] = until
+        out.append(d)
+    return out
+
+
+def _covers(d: dict, at: float) -> bool:
+    """Does declaration *d* (merged) cover *at*: from its from to its until, and before its
+    end when it was ended (an incident at the end or after it is real)?"""
+    at = float(at)
+    if not float(d.get("from_epoch") or 0) <= at <= float(d.get("until_epoch") or 0):
+        return False
+    return not d.get("ended_at") or at < float(d.get("ended_epoch") or 0)
+
+
+def _open(d: dict, now: float) -> bool:
+    """Is declaration *d* (merged) open at *now*: not past its until, and not ended?"""
+    if d.get("ended_at") and float(d.get("ended_epoch") or 0) <= float(now):
+        return False
+    return float(d.get("until_epoch") or 0) >= float(now)
+
+
 def covering(network: str, device: str, at: float) -> dict:
-    """The declaration covering *device* at *at* (its from to its until), or ``{}``. An
-    unreadable record raises."""
-    for r in reversed(_rows(network)):
-        if r.get("device") == device and \
-                float(r.get("from_epoch") or 0) <= float(at) <= float(r.get("until_epoch") or 0):
+    """The declaration covering *device* at *at* (its from to its effective end), or ``{}``.
+    An unreadable record raises."""
+    for r in reversed(_merge(_rows(network))):
+        if r.get("device") == device and _covers(r, at):
+            return r
+    return {}
+
+
+def open_on(network: str, device: str, now: float = None) -> dict:
+    """The drill open on *device* now (declared, not past its until, not ended), or ``{}``:
+    the device page's End the fault drill and ``nmas-fault-drill --end`` end this one. An
+    unreadable record raises, never "no drill"."""
+    now = time.time() if now is None else float(now)
+    for r in reversed(_merge(_rows(network))):
+        if r.get("device") == device and _open(r, now):
             return r
     return {}
 
@@ -213,8 +278,8 @@ def record_declared(network: str, device: str, *, minutes, expects: str, by: str
             return {"ok": False, "error": (f"whether {device} already has an incident or a "
                                            f"drill cannot be told ({exc}), so no drill is "
                                            "declared")}
-        open_drill = next((r for r in reversed(rows) if r.get("device") == device
-                           and float(r.get("until_epoch") or 0) >= now), None)
+        open_drill = next((r for r in reversed(_merge(rows)) if r.get("device") == device
+                           and _open(r, now)), None)
         if open_drill:
             from modules import display_names           # board E2a: a person by display name
 
@@ -245,6 +310,65 @@ def record_declared(network: str, device: str, *, minutes, expects: str, by: str
     return {"ok": True, "record": row}
 
 
+def record_ended(network: str, drill_id: str, *, by: str, actor_verified: str = "", via: str,
+                 device: str = "", now: float = None) -> dict:
+    """End the open fault drill *drill_id* of *network* (on *device*, when named) at *now*,
+    before its bound:
+    ``{"ok": True, "record", "drill"}`` (the end row, and the declaration with its end merged)
+    or ``{"ok": False, "error"}``, the refusal naming both operands it compared. One end row is
+    appended to the declarations' own file, under its lock; nothing is rewritten, and no
+    incident already tagged changes. *via* is ``device page`` or ``nmas-fault-drill``. Sends,
+    silences and holds nothing."""
+    from modules import filestore
+    from modules.config import open_secure
+    from modules.nsot import listref
+
+    now = time.time() if now is None else float(now)
+    drill_id = (drill_id or "").strip()
+    if not by or actor_verified == "none":
+        return {"ok": False, "error": "a fault drill is ended by a person, and this request "
+                                      f"names none (actor {by or 'none'})"}
+    if not network or not listref.exists(network):
+        return {"ok": False, "error": f"{network or 'no network'} is no network, so no drill "
+                                      "is ended"}
+    with filestore.PathLock(path(network)):
+        try:
+            rows = _rows(network)
+        except Exception as exc:                      # noqa: BLE001 (named)
+            return {"ok": False, "error": (f"whether {drill_id or 'the drill'} is open cannot be "
+                                           f"told ({exc}), so no drill is ended")}
+        d = next((x for x in _merge(rows) if x.get("id") == drill_id), None)
+        if not d:
+            return {"ok": False, "error": (f"{network} has no fault drill "
+                                           f"{drill_id or '(none named)'} declared, so none is "
+                                           "ended")}
+        if device and d.get("device") != device:
+            return {"ok": False, "error": (f"{drill_id} is a drill on {d.get('device')}, not on "
+                                           f"{device}, so it is not ended from {device}")}
+        if d.get("ended_at"):
+            from modules import display_names
+
+            who = display_names.people(d.get("ended_by") or "") or "an unnamed person"
+            return {"ok": False, "error": (f"{drill_id} on {d.get('device')} was ended at "
+                                           f"{d['ended_at']} by {who}, before this end at "
+                                           f"{_iso(now)}: a drill is ended once")}
+        if float(d.get("until_epoch") or 0) < now:
+            return {"ok": False, "error": (f"{drill_id} on {d.get('device')} ended at its bound, "
+                                           f"{d.get('until')}, before this end at {_iso(now)}: "
+                                           "there is nothing to end")}
+        row = {ENDS: drill_id, "list": network, "device": d.get("device") or "",
+               "device_id": d.get("device_id"), "ended_at": _iso(now), "ended_epoch": now,
+               "by": by, "actor_verified": actor_verified or "", "via": via,
+               "recorded_at": _iso(time.time())}
+        with open_secure(path(network), "a") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    log.info("fault drills: %s ended drill %s on %s in %s at %s (its bound %s) via %s", by,
+             drill_id, row["device"], network, row["ended_at"], d.get("until"), via)
+    drill = next(x for x in _merge(rows + [row]) if x.get("id") == drill_id)
+    return {"ok": True, "record": row, "drill": drill}
+
+
 def declared(network: str) -> list:
-    """Every declaration of *network*, newest first (History's rows). Raises when unreadable."""
-    return list(reversed(_rows(network)))
+    """Every declaration of *network*, newest first, each with its end merged when it was
+    ended (History's rows). Raises when unreadable."""
+    return list(reversed(_merge(_rows(network))))

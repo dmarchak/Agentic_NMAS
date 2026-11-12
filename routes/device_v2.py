@@ -402,6 +402,8 @@ def device(name):
            "held": _held_now(ref, dev),
            # Verify again is offered only while the last reload ended not verified (C2280).
            "verify_again": _verify_again_offered(ref, dev),
+           # A fault drill open on the device: the menu ends it in place of declaring one.
+           "drill": _drill_open(ref, dev),
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
            "drained": _drained_now(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
@@ -611,7 +613,9 @@ def held_banner(name):
 def actions_menu(name):
     """The Actions menu alone (C507), read now: the page re-reads it on every key that changes
     what it offers (a rollback recorded or lifted, intent, goldens, a deploy, a hold, the
-    inventory, the device's state), so Revert and Retry appear or grey without a reload."""
+    inventory, the device's state, a fault drill declared or ended), so Revert and Retry
+    appear or grey, and Declare a fault drill… becomes End the fault drill, without a
+    reload."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
@@ -620,7 +624,8 @@ def actions_menu(name):
                                    tab=_back(request.args), block=_block_state(ref, dev),
                                    rekey=_rekey_held(dev), changes=_changes_offered(dev),
                                    held=_menu_held(ref, dev),
-                                   verify_again=_verify_again_offered(ref, dev)))
+                                   verify_again=_verify_again_offered(ref, dev),
+                                   drill=_drill_open(ref, dev)))
 
 
 # ---------------------------------------------------------------------------
@@ -1560,6 +1565,49 @@ def fault_drill_declare():
     return _strict(render_template("v2/_declare_drill.html",
                                    c=_declare_drill_card(ref, dev, _back(data), fields, got)),
                    200 if got["ok"] else 409)
+
+
+def _drill_open(ref, dev) -> dict:
+    """The Actions menu's fault-drill row (overnight item 9, 2026-11-12): ``{"id", "until"}``
+    of the drill open on the device now, which the row ends; ``{}`` when none is, and Declare
+    a fault drill… is offered; ``{"why"}`` when the drills cannot be read, and neither is
+    offered (whether one is open cannot be told). One read of the network's drills file."""
+    from modules import fault_drills
+
+    try:
+        d = fault_drills.open_on(ref.name, dev.get("hostname", ""))
+    except Exception as exc:                          # noqa: BLE001 (said on the row)
+        return {"why": str(exc)}
+    return {"id": d["id"], "until": d.get("until") or ""} if d else {}
+
+
+@bp.route("/fault-drills/ended", methods=["POST"])
+def fault_drill_end():
+    """End the fault drill open on a device before its bound (`fault_drills.record_ended`, the
+    one writer, which ``scripts/nmas-fault-drill --end`` calls on the host), recorded as the
+    verified caller: the Actions menu's End the fault drill, one press (it sends nothing to a
+    device and only stops an exemption early). The form names the drill the menu drew
+    (``drill``), so a press ends that one or is refused. The answer is drawn where the
+    declaration's card draws its answer. Silences, holds and sends nothing."""
+    from modules import fault_drills, identity
+
+    data = request.form
+    ident = identity.viewer()
+    actor = ident.actor if ident.is_identified else ""
+    verified = ident.verification if ident.is_identified else ""
+    ref, dev, refusal = _named_device(str(data.get("device") or ""), data.get("list", ""),
+                                      "v2/_declare_drill.html")
+    if refusal is not None:
+        return refusal
+    got = fault_drills.record_ended(ref.name, str(data.get("drill") or ""), by=actor,
+                                    actor_verified=verified, via="device page",
+                                    device=dev.get("hostname", ""))
+    ended = {"ok": got["ok"], "error": got.get("error") or "",
+             "id": (got.get("record") or {}).get("ends") or "",
+             "at": (got.get("record") or {}).get("ended_at") or ""}
+    c = _declare_drill_card(ref, dev, _back(data))
+    c["ended"] = ended
+    return _strict(render_template("v2/_declare_drill.html", c=c), 200 if got["ok"] else 409)
 
 
 def _diagnose_card(ref, dev, back, args) -> dict:

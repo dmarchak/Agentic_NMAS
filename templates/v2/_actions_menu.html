@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, how -%}
+{%- from "v2/_macros.html" import icon, info, how, clock -%}
 {#- The device page's Actions menu (boards 8 to 12), its own fragment (C507): what it
     offers (Revert and Retry only while a rollback block stands) is read when it is drawn,
     and the page re-reads it on every key that changes that (`device.html`'s container), so
@@ -92,8 +92,19 @@
           in its card; always offered. -#}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="diagnose" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='diagnose') }}" hx-get="{{ url_for('device_v2.diagnose_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</div>
       {#- Declare a fault drill… (the operator's decision, 2026-11-11): before a fault is injected,
-          so its incident is a drill; it sends nothing, so it is always offered. -#}
+          so its incident is a drill; it sends nothing, so it is always offered. While a drill
+          is open on the device the row ends it instead (overnight item 9, 2026-11-12): one
+          press, since it sends nothing and only stops the exemption early; its answer is
+          drawn where the declaration's card draws its own. Drills that cannot be read offer
+          neither, saying why. -#}
+      {%- set drill = drill or {} %}
+      {%- if drill.why %}
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ drill.why }}">Declare a fault drill…<span class="sr-only"> (not offered: {{ drill.why }})</span></span></div>
+      {%- elif drill.id %}
+      <div class="menu-row"><button type="button" role="menuitem" class="menu-item" data-op="fault-drill" hx-post="{{ url_for('device_v2.fault_drill_end') }}" hx-vals='{{ {"list": list_name, "device": device.hostname, "back": tab, "drill": drill.id} | tojson }}' hx-target="#tab-body" hx-swap="innerHTML" hx-disabled-elt="this" x-on:htmx:after-request="close" title="Ends {{ drill.id }} now: an incident on {{ device.hostname }} from now is real; sends nothing to {{ device.hostname }}"{{ gate('configure') }}><span class="op-idle">End the fault drill (until {{ clock(drill.until) }})</span><span class="op-busy">Ending the drill…</span></button>{{ how('fault-drill', section='end', compact=True, op='ending a fault drill') }}</div>
+      {%- else %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="fault-drill" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='declare_drill') }}" hx-get="{{ url_for('device_v2.fault_drill_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Declare a fault drill…</a>{{ how('fault-drill', compact=True, op='a fault drill') }}</div>
+      {%- endif %}
       {#- Re-key (C2239): offered only while Mercury holds a refused SSH host key for the device;
           else it says why, as Revert and Retry do. -#}
       {%- if rekey.held %}
