@@ -8,6 +8,11 @@ say "OSPF between r3 and r4 is down" without a page doing fleet work per
 request. It reads PROMETHEUS (four instant queries for the whole fleet) and
 committed intent (two git calls per list), never a device.
 
+**The tab draws what it stores** (C3166's slice 3, the operator's plan, 2026-11-12:
+"Neighbours: from the adjacencies reader"): each device's whole view (`views`), so
+opening the Neighbours tab asks Prometheus nothing (`neighbours.held_view`), and draws
+when it was read. A failed read keeps the last good views (rule 3), said on the tab.
+
 **A link is one row, named by its pair** (C38's point: an adjacency names a
 PAIR, so one link failure would otherwise fire two rows): both sides'
 reports sit on the one row. A peer outside management is its own row, seen
@@ -89,7 +94,7 @@ def _key(list_name: str, host: str, row: dict) -> str:
     return f"{list_name}|{row['proto']}|{host}|{row.get('address', '')}"
 
 
-def read(previous=None, clock=time.time, source=None, population=None, rip=None) -> dict:
+def read(previous=None, clock=None, source=None, population=None, rip=None) -> dict:
     from modules.neighbours import committed_intents, compare
 
     if previous is None:
@@ -104,12 +109,16 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
     # whether or not Prometheus is configured.
     from modules.neighbours import rip_protocols
     rip_lists, rip_error = (rip or _rip_answer)()
-    now = clock()
+    now = (clock or time.time)()
     seen, unmeasured, errors, checked, devices = {}, [], [], 0, 0
     # C1450: each device's state per protocol intent runs on it, ``{"<list>:<host>": {proto:
     # "up"|"down"|"unknown"}}``: up when every row it judged is up, down when any is down or not
     # seen, unknown when it was not measured. A deploy's "declared and not up" clears on it.
     states = {}
+    # C3166 (slice 3): each device's whole Neighbours view, ``{"<list>:<host>": {"protocols",
+    # "counts", "no_intent", "errors"}}``, exactly what the tab draws, so the tab reads it and
+    # asks Prometheus nothing on a page load (`neighbours.held_view`).
+    views = {}
     for list_name, ref, hosts in (population or lists)():
         intents, err = committed_intents(ref.repo_dir)
         if err:
@@ -121,6 +130,12 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
                 if configured else {"protocols": []}
             view["protocols"] = list(view["protocols"]) + rip_protocols(
                 intents, host, rip, rip_error)
+            views[f"{list_name}:{host}"] = {
+                "protocols": view["protocols"], "no_intent": host not in intents,
+                "errors": [err] if err else [],
+                "counts": {s: sum(1 for p in view["protocols"] for r in p["rows"]
+                                  if r["state"] == s)
+                           for s in ("up", "down", "not_seen", "unexpected")}}
             for p in view["protocols"]:
                 kinds = {r["state"] for r in p["rows"]}
                 states.setdefault(f"{list_name}:{host}", {})[p.get("proto") or p["words"]] = (
@@ -165,7 +180,8 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
         e["since"] = before.get("since") or _iso(now)
         e["devices"] = sorted(e["devices"])
     return {"configured": configured, "adjacencies": seen, "unmeasured": unmeasured,
-            "errors": errors, "checked": checked, "devices": devices, "states": states}
+            "errors": errors, "checked": checked, "devices": devices, "states": states,
+            "views": views}
 
 
 def _rip_answer() -> tuple:

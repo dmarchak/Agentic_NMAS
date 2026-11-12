@@ -130,8 +130,9 @@ class TestTheMechanism:
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
         woke = W.wake(("goldens",), "device_v2.capture_confirm")
         assert "remote-publication" not in woke, "not running in this process: not asked"
-        # freshness retired; the lab's reader left (C663); NetBox against the goldens (C1344)
-        assert set(woke) == {"baseline-usability", "netbox-lag"}
+        # freshness retired; the lab's reader left (C663); NetBox against the goldens (C1344);
+        # the drained reader, whose management path is read from the goldens (C3166)
+        assert set(woke) == {"baseline-usability", "netbox-lag", "drained"}
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
         assert {b for _n, b, _k in asked} == {"device_v2.capture_confirm"}
 

@@ -182,7 +182,19 @@ card" below, each a deviation logged in STANDING_APPROVAL_LOG ("End the fault dr
 other region as compared; compared by the templates' diff and the pages
 tests/test_fault_drills.py draws, not a new shot. Templates sha256 before:
 `90dbaf2c170cfd5ed895d9a2c75cbaa98093cac47300709390dde8727c0e221d`.
-Templates sha256: `82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`
+
+**Hashed again 2026-11-12 for C3166 slice 3's first piece** (the operator's plan, approved
+2026-11-12: "a new drained reader: the device header (every tab) and Devices"):
+`_drained_badge.html` draws what the drained reader holds, re-read on that reader's own
+announcement (`nmas:drained`, where it re-read on the reachability reader's), and its hover adds
+when the verdict was measured ("; measured HH:MM UTC") and, after a failed newer measurement,
+that it is the last good one. Nothing visible moves (the badge is drawn only while a device is
+measured drained, and the measurement is switched off, C552); the hover's added words are a
+**deviation**, logged in STANDING_APPROVAL_LOG ("The device header, Devices and Neighbours draw
+what two readers hold"). Every other region as compared; compared by the template's diff and
+the pages tests/test_drained.py draws, not a new shot. Templates sha256 before:
+`82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`.
+Templates sha256: `6449d7c91a908c1e9944b2721ad2b052581eab8940ebee268bdb32b98293600a`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and
@@ -409,6 +421,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Crumbs | Devices / r3 | Devices / r2; Devices / s1 (capture 02) | **same** |
 | Header's chips | the name, then "Answering · 4 s ago" and the intent state ("At intent", "Departs (+1)", "Change blocked: rolled back"), or "Busy: deploy, 3 min 4 s" while held, on every board | the name and the answering chip alone ("Answering since 18 h ago", capture 02; "Not probed yet" here); no intent-state chip, and no Busy chip while another operation holds the device (shot `device-rotate-held`) | **deviation** (log: Device: the header draws no intent-state or Busy chip (a defect, register C650 follow-up)) |
 | Header's chip inside a planned-restart window (C1025) | not drawn (every board's device answers) | "Restarting as planned (until 2026-10-17T00:27:47Z, by person@example.invalid)" in warn with the history icon, then "since 2 h ago"; the Overview's Answering row the same words; at 390 the chip breaks its line inside the page (shot `device-planned`) | **deviation** (log: C1025: the header's chip inside a planned-restart window) |
+| Header's Drained badge (C3166) | not drawn (no board draws a drained device) | drawn only while the drained reader holds the device measured drained (switched off, C552, so not drawn); its hover adds "; measured HH:MM UTC" and, after a failed newer measurement, that it is the last good one; re-read on the drained reader's announcement | **deviation** (log: The device header, Devices and Neighbours draw what two readers hold) |
 | Header's sub line | platform (model), the network, the address, "signs in as nmas, from its device override"; the action boards add "last measured 2 h ago" | model and platform each with its source on hover, the address, "signs in as admin", the network (capture 02); no credential source and no last-measured age (the Overview tab's table carries the age) | **deviation** (log: Device: the header's sub line names no credential source or last-measured age (a defect, register C650 follow-up)) |
 | Header's controls | "Plan a deploy…" a primary button, "How does this work?", then "Actions ▾" | one primary "Actions", Plan a deploy… its first row, as board 6's revision draws it ("Plan a deploy… is its first row") | **deviation** (log: Device: Plan a deploy… is the Actions menu's first row) |
 | Header's help | "How does this work?" beside the buttons | the (i) beside Actions, "How the Actions menu works", as on every v2 page | **deviation** (log: Device: the header's help is the info mark beside Actions) |

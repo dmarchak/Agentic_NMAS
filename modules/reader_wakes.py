@@ -57,6 +57,9 @@ WOKEN_BY = {
     "credential-health": ("credentials", "rotation", "settings"),
     # the band acknowledgements it re-reads each series for (C433, C533); Grafana by settings.
     "grafana-alerts": ("acknowledgements", "settings"),
+    # each network's committed goldens (its management path) and inventory; Prometheus by
+    # settings.
+    "drained": ("goldens", "inventory", "settings"),
     "grafana-dashboards": ("settings",),
     "coverage-reporting": ("settings",),
     "platform-facts": ("settings",),

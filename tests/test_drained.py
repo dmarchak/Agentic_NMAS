@@ -14,6 +14,7 @@
 """
 
 import os
+import re
 import subprocess
 
 import pytest
@@ -47,10 +48,17 @@ class TestSwitchedOff:
         assert D.ENABLED is False
         assert D.current("Lab") == {} and D.state_of("Lab", "r2") is None
 
-    def test_the_control_switched_on_it_measures(self, monkeypatch):
+    def test_the_control_switched_on_it_measures(self, monkeypatch, tmp_path):
+        """Switched on, the drained READER measures (C3166: no page measures), and `current`
+        is what it stored."""
+        from modules import reader_job
+        from modules.readers import drained_state
         monkeypatch.setattr(D, "ENABLED", True)
-        monkeypatch.setattr(D, "_cache", {})
+        monkeypatch.setattr(reader_job, "store_path", lambda name: str(tmp_path / f"{name}.json"))
+        monkeypatch.setattr(drained_state, "_lists", lambda: ["Lab"])
+        monkeypatch.setattr("modules.nsot.listref._registry", lambda: {"Lab": "lab"})
         monkeypatch.setattr(D, "measure", lambda name, now: {"r2": {"drained": True}})
+        reader_job.run_once(drained_state.READER, announce=lambda *a, **k: None)
         assert D.current("Lab") == {"r2": {"drained": True}}
 
 
@@ -289,41 +297,82 @@ VERDICT = {"device": "r2", "drained": True, "judged": ["Gi3"], "management": "Gi
            "rates": {"Gi3": (0.0, 0.0)}, "since": 1791323880.0}
 
 
+def _measured(monkeypatch, verdicts):
+    """Switched on, the drained READER's one run over Lab with *verdicts* (a dict, or an
+    exception to raise), stored in the lab's own store (C3166: the pages draw what it holds);
+    then any measurement on a request fails the test."""
+    from modules import reader_job
+    from modules.readers import drained_state
+
+    def measure(name, now):
+        if isinstance(verdicts, Exception):
+            raise verdicts
+        return dict(verdicts) if name == "Lab" else {}
+    monkeypatch.setattr(D, "ENABLED", True)
+    monkeypatch.setattr(drained_state, "_lists", lambda: ["Lab"])
+    monkeypatch.setattr(D, "measure", measure)
+    reader_job.run_once(drained_state.READER, announce=lambda *a, **k: None)
+
+    def on_a_request(*a, **k):
+        raise AssertionError("a page measured drained on its request (C3166)")
+    monkeypatch.setattr(D, "measure", on_a_request)
+
+
+@pytest.mark.usefixtures("reader_stores_in_tmp")
 class TestTheScreens:
+    """The header and Devices draw what the drained reader holds (C3166), never measure."""
+
     @pytest.fixture
     def drained_r2(self, monkeypatch):
-        v = dict(VERDICT, words=D.words(VERDICT))
-        monkeypatch.setattr(D, "current", lambda name: {"r2": v} if name == "Lab" else {})
-        return v
+        _measured(monkeypatch, {"r2": dict(VERDICT), "s9": {"drained": False}})
 
     def test_the_header_and_the_list_draw_the_measurement(self, lab, drained_r2):  # noqa: F811
         page = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         head = page[page.index('class="title-row"'):page.index('class="sub"')]
         assert "Drained: no host traffic on Gi3 (in 0.0/s, out 0.0/s) since 21:58 UTC" in head
         assert "below the management-polling level" in head and "under 10 unicast pkt/s" in head
+        assert re.search(r"; measured \d\d:\d\d UTC", head), "the held verdict draws its age"
         badge = lab["client"].get("/v2/device/r2/drained").get_data(as_text=True)
-        assert 'hx-trigger="nmas:reachability from:body"' in badge and "Drained: " in badge
+        assert 'hx-trigger="nmas:drained from:body"' in badge and "Drained: " in badge
         listing = lab["client"].get("/v2/devices").get_data(as_text=True)
         r2 = listing[listing.index(">r2<"):listing.index(">r2<") + 600]
         assert ">Drained<" in r2 and "no host traffic on Gi3" in r2
         assert "below the management-polling level" in r2
+        assert re.search(r"; measured \d\d:\d\d UTC", r2)
         s9 = listing[listing.index(">s9<"):listing.index(">s9<") + 400]
         assert ">Drained<" not in s9
 
     def test_the_control_not_drained_draws_no_badge(self, lab, monkeypatch):  # noqa: F811
-        monkeypatch.setattr(D, "current", lambda name: {})
+        _measured(monkeypatch, {})
         page = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         assert "Drained" not in page[page.index('class="title-row"'):page.index('class="sub"')]
 
     def test_an_unmeasurable_network_draws_no_badge_and_the_list_says_so(
             self, lab, monkeypatch):  # noqa: F811
-        def broken(name):
-            raise RuntimeError("Prometheus could not be asked for interface states: refused")
-        monkeypatch.setattr(D, "current", broken)
+        _measured(monkeypatch, RuntimeError(
+            "Prometheus could not be asked for interface states: refused"))
         page = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         assert "Drained" not in page[page.index('class="title-row"'):page.index('class="sub"')]
         listing = lab["client"].get("/v2/devices").get_data(as_text=True)
         assert "whether a device is drained could not be measured" in listing
+        assert "interface states: refused" in listing
+
+    def test_a_failed_refresh_keeps_the_last_good_verdict_and_says_so(
+            self, lab, drained_r2, monkeypatch):  # noqa: F811
+        from modules import reader_job
+        from modules.readers import drained_state
+        monkeypatch.setattr(D, "measure", lambda name, now: (_ for _ in ()).throw(
+            RuntimeError("Prometheus could not be asked for interface states: refused")))
+        doc = reader_job.run_once(drained_state.READER, announce=lambda *a, **k: None)
+        page = lab["client"].get("/v2/device/r2").get_data(as_text=True)
+        head = page[page.index('class="title-row"'):page.index('class="sub"')]
+        assert "Drained: no host traffic on Gi3" in head
+        assert "the newest measurement failed" in head and "so this is the last good one" in head
+        listing = lab["client"].get("/v2/devices").get_data(as_text=True)
+        assert "the newest drained measurement failed" in listing and ">Drained<" in listing
+        # What the pages drew is the store's: the last good verdict kept, the attempt failed.
+        assert doc["last_attempt"]["ok"] is False and "refused" in doc["last_attempt"]["error"]
+        assert set(D.held("Lab")["verdicts"]) == {"r2"}
 
     def test_nobody_sets_it(self, lab):  # noqa: F811
         page = lab["client"].get("/v2/device/r2").get_data(as_text=True)

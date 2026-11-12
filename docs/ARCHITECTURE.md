@@ -827,7 +827,15 @@ and others have left since too.
   nothing rather than defaulting it). Only Ask the device is unbuilt.
   `readers/adjacencies.py` (C38's second consumer) runs the Neighbours comparison over every
   list each minute for Needs attention: one row per LINK naming its pair, raised after two
-  consecutive reads (a deploy's settle window passes first).
+  consecutive reads (a deploy's settle window passes first). Since C3166's slice 3 it also
+  stores each device's whole Neighbours view (`views`), and the tab draws it
+  (`neighbours.held_view`) with its read time, asking Prometheus nothing on a page load; a
+  failed read keeps the last good views and the tab says so. `readers/drained_state.py`
+  (the `drained` reader, C3166) runs the drained measurement (`modules/drained.py`) for every
+  network each minute; the device page's header and Devices draw what it holds
+  (`drained.held`, `drained.current`, Needs attention's held-back alerts too), and while the
+  measurement is switched off (C552) it asks nothing. Neither held value is read by the heal
+  pipeline or a deploy (tests/test_held_readers.py, by parsing).
   `readers/app_pushed.py` asks `git ls-remote origin refs/heads/main` for the application
   repository and judges the running commit at the tip, behind (it FETCHES a tip it lacks,
   and says unknown only when the fetch fails) or not on the remote, for About and Needs

@@ -357,7 +357,7 @@ from tests.test_profile_apply import lab  # noqa: E402,F401 (the fixture)
 
 
 @pytest.fixture
-def page(lab, monkeypatch):
+def page(lab, monkeypatch, reader_stores_in_tmp):
     from modules import device_page
     from modules import neighbours as N
     from modules.integrations.prometheus import PrometheusIntegration
@@ -381,25 +381,42 @@ def page(lab, monkeypatch):
     def fake_get(self, path, **params):
         q = params["query"]
         asked.append(q)
-        dev = re.search(r'device="([^"]+)"', q).group(1)
+        dev = re.search(r'device="([^"]+)"', q)
         name = re.match(r"(?:max_over_time|last_over_time)\((\w+)\{", q)
         metric = name.group(1) if name else q.split("{")[0]
         key = UP if metric == "up" else metric
         body = copy.deepcopy(cap[key])
-        body["data"]["result"] = [r for r in body["data"]["result"] if r["metric"].get("device") == dev]
+        if dev:
+            body["data"]["result"] = [r for r in body["data"]["result"]
+                                      if r["metric"].get("device") == dev.group(1)]
         return {"ok": True, "response": Resp(body)}
 
     monkeypatch.setattr(PrometheusIntegration, "is_configured", lambda self: True)
     monkeypatch.setattr(PrometheusIntegration, "_get", fake_get)
+    # C3166: the tab draws what the adjacencies reader stored (`neighbours.held_view`). The
+    # real reader reads this lab's fleet through the same fake Prometheus, and stores its value
+    # in the lab's own store, before each page is drawn.
+    from modules import reader_job
+    from modules.readers import adjacencies as ADJ
+    monkeypatch.setattr(ADJ, "lists",
+                        lambda: [("Lab", listref.resolve("Lab"), sorted(intents))])
 
     def no_session(*a, **k):
         raise AssertionError("the Neighbours tab opened a session to a device")
     monkeypatch.setattr("modules.connection.open_ssh", no_session)
 
-    def get(url):
+    def read():
+        reader_job.run_once(ADJ.READER, announce=lambda *a, **k: None)
+
+    def get(url, read_first=True):
+        if read_first:
+            read()
+        before = len(asked)
         r = lab["client"].get(url)
+        get.page_asked = asked[before:]
         return r, r.get_data(as_text=True)
     get.asked = asked
+    get.read = read
     return get
 
 
@@ -412,6 +429,7 @@ def test_the_protocols_columns_line_up_in_a_browser(page):
         pytest.skip(browser.available()[1])
     import app as A
 
+    page.read()                  # the adjacencies reader's value the tab draws (C3166)
     with browser.Served(A.app) as srv, browser.Browser() as b:
         b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
         b.go(srv.url("/v2/device/r3?tab=neighbours"))
@@ -435,8 +453,10 @@ class TestThePage:
             assert f'<h3 class="nb-proto">{proto}</h3>' in html
         assert '<a href="/v2/device/r4?list=Lab">r4</a>' in html
         assert "Opening this tab opens no session to the device" in html
-        # Four instant queries, each filtered to the device.
-        assert len(page.asked) == 4 and all('device="r3"' in q for q in page.asked)
+        # C3166: the page asked Prometheus nothing; the reader asked its four fleet queries.
+        assert page.page_asked == []
+        assert len(page.asked) == 4 and not any("device=" in q for q in page.asked)
+        assert "by Mercury's adjacencies reader, every 60 s" in html
 
     def test_a_last_good_report_says_as_of_and_a_current_one_does_not(self, page, monkeypatch):
         """C690's caveat on the tab: the capture's samples are hours old, so r3's OSPF is its
@@ -487,3 +507,41 @@ class TestThePage:
         _r, html = page("/v2/device/r3/neighbours")
         assert "Prometheus could not be asked for ospfNbrState: Could not connect" in html
         assert "reports none" not in html
+
+
+class TestTheTabDrawsTheReadersValue:
+    """C3166's slice 3 (the operator's plan, 2026-11-12: "Neighbours: from the `adjacencies`
+    reader"): the tab draws the reader's stored view with its age, asks Prometheus nothing on a
+    page load, says "Reading" before the reader's first value, and keeps the last good view
+    with the failure said when a newer read fails."""
+
+    def test_the_page_asks_prometheus_nothing_and_draws_the_readers_view(self, page):
+        _r, html = page("/v2/device/r3/neighbours")
+        assert page.page_asked == [] and len(page.asked) == 4
+        assert "Every adjacency intent implies for r3 that is measured is up." in html
+        assert 'data-age="' in html[html.index("nb-limits"):]
+
+    def test_before_the_readers_first_value_it_says_reading_and_asks_nothing(self, page):
+        _r, html = page("/v2/device/r3/neighbours", read_first=False)
+        assert page.asked == []
+        assert "Reading: the adjacencies reader has not read r3&#39;s neighbours yet" in html
+        assert "nb-table" not in html and "reports none" not in html
+
+    def test_the_control_a_device_the_reader_has_not_read_says_reading(self, page):
+        """r3 read, s9 not in the reader's population (just onboarded): s9 says Reading."""
+        page.read()
+        from modules import neighbours as N
+        from modules.nsot import listref
+        view = N.held_view(listref.resolve("Lab"), {"hostname": "s9"})
+        assert view["held"]["state"] == "reading"
+        assert "has not read s9's neighbours yet" in view["held"]["why"]
+
+    def test_a_failed_refresh_keeps_the_last_good_view_and_says_so(self, page, monkeypatch):
+        from modules.integrations.prometheus import PrometheusIntegration
+        page.read()
+        monkeypatch.setattr(PrometheusIntegration, "_get",
+                            lambda self, path, **p: {"ok": False, "error": "Could not connect"})
+        _r, html = page("/v2/device/r3/neighbours")
+        assert "Every adjacency intent implies for r3 that is measured is up." in html
+        assert "The last refresh failed (" in html and "Could not connect" in html
+        assert "this is what the adjacencies reader held when it last read Prometheus" in html

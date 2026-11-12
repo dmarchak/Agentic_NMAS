@@ -37,18 +37,19 @@ import pytest
 #: endpoint, each with what it waits on and the slice that converts it. Only shrinks: a slice
 #: removes its own routes; slice 1 removed Needs attention's three (`v2.landing`,
 #: `v2.attention_list`, `device_v2.attention_count`); slice 2 removed the Logs tab, the drift
-#: row's part and Syslog by device's two (`LOGS_CONVERTED`).
+#: row's part and Syslog by device's two (`LOGS_CONVERTED`); slice 3's first piece removed the
+#: header's badge, Devices' two and Neighbours (`HELD_CONVERTED`).
 NOT_YET_CONVERTED = {
     # Slice 2 moved the builder's bounds and labels to the loki-labels reader; Ask's answer,
     # in the same routes when the address carries ask=1, still reads Loki on the request.
     "v2.history_ask_logs": "Loki for Ask's answer when the address asks (ask=1): a job, C3204",
     "v2.history_ask_logs_region": "Loki for Ask's answer when the address asks: a job, C3204",
-    # Slice 3: the rest.
-    "device_v2.device": "Prometheus (drained), git and a render: slice 3, a drained reader",
-    "device_v2.drained": "Prometheus (drained): slice 3, a drained reader",
+    # Slice 3: the rest. The page's header reads the drained reader (slice 3's first piece);
+    # the tabs it draws inline still wait until each tab's own route is converted.
+    "device_v2.device": ("the tabs it draws inline: Grafana (?tab=monitoring), NetBox "
+                         "(?tab=netbox), git and a render (the Overview): slice 3"),
     "device_v2.overview": "git log and intent's render: slice 3, rows kept by their writers",
     "device_v2.netbox": "NetBox (three reads): slice 3, from netbox-lag's value",
-    "device_v2.neighbours": "Prometheus (four reads): slice 3, from the adjacencies reader",
     "device_v2.monitoring": "Grafana (variables, folds): slice 3, in grafana-dashboards' value",
     "device_v2.panel": "Grafana (a panel's data): slice 3, a per-panel value while on screen",
     "device_v2.history": "git log and about 50 stores: slice 3, a timeline index",
@@ -57,8 +58,6 @@ NOT_YET_CONVERTED = {
     "device_v2.diagnose_card": "NetBox's cables: slice 3, a cables reader",
     "device_v2.diagnose_unreachable": "NetBox's cables: slice 3, a cables reader",
     "device_v2.pending_progress": "Kea (the pending stage): slice 3, onboarding-progress",
-    "v2.devices": "Prometheus (drained) and git: slice 3, a drained reader",
-    "v2.devices_table": "Prometheus (drained) and git: slice 3, a drained reader",
     "v2.monitoring_panel": "Grafana (a panel's data): slice 3, a per-panel value",
     "v2.heartbeat": "Loki and Prometheus per device: slice 3, a job or arrivals",
     "v2.history_page": "git log and about 50 stores: slice 3, a timeline index",
@@ -118,6 +117,12 @@ CONVERTED = ("v2.landing", "v2.attention_list", "device_v2.attention_count")
 #: does not reach.
 LOGS_CONVERTED = ("device_v2.logs", "device_v2.drift", "v2.history_query_syslog",
                   "logs_v2.region")
+#: Slice 3's first piece (C3166): the header's Drained badge and Devices draw the drained
+#: reader's value, the Neighbours tab the adjacencies reader's (tests/test_held_readers.py).
+#: The walk reaches all four; the badge and Devices called nothing here before either, as the
+#: measurement is switched off (C552), so tests/test_drained.py holds that, switched on, they
+#: measure nothing on a request.
+HELD_CONVERTED = ("device_v2.drained", "v2.devices", "v2.devices_table", "device_v2.neighbours")
 
 #: The integrations are configured at their own names under `.invalid` (RFC 6761: nothing
 #: resolves it), so a counted call names its service: grafana, loki, prometheus, netbox, kea.
@@ -286,6 +291,13 @@ class TestNoPageWaits:
         assert "device_v2.logs" in measured["requested"], "the walk did not reach the Logs tab"
         assert not measured["calls"].get("device_v2.logs"), measured["calls"]["device_v2.logs"]
 
+    def test_the_header_devices_and_neighbours_call_nothing(self, measured):
+        """Slice 3's first piece: the four routes draw what the drained and adjacencies readers
+        hold; the Neighbours tab asked Prometheus four times a load before."""
+        for e in HELD_CONVERTED:
+            assert e in measured["requested"], f"the walk did not reach {e}"
+            assert not measured["calls"].get(e), (e, measured["calls"].get(e))
+
     def test_no_route_calls_out_unaccounted(self, measured):
         unaccounted = {e: c for e, c in _calling(measured).items()
                        if e not in NOT_YET_CONVERTED and e not in PRESSES}
@@ -308,3 +320,5 @@ class TestNoPageWaits:
         assert not set(CONVERTED) & (set(NOT_YET_CONVERTED) | set(PRESSES))
         assert not set(LOGS_CONVERTED) & (set(NOT_YET_CONVERTED) | set(PRESSES))
         assert set(LOGS_CONVERTED) <= gets
+        assert not set(HELD_CONVERTED) & (set(NOT_YET_CONVERTED) | set(PRESSES))
+        assert set(HELD_CONVERTED) <= gets

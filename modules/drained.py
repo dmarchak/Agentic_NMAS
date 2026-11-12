@@ -19,13 +19,14 @@ known), or no interface left to judge. Absent is not drained.
 interfaces and their rates; Needs attention lists a Grafana alert on drained devices only
 under What was checked instead of raising a row. It sends nothing to any device.
 
-**Cost:** one golden `git grep` and four Prometheus queries for a whole network, kept for
-`CACHE_SECONDS` per process, so a page drawing many devices asks once.
+**Cost:** one golden `git grep` and five Prometheus queries for a whole network (two more per
+device found drained), made only by the drained reader (modules/readers/drained_state.py)
+every 60 s; every page and Needs attention read what it holds (`held`, `current`), so no page
+load asks Prometheus (C3166).
 """
 
 import logging
 import re
-import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -53,11 +54,7 @@ SINCE_STEP_SECONDS = 60
 #: every device drained, holding back their Grafana alerts. Nothing is drawn or held back
 #: until C551's design (customer traffic, counted by address) replaces it; `judge()` stays.
 ENABLED = False
-#: The pages that draw the badge re-read on the reachability reader's 5 s announcement; the
-#: measurement moves by the minute, so a network is asked at most this often.
-CACHE_SECONDS = 30
 
-_cache, _lock = {}, threading.Lock()
 _NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -277,28 +274,67 @@ def measure(list_name: str, now: float = None) -> dict:
     return verdicts
 
 
+def held(list_name: str) -> dict:
+    """What the drained reader (modules/readers/drained_state.py) holds for *list_name*:
+    ``{"verdicts": {device: verdict}, "at": iso, "error": str}``, read from its store and
+    never measured here (C3166: no page load asks Prometheus). "at" is when the network's
+    last good verdicts were measured ("" when never); "error" says why the newest
+    measurement failed, or why nothing is held yet (the reader has not run, its store is
+    unreadable). Switched off (`ENABLED`, C552): nothing is held and nothing is wrong."""
+    if not ENABLED:
+        return {"verdicts": {}, "at": "", "error": ""}
+    from modules import reader_job
+    from modules.readers import drained_state
+
+    got = reader_job.read_cached(drained_state.NAME)
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    value = good.get("value") or {}
+    attempt = doc.get("last_attempt") or {}
+    failed = (f"the drained reader's read failed: {attempt.get('error') or 'no reason given'}"
+              if attempt.get("ok") is False else "")
+    if got["state"] != "ok" or not good:
+        # Absent and unreadable are different states (an absent store's path is never drawn).
+        return {"verdicts": {}, "at": "", "error": (
+            got.get("why") if got["state"] == "unreadable" else "") or failed or (
+            "the drained reader has not measured yet")}
+    from modules.nsot import listref
+    try:
+        net = listref.keyed(value.get("networks") or {}, list_name)
+    except listref.UnknownList as exc:
+        return {"verdicts": {}, "at": "", "error": str(exc)}
+    if not value.get("enabled") or net is None:
+        return {"verdicts": {}, "at": "", "error": failed or (
+            f"the drained reader has not measured {list_name} yet")}
+    error = net.get("error") or ""
+    if not error and failed:
+        error = failed
+    return {"verdicts": net.get("verdicts") or {}, "at": net.get("at", ""), "error": error}
+
+
 def current(list_name: str) -> dict:
-    """``{device: verdict}`` for each device MEASURED drained now, cached `CACHE_SECONDS`.
-    Raises when the measurement cannot be made (the caller says so; nothing is drained).
-    Empty while `ENABLED` is off (C552)."""
+    """``{device: verdict}`` for each device MEASURED drained, as the drained reader last
+    measured it (`held`), never measured here (C3166). Raises when nothing was ever measured
+    for the network (the caller says so; nothing is drained); a failed newest measurement
+    keeps the last good verdicts. Empty while `ENABLED` is off (C552)."""
     if not ENABLED:
         return {}
-    now = time.time()
-    with _lock:
-        hit = _cache.get(list_name)
-        if hit and now - hit[0] < CACHE_SECONDS:
-            return hit[1]
-    got = {d: v for d, v in measure(list_name, now).items() if v.get("drained")}
-    with _lock:
-        _cache[list_name] = (now, got)
-    return got
+    got = held(list_name)
+    if got["error"] and not got["at"]:
+        raise RuntimeError(got["error"])
+    return got["verdicts"]
 
 
 def state_of(list_name: str, device: str) -> dict:
-    """The device's verdict if it is measured drained now, else None; a measurement that
-    cannot be made is logged and drains nothing."""
+    """The device's verdict if the drained reader holds it drained, with when it was measured
+    (``measured_at``) and the newest measurement's failure (``refresh_error``), else None; a
+    network never measured is logged and drains nothing."""
     try:
-        return current(list_name).get(device)
+        got = held(list_name)
+        if got["error"] and not got["at"]:
+            raise RuntimeError(got["error"])
+        v = got["verdicts"].get(device)
+        return dict(v, measured_at=got["at"], refresh_error=got["error"]) if v else None
     except Exception as exc:                       # noqa: BLE001
         log.warning("drained: %s could not be measured: %s", list_name, exc)
         return None
@@ -319,3 +355,14 @@ def words(v: dict) -> str:
              f"{_rate((v.get('rates') or {}).get(n, (None, None))[1])})"
              for n in v.get("judged") or []]
     return f"no host traffic on {', '.join(parts)} {when}; management path {v.get('management')} not counted"
+
+
+def held_words(v: dict) -> str:
+    """The hover for a held verdict: what drained is measured against, when this verdict was
+    measured, and a newer measurement that failed (so a held value never reads as now)."""
+    at = (v or {}).get("measured_at") or ""
+    out = HOVER + (f"; measured {at[11:16]} UTC" if len(at) >= 16 else "")
+    if (v or {}).get("refresh_error"):
+        out += (f"; the newest measurement failed ({v['refresh_error']}), so this is the last "
+                "good one")
+    return out

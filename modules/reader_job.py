@@ -340,7 +340,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.ztp_discovery",
                            "modules.readers.host_key_windows",
                            "modules.readers.onboarding_progress",
-                           "modules.readers.sdn_controllers")
+                           "modules.readers.sdn_controllers",
+                           "modules.readers.drained_state")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).
@@ -636,6 +637,10 @@ CHANGE_ONLY = {
                             "progress chip redraw on its announcement; a probe's time is drawn "
                             "as an age, so a device whose stage and answer stand still redraws "
                             "nothing (its 600 s keepalive proves it alive)"),
+    "drained": ("it reads every 60 s and the device header's badge and Devices redraw on its "
+                "announcement; while the measurement is switched off (C552) its value never "
+                "moves, and a verdict standing still redraws nothing a person reads (its 300 s "
+                "keepalive proves it alive; the badge's hover names when it was measured)"),
 }
 
 
