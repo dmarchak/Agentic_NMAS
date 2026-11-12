@@ -6396,6 +6396,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
                              error=f"whether self-healing on {lst} is halted cannot be read: "
                                    f"{exc}")
     out += halted
+    _link_incident_pages(lst, out)
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
@@ -6407,6 +6408,20 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"waiting or not ended dampened, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
+
+
+def _link_incident_pages(lst: str, rows: list) -> None:
+    """Each self-healing row about one incident (its operands name an ``hi-`` id) opens that
+    incident's own page (the incident page's first slice: "the email and Needs attention link
+    to one place per incident"), a link beside the row's one action, never a second action.
+    Its address is the page's route (`routes/incident_v2.py`); a row about no one incident (a
+    halt, the fold window, a cap) has none."""
+    from modules import incident_page
+
+    for r in rows:
+        iid = str((r.get("operands") or {}).get("incident") or "")
+        if incident_page.HI.match(iid):
+            r["incident_page"] = {"id": iid, "list": lst}
 
 
 #: How many rules the fold window row names (`_heal_fold_rows`); the rest are counted.

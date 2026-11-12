@@ -106,6 +106,9 @@ Open a line for the full record underneath. It shows:
   whose card is drawn only while their job is kept (a deploy, a reload, a credential rotation,
   a Tier 2 command and the rest) have no **Open the card** yet: their rows hold the record
   alone;
+- for a **self-healing** row, **Open the incident** opens its incident's own page, beside
+  **Open the card** when it has one; a decision that ran nothing has its page too
+  ([An incident's page](incident));
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 

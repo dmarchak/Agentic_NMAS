@@ -154,10 +154,21 @@ class TestEveryNextStepNamesWhatItOpens:
         assert bad == []
 
     def test_every_open_the_server_emits_has_its_own_control(self):
+        # By parsing (CLAUDE.md "Match code by parsing or anchoring"): an action is a dict
+        # literal holding both a "label" and an "open"; a dict that only has an "open" key, the
+        # incident page's state words ({"open": "Open", …}, 2026-11-12) among them, is no action.
+        import ast
         emitted = set()
         for path in tracked("modules", "routes", suffix=".py"):
-            text = open(path, encoding="utf-8").read()
-            emitted |= set(re.findall(r'"open": "(\w+)"', text))
+            tree = ast.parse(open(path, encoding="utf-8").read())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Dict):
+                    continue
+                keys = {k.value: v for k, v in zip(node.keys, node.values)
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+                v = keys.get("open")
+                if "label" in keys and isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    emitted.add(v.value)
         assert {"breakglass_export", "app_update", "profile_apply", "profile_propose"} <= emitted
         att = _read("_attention.html")
         branches = set(re.findall(r"r\.action\.open == '(\w+)'", att))

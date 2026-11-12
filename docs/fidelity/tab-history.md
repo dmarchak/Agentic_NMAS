@@ -36,7 +36,14 @@ page; no board draws it: **deviation** (log: History rows open their run's card)
 self-healing row's closed "Details for the record" draws each person by display name. Nothing
 else on a row moves. Compared by the template diff, not a new shot. Templates sha256 before:
 `e9b6df42068ea6324e37a2f6c3f9223a0c3dff25dbd61e6fe2ad357731ff15ca`.
-Templates sha256: `0e2cffcd1a0461b1f655b1db15854992c3200f973ebf2c91e33540f82e992321`
+Hashed again 2026-11-12 (the incident page's first slice, the operator's item 5): in
+`_timeline.html`, which this tab draws as History does, an opened self-healing row draws
+**Open the incident**, a link to its incident's own page, beside **Open the card** (alone on a
+decision that ran nothing); no board of this tab draws it: **deviation** (log: Board
+incident-page F built for History, 1). Nothing else on a row moves. Compared by the template
+diff, not a new shot. Templates sha256 before:
+`0e2cffcd1a0461b1f655b1db15854992c3200f973ebf2c91e33540f82e992321`.
+Templates sha256: `1e67c43a40e0b35b97f7f065f0b7bfa651ba250e6928d3fd11fe4ed1c02f510d`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_timeline.html`, each place that draws a person now

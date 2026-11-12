@@ -42,9 +42,11 @@ KNOWN_ANALYSIS = {"modules/heal_notice.py", "modules/heal_page.py", "modules/att
                   "routes/v2.py"}
 #: Who may import the send log: the loop that writes it, and History, which draws it.
 KNOWN_LOG = {"modules/ai/read_loop.py", "modules/history_sources.py"}
-#: Who may reach the step log's advisory step, and how: History reads it, the analysis writes
-#: it.
+#: Who may reach the step log's advisory step, and how: History and the incident page read it
+#: (the incident page's AI troubleshooting frame draws the kept advisory, 2026-11-12), the
+#: analysis writes it.
 KNOWN_STEP = {("modules/history_sources.py", "advisories"),
+              ("modules/incident_page.py", "advisories"),
               ("modules/ai/heal_analysis.py", "record_advisory")}
 #: The one module of `modules/heal/` whose code names the advisory row: the step log's own.
 ROW_NAMER = "modules/heal/steplog.py"

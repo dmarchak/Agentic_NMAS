@@ -51,7 +51,14 @@ each person by display name, as an open record's values are; the identity stays 
 identity as recorded". Nothing else on a row moves. Compared by the template diff, not a new
 shot. Templates sha256 before:
 `81d816682befcba75169984a2372e68c3fd4e3a6175670c71f8e41424d57e89c`.
-Templates sha256: `c7001f001587bf7f384d82ff84c9e93321b0f2ff43d2f5b7d39f6390b672c946`
+Hashed again 2026-11-12 (the incident page's first slice, the operator's item 5: one place
+per incident): an opened self-healing row's line of **Open the card** also draws **Open the
+incident**, a link to that incident's own page (`/v2/incident/<id>`), beside the card's
+button; a decision that ran nothing (no card) draws the link alone. No board of this page
+draws it: **deviation** (log: Board incident-page F built for History, 1). Nothing else on a
+row moves. Compared by the template diff, not a new shot. Templates sha256 before:
+`c7001f001587bf7f384d82ff84c9e93321b0f2ff43d2f5b7d39f6390b672c946`.
+Templates sha256: `5ff7225111c495223a65da35f868dc077139d5ef57861ccf448e46eb1b53e593`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

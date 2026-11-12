@@ -60,7 +60,10 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "oob_run.html": "oob-run.md",
            # PHASE8_PLAN 17.1 S11: SDN › Controllers and Flows (boards SdnControllers, SdnFlows
            # and SdnPhone, signed off under the Phase 7 mode 2026-10-27).
-           "sdn.html": "sdn.md"}
+           "sdn.html": "sdn.md",
+           # One incident's own page (board incident-page, part B, text only; signed off under
+           # the Phase 7 mode 2026-11-11): its first slice, an hi- incident, read-only.
+           "incident.html": "incident.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.

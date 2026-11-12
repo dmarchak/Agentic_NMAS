@@ -1206,10 +1206,13 @@
      the counter turns over at, in the viewer's own time and zone ("18:00 MDT"); the server's
      words (the boundary zone's time) stay until this runs. */
   /* A moment in the viewer's own time: "19:00 MDT", or with its date ("Oct 31 19:00 MDT")
-     when the element says data-clock="date" (a moment days away: C2084's provider limit). */
-  function clockWords(t, withDate) {
+     when the element says data-clock="date" (a moment days away: C2084's provider limit), and
+     to the second ("Oct 31 19:00:12 MDT") when it says data-clock="date-seconds" (an
+     incident's recorded times, which its time to repair is counted between). */
+  function clockWords(t, withDate, withSeconds) {
     var opts = {hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'};
     if (withDate) { opts.month = 'short'; opts.day = 'numeric'; }
+    if (withSeconds) { opts.second = '2-digit'; }
     try {
       return new Intl.DateTimeFormat('en-US', opts).format(new Date(t)).replace(',', '');
     } catch (e) {
@@ -1221,7 +1224,8 @@
     var list = (scope || root.document).querySelectorAll('time[data-clock]');
     for (var i = 0; i < list.length; i++) {
       var t = Date.parse(list[i].getAttribute('datetime'));
-      var words = t === t ? clockWords(t, list[i].getAttribute('data-clock') === 'date') : null;
+      var mode = list[i].getAttribute('data-clock') || '';
+      var words = t === t ? clockWords(t, mode === 'date' || mode === 'date-seconds', mode === 'date-seconds') : null;
       if (words) list[i].textContent = words;
     }
   }

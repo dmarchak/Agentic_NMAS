@@ -1,0 +1,145 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, info, stamp, heal_cause -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- One incident's own page (the incident page's board, part B; the operator's design change
+    of 2026-11-11: "each incident gets its own page"), its first slice: read-only, for a
+    self-healing incident (an `hi-` id). `modules/incident_page.page` is its model, from
+    routes/incident_v2. Top to bottom: the header (the state, the level, the device, the four
+    recorded times and TIME TO REPAIR, one line per attempt), the timeline, What's wrong, What
+    Mercury has done (THE stepper's five stages, as the heal's card on its device's page draws
+    them), What to do (links only: this page starts nothing), the AI troubleshooting frame,
+    then Evidence and The record, both collapsed. One live region: the whole of it is drawn
+    again when self-healing announces, and while its heal runs on each step, as its device's
+    card is. Every time is the viewer's own (the page's clock element, UTC on hover);
+    every person is drawn by display name, and the identity as recorded is only in The record.
+    A failed verify never reads "Fixed". -#}
+{%- macro at(iso) -%}<time class="clock" datetime="{{ iso }}" data-clock="date-seconds" title="{{ iso[:19] | replace('T', ' ') }} UTC">{{ iso[:19] | replace('T', ' ') }} UTC</time>{%- endmacro -%}
+{%- macro cell(c) -%}
+  {%- if c.state == 'at' %}{{ at(c.at) }}{% if c.words %} <span class="inc-by">· {{ c.words }}</span>{% endif %}
+  {%- elif c.state == 'failed' %}<span class="inc-failed">✗ {{ c.words }} {{ at(c.at) }}</span>
+  {%- elif c.state == 'not_yet' %}<span class="muted">— not yet</span>
+  {%- elif c.state == 'not_needed' %}<span class="muted">— not needed</span>
+  {%- else %}<span class="muted">— {{ c.words }}</span>{% if c.at %} {{ at(c.at) }}{% endif %}
+  {%- endif %}
+{%- endmacro -%}
+{% block title %}{{ p.title if p.kind == 'page' else 'Incident ' ~ p.id }} · {{ brand.short }}{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><span>{{ p.title if p.kind == 'page' else 'Incident ' ~ p.id }}</span></nav>
+{%- if p.kind == 'other_kind' %}
+<div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>This kind of incident's page comes with S4.</strong> Only a self-healing incident (an id beginning <span class="mono">hi-</span>) has a page yet; an alert incident (<span class="mono">al-</span>) and an SDN incident (<span class="mono">resp-</span>) get theirs in a later slice of the incident page. Until then they are on <a href="{{ url_for('v2.landing') }}">Needs attention</a>.</div></div>
+{%- elif p.kind == 'unknown' %}
+<div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>No incident {{ p.id }} is recorded.</strong> It was looked for in {{ p.network }}, the network this page is about: {{ p.network }}'s self-healing keeps its open incidents and the newest {{ p.kept }} closed ones, and the step log of every incident that reached a decision, and neither holds this id. An older incident that never reached a decision is no longer kept. <a href="{{ url_for('v2.landing') }}">Open Needs attention</a> · <a href="{{ url_for('v2.history_page') }}">Open History</a></div></div>
+{%- elif p.kind == 'unreadable' %}
+<div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is recorded, and whether it is open, is not known: nothing that could be read holds it. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
+{%- else %}
+<div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body{% if p.done.running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
+{%- if p.unreadable %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of this incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is open is not known; what could be read is drawn below. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
+{%- elif p.only_log %}
+<div class="notice notice-muted" role="status">{{ icon('info', 16) }}<div>This incident is past the newest {{ p.kept }} closed incidents self-healing keeps for {{ p.network }}, so this page is drawn from its step log alone: its triggers and their times are no longer kept.</div></div>
+{%- endif %}
+{%- for f in p.folded_in %}
+<div class="notice notice-muted inc-folded" role="status">{{ icon('info', 16) }}<div>Folded into this incident at {{ at(f.at) }}: {{ f.device }}'s incident ({{ f.incident }}) was taken in because {{ f.why }}.</div></div>
+{%- endfor %}
+{%- for r in p.related %}
+<div class="notice notice-muted inc-related" role="status">{{ icon('info', 16) }}<div>Related: <a href="{{ url_for('incident_v2.incident', incident_id=r.incident) }}">{{ r.device }}'s incident</a> ({{ r.why }}).</div></div>
+{%- endfor %}
+<section class="card inc-head inc-{{ p.state }}" aria-labelledby="inc-title">
+  <div class="page-head"><div class="page-title">
+    <h1 id="inc-title">{{ p.title }} {{ info('incident') }}</h1>
+    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span> <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span> <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
+      {%- if p.resolved %} <span>{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.closed_at %}{{ at(p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
+      {%- elif p.opened %} <span>since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
+  </div></div>
+  <dl class="inc-times">
+    {%- for c in p.header %}
+    <div class="inc-time inc-time-{{ c.state }}" data-cell="{{ c.name | lower }}"{% if c.hover %} title="{{ c.hover }}"{% endif %}><dt>{{ c.name }}</dt><dd>{{ cell(c) }}</dd></div>
+    {%- endfor %}
+    <div class="inc-time inc-ttr{{ ' inc-ttr-repaired' if p.ttr.seconds is not none }}" data-cell="ttr"{% if p.ttr.hover %} title="{{ p.ttr.hover }}"{% endif %}><dt>TIME TO REPAIR {{ info('incident-timeline', 'time-to-repair', label='How time to repair is measured') }}</dt>
+      <dd><strong class="inc-ttr-n">{{ p.ttr.words }}</strong>{% if p.ttr.span %} <span class="muted">({{ p.ttr.span }})</span>{% endif %}{% if p.ttr.who %} <span class="inc-by"{% if p.ttr.no_human %} title="{{ p.ttr.no_human }}"{% endif %}>· {{ p.ttr.who }}</span>{% endif %}</dd></div>
+  </dl>
+  {%- for a in p.attempts %}
+  <p class="inc-attempt inc-attempt-{{ a.state }}" data-attempt="{{ a.n }}">Attempt {{ a.n }}:
+    {%- if a.state == 'running' %} running now{% if a.applied %}, applied {{ at(a.applied) }}{% endif %}
+    {%- elif a.state == 'verified' %} applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verified {% if a.at %}{{ at(a.at) }}{% else %}at an unrecorded time{% endif %}
+    {%- else %} <strong>applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verify failed:</strong> {{ a.reason }}
+    {%- endif %}{% if a.who %} · {{ a.who }}{% endif %}</p>
+  {%- endfor %}
+</section>
+{%- if p.events %}
+<details class="card inc-events" data-keep="inc-events-{{ p.id }}"{% if p.resolved %} open{% endif %}>
+  <summary>Timeline · {{ p.events | length }} recorded event{{ '' if p.events | length == 1 else 's' }}, oldest first</summary>
+  <ol class="inc-event-list">
+    {%- for e in p.events %}
+    <li>{{ at(e.at) }}: {{ e.words }}</li>
+    {%- endfor %}
+  </ol>
+</details>
+{%- endif %}
+<section class="card" id="inc-wrong" aria-labelledby="h-inc-wrong">
+  <div class="card-head"><h2 id="h-inc-wrong">What's wrong{{ ' (was)' if p.resolved }}</h2></div>
+  {%- if p.wrong.cause %}{{ heal_cause(p.wrong.cause) }}{% endif %}
+  {%- if p.wrong.words %}<p>{% if p.closed_at %}Decided then: {% endif %}{{ p.wrong.words }}.</p>{% endif %}
+  {%- if p.wrong.watching %}<p>{{ p.wrong.watching }}</p>{% endif %}
+  {%- if not (p.wrong.cause or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
+</section>
+<section class="card" id="inc-done" aria-labelledby="h-inc-done">
+  <div class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</div>
+  {%- if p.done.steps %}
+  {#- THE stepper's five stages, as the heal's card on its device's page draws them
+      (`incident_page.heal_card`: `run_card.named_heal`, else `run_card.steps_card`); who it
+      was by is said once, in the header, and its outcome once, in its Done stage. -#}
+  <p class="small muted">Written by Mercury from its own record: no AI.</p>
+  {{ run_stepper(p.done.steps) }}
+  {%- else %}
+  <p>Nothing has run in this incident.</p>
+  {%- endif %}
+  {%- if p.done.diagnosis %}<p class="small">Mercury's diagnosis ({{ p.done.diagnosis.words }}) ran{% if p.done.diagnosis.at %} at {{ at(p.done.diagnosis.at) }}{% endif %}, with no AI: {{ p.done.diagnosis.hypotheses }} hypothes{{ 'is' if p.done.diagnosis.hypotheses == 1 else 'es' }}, on {{ p.device }}'s History.</p>{% endif %}
+  <p class="small inc-links"><a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open its record on {{ p.device }}'s History</a>{% if p.done.change_record %} · <a href="{{ url_for('heal_proposal_v2.change_record_md', list_name=p.network, incident_id=p.id) }}" download title="Mercury's change record for this incident, masked: deterministic, no AI call">Download the change record (.md)</a>{% endif %}</p>
+</section>
+<section class="card" id="inc-todo" aria-labelledby="h-inc-todo">
+  <div class="card-head"><h2 id="h-inc-todo">What to do</h2></div>
+  <p>{{ p.todo.words }}</p>
+  <p class="small inc-links">
+    {%- for l in p.todo.links %}
+    {%- if l == 'attention' %}<a href="{{ url_for('v2.landing') }}">Open Needs attention</a>
+    {%- elif l == 'history' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open {{ p.device }}'s History</a>
+    {%- elif l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
+    {%- else %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">Open {{ p.device }}</a>
+    {%- endif %}{% if not loop.last %} · {% endif %}
+    {%- endfor %}</p>
+</section>
+<section class="card" id="inc-ai" aria-labelledby="h-inc-ai">
+  <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('not built yet', 'muted') }}</div>
+  {%- if p.state == 'fixed' and not p.ai.spent %}
+  <p>Not needed: Mercury fixed it without AI. No AI call is recorded for this incident.</p>
+  {%- else %}
+  <p>Not built yet: AI troubleshooting will be here. Mercury's own account is above, with no AI.</p>
+  {%- endif %}
+  {%- for a in p.ai.advisories %}
+  <p class="inc-advisory"><strong>AI analysis (advisory; self-healing never reads it)</strong>{% if a.at %}, {{ at(a.at) }}{% endif %}: {{ a.words }}</p>
+  {%- endfor %}
+</section>
+<details class="card inc-evidence" data-keep="inc-evidence-{{ p.id }}">
+  <summary>Evidence</summary>
+  <ul class="set-list">
+    <li><strong>The triggers:</strong> {{ p.evidence.triggers }} kept{% if p.evidence.seen > p.evidence.triggers %} of {{ p.evidence.seen }} seen{% endif %}; each is in the timeline above and in the record below.</li>
+    <li><strong>The reads:</strong> {{ p.evidence.reads }} read{{ '' if p.evidence.reads == 1 else 's' }} of {{ p.device }} kept by the detect pass (their state and time; never configuration text).</li>
+    <li><strong>The changes in this incident:</strong> each heal and each decision is a record on <a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">{{ p.device }}'s History</a>.</li>
+    {%- if p.evidence.members %}
+    <li><strong>Members:</strong>
+      <ul class="set-list">{% for m in p.evidence.members %}<li><a href="{{ url_for('device_v2.device', name=m.device, list=p.network) }}">{{ m.device }}</a>: {{ m.why }}</li>{% endfor %}{% if p.evidence.more_members %}<li class="muted">and {{ p.evidence.more_members }} more, counted in the record</li>{% endif %}</ul></li>
+    {%- endif %}
+  </ul>
+</details>
+<details class="card tl-record-d inc-record" data-keep="inc-record-{{ p.id }}">
+  <summary>The record</summary>
+  <p class="small muted">Ids, hashes, the times as recorded (UTC), every step with its result and words, and who acted as their identity was recorded.</p>
+  <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+</details>
+</div>
+{%- endif %}
+{% endblock %}

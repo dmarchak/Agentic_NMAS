@@ -1716,6 +1716,33 @@ def heal():
     ])
 
 
+def incident_timeline():
+    return svg(424, (
+        "An incident's timeline, each time from a record Mercury wrote while it happened: "
+        "detected is the event's receive time, the incident's first trigger (a log line's "
+        "receive time, an alert's start, an adjacency's loss, a drift check's run); decided is "
+        "the heal decision's time, or the time a person approved the proposed fix; applied is "
+        "the act's check of each unit at intent, the first step after its program was sent; "
+        "verified is the act's record step, when its outcome is a passed verify. Time to "
+        "repair is verified minus detected, in whole seconds, drawn only from a passed verify: "
+        "an attempt whose verify failed reads applied, verify failed, and the incident needs a "
+        "person. No time is read from a device's clock."), [
+        lanes(20, 418),
+        device(262, 40, 118, 250, "The device", "its clock never read", top=True),
+        doc("box", 14, 40, 186, 36, "A trigger", "the event's receive time"), num(14, 40, 1),
+        *rows([(104, "read", None, "Detected", "the first trigger's time")]),
+        store(14, 126, 186, 36, "The decision", "its time, or the approval's"),
+        num(14, 126, 2),
+        *rows([(194, "send", 3, "Applied", "the intent check's step"),
+               (238, "read", 4, "Verified", "the record step, verify passed")]),
+        clock(22, 280), t(36, 284, "Time to repair", "tb"),
+        t(36, 296, "verified − detected, in seconds", "sm"),
+        t(14, 326, "A failed verify: applied, verify failed.", "sm"),
+        t(14, 339, "Never fixed: the incident needs a person.", "sm"),
+        store(14, 358, 186, 40, "The step log", "each step's own time"), num(14, 358, 5),
+    ])
+
+
 def notifications():
     return svg(470, (
         "A notification of a can't-fix: the notifier finds each new can't-fix recorded in the "
@@ -2400,6 +2427,7 @@ DIAGRAMS = {
     "sdn-trace": sdn_trace,
     "sdn-analyse": sdn_analyse,
     "history-export": history_export,
+    "incident-timeline": incident_timeline,
     "sdn-analyse-tools": sdn_analyse_tools,
     "diagnose": diagnose,
     "privileged": privileged,

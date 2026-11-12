@@ -2473,6 +2473,7 @@ def heal(ctx):
     markdown downloadable from the row when it was made, C2773) and the NetBox journal entry.
     The network's own store: a device's History draws its device's rows. Every
     text masked again on the way out."""
+    from modules import incident_page
     from modules.heal import run_card, said, steplog
     from modules.redact import redact_text
 
@@ -2568,6 +2569,12 @@ def heal(ctx):
         if run_card.acted_entry(e) and (e["incident"] or e.get("decisions")):
             events[-1]["card"] = {"device": host, "list": ctx["ref"].name,
                                   "run": e["incident"] or e["decisions"][-1]}
+        # The incident page's first slice (board incident-page, part F): the row opens its
+        # incident's own page (`routes/incident_v2.py`; Open the incident, beside Open the
+        # card), for an id of the shape that page takes. A decision alone ran nothing and has
+        # no card, but its incident has its page.
+        if incident_page.HI.match(e["incident"] or ""):
+            events[-1]["incident_page"] = {"id": e["incident"], "list": ctx["ref"].name}
         # C2773 (board H, artboards C and K): "Download the change record (.md)", for a heal to
         # intent and an action alike, only when its record was made (a dry run or a refusal
         # before its program has none, C2442); `heal_proposal_v2.change_record_md` serves it.

@@ -66,6 +66,7 @@ EXCEPTIONS = {
     "modules/display_names.py": (SUPPORT, "how each person is named on a screen, per person"),
     "modules/identity.py": (SUPPORT, "who is asking: the access proxy's assertion"),
     "modules/in_flight.py": (SUPPORT, "what is running, for the pages"),
+    "modules/incident_page.py": (SUPPORT, "one incident's own page: its model"),
     "modules/installation_diagnostics.py": (SUPPORT, "Settings › Installation › Diagnostics"),
     "modules/installation_settings.py": (SUPPORT, "Settings › Installation"),
     "modules/integration_groups.py": (SUPPORT, "Settings' integration groups"),

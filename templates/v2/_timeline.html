@@ -98,7 +98,9 @@
         {#- C3172: an operation's run opens its card, with its five-stage stepper, on its
             device's page, drawn from the run's own record (the one address, `run_href`); the
             card replaces the tab there, as the In progress row's Open the result does. -#}
-        {%- if e.card %}<p class="small tl-links tl-card"><a class="btn btn-small" href="{{ run_href(e.card.device, e.card.list, e.card.run) }}" title="This run's card on {{ e.card.device }}'s page, drawn from its record">Open the card</a></p>{% endif %}
+        {#- The incident page's first slice (board incident-page, part F): a self-healing row
+            opens its incident's own page, one place per incident, beside its card. -#}
+        {%- if e.card or e.incident_page %}<p class="small tl-links tl-card">{% if e.card %}<a class="btn btn-small" href="{{ run_href(e.card.device, e.card.list, e.card.run) }}" title="This run's card on {{ e.card.device }}'s page, drawn from its record">Open the card</a>{% endif %}{% if e.card and e.incident_page %} {% endif %}{% if e.incident_page %}<a href="{{ url_for('incident_v2.incident', incident_id=e.incident_page.id, list=e.incident_page.list) }}" data-incident="{{ e.incident_page.id }}" title="This incident's own page: its times, its time to repair and what Mercury did">Open the incident</a>{% endif %}</p>{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {#- A read an AI call asked for (19.5, H26; board M): linked to both passes' calls and to its read on History › Reads. -#}
         {%- if e.read_of %}<p class="small tl-links">

@@ -1,0 +1,358 @@
+{
+ "captured": "tests/test_incident_page.py's busy(), the stores as its writers left them (network Default, device edge-b), 2026-11-11",
+ "decisions": [
+  {
+   "at": "2026-09-21T14:13:20Z",
+   "cause": {
+    "facts": [
+     {
+      "at": "2026-09-21T13:56:39Z",
+      "epoch": 1789998999.4,
+      "kind": "config_change",
+      "text": "edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2"
+     }
+    ],
+    "hypothesis": null
+   },
+   "departure": "25e2322ce4d52050",
+   "device": "edge-b",
+   "epoch": 1790000000.0,
+   "guard": null,
+   "headline": "edge-b: \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2. Mercury does not fix a cause spanning devices by itself: it needs a person",
+   "id": "hd-5fe43d45c1b4",
+   "incident": "hi-e053128d982b",
+   "kind": "multi_device",
+   "left_out": {
+    "golden_behind": 0,
+    "golden_not_intent": 0,
+    "intent_only": 0
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no single-device heal can verify; nothing was sent, and a person decides (Tier 4)",
+   "person": {
+    "user": "alice",
+    "words": "the line names the account alice on vty0"
+   },
+   "policy": {
+    "by": "admin@example.com",
+    "fingerprint": "e142c46c8c23ddda",
+    "reason": "Lab 10's dry run"
+   },
+   "program": [],
+   "program_hash": "",
+   "removal_ids": [],
+   "row": "decision",
+   "settled": "persisted",
+   "tier": 4,
+   "triggers": [
+    "SYS-5-CONFIG_I on edge-b: from outside Mercury; the line names the account alice on vty0"
+   ],
+   "units": [
+    {
+     "add": [],
+     "blocked": "",
+     "id": "c341e3d233f5",
+     "joined": 0,
+     "kind": "multi_device",
+     "op": "remove",
+     "remove": [
+      " ip access-group EDGE-IN in"
+     ],
+     "secret_position": false,
+     "section": "interface GigabitEthernet2",
+     "stanza": false,
+     "tier": 4,
+     "why": "another device of this incident changed too",
+     "words": "a cause spanning devices (Tier 4): remove 1 line(s) in interface GigabitEthernet2"
+    }
+   ],
+   "until": null,
+   "words": "At 13:56 UTC, edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2. Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no single-device heal can verify; nothing was sent, and a person decides (Tier 4)"
+  }
+ ],
+ "folded": "hi-2791b8a4e0ea",
+ "incidents": [
+  {
+   "attached": [],
+   "cause": "symptom",
+   "closed_at": "2026-09-21T13:56:40Z",
+   "closed_why": "folded into hi-e053128d982b (edge-b): edge-b is the far end of its link",
+   "device": "core-a",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "folded_into": "hi-e053128d982b",
+   "id": "hi-2791b8a4e0ea",
+   "network": "Default",
+   "opened_at": "2026-09-21T13:55:00Z",
+   "opened_epoch": 1789998900.0,
+   "reads": [],
+   "related": [],
+   "settled": null,
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-09-21T13:55:00Z",
+     "epoch": 1789998900.0,
+     "key": "adj:far",
+     "kind": "adjacency",
+     "protocol": "OSPF",
+     "related": [
+      "edge-b"
+     ],
+     "source": "adjacencies",
+     "words": "the OSPF adjacency core-a \u2013 edge-b is down"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-09-21T13:56:40Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-09-21T13:56:40Z",
+     "device": "core-a",
+     "from_incident": "hi-2791b8a4e0ea",
+     "reads": [],
+     "triggers": [
+      {
+       "at": "2026-09-21T13:55:00Z",
+       "epoch": 1789998900.0,
+       "key": "adj:far",
+       "kind": "adjacency",
+       "protocol": "OSPF",
+       "related": [
+        "edge-b"
+       ],
+       "source": "adjacencies",
+       "words": "the OSPF adjacency core-a \u2013 edge-b is down"
+      }
+     ],
+     "triggers_seen": 1,
+     "why": "edge-b is the far end of its link"
+    }
+   ],
+   "cause": "change",
+   "claimed": null,
+   "device": "edge-b",
+   "fold": {
+    "state": "not_judged",
+    "why": "no blast radius was given"
+   },
+   "id": "hi-e053128d982b",
+   "network": "Default",
+   "opened_at": "2026-09-21T13:56:40Z",
+   "opened_epoch": 1789999000.0,
+   "reads": [],
+   "related": [
+    {
+     "device": "dist-c",
+     "incident": "hi-776faf402fd0",
+     "why": "dist-c and edge-b both changed: a cause spanning devices"
+    }
+   ],
+   "settled": {
+    "at": "2026-09-21T14:13:10Z",
+    "first": 0,
+    "how": "persisted",
+    "operands": {
+     "departure": "25e2322ce4d52050"
+    },
+    "second": 1,
+    "words": "settled"
+   },
+   "standing": {
+    "at": "2026-09-21T14:13:20Z",
+    "decision": "hd-5fe43d45c1b4",
+    "departure": "25e2322ce4d52050",
+    "epoch": 1790000000.0,
+    "guard": null,
+    "on": "departure",
+    "outcome": "cant_fix",
+    "words": "At 13:56 UTC, edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2. Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no s"
+   },
+   "state": "standing",
+   "stood": null,
+   "triggers": [
+    {
+     "at": "2026-09-21T13:56:39Z",
+     "attribution": {
+      "by": "outside"
+     },
+     "epoch": 1789998999.4,
+     "key": "cfg:1",
+     "kind": "config_change",
+     "person": {
+      "user": "alice",
+      "words": "the line names the account alice on vty0"
+     },
+     "source": "logs-tail",
+     "words": "SYS-5-CONFIG_I on edge-b: from outside Mercury; the line names the account alice on vty0"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-09-21T14:13:20Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "device": "dist-c",
+   "fold": {},
+   "id": "hi-776faf402fd0",
+   "network": "Default",
+   "opened_at": "2026-09-21T14:00:00Z",
+   "opened_epoch": 1789999200.0,
+   "reads": [],
+   "related": [
+    {
+     "device": "edge-b",
+     "incident": "hi-e053128d982b",
+     "why": "dist-c and edge-b both changed: a cause spanning devices"
+    }
+   ],
+   "settled": null,
+   "state": "watching",
+   "triggers": [
+    {
+     "at": "2026-09-21T13:58:20Z",
+     "epoch": 1789999100.0,
+     "key": "adj:also",
+     "kind": "adjacency",
+     "protocol": "OSPF",
+     "related": [
+      "edge-b"
+     ],
+     "source": "adjacencies",
+     "words": "the OSPF adjacency dist-c \u2013 edge-b is down"
+    },
+    {
+     "at": "2026-09-21T14:00:00Z",
+     "attribution": {
+      "by": "outside"
+     },
+     "epoch": 1789999200.0,
+     "key": "cfg:dist-c",
+     "kind": "config_change",
+     "person": {
+      "user": "alice",
+      "words": "the line names the account alice on vty0"
+     },
+     "source": "logs-tail",
+     "words": "SYS-5-CONFIG_I on edge-b: from outside Mercury; the line names the account alice on vty0"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-09-21T14:00:00Z"
+  }
+ ],
+ "page": "hi-e053128d982b",
+ "related": "hi-776faf402fd0",
+ "steps": [
+  {
+   "at": "2026-09-21T14:13:20Z",
+   "cause": {
+    "facts": [
+     {
+      "at": "2026-09-21T13:56:39Z",
+      "epoch": 1789998999.4,
+      "kind": "config_change",
+      "text": "edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2"
+     }
+    ],
+    "hypothesis": null
+   },
+   "decision": "hd-5fe43d45c1b4",
+   "device": "edge-b",
+   "epoch": 1790000000.0,
+   "guard": {},
+   "headline": "edge-b: \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2. Mercury does not fix a cause spanning devices by itself: it needs a person",
+   "id": "hs-4de6b890ec30",
+   "incident": "hi-e053128d982b",
+   "kind": "multi_device",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no single-device heal can verify; nothing was sent, and a person decides (Tier 4)",
+   "person": "the line names the account alice on vty0",
+   "policy": {
+    "by": "admin@example.com",
+    "fingerprint": "e142c46c8c23ddda",
+    "reason": "Lab 10's dry run"
+   },
+   "program": [],
+   "program_hash": "",
+   "row": "decision",
+   "steps": [
+    {
+     "result": "ok",
+     "step": "claim",
+     "words": "the incident on edge-b taken"
+    },
+    {
+     "result": "ok",
+     "step": "stops",
+     "words": "no kill switch, watching only (dry run), no halt, no planned work"
+    },
+    {
+     "result": "ok",
+     "step": "approved",
+     "words": "the golden c0ffee is the approved state: at intent"
+    },
+    {
+     "result": "ok",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "result": "ok",
+     "step": "read",
+     "words": "edge-b read again: it holds the change the grace period settled on"
+    },
+    {
+     "result": "ok",
+     "step": "classify",
+     "words": "1 part(s) changed, a cause spanning devices (Tier 4)"
+    },
+    {
+     "result": "cant_fix",
+     "step": "decide",
+     "words": "Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no single-device heal can verify; nothing was sent, and a person decides (Tier 4)"
+    },
+    {
+     "result": "ok",
+     "step": "record",
+     "words": "the decision recorded"
+    }
+   ],
+   "tier": 4,
+   "triggers": [
+    "SYS-5-CONFIG_I on edge-b: from outside Mercury; the line names the account alice on vty0"
+   ],
+   "units": [
+    "a cause spanning devices (Tier 4): remove 1 line(s) in interface GigabitEthernet2"
+   ],
+   "words": "At 13:56 UTC, edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip access-group EDGE-IN in\u201d was added to interface GigabitEthernet2. Mercury does not fix a cause spanning devices by itself: a change across devices has an ordering and a partial state no single-device heal can verify; nothing was sent, and a person decides (Tier 4)"
+  },
+  {
+   "advisory": {
+    "calls": [],
+    "loop": "",
+    "pass": 1,
+    "state": "answered",
+    "steps": [],
+    "words": "AI analysis: asked for 2 reads; 2 run; answered"
+   },
+   "at": "2026-09-21T14:13:50Z",
+   "decision": "",
+   "device": "edge-b",
+   "epoch": 1790000030.0,
+   "id": "hs-4526d337eac3",
+   "incident": "hi-e053128d982b",
+   "network": "Default",
+   "row": "advisory"
+  }
+ ]
+}

@@ -35,7 +35,16 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html
-Templates sha256: `17d74797f049ce151f7f797f8e1f9624f70d1b8468238d122106b29c0a0a6e8f`
+Templates sha256: `917d18b106b382b9924d5debc6825594552a2398f0674aa6e6eb1d4b88d54508`
+
+**Hashed again 2026-11-12 for the incident page's first slice** (the operator's item 5: "so
+the email and Needs attention link to one place per incident"). `_attention.html`: a
+self-healing item about one incident (its record names an `hi-` id) ends its Why this
+happened with **Open the incident**, a link to that incident's own page, beside the row's one
+action and never a second one; every other row as compared. No board of this page draws it:
+**deviation** (log: Board incident-page F built for Needs attention, 1). Compared by the
+template diff and the row tests/test_incident_page.py draws, not a new shot. Templates sha256
+before: `17d74797f049ce151f7f797f8e1f9624f70d1b8468238d122106b29c0a0a6e8f`.
 
 **Hashed again 2026-11-12 for a heal's row in Recent changes** (the operator, that day: "A heal
 reads "Heal r3 · by Mercury's self-healing""). `_recent.html`: a heal's receipt is drawn "Heal

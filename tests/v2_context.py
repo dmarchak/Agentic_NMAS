@@ -4393,6 +4393,74 @@ def _sdn_policies(client, _lab, _mp):
             os.remove(store)
 
 
+def _incident_page(client, _lab, _mp):
+    """One incident's own page (the incident page's board, part B) on Lab, in each state its
+    one route draws, from the stores as tests/test_incident_page.py's builders left them
+    (tests/fixtures/incident_page/: real captures, one edit: the device edge-b named r3, a
+    device of this lab, so the page's links are live): a heal done with no human; a heal rolled
+    back, its verify failed; a can't-fix that took another device's incident in, with a
+    related incident and an AI analysis kept; the folded incident's redirect; an id no record
+    holds; another kind of id; and a record that cannot be read. Lab's three heal stores are
+    written for this provider alone, and put back as they were after."""
+    import json as _json
+    import os as _os
+
+    from modules.heal import decisions as HD
+    from modules.heal import incidents as HI
+    from modules.heal import steplog as SL
+
+    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab")}
+    kept = {}
+    for p in paths.values():
+        kept[p] = open(p, "rb").read() if _os.path.exists(p) else None
+    made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
+
+    def plant(name):
+        with open(_os.path.join(_os.path.dirname(__file__), "fixtures", "incident_page",
+                                f"{name}.json"), encoding="utf-8") as fh:
+            doc = _json.loads(fh.read().replace("edge-b", "r3"))
+        for p in paths.values():
+            _os.makedirs(_os.path.dirname(p), exist_ok=True)
+        with open(paths["incidents"], "w", encoding="utf-8") as fh:
+            _json.dump({"version": HI.VERSION, "incidents": doc["incidents"]}, fh)
+        for key in ("decisions", "steps"):
+            with open(paths[key], "w", encoding="utf-8") as fh:
+                fh.writelines(_json.dumps(row) + "\n" for row in doc[key])
+        return doc
+
+    def get(incident, code=200):
+        r = client.get(f"/v2/incident/{incident}?list=Lab")
+        assert r.status_code == code, (incident, r.status_code)
+        return r.get_data(as_text=True)
+
+    try:
+        assert 'data-state="fixed"' in get(plant("healed")["page"])
+        failed = get(plant("failed")["page"])
+        assert 'data-state="needs_person"' in failed and "verify failed" in failed
+        busy = plant("busy")
+        took = get(busy["page"])
+        assert "Folded into this incident" in took and "AI analysis (advisory" in took
+        assert 'data-state="open"' in get(busy["related"])
+        get(busy["folded"], 302)
+        assert "No incident hi-000000000000 is recorded" in get("hi-000000000000", 404)
+        assert "comes with S4" in get("al-0123456789abcdef0123", 404)
+        with open(paths["incidents"], "w", encoding="utf-8") as fh:
+            fh.write("{torn")
+        assert "Part of this incident" in get(busy["page"])
+        assert "record couldn" in get("hi-000000000000")
+    finally:
+        for p, data in kept.items():
+            if data is None:
+                if _os.path.exists(p):
+                    _os.remove(p)
+            else:
+                with open(p, "wb") as fh:
+                    fh.write(data)
+        for d in made:
+            if _os.path.isdir(d) and not _os.listdir(d):
+                _os.rmdir(d)
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
@@ -4409,7 +4477,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal, _resubscribe, _heal_run,
+                   _heal_proposal, _resubscribe, _heal_run, _incident_page,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,

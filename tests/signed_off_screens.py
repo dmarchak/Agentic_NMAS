@@ -260,6 +260,15 @@ SIGNED_OFF = {
     "retired.html": ("2026-10-03","the device-actions canvas, board 12 (Retire), its last card: "
                                    "a retired device's address shows its retired record (C185); "
                                    "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),
+    "incident.html": ("2026-11-11", "board incident-page, parts B, C and F (one incident's own "
+                                    "page; text only, kept with the operator's reports, "
+                                    "incident-page-board.md): the operator's design change of "
+                                    "2026-11-11 (\"each incident gets its own page\"), drawn and "
+                                    "counted as signed off under the Phase 7 mode "
+                                    "(docs/STANDING_APPROVAL_LOG.md, \"Board incident-page B "
+                                    "(one incident's own page\"). Built: its first slice, a "
+                                    "read-only page for a self-healing incident (an hi- id); "
+                                    "compared, docs/fidelity/incident.md"),
 }
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.

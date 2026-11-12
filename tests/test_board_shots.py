@@ -4198,3 +4198,52 @@ def test_heal_mark(tmp_path, monkeypatch):
                        "|| {}).textContent || '')", 15)
     from modules.heal import decisions
     assert decisions.find("Default", d["id"])["mark"]["right"] is True
+
+
+def test_incident(tmp_path, monkeypatch):
+    """Board incident-page, part B (text only, kept with the operator's reports: no board file
+    to shoot beside it): one incident's own page as built, on the heal's lab
+    (tests/test_incident_page.py's planted incidents, each by the heal modules' own writers,
+    each on a lab of its own): a heal done with no human (`incident-healed`, the board's B2),
+    a heal rolled back, its verify failed (`incident-failed`, B3's shape), a can't-fix
+    standing in dry run (`incident-open`, B1 without a known fix) and an id no record holds
+    (`incident-unknown`), each at 1920 (the board's E1), 1280 and phone width."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from tests import test_incident_page as T
+    from tests.test_heal_policy import confirm, mark
+    from tests.test_sdn_connections import make_networks
+
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+                          ("modules.nsot.device_ops.holder", lambda n, d: None),
+                          ("modules.change_windows.holding", lambda now=None, given=None: None),
+                          ("modules.heal.detect.wake", lambda: None),
+                          ("modules.nsot.removal.host_addresses", lambda: ["192.0.2.60"]),
+                          ("modules.device.load_saved_devices",
+                           lambda path=None: [dict(T.EDGE)]),
+                          ("modules.integration_groups.network_names", lambda: ["Default"])):
+        monkeypatch.setattr(target, value)
+    import app as A
+    for name, plant in (("incident-healed", T.healed), ("incident-failed", T.rolled_back),
+                        ("incident-open", T.cant_fix),
+                        ("incident-unknown", lambda: "hi-000000000000")):
+        # tests/test_heal_decide.py's `lab`, one per state: Default marked lab, in dry run.
+        folder = tmp_path / name
+        folder.mkdir()
+        make_networks(folder, monkeypatch)
+        mark("Default")
+        confirm("Default", heal_mode="dry_run")
+        iid = plant()
+        kept = (T.I.read("Default"), T.SL.read("Default"))
+        with browser.Served(A.app) as served:
+            _shoot(name, "", lambda w, i=iid: f"/v2/incident/{i}?list=Default", served,
+                   widths=((1920, 1.0), (1280, 1.0), (390, 2.0)))
+            from tests.browser import Browser
+            with Browser() as b:
+                b.go(served.url(f"/v2/incident/{iid}?list=Default"))
+                b.wait_for("return !!document.querySelector('main h1')")
+        # The page is a read: shot at three widths and opened once more, with every fragment
+        # its frame asks for, the heal's stores are as they were.
+        assert (T.I.read("Default"), T.SL.read("Default")) == kept, name
