@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast-forward the deployment host to origin/main, ONLY if CI passed for it.
+"""Fast-forward the deployment host to origin/main, ONLY if the gate or CI passed it.
 
 NSOT_PLAN P.4 step 4 (docs/NSOT_CI.md). It replaces the 25-line
 ~/bin/nmas-deploy that pulled and restarted with no gate. Install it as a
@@ -71,14 +71,22 @@ only when every file changed since the last commit CI passed matches the
 workflow's own `paths-ignore`, read from .github/workflows/ci.yml rather than
 copied, so the two cannot disagree.
 
-TWO VERDICTS, either one green (docs/LOCAL_CI.md, workstream 0). The local CI
-runner on this host (scripts/nmas-local-ci, a root-owned service) records a
-verdict per commit in a root-owned store; GitHub Actions runs on every push.
-A green verdict from EITHER deploys, and the sentence says which ("LOCAL CI
-passed ..." or "CI passed ..."); a red from EITHER refuses, naming it, since
-two runners of one workflow that disagree are a finding, never a coin toss.
-A local green does not wait for GitHub: GitHub's own run for the target is
-asked once, and only a FAILED answer changes the outcome.
+TWO VERDICTS, either one green (the operator's deploy bar, 2026-11-11: "a sha
+whose GATE passed may be pushed and deployed at once; GitHub CI is a second
+check, not a requirement"). The commit gate (scripts/nmas-gate, which runs
+everything CI runs, the container harness included) records its verdict for
+each commit it pushes as a git note under refs/notes/nmas-gate on origin
+(`gate_verdict`); GitHub Actions runs on every push. A green verdict from
+EITHER deploys, and the sentence says which ("GATE passed ..." or "CI passed
+..."); a red KNOWN at deploy time refuses, naming it, since two verdicts on
+one commit that disagree are a finding, never a coin toss. A gate green does
+not wait for GitHub: GitHub's own run for the target is asked once, and only a
+FAILED answer changes the outcome. A GitHub red that arrives after the deploy
+is the ci-agreement reader's Needs attention warning and its notice "CI
+disagrees with the deployed release": stop, then fix forward or roll back. The
+local CI runner's root-owned store
+(scripts/nmas-local-ci, docs/LOCAL_CI.md) is read the same way where a host
+has one; a host without it says nothing of it.
 
 Every run appends one row to data/deploy_audit.jsonl (0600): who, from, to,
 how the target was verified, the verdict and the exit code.
@@ -606,13 +614,16 @@ def local_words(rec: dict, path: str) -> str:
 
 
 def verdict_source(sentence: str) -> str:
-    """Which runner a `ci_verdict` sentence says judged it: "local", "github" or "both" (they
-    disagreed). The prefixes are this file's constants, the one owner of the words."""
+    """Which source a `ci_verdict` sentence says judged it: "gate", "local", "github" or
+    "both" (they disagreed). The prefixes are this file's constants, the one owner of the
+    words."""
     s = sentence or ""
     if s.startswith(OVERRIDDEN):
         return "override"
     if s.startswith(BOTH_DISAGREE):
         return "both"
+    if s.startswith((GATE_PASSED, GATE_REUSED)):
+        return "gate"
     if s.startswith((LOCAL_PASSED, LOCAL_REUSED, LOCAL_FAILED)):
         return "local"
     if s.startswith("PENDING: the local runner"):
@@ -669,21 +680,237 @@ def local_twin(repo, target, store=None):
     return None, None
 
 
-def ci_verdict(repo, target, get=github_get, store=None, override=None):
-    """(exit code, sentence naming the SHA, which runner judged it, and what was found).
+# ---------------------------------------------------------------------------
+# The commit gate's verdicts (scripts/nmas-gate, step 9)
+# ---------------------------------------------------------------------------
 
-    Two runners, one workflow (docs/LOCAL_CI.md): the local runner's record for *target*
-    (`local_verdict`, from the root-owned store *store*) and GitHub Actions'. A red KNOWN now
-    refuses, whichever runner gave it; a missing verdict is never waited for when the other is
+#: The operator's deploy bar (2026-11-11): "a sha whose GATE passed may be pushed and deployed
+#: at once; GitHub CI is a second check, not a requirement." The gate records its verdict for
+#: each commit it pushes as a git note under this ref on origin (scripts/nmas-gate NOTES_REF and
+#: NOTE_SCHEMA, held equal by tests/test_nmas_deploy.py). Who can write a green note is who can
+#: push to origin, the same people who can push main.
+GATE_NOTES_REF = "refs/notes/nmas-gate"
+GATE_NOTE_SCHEMA = 1
+#: A note is a few kilobytes (about twenty steps); a larger blob is not one.
+GATE_NOTE_MAX = 1 << 16
+#: How a gate green's sentence begins (`verdict_source` reads them).
+GATE_PASSED = "GATE passed"
+GATE_REUSED = "GATE's verdict REUSED"
+#: The gate's step that is CI's harness job (scripts/nmas-gate step 4e).
+GATE_HARNESS_STEP = "4e"
+
+
+def fetch_gate_notes(repo) -> tuple:
+    """``(state, words)``: origin's GATE_NOTES_REF fetched into this checkout (forced: origin's
+    is the record). *state* is ``fetched``, ``absent`` (origin holds none: no gate has recorded
+    a verdict) or ``error`` (it could not be fetched: never a pass)."""
+    try:
+        git(repo, "fetch", "--quiet", "origin", f"+{GATE_NOTES_REF}:{GATE_NOTES_REF}")
+    except RuntimeError as exc:
+        if "couldn't find remote ref" in str(exc).lower():
+            return "absent", f"origin holds no {GATE_NOTES_REF}"
+        return "error", f"origin's {GATE_NOTES_REF} could not be fetched ({exc})"
+    return "fetched", ""
+
+
+def _gate_note(repo, sha) -> dict:
+    """The note for *sha* in this checkout's GATE_NOTES_REF, judged as `local_verdict` judges a
+    record: ``{"state", "words", "record"}`` with *state* ``none``, ``unreadable``,
+    ``other-tree`` or ``passed``."""
+    short = sha[:10]
+    try:
+        blob = git(repo, "notes", f"--ref={GATE_NOTES_REF}", "list", sha)
+    except RuntimeError as exc:
+        if "no note found" in str(exc).lower():
+            return {"state": "none", "words": f"no gate verdict for {short} in {GATE_NOTES_REF}",
+                    "record": None}
+        return {"state": "unreadable", "words": f"the gate's note for {short} could not be "
+                f"listed ({exc}): never a pass", "record": None}
+    where = f"{GATE_NOTES_REF} note {blob[:10]}"
+    try:
+        size = int(git(repo, "cat-file", "-s", blob))
+        if size > GATE_NOTE_MAX:
+            raise ValueError(f"{size} bytes, larger than {GATE_NOTE_MAX}")
+        rec = json.loads(git(repo, "cat-file", "blob", blob))
+        if not isinstance(rec, dict) or rec.get("schema") != GATE_NOTE_SCHEMA \
+                or rec.get("sha") != sha or rec.get("state") != "passed" \
+                or not isinstance(rec.get("steps"), list):
+            raise ValueError(f"not a version-{GATE_NOTE_SCHEMA} passed verdict of this commit")
+    except (RuntimeError, ValueError) as exc:
+        return {"state": "unreadable", "words": f"{where} could not be read ({exc}): never a "
+                "pass", "record": None}
+    try:
+        tree = git(repo, "rev-parse", f"{sha}^{{tree}}")
+    except RuntimeError as exc:
+        return {"state": "unreadable", "words": f"git could not name {short}'s tree ({exc})",
+                "record": rec}
+    if rec.get("tree") != tree:
+        return {"state": "other-tree", "words": f"{where} names tree "
+                f"{str(rec.get('tree'))[:10]}, and git names {short}'s {tree[:10]}: not this "
+                "commit's verdict", "record": rec}
+    return {"state": "passed", "words": gate_words(rec, where), "record": rec}
+
+
+def gate_words(rec: dict, where: str) -> str:
+    """A passed note, in a sentence: what ran, where and when, by which gate."""
+    steps = rec.get("steps") or []
+    return (f"{len(steps)} step(s) at {rec.get('at') or '?'}, {rec.get('scope') or '?'} scope, "
+            f"on {rec.get('host') or '?'} in Python {rec.get('python') or '?'}, by the gate of "
+            f"{str(rec.get('gate') or 'an unrecorded commit')[:10]} ({where})")
+
+
+def gate_verdict(repo, sha, fetch=None) -> dict:
+    """``{"state", "words", "record", "covers"}``: the gate's verdict for *sha*, read from
+    origin's GATE_NOTES_REF (*fetch*, by default `fetch_gate_notes`, run once here) and judged
+    as `local_verdict` judges a record.
+
+    *state* is ``absent`` (origin holds no notes: said nowhere), ``none``, ``unreadable`` (it
+    could not be fetched, or the note cannot be read or is not a version-1 passed verdict of
+    this sha), ``other-tree``, ``uncovered`` (see below) or ``passed``.
+
+    A note whose scope is ``docs`` passed only the doc set (scripts/nmas-gate, docs only: the
+    code is its parent's), so it is green only when its parent's verdict covers the code: the
+    walk follows each docs note's ``base``, which must be the commit's first parent, to the
+    nearest ``full`` note, at most WALK_BOUND commits; anything else is ``uncovered``. *covers*
+    is that full note, the one the harness rule reads."""
+    short = sha[:10]
+    if not _SHA_RE.match(sha or ""):
+        return {"state": "unreadable", "words": f"{sha!r} is not a full commit sha",
+                "record": None, "covers": None}
+    fstate, fwords = (fetch or fetch_gate_notes)(repo)
+    if fstate == "absent":
+        return {"state": "absent", "words": fwords, "record": None, "covers": None}
+    if fstate != "fetched":
+        return {"state": "unreadable", "words": f"{fwords}: never a pass", "record": None,
+                "covers": None}
+    got = dict(_gate_note(repo, sha), covers=None)
+    if got["state"] != "passed":
+        return got
+    at, rec, walked = sha, got["record"], []
+    while rec.get("scope") == "docs":
+        if len(walked) >= WALK_BOUND:
+            return dict(got, state="uncovered", words=(
+                f"the gate passed {short}'s docs only, and the walk to a full verdict stopped "
+                f"after {WALK_BOUND} docs-only commits: {', '.join(walked)}"))
+        try:
+            parent = git(repo, "rev-parse", f"{at}^")
+        except RuntimeError as exc:
+            return dict(got, state="uncovered", words=f"the gate passed {short}'s docs only, "
+                        f"and {at[:10]}'s parent could not be named ({exc})")
+        if rec.get("base") != parent:
+            return dict(got, state="uncovered", words=(
+                f"the gate passed {short}'s docs only, and its note for {at[:10]} names base "
+                f"{str(rec.get('base'))[:10]}, not its parent {parent[:10]}"))
+        walked.append(at[:10])
+        below = _gate_note(repo, parent)
+        if below["state"] != "passed":
+            return dict(got, state="uncovered", words=(
+                f"the gate passed {short}'s docs only (its code is {parent[:10]}'s), and "
+                f"{parent[:10]}: {below['words']}"))
+        at, rec = parent, below["record"]
+    if at != sha:
+        got["words"] += f"; docs only, its code that of {at[:10]}, which the gate passed in full"
+    got["covers"] = rec
+    return got
+
+
+def gate_harness(gv: dict) -> tuple:
+    """``(covered, words)``: whether the gate's verdict *gv* ran CI's harness job (step 4e) and
+    every run of it passed. A note without a passed 4e (an older gate, or a stand-in) does
+    not cover the harness's paths."""
+    runs = [s for s in ((gv.get("covers") or {}).get("steps") or [])
+            if isinstance(s, dict) and s.get("number") == GATE_HARNESS_STEP]
+    if not runs:
+        return False, "its verdict has no harness step (a gate from before step 4e)"
+    bad = [s for s in runs if not str(s.get("result", "")).startswith("passed")]
+    if bad:
+        return False, "; ".join(f"{s.get('name', '?')}: {s.get('result', '?')}" for s in bad)
+    return True, "; ".join(f"{s.get('name', '?')} {s.get('result', '')[:60]}" for s in runs)
+
+
+def gate_twin(repo, target, fetch):
+    """``(sha, verdict)``: a commit this checkout was deployed at whose TREE is *target*'s and
+    whose gate verdict passed (a rollback, C1669, by `scripts/nmas-rollback`, which makes a new
+    commit with an old tree and no gate run), else ``(None, None)``."""
+    try:
+        tree = git(repo, "rev-parse", f"{target}^{{tree}}")
+    except RuntimeError:
+        return None, None
+    for sha in deployed_shas(repo):
+        if sha == target or git(repo, "rev-parse", f"{sha}^{{tree}}", check=False) != tree:
+            continue
+        gv = gate_verdict(repo, sha, fetch)
+        if gv["state"] == "passed":
+            return sha, gv
+    return None, None
+
+
+def _on_green(repo, target, get, override, source, prefix, v):
+    """The verdict on a green from the gate or the local runner (*source*, *v* its verdict):
+    deployed, never waiting for GitHub, unless GitHub's own run for *target* (asked once) has
+    already FAILED it, or its tree changes the harness's paths and neither this green nor
+    GitHub's harness jobs show the harness passed (C2753)."""
+    short = target[:10]
+    who = "the gate" if source == "gate" else "the local runner"
+    own, words = github_own(repo, target, get)
+    if own == "FAILED":
+        if override:
+            return OK, (f"{OVERRIDDEN} ({override!r}) for {short}: GitHub's CI failed it "
+                        f"({words}); {who} passed it ({v['words']})")
+        return CI_REFUSED, (f"{BOTH_DISAGREE} for {short}: {who} passed it ({v['words']}), and "
+                            f"GitHub's CI failed it ({words}). Refused: rerun GitHub's run once "
+                            "(a green rerun clears it), or deploy with --override-ci-red "
+                            "\"<reason>\".")
+    # C2753: a green that did not run the container harness never deploys alone a tree whose
+    # harness paths moved. The gate's runs it (step 4e) when its note says so; the local
+    # runner's never does (its job containers have no Docker).
+    try:
+        moved = harness_paths_changed(repo, target)
+    except RuntimeError as exc:
+        return CI_REFUSED, (f"{prefix} for {short}, but whether its tree changes the harness's "
+                            f"paths could not be told ({exc}), so {who}'s verdict alone does not "
+                            "deploy it.")
+    if moved:
+        covered, cwords = gate_harness(v) if source == "gate" else (False, "")
+        if covered:
+            words += f"; the harness paths changed, and the gate ran the harness: {cwords}"
+        else:
+            hstate, hwords = github_harness(repo, target, get)
+            if hstate != "PASSED":
+                named = ", ".join(moved[:5]) + (f" and {len(moved) - 5} more"
+                                                if len(moved) > 5 else "")
+                skipped = ("which the local runner skips" if source != "gate" else
+                           f"which the gate's verdict does not show passed ({cwords})")
+                code = CI_PENDING if hstate in ("PENDING", "COULD NOT ASK") else CI_REFUSED
+                return code, (f"{'PENDING' if code == CI_PENDING else 'REFUSED'}: {who} "
+                              f"passed {short} ({v['words']}), but its tree changes "
+                              f"{len(moved)} path(s) the container harness tests ({named}), "
+                              f"{skipped}; GitHub's harness jobs must be green, and they are "
+                              f"{hstate.lower()} ({hwords}).")
+            words += f"; the harness paths changed, and GitHub's harness: {hwords}"
+    return OK, f"{prefix} for {short}: {v['words']}. GitHub's own run: {words}"
+
+
+def ci_verdict(repo, target, get=github_get, store=None, override=None, fetch=None):
+    """(exit code, sentence naming the SHA, which source judged it, and what was found).
+
+    Two verdicts, either one green (the operator's deploy bar, 2026-11-11): the commit gate's,
+    recorded on origin (`gate_verdict`; *fetch* stands in for its fetch in tests), and GitHub
+    Actions'. The local CI runner's record (`local_verdict`, from the root-owned store *store*;
+    docs/LOCAL_CI.md) is read too where a host has its store: absent, it says nothing. A red
+    KNOWN now refuses, whichever gave it; a missing verdict is never waited for when another is
     green (the operator's scoped rule, `OVERRIDE_MIN_WORDS`' comment):
     * the local runner FAILED it: refused, naming the step, without asking GitHub;
-    * the local runner PASSED it: deployed, whatever GitHub is doing, unless GitHub's own run
-      for *target* (asked once, never waited for) has already FAILED it: refused, naming both;
-    * otherwise GitHub's verdict (`github_verdict`, below), with the local runner's state said
-      when this host has a store; a local run still queued or running while GitHub is pending,
-      cancelled or cannot be asked is PENDING, so `--wait` follows whichever ends first.
+    * the gate PASSED it (or the local runner did, or the gate passed a commit this checkout
+      ran with the same tree): deployed, whatever GitHub is doing, unless GitHub's own run for
+      *target* (asked once, never waited for) has already FAILED it: refused, naming both
+      (`_on_green`, with the harness rule C2753);
+    * otherwise GitHub's verdict (`github_verdict`, below), with the gate's and the local
+      runner's states said where they exist; a local run still queued or running while GitHub
+      is pending, cancelled or cannot be asked is PENDING, so `--wait` follows whichever ends
+      first.
     *override* (the operator's reason, `--override-ci-red`) deploys over a known red only when
-    the OTHER runner passed the commit: never green over nothing."""
+    another source passed the commit: never green over nothing."""
     short = target[:10]
     lv = local_verdict(repo, target, store)
     if lv["state"] == "failed":
@@ -696,39 +923,24 @@ def ci_verdict(repo, target, get=github_get, store=None, override=None):
                                 f"({sentence.rstrip('.')}), and an override needs one green.")
         return OK, (f"{OVERRIDDEN} ({override!r}) for {short}: the local runner failed it "
                     f"({lv['words']}); GitHub: {sentence}")
+    fetched = (fetch or fetch_gate_notes)(repo)
+
+    def once(_repo):
+        return fetched                    # one fetch of origin's notes for the whole verdict
+    gv = gate_verdict(repo, target, once)
+    if gv["state"] == "passed":
+        return _on_green(repo, target, get, override, "gate", GATE_PASSED, gv)
     if lv["state"] == "passed":
-        own, words = github_own(repo, target, get)
-        if own == "FAILED":
-            if override:
-                return OK, (f"{OVERRIDDEN} ({override!r}) for {short}: GitHub's CI failed it "
-                            f"({words}); the local runner passed it ({lv['words']})")
-            return CI_REFUSED, (f"{BOTH_DISAGREE} for {short}: the local runner passed it "
-                                f"({lv['words']}), and GitHub's CI failed it ({words}). Refused: "
-                                "rerun GitHub's run once (a green rerun clears it), or deploy "
-                                "with --override-ci-red \"<reason>\".")
-        # C2753: the local runner skips the container harness, so its green alone never
-        # deploys a tree whose harness paths moved; GitHub's harness jobs must be green.
-        try:
-            moved = harness_paths_changed(repo, target)
-        except RuntimeError as exc:
-            return CI_REFUSED, (f"{LOCAL_PASSED} for {short}, but whether its tree changes the "
-                                f"harness's paths could not be told ({exc}), so the local "
-                                "verdict alone does not deploy it.")
-        if moved:
-            hstate, hwords = github_harness(repo, target, get)
-            if hstate != "PASSED":
-                named = ", ".join(moved[:5]) + (f" and {len(moved) - 5} more"
-                                                if len(moved) > 5 else "")
-                code = CI_PENDING if hstate in ("PENDING", "COULD NOT ASK") else CI_REFUSED
-                return code, (f"{'PENDING' if code == CI_PENDING else 'REFUSED'}: the local "
-                              f"runner passed {short} ({lv['words']}), but its tree changes "
-                              f"{len(moved)} path(s) the container harness tests ({named}), "
-                              "which the local runner skips; GitHub's harness jobs must be "
-                              f"green, and they are {hstate.lower()} ({hwords}).")
-            words += f"; the harness paths changed, and GitHub's harness: {hwords}"
-        return OK, f"{LOCAL_PASSED} for {short}: {lv['words']}. GitHub's own run: {words}"
+        return _on_green(repo, target, get, override, "local", LOCAL_PASSED, lv)
+    if gv["state"] == "none":
+        twin, tv = gate_twin(repo, target, once)
+        if twin:
+            return _on_green(repo, target, get, override, "gate", GATE_REUSED, dict(
+                tv, words=f"its tree is that of {twin[:10]}, which this checkout was deployed "
+                          f"at and the gate passed ({tv['words']})"))
     code, sentence = github_verdict(repo, target, get, store)
-    said = "" if lv["state"] == "absent" else f" The local runner: {lv['words']}."
+    said = ("" if lv["state"] == "absent" else f" The local runner: {lv['words']}.") + \
+        ("" if gv["state"] == "absent" else f" The gate: {gv['words']}.")
     if (lv["state"] in ("queued", "running")
             and code in (COULD_NOT_ASK, CI_PENDING, CI_CANCELLED)):
         return CI_PENDING, (f"PENDING: the local runner is {lv['state']} for {short} "

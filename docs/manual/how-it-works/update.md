@@ -26,6 +26,17 @@ app-pushed reader, which asks the repository's origin (`git ls-remote`) every 5 
 when you press **Check again**, and asks GitHub's Actions API for CI's verdicts through
 `nmas-deploy`'s own gate. No page load asks GitHub itself.
 
+"CI passed" is a green verdict on the exact commit from either of two sources: the commit
+gate's, recorded on the repository's origin when the commit was pushed (it runs everything
+GitHub's CI runs), or GitHub's CI. The page says which ("CI passed this release (the commit
+gate's recorded verdict)"). A release the gate passed is offered at once, without waiting for
+GitHub; a red from GitHub known at the time is never offered. GitHub keeps running after every
+push: should it fail the release this host runs, Needs attention raises a warning (the release
+keeps running, so it is no outage) saying to stop, then fix forward or roll back, and Mercury
+sends one notice of the kind "CI disagrees with the deployed release" to the teams your
+networks tell, naming the commit, where GitHub failed it and who deployed it. Its delivery is
+in History (Notifications), as every notice's is.
+
 ## The target {#target}
 
 The target is the NEWEST commit since the running one that CI passed. While commits are
@@ -124,8 +135,10 @@ and the Update page draws each step as the updater records it:
    a fast-forward. Any of these failing refuses with nothing moved. A push made after you
    confirmed does not refuse your update: the commit you confirmed is still on
    origin/main, and the checkout moves to exactly it, never past it.
-5. **CI, again** (`ci`). Read: GitHub's Actions API, through the updater's OWN root-owned
-   copy of `nmas-deploy`'s gate, never the app's answer; and the `Host-Step:` lines of the
+5. **CI, again** (`ci`). Read: the commit gate's recorded verdict (a `git fetch` of
+   origin's `refs/notes/nmas-gate`, as the service user) and GitHub's Actions API, through
+   the updater's OWN root-owned copy of `nmas-deploy`'s gate, never the app's answer; and the
+   `Host-Step:` lines of the
    commits between. Sent: nothing. Recorded: CI's sentence. Anything the gate does not pass,
    or a before-step the request does not say is done, refuses. Then the venv: the target's
    `requirements.lock` and `requirements-test.txt` name the virtualenv it needs. When that is

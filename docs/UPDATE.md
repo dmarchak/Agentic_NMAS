@@ -5,6 +5,17 @@ action is **Update…**, which opens the Update page (`/v2/update`). Help > Abou
 links to the same page when the host is behind: one page, two entry points.
 Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
 
+"CI passed" means a green verdict on the exact commit from either of two sources (the
+operator's deploy bar, 2026-11-11: "a sha whose GATE passed may be pushed and deployed at once;
+GitHub CI is a second check, not a requirement"): the commit gate's, which `scripts/nmas-gate`
+records on origin as a note under `refs/notes/nmas-gate` after it pushes (it runs everything
+CI runs, the container harness included), or GitHub's CI. A gate green is never held waiting
+for GitHub; a red from GitHub known at the time refuses whatever the gate said; a GitHub red
+that arrives after the update is a Needs attention warning (no outage: the release keeps
+running) and one notice of the kind "CI disagrees with the deployed release", naming who
+deployed it (stop, then rerun once, fix forward or roll back). `nmas-deploy`'s `ci_verdict` is the one judge, for the terminal deploy
+and for the updater's root-owned copy of it.
+
 ## How it works
 
 1. **The preview** is what the `app-pushed` reader stored, never a fetch made
@@ -13,7 +24,8 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
      one that CI passed, which may be older than origin/main's tip (C436;
      while commits are pushed, the tip's CI is nearly always still running);
    - the commits between them;
-   - CI's verdict for the target, by `nmas-deploy`'s own gate;
+   - CI's verdict for the target, by `nmas-deploy`'s own gate, naming which source passed
+     it (the commit gate's recorded verdict, or GitHub's CI);
    - the commits beyond the target, counted by CI state ("3 newer: 1 running
      CI, 2 cancelled"), for information only. None of them is offered, and a
      cancelled, failed or pending commit is never a target. With no commit

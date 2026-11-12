@@ -217,9 +217,16 @@ The Update page's `topology-renderer-gone` check reads done once neither file is
 
 ## Deploying an update
 
-`scripts/nmas-deploy` fast-forwards the checkout to origin/main ONLY if CI
-passed for that exact commit, then restarts the service and checks it answers.
-Link it into your PATH (one copy, versioned):
+`scripts/nmas-deploy` fast-forwards the checkout to origin/main ONLY if the
+commit gate or CI passed that exact commit, then restarts the service and checks
+it answers. The gate's verdict is the note `scripts/nmas-gate` records on origin
+under `refs/notes/nmas-gate` after it pushes (the operator's deploy bar,
+2026-11-11: "a sha whose GATE passed may be pushed and deployed at once; GitHub
+CI is a second check, not a requirement"): a gate green deploys at once, without
+waiting for GitHub; a GitHub red known at deploy time refuses; a GitHub red that
+arrives later is a Needs attention warning (no outage: the release keeps running)
+and a notice of the kind "CI disagrees with the deployed release". Link it into your PATH (one
+copy, versioned):
 `ln -sf ~/python/Agentic_NMAS/scripts/nmas-deploy ~/bin/nmas-deploy`. On a
 machine that cannot reach GitHub, `nmas-deploy --offline` runs the whole suite
 here against the target instead. There is no flag that deploys an unverified

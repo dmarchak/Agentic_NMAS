@@ -45,6 +45,10 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           "action": "an action taken, verified",
           "analysis": "AI analysis of what could not be fixed",
           "diagnosis": "Mercury's diagnosis of what could not be fixed",
+          # The deploy bar (the operator, 2026-11-11): GitHub's CI failed the release the host
+          # runs after it was deployed on the gate's green (modules/readers/ci_agreement.py,
+          # `notify_reds`), once per commit and GitHub run.
+          "ci_disagrees": "CI disagrees with the deployed release",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a

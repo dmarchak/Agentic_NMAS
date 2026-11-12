@@ -7,7 +7,8 @@ step, with a rollback recommendation. A red may be rerun once: a green rerun cle
 
 What is held:
 - **the rows, from a stored value:** the running commit deployed on the local green and failed
-  by GitHub since is one DANGER row naming where it failed and the rollback's command, offering
+  by GitHub since is one WARNING row (the operator, 2026-11-11: "severity by impact: it's no
+  outage"; DANGER before) naming where it failed and the rollback's command, offering
   the one rerun until its attempt is spent; a commit the host does not run with one green and
   one red is a WARNING row, either way round; it clears when the two agree (a green rerun) or a
   NEWER commit's two verdicts agree (superseded); agreement, a pending GitHub run and no local
@@ -29,6 +30,7 @@ import subprocess
 import pytest
 
 from modules import attention
+from tests.test_notify import env  # noqa: F401 (the fixture: the notification stores and fakes)
 
 #: C1522: the source reads reader stores; each test keeps them in its own folder.
 pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
@@ -43,11 +45,12 @@ def CA():
     return ci_agreement
 
 
-def _commit(sha, github, local, order, attempt=1, failed_at=None, words="w"):
+def _commit(sha, github, local, order, attempt=1, failed_at=None, words="w", gate="absent",
+            gate_words=""):
     return {"sha": sha, "github": github, "local": local, "local_words": words, "order": order,
             "run": {"number": order, "attempt": attempt, "id": order * 10,
                     "url": f"https://github.com/owner/repo/actions/runs/{order * 10}"},
-            "failed_at": failed_at}
+            "failed_at": failed_at, "gate": gate, "gate_words": gate_words}
 
 
 def _value(commits, running=A, deployed=(A, B)):
@@ -64,10 +67,10 @@ STEPS = [{"step": "Tests (R1, R4), confined to loopback, measured by tier", "job
 
 
 class TestTheRows:
-    def test_a_github_red_after_a_local_green_deploy_is_one_danger_row(self, CA):
+    def test_a_github_red_after_a_local_green_deploy_is_one_warning_row(self, CA):
         v = _value([_commit(A, "FAILED", "passed", 9, failed_at=STEPS)])
         rows = attention.ci_agreement_source(cached=_cached(v), now=0)["rows"]
-        assert [(r["kind"], r["level"]) for r in rows] == [("red-after-deploy", "danger")]
+        assert [(r["kind"], r["level"]) for r in rows] == [("red-after-deploy", "warning")]
         r = rows[0]
         assert "GitHub's CI failed aaaaaaaaaa, which this host runs" in r["what"]
         assert "failed at Tests (R1, R4), confined to loopback, measured by tier, in test (a)" \
@@ -79,7 +82,8 @@ class TestTheRows:
     def test_the_rerun_is_offered_once(self, CA):
         v = _value([_commit(A, "FAILED", "passed", 9, attempt=2, failed_at=STEPS)])
         r = attention.ci_agreement_source(cached=_cached(v), now=0)["rows"][0]
-        assert r["action"]["label"].startswith("The rerun is spent; if it stays red, roll back")
+        assert r["action"]["label"].startswith("Stop new work. The rerun is spent; if it stays "
+                                               "red, fix it forward or roll back")
         assert CA.judge(v)[0]["rerun_left"] is False
 
     def test_a_green_rerun_clears_it(self, CA):
@@ -127,6 +131,58 @@ class TestTheRows:
                                                                 now=0)["rows"]]
         assert len(keys) == len(set(keys)) == 3 and set(keys) == {A, B, C}
 
+    def test_a_github_red_after_a_gate_green_deploy_is_the_warning_row(self, CA):
+        """The deploy bar (the operator, 2026-11-11): "If it goes red on a deployed sha: stop,
+        report it at once, then fix forward or roll back"; a WARNING, "severity by impact:
+        it's no outage"."""
+        v = _value([_commit(A, "FAILED", "absent", 9, failed_at=STEPS, gate="passed")])
+        rows = attention.ci_agreement_source(cached=_cached(v), now=0)["rows"]
+        assert [(r["kind"], r["level"]) for r in rows] == [("red-after-deploy", "warning")]
+        r = rows[0]
+        assert "GitHub's CI failed aaaaaaaaaa, which this host runs (deployed on the gate's " \
+               "green)" in r["what"]
+        label = r["action"]["label"]
+        assert label.startswith("Stop new work. ") and "reruns GitHub's run once" in label
+        assert f"fix it forward or roll back: scripts/nmas-rollback {B[:10]} --push, then " \
+               "Update" in label
+        assert r["cause"] == "GitHub failed, the gate passed"
+
+    def test_a_gate_green_github_agrees_with_raises_nothing(self, CA):
+        assert CA.ours(_commit(A, "PASSED", "absent", 9, gate="passed")) == ("PASSED", "the gate")
+        assert CA.judge(_value([_commit(A, "PASSED", "absent", 9, gate="passed")])) == []
+        assert CA.judge(_value([_commit(A, "PENDING", "absent", 9, gate="passed")])) == []
+        assert CA.judge(_value([_commit(A, "FAILED", "absent", 9, gate="none")])) == []
+
+    def test_a_commit_the_host_does_not_run_with_a_gate_green_and_a_github_red_is_a_warning(
+            self, CA):
+        v = _value([_commit(C, "FAILED", "absent", 9, gate="passed", gate_words="12 step(s)")],
+                   running=A)
+        rows = attention.ci_agreement_source(cached=_cached(v), now=0)["rows"]
+        assert [(r["kind"], r["level"]) for r in rows] == [("disagree", "warning")]
+        assert "The gate and GitHub's CI disagree on cccccccccc" in rows[0]["what"]
+        assert "the gate: 12 step(s)" in rows[0]["what"]
+
+    def test_a_newer_commit_the_gate_and_github_both_pass_supersedes_it(self, CA):
+        older = _commit(C, "FAILED", "absent", 9, gate="passed")
+        assert [r["kind"] for r in CA.judge(_value([older], running=B))] == ["disagree"]
+        v = _value([_commit(B, "PASSED", "absent", 10, gate="passed"), older], running=B)
+        assert CA.judge(v) == []
+
+    @pytest.mark.parametrize("gate", ["unreadable", "other-tree"])
+    def test_a_gate_note_that_cannot_be_used_is_a_row(self, CA, gate):
+        v = _value([_commit(C, "PASSED", "absent", 9, gate=gate, gate_words="names tree 0000")])
+        rows = attention.ci_agreement_source(cached=_cached(v), now=0)["rows"]
+        assert [(r["kind"], r["id"].split(":", 1)[1]) for r in rows] == [("unread", C)]
+        assert "The gate's note on cccccccccc is not usable: names tree 0000" in rows[0]["what"]
+
+    def test_notes_that_could_not_be_fetched_are_said_once_never_a_row_per_commit(self, CA):
+        v = _value([_commit(A, "PASSED", "absent", 9, gate=CA.GATE_UNASKED),
+                    _commit(C, "PASSED", "absent", 8, gate=CA.GATE_UNASKED)])
+        v["gate_notes"] = {"state": "error", "words": "origin's notes could not be fetched (x)"}
+        res = attention.ci_agreement_source(cached=_cached(v), now=0)
+        assert res["rows"] == []
+        assert "the gate's notes: origin's notes could not be fetched (x)" in json.dumps(res)
+
     def test_a_source_never_read_says_so(self, CA):
         res = attention.ci_agreement_source(cached={"state": "missing", "why": "no store",
                                                     "doc": {}}, now=0)
@@ -142,7 +198,7 @@ def _git(repo, *args):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
     repo = tmp_path / "checkout"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -157,8 +213,40 @@ def world(tmp_path):
     (store / "verdicts").mkdir(parents=True)
     os.chmod(store, 0o755)
     os.chmod(store / "verdicts", 0o755)
-    return {"repo": str(repo), "shas": shas,
+    # The origin's URL is GitHub-shaped (for the slug); the gate's notes are fetched from a
+    # real bare repository the test builds, as `fetch_gate_notes` fetches origin's.
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "-q", "--bare", str(origin))
+    from modules.readers import ci_verdict as CV
+
+    def fetch(root):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        r = subprocess.run(["git", "-C", root, "fetch", "-q", str(origin),
+                            "+refs/notes/nmas-gate:refs/notes/nmas-gate"],
+                           capture_output=True, text=True, env=env, timeout=30)
+        if r.returncode == 0:
+            return "fetched", ""
+        if "couldn't find remote ref" in r.stderr.lower():
+            return "absent", "origin holds no refs/notes/nmas-gate"
+        return "error", r.stderr.strip()
+    # raising=False: on a script without it (the parent of the commit that adds it), the
+    # stand-in is simply unused and the test's own body decides.
+    monkeypatch.setattr(CV.deploy_script(), "fetch_gate_notes", fetch, raising=False)
+    return {"repo": str(repo), "shas": shas, "origin": str(origin),
             "store": {"path": str(store), "owner": os.getuid()}}
+
+
+def _gate(world, sha, tree=None):
+    """The gate's verdict for *sha*, a note as scripts/nmas-gate step 9 writes it, pushed to
+    the world's origin."""
+    note = {"schema": 1, "sha": sha, "state": "passed", "scope": "full", "steps": [],
+            "tree": tree or _git(world["repo"], "rev-parse", f"{sha}^{{tree}}"),
+            "base": None, "host": "workstation", "at": "2026-11-11T20:00:00Z"}
+    path = os.path.join(world["repo"], ".git", "note.json")
+    with open(path, "w") as fh:
+        json.dump(note, fh)
+    _git(world["repo"], "notes", "--ref=refs/notes/nmas-gate", "add", "-f", "-F", path, sha)
+    _git(world["repo"], "push", "-q", world["origin"], "refs/notes/nmas-gate")
 
 
 def _local(world, sha, state):
@@ -220,6 +308,29 @@ class TestTheRead:
                 previous=first)
         assert len(asked) == 2, "a new run's red is asked about afresh"
 
+    def test_each_commit_carries_the_gates_verdict_from_origins_notes(self, CA, world):
+        s0, s1, s2 = world["shas"]
+        _gate(world, s2)
+        _gate(world, s1, tree="0" * 40)
+        runs = [_run(s2, 12, "failure"), _run(s1, 11, "success"), _run(s0, 10, "success")]
+        v = CA.read(world["repo"], get=_github(runs, []), store=world["store"], running=s2,
+                    previous={})
+        assert v["gate_notes"]["state"] == "fetched"
+        got = [(c["sha"], c["github"], c["gate"]) for c in v["commits"]]
+        assert got == [(s2, "FAILED", "passed"), (s1, "PASSED", "other-tree"),
+                       (s0, "PASSED", "none")]
+        rows = CA.judge(v)
+        assert [(r["kind"], r["sha"], r.get("by") or r.get("unread_by")) for r in rows] == [
+            ("red-after-deploy", s2, "the gate"), ("unread", s1, "the gate")]
+        assert rows[0]["rollback_to"] == s1
+
+    def test_no_notes_on_origin_raise_nothing_of_the_gate(self, CA, world):
+        s2 = world["shas"][2]
+        v = CA.read(world["repo"], get=_github([_run(s2, 12, "failure")], []),
+                    store=world["store"], running=s2, previous={})
+        assert v["gate_notes"]["state"] == "absent" and v["commits"][0]["gate"] == "absent"
+        assert CA.judge(v) == []
+
     def test_github_unreadable_fails_the_read_so_the_last_value_stands(self, CA, world):
         with pytest.raises(RuntimeError, match="could not be read"):
             CA.read(world["repo"], get=lambda p: (0, None, "URLError: timed out"),
@@ -241,6 +352,7 @@ class TestTheWiring:
 
 class TestTheUpdatePageSaysWhichRunner:
     @pytest.mark.parametrize("source, words", [
+        ("gate", "CI passed this release (the commit gate's recorded verdict)"),
         ("local", "CI passed this release (the local CI runner on this host)"),
         ("github", "CI passed this release (GitHub's CI)"),
         ("override", "CI passed this release (the operator's override of the two runners' "
@@ -254,4 +366,108 @@ class TestTheUpdatePageSaysWhichRunner:
         from modules.readers import ci_verdict as CV
         mod = CV.deploy_script()
         assert CV.source_of(mod, f"{mod.LOCAL_PASSED} for x: y") == "local"
+        assert CV.source_of(mod, f"{mod.GATE_PASSED} for x: y") == "gate"
         assert CV.source_of(mod, "CI passed for x: run #3") == "github"
+
+
+#: The release this host runs, as `update_op.last_deployed` names it after an Update.
+DEPLOYED = {"to": A, "from": B, "requested_by": "pat@example.invalid", "route": "updater",
+            "ended_at": "2026-11-11T20:00:00Z", "outcome": "updated"}
+
+
+class TestTheNotice:
+    """The operator's condition 1 (2026-11-11): the row has "its own notification kind "CI
+    disagrees with the deployed release", on by default for the deployer". Sent once per commit
+    and GitHub run, the first time the reader raises the row, through the delivery path every
+    notice takes; to the teams the installation tells (each network's Who is told) until
+    per-person preferences exist."""
+
+    RED = staticmethod(lambda attempt=1, run_id=90: _value(
+        [dict(_commit(A, "FAILED", "absent", 9, attempt=attempt, failed_at=STEPS,
+                      gate="passed"), run={"number": 9, "attempt": attempt, "id": run_id,
+                                           "url": "https://github.com/owner/repo/actions/runs/9"})]))
+
+    def test_the_kind_is_declared_with_its_words(self, CA):
+        from modules.notify import message
+        assert message.EVENTS[CA.NOTIFY_EVENT] == "CI disagrees with the deployed release"
+        assert CA.NOTIFY_ON_BY_DEFAULT is True
+
+    def test_it_is_sent_once_and_not_again_on_the_next_read(self, CA):
+        sent = []
+
+        def deliver(event, teams):
+            sent.append((event, teams))
+            return {"ok": True, "sent": 1, "failed": 0}
+        first = CA.notify_reds(self.RED(), {}, deliver=deliver, teams=["t1"], deployed=DEPLOYED,
+                               now=0)
+        assert len(sent) == 1 and sent[0][1] == ["t1"]
+        assert first == {f"{A}:90": {"at": "1970-01-01T00:00:00Z", "sent": 1, "failed": 0,
+                                     "teams": 1, "error": ""}}
+        again = CA.notify_reds(self.RED(), {"notified": first}, deliver=deliver, teams=["t1"],
+                               deployed=DEPLOYED, now=60)
+        assert len(sent) == 1 and again == first
+        CA.notify_reds(self.RED(attempt=2, run_id=91), {"notified": first}, deliver=deliver,
+                       teams=["t1"], deployed=DEPLOYED, now=120)
+        assert len(sent) == 2, "a rerun that fails again is a new notice"
+
+    def test_no_red_after_deploy_sends_nothing(self, CA):
+        sent = []
+        CA.notify_reds(_value([_commit(C, "FAILED", "absent", 9, gate="passed")], running=A),
+                       {}, deliver=lambda e, t: sent.append(e), teams=["t1"], deployed=DEPLOYED)
+        assert sent == [], "a disagreement on a commit the host does not run is no notice"
+
+    def test_its_words_name_the_sha_the_failed_job_the_deployer_and_the_history_link(self, CA):
+        from modules.notify import message
+        (r,) = CA.judge(self.RED())
+        facts = message.check_event(CA.notice(r, DEPLOYED, now=0))
+        assert facts["event"] == "ci_disagrees" and facts["incident"] == f"ci-{A[:12]}-90"
+        text = message.text(facts, sent_at=0)
+        assert text.startswith("Mercury: CI disagrees with the deployed release\n")
+        assert f"GitHub's CI failed {A[:10]}, the release this host runs" in text
+        assert "run #9, attempt 1, https://github.com/owner/repo/actions/runs/9" in text
+        assert "failed at Tests (R1, R4), confined to loopback, measured by tier, in test (a)" \
+            in text
+        assert ("Deployed by pat@example.invalid at 2026-11-11T20:00:00Z (the Update button). "
+                "The release keeps running: this is no outage.") in text
+        assert f"scripts/nmas-rollback {B[:10]} --push, then Update" in text
+        assert "Open in Mercury: /v2/history?kind=updates" in text
+
+    def test_a_release_deployed_by_another_record_names_nobody(self, CA):
+        (r,) = CA.judge(self.RED())
+        event = CA.notice(r, dict(DEPLOYED, to=B), now=0)
+        assert "Deployed by nobody recorded at an unrecorded time." in event["outcome"]
+
+    def test_the_teams_told_are_each_networks_who_is_told_once(self, CA, monkeypatch):
+        from modules import heal_notify
+        teams = {"lab": "a1", "core": "", "edge": "a1", "dc": "b2"}
+        monkeypatch.setattr(heal_notify, "read", lambda n: {"team": teams[n]})
+        assert CA.told_teams(["lab", "core", "edge", "dc"]) == ["a1", "b2"]
+
+    def test_a_delivery_failure_is_recorded_as_every_deliverys_is(self, CA, env):
+        """Through the real delivery path: the relay refuses three times; the delivery log
+        keeps each attempt with the kind, the notify source raises its row, and the notice is
+        still not sent again on the next read."""
+        from tests.test_notify import _relay, _team_with_email
+        from modules.notify import delivery
+        _relay(env)
+        team, _dest = _team_with_email()
+        env.smtp_fail[:] = [OSError("refused")] * 3
+        first = CA.notify_reds(self.RED(), {}, teams=[team], deployed=DEPLOYED, now=0)
+        assert first[f"{A}:90"] == dict(first[f"{A}:90"], sent=0, failed=1)
+        rows = delivery.read_log()["rows"]
+        assert len(rows) == 3 and {r["event"] for r in rows} == {"ci_disagrees"}
+        assert rows[0]["outcome"] == "failed" and rows[0]["final"] is True
+        assert [r["kind"] for r in attention.notify_source()["rows"]] == ["failed"]
+        CA.notify_reds(self.RED(), {"notified": first}, teams=[team], deployed=DEPLOYED, now=60)
+        assert len(delivery.read_log()["rows"]) == 3
+
+    def test_a_delivered_notice_carries_its_words_to_the_mailbox(self, CA, env):
+        from tests.test_notify import _mail, _relay, _team_with_email
+        _relay(env)
+        team, _dest = _team_with_email()
+        got = CA.notify_reds(self.RED(), {}, teams=[team], deployed=DEPLOYED, now=0)
+        assert got[f"{A}:90"]["sent"] == 1
+        (msg,) = [_mail(raw) for s in env.smtp for raw in s.sent]
+        assert "CI disagrees with the deployed release" in msg["Subject"]
+        body = msg.get_body(("plain",)).get_content()
+        assert A[:10] in body and "pat@example.invalid" in body and "test (a)" in body

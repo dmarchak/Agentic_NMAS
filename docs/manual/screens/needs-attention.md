@@ -137,11 +137,14 @@ way that drops lines; the log redaction found unhealthy; the CI verdict on the r
 and a pushed release whose CI failed; a scheduled quality job (each workflow with a schedule,
 such as the weekly mutation run) whose newest scheduled run failed, or that has not succeeded
 within its period and GitHub's start delay, with a link to the run (it clears only when a
-scheduled run succeeds; a dispatched one does not clear it); the two CI runners (GitHub's and
-the local runner on this host) on one commit: a red from GitHub on the commit this host runs,
-after it was deployed on the local runner's green (a danger row naming where it failed: rerun
-GitHub's run once, and if it stays red roll back), a commit they disagree on, or a local record
-that cannot be trusted or read; host steps owed; a NetBox-sourced network's unreadable
+scheduled run succeeds; a dispatched one does not clear it); the verdicts on one commit
+(GitHub's CI against the commit gate's recorded verdict, and the local runner's where this host
+has one): a red from GitHub on the commit this host runs, after it was deployed on the gate's
+or the local runner's green (a warning, since the release keeps running, naming where it
+failed: stop new work, rerun GitHub's run once, and if it stays red fix forward or roll back
+with the `scripts/nmas-rollback` command it names; one notice of the kind "CI disagrees with
+the deployed release" goes to the teams your networks tell), a commit they disagree on, or a gate note or local record that cannot be
+trusted or read; host steps owed; a NetBox-sourced network's unreadable
 inventory; a rollback's record; pending onboardings (overdue, or still holding a staged
 credential); Grafana's rule groups that stopped evaluating, and rules that read no data; the
 fleet's heartbeat stopping at once (one row, not one per device); the routing adjacencies

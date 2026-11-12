@@ -15,6 +15,7 @@ prints a chosen result:
 - the browser tests are their own step with the same verdict.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -1156,3 +1157,239 @@ class TestTheGateRunsTheBaseCommitsCode:
                                      + _suite(["12 passed in 1.00s"])))
         assert r.returncode == 0, r.stdout + r.stderr
         assert "NMAS_GATE_FROM_BASE" not in seen.read_text()
+
+
+# ───────────────────────────────── the deploy bar (the operator's decision, 2026-11-11)
+
+def _harness(tmp_path, *, fail_on=None, down_rc=0, last="harness_checks: 9 passed in 4.1s"):
+    """Step 4e's two commands, standing in for the container harness (NMAS_GATE_HARNESS and
+    NMAS_GATE_HARNESS_DOWN): each call logged in order to *tmp_path*/harness.log; the check on
+    the Python *fail_on* fails, naming itself in its last line; down exits *down_rc*."""
+    log = tmp_path / "harness.log"
+    check = (f"echo 'check {{version}}' >> {log}; "
+             + (f"if [ '{{version}}' = '{fail_on}' ]; then echo 'FAILED harness_checks on "
+                f"{{version}}'; exit 1; fi; " if fail_on else "")
+             + f"echo '{last}'")
+    down = f"echo down >> {log}; echo 'down said its piece'; exit {down_rc}"
+    return {"NMAS_GATE_HARNESS": check, "NMAS_GATE_HARNESS_DOWN": down}, log
+
+
+class TestTheHarnessStep:
+    """Step 4e (the operator, 2026-11-11: "Confirm the gate runs everything CI runs, including
+    the two container-harness jobs. If not, add what's missing to the gate"): CI's harness job
+    on each Python of its matrix, each check followed by down whatever happened; a failure
+    refuses the gate with nothing committed, naming the run's last line."""
+
+    def _gate(self, repo, tmp_path, env):
+        _stage(repo)
+        return _run_gate(GATE, repo, tmp_path, env=_quiet_env(**env))
+
+    def test_both_pythons_run_in_turn_each_followed_by_down_and_it_commits(self, repo, tmp_path):
+        env, log = _harness(tmp_path)
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert log.read_text().split("\n")[:-1] == ["check 3.5", "down", "check 3.9", "down"]
+        assert "4e. the container harness on Python 3.5, unconfined" in r.stdout
+        assert "4e. the container harness on Python 3.9, unconfined" in r.stdout
+        assert _commits(repo) == 2
+
+    def test_a_planted_harness_failure_refuses_naming_its_last_line_and_still_downs(
+            self, repo, tmp_path):
+        env, log = _harness(tmp_path, fail_on="3.5")
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "REFUSED at the container harness on Python 3.5: it exited 1" in r.stdout
+        assert "FAILED harness_checks on 3.5" in r.stdout
+        assert "nmas-gate-harness-3.5.out" in r.stdout
+        assert log.read_text().split("\n")[:-1] == ["check 3.5", "down"], "down, then stop"
+        assert _commits(repo) == 1
+
+    def test_the_second_python_failing_refuses_too(self, repo, tmp_path):
+        env, log = _harness(tmp_path, fail_on="3.9")
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 1 and "REFUSED at the container harness on Python 3.9" in r.stdout
+        assert log.read_text().split("\n")[:-1] == ["check 3.5", "down", "check 3.9", "down"]
+        assert _commits(repo) == 1
+
+    def test_a_down_that_fails_refuses(self, repo, tmp_path):
+        env, _log = _harness(tmp_path, down_rc=2)
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "REFUSED at the container harness's down after Python 3.5: it exited 2" in r.stdout
+        assert _commits(repo) == 1
+
+    def test_the_bound_fires_stops_the_run_by_its_group_and_refuses(self, repo, tmp_path):
+        env, log = _harness(tmp_path)
+        env["NMAS_GATE_HARNESS"] = f"echo started >> {log}; sleep 60 & wait"
+        env["NMAS_GATE_HARNESS_BOUND"] = "1"
+        import time
+        began = time.monotonic()
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "the bound of 1 s fired" in r.stdout and _commits(repo) == 1
+        assert time.monotonic() - began < 30, "the sleep in the run's group was stopped"
+        assert log.read_text().split("\n")[:-1] == ["started", "down"]
+
+    def test_a_stand_in_suite_without_a_harness_stand_in_does_not_run_it(self, repo, tmp_path):
+        r = self._gate(repo, tmp_path, {})
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "4e. the container harness: not run, the suite is a stand-in" in r.stdout
+
+    def test_a_docs_only_commit_does_not_run_it(self, repo, tmp_path):
+        (repo / "tests").mkdir()
+        with open(os.path.join(ROOT, "tests", "doc_tests.py"), encoding="utf-8") as fh:
+            (repo / "tests" / "doc_tests.py").write_text(fh.read())
+        _git(repo, "add", "tests/doc_tests.py")
+        _git(repo, "commit", "-q", "-m", "the rule")
+        env, log = _harness(tmp_path)
+        r = self._gate(repo, tmp_path, env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "4e. the container harness: not run, docs only" in r.stdout
+        assert not log.exists()
+
+    def test_the_step_is_cis_harness_job(self):
+        """The gate's two commands are ci.yml's `harness` job's two steps, on its matrix's
+        Pythons (a floor: the job and both steps found)."""
+        import yaml
+        g = _gate_module()
+        with open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8") as fh:
+            job = yaml.safe_load(fh)["jobs"]["harness"]
+        assert tuple(job["strategy"]["matrix"]["python"]) == g.HARNESS_PYTHONS
+        runs = [s["run"].strip() for s in job["steps"] if "nmas-harness" in str(s.get("run"))]
+        assert runs == ["scripts/nmas-harness check --python ${{ matrix.python }}",
+                        "scripts/nmas-harness down"], runs
+        assert g.HARNESS.format(py="", version="${{ matrix.python }}").strip() == runs[0]
+        assert g.HARNESS_DOWN.format(py="").strip() == runs[1]
+
+
+def _deploy_module():
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(ROOT, "scripts", "nmas-deploy")
+    loader = importlib.machinery.SourceFileLoader("nmas_deploy_for_gate_test", path)
+    spec = importlib.util.spec_from_loader("nmas_deploy_for_gate_test", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class TestTheVerdictIsRecorded:
+    """Step 9 (the operator, 2026-11-11: "The gate records its verdict for the sha (a recorded
+    file, like the local-runner verdicts), and nmas-deploy accepts it in place of GitHub's"):
+    with --push, one JSON note on the pushed commit under refs/notes/nmas-gate, that ref pushed
+    to origin; a refused gate records nothing."""
+
+    @pytest.fixture
+    def pushing(self, repo, tmp_path):
+        origin = tmp_path / "origin.git"
+        _git(tmp_path, "init", "-q", "--bare", str(origin))
+        _git(repo, "remote", "add", "origin", str(origin))
+        _git(repo, "push", "-q", "-u", "origin", "HEAD")
+        return origin
+
+    GREEN = TestNothingIsPushedOnARedCi._verdict("green", 802)
+
+    def _push(self, repo, tmp_path, harness_env, **extra):
+        _stage(repo)
+        env = _quiet_env(NMAS_GATE_CI_LOG=self.GREEN, **harness_env, **extra)
+        return _run_gate(GATE, repo, tmp_path, "--push", env=env)
+
+    @staticmethod
+    def _note(origin, sha):
+        r = subprocess.run(["git", "--git-dir", str(origin), "notes", "--ref=refs/notes/nmas-gate",
+                            "show", sha], capture_output=True, text=True, env=ENV)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+
+    def test_the_pushed_commit_carries_its_verdict_on_origin(self, repo, tmp_path, pushing):
+        env, _log = _harness(tmp_path)
+        r = self._push(repo, tmp_path, env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        sha = _git(repo, "rev-parse", "HEAD")
+        note = self._note(pushing, sha)
+        assert note is not None, r.stdout
+        assert (note["schema"], note["sha"], note["state"], note["scope"]) == (1, sha, "passed",
+                                                                                "full")
+        assert note["tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+        assert note["base"] == _git(repo, "rev-parse", "HEAD^")
+        assert set(note) == {"schema", "sha", "tree", "base", "state", "scope", "steps",
+                             "workers", "python", "host", "at", "gate"}
+        numbers = [s["number"] for s in note["steps"]]
+        assert numbers[:4] == ["1", "2", "2b", "3"] and "4" in numbers and numbers[-1] == "8"
+        harness = [s for s in note["steps"] if s["number"] == "4e"]
+        assert [s["name"] for s in harness] == ["the container harness on Python 3.5",
+                                                "the container harness on Python 3.9"]
+        assert all(s["result"].startswith("passed in ") and "harness_checks: 9 passed" in
+                   s["result"] for s in harness)
+        assert note["host"] == "workstation"
+        import re
+        assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", note["at"])
+        assert "9. the gate's verdict" in r.stdout and "recorded and pushed" in r.stdout
+
+    def test_nothing_personal_is_in_the_note(self, repo, tmp_path, pushing):
+        home = os.path.expanduser("~")
+        env, _log = _harness(tmp_path, last=f"read {home}/x and {repo}/y")
+        r = self._push(repo, tmp_path, env, NMAS_GATE_HOST_LABEL="laptop.example.com")
+        assert r.returncode == 0, r.stdout + r.stderr
+        text = json.dumps(self._note(pushing, _git(repo, "rev-parse", "HEAD")))
+        assert home not in text and str(repo) not in text
+        assert "<home>/x" in text and "<checkout>/y" in text
+        assert '"host": "workstation"' in text, "a name that is not a label is never written"
+
+    def test_a_label_is_written_as_given(self, repo, tmp_path, pushing):
+        env, _log = _harness(tmp_path)
+        r = self._push(repo, tmp_path, env, NMAS_GATE_HOST_LABEL="gate-laptop")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert self._note(pushing, _git(repo, "rev-parse", "HEAD"))["host"] == "gate-laptop"
+
+    def test_a_refused_gate_records_nothing(self, repo, tmp_path, pushing):
+        env, _log = _harness(tmp_path, fail_on="3.9")
+        r = self._push(repo, tmp_path, env)
+        assert r.returncode == 1
+        refs = _git(pushing, "for-each-ref", "refs/notes/")
+        assert refs == "" and "9. the gate's verdict" not in r.stdout
+
+    def test_without_push_nothing_is_recorded(self, repo, tmp_path, pushing):
+        env, _log = _harness(tmp_path)
+        _stage(repo)
+        r = _run_gate(GATE, repo, tmp_path, env=_quiet_env(**env))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _git(repo, "for-each-ref", "refs/notes/") == ""
+        assert "9. the gate's verdict: not recorded, nothing was pushed" in r.stdout
+
+    def test_a_note_origin_refuses_exits_3_with_the_commit_pushed_and_the_command(
+            self, repo, tmp_path, pushing):
+        hook = pushing / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nwhile read old new ref; do case $ref in refs/notes/*) "
+                        "echo 'notes refused here' >&2; exit 1;; esac; done\nexit 0\n")
+        hook.chmod(0o755)
+        env, _log = _harness(tmp_path)
+        r = self._push(repo, tmp_path, env)
+        assert r.returncode == 3, r.stdout + r.stderr
+        assert "NOTE NOT PUSHED" in r.stdout and "notes refused here" in r.stdout
+        assert "git push origin refs/notes/nmas-gate" in r.stdout
+        assert _git(pushing, "rev-parse", "HEAD") == _git(repo, "rev-parse", "HEAD")
+
+    def test_a_second_commit_adds_its_note_beside_the_first(self, repo, tmp_path, pushing):
+        env, _log = _harness(tmp_path)
+        assert self._push(repo, tmp_path, env).returncode == 0
+        first = _git(repo, "rev-parse", "HEAD")
+        (repo / "docs" / "a.md").write_text("three\n")
+        r = self._push(repo, tmp_path, env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert self._note(pushing, first)["sha"] == first
+        assert self._note(pushing, _git(repo, "rev-parse", "HEAD"))["base"] == first
+
+    def test_nmas_deploy_reads_the_gates_note_as_passed_with_the_harness_run(
+            self, repo, tmp_path, pushing):
+        """The two ends of one record: what the gate writes, nmas-deploy's `gate_verdict`
+        reads as passed, its tree its commit's, and its step 4e covering the harness."""
+        env, _log = _harness(tmp_path)
+        assert self._push(repo, tmp_path, env).returncode == 0
+        g, d = _gate_module(), _deploy_module()
+        assert (g.NOTES_REF, g.NOTE_SCHEMA) == (d.GATE_NOTES_REF, d.GATE_NOTE_SCHEMA)
+        host = tmp_path / "host"
+        _git(tmp_path, "clone", "-q", str(pushing), str(host))
+        sha = _git(repo, "rev-parse", "HEAD")
+        gv = d.gate_verdict(str(host), sha)
+        assert gv["state"] == "passed", gv
+        assert d.gate_harness(gv)[0] is True

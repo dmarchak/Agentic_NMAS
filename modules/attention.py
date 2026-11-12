@@ -133,14 +133,18 @@ ROW_KINDS = {
                                     "period", "find why its schedule has not run or passed"),
     ("scheduled_jobs", "unread"): ("a scheduled quality job's runs could not be read",
                                    "read what GitHub answered"),
-    # Workstream 0 (docs/LOCAL_CI.md): the two CI runners on one commit.
+    # Workstream 0 (docs/LOCAL_CI.md) and the deploy bar (2026-11-11): the verdicts on one
+    # commit, the gate's or the local runner's against GitHub's.
     ("ci_agreement", "red-after-deploy"): ("GitHub's CI failed the running commit after it was "
-                                           "deployed on the local runner's green",
-                                           "rerun GitHub's run once, or roll back"),
-    ("ci_agreement", "disagree"): ("the local CI runner and GitHub's CI disagree on a commit",
+                                           "deployed on the gate's or the local runner's green",
+                                           "stop; rerun GitHub's run once, then fix forward or "
+                                           "roll back"),
+    ("ci_agreement", "disagree"): ("the gate or the local CI runner and GitHub's CI disagree "
+                                   "on a commit",
                                    "read where the red one failed, and rerun it once"),
-    ("ci_agreement", "unread"): ("the local CI runner's record of a commit could not be trusted "
-                                 "or read", "read why, and repair the runner's store"),
+    ("ci_agreement", "unread"): ("the gate's note or the local CI runner's record of a commit "
+                                 "could not be trusted or read",
+                                 "read why, and repair the note or the runner's store"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
     # C1693: a hand-formatted document cannot be patched (Change it in words, bulk intent).
     ("intent-format", "hand"): ("a device's committed intent does not round-trip through "
@@ -512,8 +516,8 @@ CLEARS = {
                                            "commit (read every 15 minutes)"),
     ("ci_agreement", "disagree"): (("resolves",), "the two agree (a rerun), or a newer commit's "
                                    "two verdicts agree (read every 15 minutes)"),
-    ("ci_agreement", "unread"): (("resolves",), "the record reads, root's alone, for that "
-                                 "commit's tree (read every 15 minutes)"),
+    ("ci_agreement", "unread"): (("resolves",), "the note or the record reads (a record root's "
+                                 "alone), for that commit's tree (read every 15 minutes)"),
     ("redaction", "unhealthy"): (("resolves",), "every log handler masks the canary and no "
                                  "redaction has failed: read again at each read of this page"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
@@ -3180,12 +3184,17 @@ def scheduled_jobs_source(cached=None, now: float = None) -> dict:
 
 
 def ci_agreement_source(cached=None, now: float = None) -> dict:
-    """The two CI runners on one commit (workstream 0, the operator's rule, 2026-11-03): one row
-    per commit at most, from `ci_agreement.judge` over the reader's stored value.
-    * red-after-deploy (DANGER): the running commit was deployed on the local green and GitHub's
-      CI has since failed it, naming where; rerun once, or roll back (`scripts/nmas-rollback`);
+    """The verdicts on one commit (workstream 0, the operator's rule, 2026-11-03; the deploy
+    bar, 2026-11-11): one row per commit at most, from `ci_agreement.judge` over the reader's
+    stored value.
+    * red-after-deploy (WARNING; the operator, 2026-11-11: "severity by impact: it's no
+      outage"): the running commit was deployed on the gate's (or the local runner's) green and
+      GitHub's CI has since failed it, naming where: stop, rerun once, then fix forward or roll
+      back (`scripts/nmas-rollback <previous> --push`); its notice, the kind "CI disagrees
+      with the deployed release", is the reader's (`ci_agreement.notify_reds`);
     * disagree (WARNING): a commit the host does not run, one green and one red;
-    * unread (WARNING): the local runner's record for a commit cannot be trusted or read."""
+    * unread (WARNING): the gate's note or the local runner's record for a commit cannot be
+      trusted or read."""
     from modules import reader_job
     from modules.readers import ci_agreement as CA
     from modules.readers import ci_verdict as CV
@@ -3210,35 +3219,46 @@ def ci_agreement_source(cached=None, now: float = None) -> dict:
     for r in CA.judge(v):
         short, run = r["sha"][:10], r.get("run") or {}
         where = CV.failed_words({"failed_at": r.get("failed_at")})
-        cause = f"GitHub {r.get('github', '?').lower()}, the local runner {r.get('local', '?')}"
+        by = r.get("by") or "the local runner"
+        state = r.get("gate") if by == "the gate" else r.get("local", "?")
+        cause = f"GitHub {r.get('github', '?').lower()}, {by} {state}"
         link = ({"run_url": run["url"], "run": str(run.get("number") or "")}
                 if run.get("url") else {})
         if r["kind"] == "red-after-deploy":
             back = r.get("rollback_to")
             rows.append(row(
-                source="ci_agreement", kind="red-after-deploy", key=r["sha"], level="danger",
+                source="ci_agreement", kind="red-after-deploy", key=r["sha"], level="warning",
                 cause=cause,
-                what=(f"GitHub's CI failed {short}, which this host runs (deployed on the local "
-                      f"runner's green): run #{run.get('number')}, attempt "
+                what=(f"GitHub's CI failed {short}, which this host runs (deployed on {by}'s "
+                      f"green): run #{run.get('number')}, attempt "
                       f"{run.get('attempt')}" + (f"; failed at {where}" if where else "")),
                 action=dict(link, label=(
-                    ("The developer reruns GitHub's run once (a green rerun clears this); "
-                     if r.get("rerun_left") else "The rerun is spent; ")
-                    + (f"if it stays red, roll back: scripts/nmas-rollback {back[:10]} --push, "
-                       "then Update" if back else
-                       "roll back to the release before it with scripts/nmas-rollback, then "
-                       "Update")))))
+                    "Stop new work. "
+                    + ("The developer reruns GitHub's run once (a green rerun clears this); "
+                       if r.get("rerun_left") else "The rerun is spent; ")
+                    + (f"if it stays red, fix it forward or roll back: scripts/nmas-rollback "
+                       f"{back[:10]} --push, then Update" if back else
+                       "if it stays red, fix it forward or roll back to the release before it "
+                       "with scripts/nmas-rollback, then Update")))))
         elif r["kind"] == "disagree":
+            pair = "The two CI runners" if by == "the local runner" else "The gate and GitHub's CI"
+            words = r.get("gate_words") if by == "the gate" else r.get("local_words")
             rows.append(row(
                 source="ci_agreement", kind="disagree", key=r["sha"], level="warning",
                 cause=cause,
-                what=(f"The two CI runners disagree on {short}: GitHub "
-                      f"{r['github'].lower()} (run #{run.get('number')}), the local runner "
-                      f"{r['local']}" + (f"; GitHub failed at {where}" if where else "")
-                      + (f"; the local runner: {r['local_words']}" if r.get("local_words")
-                         else "")),
+                what=(f"{pair} disagree on {short}: GitHub "
+                      f"{r['github'].lower()} (run #{run.get('number')}), {by} "
+                      f"{state}" + (f"; GitHub failed at {where}" if where else "")
+                      + (f"; {by}: {words}" if words else "")),
                 action=dict(link, label="The developer reads where the red one failed and "
                                         "reruns it once; a newer commit both pass clears this")))
+        elif r.get("unread_by") == "the gate":
+            rows.append(row(
+                source="ci_agreement", kind="unread", key=r["sha"], level="warning",
+                cause=f"the gate's note: {r.get('gate')}",
+                what=f"The gate's note on {short} is not usable: {r.get('unread_words')}",
+                action={"label": "Read why: a note must be a version-1 passed verdict of the "
+                                 "commit's own sha and tree", "known": False}))
         else:
             rows.append(row(
                 source="ci_agreement", kind="unread", key=r["sha"], level="warning",
@@ -3247,11 +3267,14 @@ def ci_agreement_source(cached=None, now: float = None) -> dict:
                 action={"label": "Read why: the store and its records must be root's alone, "
                                  "for the commit's own tree", "known": False}))
     value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    notes = v.get("gate_notes") or {}
+    said = ("" if notes.get("state") in (None, "fetched") else
+            f"; the gate's notes: {notes.get('words') or notes.get('state')}")
     return source_result("ci_agreement", label, read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader=CA.NAME,
                          checked=(f"{len(v.get('commits') or [])} commit(s) on main with a "
-                                  f"GitHub run, each against the local runner's record; "
-                                  f"{len(rows)} need attention"))
+                                  f"GitHub run, each against the gate's verdict and the local "
+                                  f"runner's record{said}; {len(rows)} need attention"))
 
 
 # ---------------------------------------------------------------------------

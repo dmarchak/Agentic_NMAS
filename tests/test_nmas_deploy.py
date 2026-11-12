@@ -1642,6 +1642,8 @@ class TestWhichRunnerASentenceNames:
         assert mod.verdict_source(f"{mod.OVERRIDDEN} ('why') for abc") == "override"
         assert mod.verdict_source("CI passed for abc: run #3, https://x") == "github"
         assert mod.verdict_source("CI's verdict REUSED: abc") == "github"
+        assert mod.verdict_source(f"{mod.GATE_PASSED} for abc: x") == "gate"
+        assert mod.verdict_source(f"{mod.GATE_REUSED} for abc: x") == "gate"
 
 
 class TestTheLocalWaitBound:
@@ -1668,3 +1670,234 @@ class TestTheLocalWaitBound:
         assert mod.local_wait_bound(store) == mod.WAIT_BOUND_S
         _local_record(store, world, sha, "running", duration=99_999.0)
         assert mod.local_wait_bound(store) == mod.WAIT_BOUND_S
+
+
+# ───────────────────────────────── the deploy bar (the operator's decision, 2026-11-11)
+
+#: Step 4e's two passed runs, as scripts/nmas-gate records them (tests/test_nmas_gate.py
+#: `test_nmas_deploy_reads_the_gates_note_as_passed_with_the_harness_run` holds the two ends).
+HARNESS_STEPS = [{"number": "4e", "name": f"the container harness on Python {v}",
+                  "result": f"passed in 42 s: app test run on {v}"} for v in ("3.5", "3.9")]
+
+
+def _gate_note(world, sha, *, scope="full", harness=True, tree=None, base=None, raw=None,
+               fields=None):
+    """A gate verdict for *sha* written as scripts/nmas-gate step 9 writes it, a note under
+    refs/notes/nmas-gate made in dev and pushed to origin; *fields* replace the note's own,
+    and *raw* replaces the JSON text."""
+    steps = [{"number": "4", "name": "the suite", "result": "a: 12 passed in 3.1s"}]
+    steps += HARNESS_STEPS if harness is True else (harness or [])
+    parent = subprocess.run(["git", "-C", world.dev, "rev-parse", "-q", "--verify", f"{sha}^"],
+                            capture_output=True, text=True).stdout.strip()
+    note = {"schema": 1, "sha": sha,
+            "tree": tree or _git(world.dev, "rev-parse", f"{sha}^{{tree}}"),
+            "base": base or parent or None, "state": "passed",
+            "scope": scope, "steps": steps, "workers": 2, "python": "3.12.3",
+            "host": "workstation", "at": "2026-11-11T20:00:00Z", "gate": "e" * 40}
+    note.update(fields or {})
+    path = os.path.join(world.dev, ".git", "gate-note.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(raw if raw is not None else json.dumps(note))
+    _git(world.dev, "notes", "--ref=refs/notes/nmas-gate", "add", "-f", "-F", path, sha)
+    _git(world.dev, "push", "-q", "origin", "refs/notes/nmas-gate")
+    return note
+
+
+class TestTheGatesVerdict:
+    """The operator's deploy bar (2026-11-11): "a sha whose GATE passed may be pushed and
+    deployed at once; GitHub CI is a second check, not a requirement." The gate's note on
+    origin takes the local runner's place in the two-verdict rule; each case driven through
+    `main()` against real repositories, the notes fetched from the real origin."""
+
+    @staticmethod
+    def _pending(sha):
+        return _run_entry(sha, conclusion=None, status="in_progress")
+
+    @pytest.fixture
+    def nostore(self, tmp_path):
+        return {"path": str(tmp_path / "no-local-runner"), "owner": os.getuid()}
+
+    def test_a_gate_green_deploys_while_github_still_runs_and_says_so(self, world, nostore,
+                                                                      capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=nostore)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted, out
+        assert f"GATE passed for {sha[:10]}" in out and "GitHub's own run: run #" in out
+        assert "on workstation in Python 3.12.3" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "gate"
+
+    def test_a_gate_green_deploys_when_github_cannot_be_asked(self, world, nostore, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        code, _, _ = _run(world, {}, reachable=False, store=nostore)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "GATE passed" in out and "could not ask GitHub (URLError" in out
+
+    def test_a_missing_github_verdict_is_never_waited_for_on_a_gate_green(self, world, nostore,
+                                                                          capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        code, _, calls = _run(world, {}, store=nostore, wait=True)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "GitHub's own run: no run yet" in out
+        assert sum("head_sha=" in c for c in calls) == 1, calls
+
+    def test_a_gate_green_with_github_red_is_refused_naming_both(self, world, nostore, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        code, restarted, _ = _run(world, {sha: _run_entry(sha, conclusion="failure")},
+                                  store=nostore)
+        err = capsys.readouterr().err
+        assert code == 1 and _head(world) == world.base and not restarted, err
+        assert f"{_script().BOTH_DISAGREE} for {sha[:10]}: the gate passed it" in err
+        assert "GitHub's CI failed it (run #" in err
+
+    def test_the_operators_override_deploys_a_gate_green_over_githubs_red(self, world, nostore,
+                                                                          capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        reason = "GitHub's runner image lost its Firefox"
+        code, _, _ = _run(world, {sha: _run_entry(sha, conclusion="failure")}, store=nostore,
+                          override=reason)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "OVERRIDDEN" in out and "the gate passed it" in out
+        assert _audit_rows(world)[-1]["override"]["reason"] == reason
+
+    def test_a_github_green_with_no_note_deploys_and_says_the_gate_has_none(self, world,
+                                                                            nostore, capsys):
+        other = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, other)                          # origin holds notes, none for sha
+        sha = world.advance({"app.py": "v = 3\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, store=nostore)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert f"CI passed for {sha[:10]}" in out
+        assert f"The gate: no gate verdict for {sha[:10]}" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "github"
+
+    def test_no_notes_on_origin_say_nothing_of_the_gate(self, world, nostore, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, store=nostore)
+        out = capsys.readouterr().out
+        assert code == 0 and "The gate:" not in out and "GATE" not in out, out
+        _fetch_from_real_origin(world)
+        assert _script().gate_verdict(world.host, sha)["state"] == "absent"
+
+    @pytest.mark.parametrize("spoil", ["another tree", "another sha", "not json", "schema 2",
+                                       "failed", "no steps", "too large"])
+    def test_a_note_that_cannot_be_read_or_is_not_this_commits_is_never_green(
+            self, world, nostore, capsys, spoil):
+        sha = world.advance({"app.py": "v = 2\n"})
+        if spoil == "another tree":
+            _gate_note(world, sha, tree="0" * 40)
+        elif spoil == "another sha":
+            _gate_note(world, sha, fields={"sha": "f" * 40})
+        elif spoil == "not json":
+            _gate_note(world, sha, raw='{"schema": 1, "state": "passed"')
+        elif spoil == "schema 2":
+            _gate_note(world, sha, fields={"schema": 2})
+        elif spoil == "failed":
+            _gate_note(world, sha, fields={"state": "failed"})
+        elif spoil == "no steps":
+            _gate_note(world, sha, fields={"steps": None})
+        else:
+            _gate_note(world, sha, fields={"padding": "x" * (1 << 16)})
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=nostore)
+        err = capsys.readouterr().err
+        assert code == 7 and _head(world) == world.base and not restarted, err
+        assert "GATE passed" not in err
+        want = {"another tree": "not this commit's", "too large": "larger than"}.get(
+            spoil, "could not be read")
+        assert "The gate: " in err and want in err, err
+
+    def test_origins_notes_that_cannot_be_fetched_are_never_green(self, world, nostore, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _gate_note(world, sha)
+        mod = _script()
+        code, sentence = mod.ci_verdict(world.host, sha, get=lambda p: (0, None, "offline"),
+                                        store=nostore,
+                                        fetch=lambda repo: ("error", "origin's notes could not "
+                                                            "be fetched (timed out)"))
+        assert code != mod.OK and "GATE passed" not in sentence, sentence
+        assert "could not be fetched (timed out): never a pass" in sentence
+
+    @pytest.mark.parametrize("path", ["modules/sdn/loop.py", "tests/containers/compose.yml",
+                                      "scripts/nmas-harness"])
+    def test_a_gate_green_that_ran_the_harness_covers_the_harness_paths(self, world, nostore,
+                                                                        capsys, path):
+        sha = world.advance({path: "v = 2\n"})
+        _gate_note(world, sha)
+        code, _, calls = _run(world, {sha: self._pending(sha)}, store=nostore, jobs=[])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "the harness paths changed, and the gate ran the harness" in out
+        assert not any("/jobs" in c for c in calls), "GitHub's harness jobs are not asked"
+
+    @pytest.mark.parametrize("harness", [None, [{"number": "4e", "name": "the container "
+                                                 "harness on Python 3.5, 3.9",
+                                                 "result": "not run, the suite is a stand-in"}]])
+    def test_a_gate_green_without_a_passed_harness_needs_githubs_harness(
+            self, world, nostore, capsys, harness):
+        """An older gate's note (no step 4e) or one whose 4e did not run: C2753's rule as for
+        the local runner, GitHub's harness jobs must be green."""
+        sha = world.advance({"modules/apps/channel.py": "v = 2\n"})
+        _gate_note(world, sha, harness=harness)
+        jobs = TestTheLocalRunnersVerdict._harness(conclusion=None, status="in_progress")
+        code, restarted, _ = _run(world, {sha: self._pending(sha)}, store=nostore, jobs=jobs)
+        both = capsys.readouterr()
+        words = both.out + both.err
+        assert code == 7 and _head(world) == world.base and not restarted, words
+        assert "the gate passed" in words and "which the gate's verdict does not show" in words
+        assert "GitHub's harness jobs must be green, and they are pending" in words
+        code, _, _ = _run(world, {sha: self._pending(sha)}, store=nostore,
+                          jobs=TestTheLocalRunnersVerdict._harness())
+        assert code == 0 and _head(world) == sha, capsys.readouterr()
+
+    def test_a_docs_only_note_is_green_on_its_parents_full_verdict(self, world, nostore, capsys):
+        code_sha = world.advance({"modules/sdn/loop.py": "v = 2\n"})
+        _gate_note(world, code_sha)
+        docs = world.advance({"docs/a.md": "x\n"})
+        _gate_note(world, docs, scope="docs", harness=[])
+        code, _, _ = _run(world, {docs: self._pending(docs)}, store=nostore, jobs=[])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == docs, out
+        assert f"docs only, its code that of {code_sha[:10]}, which the gate passed" in out
+        assert "the gate ran the harness" in out, "the parent's full run covers the harness"
+
+    @pytest.mark.parametrize("parent", ["no note", "another base"])
+    def test_a_docs_only_note_without_a_full_verdict_under_it_is_not_green(
+            self, world, nostore, capsys, parent):
+        code_sha = world.advance({"app.py": "v = 2\n"})
+        docs = world.advance({"docs/a.md": "x\n"})
+        if parent == "another base":
+            _gate_note(world, code_sha)
+            _gate_note(world, docs, scope="docs", base=world.base)
+        else:
+            _gate_note(world, docs, scope="docs")
+        code, restarted, _ = _run(world, {docs: self._pending(docs)}, store=nostore)
+        err = capsys.readouterr().err
+        assert code == 7 and _head(world) == world.base and not restarted, err
+        assert f"the gate passed {docs[:10]}'s docs only" in err, err
+
+    def test_a_rollback_takes_its_twins_gate_verdict_without_github(self, world, nostore,
+                                                                    capsys):
+        """`scripts/nmas-rollback` makes a new commit with an old tree and no gate run: the
+        gate's verdict on the commit this checkout ran with that tree is reused (C1669)."""
+        _gate_note(world, world.base)
+        bad = world.advance({"app.py": "v = 9\n"}, "bad")
+        assert _run(world, {bad: _run_entry(bad)}, store=nostore)[0] == 0, "floor: bad deployed"
+        _git(world.dev, "revert", "--no-edit", bad)
+        _git(world.dev, "push", "-q", "origin", "main")
+        rev = _git(world.dev, "rev-parse", "HEAD")
+        capsys.readouterr()
+        code, _, _ = _run(world, {}, reachable=False, store=nostore)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == rev, out
+        assert f"{_script().GATE_REUSED} for {rev[:10]}: its tree is that of " \
+               f"{world.base[:10]}" in out
+        assert _audit_rows(world)[-1]["ci_source"] == "gate"

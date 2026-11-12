@@ -463,8 +463,10 @@ def person_ci(ci: dict, target: str = "") -> str:
     return words
 
 
-#: Which CI runner a verdict came from, in a person's words (`nmas-deploy`'s `verdict_source`).
-CI_SOURCE_WORDS = {"local": "the local CI runner on this host", "github": "GitHub's CI",
+#: Which CI runner a verdict came from, in a person's words (`nmas-deploy`'s `verdict_source`;
+#: "gate" since the deploy bar of 2026-11-11: the commit gate's verdict, recorded on origin).
+CI_SOURCE_WORDS = {"gate": "the commit gate's recorded verdict",
+                   "local": "the local CI runner on this host", "github": "GitHub's CI",
                    "override": "the operator's override of the two runners' disagreement"}
 
 
