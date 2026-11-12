@@ -169,7 +169,8 @@ def _ask_ctx(ref, dev):
 
 def _neighbours_ctx(ref, dev):
     from modules import neighbours
-    return {"device": dev, "list_name": ref.name, "n": neighbours.for_device(ref, dev)}
+    # C3166: what the adjacencies reader holds, never Prometheus on the request.
+    return {"device": dev, "list_name": ref.name, "n": neighbours.held_view(ref, dev)}
 
 
 def _intent_ctx(ref, dev):
@@ -634,10 +635,12 @@ def actions_menu(name):
 # ---------------------------------------------------------------------------
 
 def _drained_now(ref, dev) -> dict:
-    """The device's drained verdict if it is measured drained now, with its words, else None."""
+    """The device's drained verdict as the drained reader holds it, with its words and a hover
+    naming when it was measured (and a newer measurement that failed), else None. Read from
+    the reader's store, never measured on the request (C3166)."""
     from modules import drained as D
     now = D.state_of(ref.name, dev.get("hostname", ""))
-    return dict(now, words=D.words(now), hover=D.HOVER) if now else None
+    return dict(now, words=D.words(now), hover=D.held_words(now)) if now else None
 
 
 @bp.route("/device/<name>/drained", methods=["GET"])
@@ -896,8 +899,9 @@ def ask(name):
 @bp.route("/device/<name>/neighbours", methods=["GET"])
 def neighbours(name):
     """The Neighbours tab (C38): the adjacencies committed intent implies,
-    against what the device reports through Prometheus. Opens no session to
-    the device."""
+    against what the device reports through Prometheus, as the adjacencies
+    reader last stored it (C3166: never Prometheus on the request). Opens no
+    session to the device."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal

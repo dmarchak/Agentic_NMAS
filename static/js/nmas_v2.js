@@ -1373,6 +1373,7 @@
   function relayRestarts() { relay('restarts'); }
   // A fault drill declared (modules/fault_drills.py): History draws each declaration.
   function relayFaultDrills() { relay('fault_drills'); }
+  function relayDrained() { relay('drained'); }
   function relayAcknowledgements() { relay('acknowledgements'); }
   function relayAttention() { relay('attention'); }
   function relayHostKeys() { relay('host_keys'); }
@@ -1648,6 +1649,7 @@
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
     NMAS.subscribe('fault_drills', 'v2FaultDrills', relayFaultDrills);
+    NMAS.subscribe('drained', 'v2Drained', relayDrained);
     NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
     NMAS.subscribe('attention', 'v2Attention', relayAttention);
     NMAS.subscribe('host_keys', 'v2HostKeys', relayHostKeys);

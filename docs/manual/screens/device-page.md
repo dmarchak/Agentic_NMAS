@@ -333,6 +333,12 @@ whether the neighbour still hears this device), a speaker intent does not explai
 unexpected, and not measured when the reader could not read the device or its last read is
 older than its promise. Opening the tab opens no session to the device.
 
+The tab never waits on Prometheus: Mercury's adjacencies reader reads the whole fleet's routing
+tables every 60 seconds (four asks, whatever the fleet's size) and keeps each device's view;
+the tab draws what it keeps, says when it was read, and redraws itself when the reader reads
+again. Before its first read the tab says it is reading and fills itself when it has. A
+refresh that failed keeps the view last read and says so, with when that was.
+
 **Reported** is when the device's routing table was read. A protocol counts as measured when
 any of its scrapes in the last 5 minutes answered, so one failed scrape does not blank it; but
 when the newest value is older than a scrape and its timeout (90 seconds), the scrapes since

@@ -1,15 +1,22 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
 {#- The device page's Neighbours (NSOT_GUI_BRIEF 3.3; register C38), from
-    modules/neighbours.for_device(): the adjacencies committed intent implies,
+    modules/neighbours.held_view(): the adjacencies committed intent implies,
     against what the device's own routing tables report through Prometheus, and
-    for RIP and RIPng what the RIP reader last heard (C12). The tab opens no
-    session to the device. A protocol nothing measures is "not measured", never
-    "no neighbours". -#}
+    for RIP and RIPng what the RIP reader last heard (C12), as the adjacencies
+    reader last stored it (C3166: never Prometheus on the request), its age drawn.
+    The tab opens no session to the device. A protocol nothing measures is "not
+    measured", never "no neighbours". -#}
 {%- set KIND = {'up': 'ok', 'down': 'danger', 'not_seen': 'danger', 'unexpected': 'warn', 'unknown': 'muted'} -%}
 {%- set WORD = {'up': 'up', 'down': 'down', 'not_seen': 'not reported', 'unexpected': 'not implied by intent', 'unknown': 'not measured'} -%}
 <section class="card neighbours" id="neighbours" hx-get="{{ url_for('device_v2.neighbours', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body, nmas:adjacencies from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'neighbours', 'About this tab') }}</p>
+  {%- set h = n.held or {} %}
+  {%- if h.state == 'reading' %}
+  <p class="cov-head" role="status">{{ icon('info') }} Reading: {{ h.why }}{% if h.refresh_error %} (its last read failed: {{ h.refresh_error }}){% endif %}. This tab fills itself when it has (every {{ h.every }} s).</p>
+  {%- elif h.refresh_error %}
+  <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The last refresh failed ({{ h.refresh_error }}): this is what the adjacencies reader held when it last read Prometheus, {{ stamp(h.at) }}.</p></div>
+  {%- endif %}
   {%- for e in n.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}.</p></div>
   {%- endfor %}
@@ -42,8 +49,8 @@
     </table>
   </div>
   {%- endfor %}
-  {%- elif n.configured and not n.errors %}
+  {%- elif n.configured and not n.errors and h.state != 'reading' %}
   <p class="cov-head">{{ icon('info') }} {% if n.no_intent %}{{ device.hostname }} has no committed intent, so no adjacency is expected of it, and its routing tables report none.{% else %}{{ device.hostname }}'s committed intent implies no OSPF, OSPFv3, BGP, RIP or RIPng adjacency, and its routing tables report none.{% endif %}</p>
   {%- endif %}
-  <p class="muted nb-limits">Expected from committed intent (shared subnets and the network statements; BGP's named neighbours). OSPF, OSPFv3 and BGP are reported by the device's own routing tables as Prometheus last scraped them; RIP and RIPng, which keep no neighbour table, by what the device hears, as the RIP reader last read it (every 5 minutes). Opening this tab opens no session to the device. An adjacency is one side's report, and a peer outside management is seen from this side only.</p>
+  <p class="muted nb-limits">{% if h.at %}Read {{ stamp(h.at, note='when the adjacencies reader last read Prometheus') }} by {{ brand.short }}'s adjacencies reader, every {{ h.every }} s. {% endif %}Expected from committed intent (shared subnets and the network statements; BGP's named neighbours). OSPF, OSPFv3 and BGP are reported by the device's own routing tables as Prometheus last scraped them; RIP and RIPng, which keep no neighbour table, by what the device hears, as the RIP reader last read it (every 5 minutes). Opening this tab opens no session to the device. An adjacency is one side's report, and a peer outside management is seen from this side only.</p>
 </section>

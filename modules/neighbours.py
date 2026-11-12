@@ -768,3 +768,48 @@ def for_device(ref, dev: dict, at: float = None) -> dict:
     import time
     view.update(compare(intents, host, results, up, now=time.time() if at is None else at))
     return _with_rip(view, intents, host, ref.name)
+
+
+def held_view(ref, dev: dict) -> dict:
+    """The Neighbours tab's view for one device as the adjacencies reader last stored it
+    (C3166's slice 3: "Neighbours: from the `adjacencies` reader"), never read here: no
+    Prometheus query on a page load. The same keys `for_device` returns, and ``held``: when
+    the view was read (``at``), and a newer read that failed (``refresh_error``), so the tab
+    draws its age and never draws a held view as now. Before the reader's first value, or for
+    a device it has not read yet (just onboarded), ``held.state`` is "reading" and the tab
+    says the reader fills it on its next read. Never raises."""
+    from modules import reader_job
+    from modules.readers import adjacencies as ADJ
+
+    host = dev.get("hostname", "")
+    view = {"device": host, "errors": [], "protocols": [], "counts": {}, "configured": True}
+    try:
+        got = reader_job.read_cached(ADJ.READER.name)
+    except Exception as exc:                          # noqa: BLE001 - said, never raised
+        got = {"state": "unreadable", "doc": None, "why": type(exc).__name__}
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    attempt = doc.get("last_attempt") or {}
+    value = good.get("value") or {}
+    stored = (value.get("views") or {}).get(f"{ref.name}:{host}")
+    if got["state"] != "ok" or not good or stored is None:
+        # Absent and unreadable are different states: an unreadable store says so (its file's
+        # path is never drawn); absent, or no view of this device yet, is "not read yet".
+        why = ("the adjacencies reader's stored value could not be read, so it is read again"
+               if got["state"] == "unreadable" else
+               f"the adjacencies reader has not read {host}'s neighbours yet")
+        view["held"] = {"state": "reading", "why": why,
+                        "every": ADJ.INTERVAL_SECONDS,
+                        "refresh_error": (attempt.get("error") or "")
+                        if attempt.get("ok") is False else ""}
+        return view
+    view.update(configured=bool(value.get("configured")),
+                protocols=stored.get("protocols") or [], counts=stored.get("counts") or {},
+                errors=list(stored.get("errors") or []))
+    if stored.get("no_intent"):
+        view["no_intent"] = True
+    view["held"] = {"state": "held", "at": good.get("value_at", ""),
+                    "every": ADJ.INTERVAL_SECONDS,
+                    "refresh_error": (attempt.get("error") or "")
+                    if attempt.get("ok") is False else ""}
+    return view

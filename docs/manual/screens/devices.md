@@ -47,7 +47,10 @@ polling), read from the interface counters Prometheus already scrapes. Its words
 when it has been quiet. It goes when traffic rises again. A device with no golden, or whose
 management address is on no interface in its golden (a loopback), is not judged, so it is
 never drawn drained. Needs attention lists a Grafana alert on drained devices only under What
-was checked instead of raising it as a row.
+was checked instead of raising it as a row. Mercury's drained reader measures every network
+once a minute; the list and the header draw what it last measured (the badge's hover says
+when) and never ask Prometheus when the page opens. A measurement that failed keeps the last
+good one, and the list says so.
 
 A measurement is any save that read the device and compared it with its golden: a capture,
 a deploy's or restore's read after the push, and a Save All that found it unchanged (which

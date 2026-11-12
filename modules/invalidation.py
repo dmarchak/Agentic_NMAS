@@ -109,6 +109,7 @@ VOCABULARY = {
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
     "reachability": "whether each device answers, as the reachability reader last stored it",
+    "drained": "whether each device is measured drained, as the drained reader last stored it",
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "credential_health": "each credential's expiry or age, as the credential-health reader last stored it (P.21)",
     "records": "where each of Mercury's record stores is (files or the records database) and "

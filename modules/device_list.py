@@ -502,13 +502,22 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         pending = []
         errors.append(f"pending onboardings could not be read ({exc})")
 
-    # Drained, MEASURED (modules/drained.py, C551): one cached read for the whole network.
+    # Drained, MEASURED (modules/drained.py, C551): what the drained reader holds for the whole
+    # network, one read of its store, never measured on the request (C3166).
     from modules import drained as _drained
     try:
-        drained_now = _drained.current(ref.name)
+        drained_held = _drained.held(ref.name)
+        if drained_held["error"] and not drained_held["at"]:
+            raise RuntimeError(drained_held["error"])
+        drained_now = drained_held["verdicts"]
+        if drained_held["error"]:
+            errors.append(f"the newest drained measurement failed ({drained_held['error']}): "
+                          f"Drained is as measured at {drained_held['at'][11:16]} UTC")
     except Exception as exc:                      # noqa: BLE001
-        drained_now = {}
+        drained_held, drained_now = {"at": ""}, {}
         errors.append(f"whether a device is drained could not be measured ({exc})")
+    drained_at = (f"; measured {drained_held['at'][11:16]} UTC"
+                  if len(drained_held.get("at") or "") >= 16 else "")
 
     startup = _startup_states(ref.name, errors)
     # A device under a planned operation (board PS): ONE read of the network's holds and
@@ -542,7 +551,7 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
                      "role": dev.get("role", ""), "intent": intent,
                      "startup": startup.get(host) or STARTUP_NEVER,
                      "drained": (_drained.words(drained_now[host]) + "; " + _drained.HOVER
-                                 if host in drained_now
+                                 + drained_at if host in drained_now
                                  else ""),
                      "measured": ({"at": m["at"], "iso": _iso(m["at"]), "sha": m["sha"],
                                    "words": measured_words(m), "changed": m["changed"]}
