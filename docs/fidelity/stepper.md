@@ -48,7 +48,7 @@ template only what it draws). The row's name is drawn unlinked, as a non-device 
 is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
 new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `9b358470254f3de36ae38c30a3337b26a63429f23c73f51cf4f966af28715fb9`
+Templates sha256: `a82cbd147df52169bbb5deabf632f524d7bdc5f221da10146da1cd15ab19294e`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each
@@ -123,6 +123,15 @@ markup tests/test_heal_stages.py, tests/test_run_outcomes.py and tests/test_run_
 draw, and tests/test_heal_stages.py's real-browser measure at 1280 and 500 px (one row; then
 each stage under the one before, nothing past the edge), not a new shot. Templates sha256
 before: `3f5612d6866a357041f8b278b27f6d3de8fc76c01792ac8e83c7df1610056927`.
+
+**Hashed again 2026-11-12 for C3164** (the operator: "the restored heartbeat is the applet heal's
+symptom"), for modules/run_stepper.py alone: a step's `wait_for` (what a wait waits for: here the
+device's heartbeat) is carried from the record to the stage, which says it in its own sentence
+("Waiting for <device>'s heartbeat · up to N s: M s left", the same countdown and separator every
+symptom wait draws), and is stripped once said. No template changed; every region **same**.
+Compared by the diff and the card tests/test_heal_heartbeat_symptom.py draws through the real
+app, not a new shot. Templates sha256 before:
+`9b358470254f3de36ae38c30a3337b26a63429f23c73f51cf4f966af28715fb9`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

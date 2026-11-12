@@ -700,31 +700,43 @@ def configuration_readers(reader: Reader) -> list:
     return out
 
 
-def read_cached_for(name: str, list_name: str) -> dict:
-    """*name*'s stored value for the network *list_name*: its configuration's store. A
-    reader with no groups has one store for every network. A network that declared the
-    service not applicable has none, and says so: ``{"state": "not_applicable", ...}``."""
+def store_for(name: str, list_name: str) -> tuple:
+    """``(store, None)``: the store holding *name*'s value for the network *list_name* (its
+    configuration's; a reader with no groups has one store for every network), or ``(None,
+    refused)`` when the network has none, *refused* being what `read_cached_for` answers: a
+    service declared not applicable (``not_applicable``) or not configured there
+    (``not_configured``). One home for the store a network reads, for a read and for a run
+    asked of that store (a heal's heartbeat, C3164)."""
     from modules import integration_groups as IG
 
     # Asked before the reader's module was imported, its groups are unknown, and Default's
     # store would answer for every network: so the declared modules are imported first.
     reader = _REGISTRY.get(name) or {r.name: r for r in readers()}.get(name)
     if reader is None or not reader.per_group:
-        return read_cached(name)
+        return name, None
     gid = IG.combined_id(tuple(reader.per_group), list_name)
     if gid is None:
-        return {"state": "not_applicable", "doc": None,
-                "why": f"{list_name} declared {', '.join(reader.per_group)} not applicable"}
+        return None, {"state": "not_applicable", "doc": None,
+                      "why": f"{list_name} declared {', '.join(reader.per_group)} not applicable"}
     missing = IG.unconfigured(tuple(reader.per_group), list_name)
     if missing:
         from modules.settings_scope import group_label
 
         labels = " and ".join(group_label(g) for g in missing)
-        return {"state": "not_configured", "doc": None, "groups": missing,
-                "why": (f"{labels} {'is' if len(missing) == 1 else 'are'} not configured for "
-                        f"{list_name}: nothing is set for it there, and it takes nothing from "
-                        "Default, so there is nothing to read")}
-    return read_cached(IG.store_name(name, gid))
+        return None, {"state": "not_configured", "doc": None, "groups": missing,
+                      "why": (f"{labels} {'is' if len(missing) == 1 else 'are'} not configured "
+                              f"for {list_name}: nothing is set for it there, and it takes "
+                              "nothing from Default, so there is nothing to read")}
+    return IG.store_name(name, gid), None
+
+
+def read_cached_for(name: str, list_name: str) -> dict:
+    """*name*'s stored value for the network *list_name*: its configuration's store
+    (`store_for`). A reader with no groups has one store for every network. A network that
+    declared the service not applicable has none, and says so: ``{"state": "not_applicable",
+    ...}``."""
+    store, refused = store_for(name, list_name)
+    return refused if store is None else read_cached(store)
 
 
 def _record_backoff(doc: dict, before: dict, reader: Reader, started: float) -> None:

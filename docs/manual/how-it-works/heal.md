@@ -160,6 +160,15 @@ step is the deploy pipeline's ([Deploy](deploy)):
 8. `symptom`: the symptom that opened the incident is read again, every 30 s until it is gone
    or its bound ends. Each read is kept under this step in the heal's record: when, the
    reader's store that was asked, and gone, still there or not read since the change.
+   **A heal that puts the heartbeat applet back waits for its heartbeat.** When a fix re-applies
+   the applet that intent's syslog block declares as the device's heartbeat, the heartbeat itself
+   is a symptom: the heal waits for the device's next heartbeat line, read from the arrivals
+   Coverage already stores for the whole fleet (no device is read). It waits up to about 2.5
+   times the applet's own interval in intent plus the 2 minutes the logs read takes to hold a
+   line: 1050 s for a 300 s heartbeat. The heal is healed and verified only when the heartbeat
+   arrives; if none has arrived by then it ends **symptom remains** (amber), saying how long it
+   waited and the newest heartbeat it read. Any other applet, and any other missing line, keeps
+   its own symptom.
 9. `saved`: once verified, the running configuration is saved and the device released.
 10. `golden`: the device is captured and read again against its new golden.
 11. `record`: the outcome is recorded and the incident closed.
@@ -183,7 +192,7 @@ the card draws the run as ONE run on one stepper of five stages, from what was s
 | **Detected** | the incident opening on its first trigger, and the grace period waited out | what was seen ("edge1's configuration changed outside Mercury") |
 | **Decided** | the decision's eight steps, done by the detection job, each with its time | the decision ("Heal: remove …") |
 | **Fixing** | the act's steps up to and including Apply; the deploy's stages inside Apply | "Applying 3 lines to edge1…", then "Applied 3 lines to edge1" |
-| **Checking** | Check intent, Read symptom, Save startup, Check golden | "Waiting for edge1's symptom to clear · up to 750 s: 120 s left", then "edge1 at intent; its symptom gone" |
+| **Checking** | Check intent, Read symptom, Save startup, Check golden | "Waiting for edge1's symptom to clear · up to 750 s: 120 s left", then "edge1 at intent; its symptom gone"; a heal that put the heartbeat applet back, "Waiting for edge1's heartbeat · up to 1050 s: 120 s left", then "edge1 at intent; its heartbeat back" |
 | **Done** | Record | the outcome and how long from when it was seen ("Healed and verified in 4 min 12 s") |
 
 Each stage is one plain sentence, its time (in your zone; UTC on hover) and its state (**done**,
@@ -194,7 +203,7 @@ line each in two to four words ("Read <device>", "Recompute program", "Apply", "
 the full words on hover, with each step's time and one-line outcome; while it applies, the
 deploy's own stages are listed inside **Apply**, never as a second stepper. A step that waits
 says how long: the symptom's read waits "up to 150 s" for an adjacency (up to 750 s for an
-alert), and its stage counts it down from the time the step began and the length the run
+alert, up to 1050 s for a 300 s heartbeat), and its stage counts it down from the time the step began and the length the run
 declared; when the time is up it says so and waits for the run's next step. The card moves by
 itself at each step, over the live connection; nothing asks on a timer. The card starts when
 the heal's job does: the grace period is drawn done under Detected once it has passed, and is

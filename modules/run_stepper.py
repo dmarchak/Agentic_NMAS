@@ -78,6 +78,9 @@ READ_WORDS = {"pass": "pass", "fail": "fail", "unreadable": "unreadable",
               "cant_tell": "unreadable", "waiting": "not yet"}
 #: Worst first: a step recorded several times is drawn as its worst record.
 _WORST = ("failed", "partial", "running", "done", "skipped")
+#: What a step's record says it waits for (a heal's heartbeat, C3164): read by its stage's
+#: sentence (`stages`), and kept from the page, which draws it as that sentence.
+WAIT_FOR = "wait_for"
 
 
 def step(key: str, words: str, state: str, *, took_s=None, note: str = "",
@@ -477,6 +480,12 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
                    lines=extra.get("lines") or [], more=extra.get("more") or [],
                    why=extra.get("why") or [], said=said, at=last_at,
                    began=str(first_rec.get("began") or first_rec.get("at") or ""))
+        # What its newest record waits for, when the operation names it (a heal's symptom read
+        # waiting for a heartbeat, C3164): its stage's sentence says it (`stages`, which keeps
+        # it from the page: the sentence is where it is drawn).
+        waits = str(got[-1][2].get("wait_for") or "") if got else ""
+        if waits:
+            one[WAIT_FOR] = waits
         out.append(one)
     for want in ("failed", "running") + (("partial",) if ended else ()):
         lead = next((s for s in out if s["state"] == want), None)
@@ -725,6 +734,8 @@ def stages(card: dict, declared, *, ended: bool, now: float = None, sentence=Non
                       and (lead or {}).get("state") == "running" else None),
              "steps": drawn, "sentence": ""}
         g["sentence"] = (sentence(g) if sentence else "") or _generic_sentence(g, summarised)
+        for s in drawn:
+            s.pop(WAIT_FOR, None)                       # said by the sentence, drawn there
         if lead and lead["state"] in ("failed", "partial") and lead.get("said") and (
                 summarised or lead["said"] in g["sentence"]):
             # Why, said ONCE: in the sentence, or the summary the card already draws (a
@@ -743,5 +754,13 @@ def stages(card: dict, declared, *, ended: bool, now: float = None, sentence=Non
     # key into the stages was this function's alone.
     # Its *summarised* is spent here: the stages say what it decided.
     card = {k: v for k, v in card.items() if k != "summarised"}
+    # What a step waits for is its stage's sentence's alone (C3164), so the card's row and
+    # lead keep it no further.
+    if card.get("rows"):
+        card["rows"] = [dict(r, steps=[{k: v for k, v in s.items() if k != WAIT_FOR}
+                                       for s in r.get("steps") or []])
+                        for r in card["rows"]]
+    if isinstance(card.get("lead"), dict):
+        card["lead"] = {k: v for k, v in card["lead"].items() if k != WAIT_FOR}
     return dict(card, stages=out, stage_at=at + 1 if out else 0, stage_of=len(out),
                 trail=[{k: v for k, v in t.items() if k != "step_key"} for t in trail])

@@ -37,7 +37,11 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    (`drift_check.check_device`) must be at its new golden, or the heal is partial; then any
    other symptom is read again, the device saved and released. One still there KEEPS the
    heal (rolling back would re-apply the unauthorised change): healed configuration, symptom
-   remains, amber. A symptom that cannot be read neither passes nor fails: kept, partial;
+   remains, amber. A symptom that cannot be read neither passes nor fails: kept, partial.
+   A heal that re-applies the heartbeat applet (C3164, `restored_heartbeat`: decided from
+   intent's parse and the heartbeat check's own population) has the heartbeat as a symptom
+   too: its next heartbeat in Coverage's stored arrivals, within `heartbeat_bound`; none by
+   then is symptom remains;
 9. **record**: `decisions.applied` with the outcome (`OUTCOMES`; ``rolled_back`` halts the
    network, guard 14, and so does a program sent and neither verified nor rolled back), and
    `incidents.close`. The receipt carries the heal (its decision, incident, policy, the person
@@ -83,7 +87,8 @@ STEPS = (("take", "Take the heal decision, once"),
          ("apply", "Apply as the policy, holding the device: the deploy's nine stages"),
          ("intent", "Check each healed unit is at intent"),
          ("symptom", "Read the symptom again (a removed feature's before its save; any "
-                     "other once the device is released)"),
+                     "other, and a re-applied heartbeat applet's next heartbeat, once the "
+                     "device is released)"),
          ("saved", "Saved to startup once verified, the device released"),
          ("golden", "Read the device again against its new golden"),
          ("record", "Record the outcome and close the incident"))
@@ -115,6 +120,24 @@ OUTCOME_WORDS = {"healed": "healed and verified",
 #: 405 s. Reasoned from the repeat and the interval, not measured end to end.
 SYMPTOM_SECONDS = {"adjacency": 150, "adjacency_log": 150, "alert": 750,
                    "duplicate_router_id": 405}
+#: The heartbeat (C3164, the operator, 2026-11-12: "the restored heartbeat is the applet heal's
+#: symptom"): a heal that re-applies the heartbeat applet waits for the device's next heartbeat
+#: (`restored_heartbeat`, `heartbeat_trigger`). Its bound is the device's own, from its applet's
+#: interval in intent (`heartbeat_bound`), so it is no constant of `SYMPTOM_SECONDS`.
+HEARTBEAT_KIND = "heartbeat"
+#: Every kind whose symptom is read again.
+SYMPTOM_KINDS = tuple(SYMPTOM_SECONDS) + (HEARTBEAT_KIND,)
+#: From a heartbeat line reaching Loki to Coverage's reader holding it: the reader counts the
+#: lines per minute and stamps each minute's end (`coverage_reporting.STEP_SECONDS`, 60 s: a
+#: line is stamped up to a minute after it came), and it reads once a minute
+#: (`coverage_reporting.INTERVAL_SECONDS`, 60 s); its queries took 0.02 to 0.14 s for nine
+#: devices (measured on the host, 2026-10-03). So 120 s. Loki's own ingestion is not in it,
+#: and is measured by the first heartbeat heal's own record ("arrived by ..., N s after the
+#: heal began"; C3179).
+HEARTBEAT_LAG_SECONDS = 120
+#: The margin over the longest the next heartbeat should take: about 2.5 times (CLAUDE.md,
+#: "Bounds are about 2.5x a measured time").
+HEARTBEAT_MARGIN = 2.5
 #: How often a symptom's source is read again while it waits: a quarter of the shortest bound.
 POLL_SECONDS = 30
 
@@ -197,9 +220,126 @@ class Sources:
 
 def symptom_triggers(triggers: list) -> list:
     """The triggers that name a symptom to read again: an adjacency down, a logged adjacency
-    drop, a firing alert, a duplicate router-id logged (C2446: R8's verify). A
-    configuration change or a drift record names none."""
-    return [t for t in triggers or [] if t.get("kind") in SYMPTOM_SECONDS and t.get("source")]
+    drop, a firing alert, a duplicate router-id logged (C2446: R8's verify), and the heartbeat
+    a heal re-applied (C3164, `heartbeat_trigger`). A configuration change or a drift record
+    names none."""
+    return [t for t in triggers or [] if t.get("kind") in SYMPTOM_KINDS and t.get("source")]
+
+
+def _bound(trigger: dict) -> int:
+    """How long *trigger*'s symptom is read for: its kind's `SYMPTOM_SECONDS`, or the
+    heartbeat's own bound, carried on its trigger (`heartbeat_bound`)."""
+    if trigger.get("kind") == HEARTBEAT_KIND:
+        return int(trigger.get("bound_s") or 0)
+    return SYMPTOM_SECONDS[trigger["kind"]]
+
+
+# ── The heartbeat a heal re-applied (C3164) ─────────────────────────────────────────────────
+
+def heartbeat_bound(interval: int) -> int:
+    """The longest a heal waits for the heartbeat it re-applied: about 2.5 times the longest
+    the next one should take, which is the applet's watchdog interval from intent (it first
+    fires one interval after it is configured) and the logs read's lag
+    (`HEARTBEAT_LAG_SECONDS`): 2.5 x (300 + 120) = 1050 s for a 300 s applet. One interval is
+    measured: in Coverage's reader's capture of the host (2026-10-03,
+    tests/fixtures/coverage_reporting/capture.json) every C8000v's heartbeats are 300 s apart
+    at the minute's step; the slowest-clocked vIOS switch's are up to 660 s apart (its clock
+    runs at about 0.55 of real time, `scripts/nmas-heartbeat-rules`), and 660 + 120 s is
+    inside the bound."""
+    return int(round(HEARTBEAT_MARGIN * (int(interval) + HEARTBEAT_LAG_SECONDS)))
+
+
+def restored_heartbeat(units: list, intended: str, platform: str) -> int:
+    """The watchdog interval, from committed intent, of the heartbeat applet *units* re-apply,
+    or 0 when they re-apply none. Decided by the parse, never by a device's name or an applet's:
+
+    - *intended* (the device's rendered committed intent) carries a whole syslog block, the
+      population the heartbeat check itself declares (`scripts/nmas-heartbeat-rules`
+      `expected_devices`: committed intent whose block `hostvars.syslog_block_problems` passes),
+      its ``heartbeat`` the interval;
+    - a unit that adds a line (or sets one back) does so in a section of intent whose parse on
+      its own holds that heartbeat: the parser models a stanza as the heartbeat only in exactly
+      the applet's own shape (`parsers.base` `_h_eem_applet`), so any other applet, or one
+      that only resembles it, keeps its kind's symptom handling."""
+    from modules.nsot import hostvars
+    from modules.nsot.deploy import _section_chains
+    from modules.nsot.parsers import get_parser
+
+    tops = {(c[0] if c else l) for u in units or [] if u.get("op") in ("add", "change")
+            for c, l in u.get("add") or []}
+    if not tops or not intended:
+        return 0
+    try:
+        parser = get_parser(platform)
+        doc = parser.parse(intended)
+    except Exception as exc:                            # noqa: BLE001 (said: no heartbeat read)
+        log.warning("heal: intent could not be parsed for its heartbeat: %s", exc)
+        return 0
+    interval = (((doc.get("logging") or {}).get("syslog")) or {}).get("heartbeat")
+    if not (isinstance(interval, int) and interval > 0) or hostvars.syslog_block_problems(doc):
+        return 0
+    sections = {}
+    for line, chain in _section_chains(intended):
+        top = chain[0] if chain else line
+        if top in tops:
+            sections.setdefault(top, []).append(line)
+    for lines in sections.values():
+        try:
+            got = parser.parse("hostname heal-unit\n" + "\n".join(lines) + "\n")
+        except Exception as exc:                        # noqa: BLE001 (that section is not it)
+            log.info("heal: a section of intent could not be parsed alone: %s", exc)
+            continue
+        if (((got.get("logging") or {}).get("syslog")) or {}).get("heartbeat") == interval:
+            return interval
+    return 0
+
+
+def heartbeat_trigger(network: str, device: str, interval: int) -> dict:
+    """The heartbeat as a symptom to read again: no heartbeat from *device* since the heal,
+    read from Coverage's not-reporting reader's stored arrivals for *network* (one Loki query
+    for the whole fleet each minute; never a device read), within `heartbeat_bound`. A network
+    with no such store (Loki not applicable or not configured there) carries ``refused``, its
+    why, and its symptom cannot be read."""
+    from modules import reader_job
+    from modules.device_logs import MARKER
+    from modules.readers import coverage_reporting as CR
+
+    store, refused = reader_job.store_for(CR.NAME, network)
+    t = {"kind": HEARTBEAT_KIND, "source": store or CR.NAME, "interval": int(interval),
+         "bound_s": heartbeat_bound(interval),
+         "words": f"no {MARKER} line from {device} since its heartbeat applet was re-applied"}
+    if refused:
+        t["refused"] = refused.get("why") or refused.get("state") or "no store"
+    return t
+
+
+def _hms(epoch: float) -> str:
+    return time.strftime("%H:%M:%S UTC", time.gmtime(epoch))
+
+
+def heartbeat_seen(value: dict, device: str, since: float) -> tuple:
+    """``(state, words)``: whether Coverage's reader's *value* holds a heartbeat from *device*
+    after *since*: ``gone`` (the symptom, no heartbeat, is gone), ``present`` (none yet) or
+    ``unreadable`` (its heartbeat source was not read: neither a pass nor a fail). A heartbeat
+    counts only when the whole minute that counted it is after *since*: the reader stamps each
+    minute's count at its end (`coverage_reporting._loki_last`), so a stamp less than a minute
+    after *since* may count a line from before it."""
+    from modules.readers import coverage_reporting as CR
+
+    value = value or {}
+    down = CR._source_down(value, "heartbeat")
+    if down:
+        return "unreadable", f"Coverage's heartbeat source was not read ({down})"
+    at = (value.get("heartbeat") or {}).get(device)
+    if at is not None and float(at) - CR.STEP_SECONDS >= float(since):
+        return "gone", (f"{device}'s heartbeat arrived by {_hms(at)}, "
+                        f"{round(float(at) - float(since))} s after the heal began")
+    if at is None:
+        return "present", (f"none from {device} in Coverage's last "
+                           f"{CR.LOOKBACK_SECONDS // 3600} h")
+    return "present", (f"{device}'s newest heartbeat was counted by {_hms(at)}, "
+                       + ("before the heal began" if float(at) <= float(since) else
+                          "in the minute the heal began, so it is not counted"))
 
 
 def adjacency_down(value: dict, network: str, devices: list, protocol: str) -> bool:
@@ -267,7 +407,7 @@ def _store_for(trigger: dict) -> str:
 def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> str:
     """One trigger's symptom on its store's document: ``stale`` (not read since *since*; or
     a duplicate router-id that could not be looked for: no Loki read, or no id named),
-    ``present`` or ``gone``."""
+    ``present`` or ``gone``; for the heartbeat (`heartbeat_seen`), also ``unreadable``."""
     good = (doc or {}).get("last_good") or {}
     at = float(good.get("read_started") or 0)
     if at <= float(since):
@@ -281,6 +421,8 @@ def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> 
         # A trigger that names no router-id names nothing to look for in the log (no group the
         # reader makes holds an empty id): neither a pass nor a fail, so never "gone".
         return "stale"
+    if trigger["kind"] == HEARTBEAT_KIND:
+        return heartbeat_seen(value, device, since)[0]
     if trigger["kind"] == "alert":
         present = alert_firing(value, device, trigger.get("rule") or "",
                                trigger.get("interface") or "")
@@ -332,41 +474,69 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
         return True
 
     request = request or ask
-    bound = max(SYMPTOM_SECONDS[t["kind"]] for t in wanted)
+    bound = max(_bound(t) for t in wanted)
     deadline = clock() + bound
     asked = {}
+
+    def said(c):
+        return f" ({c['detail']})" if c.get("detail") else ""
+
     while True:
         checks = []
         for t in wanted:
             store = _store_for(t)
-            if store not in asked:
-                asked[store] = request(store)
-            got = read(store)
-            state = ("unreadable" if got.get("state") != "ok" else
-                     judge(t, got.get("doc"), network, device, since))
-            checks.append({"trigger": t.get("words") or t.get("kind"), "store": store,
-                           "state": state, "asked": asked[store]})
+            detail = ""
+            if t.get("refused"):
+                # A network with no store for it (C3164's heartbeat: Loki not configured
+                # there): nothing to ask, and nothing the bound would change.
+                asked.setdefault(store, False)
+                state, detail = "unreadable", t["refused"]
+            else:
+                if store not in asked:
+                    asked[store] = request(store)
+                got = read(store)
+                state = ("unreadable" if got.get("state") != "ok" else
+                         judge(t, got.get("doc"), network, device, since))
+                if t.get("kind") == HEARTBEAT_KIND and state != "stale" and \
+                        got.get("state") == "ok":
+                    detail = heartbeat_seen(((got.get("doc") or {}).get("last_good") or {})
+                                            .get("value") or {}, device, since)[1]
+            checks.append(dict({"trigger": t.get("words") or t.get("kind"), "store": store,
+                                "state": state, "asked": asked[store]},
+                               **({"detail": detail, "final": True} if t.get("refused") else
+                                  {"detail": detail} if detail else {})))
             reads_store.keep_read(kept, reads_store.read_entry(
                 f"the {store} reader's stored value", {"gone": "pass", "present": "fail"}.get(
                     state, "unreadable"),
                 f"{t.get('words') or t.get('kind')}: "
                 + {"gone": "gone", "present": "still there",
-                   "stale": "not read since the change"}.get(state, state),
+                   "stale": "not read since the change"}.get(state, state)
+                + (f": {detail}" if detail else ""),
                 at=_iso(clock())))
         states = {c["state"] for c in checks}
         if states == {"gone"}:
+            told = "; ".join(c["detail"] for c in checks if c.get("detail"))
             return {"state": "gone", "checks": checks, "reads": kept["reads"],
-                    "words": f"the symptom is gone ({len(checks)} read again)"}
+                    "words": f"the symptom is gone ({len(checks)} read again)"
+                             + (f": {told}" if told else "")}
+        final = all(c["state"] == "gone" or c.get("final") for c in checks)
+        if final:
+            why = next(c for c in checks if c.get("final"))
+            return {"state": "unreadable", "checks": checks, "reads": kept["reads"],
+                    "words": (f"the symptom cannot be read here ({why['trigger']}: "
+                              f"{why['detail']})")}
         if clock() >= deadline:
             if "present" in states:
-                left = [c["trigger"] for c in checks if c["state"] == "present"]
+                left = [c for c in checks if c["state"] == "present"]
                 return {"state": "present", "checks": checks, "reads": kept["reads"],
-                        "words": f"the symptom is still there after {bound} s: {left[0]}"}
+                        "words": (f"the symptom is still there after {bound} s: "
+                                  f"{left[0]['trigger']}{said(left[0])}")}
             why = [c for c in checks if c["state"] != "gone"][0]
             return {"state": "unreadable", "checks": checks, "reads": kept["reads"],
                     "words": (f"the symptom could not be read again within {bound} s "
                               f"({why['store']}: {why['state']}"
                               + ("" if why["asked"] else ", no reader for it runs here")
+                              + (f"; {why['detail']}" if why.get("detail") else "")
                               + ")")}
         sleep(POLL_SECONDS)
 
@@ -692,6 +862,11 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     step("plan", "ok", f"the program recomputed from the read: {len(prog['commands'])} line(s), "
                        f"hash {prog['hash']}, the decision's")
     held.update(prog=prog, platform=platform)
+    # C3164: a unit that re-applies the heartbeat applet makes the heartbeat itself a symptom
+    # to read again, after the incident's own: its next line, within the applet's own bound.
+    beat = restored_heartbeat(c["units"], intended["text"], platform)
+    beats = [heartbeat_trigger(network, device, beat)] if beat else []
+    symptoms = list(inc.get("triggers") or []) + beats
 
     dangerous = pipeline.dangerous_commands(prog["commands"])
     if dangerous:
@@ -782,31 +957,52 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             heal={device: facts}, hold_detail=via, **plan_kw)
     r = next((x for x in report.get("results") or [] if x.get("device") == device), {})
 
-    def symptom():
-        begin("symptom", "reading the symptom again, until it is gone or its bound passes",
-              wait_s=symptom_bound(inc.get("triggers") or []), bound=True)
-        s = src.symptom(device, inc.get("triggers") or [], applied_at["t"])
-        step("symptom", s["state"], s["words"], **symptom_reads(s))
+    def read_again(triggers):
+        from modules.device_logs import MARKER
+
+        bound = symptom_bound(triggers)
+        waits = ({"wait_for": HEARTBEAT_KIND}
+                 if any(t.get("kind") == HEARTBEAT_KIND for t in triggers) else {})
+        begin("symptom", (f"waiting for {device}'s heartbeat: its next {MARKER} line in "
+                          f"Coverage's stored arrivals, up to {bound} s"
+                          if waits else
+                          "reading the symptom again, until it is gone or its bound passes"),
+              wait_s=bound, bound=True, **waits)
+        s = src.symptom(device, triggers, applied_at["t"])
+        step("symptom", s["state"], s["words"], **symptom_reads(s), **waits)
         return s
 
-    return _judge(device, r, report, src, via, step, finish, symptom, begin=begin)
+    def symptom():
+        return read_again(symptoms)
+
+    def heartbeat_after(held):
+        """A removed feature's symptom read before the save (N13) gone: the heartbeat the
+        heal re-applied, read now that the device is released (C3164)."""
+        s = read_again(beats)
+        if s.get("state") != "gone":
+            return s
+        return dict(s, words=f"{held.get('words') or 'its symptom read'}; {s['words']}")
+
+    return _judge(device, r, report, src, via, step, finish, symptom, begin=begin,
+                  more=heartbeat_after if beats else None)
 
 
 def symptom_bound(triggers: list) -> int:
     """The longest the symptom read waits for *triggers* (`read_symptom`'s own bound: the
-    largest of `SYMPTOM_SECONDS` among the symptoms named), or 0 when none is named."""
-    return max((SYMPTOM_SECONDS[t["kind"]] for t in symptom_triggers(triggers)), default=0)
+    largest of the symptoms' bounds named, `_bound`), or 0 when none is named."""
+    return max((_bound(t) for t in symptom_triggers(triggers)), default=0)
 
 
 def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
                device: str = ""):
     """``(step, begin)`` over *steps*, a run's own list: `step(name, result, words)` records a
     step as before (*more* kept on it: the reads a step made, `reads.read_entry`);
-    `begin(name, words, wait_s=None, bound=False)` records one that takes time
+    `begin(name, words, wait_s=None, bound=False, wait_for="")` records one that takes time
     as ``running`` the moment it starts (with ``began``, and its declared wait: a fixed length,
-    or with *bound* the longest it waits), and that step's own `step` then replaces it, keeping
-    when it began. So the recorded list ends as it always did, and while the run goes on its
-    newest step is the one it is in. Inside a job the list is the job's own
+    or with *bound* the longest it waits; *wait_for*, what it waits for when its stage says it:
+    ``heartbeat``, C3164), and that step's own `step` then replaces it, keeping when it began.
+    So the recorded list ends as it always did, and while the run goes on its newest step is
+    the one it is in. Inside a job the list is the job's own
     (`op_progress.attach`, with the operation's short *labels* for *device*): each step
     written is announced. Used by a heal's act and by an approved proposal's."""
     from modules import op_progress, run_stepper
@@ -815,11 +1011,12 @@ def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
     op_progress.attach(declared, steps, run=run_id,
                        labels=run_stepper.labels_for(labels, device=device))
 
-    def begin(name, words, *, wait_s=None, bound=False):
+    def begin(name, words, *, wait_s=None, bound=False, wait_for=""):
         at = _iso(time.time())
         steps.append(dict({"step": name, "result": "running", "words": redact_text(words),
                            "at": at, "began": at},
-                          **({"wait_s": wait_s, "wait_bound": bool(bound)} if wait_s else {})))
+                          **({"wait_s": wait_s, "wait_bound": bool(bound)} if wait_s else {}),
+                          **({"wait_for": wait_for} if wait_for else {})))
         op_progress.moved()
 
     def step(name, result, words, **more):
@@ -828,8 +1025,8 @@ def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
         last = steps[-1] if steps else {}
         if last.get("step") == name and last.get("result") == "running" and last.get("began"):
             # The step `begin` opened: ended in place, with when it began and what it waited.
-            steps[-1] = dict(ended, **{k: last[k] for k in ("began", "wait_s", "wait_bound")
-                                       if k in last})
+            steps[-1] = dict(ended, **{k: last[k] for k in ("began", "wait_s", "wait_bound",
+                                                            "wait_for") if k in last})
         else:
             steps.append(ended)
         op_progress.moved()
@@ -837,9 +1034,10 @@ def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
     return step, begin
 
 
-def _judge(device, r, report, src, via, step, finish, symptom, begin=None):
+def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=None):
     """The outcome of the apply, the golden re-check, the symptom (when the check after verify
-    did not already read it), and the record."""
+    did not already read it; *more*, given the one it read and found gone, reads what is left
+    once the device is released: a heal's heartbeat, C3164), and the record."""
     from modules.nsot import receipts
     from modules.nsot.deploy import DEPLOYED, SKIPPED_DRIFTED
 
@@ -903,7 +1101,10 @@ def _judge(device, r, report, src, via, step, finish, symptom, begin=None):
                           "committed after Mercury's config check passed (the configuration "
                           "repository's CI runs the same check on its push); the device read "
                           "again matches it"))
-    symptom = ((r.get("heal") or {}).get("symptom") or {}) or symptom()
+    held = (r.get("heal") or {}).get("symptom") or {}
+    symptom = held or symptom()
+    if held and more is not None and held.get("state") in ("gone", "none"):
+        symptom = more(held)
     if symptom.get("state") == "present":
         return finish("symptom_remains", (f"configuration at intent, and {symptom['words']}: "
                                           "configuration was not the whole cause"), sent=True,

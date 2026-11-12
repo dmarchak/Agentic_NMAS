@@ -150,6 +150,12 @@ RUNNING_WORDS = {"take": "Checking {device} again before the fix…",
                  "saved": "Saving {device}'s startup…",
                  "golden": "Reading {device} against its new golden…",
                  "record": "Recording the outcome…"}
+#: What a running step waits for, when it names it (its record's ``wait_for``), as its stage's
+#: sentence in place of the step's own; the countdown follows it (`run_stepper._wait`). The
+#: operator, 2026-11-12: "Waiting for <device>'s heartbeat: 120 s left" (C3164).
+WAIT_FOR_WORDS = {"heartbeat": "Waiting for {device}'s heartbeat"}
+#: What a stage that waited for it says once the wait ended done.
+WAITED_WORDS = {"heartbeat": "its heartbeat back"}
 
 
 def _lines_words(n) -> str:
@@ -257,7 +263,9 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
     def sentence(g):
         lead = str((g["lead"] or {}).get("key") or "")[len(act_prefix):]
         if g["state"] == "running":
-            return RUNNING_WORDS.get(lead, "").format(device=device, lines=lines)
+            waits = str((g["lead"] or {}).get("wait_for") or "")
+            return (WAIT_FOR_WORDS.get(waits) or RUNNING_WORDS.get(lead, "")).format(
+                device=device, lines=lines)
         if g["key"] == "done" and g["state"] in ("done", "partial", "failed"):
             outcome = facts.get("outcome") or ""
             if not outcome:
@@ -282,9 +290,11 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
                        for s in g["steps"])
             return f"Applied {lines} to {device}" if sent else ""
         if g["key"] == "checking":
-            gone = any(s["key"] == act_prefix + "symptom" and s["state"] == "done"
-                       for s in g["steps"])
-            return f"{device} at intent" + ("; its symptom gone" if gone else "")
+            read = next((s for s in g["steps"] if s["key"] == act_prefix + "symptom"
+                         and s["state"] == "done"), None)
+            back = WAITED_WORDS.get(str((read or {}).get("wait_for") or ""))
+            return f"{device} at intent" + (f"; {back}" if back else
+                                            "; its symptom gone" if read else "")
         return ""
 
     return run_stepper.stages(card, heal_stage_table(act_prefix), ended=ended, now=now,
