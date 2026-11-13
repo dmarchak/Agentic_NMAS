@@ -210,8 +210,13 @@ it again); operations interrupted while they held a device (the process ended
 mid-run); a device's SSH host key that changed (**Re-key…** on its page), and the new keys a
 planned window kept; the records database's stores that do not match or do not answer; the
 scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
-way that drops lines; the log redaction found unhealthy; the CI verdict on the running commit,
-and a pushed release whose CI failed; a scheduled quality job (each workflow with a schedule,
+way that drops lines; the log redaction found unhealthy; the CI verdict on the running commit
+(a warning, since the release keeps running: when its runs disagree, such as one run that
+passed and a later one that failed, it lists each run with its attempt, names the failed job
+and test, and says whether a re-run is running; its action is to re-run the failed job, or
+nothing while a re-run runs, and an update only when a newer release CI passed exists; it
+starts when the failed run completed, and a re-run that passes clears it), and a pushed
+release whose CI failed; a scheduled quality job (each workflow with a schedule,
 such as the weekly mutation run) whose newest scheduled run failed, or that has not succeeded
 within its period and GitHub's start delay, with a link to the run (it clears only when a
 scheduled run succeeds; a dispatched one does not clear it); the verdicts on one commit

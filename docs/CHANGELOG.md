@@ -9,6 +9,36 @@ NSoT phases refer to [docs/NSOT_PLAN.md](NSOT_PLAN.md).
 
 ## [Unreleased] — Multi-network correctness, and secrets stop leaving the host
 
+### Fixed — AI requests carried people's sign-in addresses (C3424, C3426)
+
+**What was sent.** The evidence an AI request carries names who acted on an alert or a record,
+in fields such as `who`, `actor`, `set_by` and `approved_by`. Those fields held the person's
+sign-in address (an email) as the access proxy asserted it, and the address went into the
+request unchanged. Every AI feature that builds a request from that evidence carried them:
+Explain, and troubleshooting with AI.
+
+**To whom.** Anthropic, the hosted AI provider, through its API. A request already sent
+cannot be recalled from the provider.
+
+**Which versions.** Every release from Explain's first (1d66eac5) up to, but not including,
+d4d5f6c4.
+
+**The fix (d4d5f6c4).**
+
+- The pack builder replaces every person in every request with a stable label, `person-`
+  followed by six hex characters. The label is an HMAC-SHA256 of the address, keyed by a
+  per-installation secret (`person_label_key`). The secret is generated at first use, kept in
+  the credential store, and never sent or shown. Without the key, the label cannot be computed
+  from the code, and two installations label one address differently.
+- As a safety net, the egress mask (`redact.egress_payload`) labels any address left in any
+  field or key of a request before it leaves the host.
+- Both are tested (tests/test_ai_requests_carry_no_address.py) and hand-checked as the
+  irreversible tier requires (docs/TIER_HAND_CHECK.md, C3424's section). The checks include a
+  mutant that drops the key, which the tests kill.
+
+**What to do.** Update any installation running a version in that range. Hosted AI can stay
+off (Settings › Installation › AI) until the update is deployed.
+
 ### Fixed — a crash delivered as a successful redirect (Stage 3.3c follow-up)
 
 `DriftChecker.set_disabled()` — the method the panel's toggle reaches — never

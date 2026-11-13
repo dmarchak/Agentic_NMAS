@@ -126,8 +126,9 @@ ROW_KINDS = {
                                       "read it where the service shows it"),
     ("redaction", "unhealthy"): ("log redaction is not working: a secret could reach a log",
                                  "read which handler and what got through, then restart Mercury"),
-    ("ci", "verdict"): ("the running commit has no CI pass",
-                        "update to a release CI passed, or find why CI could not be asked"),
+    ("ci", "verdict"): ("the running commit has no CI pass, or its CI runs disagree",
+                        "re-run the failed job (or wait for the re-run running), update to a "
+                        "newer release CI passed, or find why CI could not be asked"),
     ("scheduled_jobs", "failed"): ("a scheduled quality job's newest scheduled run did not "
                                    "succeed", "read where it failed and fix forward"),
     ("scheduled_jobs", "overdue"): ("a scheduled quality job has not succeeded within its "
@@ -503,7 +504,8 @@ CLEARS = {
     ("credential-health", "age"): (("resolves",), "the reader (hourly) reads it set within "
                                    "180 days"),
     ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
-    ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
+    ("ci", "verdict"): (("resolves",), "a re-run of the failed run passes (read every 15 "
+                                       "minutes), or the host runs a newer commit CI passed"),
     ("scheduled_jobs", "failed"): (("resolves", "acknowledge"),
                                    "the workflow's next scheduled run succeeds (read every 30 "
                                    "minutes); a dispatched run does not clear it; or a person "
@@ -3383,7 +3385,10 @@ def integrations_source(cached=None) -> dict:
 # nmas-deploy's own gate, never a second implementation of it.
 # ---------------------------------------------------------------------------
 
-_CI_ROWS = {"failed": ("its CI run failed", "danger"),
+#: Every level is a WARNING or unknown (the operator, 2026-11-13, C3425: "Severity WARNING, not
+#: critical (critical = a network outage; this notice was designed as a warning)"): a CI red
+#: on the commit the host runs stops new work, and the release keeps running.
+_CI_ROWS = {"failed": ("its CI run failed", "warning"),
             "cancelled": ("its CI run was cancelled, so no verdict exists", "warning"),
             "pending": ("its CI run is still going", "warning"),
             "could_not_ask": ("whether it passed CI could not be asked", "unknown")}
@@ -3431,8 +3436,11 @@ def redaction_source(health=None) -> dict:
                          rows=rows, checked=checked)
 
 
-def ci_source(cached=None) -> dict:
-    """A running commit CI did not pass is a row; a verified one is not."""
+def ci_source(cached=None, pushed=None) -> dict:
+    """A running commit CI did not pass is a row; a verified one is not, unless its red run is
+    being re-run (C3425: the row says so, and that nothing is needed). Everything drawn is the
+    readers' stored values (*cached*, the ci-verdict reader's; *pushed*, the app-pushed
+    reader's, for a newer release CI passed): no page load asks GitHub."""
     from modules import reader_job
     from routes import health
 
@@ -3459,21 +3467,147 @@ def ci_source(cached=None) -> dict:
                              checked=f"the stored verdict is for {commit[:10]}, not the running "
                                      f"{str(health._COMMIT)[:10]}: not judged yet")
     rows = []
-    if v.get("state") in _CI_ROWS:
+    red = v.get("red") or None
+    if red and (v.get("state") == "failed" or red.get("rerun")):
+        rows.append(_ci_red_row(commit, v, red, pushed))
+    elif v.get("state") in _CI_ROWS:
         words, level = _CI_ROWS[v["state"]]
+        newer = _ci_newer_passed(commit, pushed)
         rows.append(row(source="ci", kind="verdict", key=commit[:10], level=level,
                         what=f"The running commit {commit[:10]}: {words}",
-                        cause=v.get("sentence") or "no sentence recorded",
-                        action=({"label": "Update to a release CI passed: the Update page "
-                                          "waits for CI when it is still checking",
-                                 "open": "app_update"}
-                                if v["state"] in ("failed", "cancelled") else
+                        cause=_ci_said(v.get("sentence")) or "no sentence recorded",
+                        action=(_ci_update(newer) if newer and v["state"] in ("failed",
+                                                                              "cancelled") else
+                                {"label": "The developer reads where CI failed (named above) "
+                                          "and fixes it forward: a newer commit CI passes, "
+                                          "deployed, clears this", "known": False}
+                                if v["state"] == "failed" else
+                                {"label": "Re-run CI for this commit on GitHub, or deploy a "
+                                          "newer commit CI passed", "known": False}
+                                if v["state"] == "cancelled" else
                                 {"label": "Find why CI has no verdict: nmas-deploy's sentence "
                                           "above names the run and what it found",
                                  "known": False})))
     return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="ci-verdict",
                          checked=f"{commit[:10]}: {v.get('state')}")
+
+
+#: `nmas-deploy`'s instruction for a DEPLOY decision ("FAILED: ... Do not deploy this
+#: commit."). The row is about a commit already running, so it is never drawn (the operator,
+#: 2026-11-13, C3425: "Never "Do not deploy this commit" for a commit already running with a
+#: pass").
+_DEPLOY_ORDER = "Do not deploy this commit."
+#: A run's state in a person's words.
+_RUN_WORDS = {"success": "passed", "failure": "failed", "timed_out": "timed out",
+              "startup_failure": "failed to start", "cancelled": "was cancelled",
+              "skipped": "was skipped", "in_progress": "is running", "queued": "is queued",
+              "waiting": "is waiting", "pending": "is waiting", "requested": "is queued"}
+
+
+def _ci_said(sentence) -> str:
+    """The deploy tool's sentence without its deploy instruction."""
+    return " ".join(str(sentence or "").replace(_DEPLOY_ORDER, " ").split())
+
+
+def _ci_newer_passed(commit: str, pushed) -> str:
+    """The newer release CI passed that the Update operation offers this host (the app-pushed
+    reader's stored value, `installable`), or "": read from the store, never asked."""
+    from modules import reader_job
+
+    try:
+        got = reader_job.read_cached("app-pushed") if pushed is None else pushed
+    except Exception:                                     # noqa: BLE001
+        return ""
+    v = ((got.get("doc") or {}).get("last_good") or {}).get("value") or {} \
+        if got.get("state") == "ok" else {}
+    if str(v.get("running") or "") != commit:
+        return ""
+    target = installable(v)
+    return target if target and target != commit else ""
+
+
+def _ci_update(target: str) -> dict:
+    return {"label": f"Update to {target[:7]}, a newer release CI passed: the Update page "
+                     "previews its commits", "open": "app_update"}
+
+
+def _ci_run_said(r: dict) -> str:
+    state = r.get("conclusion") if r.get("status") == "completed" else r.get("status")
+    return (f"#{r.get('number')} attempt {r.get('attempt') or 1} "
+            f"{_RUN_WORDS.get(state, state or 'unknown')}")
+
+
+def _ci_red_row(commit: str, v: dict, red: dict, pushed) -> dict:
+    """The running commit's red, from the reader's stored runs (C3425): both runs when they
+    disagree, the failed job and test, whether a re-run is running; its action the re-run, or
+    nothing while one runs, or an update only to a newer release CI passed; since the failed
+    attempt's completion. WARNING: the release keeps running."""
+    from modules.readers import ci_agreement as CA
+    from modules.readers import ci_verdict as CV
+
+    short, runs = commit[:10], list(v.get("runs") or [])
+    rerun = red.get("rerun") or None
+    passed = [r for r in runs if r.get("status") == "completed"
+              and r.get("conclusion") == "success" and r.get("id") != red.get("id")]
+    said = []
+    for r in sorted(runs, key=CV.run_order):
+        if r.get("id") == red.get("id") and r.get("attempt") != red.get("attempt"):
+            said.append(_ci_run_said(red))
+        said.append(_ci_run_said(r))
+    if not any(r.get("id") == red.get("id") for r in runs):
+        said.append(_ci_run_said(red))
+    n = red.get("number")
+    if passed:
+        what = (f"The running commit {short}: its CI runs disagree, "
+                f"#{passed[-1].get('number')} passed and #{n} failed")
+    else:
+        what = f"The running commit {short}: its CI run #{n} failed"
+    if rerun:
+        what += (f", and #{rerun['number']} is being re-run" if rerun.get("same_run") else
+                 f", and #{rerun['number']} is running")
+    where = CV.failed_words(red)
+    tests = red.get("tests") or []
+    cause = (f"GitHub's runs for {short}: {'; '.join(said)}. #{n} attempt "
+             f"{red.get('attempt') or 1} failed" + (f" at {where}" if where else ""))
+    jobs = sum(len(w.get("jobs") or []) for w in red.get("failed_at") or [])
+    if tests:
+        cause += (": " + "; ".join(t["test"] + (f" in {t['job']}" if jobs > 1 else "")
+                                   + (f" ({t['line']})" if t.get("line") else "")
+                                   for t in tests)
+                  + (f"; and {red['more']} more" if red.get("more") else ""))
+    else:
+        cause += (f"; which test is not known: {red.get('where_error')}"
+                  if red.get("where_error") else "; its jobs annotate no failed test")
+    cause += (f". A re-run is running: #{rerun['number']} attempt {rerun['attempt']} "
+              f"{_RUN_WORDS.get(rerun.get('status'), rerun.get('status'))}." if rerun else
+              ". No re-run is running.")
+    if passed:
+        cause += (f" #{passed[-1].get('number')} passed this commit, so the release keeps "
+                  "running: this is no outage, and new work waits for the red to clear.")
+    extra = _ci_said(str(v.get("sentence") or "").partition(_DEPLOY_ORDER)[2])
+    if extra:
+        cause += f" {extra}"
+    link = ({"run_url": red["url"], "run": str(n or "")}
+            if str(red.get("url") or "").startswith("https://github.com/") else {})
+    newer = _ci_newer_passed(commit, pushed)
+    if rerun:
+        action = {"label": f"Nothing: a re-run is running (#{rerun['number']}, attempt "
+                           f"{rerun['attempt']}); its pass clears this",
+                  **({"run_url": rerun["url"], "run": str(rerun["number"])}
+                     if str(rerun.get("url") or "").startswith("https://github.com/") else {})}
+    elif newer:
+        action = _ci_update(newer)
+    elif int(red.get("attempt") or 1) <= CA.RERUNS_OFFERED:
+        action = dict(link, label=f"Re-run the failed job on GitHub (#{n}): a pass clears "
+                                  "this")
+    else:
+        # "A red may be rerun once" (the operator, 2026-11-03; `ci_agreement.RERUNS_OFFERED`).
+        action = dict(link, label=f"The developer fixes it forward: #{n} failed again on its "
+                                  f"re-run (attempt {red.get('attempt')}); a newer commit CI "
+                                  "passes, deployed, clears this")
+    return row(source="ci", kind="verdict", key=short, level="warning", what=what,
+               cause=cause, action=action, since=_ts(red.get("completed_at")))
 
 
 def scheduled_jobs_source(cached=None, now: float = None) -> dict:
@@ -7600,7 +7734,8 @@ SOURCE_KEYS = {
     "authorisation_source": ("deploy_job", "goldens"),
     "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained
     "integrations_source": ("integration_health",),
-    "ci_source": ("ci_verdict",),
+    # app_version: whether a newer release CI passed exists, its action's Update (C3425).
+    "ci_source": ("ci_verdict", "app_version"),
     "scheduled_jobs_source": ("scheduled_jobs",),
     "ci_agreement_source": ("ci_agreement",),
     # Redaction changes only inside this process (a handler added unfiltered); it is measured

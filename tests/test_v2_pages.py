@@ -181,12 +181,19 @@ class TestThePushedRow:
     def test_a_failed_ci_run_names_the_update_page_as_its_remedy(self, monkeypatch):
         # The Update page, never a terminal command (the operator, 2026-09-30):
         # it waits for CI itself when CI is still checking.
+        # Premise corrected (C3425, the operator, 2026-11-13): the row is a WARNING ("critical
+        # = a network outage"), and Update is its remedy only when a newer release CI passed
+        # exists ("not "Update…" when no newer release exists"), so the app-pushed reader's
+        # value here offers one; tests/test_ci_runs_disagree.py holds the other actions.
         from routes import health
         monkeypatch.setattr(health, "_COMMIT", "a" * 40)
+        newer = {"running": "a" * 40, "state": "behind", "tip": "b" * 40, "target": "b" * 40,
+                 "verdicts": {"b" * 40: {"state": "verified"}}}
         r = attention.ci_source(cached=_cached({"commit": "a" * 40, "state": "failed",
-                                                "sentence": "run 9 failed: 2 tests"}))
+                                                "sentence": "run 9 failed: 2 tests"}),
+                                pushed=_cached(newer))
         (row,) = r["rows"]
-        assert row["level"] == "danger" and row["action"]["open"] == "app_update"
+        assert row["level"] == "warning" and row["action"]["open"] == "app_update"
         assert "command" not in row["action"]
 
 

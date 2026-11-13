@@ -1,0 +1,1688 @@
+{
+ "_about": "Captured from GitHub's public API on 2026-11-13 for the commit 4f20f7b9cf (C3425): the push runs #1679 and #1680 (attempt 1 from /attempts/1, attempt 2 from the runs listing), #1680 attempt 1's jobs, and the annotations of its failed job test (browser3). Trimmed to the fields read; the account replaced by a placeholder.",
+ "run_1679": {
+  "id": 43370337687,
+  "name": "ci",
+  "head_sha": "4f20f7b9cfbb68e98df01bec06395e720bedbcf2",
+  "path": ".github/workflows/ci.yml",
+  "run_number": 1679,
+  "run_attempt": 1,
+  "event": "push",
+  "status": "completed",
+  "conclusion": "success",
+  "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43370337687",
+  "created_at": "2026-11-13T05:11:08Z",
+  "updated_at": "2026-11-13T05:29:11Z",
+  "run_started_at": "2026-11-13T05:11:08Z"
+ },
+ "run_1680_attempt_1": {
+  "id": 43372470131,
+  "name": "ci",
+  "head_sha": "4f20f7b9cfbb68e98df01bec06395e720bedbcf2",
+  "path": ".github/workflows/ci.yml",
+  "run_number": 1680,
+  "run_attempt": 1,
+  "event": "push",
+  "status": "completed",
+  "conclusion": "failure",
+  "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131",
+  "created_at": "2026-11-13T05:30:32Z",
+  "updated_at": "2026-11-13T05:47:54Z",
+  "run_started_at": "2026-11-13T05:30:32Z"
+ },
+ "run_1680_attempt_2": {
+  "id": 43372470131,
+  "name": "ci",
+  "head_sha": "4f20f7b9cfbb68e98df01bec06395e720bedbcf2",
+  "path": ".github/workflows/ci.yml",
+  "run_number": 1680,
+  "run_attempt": 2,
+  "event": "push",
+  "status": "completed",
+  "conclusion": "success",
+  "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131",
+  "created_at": "2026-11-13T05:30:32Z",
+  "updated_at": "2026-11-13T06:19:06Z",
+  "run_started_at": "2026-11-13T06:03:04Z"
+ },
+ "jobs_1680_attempt_1": {
+  "total_count": 9,
+  "jobs": [
+   {
+    "id": 131711201751,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "scope (docs only, or everything)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:36Z",
+    "completed_at": "2026-11-13T05:30:51Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711201751",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711201751",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:37Z",
+      "completed_at": "2026-11-13T05:30:38Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:38Z",
+      "completed_at": "2026-11-13T05:30:48Z"
+     },
+     {
+      "name": "Run shards=$(python3 scripts/nmas-shards --matrix \"${BEFORE:-}\" \"$AFTER\")",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:30:48Z",
+      "completed_at": "2026-11-13T05:30:48Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:30:48Z",
+      "completed_at": "2026-11-13T05:30:48Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:30:48Z",
+      "completed_at": "2026-11-13T05:30:48Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310561,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "container harness (Ryu on the controller's Python 3.9)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:53Z",
+    "completed_at": "2026-11-13T05:32:09Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310561",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310561",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:30:55Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:55Z",
+      "completed_at": "2026-11-13T05:30:59Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:30:59Z",
+      "completed_at": "2026-11-13T05:31:07Z"
+     },
+     {
+      "name": "The harness's checks on Python 3.9",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:07Z",
+      "completed_at": "2026-11-13T05:32:04Z"
+     },
+     {
+      "name": "Down, whatever happened",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:32:04Z",
+      "completed_at": "2026-11-13T05:32:04Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-11-13T05:32:04Z",
+      "completed_at": "2026-11-13T05:32:05Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:32:05Z",
+      "completed_at": "2026-11-13T05:32:05Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:32:05Z",
+      "completed_at": "2026-11-13T05:32:05Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310570,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "container harness (Ryu on the controller's Python 3.5)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:53Z",
+    "completed_at": "2026-11-13T05:32:18Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310570",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310570",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:30:55Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:55Z",
+      "completed_at": "2026-11-13T05:30:59Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:30:59Z",
+      "completed_at": "2026-11-13T05:31:08Z"
+     },
+     {
+      "name": "The harness's checks on Python 3.5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:08Z",
+      "completed_at": "2026-11-13T05:32:14Z"
+     },
+     {
+      "name": "Down, whatever happened",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:32:14Z",
+      "completed_at": "2026-11-13T05:32:14Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-11-13T05:32:14Z",
+      "completed_at": "2026-11-13T05:32:14Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:32:14Z",
+      "completed_at": "2026-11-13T05:32:14Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:32:14Z",
+      "completed_at": "2026-11-13T05:32:14Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310616,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "test (b)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:53Z",
+    "completed_at": "2026-11-13T05:40:07Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310616",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310616",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:53Z",
+      "completed_at": "2026-11-13T05:30:54Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:31:02Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:31:02Z",
+      "completed_at": "2026-11-13T05:31:10Z"
+     },
+     {
+      "name": "Install the host's versions, exactly",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:10Z",
+      "completed_at": "2026-11-13T05:31:21Z"
+     },
+     {
+      "name": "The runner's environment (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:31:21Z",
+      "completed_at": "2026-11-13T05:31:27Z"
+     },
+     {
+      "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:31:27Z",
+      "completed_at": "2026-11-13T05:31:28Z"
+     },
+     {
+      "name": "The runner image, for the setup caches' keys",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:31:28Z",
+      "completed_at": "2026-11-13T05:31:28Z"
+     },
+     {
+      "name": "promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:31:28Z",
+      "completed_at": "2026-11-13T05:31:29Z"
+     },
+     {
+      "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 9,
+      "started_at": "2026-11-13T05:31:29Z",
+      "completed_at": "2026-11-13T05:31:29Z"
+     },
+     {
+      "name": "promtool answers",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:31:29Z",
+      "completed_at": "2026-11-13T05:31:29Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:31:29Z",
+      "completed_at": "2026-11-13T05:31:30Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 12,
+      "started_at": "2026-11-13T05:31:30Z",
+      "completed_at": "2026-11-13T05:31:30Z"
+     },
+     {
+      "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T05:31:30Z",
+      "completed_at": "2026-11-13T05:31:32Z"
+     },
+     {
+      "name": "Allow a network namespace for the suite (this VM only)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T05:31:32Z",
+      "completed_at": "2026-11-13T05:31:32Z"
+     },
+     {
+      "name": "A folder for each test's tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T05:31:32Z",
+      "completed_at": "2026-11-13T05:31:32Z"
+     },
+     {
+      "name": "Tests (R1, R4), confined to loopback, measured by tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 16,
+      "started_at": "2026-11-13T05:31:32Z",
+      "completed_at": "2026-11-13T05:40:03Z"
+     },
+     {
+      "name": "Every skip is a declared one",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-11-13T05:40:03Z",
+      "completed_at": "2026-11-13T05:40:03Z"
+     },
+     {
+      "name": "Keep this shard's measurement for the coverage job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-11-13T05:40:03Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "No removed definition is still called (R2)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 19,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every host-installed change says what the host needs",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 20,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every weakened test names its register row",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 21,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every new or changed test is red on its parent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 22,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every changed guard carries the operator's approval",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 23,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every bypass a commit adds names its reason",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 24,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Every premise correction names its measurement",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 25,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 47,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Post promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 48,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 49,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 50,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:04Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 51,
+      "started_at": "2026-11-13T05:40:04Z",
+      "completed_at": "2026-11-13T05:40:05Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310639,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "test (browser3)",
+    "status": "completed",
+    "conclusion": "failure",
+    "started_at": "2026-11-13T05:30:53Z",
+    "completed_at": "2026-11-13T05:41:47Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310639",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310639",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:30:55Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:55Z",
+      "completed_at": "2026-11-13T05:31:06Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:31:06Z",
+      "completed_at": "2026-11-13T05:31:17Z"
+     },
+     {
+      "name": "Install the host's versions, exactly",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:17Z",
+      "completed_at": "2026-11-13T05:31:30Z"
+     },
+     {
+      "name": "The runner's environment (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:31:30Z",
+      "completed_at": "2026-11-13T05:31:36Z"
+     },
+     {
+      "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:31:36Z",
+      "completed_at": "2026-11-13T05:31:36Z"
+     },
+     {
+      "name": "The runner image, for the setup caches' keys",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:31:36Z",
+      "completed_at": "2026-11-13T05:31:36Z"
+     },
+     {
+      "name": "promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:31:36Z",
+      "completed_at": "2026-11-13T05:31:38Z"
+     },
+     {
+      "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 9,
+      "started_at": "2026-11-13T05:31:38Z",
+      "completed_at": "2026-11-13T05:31:38Z"
+     },
+     {
+      "name": "promtool answers",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:31:38Z",
+      "completed_at": "2026-11-13T05:31:38Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:31:38Z",
+      "completed_at": "2026-11-13T05:31:39Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 12,
+      "started_at": "2026-11-13T05:31:39Z",
+      "completed_at": "2026-11-13T05:31:39Z"
+     },
+     {
+      "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T05:31:39Z",
+      "completed_at": "2026-11-13T05:31:44Z"
+     },
+     {
+      "name": "Allow a network namespace for the suite (this VM only)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T05:31:44Z",
+      "completed_at": "2026-11-13T05:31:44Z"
+     },
+     {
+      "name": "A folder for each test's tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T05:31:44Z",
+      "completed_at": "2026-11-13T05:31:44Z"
+     },
+     {
+      "name": "Tests (R1, R4), confined to loopback, measured by tier",
+      "status": "completed",
+      "conclusion": "failure",
+      "number": 16,
+      "started_at": "2026-11-13T05:31:44Z",
+      "completed_at": "2026-11-13T05:41:42Z"
+     },
+     {
+      "name": "Every skip is a declared one",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 17,
+      "started_at": "2026-11-13T05:41:42Z",
+      "completed_at": "2026-11-13T05:41:42Z"
+     },
+     {
+      "name": "Keep this shard's measurement for the coverage job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-11-13T05:41:42Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "No removed definition is still called (R2)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 19,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every host-installed change says what the host needs",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 20,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every weakened test names its register row",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 21,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every new or changed test is red on its parent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 22,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every changed guard carries the operator's approval",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 23,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every bypass a commit adds names its reason",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 24,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Every premise correction names its measurement",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 25,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 47,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Post promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 48,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 49,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 50,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 51,
+      "started_at": "2026-11-13T05:41:44Z",
+      "completed_at": "2026-11-13T05:41:44Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310659,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "test (browser2)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:57Z",
+    "completed_at": "2026-11-13T05:43:38Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310659",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310659",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:58Z",
+      "completed_at": "2026-11-13T05:30:59Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:59Z",
+      "completed_at": "2026-11-13T05:31:09Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:31:09Z",
+      "completed_at": "2026-11-13T05:31:20Z"
+     },
+     {
+      "name": "Install the host's versions, exactly",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:20Z",
+      "completed_at": "2026-11-13T05:31:33Z"
+     },
+     {
+      "name": "The runner's environment (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:31:33Z",
+      "completed_at": "2026-11-13T05:31:39Z"
+     },
+     {
+      "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:31:39Z",
+      "completed_at": "2026-11-13T05:31:39Z"
+     },
+     {
+      "name": "The runner image, for the setup caches' keys",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:31:39Z",
+      "completed_at": "2026-11-13T05:31:39Z"
+     },
+     {
+      "name": "promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:31:39Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 9,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "promtool answers",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:43Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 12,
+      "started_at": "2026-11-13T05:31:43Z",
+      "completed_at": "2026-11-13T05:31:43Z"
+     },
+     {
+      "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T05:31:43Z",
+      "completed_at": "2026-11-13T05:31:45Z"
+     },
+     {
+      "name": "Allow a network namespace for the suite (this VM only)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T05:31:45Z",
+      "completed_at": "2026-11-13T05:31:45Z"
+     },
+     {
+      "name": "A folder for each test's tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T05:31:45Z",
+      "completed_at": "2026-11-13T05:31:45Z"
+     },
+     {
+      "name": "Tests (R1, R4), confined to loopback, measured by tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 16,
+      "started_at": "2026-11-13T05:31:45Z",
+      "completed_at": "2026-11-13T05:43:32Z"
+     },
+     {
+      "name": "Every skip is a declared one",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-11-13T05:43:32Z",
+      "completed_at": "2026-11-13T05:43:32Z"
+     },
+     {
+      "name": "Keep this shard's measurement for the coverage job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-11-13T05:43:32Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "No removed definition is still called (R2)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 19,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every host-installed change says what the host needs",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 20,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every weakened test names its register row",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 21,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every new or changed test is red on its parent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 22,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every changed guard carries the operator's approval",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 23,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every bypass a commit adds names its reason",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 24,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Every premise correction names its measurement",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 25,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 47,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Post promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 48,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 49,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 50,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 51,
+      "started_at": "2026-11-13T05:43:34Z",
+      "completed_at": "2026-11-13T05:43:34Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310663,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "test (browser1)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:56Z",
+    "completed_at": "2026-11-13T05:46:28Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310663",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310663",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:57Z",
+      "completed_at": "2026-11-13T05:30:58Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:58Z",
+      "completed_at": "2026-11-13T05:31:09Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:31:09Z",
+      "completed_at": "2026-11-13T05:31:22Z"
+     },
+     {
+      "name": "Install the host's versions, exactly",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:22Z",
+      "completed_at": "2026-11-13T05:31:38Z"
+     },
+     {
+      "name": "The runner's environment (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:31:38Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "The runner image, for the setup caches' keys",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:41Z"
+     },
+     {
+      "name": "promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:31:41Z",
+      "completed_at": "2026-11-13T05:31:43Z"
+     },
+     {
+      "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 9,
+      "started_at": "2026-11-13T05:31:43Z",
+      "completed_at": "2026-11-13T05:31:43Z"
+     },
+     {
+      "name": "promtool answers",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:31:43Z",
+      "completed_at": "2026-11-13T05:31:43Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:31:43Z",
+      "completed_at": "2026-11-13T05:31:45Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 12,
+      "started_at": "2026-11-13T05:31:45Z",
+      "completed_at": "2026-11-13T05:31:45Z"
+     },
+     {
+      "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T05:31:45Z",
+      "completed_at": "2026-11-13T05:31:47Z"
+     },
+     {
+      "name": "Allow a network namespace for the suite (this VM only)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T05:31:47Z",
+      "completed_at": "2026-11-13T05:31:47Z"
+     },
+     {
+      "name": "A folder for each test's tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T05:31:47Z",
+      "completed_at": "2026-11-13T05:31:47Z"
+     },
+     {
+      "name": "Tests (R1, R4), confined to loopback, measured by tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 16,
+      "started_at": "2026-11-13T05:31:47Z",
+      "completed_at": "2026-11-13T05:46:22Z"
+     },
+     {
+      "name": "Every skip is a declared one",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-11-13T05:46:22Z",
+      "completed_at": "2026-11-13T05:46:22Z"
+     },
+     {
+      "name": "Keep this shard's measurement for the coverage job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-11-13T05:46:22Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "No removed definition is still called (R2)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 19,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every host-installed change says what the host needs",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 20,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every weakened test names its register row",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 21,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every new or changed test is red on its parent",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 22,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every changed guard carries the operator's approval",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 23,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every bypass a commit adds names its reason",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 24,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Every premise correction names its measurement",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 25,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 47,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Post promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 48,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 49,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:24Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 50,
+      "started_at": "2026-11-13T05:46:24Z",
+      "completed_at": "2026-11-13T05:46:25Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 51,
+      "started_at": "2026-11-13T05:46:25Z",
+      "completed_at": "2026-11-13T05:46:25Z"
+     }
+    ]
+   },
+   {
+    "id": 131711310788,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "test (a)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:30:53Z",
+    "completed_at": "2026-11-13T05:44:23Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131711310788",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131711310788",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:30:54Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:30:54Z",
+      "completed_at": "2026-11-13T05:31:02Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:31:02Z",
+      "completed_at": "2026-11-13T05:31:10Z"
+     },
+     {
+      "name": "Install the host's versions, exactly",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:31:10Z",
+      "completed_at": "2026-11-13T05:31:19Z"
+     },
+     {
+      "name": "The runner's environment (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:31:19Z",
+      "completed_at": "2026-11-13T05:31:26Z"
+     },
+     {
+      "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:31:26Z",
+      "completed_at": "2026-11-13T05:31:27Z"
+     },
+     {
+      "name": "The runner image, for the setup caches' keys",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:31:27Z",
+      "completed_at": "2026-11-13T05:31:27Z"
+     },
+     {
+      "name": "promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:31:27Z",
+      "completed_at": "2026-11-13T05:31:28Z"
+     },
+     {
+      "name": "promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 9,
+      "started_at": "2026-11-13T05:31:28Z",
+      "completed_at": "2026-11-13T05:31:28Z"
+     },
+     {
+      "name": "promtool answers",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:31:28Z",
+      "completed_at": "2026-11-13T05:31:28Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-11-13T05:31:28Z",
+      "completed_at": "2026-11-13T05:31:29Z"
+     },
+     {
+      "name": "PostgreSQL 18's packages from PGDG, downloaded when not cached",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 12,
+      "started_at": "2026-11-13T05:31:29Z",
+      "completed_at": "2026-11-13T05:31:29Z"
+     },
+     {
+      "name": "PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 13,
+      "started_at": "2026-11-13T05:31:29Z",
+      "completed_at": "2026-11-13T05:31:31Z"
+     },
+     {
+      "name": "Allow a network namespace for the suite (this VM only)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 14,
+      "started_at": "2026-11-13T05:31:31Z",
+      "completed_at": "2026-11-13T05:31:31Z"
+     },
+     {
+      "name": "A folder for each test's tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 15,
+      "started_at": "2026-11-13T05:31:31Z",
+      "completed_at": "2026-11-13T05:31:31Z"
+     },
+     {
+      "name": "Tests (R1, R4), confined to loopback, measured by tier",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 16,
+      "started_at": "2026-11-13T05:31:31Z",
+      "completed_at": "2026-11-13T05:40:36Z"
+     },
+     {
+      "name": "Every skip is a declared one",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 17,
+      "started_at": "2026-11-13T05:40:36Z",
+      "completed_at": "2026-11-13T05:40:36Z"
+     },
+     {
+      "name": "Keep this shard's measurement for the coverage job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 18,
+      "started_at": "2026-11-13T05:40:36Z",
+      "completed_at": "2026-11-13T05:40:37Z"
+     },
+     {
+      "name": "No removed definition is still called (R2)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 19,
+      "started_at": "2026-11-13T05:40:37Z",
+      "completed_at": "2026-11-13T05:40:38Z"
+     },
+     {
+      "name": "Every host-installed change says what the host needs",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 20,
+      "started_at": "2026-11-13T05:40:38Z",
+      "completed_at": "2026-11-13T05:40:38Z"
+     },
+     {
+      "name": "Every weakened test names its register row",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 21,
+      "started_at": "2026-11-13T05:40:38Z",
+      "completed_at": "2026-11-13T05:40:43Z"
+     },
+     {
+      "name": "Every new or changed test is red on its parent",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 22,
+      "started_at": "2026-11-13T05:40:43Z",
+      "completed_at": "2026-11-13T05:44:12Z"
+     },
+     {
+      "name": "Every changed guard carries the operator's approval",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 23,
+      "started_at": "2026-11-13T05:44:12Z",
+      "completed_at": "2026-11-13T05:44:13Z"
+     },
+     {
+      "name": "Every bypass a commit adds names its reason",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 24,
+      "started_at": "2026-11-13T05:44:13Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Every premise correction names its measurement",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 25,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Post PostgreSQL 18's packages, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 47,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Post promtool, cached by the runner image (C1637)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 48,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 49,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 50,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 51,
+      "started_at": "2026-11-13T05:44:20Z",
+      "completed_at": "2026-11-13T05:44:20Z"
+     }
+    ]
+   },
+   {
+    "id": 131716754079,
+    "run_id": 43372470131,
+    "run_attempt": 1,
+    "name": "coverage (function and line, by tier; the ratchet)",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-11-13T05:46:30Z",
+    "completed_at": "2026-11-13T05:47:53Z",
+    "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/43372470131/job/131716754079",
+    "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/131716754079",
+    "steps": [
+     {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-11-13T05:46:31Z",
+      "completed_at": "2026-11-13T05:46:32Z"
+     },
+     {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-11-13T05:46:32Z",
+      "completed_at": "2026-11-13T05:46:37Z"
+     },
+     {
+      "name": "Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-11-13T05:46:37Z",
+      "completed_at": "2026-11-13T05:46:46Z"
+     },
+     {
+      "name": "Install coverage, as the tests' jobs do",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-11-13T05:46:46Z",
+      "completed_at": "2026-11-13T05:46:47Z"
+     },
+     {
+      "name": "Each shard's measurement",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-11-13T05:46:47Z",
+      "completed_at": "2026-11-13T05:46:48Z"
+     },
+     {
+      "name": "Combine them",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-11-13T05:46:48Z",
+      "completed_at": "2026-11-13T05:46:48Z"
+     },
+     {
+      "name": "Line coverage, every test, every shard combined",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-11-13T05:46:48Z",
+      "completed_at": "2026-11-13T05:47:06Z"
+     },
+     {
+      "name": "Where the per-test drill-down is",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 8,
+      "started_at": "2026-11-13T05:47:06Z",
+      "completed_at": "2026-11-13T05:47:06Z"
+     },
+     {
+      "name": "The report and the ratchet",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-11-13T05:47:06Z",
+      "completed_at": "2026-11-13T05:47:50Z"
+     },
+     {
+      "name": "Keep the report",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-11-13T05:47:50Z",
+      "completed_at": "2026-11-13T05:47:51Z"
+     },
+     {
+      "name": "Post Run actions/setup-python@v5",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 19,
+      "started_at": "2026-11-13T05:47:51Z",
+      "completed_at": "2026-11-13T05:47:51Z"
+     },
+     {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 20,
+      "started_at": "2026-11-13T05:47:51Z",
+      "completed_at": "2026-11-13T05:47:51Z"
+     },
+     {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 21,
+      "started_at": "2026-11-13T05:47:51Z",
+      "completed_at": "2026-11-13T05:47:51Z"
+     }
+    ]
+   }
+  ]
+ },
+ "annotations_1680_attempt_1_browser3": [
+  {
+   "path": ".github",
+   "start_line": 2,
+   "annotation_level": "warning",
+   "title": "",
+   "message": "Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4, actions/setup-python@v5, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/"
+  },
+  {
+   "path": ".github",
+   "start_line": 227,
+   "annotation_level": "failure",
+   "title": "",
+   "message": "Process completed with exit code 1."
+  },
+  {
+   "path": ".github",
+   "start_line": 226,
+   "annotation_level": "notice",
+   "title": "suite timing",
+   "message": "nmas-test timing: 4930 test(s); the last finished 578 s after the session started, and the session ended 10 s after that (589 s in all; the bound is 1470 s)"
+  },
+  {
+   "path": ".github",
+   "start_line": 221,
+   "annotation_level": "failure",
+   "title": "tests/test_htmx_form_never_posted_natively.py::test_a_press_before_htmx_has_loaded_is_kept_and_sent_once_it_has",
+   "message": "E       urllib.error.HTTPError: HTTP Error 500: Internal Server Error"
+  },
+  {
+   "path": ".github",
+   "start_line": 12,
+   "annotation_level": "notice",
+   "title": "environment",
+   "message": "kernel 7.0.0-1017-azure; python 3.12.3; /tmp on ext4; CONFIG_HZ 1000; mtime step 0.034 ms; directory mtime unchanged after a create in 0 of 2000; cpus 4 (what `-n auto` uses); Mozilla Firefox 160.0; geckodriver 0.37.1 (300705c65d1b 2026-07-17 09:25 +0000)"
+  }
+ ]
+}

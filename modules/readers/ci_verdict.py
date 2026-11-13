@@ -17,7 +17,10 @@ never asked on a page load (rule 1). GitHub's unauthenticated API allows
 60 requests an hour per address, shared with `nmas-deploy` on the same host.
 A verdict costs one request, and up to eleven when it walks back through
 commits with no run (C170), so every 15 min bounds this reader to about four
-requests an hour typically and 44 at worst.
+requests an hour typically and 44 at worst. A red of the commit's own adds one
+request for its run's jobs and one per failed job's annotations (its failed
+tests), once per failed attempt (C3425): the runs themselves are the verdict's
+own answer, recorded as it is made, never asked again.
 
 The value names the commit it judged. A process that restarted onto a new
 commit before the next read shows that its commit is not judged yet, never
@@ -111,26 +114,181 @@ def failed_words(ci: dict) -> str:
     return "; ".join(f"{w['step']}, in {', '.join(w['jobs'])}" for w in ci.get("failed_at") or [])
 
 
-def read(commit=None, verdict=None) -> dict:
+# ---------------------------------------------------------------------------
+# The running commit's own runs, and the red the row draws (C3425, the operator, 2026-11-13:
+# "When runs on the same sha disagree (#1679 passed, #1680 failed), say so: list both, name
+# the failed job and test, say whether a re-run is in progress").
+# ---------------------------------------------------------------------------
+
+#: A completed run's conclusions that are a red (GitHub's names); cancelled and skipped are
+#: abandoned attempts (`nmas-deploy`'s ABANDONED), never a verdict.
+FAILED_CONCLUSIONS = ("failure", "timed_out", "startup_failure")
+#: How many failed tests of one job are kept: GitHub keeps ten annotations a step, and the
+#: suite's conftest writes one per failed test (`pytest_terminal_summary`), so the row names
+#: the first few and counts the rest.
+TESTS_KEPT = 5
+
+
+def runs_of(body: dict, workflow: str) -> list:
+    """GitHub's runs listing for one sha, *workflow*'s runs only, in the fields the row draws:
+    ``[{"number", "attempt", "status", "conclusion", "url", "id", "completed_at"}]``, oldest
+    first. *completed_at* is a completed run's ``updated_at`` (the listing has no
+    ``completed_at``; a completed run is not updated after it), None while it runs."""
+    out = []
+    for r in (body or {}).get("workflow_runs") or []:
+        if r.get("path") != workflow:
+            continue
+        done = r.get("status") == "completed"
+        out.append({"number": r.get("run_number"), "attempt": int(r.get("run_attempt") or 1),
+                    "status": r.get("status"), "conclusion": r.get("conclusion"),
+                    "url": r.get("html_url"), "id": r.get("id"),
+                    "completed_at": r.get("updated_at") if done else None})
+    return sorted(out, key=run_order)
+
+
+def run_order(r: dict) -> tuple:
+    """`nmas-deploy`'s `_run_order` over the fields `runs_of` keeps: run number, then
+    attempt, then id."""
+    return (r.get("number") or 0, r.get("attempt") or 0, r.get("id") or 0)
+
+
+def _failed_tests(slug: str, job: dict, get) -> tuple:
+    """``(tests, error)``: the failed tests GitHub's annotations name for one failed *job*,
+    ``[{"job", "test", "line"}]`` (the conftest's annotation: the test's node id as its title,
+    its first error line as its message), at most TESTS_KEPT, and how many more. One request."""
+    _status, body, reason = get(f"/repos/{slug}/check-runs/{job.get('id')}/annotations"
+                                "?per_page=50")
+    if not isinstance(body, list):
+        return [], f"the annotations of {job.get('name') or '?'} could not be read ({reason})"
+    tests = []
+    for a in body:
+        title = str(a.get("title") or "")
+        if a.get("annotation_level") != "failure" or "::" not in title:
+            continue
+        line = str(a.get("message") or "").strip().splitlines()[:1]
+        line = line[0].lstrip("E").strip()[:200] if line else ""
+        tests.append({"job": job.get("name") or "?", "test": title, "line": line})
+    return tests, None
+
+
+def where_failed(run: dict, get=None) -> dict:
+    """Where a failed run failed: ``{"steps", "tests", "more", "error"}``: each failed job's
+    first failed step (as `failed_steps`), and the failed tests its annotations name. One
+    request for the run's jobs and one per failed job's annotations, asked once per failed
+    attempt (a failed attempt is final; the reader carries it)."""
+    slug, rid = run_of(run.get("url") or "")["slug"], run.get("id")
+    if not slug or not rid:
+        return {"steps": [], "tests": [], "more": 0,
+                "error": "the run names no address to ask GitHub about"}
+    get = get or deploy_script().github_get
+    _status, body, reason = get(f"/repos/{slug}/actions/runs/{rid}/jobs?per_page=50")
+    if body is None:
+        return {"steps": [], "tests": [], "more": 0,
+                "error": f"GitHub's jobs for run {rid} could not be read ({reason})"}
+    where, tests, errors = {}, [], []
+    for job in body.get("jobs") or []:
+        if job.get("conclusion") != "failure":
+            continue
+        step = next((s.get("name") for s in job.get("steps") or []
+                     if s.get("conclusion") == "failure"), None) or "no step marked failed"
+        where.setdefault(step, []).append(job.get("name") or "?")
+        got, error = _failed_tests(slug, job, get)
+        tests += got
+        if error:
+            errors.append(error)
+    return {"steps": [{"step": s, "jobs": sorted(j)} for s, j in where.items()],
+            "tests": tests[:TESTS_KEPT], "more": max(0, len(tests) - TESTS_KEPT),
+            "error": "; ".join(errors) or (None if where else f"run {rid} lists no failed job")}
+
+
+def red_of(runs, previous: dict = None, get=None) -> dict:
+    """The red the running commit's row draws, or None: the run whose completed attempt failed
+    and is the commit's latest conclusive run (an older red a later pass superseded is no
+    red), with where it failed (asked once per attempt, carried from *previous*, the last
+    stored red); or *previous* itself while the listing shows that run again at a later
+    attempt that is still going (GitHub's listing shows a run's latest attempt only, so a
+    re-run hides the failed one). *rerun* is the commit's newest run still going after the
+    red, or None. A red's facts outlive no re-run that ended: a passed re-run is no red, and a
+    failed one is a new red, asked about afresh."""
+    if runs is None:
+        return None
+    previous = previous or {}
+    done = [r for r in runs if r.get("status") == "completed"
+            and r.get("conclusion") not in ("cancelled", "skipped", None, "")]
+    latest = max(done, key=run_order) if done else None
+    if latest and latest.get("conclusion") in FAILED_CONCLUSIONS:
+        if (previous.get("id") == latest.get("id")
+                and previous.get("attempt") == latest.get("attempt")
+                and previous.get("failed_at") is not None):
+            kept = {k: previous.get(k) for k in ("failed_at", "tests", "more", "where_error")}
+        else:
+            w = where_failed(latest, get)
+            kept = {"failed_at": w["steps"], "tests": w["tests"], "more": w["more"],
+                    "where_error": w["error"]}
+        red = dict(latest, **kept)
+    elif previous.get("id") and any(
+            r.get("id") == previous["id"] and r.get("attempt", 0) > previous.get("attempt", 0)
+            and r.get("status") != "completed" for r in runs):
+        red = {k: v for k, v in previous.items() if k != "rerun"}
+    else:
+        return None
+    live = [r for r in runs if r.get("status") != "completed" and run_order(r) > run_order(red)]
+    newest = max(live, key=run_order) if live else None
+    red["rerun"] = ({"number": newest["number"], "attempt": newest["attempt"],
+                     "status": newest["status"], "url": newest.get("url"),
+                     "same_run": newest.get("id") == red.get("id")} if newest else None)
+    return red
+
+
+def read(commit=None, verdict=None, get=None, previous=None, root=None, store=None,
+         fetch=None) -> dict:
+    """The verdict (`nmas-deploy`'s `ci_verdict`, its one implementation), and from the
+    same answer the running commit's own runs: the verdict's GitHub requests are recorded as
+    they are made (*get* wraps the script's own), so the runs cost no request of their own.
+    A red's jobs and failed tests are asked once per failed attempt (`red_of`). *verdict*
+    stands in for the script's whole verdict (its runs then not recorded); *root*, *store*
+    and *fetch* for the checkout, the local runner's store and the gate's notes in tests."""
     from routes import health
 
     commit = health._COMMIT if commit is None else commit
     if not commit:
         raise RuntimeError(f"the loaded commit is unknown: {health._COMMIT_ERROR}")
     mod = deploy_script()
-    code, sentence = (verdict or mod.ci_verdict)(ROOT, commit)
+    ask = get or mod.github_get
+    seen = {}
+
+    def recording(path, *args, **kwargs):
+        got = ask(path, *args, **kwargs)
+        if f"head_sha={commit}" in path and got[1] is not None:
+            seen["runs"] = runs_of(got[1], mod.WORKFLOW_PATH)
+        return got
+
+    if verdict is not None:
+        code, sentence = verdict(root or ROOT, commit)
+    else:
+        code, sentence = mod.ci_verdict(root or ROOT, commit, get=recording, store=store,
+                                        fetch=fetch)
+    if previous is None:
+        got = reader_job.read_cached(READER.name)
+        previous = (((got.get("doc") or {}).get("last_good") or {}).get("value") or {}) \
+            if got.get("state") == "ok" else {}
+    old = (previous or {}).get("red") if (previous or {}).get("commit") == commit else None
+    runs = seen.get("runs")
     return {"commit": commit, "code": code, "state": state_of(mod, code), "sentence": sentence,
-            "source": source_of(mod, sentence)}
+            "source": source_of(mod, sentence), "runs": runs,
+            "red": red_of(runs, old, get=ask)}
 
 
 READER = reader_job.register(reader_job.Reader(
     name="ci-verdict",
     what="the running commit's CI verdict, by nmas-deploy's own gate, for the status bar",
-    endpoints=("GitHub Actions runs for the running commit (and its ancestors when it has none)",),
+    endpoints=("GitHub Actions runs for the running commit (and its ancestors when it has none)",
+               "a failed run's jobs, and each failed job's annotations (its failed tests)"),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("GitHub allows 60 unauthenticated requests an hour per address, shared with "
                     "nmas-deploy; a verdict costs 1, up to 11 walking back (C170), so every "
-                    "15 min is about 4 an hour and 44 at worst"),
+                    "15 min is about 4 an hour and 44 at worst; a red adds 1 plus 1 per failed "
+                    "job, once per failed attempt"),
     read=read,
     invalidates=("ci_verdict",),
     remedy="Read the error above: it names what could not be asked",

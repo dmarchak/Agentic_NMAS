@@ -104,10 +104,13 @@ class TestTheCompositionComposes:
 
 
 class TestTheSource:
-    def test_a_running_commit_ci_failed_is_a_danger_row(self):
+    def test_a_running_commit_ci_failed_is_a_warning_row(self):
+        # Premise corrected (C3425, the operator, 2026-11-13: "Severity WARNING, not critical
+        # (critical = a network outage; this notice was designed as a warning)"): it was
+        # `..._is_a_danger_row`, asserting level "danger".
         store_ci(H._COMMIT, CV.deploy_script().CI_REFUSED)
         (row,) = A.ci_source()["rows"]
-        assert row["level"] == "danger" and "its CI run failed" in row["what"]
+        assert row["level"] == "warning" and "its CI run failed" in row["what"]
 
     def test_a_verified_commit_is_no_row(self):
         store_ci(H._COMMIT, CV.deploy_script().OK)
