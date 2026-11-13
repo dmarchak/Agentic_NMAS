@@ -285,9 +285,20 @@ def test_a_device_read_s_secret_line_is_withheld_as_the_loop_withholds_it(ai, re
 
 # ── What a press sends ──────────────────────────────────────────────────────────────────────
 
+def _one_instant(monkeypatch):
+    """The preview and the press built at one instant: the evidence pack's clock seam
+    (`evidence_pack._now`) pinned, so the two bodies compare byte for byte whatever second
+    each is built in (CI run #1678: built a second apart, every read time differed)."""
+    import time
+    from modules import evidence_pack as EP
+    fixed = float(int(time.time()))
+    monkeypatch.setattr(EP, "_now", lambda: fixed)
+
+
 def test_pass_1_is_byte_for_byte_what_the_press_hands_the_provider(ai, reads,  # noqa: F811
                                                                    monkeypatch):
     _class(monkeypatch, True)
+    _one_instant(monkeypatch)
     iid = stopped(ai)
     with pytest.MonkeyPatch.context() as mp:
         reached = _no_way_out(mp)
@@ -309,6 +320,7 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
     from modules.ai import fixit_troubleshoot as T
     from modules.ai import anthropic_adapter as AD
     _class(monkeypatch, True)
+    _one_instant(monkeypatch)
     iid = stopped(ai)
     asked = [{"op": "collector_sessions", "args": {"device": "r2", "subscription": "101"},
               "why": "the collector's side", "hypothesis": "a dead session"},
