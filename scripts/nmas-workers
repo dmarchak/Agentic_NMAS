@@ -35,6 +35,7 @@ second refuses, naming the holder.
 
 import argparse
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -215,18 +216,57 @@ def gate_floor(available: int, beside: bool) -> str:
     return ""
 
 
-#: Words a command that runs tests names (the suite's own runner and the interpreters it runs in).
-RUNNER_WORDS = ("pytest", "nmas-test", "python")
+#: The programs that run tests (the suite's own runner and the interpreters it runs in), each
+#: matched against a whole program name: a word's last path part, anchored. Never a substring of
+#: the command (CI #1704, 2026-11-13: the words matched inside the paths a stand-in writes to,
+#: under the test run's own temporary folder, /tmp/nmas-test-inflight.*/ or
+#: /tmp/pytest-of-<user>/, so the gate's own tests waited for memory, 30 s a turn, on CI's loaded
+#: runner until the job's bound fired).
+RUNNER_PROGRAMS = re.compile(r"^(pytest(-3)?|py\.test|nmas-test|python(\d+(\.\d+)*)?)$")
+#: A word that assigns a variable (`PYTHON=/venv/bin/python`): its value is the word judged.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def command_words(command: str):
+    """Every word of the shell *command*, split as the shell splits it (quotes, and the
+    operators ; && || | & ( ) < > as words of their own), with a quoted word holding a command
+    (`sh -c '…'`) split again; ``None`` when it cannot be split (an unbalanced quote)."""
+    import shlex
+    lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    try:
+        words = list(lex)
+    except ValueError:
+        return None
+    out = []
+    for word in words:
+        out.append(word)
+        if any(c.isspace() for c in word):
+            inner = command_words(word)
+            if inner is None:
+                return None
+            out.extend(inner)
+    return out
+
+
+def names_a_runner(word: str) -> bool:
+    """Does *word* name a test runner (RUNNER_PROGRAMS)? Judged by its last path part, after any
+    variable assignment and the backticks or `$` of a substitution around it."""
+    if _ASSIGNMENT.match(word):
+        word = word.split("=", 1)[1]
+    return bool(RUNNER_PROGRAMS.match(word.strip("`$").rsplit("/", 1)[-1].lower()))
 
 
 def starts_a_suite(stand_in) -> bool:
     """Does the run about to start a suite? Decided by what it runs, never by a flag alone (the
     operator, 2026-11-12: "the exemption is decided by the run starting no suite, not by a flag
     a real gate could set"): with no stand-in (NMAS_GATE_SUITE unset) the gate runs its five
-    shards; a stand-in starts a suite when its command names a test runner (RUNNER_WORDS)."""
+    shards; a stand-in starts a suite when one of its words names a test runner
+    (`names_a_runner`), and so does one that cannot be split (the safe side: it waits)."""
     if not stand_in:
         return True
-    return any(w in stand_in.lower() for w in RUNNER_WORDS)
+    words = command_words(stand_in)
+    return words is None or any(names_a_runner(w) for w in words)
 
 
 def hold_full(who: str, path: str = None, *, mem=None, beside_now=None, sleep=None,

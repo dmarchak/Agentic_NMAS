@@ -224,6 +224,49 @@ class TestTheFloors:
         assert W.starts_a_suite(None) and W.starts_a_suite("scripts/nmas-test -n 2")
         assert not W.starts_a_suite("pwd > x; git write-tree > y; echo '1 passed'; exit 0")
 
+    def test_a_stand_in_writing_under_a_test_runs_folder_starts_no_suite(self, tmp_path,
+                                                                        monkeypatch):
+        """CI #1704 (2026-11-13): tests/test_nmas_gate.py's stand-ins write to paths under the
+        test's own folder, which nmas-test puts under /tmp/nmas-test-inflight.*/ and a bare
+        pytest under /tmp/pytest-of-<user>/. The runner's name inside such a path made the
+        stand-in a suite, and the gate's tests waited for memory, 30 s a turn, wherever less
+        than 9.4 GiB was free: CI's loaded runner, never this laptop, until browser2's bound
+        fired. The shapes are the hung tests' own (tests/test_nmas_gate.py, lines 114, 333 and
+        1137 at 671185ca), with this test's real folder and the two runners' folders."""
+        for folder in (str(tmp_path), "/tmp/nmas-test-inflight.L5QQQ6/t/test_the_suite_runs0",
+                       "/tmp/pytest-of-runner/pytest-0/popen-gw3/test_a_gap_under_a_second0",
+                       "/srv/build/Python/Agentic_NMAS/x"):
+            for stand_in in (f"pwd > {folder}/where; echo three > {folder}/repo/docs/a.md; "
+                             "echo '12 passed in 1.00s'; exit 0",
+                             f"echo 6308.9 > {folder}/gap; echo '1 failed, 11 passed in 2501.0s'"
+                             "; exit 1",
+                             f"echo 'a, edited during the run' > {folder}/two/docs/a.md; "
+                             "echo '12 passed in 1.00s'"):
+                assert not W.starts_a_suite(stand_in), stand_in
+                monkeypatch.setenv("NMAS_GATE_SUITE", stand_in)
+                got, said, slept = self._hold(tmp_path, [1.0])
+                assert not isinstance(got, str) and said == [] and slept == [], stand_in
+                got.close()
+
+    @pytest.mark.parametrize("stand_in", [
+        "python -m pytest tests -n 2", "pytest -q tests", "timeout 9 pytest -q",
+        "scripts/nmas-test -n 2", "/venv/bin/python3.12 -c 0 && echo ok", "python3 -m pytest",
+        "PYTHON=/venv/bin/python scripts/nmas-x", "sh -c 'python -m pytest tests'",
+        "echo $(python -V)", "cd /x && .venv/bin/py.test", "pytest-3 tests", "echo 'unbalanced"])
+    def test_a_stand_in_naming_a_runner_as_a_program_still_starts_a_suite(self, stand_in):
+        """The safe side kept: a runner named as a program, however it is reached (a path, an
+        assignment, a quoted command, a substitution), and a command that cannot be split."""
+        assert W.starts_a_suite(stand_in)
+
+    def test_the_gates_own_suite_command_starts_a_suite(self):
+        """The real gate sets no stand-in, but its shards' command, read from scripts/nmas-gate,
+        is judged a suite too: the rule reads programs, and the gate's are runners."""
+        gate = _load("nmas_gate_suite_words", "scripts/nmas-gate")
+        cmd = gate.SUITE.format(py="/opt/nmas-py312/bin/python",
+                                shard="browser2", cov="/tmp/cov", n=2, bound=740, req=1)
+        assert W.starts_a_suite(cmd)
+        assert W.starts_a_suite("/opt/nmas-py312/bin/python -c 0")
+
 
 class TestCISizingIsUnchanged:
     """The operator, 2026-11-12: "The measured peaks and caps apply to the laptop gate only; CI
