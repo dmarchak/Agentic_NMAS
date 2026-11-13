@@ -1720,18 +1720,52 @@ def alert_rule_changes(ctx):
                 ("Devices", ", ".join(r.get("devices") or [])
                  or "none by label: the network's record only")]
 
-    events, firsts = [], {}
-    for r in rows:
-        if r.get("change") == "baseline":
-            firsts.setdefault((r.get("store"), r.get("seen_at")), []).append(r)
-            continue
+    def unmoved(r):
+        """A save that changed nothing the rule evaluates or sends: its version moved, its
+        definition hash (`alert_rule_changes.definition_hash`) did not."""
+        return (r.get("change") == "changed" and bool(r.get("hash"))
+                and r.get("hash_from") == r.get("hash"))
+
+    def one(r):
         verb = _RULE_CHANGE_WORDS.get(r.get("change"), r.get("change") or "?")
         what = f"Alert rule {verb} in Grafana: {r.get('title')}, {version(r)}"
         if r.get("change") == "changed" and r.get("summary"):
             what += f": {r['summary']}"
-        events.append(_event(r.get("at"), "alert_rule", what, r.get("devices") or [],
-                             who=r.get("who", ""), detail=r.get("at_basis", ""),
-                             outcome=r.get("change", ""), record=record(r)))
+        return _event(r.get("at"), "alert_rule", what, r.get("devices") or [],
+                      who=r.get("who", ""), detail=r.get("at_basis", ""),
+                      outcome=r.get("change", ""), record=record(r))
+
+    events, firsts, resaved = [], {}, {}
+    for r in rows:
+        if r.get("change") == "baseline":
+            firsts.setdefault((r.get("store"), r.get("seen_at")), []).append(r)
+            continue
+        if unmoved(r):
+            resaved.setdefault((r.get("store"), r.get("seen_at"), r.get("who", "")),
+                               []).append(r)
+            continue
+        events.append(one(r))
+    # A save burst (C3399; the operator, 2026-11-13: "History groups Grafana saves whose
+    # definition hash didn't change into one row per save burst ("Grafana re-saved 27 rules: no
+    # change to what they evaluate"), and only real changes stand alone"): the saves one read of
+    # the ruler found (its ``seen_at``) by one person whose definition hash did not move, one
+    # row, each rule listed where it opens. A save whose hash moved is never among them.
+    for (store, seen, who), rs in resaved.items():
+        if len(rs) == 1:
+            events.append(one(rs[0]))
+            continue
+        ats = sorted(iso(r.get("at")) for r in rs)
+        events.append(_event(ats[-1], "alert_rule",
+                             f"Grafana re-saved {len(rs)} rules: no change to what they "
+                             "evaluate",
+                             sorted({d for r in rs for d in r.get("devices") or []}),
+                             who=who, detail=f"Saved from {ats[0]} to {ats[-1]}",
+                             outcome="unchanged",
+                             record=[("Read from", f"Grafana's ruler, by the alerts reader "
+                                                   f"({store})"), ("Seen by Mercury", seen)]
+                             + [(r.get("title"), f"{version(r)}, saved {r.get('updated')}, "
+                                                 f"definition hash {r.get('hash')} unchanged")
+                                for r in rs]))
     for (store, seen), rs in firsts.items():
         n = len(rs)
         events.append(_event(seen, "alert_rule",
@@ -3154,6 +3188,37 @@ def devices_words(devices: list, subject: str = "") -> str:
     if len(devices) <= 3:
         return ", ".join(devices)
     return f"{len(devices)} devices"
+
+
+#: What makes two rows one run (C3399; the operator, 2026-11-13: "group runs of identical
+#: History rows (e.g. "Show commands ×25")"): the same kind, words, devices and person, and the
+#: same outcome and marks, so a failed or marked row never folds among ones that were not.
+RUN_FIELDS = ("kind", "what", "devices", "devices_words", "who", "outcome", "marks")
+
+
+def _alike(a: dict, b: dict) -> bool:
+    """Whether *b* continues *a*'s run. A row carrying a commit (``sha``: a change of its own,
+    with its change to show) or an AI call (``call``: its own prompt and answer, which a
+    feature's link opens) always stands alone."""
+    if any(e.get("sha") or e.get("call") for e in (a, b)):
+        return False
+    return all(a.get(f) == b.get(f) for f in RUN_FIELDS)
+
+
+def runs(events: list) -> list:
+    """*events* (a page of the timeline, in its order) as runs: each a list of the ADJACENT
+    rows alike by `RUN_FIELDS`, one row for any other. The page draws a run of two or more as
+    one row, "×N" with its first and last times, opening to each row; never a run across a
+    row that differs, and every row is in exactly one run, in order, so a count of the rows is
+    the count of the runs' rows. The one grouping of History's rows; a page boundary ends a
+    run (Load more's rows are grouped among themselves)."""
+    out = []
+    for e in events or []:
+        if out and _alike(out[-1][-1], e):
+            out[-1].append(e)
+        else:
+            out.append([e])
+    return out
 
 
 def name_reused(ref, device: str):

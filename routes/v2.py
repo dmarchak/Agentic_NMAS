@@ -323,6 +323,15 @@ def _names_zone(zone: str, current: str) -> bool:
     return zone != named
 
 
+@bp.app_template_filter("history_runs")
+def history_runs(events) -> list:
+    """A page of History's rows as its runs of alike adjacent rows (`history_sources.runs`,
+    C3399), for `{% for run in h.events | history_runs %}`."""
+    from modules import history_sources
+
+    return history_sources.runs(events)
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the

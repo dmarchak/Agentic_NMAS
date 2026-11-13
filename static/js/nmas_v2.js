@@ -859,7 +859,11 @@
       if (holdsPart(c, ctx)) { keptBefore.push(c); continue; }
       if (c.parentNode === live) live.removeChild(c);
     }
-    // The page's own children, and rows kept so, stay after the child they followed.
+    // The page's own children, and rows kept so, stay after the ELEMENT they followed. Never
+    // after the whitespace between rows: text is matched by its place among the unkeyed, so a
+    // new row drawn above moves which text a kept row followed, and the row with it (C3399:
+    // History's run of break-glass rows put the opened record above the run, one row up,
+    // under the person's pointer, C2841's defect back).
     var after = {}, lead = [], anchor = null;
     for (i = 0; i < kids.length; i++) {
       var kid = kids[i];
@@ -867,7 +871,7 @@
       if (stays) {
         if (anchor === null) lead.push(kid);
         else (after[anchor] = after[anchor] || []).push(kid);
-      } else if (used.indexOf(kid) >= 0) {
+      } else if (used.indexOf(kid) >= 0 && kid.nodeType === 1) {
         anchor = used.indexOf(kid);
       }
     }

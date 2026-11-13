@@ -56,6 +56,11 @@ Each record is one line:
 - **What.**
 - **Who.**
 
+Lines next to each other that are alike (the same kind, what, device, person, outcome and
+marks) are one line, "Show commands: show clock ×25", with the first and last times; open it
+for each of its lines. A line that differs, between them, keeps them apart, and a commit or an
+AI call always has a line of its own.
+
 Open a line for the full record underneath. It shows:
 
 - the reason and each step with its result;
@@ -158,8 +163,11 @@ service account, or its file provisioning); where Grafana names no one, the row 
 "Grafana does not say". The row's time is when Grafana saved it; open the row for when
 Mercury saw it, both versions, both hashes and where it was read. The first time Mercury reads
 a Grafana's rules it records each at its version as one row, "Alert rules first recorded",
-which is not a change. A rule generated per device (a heartbeat rule, carrying a `device`
-label) shows on that device's History too; any other rule's change shows on the network's
+which is not a change. Saves that changed nothing a rule evaluates (its version moved, its
+definition hash did not), found in one read and saved by one account, are one row, "Grafana
+re-saved 27 rules: no change to what they evaluate", each rule listed when it is opened; a
+save whose definition moved always stands alone. A rule generated per device (a heartbeat
+rule, carrying a `device` label) shows on that device's History too; any other rule's change shows on the network's
 History only, because a query that mentions a device is not an exact claim about which device
 it is. A read of Grafana that failed, or whose rules came back incomplete, records nothing.
 Rows appear when the page next loads.

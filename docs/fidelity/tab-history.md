@@ -44,7 +44,8 @@ incident-page F built for History, 1). Nothing else on a row moves. Compared by 
 diff, not a new shot. Templates sha256 before:
 `0e2cffcd1a0461b1f655b1db15854992c3200f973ebf2c91e33540f82e992321`.
 Compared again 2026-11-13 (C3290): `_timeline.html` draws a row's words, marks, detail, correction and record values through `people | times` (routes/v2.py), so an instant in them, and a record's value that is one ("Saved in Grafana"), is `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover. No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `1e67c43a40e0b35b97f7f065f0b7bfa651ba250e6928d3fd11fe4ed1c02f510d`.
-Templates sha256: `4fc80791c3ace9bf178c4c29ae6f02690fc341ca9ad835b02bf6f86537699004`
+Compared again 2026-11-13 (C3399): `_timeline.html`, which this tab draws as History does, draws a run of adjacent rows alike in kind, what, devices, who, outcome and marks as one closed row in the row's own place ("×N", the first and last times through `clock`), opening to each row drawn by the same `timeline_row` macro; a row with a commit or an AI call always stands alone. The tab's board draws one row per record: **deviation** (log: History: a run of alike rows is one row, ×N). Nothing else on a row moves; compared by the template's diff and the device tab's render (tests/test_history_grouping.py's device-tab test), not by new shots. Templates sha256 before: `4fc80791c3ace9bf178c4c29ae6f02690fc341ca9ad835b02bf6f86537699004`.
+Templates sha256: `de9b8fbf6ebdacf05f77213869780a59e790f334b4d473cb0b9c297ae66da7db`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_timeline.html`, each place that draws a person now

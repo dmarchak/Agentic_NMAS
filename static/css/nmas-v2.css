@@ -1487,6 +1487,10 @@ button.menu-item[disabled]:hover { background: none; }
 .tl-record dt { color: var(--ink-3); }
 .tl-record dd { margin: 0; overflow-wrap: anywhere; }
 .tl-exception { color: var(--warn); }
+/* A run of alike rows (C3399): its rows under it, the last without its rule. */
+.tl-run-n { font-weight: 600; }
+.tl-run-rows { border-top: 1px solid var(--line-2); }
+.tl-run-rows > .hist-row:last-child { border-bottom: 0; }
 @media (max-width: 640px) {
   .tl-sum { grid-template-columns: 14px minmax(0, 1fr); row-gap: 2px; }
   .tl-when { grid-column: 2; font-size: 12px; }

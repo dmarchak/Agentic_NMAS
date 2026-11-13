@@ -2032,6 +2032,32 @@ def _alert_rule_changes(client, _lab, _mp):
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def _history_runs(client, _lab, _mp):
+    """History's run of alike adjacent rows (C3399): two Show commands runs of `show clock` on
+    r3 by one person, by the real run (`reads.run`) over tests/test_show_commands.py's fleet,
+    drawn as one row "×2" opening to each. The runs' records are removed after, so no later
+    page draws them."""
+    from modules.nsot import reads
+    from tests.test_show_commands import Fleet
+
+    made = []
+    try:
+        for _ in range(2):
+            got = reads.run("Lab", ["r3"], ["show clock"], "operator@example.com",
+                            session=Fleet())
+            made.append(got["id"])
+        r = client.get("/v2/history?list=Lab&kind=show_commands&since=",
+                       headers={"Accept": "text/html"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "tl-run-rows" in body, r.status_code
+    finally:
+        for run_id in made:
+            try:
+                os.remove(reads._path("Lab", run_id))
+            except OSError:
+                pass
+
+
 def _save_no_golden(client, _lab, _mp):
     """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
     golden and is left out, named; r9 holds none and is planned."""
@@ -4764,7 +4790,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
                    _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
-                   _alert_rule_changes,
+                   _alert_rule_changes, _history_runs,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,
                    _display_names,
