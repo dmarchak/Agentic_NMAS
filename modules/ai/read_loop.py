@@ -20,10 +20,12 @@ answer cites and what it acts on. `run(family, feature, ...)` then makes at most
    its egress class is off for the network (or not built), and all are when the network
    carries a classification marking. Each refusal names the operation and the argument it
    compared.
-3. **The reads**: the allowed ones run (`fanout.read_each`, concurrent, at most the family's
-   limit at once); each answer masked by the egress mask (`redact.redact_egress`) before
-   anything is kept or sent, a line (or, for a structured answer, a leaf) the mask changed
-   dropped whole and counted (15.11's condition 2, as 19.5 states it), a stored secret still
+3. **The reads**: the allowed ones run (`run_reads`: `fanout.read_each`, concurrent, at most
+   the family's limit at once, but one device's reads one after another in the pass's order,
+   each taking the device's one-operation hold after the last released it, C3422); each
+   answer masked by the egress mask (`redact.redact_egress`) before anything is kept or
+   sent, a line (or, for a structured answer, a leaf) the mask changed dropped whole and
+   counted (15.11's condition 2, as 19.5 states it), a stored secret still
    present withholding the whole answer; then cut to `AI_READ_CAP` bytes, saying so with the
    whole answer's size and sha256. Each is kept as a read record with its id, ``read:<n>``,
    its place in the request list. A refused request never runs; a failed read is said.
@@ -872,17 +874,72 @@ def _answered(verdict: dict, answer, values: dict) -> dict:
                 sent_sha256=hashlib.sha256(data).hexdigest(), withheld=withheld, **where)
 
 
+def device_of(family: ReadFamily, verdict: dict) -> Optional[str]:
+    """The device an allowed *verdict*'s read is sent to, or None for a read that reaches no
+    device. Only the ``cli`` transport sends to a device (each such operation names it as its
+    ``device`` argument: `router_reads._operation`); ``local``, ``seal`` and ``http`` reads are
+    answered by Mercury, a kept snapshot or a controller. A ``cli`` read naming no device is
+    keyed "", so such reads run one after another too, never at once on a device unnamed."""
+    op = family.operation(verdict.get("op") or "")
+    if op is None or family.transport_of(op) != "cli":
+        return None
+    return str((verdict.get("args") or {}).get("device") or "")
+
+
+def _turns(family: ReadFamily, allowed: list) -> list:
+    """*allowed* (by index) as the turns that run at once: each device's reads one turn, in the
+    pass's order; every read that reaches no device a turn of its own (C3422)."""
+    turns, by_device = [], {}
+    for i, v in enumerate(allowed):
+        device = device_of(family, v)
+        if device is None:
+            turns.append([i])
+        elif device in by_device:
+            by_device[device].append(i)
+        else:
+            by_device[device] = [i]
+            turns.append(by_device[device])
+    return turns
+
+
 def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
-    """The allowed *verdicts* run (`fanout.read_each`, at once, at most the family's limit),
-    each handed exactly its rendered requests; every verdict back as its read record, in
-    order: run (its masked, bounded answer), refused (as judged, never run) or failed (said)."""
+    """The allowed *verdicts* run, each handed exactly its rendered requests; every verdict back
+    as its read record, in order: run (its masked, bounded answer), refused (as judged, never
+    run) or failed (said).
+
+    **One device's reads run one after another, in the pass's order** (C3422): each takes the
+    device's one-operation hold (`device_ops`, through the reads engine) after the last has
+    released it, so a pass's own reads of one device never refuse each other. Reads of
+    different devices, and reads that reach no device (`device_of`), run at once
+    (`fanout.read_each`, at most the family's limit). A device another operation holds is
+    still refused by name, never waited for."""
     from modules import fanout, redact
 
     scope = dict(scope or {})
     allowed = [v for v in verdicts if v["verdict"] == "allowed"]
-    results = fanout.read_each(
-        lambda v: family.run(v["op"], dict(v["args"]), list(v["requests"]), scope), allowed,
-        name=f"read_loop.{family.name}", max_workers=family.limit)
+
+    def one(v):
+        return family.run(v["op"], dict(v["args"]), list(v["requests"]), scope)
+
+    def in_turn(turn):
+        # One device's reads, one after another: the hold is one operation's at a time, so
+        # reads of one device at once refused all but one (C3422); never across devices.
+        out = []
+        for i in turn:
+            try:
+                out.append(one(allowed[i]))
+            except Exception as exc:                    # noqa: BLE001 (that read's failure)
+                out.append(fanout.Failed(exc))
+        return out
+
+    turns = _turns(family, allowed)
+    results = [None] * len(allowed)
+    for turn, got in zip(turns, fanout.read_each(in_turn, turns,
+                                                 name=f"read_loop.{family.name}",
+                                                 max_workers=family.limit)):
+        for i, answer in zip(turn, [got] * len(turn) if isinstance(got, fanout.Failed)
+                             else got):
+            results[i] = answer
     values = redact.known_secret_values()
     got = iter(results)
     out = []
