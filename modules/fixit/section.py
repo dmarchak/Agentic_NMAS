@@ -310,8 +310,11 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     page's state: ``fixed``, ``cleared`` or ``cancelled``). A read: the incident's record, the
     operations' run records, the record of AI calls and the settings. ``{"state", "why", "id",
     "network", "device", "totals", "attempts", "more", "incomplete", "stop", "proposal",
-    "cancelled", "handover", "handovers", "retry", "teams", "mode", "advisories", "ended"}``;
-    *advisories* the AI analysis kept for the incident today, drawn as advice."""
+    "cancelled", "handover", "handovers", "retry", "teams", "mode", "advisories", "ended",
+    "cant_fix", "page_state"}``; *advisories* the AI analysis kept for the incident today,
+    drawn as advice; *cant_fix* whether its kept AI analysis is drawn in full (`analysed`: the
+    routes that draw the section then add ``analysis``); *page_state* the incident's one state
+    as its whole page says it (`_stated`)."""
     from modules.fixit import handover as H
     from modules.fixit import incident as F
     from modules.fixit import policy as P
@@ -324,9 +327,10 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
            "handovers": [], "retry": {}, "teams": {}, "mode": {}, "unreadable": "",
            "ended": ended if resolved is not None else "",
            "advisories": [{"at": a.get("at") or "", "words": a.get("words") or ""}
-                          for a in (found.get("advisories") or [])[-1:]]}
+                          for a in (found.get("advisories") or [])[-1:]],
+           "cant_fix": analysed(found)}
     if inc is None:
-        return out
+        return _stated(out, found)
     now = time.time() if now is None else float(now)
     rec = F.read(inc)
     tried = F.attempts(inc, resolved, now=now)
@@ -356,7 +360,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     newest = max(events, key=lambda e: (e[0], e[1])) if events else None
     if resolved is not None:
         out["state"] = "resolved"
-        return out
+        return _stated(out, found)
     if newest is None:
         state = "ready"
     elif newest[2] == "attempt":
@@ -394,7 +398,35 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         "sent": _what_is_sent(drawn, rec["lines"])}
     out["ai"] = ai_offer(state, cs)
     out["teams"] = H.offered(network)
+    return _stated(out, found)
+
+
+def _stated(out: dict, found: dict) -> dict:
+    """*out* with ``page_state``: the incident's state as its whole page says it
+    (`incident_page.status`, the ONE function, asked with this section's own state), so the
+    section never says a person may leave it while the header says one is needed, or the
+    reverse (the GUI review's item 2, C3450). Asked here, so a post that draws the section
+    again alone (routes/fixit_v2.py) says the same."""
+    from modules import incident_page
+
+    out["page_state"] = incident_page.status(found.get("incident"), found.get("entry") or {},
+                                             found.get("decisions") or [],
+                                             out["state"])["state"]
     return out
+
+
+def analysed(found: dict) -> bool:
+    """Whether the incident is one whose AI analysis the page draws in full (C3488: the page
+    drew its one advisory line, and the answer itself only on the incident's Needs attention
+    row): a can't-fix, by the rule its row draws the analysis by (`attention.is_cant_fix`).
+    The section reads no analysis itself: what is kept is read by the one page-side reader of
+    the analysis (`routes.v2.heal_analysis_of`, a read of its store and never a call), which
+    the routes that draw the section ask (tests/test_read_loop_never_read.py holds the exact
+    list of who reaches it)."""
+    from modules import attention
+
+    return bool(found.get("id")) and attention.is_cant_fix((found.get("entry") or {})
+                                                           .get("outcome"))
 
 
 #: The states in which the AI may be asked: nothing tried yet (Troubleshoot with AI), and

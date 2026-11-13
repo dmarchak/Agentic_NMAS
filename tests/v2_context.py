@@ -4202,19 +4202,7 @@ def _heal_proposal(client, _lab, _mp):
     # the card; and on a can't-fix row of the same network, under "Mercury's diagnosis".
     from modules.heal import auto_diagnose as AD
     from modules.heal import steplog as SL
-    diag = {"id": "dg-0123456789abcdef", "runbook": "adjacency_down",
-            "runbook_words": "adjacency down with both ends at intent", "incident":
-            "hi-0123456789", "actor": AD.ACTOR, "state": "done", "words": "", "steps": [],
-            "hypotheses": [{"rule": "down_admin_up", "layer": "physical",
-                            "strength": "decisive", "incomplete": [], "agree": 2,
-                            "claim": "r3 Gi4 is down while administratively up, and r4 Gi4 is up",
-                            "evidence": [{"read": "read:rr-1:r3:show interfaces "
-                                                  "GigabitEthernet4", "line": "", "intent": ""}],
-                            "rule_out": "", "todo": "Check the link"}],
-            "more": 0, "ruled_out": [{"check": "both ends on one subnet", "rule": "subnet"}],
-            "not_checked": [], "commands": 16, "cap": 70, "runs": ["rr-1"], "stopped": "",
-            "devices": ["r3", "r4"], "started_at": "2026-11-04T18:12:10Z",
-            "finished_at": "2026-11-04T18:12:40Z"}
+    diag = _adjacency_diagnosis("hi-0123456789")
     view["diagnosis"] = AD.drawn(net, "hi-0123456789", host, d=diag)
     entry = {"incident": "hi-0123456780", "device": host, "network": net, "decisions": [],
              "steps": [{"step": "decide", "result": "cant_fix", "words": "physical"}],
@@ -4648,6 +4636,27 @@ def _sdn_policies(client, _lab, _mp):
             os.remove(store)
 
 
+def _adjacency_diagnosis(incident: str) -> dict:
+    """Mercury's diagnosis of a lost adjacency on r3, one decisive hypothesis and one check
+    ruled out, attached to *incident*: what a proposal's card, a can't-fix's Needs attention
+    row and the incident's own page each draw (H17; C3488)."""
+    from modules.heal import auto_diagnose as AD
+
+    return {"id": "dg-0123456789abcdef", "runbook": "adjacency_down",
+            "runbook_words": "adjacency down with both ends at intent", "incident": incident,
+            "actor": AD.ACTOR, "state": "done", "words": "", "steps": [],
+            "hypotheses": [{"rule": "down_admin_up", "layer": "physical",
+                            "strength": "decisive", "incomplete": [], "agree": 2,
+                            "claim": "r3 Gi4 is down while administratively up, and r4 Gi4 is up",
+                            "evidence": [{"read": "read:rr-1:r3:show interfaces "
+                                                  "GigabitEthernet4", "line": "", "intent": ""}],
+                            "rule_out": "", "todo": "Check the link"}],
+            "more": 0, "ruled_out": [{"check": "both ends on one subnet", "rule": "subnet"}],
+            "not_checked": [], "commands": 16, "cap": 70, "runs": ["rr-1"], "stopped": "",
+            "devices": ["r3", "r4"], "started_at": "2026-11-04T18:12:10Z",
+            "finished_at": "2026-11-04T18:12:40Z"}
+
+
 def _incident_page(client, _lab, _mp):
     """One incident's own page (the incident page's board, part B) on Lab, in each state its
     one route draws, from the stores as tests/test_incident_page.py's builders left them
@@ -4700,6 +4709,12 @@ def _incident_page(client, _lab, _mp):
         busy = plant("busy")
         took = get(busy["page"])
         assert "Folded into this incident" in took and "AI analysis (advisory" in took
+        # Mercury's diagnosis attached to that can't-fix by the step log's own writer: the
+        # page draws it in full, each hypothesis (C3488), where it said "not diagnosed".
+        assert 'data-diagnosis="none"' in took
+        SL.record_diagnosis("Lab", _adjacency_diagnosis(busy["page"]))
+        diagnosed = get(busy["page"])
+        assert 'data-diagnosis="done"' in diagnosed and "Check the link" in diagnosed
         assert 'data-state="open"' in get(busy["related"])
         get(busy["folded"], 302)
         assert "No incident hi-000000000000 is recorded" in get("hi-000000000000", 404)

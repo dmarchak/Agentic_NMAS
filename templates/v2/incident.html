@@ -1,14 +1,24 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info, stamp, heal_cause, clock -%}
+{%- from "v2/_macros.html" import icon, badge, info, how, stamp, heal_cause, clock, run_href -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- One incident's own page (the incident page's board, part B; the operator's design change
-    of 2026-11-11: "each incident gets its own page"), its first slice: read-only, for a
-    self-healing incident (an `hi-` id). `modules/incident_page.page` is its model, from
-    routes/incident_v2. Top to bottom: the header (the state, the level, the device, the four
-    recorded times and TIME TO REPAIR, one line per attempt), the timeline, What's wrong, What
-    Mercury has done (THE stepper's five stages, as the heal's card on its device's page draws
-    them), What to do (links only: this page starts nothing), the AI troubleshooting frame,
-    then Evidence and The record, both collapsed. One live region: the whole of it is drawn
+    of 2026-11-11: "each incident gets its own page"), for a self-healing incident (an `hi-`
+    id). `modules/incident_page.page` is its model, from routes/incident_v2. Top to bottom: the
+    header (the state, the level, the device, the four recorded times and TIME TO REPAIR, one
+    line per attempt), the timeline, What's wrong, What Mercury has done (THE stepper's five
+    stages, as the heal's card on its device's page draws them, then Mercury's diagnosis in
+    full), What to do, the AI troubleshooting frame, then Evidence, Seen before and The
+    record. ONE state for the whole page (the GUI review's item 2, C3450; the operator,
+    2026-11-13; `incident_page.status`): the header's badge and every section carry it
+    (`data-inc-state`), and none says another. What to do says it in words and, while a person
+    is needed, draws the ONE action the incident's own Needs attention item offers as the
+    page's one primary button (`p.item`: `incident_page.item_of`, which action being
+    `attention.first_action`'s answer, the resolver the item's own line asks); its card (a
+    proposal's, a Re-subscribe's) is read and drawn under the button when it is pressed, the
+    button never moving. A page that needs nobody draws no primary button. What the item kept
+    under its Details is drawn here (C3488): the diagnosis's hypotheses, the AI analysis in
+    full (in the AI section), a lost stream's reachability, what Mercury cannot see and Seen
+    before; a decision's kind, mode and program hash are in The record. One live region: the whole of it is drawn
     again when self-healing announces, and while its heal runs on each step, as its device's
     card is. Every time is the viewer's own (the page's clock element, UTC on hover);
     every person is drawn by display name, and the identity as recorded is only in The record.
@@ -52,10 +62,13 @@
 {%- for r in p.related %}
 <div class="notice notice-muted inc-related" role="status">{{ icon('info', 16) }}<div>Related: <a href="{{ url_for('incident_v2.incident', incident_id=r.incident) }}">{{ r.device }}'s incident</a> ({{ r.why }}).</div></div>
 {%- endfor %}
-<section class="card inc-head inc-{{ p.state }}" aria-labelledby="inc-title">
+{%- set it = p.item %}
+{%- set r = it.row %}
+{%- set nets = r.networks or {} %}
+<section class="card inc-head inc-{{ p.state }}" aria-labelledby="inc-title" data-inc-state="{{ p.state }}">
   <div class="page-head"><div class="page-title">
     <h1 id="inc-title">{{ p.title }} {{ info('incident') }}</h1>
-    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span> <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
+    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %}{% if p.severity.words %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span>{% endif %} <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
       {#- A resolved incident's span ends when it ended (a fixed one at its verify, a declined
           one at the decline, a cleared one at its close: `incident_page.ended_at`). -#}
       {%- if p.resolved %} <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
@@ -86,14 +99,24 @@
   </ol>
 </details>
 {%- endif %}
-<section class="card" id="inc-wrong" aria-labelledby="h-inc-wrong">
+<section class="card" id="inc-wrong" aria-labelledby="h-inc-wrong" data-inc-state="{{ p.state }}">
   <div class="card-head"><h2 id="h-inc-wrong">What's wrong{{ ' (was)' if p.resolved }}</h2></div>
+  {#- A lost telemetry stream, as its Needs attention item says it (C3488; `attention.stream_fix`,
+      from the alerts reader's stored value): how long the device has sent nothing and what
+      that costs; whether the device answers (the reachability reader's stored value; a
+      reading that cannot say is said as that); what Mercury cannot see meanwhile. -#}
+  {%- set fx = r.fix %}
+  {%- if fx %}
+  <p class="fix-lead inc-lead">{{ fx.lead }}</p>
+  {%- if fx.answers %}<p class="fix-answers{% if fx.answers.state != 'answers' %} warn-text{% endif %}" data-answers="{{ fx.answers.state }}">{{ fx.answers.words }}</p>{% endif %}
+  {%- if fx.unseen %}<p class="fix-unseen small muted">{{ fx.unseen }}</p>{% endif %}
+  {%- endif %}
   {%- if p.wrong.cause %}{{ heal_cause(p.wrong.cause) }}{% endif %}
   {%- if p.wrong.words %}<p>{% if p.closed_at %}Decided then: {% endif %}{{ p.wrong.words }}.</p>{% endif %}
   {%- if p.wrong.watching %}<p>{{ p.wrong.watching }}</p>{% endif %}
-  {%- if not (p.wrong.cause or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
+  {%- if not (fx or p.wrong.cause or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
 </section>
-<section class="card" id="inc-done" aria-labelledby="h-inc-done">
+<section class="card" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
   <div class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</div>
   {%- if p.done.steps %}
   {#- THE stepper's five stages, as the heal's card on its device's page draws them
@@ -108,16 +131,103 @@
   {%- else %}
   <p>Nothing has run in this incident.</p>
   {%- endif %}
-  {%- if p.done.diagnosis %}<p class="small">Mercury's diagnosis ({{ p.done.diagnosis.words | times }}) ran{% if p.done.diagnosis.at %} at {{ at(p.done.diagnosis.at) }}{% endif %}, with no AI: {{ p.done.diagnosis.hypotheses }} hypothes{{ 'is' if p.done.diagnosis.hypotheses == 1 else 'es' }}, on {{ p.device }}'s History.</p>{% endif %}
+  {#- Mercury's diagnosis attached to the incident, in full (C3488; board H's amendment, H17:
+      read-only and deterministic, no AI): its verdict, how it was read, each hypothesis with
+      its strength and what to do, what it ruled out and where it stopped; the same model its
+      Needs attention item draws (`attention.heal_diagnosis`). Not made, running, unreadable
+      and none are each said as themselves. -#}
+  {%- if p.done.diagnosis %}
+  {%- set hd = p.done.diagnosis %}
+  <div class="inc-diag heal-diag" id="inc-diag" data-diagnosis="{{ hd.state }}">
+    <h3>Mercury's diagnosis</h3>
+    {%- if hd.state == 'done' %}
+    {%- set dd = hd.result %}
+    <p>{{ badge(dd.chip, dd.level) }} <span class="small muted">{{ dd.runbook_words | times }}{% if dd.actor %}, by {{ dd.actor | people }}{% endif %}, {{ dd.commands }} read(s) on {{ dd.devices | join(' and ') }}{% if dd.finished_at %}, {{ at(dd.finished_at) }}{% endif %}, with no AI</span></p>
+    {%- if dd.hypotheses %}
+    <ol class="set-list small inc-hyp">{% for h in dd.hypotheses %}<li>{{ h.claim | times }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo | times }}.{% endif %}</li>{% endfor %}</ol>
+    {%- else %}
+    <p class="small">{{ dd.words or 'no cause found in what Mercury reads' }}.</p>
+    {%- endif %}
+    {%- if dd.more %}<p class="small muted">{{ dd.more }} more not shown (the five ranked first are).</p>{% endif %}
+    {%- if dd.ruled_out %}<p class="small muted">Ruled out: {{ dd.ruled_out | join('; ') }}.</p>{% endif %}
+    {%- if dd.stopped %}<p class="small warn-text">{{ dd.stopped }}.</p>{% endif %}
+    {%- elif hd.state == 'not' %}
+    <p class="small warn-text">{{ hd.result.words }}.</p>
+    {%- elif hd.state == 'running' %}
+    <p class="small muted">Running now: diagnosis <span class="mono">{{ hd.running.diagnosis }}</span> on {{ hd.device }}, by {{ hd.running.actor | people }}{% if hd.running.since %}, since {{ stamp(hd.running.since) }}{% endif %}. It is drawn here when it ends.</p>
+    {%- elif hd.state == 'unreadable' %}
+    <p class="small warn-text">The diagnosis cannot be read: {{ hd.error }}.</p>
+    {%- elif hd.auto %}
+    <p class="small muted">No diagnosis is recorded for this incident: self-healing runs one by itself before it tells the team.</p>
+    {%- else %}
+    <p class="small muted">Not diagnosed by itself: self-healing diagnoses an Alert incident before telling the team, and a proposal before it is approved, not this one.</p>
+    {%- endif %}
+  </div>
+  {%- endif %}
   <p class="small inc-links"><a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open its record on {{ p.device }}'s History</a>{% if p.done.change_record %} · <a href="{{ url_for('heal_proposal_v2.change_record_md', list_name=p.network, incident_id=p.id) }}" download title="Mercury's change record for this incident, masked: deterministic, no AI call">Download the change record (.md)</a>{% endif %}</p>
 </section>
-<section class="card" id="inc-todo" aria-labelledby="h-inc-todo">
+{#- What to do (the GUI review's item 2, C3450): the page's ONE state in words (`p.todo.words`,
+    from `incident_page.status`), what the incident's Needs attention item says to do in its
+    own words (`p.todo.more`), and, while a person is needed, that item's ONE action as the
+    page's one primary button (`it.first`: `attention.first_action`'s answer, the resolver the
+    item's line asks). An action drawn in place opens its card UNDER the button when it is
+    pressed (`inc-card`, read then: `toggle once`), so the button never moves (docs/UI_RULES.md,
+    "No control moves when its own result appears"); Re-subscribe carries the incident, so its
+    run is this incident's attempt and a repeat of one that failed asks what is different now
+    (`fixit.section.card_link`). A page that needs nobody draws no button. -#}
+<section class="card" id="inc-todo" aria-labelledby="h-inc-todo" data-inc-state="{{ p.state }}" data-item="{{ it.state }}">
   <div class="card-head"><h2 id="h-inc-todo">What to do</h2></div>
-  <p>{{ p.todo.words | times }}</p>
+  <p class="inc-need">{{ p.todo.words | times }}</p>
+  {%- if p.todo.more %}<p class="inc-more">{{ p.todo.more | times }}</p>{% endif %}
+  {%- if it.first %}
+  {%- set opener = 'inc-open-' ~ p.id %}
+  <div class="inc-act" data-first="{{ it.first }}">
+    {%- if it.first == 'run' %}
+    <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
+    <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
+    {%- elif it.first == 'proposed' %}
+    {#- A fix proposed under AI troubleshooting (`status`: fix_proposed): its card is opened
+        there, where its repeat flag and the AI's reasons are; this goes to it. -#}
+    <a class="btn btn-small btn-primary att-jump" href="#fixit-op">Go to the proposed fix</a>
+    {%- elif it.first == 'heal_proposal' %}
+    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">Review the fix…</summary></details>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
+    <div class="inc-card"><div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading the proposal as Mercury recorded it, with Approve and Decline…</p></div></div>
+    {%- elif it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length == 1 %}
+    {%- set rd = r.action.device %}
+    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">Re-subscribe {{ rd }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</summary></details>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}
+    <div class="inc-card"><div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(','), fixit=(p.id if p.fixit.state != 'none' else none)) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading what Re-subscribe will send to {{ rd }}, from its committed intent…</p></div></div>
+    {%- elif it.first == 'heal_mark' and r.heal_mark %}
+    {#- A dry-run record's question has two answers, Right and Wrong…, neither the primary. -#}
+    {%- with list_name=r.heal_mark.list, decision_id=r.heal_mark.decision, mark=r.heal_mark.mark, unreadable=r.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}
+    {%- elif it.first == 'likely' %}
+    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
+    {%- elif it.first == 'href' %}
+    <a class="btn btn-small btn-primary" href="{{ r.action.href }}">Open…</a>
+    {%- else %}
+    {#- The item's first device, in its own network when that is known (C493): the action of
+        a can't-fix, and of an incident whose item is not on Needs attention now. -#}
+    {%- set d = (r.devices or [p.device])[0] %}
+    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else p.network)) }}">Open {{ d }}</a>
+    {%- endif %}
+    {#- Diagnose…, where the item offers it (board H's amendment, artboard I): the device's
+        dialog, its runbook and target from the incident's trigger; it reads nothing until a
+        person runs it there. Beside the action, never a second primary. -#}
+    {%- if r.diagnose and r.diagnose.device %}
+    <span class="op-act"><a class="btn btn-small btn-outline" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=r.diagnose.device, list=r.diagnose.list) if r.diagnose.unreachable else url_for('device_v2.device', name=r.diagnose.device, list=r.diagnose.list, op='diagnose', **r.diagnose.args) }}" title="{{ r.diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted small">{{ r.diagnose.words }}</span>
+    {%- endif %}
+  </div>
+  {%- if it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length != 1 %}
+  <p class="small muted">Re-subscribe is not offered: {{ (nets.get(r.action.device) or [])|length }} of the networks Mercury holds name a device {{ r.action.device }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
+  {%- endif %}
+  {%- if r.diagnose and not r.diagnose.device %}<p class="small muted">Diagnose… is not offered: {{ r.diagnose.words }}.</p>{% endif %}
+  {%- if r.likely %}
+  <p class="small heal-hyp"><strong>Likely cause (a hypothesis, not checked):</strong> {{ r.likely.device }}'s configuration was changed outside Mercury at {{ clock(r.likely.at) }}{% if r.likely.words %} ({{ r.likely.words }}){% endif %}, shortly before this began, and that change is not fixed yet.</p>
+  {%- endif %}
+  {%- if r.clears %}<p class="att-clears">Its Needs attention item clears when {{ r.clears }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
+  {%- endif %}
   <p class="small inc-links">
     {%- for l in p.todo.links %}
-    {%- if l == 'attention' %}<a href="{{ url_for('v2.landing') }}">Open Needs attention</a>
-    {%- elif l == 'history' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open {{ p.device }}'s History</a>
+    {%- if l == 'history' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open {{ p.device }}'s History</a>
     {%- elif l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
     {%- else %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">Open {{ p.device }}</a>
     {%- endif %}{% if not loop.last %} · {% endif %}
@@ -140,6 +250,22 @@
     {%- endif %}
   </ul>
 </details>
+{#- Seen before (the board's B7; C3488): whether the same loss was seen on this device before
+    and how that ended, as its Needs attention item holds it (`seen_before.py`'s answer in the
+    alerts reader's stored value, never computed by the page). Drawn only when a past incident
+    matches or the search could not be made (said, never read as "never seen"). -#}
+{%- if fx and fx.seen %}
+{%- set s = fx.seen %}
+<section class="card" id="inc-seen" aria-labelledby="h-inc-seen" data-seen="{{ s.state }}">
+  <div class="card-head"><h2 id="h-inc-seen">Seen before on {{ fx.device }}</h2></div>
+  {%- if s.state == 'match' %}
+  <p class="fix-seen"><strong>{{ clock(s.from, 'date') }} to {{ clock(s.to, 'date') }}:</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ clock(s.ended.at, 'date') }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ clock(s.held.at, 'date') }}{% endif %}{{ s.held.tail }}{% endif %}</p>
+  <p class="small inc-links"><a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
+  {%- else %}
+  <p class="fix-seen warn-text">Couldn't be checked: {{ s.why }}. Whether {{ fx.device }} lost telemetry before is not known.</p>
+  {%- endif %}
+</section>
+{%- endif %}
 <details class="card tl-record-d inc-record" data-keep="inc-record-{{ p.id }}">
   <summary>The record</summary>
   <p class="small muted">Ids, hashes, the times as recorded (each yours, its UTC on hover), every step with its result and words, and who acted as their identity was recorded.</p>

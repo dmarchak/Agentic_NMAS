@@ -3364,3 +3364,27 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .att-more > summary, .att-body > .att-record > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); padding: 3px 0; }
 .att-more > .att-det { margin-top: 6px; gap: 8px; }
 .att-more + .att-record { margin-top: -8px; }
+
+/* The incident page's one state and its one action (the GUI review's item 2, C3450; the
+   operator, 2026-11-13). What to do: the state in words, what the incident's Needs attention
+   item says to do, then that item's ONE action as the page's primary button. An action drawn
+   in place opens its card UNDER the button (`inc-card`, hidden until the button's disclosure
+   is open), on a line of its own, so the button and the (i) beside it never move when the
+   card appears. A summary used as the button is at least 24 px tall (WCAG 2.5.8). Mercury's
+   diagnosis in full under What Mercury has done, and the AI analysis in the AI section, each
+   under its own small heading. */
+.inc-need { font-size: 14px; }
+.inc-more { font-size: 13px; color: var(--ink-2); }
+.inc-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.inc-act > .inc-open > summary { list-style: none; cursor: pointer; min-height: 24px; }
+.inc-act > .inc-open > summary::-webkit-details-marker { display: none; }
+.inc-act > .inc-card { flex: 1 1 100%; min-width: 0; }
+.inc-act > .inc-open:not([open]) ~ .inc-card { display: none; }
+.inc-act > .heal-mark { flex: 1 1 100%; min-width: 0; }
+.inc-lead { font-size: 14px; }
+.inc-diag, .inc-analysis { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.inc-diag h3, .inc-analysis h3 { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.inc-diag p, .inc-analysis p { margin: 0; overflow-wrap: anywhere; }
+.inc-hyp { margin: 0; padding-left: 20px; }
+.inc-hyp li { overflow-wrap: anywhere; }
+

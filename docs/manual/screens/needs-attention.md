@@ -18,8 +18,10 @@ The landing page answers one question: does anything need you?
   line holds **Open the run** alone, which opens the device's page on that run's card; the
   action returns by itself when the run ends. Press the line to
   open it. Opened, an item is a summary, not the whole incident: **Open the incident** first,
-  where the item is about one self-healing incident, which has a page of its own
-  ([An incident's page](incident); **Drill** beside the link when the incident opened inside a
+  where the item is about one incident that has a page of its own: a self-healing item, or
+  a lost telemetry stream whose device's network holds an open incident for it
+  ([An incident's page](incident), which carries the same action as the item, as its one
+  primary button; **Drill** beside the link when the incident opened inside a
   declared fault drill, its drill's id on hover); then what is wrong, in a sentence or two;
   whether it needs you, where the item says so; **What to do** (every action with its How
   does this work?, how it clears, and **Acknowledge…** for an event); and one line naming the

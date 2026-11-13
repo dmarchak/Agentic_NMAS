@@ -29,26 +29,29 @@
 <a class="btn btn-small btn-outline" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
 {%- endmacro -%}
 {%- macro primary(r, nets) -%}
-{%- if r.held %}{{ held_open(r) }}
-{%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
+{#- WHICH action is `attention.first_action`'s answer (the `first_action` filter), the one
+    resolver the row's incident's page asks too (templates/v2/incident.html, What to do). -#}
+{%- set first = r | first_action %}
+{%- if first == 'run' %}{{ held_open(r) }}
+{%- elif first == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}
 {#- Board H, artboard D and E: a proposal's Review the fix… opens the row to its card (nmas_v2.js
     `citeClicked`, `a.att-jump`: every section holding the card opened, the card focused). -#}
-{%- elif r.action.open == 'heal_proposal' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_proposal" href="#heal-prop-{{ r.action.decision }}">Review the fix…</a>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
+{%- elif first == 'heal_proposal' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_proposal" href="#heal-prop-{{ r.action.decision }}">Review the fix…</a>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
 {#- Board H, artboard E's second row (C2471): a halt's Lift the halt… opens the row to its
     reason and its button, drawn in the row. -#}
-{%- elif r.action.open == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
+{%- elif first == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
 {#- C2817 (mock 2): a dry-run record's question opens the row to its Right / Wrong. -#}
-{%- elif r.action.open == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
+{%- elif first == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
 {#- C2838: a lost telemetry stream's Re-subscribe… opens the row to its card, drawn in it. -#}
-{%- elif r.action.open == 'resubscribe' %}<a class="btn btn-small btn-outline att-jump" data-op="telemetry-resubscribe" data-next-acts="resubscribe" href="#resub-{{ r.action.device | replace('.', '-') }}">Re-subscribe {{ r.action.device }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</a>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}
+{%- elif first == 'resubscribe' %}<a class="btn btn-small btn-outline att-jump" data-op="telemetry-resubscribe" data-next-acts="resubscribe" href="#resub-{{ r.action.device | replace('.', '-') }}">Re-subscribe {{ r.action.device }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</a>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}
 {#- The operator, 2026-11-11: a host step's row drew no action on its line; its one action is
     the Update page, where the step is said done or declined with a reason. -#}
-{%- elif r.action.open == 'app_update' and r.source == 'host_steps' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Open the Update page</a>{{ how('update', 'declining-a-host-step', compact=True, op='a host step') }}
+{%- elif first == 'update_page' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Open the Update page</a>{{ how('update', 'declining-a-host-step', compact=True, op='a host step') }}
 {#- C2817's amendment (the operator, 2026-11-09): a can't-fix whose likeliest cause is another
     device's change leads with that device, labelled as a hypothesis. -#}
-{%- elif r.likely %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
-{%- elif r.devices %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
-{%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
+{%- elif first == 'likely' %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
+{%- elif first == 'device' %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
+{%- elif first == 'href' %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
 {%- endif %}
 {%- endmacro -%}
 {#- A moment a record holds, in the viewer's own zone with its date, the UTC on hover (the one

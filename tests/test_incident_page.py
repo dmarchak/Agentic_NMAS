@@ -758,11 +758,19 @@ class TestThePage:
         assert opened == [], opened
 
     def test_it_starts_nothing_links_only(self, client):
+        """(Its name is its first slice's: kept, so the check stays one test.)
+        The page's own markup posts nothing and holds no form: what it offers is one action
+        under What to do, the incident's Needs attention item's (the GUI review's item 2,
+        C3450; held in full by tests/test_incident_state.py). Until then What to do was three
+        links, the first of them back to Needs attention: the page had no action of its own.
+        This can't-fix's item has left Needs attention (the lab decides in 2026-09), so its
+        one action opens its device."""
         body = page(client, cant_fix())
         live = body.split('id="incident-live"', 1)[1].split("</main>", 1)[0]
         assert "<form" not in live and "<button" not in live and "hx-post" not in live
         todo = live.split('id="inc-todo"', 1)[1].split("</section>", 1)[0]
-        assert todo.count("<a ") == 3 and "Open Needs attention" in todo
+        assert todo.count("<a ") == 2 and "Open Needs attention" not in todo
+        assert todo.count("btn-primary") == 1 and ">Open edge-b</a>" in todo
 
     def test_it_is_drawn_again_when_self_healing_announces_and_never_polls(self, client):
         iid = healed()

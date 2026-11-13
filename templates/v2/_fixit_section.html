@@ -24,7 +24,11 @@
 {%- set ask = url_for('fixit_v2.troubleshoot', incident_id=x.id, list=x.network) -%}
 {%- macro ai_cost(A) -%}<strong>Ask the AI:</strong> <span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most two calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
 {%- macro ai_button(ct, words, busy, ask, A) -%}{{ ai.mark(ct) }} <button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ ask }}" hx-target="#inc-ai" hx-swap="outerHTML" hx-disabled-elt="this" title="One investigation as you: at most two AI calls, at most {{ A.worst }} in all, its answer checked against what was sent; a fix it names is one catalogue operation, checked against this incident, the heal guards and committed intent, and runs only when you approve it in its card"{{ ai.attrs(ct, 'configure') }}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', 'ask-ai', compact=True, op='Troubleshoot with AI') }}{%- endmacro -%}
-<section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}">
+{#- The incident's ONE state, as its whole page says it (`x.page_state`: `incident_page.status`,
+    asked with this section's own state; the GUI review's item 2, C3450): carried here as on
+    every section of the page, and what this section says of what a person does next follows
+    it, so it never disagrees with the header or What to do. -#}
+<section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}" data-inc-state="{{ x.page_state }}">
   <div class="card-head"><h2 id="h-inc-ai">AI troubleshooting</h2>{{ badge('beta', 'muted', title="The AI's answers are not measured on recorded cases yet; a person approves every fix by its preview's hash") }}</div>
   {%- if answer and answer.refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ answer.refused }}</div></div>
@@ -67,7 +71,7 @@
   <p class="muted">Resolved: read-only. The attempts, their costs and each hand-over are kept as recorded.</p>
   {%- endif %}
   {%- elif S == 'ready' %}
-  <p>No fix has been tried in this incident. What to do above says where one is started.</p>
+  <p>No fix has been tried in this incident.{% if x.page_state == 'needs_person' %} What to do above says where one is started.{% endif %}</p>
   {%- elif S == 'running' %}
   {%- set s = x.stop %}
   <p><strong>Attempt {{ s.n }} is running</strong> since {{ clock(s.started) }}: {{ s.operation }}. Its steps are on its card. <a href="{{ run_href(x.device, x.network, s.run) }}">Open the run</a></p>
@@ -195,6 +199,17 @@
   {%- if x.handovers %}
   <p class="small fixit-versions">Hand-overs: {% for h in x.handovers %}<a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=h.version, list=x.network) }}">version {{ h.version }}</a> ({{ h.by }}, {{ clock(h.at) }}{% if h.kept != 'ok' %}, its write-up {{ 'not kept' if h.kept == 'absent' else 'unreadable' }}{% endif %}){% if not loop.last %} · {% endif %}{% endfor %}</p>
   {%- endif %}
+  {%- endif %}
+  {#- A can't-fix's AI analysis in full (C3488; board H, H8: `heal_analysis.drawn`, a read of
+      what it kept, never a call), advisory: its label and score, its rationale, each
+      hypothesis with what it cites and its next step, and where the answer came from; a
+      state with no answer said in place. The page drew only the one line under it, and the
+      answer itself only on the incident's Needs attention item. -#}
+  {%- if x.cant_fix and x.analysis %}
+  <div class="inc-analysis" id="inc-analysis">
+    <h3 class="fixit-h">AI analysis</h3>
+    {%- with got=x.analysis, incident=x.id %}{% include "v2/_heal_analysis.html" %}{% endwith %}
+  </div>
   {%- endif %}
   {%- for a in x.advisories or [] %}
   <p class="inc-advisory"><strong>AI analysis (advisory; self-healing never reads it)</strong>{% if a.at %}, {{ clock(a.at) }}{% endif %}: {{ a.words }}</p>

@@ -102,7 +102,15 @@ region as compared.
 | Details for the record (C3449) | closed, last inside Details | closed, last, beside Details and never inside it | **deviation** (log: Needs attention: Details and the record side by side) |
 
 Templates sha256 before: `002adf75ada9ae050b329769aea42c4cebfec0019d93f17c8c4b1e20baa713c7`.
-Templates sha256: `4d3bf927b798a270485663c134a6c6ed8b170b25430206277a747fe83cb5f86f`
+
+**Compared again 2026-11-13 (the GUI review's item 2, C3450, with C3487; the operator, 2026-11-13: "Build review items 1, 2, 5, 6, 9 first (in that order)").** Two changes reach the list. (1) In `_attention.html`, WHICH action a row's line draws is one resolver's answer (`attention.first_action`, the `first_action` filter), the one its incident's own page asks for its primary button; each control's markup is as it was, and tests/test_incident_state.py (`TestTheOneResolver`) draws a row of every kind and finds the same control on its line: no element moves, no region's verdict moved. (2) No template change: a lost telemetry stream's row now opens its incident's own page (`attention._link_stream_incidents`), so **Open the incident** is its first link too, where its device's one network holds an open incident for a subscription it names (shot at 1280 px, opened, before and after: `2-incident-stream-row`, kept with the operator's reports; before, 0 such links on the page, after, 1). Compared by the template's diff, that test and those shots; the second is a **deviation** from the first slice as built, logged (docs/STANDING_APPROVAL_LOG.md, "Needs attention: a lost stream's row opens its incident").
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Open the incident on a lost stream's row (C3487) | the incident page's first slice: on self-healing's rows only | on a lost stream's row too, its first link, where an open incident of its device names one of its subscriptions | **deviation** (log: Needs attention: a lost stream's row opens its incident) |
+
+Templates sha256 before: `4d3bf927b798a270485663c134a6c6ed8b170b25430206277a747fe83cb5f86f`.
+Templates sha256: `1ff25f10f89a3ffdcb20e0bf1e96809fdedf7be51165a2e6830bf45a9ea5f538`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

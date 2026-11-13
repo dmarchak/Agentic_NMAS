@@ -143,14 +143,20 @@ proposes (none is written yet). The rules above stay as they are, word for word.
   the header badge, What to do and AI troubleshooting never disagree (measured: "No person
   needed" and "Nothing yet: Mercury is working on it" beside "Stopped … Nothing more runs
   unless you choose") (Nielsen 1, visibility of system status; CLAUDE.md, "Never let a wrong
-  thing look like a working thing"). [Proposed test: tests/test_incident_page.py gains a case
-  per state: a stopped fix-it attempt draws "Needs a person" in the header and an action in
-  What to do.]
+  thing look like a working thing"). [Built with the review's item 2 (C3450; the operator,
+  2026-11-13: "Build review items 1, 2, 5, 6, 9 first"): `incident_page.status`, held by
+  tests/test_incident_state.py (each planted state, every section carrying it, no words of
+  the other state) and tests/test_incident_stream.py (a stopped fix-it attempt draws "Needs a
+  person" in the header and an action in What to do).]
 - **A page that says a person is needed carries that person's action on itself:** What to do
   holds the one action as a button (Review the fix…, Re-subscribe…, Lift the halt…), never
   "what a person may do about it is on Needs attention". Measured: the incident page has no
-  button in any of its four planted states. [Proposed test: every incident page whose state
-  is "Needs a person" draws exactly one primary button inside What to do.]
+  button in any of its four planted states. [Built with the review's item 2 (C3450): the
+  action is the incident's own Needs attention item's (`incident_page.item_of`,
+  `attention.first_action`), and every planted incident page whose state is "Needs a person"
+  draws exactly one primary button inside What to do: tests/test_incident_state.py,
+  tests/test_incident_stream.py. Not built: Lift the halt… on the page (a halt's item names no
+  incident), and a dry-run record's Right and Wrong…, two answers with no primary.]
 - **Each fact once, measured:** an outcome ("verify failed") is drawn at most twice on a
   screen, once as a state word in a header cell and once with its reason in its stage
   (measured: five times on the rolled-back incident). [Proposed test: the rolled-back

@@ -85,6 +85,16 @@ def people(text) -> str:
     return display_names.people(text)
 
 
+@bp.app_template_filter("first_action")
+def first_action(row) -> str:
+    """Which one action a Needs attention row offers first (`attention.first_action`, the one
+    resolver): asked by the row's line (`_attention.html`'s ``primary``) and by its incident's
+    own page (What to do's primary button), so the two never offer different actions."""
+    from modules import attention
+
+    return attention.first_action(row or {})
+
+
 @bp.app_template_filter("usd")
 def usd(value, exact=False) -> str:
     """An amount as every screen draws it, "$0.25" (`modules.money.usd`, the one formatter; the
@@ -1975,15 +1985,34 @@ def attention_heal_analysis(network, incident_id):
     (`heal_analysis.drawn`, a read of its store, never a call), advisory; pending, off,
     capped, couldn't analyse or the provider not answering said in place. An incident id out
     of shape, or a network Mercury does not hold, is said and reads nothing."""
+    iid = incident_id[:40]
+    return _strict(render_template("v2/_heal_analysis.html",
+                                   got=heal_analysis_of(network, iid), incident=iid))
+
+
+def heal_analysis_of(network: str, incident_id: str) -> dict:
+    """What `_heal_analysis.html` draws of one incident's AI analysis (its ``got``):
+    `heal_analysis.drawn`, a read of what it kept and never a call; ``unknown`` for an id out
+    of shape or a network Mercury does not hold, which reads nothing. The one page-side reader
+    of the analysis: a can't-fix's Needs attention row asks it through its fragment, and the
+    incident's own page through `with_heal_analysis`."""
     from modules.ai import heal_analysis
     from modules.nsot import listref
 
-    iid = incident_id[:40]
-    if not _HEAL_INCIDENT.match(iid) or not listref.exists(network[:80]):
-        got = {"state": "unknown", "error": "", "block": {}, "provenance": {}}
-    else:
-        got = heal_analysis.drawn(network[:80], iid)
-    return _strict(render_template("v2/_heal_analysis.html", got=got, incident=iid))
+    iid = str(incident_id or "")[:40]
+    if not _HEAL_INCIDENT.match(iid) or not listref.exists(str(network or "")[:80]):
+        return {"state": "unknown", "error": "", "block": {}, "provenance": {}}
+    return heal_analysis.drawn(network[:80], iid)
+
+
+def with_heal_analysis(section: dict) -> dict:
+    """An incident's AI troubleshooting section (`fixit.section.drawn`'s) with its kept AI
+    analysis in full (``analysis``), where the section says the incident is a can't-fix
+    (``cant_fix``; C3488, the GUI review's item 2): the page drew only its one advisory line,
+    and the answer itself only on the incident's Needs attention row. Changed in place."""
+    if section.get("cant_fix"):
+        section["analysis"] = heal_analysis_of(section.get("network"), section.get("id"))
+    return section
 
 
 @bp.route("/monitoring/alerts/pack/<pack_id>/explain", methods=["POST"])

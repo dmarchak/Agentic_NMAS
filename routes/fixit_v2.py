@@ -75,6 +75,9 @@ def _section(network: str, found: dict, status: int = 200, **answer):
     from modules.fixit import section
 
     x = section.drawn(network, found, resolved=_resolved_at(found), ended=_ended(found))
+    # A can't-fix's AI analysis in full (C3488), as the incident's page draws it.
+    from routes.v2 import with_heal_analysis
+    with_heal_analysis(x)
     return _strict(render_template("v2/_fixit_section.html", x=x, answer=answer), status)
 
 

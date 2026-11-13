@@ -442,6 +442,21 @@ NOT_AN_OPERATION = {
     ("_timeline.html", "Open the card"): ("opens the run's card on its device's page, drawn "
                                           "from the run's own record, a read; no device is "
                                           "touched"),
+    # The GUI review's item 2 (C3450): the incident page's one primary button under What to
+    # do, the incident's Needs attention item's own action. An action with a card of its own
+    # (Review the fix…, Re-subscribe…) is a summary that opens it, with its how() link; these
+    # are the ones that open a page, as the same action does on the item's line.
+    ("incident.html", "Open"): "navigates to the device page, the item's own first action",
+    ("incident.html", "Open…"): "navigates to the screen the incident's item names",
+    ("incident.html", "Open (likely cause)"): ("opens the device a can't-fix names as its "
+                                               "likeliest cause, a hypothesis, as its item's "
+                                               "line does"),
+    ("incident.html", "Open the run"): ("opens the held device's page, which draws the run "
+                                        "holding it; the incident's action returns when the "
+                                        "run ends"),
+    ("incident.html", "Go to the proposed fix"): ("moves to the proposal under AI "
+                                                  "troubleshooting on the same page, where "
+                                                  "its card is opened"),
 }
 
 

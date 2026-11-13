@@ -1,8 +1,8 @@
 """One incident's page (`/v2/incident/<id>`; the incident page's board, parts B, C and F; the
-operator's design change of 2026-11-11: "each incident gets its own page"). This is its first
-slice: a READ-ONLY page for one self-healing incident (an ``hi-`` id), with its timeline and
-its TIME TO REPAIR. A read throughout: it reads three of the network's stores and writes
-nothing, creates no network and reaches no device.
+operator's design change of 2026-11-11: "each incident gets its own page"): the page for one
+self-healing incident (an ``hi-`` id), with its timeline, its TIME TO REPAIR, its one state
+and its one action. A read throughout: it reads three of the network's stores and the list
+Needs attention holds, and writes nothing, creates no network and reaches no device.
 
 **What it reads, for one id** (no per-device work: each is one read of a network's own store):
 - the incident, from the heal incidents (`heal.incidents.read`): its device, its triggers,
@@ -53,10 +53,27 @@ interrupted: `steplog.NOT_HEALED`) leaves the incident "needs a person"; its Fix
 empty with its reason, its attempt reads "applied <time> · verify failed: <reason>", and its
 TIME TO REPAIR reads "not repaired: verify failed".
 
-**The five states** (`state_of`): ``open`` (Mercury is watching or working), ``needs_person``,
-``fixed`` (a verified fix), ``cleared`` (closed with no fix recorded) and ``cancelled`` (a
-person declined the proposed fix; the fix-it path's Cancel joins it when its controls are
-built).
+**The five states** (`state_of`, from the heal's own records): ``open`` (Mercury is watching
+or working), ``needs_person``, ``fixed`` (a verified fix), ``cleared`` (closed with no fix
+recorded) and ``cancelled`` (a person declined the proposed fix).
+
+**One state for the whole page** (`status`; the GUI review's item 2, C3450, the operator,
+2026-11-13): the page's state is `state_of`'s answer AND the incident's troubleshooting
+record's (a fix a person ran that stopped, a fix proposed, one running or passed), and a lost
+telemetry stream needs a person from the start (its fix is a person's to approve). The
+header's badge and level, What's wrong, What Mercury has done, What to do and AI
+troubleshooting (`fixit.section.view` asks the same function) each draw that one answer.
+
+**Its action** is its own Needs attention item's (`item_of`, read from the list the
+background holds, never reckoned a second time; which action being `attention.first_action`'s
+answer, the resolver the item's line asks): What to do draws it as the page's one primary
+button while a person is needed, and none otherwise. The page itself starts nothing: an
+action's card (a proposal's, a Re-subscribe's) is its operation's own route, read when the
+button is pressed. **What the item kept under its Details is drawn here** (C3488): Mercury's
+diagnosis in full, the AI analysis in full (the routes add it to the section through the one
+page-side reader of the analysis, `routes.v2.heal_analysis_of`), a lost stream's
+reachability, what Mercury cannot see and Seen before, and a decision's mode, fix kind and
+program hash in The record.
 
 **People** are drawn by display name (`identity.display_name`, `display_names.people` over
 every recorded text); the identity as recorded is only in the page's collapsed record.
@@ -80,8 +97,19 @@ HI = re.compile(r"hi-[0-9a-f]{12}\Z")
 STATES = ("open", "needs_person", "fixed", "cleared", "cancelled")
 STATE_WORDS = {"open": "Open", "needs_person": "Needs a person", "fixed": "Fixed",
                "cleared": "Cleared", "cancelled": "Cancelled"}
+#: The states in which nothing is left for Mercury or a person to do.
+RESOLVED = ("fixed", "cleared", "cancelled")
+#: The fix-it section's states (`fixit.section.STATES`) in which a person's choice is waited
+#: for, each with why the page then needs a person (`status`); and those in which a fix a
+#: person approved is under way or passed, so nobody is needed now.
+FIXIT_WAITS = {"stopped": "attempt_stopped", "proposed": "fix_proposed",
+               "cancelled": "troubleshooting_cancelled", "handed_over": "handed_over"}
+FIXIT_WORKING = {"running": "attempt_running", "passed": "attempt_passed"}
+#: Why the page's state is what it is (`status`), each said once, as What to do's words.
+WHYS = RESOLVED + ("healing", "watching", "verify_failed", "proposal", "decided",
+                   "lost_stream") + tuple(FIXIT_WAITS.values()) + tuple(FIXIT_WORKING.values())
 #: A level in Needs attention's own words (`templates/v2/_attention.html`, ``LEVEL_WORDS``).
-LEVEL_WORDS = {"danger": "Critical", "warning": "Warning"}
+LEVEL_WORDS = {"danger": "Critical", "warning": "Warning", "unknown": "Unknown"}
 #: The level a decision's outcome has on Needs attention (`attention.heal_source`'s rows).
 DECISION_LEVELS = {"cant_fix": "danger", "propose": "danger", "halted": "danger",
                    "held": "warning", "would_heal": "warning"}
@@ -299,6 +327,55 @@ def state_of(incident, entry: dict, decisions: list) -> str:
         # last thing recorded is a decision that leaves it to a person.
         return "needs_person"
     return "cleared"
+
+
+def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
+    """THE incident's state as its page says it, from ONE function for the page and every
+    section on it (the GUI review's item 2, C3450; the operator, 2026-11-13): ``{"state",
+    "words", "needs", "why"}``. *state* is one of `STATES`, *words* its badge's, *needs*
+    whether a person is needed now, and *why* one of `WHYS`, which What to do says in words.
+    The header's badge and level, What's wrong, What Mercury has done, What to do and AI
+    troubleshooting (`fixit.section.view`, which asks this function too) each draw this
+    answer, so no part of the page says "No person needed" or "Mercury is working on it"
+    beside another saying "Stopped … Nothing more runs unless you choose".
+
+    From the incident's own records (`state_of`) AND its troubleshooting record's state
+    (*fixit*, `fixit.section.STATES`), in this order:
+    - resolved (``fixed``, ``cleared``, ``cancelled``): as `state_of` says, whatever was tried;
+    - ``open``, nobody needed now: its heal is applying (``healing``); a fix a person approved
+      is running or passed its verify (``attempt_running``, ``attempt_passed``: the incident
+      closes when its symptom clears);
+    - ``needs_person``: a fix a person ran stopped without fixing it, a fix is proposed, its
+      troubleshooting was cancelled or handed over (`FIXIT_WAITS`: nothing more runs unless a
+      person chooses); else `state_of` says so (``verify_failed``, ``proposal``, ``decided``);
+      else its triggers are lost telemetry streams (``lost_stream``: their fix changes the
+      device's configuration, so a person approves it, as its Needs attention row says);
+    - else ``open``, Mercury watching or deciding (``watching``)."""
+    from modules.heal import diagnose_stream
+
+    heal = state_of(incident, entry, decisions)
+    ran = acts(entry)
+    last = ran[-1] if ran else None
+    newest = decisions[-1] if decisions else {}
+    if heal in RESOLVED:
+        state, why = heal, heal
+    elif last and last["running"]:
+        state, why = "open", "healing"
+    elif fixit in FIXIT_WORKING:
+        state, why = "open", FIXIT_WORKING[fixit]
+    elif fixit in FIXIT_WAITS:
+        state, why = "needs_person", FIXIT_WAITS[fixit]
+    elif heal == "needs_person":
+        state = "needs_person"
+        why = ("verify_failed" if last and last["sent"] and not last["passed"] else
+               "proposal" if newest.get("outcome") == "propose" and not newest.get("taken")
+               else "decided")
+    elif diagnose_stream.target_from(incident or {}):
+        state, why = "needs_person", "lost_stream"
+    else:
+        state, why = "open", "watching"
+    return {"state": state, "words": STATE_WORDS[state], "needs": state == "needs_person",
+            "why": why}
 
 
 # ── The timeline ───────────────────────────────────────────────────────────────────────────
@@ -610,11 +687,15 @@ def title(incident, entry: dict, decisions: list, state: str = "", who: dict = N
 
 # ── The page ───────────────────────────────────────────────────────────────────────────────
 
-def _severity(state: str, decisions: list, ran: list, who: dict, resolved: bool) -> dict:
+def _severity(state: str, decisions: list, ran: list, who: dict, resolved: bool,
+              row_level: str = "") -> dict:
     """``{"words", "kind"}``: the level the incident's Needs attention card has or had, or "No
     person needed" for one that never needed a card. Derived each time (the module's
     docstring): a failed attempt by its outcome (`run_card.level_of`), a decision by
-    `DECISION_LEVELS`."""
+    `DECISION_LEVELS`; an incident that needs a person and has neither (a lost stream nothing
+    has decided on yet) takes its own Needs attention item's level (*row_level*), and draws no
+    level when that item is not held: "No person needed" is never drawn beside "Needs a
+    person" (`status`)."""
     from modules.heal import run_card
 
     level = ""
@@ -626,6 +707,10 @@ def _severity(state: str, decisions: list, ran: list, who: dict, resolved: bool)
         got = DECISION_LEVELS.get(d.get("outcome") or "")
         if got and (not level or got == "danger"):
             level = got
+    if not level and state == "needs_person":
+        level = row_level if row_level in LEVEL_WORDS else ""
+        if not level:
+            return {"words": "", "kind": "muted"}
     if not level or (state == "fixed" and who["kind"] == "none"):
         return {"words": "No person needed", "kind": "muted"}
     return {"words": ("was " if resolved else "") + LEVEL_WORDS[level],
@@ -689,31 +774,135 @@ def drill_of(found: dict):
                       "are counted as a drill's, never as a real incident's.")}
 
 
-def _todo(state: str, device: str, tl: dict) -> dict:
-    """What to do, in words, with the links it names: ``{"words", "links"}``; *links* are keys
-    the template draws (``attention``, ``device``, ``history``, ``intent``). Links only: this
-    slice starts nothing."""
-    failed = any(a["state"] == "failed" for a in tl["attempts"])
-    if state == "fixed":
+#: What the page keeps of the incident's Needs attention item (`item_of`): its action, and
+#: what its What to do, What's wrong and Seen before draw of it. Nothing else of the row.
+_ACTION_KEYS = ("label", "open", "list", "decision", "device", "subs", "href")
+_FIX_KEYS = ("device", "lead", "answers", "unseen", "seen")
+
+
+def item_of(attention, incident_id: str, decisions: list, network: str, device: str) -> dict:
+    """The incident's own item on Needs attention, as that list holds it now: ``{"state",
+    "first", "level", "row"}``. *attention* is the list as it is drawn (`routes.v2._attention`:
+    the value the background holds, masked, each run's hold marked for this request), so the
+    page's action is the one its row offers, never a second reckoning of it.
+
+    *state* is ``stands`` (a row is about this incident: it opens this page, or it carries the
+    mark of one of the incident's dry-run decisions, attached to its device's drift row),
+    ``none`` (the list was read and holds no such row: it cleared there, or a person
+    acknowledged it) or ``reading`` (the list's first value has not landed: not known, never
+    read as none). *first* is which ONE action the row offers (`attention.first_action`, the
+    resolver the row's own line asks); *level* the row's; *row* what the page draws of it
+    (`_ACTION_KEYS`, its devices and their networks, the likeliest cause, the run holding its
+    device, its mark, Diagnose…, how it clears, and a lost stream's lead, whether it needs a
+    person, whether the device answers, what Mercury cannot see and Seen before). With no row,
+    *row* stands in with the incident's device alone, so the page can still open it."""
+    from modules import attention as A
+
+    a = attention or {}
+    stand_in = {"id": "", "action": {}, "devices": [device] if device else [],
+                "networks": {device: [network]} if device else {}}
+    if (a.get("store") or {}).get("state") == "reading":
+        return {"state": "reading", "first": "", "level": "", "row": stand_in}
+    mine = {d.get("id") for d in decisions if d.get("id")}
+    found = marked = None
+    for r in [x for top in a.get("rows") or [] for x in [top] + (top.get("folded") or [])]:
+        if (r.get("incident_page") or {}).get("id") == incident_id:
+            found = r
+            break
+        mark = next((m for m in r.get("heal_marks") or [] if m.get("decision") in mine), None)
+        if mark and marked is None:
+            marked = dict(stand_in, id=r.get("id") or "", level=r.get("level"), heal_mark=mark,
+                          clears=r.get("clears"), clears_at=r.get("clears_at"),
+                          action={"label": mark.get("what") or "", "open": "heal_mark",
+                                  "list": mark.get("list"), "decision": mark.get("decision"),
+                                  "device": device})
+    r = found or marked
+    if r is None:
+        return {"state": "none", "first": "", "level": "", "row": stand_in}
+    act, fix, likely = r.get("action") or {}, r.get("fix") or {}, r.get("likely") or {}
+    kept = {"id": r.get("id") or "",
+            "action": {k: act[k] for k in _ACTION_KEYS if act.get(k) not in (None, "", [])},
+            "devices": list(r.get("devices") or []),
+            "networks": dict(r.get("networks") or stand_in["networks"]),
+            "likely": ({k: likely.get(k) or "" for k in ("device", "at", "words")}
+                       if likely else None),
+            "held": r.get("held") or None, "heal_mark": r.get("heal_mark") or None,
+            "diagnose": r.get("diagnose") or None,
+            "clears": (r.get("clears") or {}).get("when") or "",
+            "clears_at": r.get("clears_at") or "",
+            "fix": {k: fix.get(k) for k in _FIX_KEYS} if fix else None}
+    return {"state": "stands", "first": A.first_action(r), "level": r.get("level") or "",
+            "row": kept}
+
+
+def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
+    """What to do: ``{"words", "more", "links"}``, from the page's ONE state (`status`: *st*).
+    *words* say why that state holds; *more* what the incident's Needs attention item says to
+    do, in its own words (its action's label; where no item stands, that it does not, or that
+    the list is still being read: absent and not read are said apart); *links* are the keys
+    the template draws beside the action (``device``, ``history``, ``intent``), never the one
+    the primary button already is. The action itself is the item's (`item_of`): a page that
+    needs a person draws it as its one primary button, and a page that needs nobody draws
+    none (resolved, or Mercury or a run a person approved is working)."""
+    why, n = st["why"], (fixit.get("stop") or {}).get("n")
+    row = item["row"]
+    if why == "fixed":
         return {"words": "Nothing: it is fixed and verified. If it should not have been put "
-                         f"back, change {device}'s intent.", "links": ["intent"]}
-    if state == "cleared":
+                         f"back, change {device}'s intent.", "more": "", "links": ["intent"]}
+    if why == "cleared":
         return {"words": "Nothing: it closed with no repair recorded. If it comes back, it "
-                         "is a new incident.", "links": ["device"]}
-    if state == "cancelled":
+                         "is a new incident.", "more": "", "links": ["device"]}
+    if why == "cancelled":
         return {"words": f"Nothing runs: the fix was {tl['decided']['words']}. {device} "
-                         "keeps what it has until a person changes it.",
+                         "keeps what it has until a person changes it.", "more": "",
                 "links": ["device", "history"]}
-    if state == "open":
+    if why == "healing":
+        return {"words": "Nothing yet: Mercury is fixing it now. Each step is drawn under "
+                         "What Mercury has done as it runs.", "more": "", "links": ["device"]}
+    if why == "attempt_running":
+        return {"words": f"Nothing yet: attempt {n} is running, a fix a person approved. Its "
+                         "outcome is drawn under AI troubleshooting when it ends.",
+                "more": "", "links": ["device"]}
+    if why == "attempt_passed":
+        return {"words": f"Nothing now: attempt {n} passed its verify. The incident closes "
+                         "when its symptom clears.", "more": "", "links": ["device"]}
+    if why == "watching":
         return {"words": "Nothing yet: Mercury is working on it. This page says what it "
-                         "decided as soon as it does.", "links": ["device"]}
-    if failed:
-        return {"words": "A fix was applied and its verify failed. Read the failed step "
-                         f"above, then {device} itself; what a person may do about it is on "
-                         "Needs attention.", "links": ["attention", "history", "device"]}
-    return {"words": "It needs a person. What a person may do about it is on Needs "
-                     f"attention, on {device}'s item.",
-            "links": ["attention", "device", "history"]}
+                         "decided as soon as it does.", "more": "", "links": ["device"]}
+    words = {
+        # Its item's own words say what failed and what to do about it; with no item, here.
+        "verify_failed": ("It needs a person." if item["state"] == "stands" else
+                          "It needs a person: a fix was applied and its verify failed. Read "
+                          f"the failed step under What Mercury has done, then {device} "
+                          "itself."),
+        "proposal": "It needs a person: a fix waits for a person's decision. Nothing is sent "
+                    "until it is approved.",
+        "decided": "It needs a person.",
+        "lost_stream": f"It needs a person: the fix changes {device}'s configuration, so a "
+                       f"person approves it. Until one does, {device}'s telemetry stays lost.",
+        "attempt_stopped": f"It needs a person: attempt {n} did not fix it. Retry with more "
+                           "information, Cancel and Hand over are under AI troubleshooting, "
+                           "below.",
+        "fix_proposed": "It needs a person: a fix is proposed under AI troubleshooting, below. "
+                        "It runs only when a person approves it in its card.",
+        "troubleshooting_cancelled": "It needs a person: troubleshooting was cancelled, and "
+                                     "the incident stays open.",
+        "handed_over": "It needs a person: it was handed over, and the incident stays open "
+                       "until its symptom clears.",
+    }[why]
+    label = str((row.get("action") or {}).get("label") or "").strip()
+    if item["state"] == "stands":
+        more = (label[:1].upper() + label[1:] + ("" if label.endswith((".", "…")) else ".")
+                if label else "")
+    elif item["state"] == "reading":
+        more = ("Needs attention is still being read, so the action its item offers is not "
+                "known yet: this page draws it when that list has been read.")
+    else:
+        more = ("Its item is not on Needs attention now: it cleared there, or a person "
+                f"acknowledged it. Open {device} to see how it stands.")
+    # The primary button already opens the device where that is the item's action.
+    links = (["history"] if item["first"] in ("device", "") else ["device", "history"])
+    return {"words": words, "more": more, "links": links}
 
 
 def _record(found: dict, tl: dict) -> list:
@@ -729,6 +918,11 @@ def _record(found: dict, tl: dict) -> list:
     standing = inc.get("standing") or {}
     trig = list(inc.get("triggers") or [])
     pol = entry.get("policy") or {}
+    # C3488: a decision alone (a proposal waiting, a dry-run record) has no act, so its step
+    # log entry may hold neither its mode, its fix kind nor its program's hash: the newest
+    # decision's own are the record's then (what its Needs attention row kept under Details
+    # for the record).
+    newest = decisions[-1] if decisions else {}
     lines = [
         ("Incident", found["id"]), ("Network", found["network"]),
         ("Opened (Mercury's sight)", inc.get("opened_at")),
@@ -749,7 +943,9 @@ def _record(found: dict, tl: dict) -> list:
                               for r in inc.get("related") or [])),
         ("Decisions", ", ".join(d.get("id") or "" for d in decisions)
          or ", ".join(entry.get("decisions") or [])),
-        ("Mode", entry.get("mode")), ("Fix kind", entry.get("kind")),
+        ("Mode", entry.get("mode") or newest.get("mode")),
+        ("Fix kind", entry.get("kind") or newest.get("kind")),
+        ("Tier", entry.get("tier") or newest.get("tier")),
         ("Policy", (f"{pol.get('fingerprint')} confirmed by {pol.get('by')}"
                     if pol.get("fingerprint") else "")),
         ("Fault drill", (f"{drill['id']}, declared by {drill.get('declared_by')}: "
@@ -758,6 +954,8 @@ def _record(found: dict, tl: dict) -> list:
         # is the next line's.
         ("Program", (f"{config_line_count(entry.get('program') or [])} line(s), hash "
                      f"{entry.get('program_hash')}" if entry.get("program_hash") else "")),
+        ("Program hash, as decided", (newest.get("program_hash") or ""
+                                      if not entry.get("program_hash") else "")),
         ("Program lines (masked)", "; ".join(entry.get("program") or [])),
         ("Golden commit", str((entry.get("records") or {}).get("golden") or "")[:12]),
         ("Approval", (entry.get("records") or {}).get("approval")),
@@ -787,13 +985,28 @@ def _record(found: dict, tl: dict) -> list:
     return [(k, str(v)) for k, v in lines if v not in (None, "", [], {})]
 
 
-def page(network: str, incident_id: str) -> dict:
+def _held_attention(network: str) -> dict:
+    """Needs attention's list for *network* as the background holds it (`attention_store.read`:
+    never computed for this page, the page-speed rule), masked and its people named, as the
+    list's own page draws it; a run's hold is the request's to mark (`routes.v2._attention`)."""
+    from modules import attention_store, display_names
+    from modules.outbound import mask_payload
+
+    return display_names.people_payload(mask_payload(attention_store.read(network)))
+
+
+def page(network: str, incident_id: str, attention: dict = None) -> dict:
     """What the incident's page draws (`templates/v2/incident.html`), for one id of *network*.
     ``{"kind", "id", "network", ...}``: *kind* is ``page`` (drawn in full), ``folded`` (its
     address redirects to ``into``), ``other_kind``, ``unknown`` or ``unreadable`` (said on the
     frame). Every text is masked again on the way out, and every person outside ``record`` is
-    named by display name."""
+    named by display name. *attention* is Needs attention's list as it is drawn for this
+    request, or what gives it (its route passes `routes.v2._attention`, a run's hold marked,
+    asked only for an id that has a page); None reads the held value here. Its
+    state is `status`'s, the one answer every section draws; its action is its own Needs
+    attention item's (`item_of`)."""
     from modules import display_names
+    from modules.fixit import section
     from modules.heal import incidents, run_card, said, steplog
 
     found = resolve(network, incident_id)
@@ -807,22 +1020,65 @@ def page(network: str, incident_id: str) -> dict:
     device = inc.get("device") or entry.get("device") or ""
     ran = acts(entry)
     tl = timeline(found["incident"], entry, decisions)
-    state = state_of(found["incident"], entry, decisions)
     # Resolved: nothing is left for Mercury or a person to do. An incident whose heal ended
     # without a passed verify is closed in its own store and still needs a person.
-    resolved = state in ("fixed", "cleared", "cancelled")
+    resolved = state_of(found["incident"], entry, decisions) in RESOLVED
+    # The AI troubleshooting section (board recurring-fixes v2; `modules/fixit/section.py`),
+    # drawn with no AI call: a read of the incident's troubleshooting record, the operations'
+    # run records, the record of AI calls and the settings. Resolved, it is read-only. Read
+    # first: its state is part of the page's ONE state (`status`).
+    closed = _epoch(tl["closed"]) if tl["closed"] else None
+    fixit = section.drawn(network, found,
+                          resolved=(closed or time.time()) if resolved else None,
+                          ended=state_of(found["incident"], entry, decisions) if resolved
+                          else "")
+    st = status(found["incident"], entry, decisions, fixit["state"])
+    state = st["state"]
+    # The incident's own Needs attention item, as that list holds it: its action is the
+    # page's one primary button while a person is needed, and its lost-stream lines are
+    # What's wrong's (C3488). A page that needs nobody draws no action.
+    item = item_of(_held_attention(network) if attention is None else
+                   attention() if callable(attention) else attention,
+                   found["id"], decisions, network, device)
+    if not st["needs"]:
+        item["first"] = ""
+    elif st["why"] == "fix_proposed" and (fixit.get("proposal") or {}).get("operation"):
+        # A fix proposed under AI troubleshooting is the state's action: its card is opened
+        # there, with its repeat flag and its reasons, never a second card of the same
+        # operation under What to do.
+        item["first"] = "proposed"
+    elif not item["first"] and device:
+        # No control of its own (no item, or an item whose action is its words alone): the
+        # device's page is where a person reads how it stands.
+        item["first"] = "device"
+        item["row"] = dict(item["row"], devices=[device],
+                           networks=dict(item["row"].get("networks") or {},
+                                         **{device: [network]}))
     newest = decisions[-1] if decisions else {}
     outcome = entry.get("outcome") or newest.get("outcome") or ""
     kind = entry.get("kind") or newest.get("kind") or ""
-    sev = _severity(state, decisions, ran, tl["who"], resolved)
+    sev = _severity(state, decisions, ran, tl["who"], resolved, item["level"])
     members = list(inc.get("attached") or [])
     card = heal_card(network, device, entry)
     cr = (entry.get("records") or {}).get("change_record") or {}
-    diagnosis = entry.get("diagnosis") or {}
+    # Mercury's diagnosis attached to the incident, in full (C3488: the page drew one line of
+    # it, and its hypotheses only on its Needs attention row): one that ran, or, for a
+    # can't-fix (the rule its row draws it by), that none has, said as the row says it.
+    # An incident nothing has decided on (a lost stream a person diagnosed) has no entry to
+    # carry its diagnosis: it is the step log's own row then, read here.
+    from modules import attention as A
+    attached = entry.get("diagnosis")
+    if not attached:
+        logged = steplog.diagnoses(network, incident=found["id"])
+        attached = (logged["diagnoses"] or [None])[0] if logged["state"] != "unreadable" \
+            else None
+    diagnosis = (A.heal_diagnosis(network, dict(entry, incident=found["id"], device=device,
+                                                diagnosis=attached))
+                 if attached or A.is_cant_fix(outcome) else None)
     pol = entry.get("policy") or newest.get("policy") or {}
     model = dict(
         base, title=title(found["incident"], entry, decisions, state, tl["who"]),
-        state=state, state_words=STATE_WORDS[state],
+        state=state, state_words=st["words"],
         state_kind={"open": "info", "fixed": "ok",
                     "needs_person": "danger" if sev["kind"] == "danger" else "warn"}.get(
                         state, "muted"),
@@ -851,9 +1107,12 @@ def page(network: str, incident_id: str) -> dict:
         wrong={"cause": said.drawn(newest.get("cause") or entry.get("cause")),
                "words": (newest.get("outcome_words") or entry.get("outcome_words")
                          or (newest.get("words") if not entry else "") or ""),
+               # Said only while that IS the page's state (`status`: watching), never beside
+               # "Needs a person".
                "watching": (f"Mercury is still reading {device}: it decides once its reads "
                             "agree, after the grace period."
-                            if not decisions and not entry else "")},
+                            if st["why"] == "watching" and not decisions and not entry
+                            else "")},
         done={"mark": steplog.mark(outcome, kind) if entry else "",
               "level": ((card.get("level") if card and card.get("state") == "result" else
                          "ok" if outcome in run_card.HEALED + run_card.DECISION_GOOD
@@ -867,11 +1126,8 @@ def page(network: str, incident_id: str) -> dict:
               # it was by is said once, in the header; the outcome once, in its Done stage.
               "steps": card["steps"] if card else None,
               "change_record": bool(cr.get("state") == "made" and cr.get("markdown")),
-              "diagnosis": ({"words": diagnosis.get("runbook_words") or "a runbook",
-                             "at": diagnosis.get("finished_at") or "",
-                             "hypotheses": len(diagnosis.get("hypotheses") or [])}
-                            if diagnosis else None)},
-        todo=_todo(state, device, tl),
+              "diagnosis": diagnosis},
+        todo=_todo(st, device, tl, fixit, item),
         evidence={"triggers": len(inc.get("triggers") or []),
                   "seen": int(inc.get("triggers_seen") or 0),
                   "reads": len(inc.get("reads") or []),
@@ -881,12 +1137,8 @@ def page(network: str, incident_id: str) -> dict:
         members_n=len(members))
     model = display_names.people_payload(steplog.masked(model))
     model["record"] = steplog.masked(_record(found, tl))
-    # The AI troubleshooting section (board recurring-fixes v2; `modules/fixit/section.py`),
-    # drawn with no AI call: a read of the incident's troubleshooting record, the operations'
-    # run records, the record of AI calls and the settings. Resolved, it is read-only.
-    from modules.fixit import section
-    closed = _epoch(model["closed_at"]) if model["closed_at"] else None
-    model["fixit"] = section.drawn(network, found,
-                                   resolved=(closed or time.time()) if resolved else None,
-                                   ended=state if resolved else "")
+    # The item as its own list drew it (masked there, its people named there), and the
+    # section as it draws itself (`section.drawn`): neither is worded again here.
+    model["item"] = item
+    model["fixit"] = fixit
     return model

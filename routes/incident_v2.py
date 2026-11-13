@@ -4,11 +4,13 @@ the operator's design change of 2026-11-11: "each incident gets its own page").
 Its first slice: ``GET /v2/incident/<id>`` for a self-healing incident (an ``hi-`` id) of the
 page's network, read-only: its header with the four recorded times and TIME TO REPAIR, what is
 wrong, what Mercury has done (THE stepper, from the incident's own recorded steps), what to do
-(links only), the AI troubleshooting frame, its evidence and its record
-(`modules/incident_page.py`).
+(the page's one state in words and, while a person is needed, the ONE action its Needs
+attention item offers, as the page's primary button; the GUI review's item 2, C3450), the AI
+troubleshooting frame, its evidence and its record (`modules/incident_page.py`).
 
 A READ, and the only route here: it writes nothing, creates no network, starts nothing and
-reaches no device. Any viewer the frame serves may open it; it draws the viewer through
+reaches no device. The action's own card (a proposal's, a Re-subscribe's) is its operation's
+route, read when its button is pressed. Any viewer the frame serves may open it; it draws the viewer through
 `identity.viewer()` and carries the strict policy.
 
 - A closed incident folded into another answers 302 to the surviving incident's page.
@@ -34,7 +36,14 @@ def incident(incident_id):
     from modules import incident_page
 
     ref = _page_ref()
-    p = incident_page.page(ref.name, incident_id)
+    # Needs attention's list as it is drawn for this request (the value the background holds,
+    # masked, a run's hold marked): the incident's own item on it carries the page's action.
+    # Asked for only by an id that has a page.
+    from routes.v2 import _attention, with_heal_analysis
+    p = incident_page.page(ref.name, incident_id, attention=_attention)
+    if p["kind"] == "page":
+        # A can't-fix's AI analysis in full, in the AI troubleshooting section (C3488).
+        with_heal_analysis(p["fixit"])
     if p["kind"] == "folded":
         return redirect(url_for("incident_v2.incident", incident_id=p["into"], list=ref.name),
                         code=302)

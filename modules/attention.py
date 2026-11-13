@@ -6584,6 +6584,130 @@ def _link_incident_pages(lst: str, rows: list, decisions: list = ()) -> None:
                                       **({"drill": drills[iid]} if iid in drills else {}))
 
 
+def _link_stream_incidents(rows: list, read=None) -> None:
+    """C3487 (the operator's item 2, 2026-11-13): a lost telemetry stream's row opens its
+    incident's own page too. A lost stream is Grafana's row (`grafana_source`), and its
+    incident is self-healing's, opened from the same alerts where self-healing is on for the
+    device's network; `_link_incident_pages` reached self-healing's rows only, so the row with
+    Re-subscribe on it could not open the page that holds its attempts. Each row whose action
+    is Re-subscribe, with the rows folded under one, takes ``incident_page`` when its device is
+    in exactly one network (`_with_networks`, already run) and that network holds an OPEN
+    incident of the device one of whose triggers is a lost stream of a subscription the row
+    names (`diagnose_stream.stream_of`, the reading the incident's own page uses). A drill's
+    incident says so (its tag). One read of each such network's incidents, never one per row;
+    a store that cannot be read links nothing (the row keeps its action). *read* is the
+    incidents' read (tests)."""
+    from modules import fault_drills, incident_page
+    from modules.heal import diagnose_stream, incidents
+
+    read = read or incidents.read
+    held = {}
+    for r in [x for top in rows for x in [top] + (top.get("folded") or [])]:
+        act = r.get("action") or {}
+        if act.get("open") != "resubscribe" or r.get("incident_page"):
+            continue
+        device, subs = act.get("device") or "", {str(s) for s in act.get("subs") or []}
+        nets = row_device_networks(r, device)
+        if len(nets) != 1:
+            continue
+        net = nets[0]
+        if net not in held:
+            try:
+                got = read(net)
+            except Exception as exc:                  # noqa: BLE001 (the row keeps its action)
+                log.warning("attention: %s's incidents could not be read for a lost "
+                            "stream's link: %s", net, exc)
+                got = {"state": "unreadable", "incidents": []}
+            held[net] = [i for i in got.get("incidents") or []
+                         if got.get("state") != "unreadable"
+                         and i.get("state") in incidents.OPEN_STATES]
+        for inc in held[net]:
+            named = {diagnose_stream.stream_of(t).get("subscription")
+                     for t in inc.get("triggers") or []}
+            if inc.get("device") == device and subs & named \
+                    and incident_page.HI.match(str(inc.get("id") or "")):
+                tag = fault_drills.tag_of(inc)
+                r["incident_page"] = dict({"id": inc["id"], "list": net},
+                                          **({"drill": tag["id"]} if tag else {}))
+                break
+
+
+#: A row's first action, by what it is (`first_action`): the keys the row's line and its
+#: incident's page draw a control for.
+FIRST_ACTIONS = ("run", "ai_spend_panel", "heal_proposal", "heal_halt", "heal_mark",
+                 "resubscribe", "update_page", "likely", "device", "href", "")
+#: The actions whose control is a card drawn in place when it is pressed.
+IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe")
+
+
+def row_device_networks(r: dict, device) -> list:
+    """The networks a row's *device* is found in (`_with_networks`'s ``networks``, which maps
+    each of the row's DEVICES to its networks: keyed by device, not by network, so the network
+    keys rule, tests/test_network_keys.py, which reads a map under ``networks`` as one keyed by
+    network, does not describe it; C3527). Read by walking the map, never by a network's name."""
+    return next((list(ns or []) for d, ns in (r.get("networks") or {}).items() if d == device),
+                [])
+
+
+def first_action(r: dict) -> str:
+    """Which ONE action a row offers first, one of `FIRST_ACTIONS`: the one resolver its line
+    on Needs attention (`_attention.html`'s ``primary``) and its incident's own page (What to
+    do's one primary button; the GUI review's item 2, C3450) both ask, so the page never
+    offers another action than its row. In this order: ``run`` while a run holds the device
+    the action would change (`in_flight.mark_held`: Open the run stands in the action's
+    place); the action's own control where it has one (the spend panel, a proposal's card, a
+    halt's, a dry-run record's mark, Re-subscribe, a host step's Update page); the device a
+    can't-fix names as its likeliest cause; the row's first device; the address the action
+    names on these pages; else ``""`` (the action is its words alone)."""
+    act = r.get("action") or {}
+    opens = act.get("open")
+    if r.get("held"):
+        return "run"
+    if opens == "resubscribe" and len(row_device_networks(r, act.get("device"))) != 1:
+        # Re-subscribe is sent only to a device found in exactly one network (the row's own
+        # card says "is not offered" otherwise), so its line offers the device instead, never
+        # a control its body withholds (item 2's finding, the line and the body parting).
+        opens = None
+    if opens in ("ai_spend_panel",) + IN_PLACE:
+        return opens
+    if opens == "app_update" and r.get("source") == "host_steps":
+        return "update_page"
+    if r.get("likely"):
+        return "likely"
+    if r.get("devices"):
+        return "device"
+    if str(act.get("href") or "").startswith("/v2/"):
+        return "href"
+    return ""
+
+
+def is_cant_fix(outcome) -> bool:
+    """Whether a step log entry's *outcome* is one a can't-fix row stands on
+    (`heal_analysis.CANT_FIX`: the decision's can't fix, or an act whose symptom remained or
+    that rolled back): the rule `_heal_cant_fix_rows` draws a row, its diagnosis and its AI
+    analysis by, and the incident's own page draws the same two by."""
+    from modules.ai import heal_analysis as HA
+
+    return outcome in HA.CANT_FIX
+
+
+def heal_diagnosis(lst: str, entry: dict) -> dict:
+    """Mercury's diagnosis attached to a can't-fix incident (board H's amendment, H17; 19.3,
+    N14), as its row and its incident's page draw it (`auto_diagnose.drawn`, from the step
+    log's *entry* already read: nothing more is asked of the log): ``{"state", "error",
+    "result", "running", "auto", "device"}``. An Alert incident's (Tier 3) runs by itself
+    before its notice, so one not yet recorded is asked of its device's diagnosis lock (a file
+    read, never a device) and drawn running."""
+    from modules.heal import auto_diagnose
+
+    host = entry.get("device") or ""
+    alert = auto_diagnose.is_alert(entry)
+    got = auto_diagnose.drawn(lst, entry.get("incident") or "", host if alert else "",
+                              d=entry.get("diagnosis"), read=False)
+    got.pop("addresses", None)                    # a proposal's card's, never a can't-fix's
+    return dict(got, auto=alert, device=host)
+
+
 #: How many rules the fold window row names (`_heal_fold_rows`); the rest are counted.
 FOLD_RULES_NAMED = 5
 
@@ -6883,12 +7007,7 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
         # already read; an Alert incident's (Tier 3) runs by itself before its notice, so one
         # not yet recorded is asked of its device's diagnosis lock (a file read, never a
         # device), and drawn running.
-        from modules.heal import auto_diagnose
-        alert = auto_diagnose.is_alert(e)
-        got = auto_diagnose.drawn(lst, e["incident"], host if alert else "",
-                                  d=e.get("diagnosis"), read=False)
-        got.pop("addresses", None)                # a proposal's card's, never a can't-fix's
-        r["heal_diagnosis"] = dict(got, auto=alert, device=host)
+        r["heal_diagnosis"] = heal_diagnosis(lst, e)
         # Board H's amendment, artboard I (H16): Diagnose…, its runbook and target from the
         # incident's trigger, read from the row already read (nothing more is asked).
         r["diagnose"] = diagnose_page.from_incident(lst, e, triggers.get(e["incident"]))
@@ -8539,6 +8658,8 @@ def assemble(results: list) -> dict:
     for r in rows:
         if r.get("folded"):
             r["folded"] = _with_networks(r["folded"])
+    # C3487: a lost stream's row opens its incident's own page, as a heal's row does.
+    _link_stream_incidents(rows)
     # The acknowledgement record and its current list read ONCE for both uses (C3230).
     held = _acknowledgements_now()
     rows, acknowledged, ack_result = _without_acknowledged(rows, held)
