@@ -175,8 +175,10 @@ its deploy, held for the network, or no value. It never shows a value. A deploy 
 value is refused before anything is sent. **Set value…** beside a reference opens a write-only
 form: the value twice and why, in one line. It stores the value for this device only, records
 who, when and why (never the value), and sends nothing to the device; the next deploy sends
-it. The account Mercury signs in with is not set here: it changes by Rotate only. See
-[Set a secret reference's value](set-secret-value).
+it. The account Mercury signs in with is not set here: it changes by Rotate only. Nor is the
+read-only account (`read-account:profile:<profile>`): its name and password are the profile's,
+set on Credentials, one for every device ([the read-only account](credentials#read-account)).
+See [Set a secret reference's value](set-secret-value).
 
 ## History {#history-tab}
 

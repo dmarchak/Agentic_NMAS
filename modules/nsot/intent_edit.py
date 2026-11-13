@@ -464,7 +464,7 @@ def _masked_rows(rows: list) -> list:
 
 
 #: A reference with no value, as the masked render places it (C2332, `build_artifact`).
-_NO_VALUE = re.compile(r"<missing-secret:([A-Za-z0-9_]+)>")
+_NO_VALUE = re.compile(r"<missing-secret:([A-Za-z0-9_:-]+)>")
 
 
 def no_value_words(text: str) -> str:

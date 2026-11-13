@@ -92,12 +92,19 @@ def intent_for_names(list_name: str, host: str) -> dict:
 def _uses(intent: dict) -> dict:
     """``{ref: what it is for}`` for every reference *intent* names (`hostvars.named_refs`, the
     list hydration resolves, so the card and the deploy never disagree on what is named)."""
-    from modules.nsot.hostvars import named_refs
+    from modules.nsot.hostvars import named_refs, read_account_profile, read_account_users
 
     out = {}
-    for user in intent.get("users") or []:
+    # A read-only account's entry named from the store (C2657), as its render names it.
+    for user in read_account_users(intent).get("users") or []:
         ref = (user or {}).get("secret_ref")
-        if ref:
+        if ref and read_account_profile(ref):
+            name = str(user.get("name") or "")
+            named = "" if name.startswith("<missing-secret:") else f" {name}"
+            out[ref] = (f"the read-only account{named} of profile {read_account_profile(ref)}"
+                        + ("" if named else " (none is set)")
+                        + f", privilege {user.get('privilege', 1)}")
+        elif ref:
             out[ref] = (f"account {user.get('name')}, privilege {user.get('privilege', 1)}")
     if intent.get("enable_secret_ref"):
         out.setdefault(str(intent["enable_secret_ref"]), "the enable secret")
@@ -136,8 +143,21 @@ def _state(list_name: str, host: str, ref: str) -> str:
         return "device_form"
     if kind == "plaintext":
         return "typed" if _typed_pending(list_name, host, ref) else "device_value"
+    from modules.nsot.hostvars import read_account_profile
+    if read_account_profile(ref):
+        # The read-only account's own store (C2657), never a profile secret of the same name.
+        return "held" if credentials.read_account_login(read_account_profile(ref))["ok"] \
+            else "none"
     profile = credentials.template_secret_kind(credentials.profile_secret_key(list_name, ref))
     return "held" if profile else "none"
+
+
+def read_account_words(ref: str) -> str:
+    """THE words of why a read-only account's reference is not set here (C2657): its password is
+    the profile's read account's, one value for every device, set in Settings › Credentials."""
+    return (f"{ref} is the read-only account of a credential profile: its password is set in "
+            "Settings › Credentials (Read-only account), one value for every device, never per "
+            "device")
 
 
 def managed_ref(username: str) -> str:
@@ -155,8 +175,11 @@ def label_by_ref(value, intent: dict):
     person could not tell which value was hidden): an account's line by its `users[]`
     entry's `secret_ref`, the enable secret's by `enable_secret_ref`. Runs AFTER masking, on
     text that holds no value; a line whose reference is unknown keeps its kind."""
+    from modules.nsot.hostvars import read_account_users
+
+    # A read-only account's entry named from the store (C2657), as its render names it.
     users = {str(u.get("name")): str(u.get("secret_ref"))
-             for u in (intent or {}).get("users") or []
+             for u in read_account_users(intent or {}).get("users") or []
              if isinstance(u, dict) and u.get("name") and u.get("secret_ref")}
     enable = str((intent or {}).get("enable_secret_ref") or "")
 
@@ -201,14 +224,18 @@ def listing(list_name: str, host: str, *, signs_in_as: str = "", intent: dict = 
     every reference *host*'s committed intent names; never a value. *signs_in_as* is the
     username Mercury signs in to the device with: its reference is not settable here."""
     intent = _intent(list_name, host) if intent is None else intent
+    from modules.nsot.hostvars import read_account_profile
+
     managed = managed_ref(signs_in_as)
     refs = []
     for ref, why in sorted(_uses(intent).items()):
         state = _state(list_name, host, ref)
+        reader = bool(read_account_profile(ref))
         refs.append({"ref": ref, "for": why, "state": state, "words": STATES[state],
-                     "settable": ref != managed,
+                     "settable": ref != managed and not reader,
                      "why_not": "Mercury signs in with this account: it changes by Rotate only"
-                                if ref == managed else ""})
+                                if ref == managed else
+                                (read_account_words(ref) if reader else "")})
     counts = {s: sum(1 for r in refs if r["state"] == s) for s in STATES}
     return {"refs": refs, "counts": counts}
 
@@ -216,6 +243,8 @@ def listing(list_name: str, host: str, *, signs_in_as: str = "", intent: dict = 
 def check(list_name: str, host: str, ref: str, value: str, again: str, reason: str, *,
           signs_in_as: str = "", intent: dict = None) -> list:
     """The checks the card draws, each ``{"name", "ok", "detail"}``, never naming the value."""
+    from modules.nsot.hostvars import read_account_profile
+
     intent = _intent(list_name, host) if intent is None else intent
     uses = _uses(intent)
     checks = [
@@ -231,6 +260,9 @@ def check(list_name: str, host: str, ref: str, value: str, again: str, reason: s
         {"name": "not Mercury's own account", "ok": ref != managed_ref(signs_in_as),
          "detail": "it is not the account Mercury signs in with"
          if ref != managed_ref(signs_in_as) else managed_words(ref)},
+        {"name": "not the read-only account", "ok": not read_account_profile(ref),
+         "detail": "it is not a profile's read-only account"
+         if not read_account_profile(ref) else read_account_words(ref)},
         {"name": "a reason", "ok": bool((reason or "").strip()),
          "detail": "recorded with who and when" if (reason or "").strip()
          else "say why in one line; it is recorded with who and when"},

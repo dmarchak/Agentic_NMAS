@@ -465,6 +465,15 @@ def _check_device(run: _Run, device: str, intent: dict, entry: dict, profile_doc
         files.append(profile.PROFILE_REL)
     effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
         else intent
+    # A read-only account's line (C2657) drawn in the form the device keeps once its own form
+    # is stored for it, as the deploy's render draws it; names and kinds only, never a value.
+    try:
+        captured = hostvars.captured_read_accounts(hostvars.list_name_for_repo(run.repo),
+                                                   device, effective)
+    except Exception as exc:                   # noqa: BLE001 - drawn in its typed form
+        log.debug("config_check: %s's read-account kinds unreadable: %s", device, exc)
+        captured = frozenset()
+    effective = hostvars.read_account_users(effective, captured=captured)
     try:
         rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
                                     template_root=src["root"], template_name=src["name"])

@@ -58,8 +58,9 @@ def assert_no_mask(text: str, context: str = "deploy") -> None:
         raise MaskedContentError(refusal_words(text, context))
 
 
-#: An unresolved reference's placeholder, as `roundtrip.render` writes it.
-_MISSING_REF = re.compile(r"<missing-secret:([A-Za-z0-9_]+)>")
+#: An unresolved reference's placeholder, as `roundtrip.render` writes it. A read-only
+#: account's reference (``read-account:profile:<name>``, C2657) carries a dash and colons.
+_MISSING_REF = re.compile(r"<missing-secret:([A-Za-z0-9_:-]+)>")
 
 
 def refusal_words(text: str, context: str = "deploy") -> str:
@@ -67,6 +68,16 @@ def refusal_words(text: str, context: str = "deploy") -> str:
     nothing was sent, whose fault it is and what to do; the marker found named, never a value
     (C2285, 2026-11-01: the old words were written for a developer)."""
     missing = sorted(set(_MISSING_REF.findall(text or "")))
+    from modules.nsot.hostvars import read_account_profile
+    accounts = [m for m in missing if read_account_profile(m)]
+    if accounts:
+        names = ", ".join(accounts)
+        return (f"Mercury stopped before the {context}: building the program to send, it found "
+                f"no read-only account for {names}, so it would have sent a placeholder in its "
+                "place. Nothing was sent. Set that profile's read-only account in Settings › "
+                "Credentials, and leave the account's name out of its users entry (Mercury "
+                "takes it from there), or name the account the profile holds (it found the "
+                f"placeholder <missing-secret:{accounts[0]}>).")
     if missing:
         names = ", ".join(missing)
         return (f"Mercury stopped before the {context}: building the program to send, it found "

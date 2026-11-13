@@ -35,7 +35,9 @@ line. **Store the value** runs these steps; **Cancel** closes the form, storing 
    accepts (printable characters, no space, at most 127); the reference is named in the
    device's committed intent; it is not the account {{product}} signs in with to the device
    (that one changes by [Rotate](rotate) only, which proves the new password signs in before it
-   keeps it); and a reason is given. A failing check refuses by name, and nothing is stored.
+   keeps it); it is not a profile's read-only account (`read-account:profile:<profile>`, whose
+   password is set on [Credentials](credentials#read-account), one for every device); and a
+   reason is given. A failing check refuses by name, and nothing is stored.
    Setting a value needs a verified person, as committing intent does.
 2. `store` **Store it.** The value is stored encrypted for this device and reference, kind
    *plaintext* (typed by a person). Nothing is sent to the device.

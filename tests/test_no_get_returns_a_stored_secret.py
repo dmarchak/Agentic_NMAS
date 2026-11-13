@@ -148,6 +148,11 @@ def planted_stores():
 
         credentials.save_profile("planted-profile", "admin", _p("ProfPw"), _p("ProfSec"))
         values["credential_profile"] = [_p("ProfPw"), _p("ProfSec")]
+        # The profile's read-only account (H28), the store a `read-account:profile:` reference
+        # resolves from (C2657): no route may return its password either.
+        credentials.set_read_account("planted-profile", "planted-ro", _p("ReadPw"),
+                                     actor="test-person@example.invalid")
+        values["read_account"] = [_p("ReadPw")]
         credentials.set_device_override(DEVICE["ip"], "admin", _p("OvrPw"))
         values["device_override"] = [_p("OvrPw")]
         credentials.set_template_secret(

@@ -151,5 +151,17 @@ lists each read-only account by its age, as it lists the deploy accounts.
 low privilege level. **On the devices** says what is not read yet: the account reaches each
 device as an intent change (an account added, never changed), deployed by a person, once its
 device-side shape (a privilege level or a CLI view) is measured on an IOS and an IOS-XE device.
+The intent change is one `users` entry naming the profile's account by its reference,
+`read-account:profile:<profile>` (for the default profile, `secret_ref:
+read-account:profile:default`, with `privilege: 1`), and no name or password: a deploy takes
+the account's name and its password from this card, in memory, and its preview shows the line
+with the password masked (`username <account> privilege 1 algorithm-type scrypt secret
+<masked>`). A profile with no read-only account, or an entry naming a different account,
+leaves the line without a value, and the deploy is refused by name before anything is sent. A
+device that already holds an account of that name with another line is refused: the deploy
+adds the account, never changes it. After its deploy verifies, Mercury keeps the device's own
+form of the password for that device, so later deploys send nothing for it. Replacing the
+password here changes no device: the devices keep the one they were given, and the AI's reads
+of them fail to sign in until the new one reaches them, which no operation does yet.
 Deleting a profile deletes its read-only account with it; retiring a device removes its intent,
 and the account with it.

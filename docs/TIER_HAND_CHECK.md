@@ -4421,3 +4421,44 @@ the schema and the `ai_gateway` group, documented in docs/SETTINGS.md); K1 to K3
 **The result: 16 mutants and the canary; 14 killed in their first run, E1 and X2 killed once
 the tests added for them landed, none equivalent.** Not mutated: `redact.redact_egress` and the
 unmasked-secret check (unchanged here), and `people=False`'s two callers (no AI request).
+
+## 2026-11-13: the read-only account through intent, a `secret_ref` to its sealed password (C2657), by hand
+
+**What changed in the tier:** a secret value's way to a device. The read-only account's
+password (sealed in the credential store's `read_accounts`) now reaches a device's render
+through intent, by the reference `read-account:profile:<profile>` (the operator's choice over
+credential rotation, 2026-11-13, "C2657 as proposed, hand check included").
+- `credentials.read_account_login(profile)` (new): a profile's own read account, by its exact
+  name and no chain, the password in plaintext for the one render that adds the account.
+- `hostvars.stored_value`: the one resolver; a device's own captured form first, then for a
+  read-account reference that profile's account and nothing else (never a template or profile
+  secret spelled the same); `read_account_users` names the entry from the store; intent that
+  carries a read account's password is refused at commit (`assert_no_secret_values`).
+- The render masks it in the preview, names it by its reference in the payload and the
+  receipt; a missing account, or an entry naming another, refuses the deploy by name; a device
+  already holding the username otherwise is refused (`deploy.assert_credentials_unchanged`).
+
+The danger the hand check guards: a password in intent, a preview, a payload, a receipt or a
+refusal; a device given another profile's account or a decoy secret's value; an existing
+account changed.
+
+**The method:** as above, `scratchpad/c2657-hand/mut.py`, in throwaway worktrees; then
+tests/test_read_account_intent.py, test_credential_never_changes_on_deploy.py,
+test_no_get_returns_a_stored_secret.py, test_no_post_returns_a_stored_secret.py,
+test_secret_refs_resolve.py, test_secret_capture_back.py, test_deploy_contract.py and
+test_read_only_account.py, no `-x`, CI's interpreter, confined, two workers. Baseline: 153
+passed. **Runs:** 2026-11-13 06:50:47 to 06:54:52 UTC; P3 again to 06:55:47 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the read account login raises | killed (many failed) | every route reaching a render with the reference |
+| P1 intent carrying the read account's password not refused | killed | `test_intent_carrying_the_password_is_refused_at_commit` |
+| P2 the reference resolved from the profile secret of the same name | killed (3+ failed) | the render's measured form (IOS-XE and IOS), the own-store test |
+| P3 any profile's account taken for a reference (no exact name) | **survived the first run**; killed once its test was added | `test_a_reference_resolves_its_own_profile_s_account_never_another_s` (two profiles, two accounts; every earlier test held one) |
+| P4 the device's own captured form not read first | killed (3+ failed) | the render's measured form, the capture's steady state |
+| M1 the preview's masked lookup giving no mask | killed (3+ failed) | `test_the_preview_masks_it_and_names_it_by_its_reference`, the hash test, test_secret_refs_resolve |
+| G1 the change-of-account guard never refusing | killed (many failed) | test_credential_never_changes_on_deploy (the enable secret, the message quoting neither hash, …) and the guard test |
+
+**The result: 6 mutants and the canary; 5 killed in the first run, P3 killed once its test was
+added, none equivalent.** Not mutated: `credentials.set_read_account` and the store's sealing
+(unchanged here), `redact`'s masks (C3424's section above).

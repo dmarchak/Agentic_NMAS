@@ -199,7 +199,7 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     # ever to omit one. Nor one the schema gained after the intent was
     # committed (C568: `source_interfaces`, every intent on the host). Filling
     # changes no output, since `{% if x %}` emits nothing for a falsy value.
-    from modules.nsot.hostvars import complete_schema
+    from modules.nsot.hostvars import complete_schema, read_account_users
     from modules.nsot import features
 
     # The feature packs' fields completed the same way (K7): an absent field is its empty
@@ -207,8 +207,11 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     # refuses stops the render naming it (`features.FeatureIntentInvalid`). A library from
     # before the packs, which reads none of their fields, is handed them as the lines the
     # shipped packs render, which it emits verbatim (`features.for_library`).
-    prepared = features.for_library(features.prepare(complete_schema(host_vars)),
-                                    template_root, platform, template_name)
+    # A read-only account's `users` entry (C2657) completed where hydration has not already:
+    # its name from the store, its form by its value's (`hostvars.read_account_users`).
+    prepared = features.for_library(
+        features.prepare(complete_schema(read_account_users(host_vars, decide=False))),
+        template_root, platform, template_name)
     # Each unmodelled block's children indented by their depth (C2700, the operator,
     # 2026-11-07): a child is a child by structure, so one typed with no leading space renders
     # nested, and one stored indented renders once (`hostvars.unmodelled_children`). Done here,

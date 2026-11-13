@@ -275,7 +275,6 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
     """
     import yaml
 
-    from modules.credentials import get_template_secret, template_secret_key
     from modules.nsot.repo import git
 
     def kind(lines):
@@ -308,10 +307,11 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
             intent = yaml.safe_load(text) or {}
         except Exception:                      # noqa: BLE001
             continue
-        from modules.nsot.hostvars import named_refs
-        missing = [r for r in named_refs(intent)
-                   if not get_template_secret(
-                       template_secret_key(list_name, host, r))]
+        from modules.nsot.hostvars import named_refs, stored_value
+        # THE resolution hydration uses (`hostvars.stored_value`), so this asks exactly what
+        # `validate_restored_intent` asks (C2657: a read-only account's reference resolves from
+        # its own store).
+        missing = [r for r in named_refs(intent) if not stored_value(list_name, host, r)]
         if missing:
             refused.append(host)
 
@@ -354,8 +354,6 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
       ``assert_no_mask`` catches at deploy — naming the device and the ref at
       plan time is the difference between a refusal and a failed batch.
     """
-    from modules.credentials import (get_template_secret, profile_secret_key,
-                                     template_secret_key)
     from modules.nsot import hostvars, profile as _profile, roundtrip
 
     gaps = []
@@ -372,8 +370,8 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
         return gaps
 
     for ref_name in hostvars.named_refs(intent):
-        if not (get_template_secret(template_secret_key(list_name, hostname, ref_name))
-                or get_template_secret(profile_secret_key(list_name, ref_name))):
+        # THE resolution hydration uses (C2657: a read-only account's reference included).
+        if not hostvars.stored_value(list_name, hostname, ref_name):
             gaps.append(f"secret '{ref_name}' is named by this ref's intent but "
                         "is not in the credential store for this list")
 

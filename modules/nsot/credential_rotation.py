@@ -580,14 +580,18 @@ def capture_typed_secrets(list_name: str, hostname: str, host_vars: dict,
     import re
 
     from modules import credentials
+    from modules.nsot.hostvars import read_account_profile, read_account_users
 
     out = []
-    for user in (host_vars or {}).get("users") or []:
+    # A read-only account's entry (C2657) named from the store, as its render named it: its
+    # value was the store's plaintext, sent as typed, so it is captured as a typed value is.
+    for user in read_account_users(host_vars or {}).get("users") or []:
         name, ref = (user or {}).get("name"), (user or {}).get("secret_ref")
-        if not name or not ref:
+        if not name or not ref or str(name).startswith("<missing-secret:"):
             continue
         key = credentials.template_secret_key(list_name, hostname, ref)
-        if credentials.template_secret_kind(key) != "plaintext":
+        kind = credentials.template_secret_kind(key)
+        if kind != "plaintext" and not (read_account_profile(ref) and not kind):
             continue
         held = captured_hash(running, name)
         if not re.match(DEVICE_FORM, held or ""):

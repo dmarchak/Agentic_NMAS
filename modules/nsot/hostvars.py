@@ -411,6 +411,22 @@ def assert_no_secret_values(text: str, hostname: str) -> None:
                 f"('{name.split(':', 1)[1]}') instead — the value belongs in "
                 "the credential store.")
 
+    # Every profile's read-only account (C2657): one value for every device, so every device's
+    # intent is checked for it; its reference is committed, never its password.
+    from modules.credentials import read_account_login, read_accounts
+    for profile in read_accounts():
+        value = read_account_login(profile)["password"]
+        if len(value) < MIN_CHECKABLE_SECRET:
+            continue
+        found = _locate(text, value)
+        if found:
+            lineno, field = found
+            raise SecretLeak(
+                f"{hostname}: the read-only account of profile '{profile}' has its password on "
+                f"line {lineno}, in field '{field}'. Commit its reference "
+                f"('{READ_ACCOUNT_PREFIX}{profile}') instead — the value belongs in the "
+                "credential store.")
+
 
 def assert_printable(text: str, hostname: str) -> None:
     """Refuse intent containing anything an IOS CLI cannot accept.
@@ -1644,6 +1660,134 @@ def named_refs(host_vars: dict) -> list:
     return sorted(out)
 
 
+#: THE reference naming a credential profile's read-only account (C2657, the operator,
+#: 2026-11-13: the account is added to devices through intent): ``read-account:profile:<name>``,
+#: the words the reads engine already names its source by (`credentials.resolve_read`'s
+#: ``source``), so the Intent tab, Settings and an AI read's record say one thing. A ``users``
+#: entry naming it takes its account NAME and its PASSWORD from the credential store's
+#: ``read_accounts`` (`credentials.read_account_login`), never from intent; its name may be left
+#: out of intent, and one written there must be the store's.
+READ_ACCOUNT_PREFIX = "read-account:profile:"
+#: The form a read account's line takes while its value is the store's plaintext: measured on
+#: IOS-XE 17.06 and vIOS-L2 15.2 (`credential_rotation.rotation_commands`), explicit about the
+#: hash rather than the image's default.
+READ_ACCOUNT_TYPED_KIND = "algorithm-type scrypt secret"
+#: Its form once the device's own form of the value is stored for that device (the capture
+#: after a verified deploy, `credential_rotation.capture_typed_secrets`): the value carries its
+#: type digit (``9 $9$…``), so the line renders as the device keeps it and a later deploy
+#: changes nothing.
+READ_ACCOUNT_DEVICE_KIND = "secret"
+#: A value the device itself produced, by its type digit (`credential_rotation.DEVICE_FORM`).
+_DEVICE_FORM = re.compile(r"^[5789] \S+$")
+
+
+def read_account_profile(ref) -> str:
+    """The profile *ref* names when it is a read-only account's reference, else ``""``."""
+    ref = str(ref or "")
+    return ref[len(READ_ACCOUNT_PREFIX):] if ref.startswith(READ_ACCOUNT_PREFIX) else ""
+
+
+def stored_value(list_name: str, hostname: str, ref: str) -> str:
+    """THE resolution of one secret reference to its stored value (hydration and a restore's
+    checks read this): the device's own value first (an override, or the device's own form a
+    capture stored), then, for a read-only account's reference, that profile's read account in
+    ``read_accounts`` and nowhere else (never a template or profile secret of the same name);
+    for any other reference, the network's profile (P.9: one SNMP community per network).
+    ``""`` when none holds one. Never logged."""
+    from modules.credentials import (get_template_secret, profile_secret_key,
+                                     read_account_login, template_secret_key)
+
+    own = get_template_secret(template_secret_key(list_name, hostname, ref))
+    if own:
+        return own
+    profile = read_account_profile(ref)
+    if profile:
+        login = read_account_login(profile)
+        return login["password"] if login["ok"] else ""
+    return get_template_secret(profile_secret_key(list_name, ref)) if list_name else ""
+
+
+def captured_read_accounts(list_name: str, hostname: str, host_vars: dict) -> frozenset:
+    """The read-only account references *host_vars* names whose device's own form is stored for
+    *hostname* (kind ``hash``, the capture after a verified deploy): what a render that resolves
+    no value (the Intent check's) needs to draw the line as the device keeps it. Reads kinds,
+    never a value."""
+    from modules.credentials import template_secret_key, template_secret_kind
+
+    return frozenset(
+        ref for ref in named_refs(host_vars) if read_account_profile(ref)
+        and template_secret_kind(template_secret_key(list_name, hostname, ref)) == "hash")
+
+
+def read_account_users(host_vars: dict, *, decide: bool = True,
+                       captured: frozenset = frozenset()) -> dict:
+    """*host_vars* (a copy when anything changes) with each ``users`` entry that names a read
+    account's reference completed from the store: its ``name`` the account's (read from
+    `credentials.read_account_login`, which also holds the password; only the name is used
+    here), and its ``secret_kind`` by the form its value takes in ``secrets``: the device's own
+    form (``9 $9$…``) renders ``secret``, anything else (the store's plaintext, or no value
+    yet) ``algorithm-type scrypt secret``. *captured* (`captured_read_accounts`) names the
+    references whose device form is stored, for a render that resolves no value.
+
+    *decide* False (`roundtrip.render`, every render) fills only what is absent, so a render of
+    a hydrated document keeps what hydration decided. Never raises: a profile with no read
+    account, or an entry naming another account than the store's, leaves the entry's name as
+    the placeholder `roundtrip.render` writes for a reference with no value
+    (``<missing-secret:<ref>>``) or as intent wrote it, and `hydrate_secrets` resolves no
+    value for it, so the preview says it has none and the deploy's mask guard refuses it by
+    name (`render_artifact.refusal_words`); nothing is ever sent for it."""
+    users = (host_vars or {}).get("users") if isinstance(host_vars, dict) else None
+    if not isinstance(users, list) or not any(
+            isinstance(u, dict) and read_account_profile(u.get("secret_ref")) for u in users):
+        return host_vars
+    from modules.credentials import read_account_login
+
+    secrets = host_vars.get("secrets") or {}
+    out = []
+    for user in users:
+        profile = read_account_profile((user or {}).get("secret_ref")) \
+            if isinstance(user, dict) else ""
+        if not profile:
+            out.append(user)
+            continue
+        user = dict(user)
+        ref = user["secret_ref"]
+        if decide or not user.get("name"):
+            try:
+                login = read_account_login(profile)
+            except Exception as exc:                  # noqa: BLE001 (said; nothing resolves)
+                log.warning("hostvars: the read-only account of %r could not be read: %s",
+                            profile, type(exc).__name__)
+                login = {"ok": False, "username": ""}
+            held = login["username"] if login.get("ok") else ""
+            if not user.get("name"):
+                user["name"] = held or f"<missing-secret:{ref}>"
+            elif held and user["name"] != held:
+                log.warning("hostvars: a users entry names %r for %s, whose read-only account "
+                            "is %r: nothing resolves for it", user["name"], ref, held)
+        if decide or not user.get("secret_kind"):
+            value = str(secrets.get(ref) or "")
+            user["secret_kind"] = (READ_ACCOUNT_DEVICE_KIND
+                                   if ref in captured or _DEVICE_FORM.match(value)
+                                   else READ_ACCOUNT_TYPED_KIND)
+        out.append(user)
+    return {**host_vars, "users": out}
+
+
+def _read_account_resolvable(host_vars: dict, ref: str) -> bool:
+    """Whether *ref*, a read account's reference, may take a value in *host_vars*: every
+    ``users`` entry naming it names the store's account, or leaves its name out. An entry
+    naming another account takes no value, so nothing is sent for it."""
+    from modules.credentials import read_account_login
+
+    login = read_account_login(read_account_profile(ref))
+    if not login["ok"]:
+        return False
+    return all(not u.get("name") or u.get("name") == login["username"]
+               for u in host_vars.get("users") or []
+               if isinstance(u, dict) and u.get("secret_ref") == ref)
+
+
 def hydrate_secrets(host_vars: dict, hostname: str,
                     list_name: str = "") -> dict:
     """Return a copy with ``secrets`` resolved from the credential store.
@@ -1652,25 +1796,25 @@ def hydrate_secrets(host_vars: dict, hostname: str,
     deploy-time render input, and ``assert_no_mask()`` guards the other end.
     Committed intent carries ``secret_refs``; this is where names become values,
     once, as late as possible.
-    """
-    from modules.credentials import get_template_secret, template_secret_key
 
+    A read-only account's reference (``read-account:profile:<name>``, C2657) resolves through
+    `stored_value` like any other, and its ``users`` entry is completed from the store
+    (`read_account_users`): the account's name, and the form of its line by its value's.
+    """
     # Every reference the document names (`named_refs`), not the `secret_refs` list alone.
     refs = sorted(set(named_refs(host_vars)) | set((host_vars.get("secrets") or {}).keys()))
-    from modules.credentials import profile_secret_key
 
     secrets = {}
     for ref in refs:
-        # The device's own value first (an override), then the network's
-        # profile (P.9: one SNMP community per network).
-        value = (get_template_secret(template_secret_key(list_name, hostname, ref))
-                 or (get_template_secret(profile_secret_key(list_name, ref)) if list_name else ""))
+        value = stored_value(list_name, hostname, ref)
+        if value and read_account_profile(ref) and not _read_account_resolvable(host_vars, ref):
+            value = ""
         if value:
             secrets[ref] = value
         else:
             log.warning("hostvars: %s references secret %r with no stored value "
                         "in list %r (neither its own nor the profile's)", hostname, ref, list_name)
-    return {**host_vars, "secrets": secrets}
+    return read_account_users({**host_vars, "secrets": secrets})
 
 
 def store_secrets(host_vars: dict, hostname: str, dry_run: bool = True,

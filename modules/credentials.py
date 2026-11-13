@@ -985,6 +985,21 @@ def read_accounts() -> dict:
     return out
 
 
+def read_account_login(profile: str) -> dict:
+    """*profile*'s own read-only account, by its exact name and no chain: ``{"ok", "username",
+    "password", "error"}`` with the password in plaintext, for the one render that adds the
+    account to a device through intent (C2657, `hostvars.stored_value`'s ``read-account:``
+    reference) and nothing else. Not ok, naming the profile, when it carries none."""
+    profile = (profile or "").strip()
+    data = _load()
+    e = (data.get(READ_ACCOUNTS) or {}).get(profile) or {}
+    if e.get("username") and e.get("password") and profile in data["profiles"]:
+        return {"ok": True, "username": e["username"], "password": decrypt_value(e["password"]),
+                "error": ""}
+    return {"ok": False, "username": "", "password": "",
+            "error": f"the profile {profile!r} carries no read-only account"}
+
+
 def read_chain(role: str = "", site: str = "", platform: str = "") -> list:
     """The profile names a device's read-only account is looked for under, in order."""
     out = [f"{scope}:{value}" for scope, value in
