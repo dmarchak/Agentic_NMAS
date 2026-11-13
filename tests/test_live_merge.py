@@ -154,8 +154,11 @@ class TestTheMerge:
                      " var note = box.querySelector('.live-new button');"
                      " return {held: held.length, note: note ? note.textContent : null,"
                      " y: window.scrollY === window.__y}; }")
+        # The place a moment later too, once settled: a late move the merge caused is caught.
+        y, was = page.settled_place(), page.js("return window.__y")
         page.js("document.getElementById('merge-spacer').remove(); return 1")
         assert got == {"held": 2, "note": "2 new, show them", "y": True}, got
+        assert y == was, f"the reader's place moved after the merge: scrollY {was} -> {y}"
 
     def test_show_them_draws_the_rows_and_takes_the_reader_there(self, page):
         page.js("var s = document.createElement('div'); s.id = 'merge-spacer';"
@@ -277,14 +280,16 @@ def test_needs_attention_keeps_the_reader_s_place_through_a_refresh(served, atte
     b.wait_for(f"return {row}.open", 5)
     b.js(f"{row}.scrollIntoView({{block: 'center'}}); "
          "document.querySelector('[data-attention-row=\"t:row21\"] > summary').focus(); return 1")
-    before = b.js("window.__region = document.getElementById('attention');"
-                  "window.__focus = document.activeElement; return window.scrollY")
+    b.js("window.__region = document.getElementById('attention');"
+         "window.__focus = document.activeElement; return 1")
+    before = b.settled_place()
     b.js(SHOWN)
     # Three new rows arrive at the top, and row 30's title changes.
     attention_rows["rows"][30] = _row(30, what="Row 30, measured again")
     attention_rows["rows"][0:0] = [_row(100 + i) for i in range(3)]
     _fire(b, "acknowledgements")
-    after = b.js(f"return {{y: window.scrollY, open: {row}.open,"
+    y = b.settled_place()
+    after = b.js(f"return {{open: {row}.open,"
                  " same: document.getElementById('attention') === window.__region,"
                  " focused: document.activeElement === window.__focus,"
                  " changed: document.querySelector('[data-attention-row=\"t:row30\"] .att-what').textContent,"
@@ -293,7 +298,7 @@ def test_needs_attention_keeps_the_reader_s_place_through_a_refresh(served, atte
                  " shift: window.__shift, known: window.__shiftKnown}")
     moved = b.js(MOVED)
     assert after["same"], "the list was replaced, not merged (it can be caught half drawn)"
-    assert after["y"] == before, f"the reader's place moved: scrollY {before} -> {after['y']}"
+    assert y == before, f"the reader's place moved: scrollY {before} -> {y}"
     assert after["open"] and after["focused"], after
     assert after["changed"] == "Row 30, measured again", after
     assert after["held"] == 3 and after["note"] == "3 new, show them", after
@@ -319,13 +324,14 @@ def test_needs_attention_keeps_typed_text_through_a_refresh(served, attention_ro
     b.wait_for(f"var i = {row}.querySelector('input[name=why]'); return !!i && i.offsetParent !== null", 10)
     b.click('[data-attention-row="t:row22"] input[name=why]')
     b.type('[data-attention-row="t:row22"] input[name=why]', "the uplink flapped")
-    before = b.js("return window.scrollY")
+    before = b.settled_place()
     # A new row above, and row 5 (on screen above the reader's) measured again.
     attention_rows["rows"][5] = _row(5, what="Row 5, measured again")
     attention_rows["rows"][0:0] = [_row(100)]
     _fire(b, "acknowledgements")
+    y = b.settled_place()
     got = b.js(f"var i = {row}.querySelector('input[name=why]');"
-               "return {value: i.value, focused: document.activeElement === i, y: window.scrollY,"
+               "return {value: i.value, focused: document.activeElement === i,"
                " held: document.getElementById('attention').getAttribute('data-held'),"
                " note: (document.querySelector('#attention .live-new button') || {}).textContent || '',"
                f" waiting: ({row}.querySelector('.held-note') || {{}}).textContent || '',"
@@ -334,7 +340,7 @@ def test_needs_attention_keeps_typed_text_through_a_refresh(served, attention_ro
     # of the list is drawn around them (C2810, the survey's finding 79: one open form held
     # the whole list).
     assert got["value"] == "the uplink flapped" and got["focused"], got
-    assert got["y"] == before, f"the reader's place moved: scrollY {before} -> {got['y']}"
+    assert y == before, f"the reader's place moved: scrollY {before} -> {y}"
     assert got["held"] == "1" and "Newer data is waiting" in got["waiting"], got
     assert got["note"] == "1 new, show them" and got["changed"] == "Row 5, measured again", got
 
@@ -372,13 +378,15 @@ def test_history_keeps_the_reader_s_place_through_a_refresh(served, history_rows
     b.wait_for("return document.getElementById('ev-30').open", 5)
     b.js("document.getElementById('ev-30').scrollIntoView({block: 'center'});"
          "document.querySelector('#ev-29 > summary').focus(); return 1")
-    before = b.js("window.__region = document.getElementById('hist-timeline');"
-                  "window.__focus = document.activeElement; return window.scrollY")
+    b.js("window.__region = document.getElementById('hist-timeline');"
+         "window.__focus = document.activeElement; return 1")
+    before = b.settled_place()
     b.js(SHOWN)
     history_rows["events"][20] = _event(40, what="Record 40, amended")
     history_rows["events"][0:0] = [_event(70), _event(69)]
     _fire(b, "goldens")
-    after = b.js("return {y: window.scrollY, open: document.getElementById('ev-30').open,"
+    y = b.settled_place()
+    after = b.js("return {open: document.getElementById('ev-30').open,"
                  " same: document.getElementById('hist-timeline') === window.__region,"
                  " focused: document.activeElement === window.__focus,"
                  " changed: document.querySelector('#ev-40 .hist-what').textContent,"
@@ -387,7 +395,7 @@ def test_history_keeps_the_reader_s_place_through_a_refresh(served, history_rows
                  " shift: window.__shift}")
     moved = b.js(MOVED)
     assert after["same"], "the timeline was replaced, not merged"
-    assert after["y"] == before, f"the reader's place moved: scrollY {before} -> {after['y']}"
+    assert y == before, f"the reader's place moved: scrollY {before} -> {y}"
     assert after["open"] and after["focused"], after
     assert after["changed"] == "Record 40, amended", after
     assert after["held"] == 2 and after["note"] == "2 new, show them", after
@@ -453,23 +461,26 @@ def test_a_live_page_keeps_what_the_person_is_doing_through_a_refresh(served, ur
          " at.scrollIntoView({block: 'center'}); return 1")
     if survey["focus"]:
         b.js("window.__survey.focus.focus({preventScroll: true}); return 1")
-    before = b.js("window.__before = window.__regions.slice();"
-                  "window.__focusWas = document.activeElement; return window.scrollY")
+    b.js("window.__before = window.__regions.slice();"
+         "window.__focusWas = document.activeElement; return 1")
+    # Read once the browser has settled the scroll: /v2/update's lands on a fractional place
+    # that Firefox moves by a pixel about 0.06 s later, with no refresh sent (C3397).
+    before = b.settled_place()
     assert before > 0, f"{url}: the page did not scroll, so its place is not tested"
     b.js(SHOWN)
     for key in survey["keys"]:
         b.js("htmx.trigger(document.body, 'nmas:' + arguments[0]); return 1", key)
     b.wait_for(f"return window.__settled > 0 && {SETTLED}", 20)
     b.wait_for(f"return {SETTLED}", 20)
+    y = b.settled_place()
     after = b.js("var s = window.__survey;"
-                 "return {y: window.scrollY,"
-                 " replaced: window.__before.filter(function (r) { return !r.isConnected; })"
+                 "return {replaced: window.__before.filter(function (r) { return !r.isConnected; })"
                  "  .map(function (r) { return r.id || r.tagName; }),"
                  " open: s.details ? s.details.isConnected && s.details.open : null,"
                  " focused: s.focus ? document.activeElement === s.focus : null}")
     moved = b.js(MOVED)
     assert after["replaced"] == [], f"{url}: replaced whole, not merged: {after['replaced']}"
-    assert after["y"] == before, f"{url}: the reader's place moved: scrollY {before} -> {after['y']}"
+    assert y == before, f"{url}: the reader's place moved: scrollY {before} -> {y}"
     if survey["details"]:
         assert after["open"], f"{url}: the disclosure the person opened closed"
     if survey["focus"]:

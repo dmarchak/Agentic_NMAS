@@ -35,6 +35,14 @@ import urllib.request
 from tests import home_guard
 
 GECKODRIVER_CANDIDATES = ("/snap/firefox/current/usr/lib/firefox/geckodriver",)
+
+#: `Browser.settled_place` (C3397): the place is settled when two reads this far apart agree.
+PLACE_STEP_S = 0.1
+#: Measured 2026-11-12 on the laptop's Firefox, /v2/update after tests/test_live_merge.py's own
+#: steps (a fractional `scrollIntoView`): the place moved once, 1683 to 1682, 0.060 to 0.091 s
+#: after the scroll over 16 runs with four browsers at once (0.062 to 0.079 s over three runs
+#: alone), so the helper's confirming read lands by about 0.2 s; the bound is about 2.5x that.
+PLACE_SETTLE_BOUND_S = 0.5
 #: The session's watcher (C775): it leads the browser's process group and stops it when the
 #: test process that started it ends, however it ends.
 WATCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_watch.py")
@@ -435,6 +443,26 @@ class Browser:
             if time.time() > deadline:
                 raise AssertionError(f"not true within {timeout} s: {script}")
             time.sleep(0.1)
+
+    def settled_place(self, bound: float = None) -> float:
+        """The reader's place (`window.scrollY`) once it has stopped moving: two equal reads
+        PLACE_STEP_S apart. Every test that holds a refresh keeps the reader's place reads
+        its place before and after through this one helper (C3397), so neither read is taken
+        while the browser is still settling a scroll, and a late move a refresh caused is
+        waited for and caught, not missed. A place still moving at *bound* seconds FAILS,
+        naming every read; it never returns a value it has not seen settle."""
+        bound = PLACE_SETTLE_BOUND_S if bound is None else bound
+        reads = [self.js("return window.scrollY")]
+        deadline = time.monotonic() + bound
+        while True:
+            time.sleep(PLACE_STEP_S)
+            reads.append(self.js("return window.scrollY"))
+            if reads[-1] == reads[-2]:
+                return reads[-1]
+            if time.monotonic() > deadline:
+                raise AssertionError(
+                    f"the reader's place did not settle within {bound} s (two equal reads "
+                    f"{PLACE_STEP_S} s apart): scrollY read {reads}")
 
     def click(self, css: str) -> None:
         """A real click through WebDriver: the element must be visible and
