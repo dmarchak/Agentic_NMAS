@@ -1961,8 +1961,9 @@ def _logs_builder_leftovers(client, _lab, _mp):
 def _logs_older(client, _lab, _mp):
     """Syslog by device's part for lines older than the logs-tail reader's buffer (C3166):
     r3 opened over 7 days, Loki answering with r4's captured lines (tests/fixtures/loki/), the
-    part drawn with its rows and "the next 50". Its patches are undone before the next
-    provider."""
+    part drawn with its rows and "the next 50". Its newest line is sent twice more, a second
+    and two seconds later (a minimal edit: its time), so the part draws it as one row "×3"
+    opening to its lines (C3452). Its patches are undone before the next provider."""
     import pytest
 
     from modules import logs_page
@@ -1971,6 +1972,10 @@ def _logs_older(client, _lab, _mp):
     mp = pytest.MonkeyPatch()
     try:
         answer = L._fx("lines_r4.json")["answer"]                  # noqa: SLF001
+        values = answer["data"]["result"][0]["values"]
+        newest = max(values, key=lambda v: int(v[0]))
+        values += [[str(int(newest[0]) + 1_000_000_000), newest[1]],
+                   [str(int(newest[0]) + 2_000_000_000), newest[1]]]
 
         class _Resp:
             def json(self):
@@ -1992,6 +1997,7 @@ def _logs_older(client, _lab, _mp):
                        headers={"Accept": "text/html"})
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and "from Loki, asked" in html, (r.status_code, html[-600:])
+        assert '<span class="lg-run-n"> ×3</span>' in html, "the repeat is one row"
         # A device the network does not hold: the part says why in place.
         r = client.get(f"/v2/logs/older?list=Lab&d=r99&range=7d&before={before}",
                        headers={"Accept": "text/html"})

@@ -337,6 +337,44 @@ def _held_row(e: dict) -> dict:
             "text": e.get("text", "")}
 
 
+#: What makes two log lines one (C3452; the GUI review's item 4, approved 2026-11-13: "identical
+#: adjacent lines one "×N" row"): the same device, mnemonic, severity and words; their times
+#: aside. The sidebar's tail names a line's device (``dev``) and mnemonic (``mn``); a device's
+#: own lines (``mnemonic``) name no device, all being one device's.
+LINE_FIELDS = ("dev", "mn", "mnemonic", "sev", "text")
+
+
+def same_line(a: dict, b: dict) -> bool:
+    """Whether log line *b* repeats *a*, its time aside (`LINE_FIELDS`)."""
+    return all(a.get(f) == b.get(f) for f in LINE_FIELDS)
+
+
+def line_runs(lines: list) -> list:
+    """*lines* (in a log table's order, newest first) as runs of identical adjacent lines, by
+    History's one grouping (`history_sources.runs`, with `same_line`): each ``{"lines", "n",
+    "key"}``, every line in exactly one run and in order, so the table's counts stay counts
+    of lines. A run of one is drawn as its line; a longer one as one row, "×N" with its first
+    and last times, opening to each line. ``key`` is the run's OLDEST line's (its device, its
+    time and a digest of its words), which a newer repeat joining the run leaves the same, so
+    the live merge keeps an opened run open; unique on the table (a second run of the same
+    key takes ``-2``)."""
+    import zlib
+
+    from modules import history_sources
+
+    out, seen = [], {}
+    for run in history_sources.runs(lines, alike=same_line):
+        old = run[-1]
+        when = old.get("ns") or old.get("ts") or old.get("at") or old.get("at_iso") or ""
+        words = f"{old.get('mn') or old.get('mnemonic') or ''}\n{old.get('text') or ''}"
+        key = re.sub(r"[^A-Za-z0-9_.-]+", "-", f"{old.get('dev') or ''}-{when}"
+                     f"-{zlib.crc32(words.encode('utf-8')):08x}").strip("-")
+        seen[key] = seen.get(key, 0) + 1
+        out.append({"lines": run, "n": len(run),
+                    "key": key if seen[key] == 1 else f"{key}-{seen[key]}"})
+    return out
+
+
 def _held_words(h: dict, kind: str, start: float = None) -> dict:
     """What a view says about the buffer it drew: its age (``value_at``), its last refresh
     (``failed``), and ``loading`` with ``from_iso`` while the background has not yet read back

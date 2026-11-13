@@ -1,0 +1,16 @@
+{%- from "v2/_macros.html" import clock, stamp -%}
+{#- A run of identical adjacent log lines (C3452, the GUI review's item 4; History's run, C3399,
+    by its one grouping: `device_logs.line_runs`), drawn in a log table's message cell: the
+    line's words once, "×N" and its first and last times, opening to each line at its own
+    time. *mode* is the table's own clock (`clock`'s mode), or 'stamp' for a table drawing
+    ages; *at* the lines' time field; *devts* draws each line's device time too, and *mn* the
+    mnemonic before the words, in the message cell as the table draws it (a device's
+    own Logs tab). The run's key is its oldest line's, which a newer repeat joining it leaves
+    the same, so the live merge keeps it open while lines arrive. -#}
+{%- macro when(l, mode, at) -%}
+{%- if mode == 'stamp' %}{{ stamp(l[at]) }}{% else %}{{ clock(l[at], mode) }}{% endif -%}
+{%- endmacro -%}
+{%- macro log_run(run, mode, at='at', devts=False, mn='') -%}
+<details class="lg-run-d" data-keep="lg-run-{{ run.key }}"><summary>{% if mn %}<code>{{ mn }}</code> {% endif %}<span data-verbatim="the device's log line">{{ run.lines[0].text }}</span><span class="lg-run-n"> ×{{ run.n }}</span><span class="lg-run-span"> · {{ when(run.lines[-1], mode, at) }} to {{ when(run.lines[0], mode, at) }}</span></summary>
+<ol class="lg-run-lines" aria-label="The {{ run.n }} lines, newest first">{% for l in run.lines %}<li>{{ when(l, mode, at) }}{% if devts %} <span class="mono muted">{{ l.devts or '—' }}{% if l.unsync %} <span title="the device marks this time unsynchronised">*</span>{% endif %}</span>{% endif %} <span data-verbatim="the device's log line">{{ l.text }}</span></li>{% endfor %}</ol></details>
+{%- endmacro -%}

@@ -13,8 +13,9 @@ the sidebar's Logs page at phone width, not this tab.
 Shots: the operator's capture above; the board at 1440, rendered in the same headless Firefox
 (no shot test to run it).
 Compared 2026-10-17.
-Templates compared: templates/v2/_logs.html
-Templates sha256: `4039133c6d781397ef4ae9f7617176982c949846203010d77540a7a879998cef`
+Templates compared: templates/v2/_logs.html, templates/v2/_log_run.html
+Compared again 2026-11-13 (C3452, the GUI review's item 4; provisional, operator review pending): the mnemonic and the device time are never broken inside (the stylesheet's `.log-msg code`, `.log-table td.mono`); identical adjacent lines (the same mnemonic, severity and words) are one row, the mnemonic and words then "×N · <first> to <last>", opening to each line with its received age and its device time (`_log_run.html`, compared here from now on), and a note under the table says the counts are of lines when any row holds a repeat; the row's received and device times are its newest line's. The board draws each line its own row: The line is a **deviation** (log: Logs: identical adjacent lines are one row). Compared by the template's diff and the page tests/test_log_runs.py draws, not by a new shot (this tab has no shot test). Templates sha256 before: `4039133c6d781397ef4ae9f7617176982c949846203010d77540a7a879998cef`.
+Templates sha256: `3348ce3992fc529f042e35939ac2768fb980b7c0318d62b3f8914f07216e1396`
 (2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
 a new shot: once the logs-tail reader's last good read is older than its promise (its interval
 times its stale factor, 15 s, as its job-health row judges it), the card's foot ("From Loki,
@@ -51,6 +52,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The device's clock | not drawn | "46 line(s) carry a device time r6 marks unsynchronised (*): its clock is not trusted, so each line is placed by when Mercury received it." and the * beside each such time (capture 70) | **same** |
 | Columns | Time (UTC), Severity, Kind, Line | Received (an age, the time on hover), Severity, Message, Device time (capture 70) | **deviation** (log: Device Logs: Received and the device's own time, no Kind column) |
 | Severity | the number and the word ("5 notice"), neutral | the word alone in its level's colour ("notice", "warning" amber, "error" and "critical" red); a link coming up, sent at level 3, drawn "error" in red (capture 70; C1069) | **deviation** (log: Device Logs: severity is a coloured word, the device's own level (C1069)) |
-| The line | the line in mono | the mnemonic in mono, then the text (capture 70) | **same** |
+| The line | the line in mono | the mnemonic in mono, never broken inside, then the text (capture 70); identical adjacent lines one row "×N" with the first and last times, opening to each with its device time (C3452, provisional) | **deviation** (log: Logs: identical adjacent lines are one row) |
 | A line holding an account | masked ("[user: <redacted:user>]") with Reveal… | drawn as sent, the account's name and the source address in the line (capture 70); no Reveal. The account's name is not a secret here: the device header names it on every tab ("signs in as …") | **deviation** (log: Device Logs: a login line shows its account's name, unmasked, with no Reveal) |
 | Loki not configured, or not read | not drawn | "Loki is not configured, so r6's logs cannot be read here", or the error with "Not the same as r6 having sent nothing." (compared by the template) | **same** |

@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_log_run.html" import log_run -%}
 {#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
     modules/device_logs.held_tab(): what the device sent to syslog, as the
     logs-tail reader's buffer holds it (C3166: never Loki on the request), newest
@@ -34,22 +35,30 @@
   {%- if not g.lines %}
   <p class="cov-head">{{ icon('info') }} {{ device.hostname }} sent nothing but heartbeats {% if h.loading %}since {{ stamp(h.from_iso) }}{% else %}in the last {{ g.window_hours }} h{% endif %}.</p>
   {%- else %}
+  {%- set lruns = g.lines | log_runs %}
   {%- if g.cut %}<p class="muted">Showing the newest {{ g.limit }} of the last {{ g.window_hours }} h; older lines are in Loki (History › Query › Syslog by device).</p>{% endif %}
   <div class="table-wrap">
     <table class="table log-table">
       <thead><tr><th scope="col">Received</th><th scope="col">Severity</th><th scope="col">Message</th><th scope="col">Device time</th></tr></thead>
       <tbody>
-        {%- for l in g.lines %}
-        <tr>
+        {#- C3452: identical adjacent lines are one row, "×N", opening to each with its own
+            times (`log_runs`); the row's times are the newest line's. -#}
+        {%- for run in lruns %}{% set l = run.lines[0] %}
+        <tr{% if run.n > 1 %} class="lg-run" data-key="lg-run-{{ run.key }}"{% endif %}>
           <td>{{ stamp(l.at_iso) }}</td>
           <td>{% if l.sev_word %}{{ badge(l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          {%- if run.n > 1 %}
+          <td class="log-msg">{{ log_run(run, 'stamp', 'at_iso', devts=True, mn=l.mnemonic) }}</td>
+          {%- else %}
           <td class="log-msg">{% if l.mnemonic %}<code>{{ l.mnemonic }}</code> {% endif %}{{ l.text }}</td>
+          {%- endif %}
           <td class="mono muted">{{ l.devts or '—' }}{% if l.unsync %} <span title="the device marks this time unsynchronised">*</span>{% endif %}</td>
         </tr>
         {%- endfor %}
       </tbody>
     </table>
   </div>
+  {%- if lruns | length < g.lines | length %}<p class="muted small">A line repeated beside itself is one row, ×N, opening to each; every count here is of lines.</p>{% endif %}
   {%- endif %}
   {%- endif %}
   {%- if h.stale %}

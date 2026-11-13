@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
+{%- from "v2/_log_run.html" import log_run -%}
 {#- The sidebar's Logs, the live tail (C675; board D, LogsTail): the logs-tail reader's stored
     15-minute window, filtered here (modules/logs_tail_page.py). Redrawn when the reader announces
     `logs`; paused, the window stays as it was and the count of what arrived since moves. -#}
@@ -52,10 +53,13 @@
     <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Show</span><span class="op-busy">Filtering…</span></button></span>
     {%- if g.filtered %} {{ go({'d': '', 'sev': 'all', 'mn': '', 'text': '', 'from': ''}, 'Clear filters', 'btn btn-small') }}{% endif %}
   </form>
+  {%- set lruns = g.lines | log_runs if g.lines else [] %}
   {%- if g.lines %}
   <div class="table-wrap"><table class="table lg-lines" aria-label="The newest lines first">
     <thead><tr><th scope="col">Received</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
-    <tbody>{% for l in g.lines %}<tr><td class="mono">{{ clock(l.at, 'seconds') }}</td><td class="mono">{% if l.dev %}<a href="{{ url_for('device_v2.device', name=l.dev, list=g.list) }}">{{ l.dev }}</a>{% else %}<span class="muted">—</span>{% endif %}</td><td>{% if l.sev is not none %}{{ badge(l.sev ~ ' ' ~ {0: 'emergency', 1: 'alert', 2: 'critical', 3: 'error', 4: 'warning', 5: 'notice', 6: 'informational', 7: 'debug'}[l.sev], 'danger' if l.sev <= 3 else ('warn' if l.sev == 4 else 'neutral')) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mn or '—' }}</td><td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td></tr>{% endfor %}</tbody>
+    {#- C3452: identical adjacent lines are one row, "×N", its time the newest's, opening to
+        each line (`log_runs`); a line arriving that repeats the newest run joins it. -#}
+    <tbody>{% for run in lruns %}{% set l = run.lines[0] %}<tr{% if run.n > 1 %} class="lg-run" data-key="lg-run-{{ run.key }}"{% endif %}><td class="mono">{{ clock(l.at, 'seconds') }}</td><td class="mono">{% if l.dev %}<a href="{{ url_for('device_v2.device', name=l.dev, list=g.list) }}">{{ l.dev }}</a>{% else %}<span class="muted">—</span>{% endif %}</td><td>{% if l.sev is not none %}{{ badge(l.sev ~ ' ' ~ {0: 'emergency', 1: 'alert', 2: 'critical', 3: 'error', 4: 'warning', 5: 'notice', 6: 'informational', 7: 'debug'}[l.sev], 'danger' if l.sev <= 3 else ('warn' if l.sev == 4 else 'neutral')) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mn or '—' }}</td>{% if run.n > 1 %}<td class="lg-msg">{{ log_run(run, 'seconds') }}</td>{% else %}<td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td>{% endif %}</tr>{% endfor %}</tbody>
   </table></div>
   {%- else %}
   <p class="small">{% if g.filtered %}No line in the window matches these filters.{% else %}No line arrived in the last {{ g.window_minutes }} minutes.{% endif %}</p>
@@ -64,6 +68,7 @@
     {%- if g.filtered %}{{ g.matching }} of {{ g.total }} lines match. {% endif %}
     {%- if g.matching > g.lines | length %}The newest {{ g.lines | length }} of {{ g.matching }} are drawn; filter to narrow them. {% endif %}
     {%- if g.truncated %}More arrived than the window keeps (1000): the oldest are not here. {% endif %}
+    {%- if lruns | length < g.lines | length %}A line repeated beside itself (the same device, mnemonic and words) is one row, ×N, opening to each; every count here is of lines. {% endif %}
     A line's time is when the collector received it, never the device's clock; heartbeat lines are left out. Each device opens its page.</p>
   <p class="small lt-older">Older than {{ g.window_minutes }} minutes: <a href="{{ older }}">History › Query › Syslog by device</a>, with the filters you set here.</p>
 </section>

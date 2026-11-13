@@ -353,6 +353,15 @@ def history_runs(events) -> list:
     return history_sources.runs(events)
 
 
+@bp.app_template_filter("log_runs")
+def log_runs(lines) -> list:
+    """A log table's lines as runs of identical adjacent lines (`device_logs.line_runs`, by
+    History's one grouping, C3452), for `{% for run in g.lines | log_runs %}`."""
+    from modules import device_logs
+
+    return device_logs.line_runs(lines)
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the

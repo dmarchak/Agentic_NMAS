@@ -137,6 +137,13 @@ def _rows(html):
                       r'(\w+)</a>', html)
 
 
+def _drawn(html):
+    """How many lines the table draws: a row per line, and a run of identical adjacent lines
+    (C3452) one row holding its N lines, "×N"."""
+    return len(_rows(html)) + sum(int(n) for n in
+                                  re.findall(r'<span class="lg-run-n"> ×(\d+)</span>', html))
+
+
 class TestThePage:
     def test_the_sidebar_s_logs_is_the_tail(self, web):
         html = web["client"].get("/v2/logs?list=Lab").get_data(as_text=True)
@@ -151,7 +158,7 @@ class TestThePage:
         errors = sum(1 for l in v["lines"] if l["sev"] is not None and l["sev"] <= 3)
         assert f"{errors} error or worse" in html and "from 2 devices" in html
         rows = _rows(html)
-        assert rows and len(rows) == min(len(v["lines"]), 200)
+        assert rows and _drawn(html) == min(len(v["lines"]), 200)
         assert rows[0][1] == v["lines"][0]["dev"]
 
     def test_each_filter_narrows_and_says_how_many_match(self, web):
@@ -175,7 +182,7 @@ class TestThePage:
         html = _get(web, f"&paused={at}")
         assert f"{later} new line{'s' if later != 1 else ''} since" in html and "Resume</a>" in html
         held_lines = sum(1 for l in v["lines"] if l["ts"] <= held)
-        assert len(_rows(html)) == min(held_lines, 200)
+        assert _drawn(html) == min(held_lines, 200)
 
     def test_from_history_query_it_arrives_filtered_and_says_so(self, web):
         html = _get(web, "&d=s3&sev=error&text=Gi0%2F3&from=query")

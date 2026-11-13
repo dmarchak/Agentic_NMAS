@@ -2407,6 +2407,16 @@ a.topo-ent:hover { background: var(--hover); }
 .lg-lines td { font-size: 12.5px; }
 .lg-msg { overflow-wrap: anywhere; }
 .lg-unit { display: none; }
+/* A log table's tokens never break inside themselves (C3452, the GUI review's item 4): the
+   received time, the device and the mnemonic (each a mono cell), and on a device's Logs tab
+   the mnemonic and the device time. A run of identical adjacent lines is one row, "×N" with
+   its first and last times, opening to each line. */
+.lg-lines td.mono, .log-table td.mono, .log-msg code { white-space: nowrap; }
+.lg-run-d > summary { cursor: pointer; }
+.lg-run-n { font-weight: 600; }
+.lg-run-span { color: var(--ink-2); }
+.lg-run-lines { margin: 4px 0 0; padding-left: 20px; }
+.lg-run-lines li { overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   /* Logs at phone width: a device per wrapped row, a line as its time and severity over its
      message (no phone board; the v2 rule that a screen reads at phone width). */
@@ -2419,6 +2429,9 @@ a.topo-ent:hover { background: var(--hover); }
     border-bottom: 1px solid var(--line-2); }
   .lg-lines td { display: block; padding: 0; border: 0; }
   .lg-lines td.lg-msg { grid-column: 1 / -1; }
+  /* C3452: a token longer than its column scrolls inside its cell, never breaks. */
+  .lg-lines tr { grid-template-columns: auto minmax(0, 1fr); }
+  .lg-lines td.mono { min-width: 0; overflow-x: auto; }
   .lg-unit { display: inline; }
   .lg-filters label, .lg-filters input, .lg-filters select { width: 100%; }
 }

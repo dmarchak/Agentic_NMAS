@@ -291,7 +291,10 @@ foot line says so; with none set, such a range is refused, naming the setting.
 ## Logs {#logs-tab}
 
 The device's syslog for the last 24 hours, from Loki. Heartbeats are folded into a count; an
-error that names the heartbeat is still listed.
+error that names the heartbeat is still listed. Identical lines next to each other (the same
+mnemonic, severity and words; their times aside) are one row, **×N** with the first and last
+times, opening to each line with its received and device times; the mnemonic and the device
+time are never broken inside.
 
 The tab never waits on Loki: Mercury's logs reader reads Loki every 5 seconds, every device in
 one ask, only what arrived since its last line, and keeps each device's last 24 hours (at most

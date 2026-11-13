@@ -24,7 +24,15 @@ configuration text; the heartbeat lines are left out.
   mnemonic and text. **Show** applies them; **Clear filters** appears once one is set. The
   address carries them, so a link shows the same view.
 - **The lines**: the newest 200 that match, newest first, each device a link to its page. When
-  more match, the page says how many and asks you to filter.
+  more match, the page says how many and asks you to filter. A line's time, device and
+  mnemonic are each drawn whole on one line, never broken inside; on a phone a mnemonic
+  longer than its column scrolls inside its cell.
+- **Repeated lines**: lines next to each other that are identical but for their time (the
+  same device, mnemonic, severity and words) are one row, **×N** after the words, with the
+  first and last times; open it for each line at its own time. A line that arrives repeating
+  the newest row joins it, and a row you opened stays open. Lines that differ in any word,
+  such as a counter, stay separate rows. Every count on the page is a count of lines, never
+  of rows; when any row holds a repeat, the note under the table says so.
 - **Pause** stops new lines being drawn after that second and counts the lines that arrived
   since; lines older than 15 minutes still leave the window while paused. **Resume** returns to
   the live window.
@@ -88,5 +96,8 @@ ones Mercury's logs reader keeps, drawn at once; when the range reaches further 
 before them are asked from Loki after the view has drawn ("Loading older lines", in place), at
 most 30 days at a time, and the same ask within a minute is answered from the last one; a longer
 range shows the newest 30 days and says so.
+As on the tail, a line's time and mnemonic are never broken inside, and identical lines next to
+each other are one row, **×N** with the first and last times, opening to each line (the lines
+Loki answers for are grouped among themselves); the counts are of lines.
 **Open the device's Logs tab** goes to its own page; **Open these lines on Logs** opens the tail
 above, filtered to the device and the severity, mnemonic and text you set.

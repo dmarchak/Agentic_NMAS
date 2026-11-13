@@ -3207,16 +3207,19 @@ def _alike(a: dict, b: dict) -> bool:
     return all(a.get(f) == b.get(f) for f in RUN_FIELDS)
 
 
-def runs(events: list) -> list:
+def runs(events: list, alike=None) -> list:
     """*events* (a page of the timeline, in its order) as runs: each a list of the ADJACENT
     rows alike by `RUN_FIELDS`, one row for any other. The page draws a run of two or more as
     one row, "×N" with its first and last times, opening to each row; never a run across a
     row that differs, and every row is in exactly one run, in order, so a count of the rows is
     the count of the runs' rows. The one grouping of History's rows; a page boundary ends a
-    run (Load more's rows are grouped among themselves)."""
+    run (Load more's rows are grouped among themselves). *alike* (the run's last row, the next
+    one) is another table's own sameness, grouped the same way: a log table's identical lines
+    (`device_logs.same_line`, C3452)."""
+    alike = alike or _alike
     out = []
     for e in events or []:
-        if out and _alike(out[-1][-1], e):
+        if out and alike(out[-1][-1], e):
             out[-1].append(e)
         else:
             out.append([e])

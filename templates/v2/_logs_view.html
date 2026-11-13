@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
+{%- from "v2/_log_run.html" import log_run -%}
 {#- History › Query › Syslog by device (C652; moved under History by C667, its board's home),
     drawn to AskLogs: the question (range, severity), what the range can hold, the devices by
     line count, a device opened to its filters, its trend by mnemonic and its lines. Counts from
@@ -92,10 +93,12 @@
       {%- if not o.errors %}
       {%- set h = o.held or {} %}
       {%- if h.failed and not h.stale %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The logs reader's last refresh failed ({{ h.failed }}): the lines held are those read from Loki {{ stamp(h.value_at) }}.</p></div>{% endif %}
+      {%- set oruns = (o.lines or []) | log_runs %}
       {%- if o.lines or o.older %}
       <div class="table-wrap"><table class="table lg-lines" aria-label="{{ r.device }}'s lines, newest first">
         <thead><tr><th scope="col">Received</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
-        <tbody>{% for l in o.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td></tr>{% endfor %}</tbody>
+        {#- C3452: identical adjacent lines are one row, "×N", opening to each (`log_runs`). -#}
+        <tbody>{% for run in oruns %}{% set l = run.lines[0] %}<tr{% if run.n > 1 %} class="lg-run" data-key="lg-run-{{ run.key }}"{% endif %}><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td>{% if run.n > 1 %}<td class="lg-msg">{{ log_run(run, 'date-seconds') }}</td>{% else %}<td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td>{% endif %}</tr>{% endfor %}</tbody>
         {#- C3166: the lines before what the logs reader holds are asked of Loki by this part,
             after the region has drawn; it draws them in its own place. -#}
         {%- if o.older %}
@@ -104,6 +107,7 @@
       </table></div>
       {%- else %}<p class="small">No line of {{ r.device }} matches, {{ clock(o.window[0], 'date') }} to {{ clock(o.window[1], 'date') }}.</p>{% endif %}
       <p class="muted small">Showing {{ o.lines | length }}{% if o.older %} held{% endif %}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.older %}, older ones below as Loki answers{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}{% if h.value_at and not h.stale %} · held by the logs reader, read {{ stamp(h.value_at, note='when the logs reader last read Loki') }}{% endif %}
+        {%- if oruns | length < o.lines | length %} · a line repeated beside itself is one row, ×N, opening to each; every count here is of lines{% endif %}
         {%- if o.more %} · {{ go(g, {'before': o.next_before}, 'the next 50') }}{% endif %}
         · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a>
         · <a href="{{ url_for('logs_v2.page', list=g.list, d=r.device, sev=g.s.sev, mn=g.s.mn, text=g.s.text, **{'from': 'query'}) }}">Open these lines on Logs</a></p>
