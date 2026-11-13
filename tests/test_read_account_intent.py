@@ -5,9 +5,13 @@ A ``users`` entry naming ``read-account:profile:<name>`` takes the account's NAM
 from the credential store's ``read_accounts`` (`credentials.read_account_login`, through
 `hostvars.stored_value`, the one resolver), never from intent:
 
-- **it renders** the measured form, ``username <account> privilege 1 algorithm-type scrypt
-  secret <value>``, on both shipped platforms, the value resolved in memory at render; its name
-  comes from the store when intent leaves it out;
+- **it renders** the measured form, ``username <account> algorithm-type scrypt secret
+  <value>``, on both shipped platforms, the value resolved in memory at render; its name comes
+  from the store when intent leaves it out. Privilege 1 is not printed: IOS-XE never prints its
+  default privilege (measured on r2, 2026-11-13: `username mercury-ro privilege 1 algorithm-type
+  scrypt secret …` sent, read back as `username mercury-ro secret 9 …`, so verify failed
+  "account mercury-ro is there with privilege unset (1), not 1"), so the render matches what
+  the device holds and verify reads it back;
 - **it resolves from its own store only**: a template or profile secret spelled like the
   reference is never read for it;
 - **it is masked on the way out**: the preview's masked render, its payload, the receipt's
@@ -98,7 +102,7 @@ class TestItRenders:
         capture, doc = _committed(platform)
         prepared = prepare_device(_artifact(capture, doc, platform))
         assert _line(prepared["config"]) == (
-            f"username {RO_NAME} privilege 1 algorithm-type scrypt secret {RO_PW}")
+            f"username {RO_NAME} algorithm-type scrypt secret {RO_PW}")
 
     def test_a_name_written_in_intent_that_is_the_store_s_renders_the_same(self, store):
         from modules.nsot.deploy import prepare_device
@@ -114,6 +118,41 @@ class TestItRenders:
         assert REF in hostvars.named_refs(doc)
         assert hostvars.read_account_profile(REF) == "default"
         assert hostvars.read_account_profile("user_admin_secret") == ""
+
+
+class TestVerifyReadsItBack:
+    """The deploy's verify reads the account back as the device prints it (the operator,
+    2026-11-13: r2's deploy of the account failed verify, "account mercury-ro is there with
+    privilege unset (1), not 1", because the program sent `privilege 1`, which IOS-XE never
+    prints)."""
+
+    @pytest.mark.parametrize("platform", ["cisco_iosxe", "cisco_ios"])
+    def test_the_program_s_account_line_reads_back_from_the_device_s_own_line(
+            self, store, platform):
+        from modules.nsot.deploy import merge_commands, prepare_device
+        from modules.nsot.verify_scope import account_held
+
+        _set_account()
+        capture, doc = _committed(platform)
+        program = merge_commands(prepare_device(_artifact(capture, doc, platform))["config"],
+                                 capture)
+        (sent,) = [c for c in program if c.startswith(f"username {RO_NAME}")]
+        # What r2 printed after the deploy (its running config, 2026-11-13, masked here): no
+        # privilege, and the secret in the type the device made from what was sent.
+        running = capture.replace("\nend", f"\nusername {RO_NAME} secret {DEVICE_FORM}\nend", 1)
+        assert account_held(sent, running) == "", account_held(sent, running)
+
+    @pytest.mark.parametrize("platform", ["cisco_iosxe", "cisco_ios"])
+    def test_any_other_privilege_is_still_rendered(self, store, platform):
+        """Only the default is left out: a privilege-15 account keeps its `privilege 15`, so
+        the device and verify still see it."""
+        from modules.nsot.deploy import prepare_device
+
+        _set_account()
+        capture, doc = _committed(platform, entry={"name": RO_NAME, "privilege": 15,
+                                                   "secret_ref": REF})
+        assert _line(prepare_device(_artifact(capture, doc, platform))["config"]) == (
+            f"username {RO_NAME} privilege 15 algorithm-type scrypt secret {RO_PW}")
 
 
 class TestItResolvesFromItsOwnStoreOnly:
@@ -158,7 +197,7 @@ class TestItIsMaskedOnTheWayOut:
         capture, doc = _committed("cisco_iosxe")
         art = _artifact(capture, doc)
         assert _line(art.rendered_masked) == (
-            f"username {RO_NAME} privilege 1 algorithm-type scrypt secret {MASK}")
+            f"username {RO_NAME} algorithm-type scrypt secret {MASK}")
         assert REF in art.masked_refs
         assert RO_PW not in repr(art.summary())
         # The payload a preview returns carries the program as sent, masked on the way out,
@@ -166,7 +205,7 @@ class TestItIsMaskedOnTheWayOut:
         program = prepare_device(art)["config"].splitlines()
         out = secret_refs.label_by_ref(mask_payload({"to_add": program}), doc)
         assert RO_PW not in repr(out)
-        assert (f"username {RO_NAME} privilege 1 algorithm-type scrypt secret "
+        assert (f"username {RO_NAME} algorithm-type scrypt secret "
                 f"<redacted:{REF}>") in out["to_add"]
 
     def test_the_receipt_masks_it(self, store, monkeypatch):
@@ -235,7 +274,8 @@ class TestAnAccountIsAddedNeverChanged:
 
         _set_account()
         capture, doc = _committed("cisco_iosxe")
-        held = capture.replace("\nend", f"\nusername {RO_NAME} privilege 1 secret "
+        # The device's own line as r2 printed it (2026-11-13): no privilege, IOS-XE's default.
+        held = capture.replace("\nend", f"\nusername {RO_NAME} secret "
                                f"{DEVICE_FORM}\nend", 1)
         assert held != capture
         with pytest.raises(CredentialWouldChange) as exc:
@@ -250,7 +290,7 @@ class TestAnAccountIsAddedNeverChanged:
 
         _set_account()
         capture, doc = _committed("cisco_iosxe")
-        after = capture.replace("\nend", f"\nusername {RO_NAME} privilege 1 secret "
+        after = capture.replace("\nend", f"\nusername {RO_NAME} secret "
                                 f"{DEVICE_FORM}\nend", 1)
         (got,) = [c for c in CR.capture_typed_secrets(LIST, HOST, doc, after)
                   if c["ref"] == REF]
@@ -259,7 +299,7 @@ class TestAnAccountIsAddedNeverChanged:
         assert C.template_secret_kind(key) == "hash"
         assert C.get_template_secret(key) == DEVICE_FORM
         config = prepare_device(_artifact(after, doc))["config"]
-        assert _line(config) == f"username {RO_NAME} privilege 1 secret {DEVICE_FORM}"
+        assert _line(config) == f"username {RO_NAME} secret {DEVICE_FORM}"
         assert not [c for c in merge_commands(config, after) if c.startswith("username ")]
         # The Intent check's render, which resolves no value, draws the same form.
         captured = hostvars.captured_read_accounts(LIST, HOST, doc)

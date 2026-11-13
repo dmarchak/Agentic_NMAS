@@ -184,7 +184,11 @@ redistribute {{ r.protocol }}{% if r.process %} {{ r.process }}{% endif %}{% if 
 {%- endmacro -%}
 
 {%- macro users(v) -%}
-{% for u in v.users %}username {{ u.name }}{% if u.privilege is defined %} privilege {{ u.privilege }}{% endif %}{% if u.secret_ref %} {{ u.secret_kind }} {{ secret(u.secret_ref) }}{% endif %}
+{#- Privilege 1 is IOS's and IOS-XE's default and the device never prints it (measured on an
+    IOS-XE device, 2026-11-13: a privilege-1 account sent with `privilege 1` read back with no
+    privilege, so verify failed, C3479), so a privilege-1 user renders without it, as the device
+    holds it. -#}
+{% for u in v.users %}username {{ u.name }}{% if u.privilege is defined and u.privilege | string != '1' %} privilege {{ u.privilege }}{% endif %}{% if u.secret_ref %} {{ u.secret_kind }} {{ secret(u.secret_ref) }}{% endif %}
 
 {% endfor %}
 {%- if v.enable_secret_ref %}enable {{ v.enable_secret_keyword }} {{ secret(v.enable_secret_ref) }}

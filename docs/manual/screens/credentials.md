@@ -155,8 +155,10 @@ the rest. The intent change is one `users` entry naming the profile's account by
 `read-account:profile:<profile>` (for the default profile, `secret_ref:
 read-account:profile:default`, with `privilege: 1`), and no name or password: a deploy takes
 the account's name and its password from this card, in memory, and its preview shows the line
-with the password masked (`username <account> privilege 1 algorithm-type scrypt secret
-<redacted:read-account:profile:default>`). A profile with no read-only account, or an entry naming a different account,
+with the password masked (`username <account> algorithm-type scrypt secret
+<redacted:read-account:profile:default>`). Privilege 1 is the device's default and it never
+prints it, so the line leaves it out, and verify reads the account back as the device holds
+it. A profile with no read-only account, or an entry naming a different account,
 leaves the line without a value, and the deploy is refused by name before anything is sent. A
 device that already holds an account of that name with another line is refused: the deploy
 adds the account, never changes it. After its deploy verifies, Mercury keeps the device's own
