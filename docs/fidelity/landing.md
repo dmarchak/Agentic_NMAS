@@ -69,7 +69,40 @@ right"). Compared by the template diff and the real-browser test tests/test_rech
 (`test_the_button_never_moves_when_its_own_answer_appears`, at 1280 and 390), not a new shot.
 Templates sha256 before: `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`.
 Compared again 2026-11-13 (the operator's approved rules, "raw UTC anywhere left" and "money shown as $"; C3290): `_attention.html` draws a diagnosis hypothesis's claim and next step through `times` (routes/v2.py), and `_heal_analysis.html` its hypothesis's claim the same way and its call's cost through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the templates' diff, not by new shots; logged once each (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds" and "Money through one formatter"). Templates sha256 before: `bc35314f80a3fcc76b47e556d6bcafee68460faae9b61a34c483e276635bd667`.
-Templates sha256: `002adf75ada9ae050b329769aea42c4cebfec0019d93f17c8c4b1e20baa713c7`
+**Compared again 2026-11-13 (the GUI review's item 1, C3449; the operator, 2026-11-13: "Build
+review items 1, 2, 5, 6, 9 first (in that order)"): an opened item is a summary.** In
+`_attention.html` the opened row draws, in this order: **Open the incident** (its first link,
+where the row is about one self-healing incident with a page), what is wrong (a lost stream's
+lead sentence, else the row's cause, "Written by Mercury from its own record: no AI." on its
+hover), **Does it need you?** where the row says so, **What to do** with how it clears and
+Acknowledge…, the line naming the devices, since when, the reading's age and the source (with
+Run the check again), then two closed disclosures, **Details** and **Details for the record**.
+A proposal's card and a Re-subscribe's card are read and drawn when their action is pressed
+(on the row's line, or the same words as a button under What to do), never by opening the row;
+while one is read its place says "Reading …".
+The decision's facts and the steps Mercury took are not drawn on a row that has an incident
+page: that page draws them (What's wrong, What Mercury has done). Everything else the row
+carried is under Details: a lost stream's reachability, what Mercury cannot see, Seen before
+and its diagnosis; an alert's Explain, cause and members; a can't-fix's Mercury's diagnosis and
+AI analysis; attached findings. Compared from shots at 1280 px of four fixture worlds before
+and after (kept with the operator's reports, `captures/gui-overnight-2/items/1-attention-*`)
+and by tests/test_attention_row_summary.py, whose real-browser test opens a proposal's row at
+1280 px. Measured, the opened row's own words and height before and after: a lost stream's
+414 words and 813 px, now 153 and 416; a proposal's 534 and 1,141, now 141 and 347 (its card,
+pressed, 496 and 1,015); a can't-fix's 228 and 863, now 135 and 457; a rolled-back heal's 255
+and 855, now 160 and 431; a halt's 157 and 495, now 144 and 392. Words, states and every other
+region as compared.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| An opened item (C3449) | board NA-R: What to do first, then why (Explain, or Why this happened), then Details, every block drawn | a summary: what is wrong, Does it need you? where the row says so, What to do with how it clears, the reading's line; the rest closed under Details | **deviation** (log: Needs attention: an opened item is a summary) |
+| Open the incident (C3449) | the last link of Why this happened (the incident page's first slice) | the opened item's first link, above what is wrong | **deviation** (log: Needs attention: Open the incident first) |
+| An action's card (C3449) | board H, artboard E: the proposal's card drawn in the opened row | read and drawn when Review the fix… or Re-subscribe… is pressed, on the line or under What to do; opening the row draws no card | **deviation** (log: Needs attention: an action's card is drawn on its press) |
+| The decision's facts and the steps taken (C3449) | in the row, under Why this happened | on the incident's own page for a row that has one; under Details for a row that has none | **deviation** (log: Needs attention: the facts and the steps are the incident page's) |
+| Details for the record (C3449) | closed, last inside Details | closed, last, beside Details and never inside it | **deviation** (log: Needs attention: Details and the record side by side) |
+
+Templates sha256 before: `002adf75ada9ae050b329769aea42c4cebfec0019d93f17c8c4b1e20baa713c7`.
+Templates sha256: `4d3bf927b798a270485663c134a6c6ed8b170b25430206277a747fe83cb5f86f`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

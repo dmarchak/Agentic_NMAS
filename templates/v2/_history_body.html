@@ -50,10 +50,11 @@
     <select name="since">
       {%- for v, words in since_choices %}<option value="{{ v }}"{% if v == f.since %} selected{% endif %}>{{ words }}</option>{% endfor %}
     </select></label>
-  {#- Jump to a day (15.14 part B): the timeline starts at the end of that day, UTC, with every
-      other filter; Load more then reads back from there. -#}
+  {#- Jump to a day (15.14 part B): the timeline starts at the end of that day, the viewer's
+      day in their kept zone (C3466), with every other filter; Load more then reads back from
+      there. -#}
   <label class="hist-filter"><span class="muted small">Jump to</span>
-    <input type="date" name="on" value="{{ f.on }}" aria-label="Start the timeline at the end of this day (UTC)"></label>
+    <input type="date" name="on" value="{{ f.on }}" aria-label="Start the timeline at the end of this day"></label>
   {%- if f.identity %}<input type="hidden" name="identity" value="{{ f.identity }}">{% endif %}
   <button type="submit" class="btn">Show</button>
 </form>

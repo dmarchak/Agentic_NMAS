@@ -209,7 +209,9 @@ def _history_ctx(ref, dev):
     before, err = HS.parse_cursor(request.args.get("before", "").strip())
     if err:
         errors.append(err)
-    on, err = HS.parse_day(request.args.get("on", "").strip())
+    # The day is the viewer's, in their kept zone (C3466), as the History page's is.
+    from routes.v2 import viewer_zone
+    on, err = HS.parse_day(request.args.get("on", "").strip(), viewer_zone())
     if err:
         errors.append(err)
     return {"device": dev, "kinds": kinds, "kind_error": "; ".join(errors),

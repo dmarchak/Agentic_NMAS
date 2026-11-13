@@ -205,8 +205,10 @@ by a page number, so records that arrive while you read do not shift what comes 
 filter applies to the records it reads, and the page's address takes the place it reached
 (`before=<time>~<id>`): Back returns to the place before, and a link you share opens at the
 same place, with **Back to the newest** above the records. **Jump to**, beside Since, starts
-the timeline at the end of a chosen day (UTC; `on=YYYY-MM-DD`), with every other filter;
-Load more then reads back from there. When nothing older is left, the list says "No older
+the timeline at the end of a chosen day (`on=YYYY-MM-DD`), with every other filter; Load more
+then reads back from there. The day is yours: it runs from midnight to midnight in your time
+zone, the one every time on the page is drawn in, so the first records are the ones the page
+dates that day. A link you share opens at the same day in its reader's own time zone. When nothing older is left, the list says "No older
 record than these." Most records are read from the place itself, so any depth costs the same.
 A few stores can only give their newest records (deploy and restore receipts, app updates,
 Show commands runs, Tier 2 runs and console runs): Mercury reads more of them when a page

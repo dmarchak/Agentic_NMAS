@@ -5,8 +5,10 @@
     Board NA-R (PHASE8_PLAN 20.6, approved 2026-11-01): one collapsible section per severity,
     its count in its heading, Critical open by default, Warning and Unknown as this viewer last
     left them (nmas_v2.js, `data-remember`, a browser convenience only); each item ONE line
-    (severity, title, age, its primary action); opened, What to do first, then the details.
-    Everything a row carried stays; it moves one level down. -#}
+    (severity, title, age, its primary action); opened, a SUMMARY (the GUI review's item 1,
+    C3449, the operator, 2026-11-13): Open the incident first, what is wrong, whether it needs
+    a person, What to do with how it clears, the reading's line; the rest one level down under
+    Details, or on the incident's own page where that page draws it. -#}
 {%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
 {#- Every row names something wrong and its action (attention.ROW_KINDS, the
     operator, 2026-10-02); a fact nobody acts on is in its source's finding,
@@ -98,46 +100,41 @@
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>
       <div class="att-body">
-      {#- The fix-it path (MERCURY_CHARTER, "The fix-it path"; board recurring-fixes, its step
-          1 and step 2's fallback, with no AI): a lost telemetry stream's row says first, in
-          plain words, how long the device has sent nothing and what that costs, whether the
-          same loss was seen before and how that ended (drawn only when a past incident
-          matches; a store that could not be read is said, never read as "never seen"),
-          whether it needs a person, and Mercury's own diagnosis of this loss with when it
-          was read (read, not made, absent and unreadable are each said as themselves). All
-          of it comes from the alerts reader's stored value (attention.stream_fix); the
-          action, Re-subscribe, follows under What to do. No Explain control is drawn: there
-          is none yet. -#}
-      {%- if r.fix %}
+      {#- The GUI review's item 1 (C3449; the operator, 2026-11-13): opened, a row is a SUMMARY,
+          never the incident. In this order: Open the incident, the row's first link, where
+          the row is about one incident with a page of its own; what is wrong (a lost stream's
+          lead sentence, else the row's cause); whether it needs a person, where the row says
+          so; What to do, the one action with how the row clears; the reading the row stands
+          on. An action's card (a proposal's, a Re-subscribe's) is drawn when its action is
+          pressed (`att-card`), never by opening the row. What the incident's page draws is
+          not drawn again here (the decision's facts and the steps Mercury took); everything
+          else the row carries is one level down, under Details, closed: nothing is dropped
+          from the row that its incident's page does not draw. -#}
       {%- set fx = r.fix %}
+      {%- set ops = (r.operands or {}) %}
+      {%- set record_keys = ops.keys() | reject('equalto', 'members') | list %}
+      {#- The incident page's first slice: a self-healing row about one incident opens its
+          own page, one place per incident (a link, never a second action). -#}
+      {%- if r.incident_page %}<p class="small att-incident"><a href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}" data-incident="{{ r.incident_page.id }}" title="This incident's own page: its times, its time to repair and what Mercury did">Open the incident</a>{% if r.incident_page.drill %} <span class="inc-drill" data-drill="{{ r.incident_page.drill }}">{{ badge('Drill', 'info', title='Fault drill ' ~ r.incident_page.drill ~ ': declared before its fault was injected') }}</span>{% endif %}</p>{% endif %}
+      {#- The fix-it path (MERCURY_CHARTER, "The fix-it path"; board recurring-fixes, its step
+          1, with no AI): a lost telemetry stream's row says first, in plain words, how long
+          the device has sent nothing and what that costs, then whether it needs a person.
+          Both come from the alerts reader's stored value (attention.stream_fix); the action,
+          Re-subscribe, follows under What to do. Whether the device answers, what Mercury
+          cannot see, Seen before and Mercury's diagnosis are under Details. -#}
+      {%- if fx %}
       <div class="att-fix">
-        <p class="fix-lead">{{ fx.lead }}</p>
-        {#- C2970: a lost stream is a warning while its device answers. Whether it does is
-            the reachability reader's stored value (attention.device_answers), said here;
-            a reading that cannot say is said as that. Then, one line, what Mercury cannot
-            see while the stream is lost. -#}
-        {%- if fx.answers %}<p class="fix-answers{% if fx.answers.state != 'answers' %} warn-text{% endif %}">{{ fx.answers.words }}</p>{% endif %}
-        {%- if fx.unseen %}<p class="fix-unseen small muted">{{ fx.unseen }}</p>{% endif %}
-        {%- if fx.seen and fx.seen.state == 'match' %}
-        {%- set s = fx.seen %}
-        <p class="fix-seen"><strong>Seen before on {{ fx.device }} ({{ when(s.from) }} to {{ when(s.to) }}):</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ when(s.ended.at) }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ when(s.held.at) }}{% endif %}{{ s.held.tail }}{% endif %} <a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
-        {%- elif fx.seen %}
-        <p class="fix-seen warn-text"><strong>Seen before on {{ fx.device }}:</strong> couldn't be checked: {{ fx.seen.why }}. Whether {{ fx.device }} lost telemetry before is not known.</p>
-        {%- endif %}
+        <p class="fix-lead att-wrong">{{ fx.lead }}</p>
         {%- if (nets.get(fx.device) or [])|length == 1 %}
         <p class="fix-needs"><strong>Does it need you?</strong> {{ fx.needs }}</p>
         {%- else %}
         <p class="fix-needs"><strong>Does it need you?</strong> Yes: {{ fx.device }}'s telemetry stays lost until a person acts, and no operation is offered for it here: the reason is under What to do.</p>
         {%- endif %}
-        {%- set d = fx.diagnosis %}
-        <p class="fix-diag"><strong>Mercury's diagnosis:</strong>
-          {%- if d.state == 'read' %} {{ d.words }} <span class="muted small">Read {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, with no AI{% if d.more %}; {{ d.more }} more hypothes{{ 'is' if d.more == 1 else 'es' }} in its record{% endif %}.</span>{% if d.next %} <span class="fix-next">Next, as the diagnosis says: {{ d.next }}.</span>{% endif %}
-          {%- elif d.state == 'not_made' %} <span class="warn-text">not made. It was asked for {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, and answered: {{ d.why }}.</span>
-          {%- elif d.state == 'absent' %} <span class="muted">not read for this loss: {{ d.why }}. Self-healing reads it by itself, where it is on for the device's network, before it tells the team about a lost stream; no control on this row reads it yet.</span>
-          {%- else %} <span class="warn-text">couldn't be read: {{ d.why }}.</span>
-          {%- endif %}
-          {%- if d.list and d.state in ('read', 'not_made') %} <a href="{{ url_for('device_v2.device', name=fx.device, list=d.list, tab='history') }}">Open it on {{ fx.device }}'s History</a>{% endif %}</p>
       </div>
+      {%- else %}
+      {#- What is wrong, in the row's own words (its cause, written by code from the record:
+          said on hover for a finding of Mercury's own, as provenance is). -#}
+      <p class="att-cause att-wrong"{% if not r.packs %} title="Written by Mercury from its own record: no AI."{% endif %}>{{ r.cause }}</p>
       {%- endif %}
       <div class="att-todo">
       <h3>What to do</h3>
@@ -201,10 +198,14 @@
           History"). -#}
       {%- if r.heal_mark %}{% with list_name=r.heal_mark.list, decision_id=r.heal_mark.decision, mark=r.heal_mark.mark, unreadable=r.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endif %}
       {%- for hm in r.heal_marks or [] %}<p class="small">{{ hm.what }}</p>{% with list_name=hm.list, decision_id=hm.decision, mark=hm.mark, unreadable=hm.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}{% endfor %}
-      {#- Board H, artboard E: a self-healing proposal's card, read when the row is opened
-          (routes/heal_proposal_v2.proposal), with Approve and Decline. -#}
+      {#- Board H, artboard E: a self-healing proposal's card (routes/heal_proposal_v2.proposal),
+          with Approve and Decline. Item 1 (C3449): it is read and drawn when Review the fix…
+          is pressed, here or on the row's line (`att-jump` opens every disclosure holding the
+          card), never by opening the row, so the opened row stays a summary. -#}
       {%- if r.action.open == 'heal_proposal' %}
-      <div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:closest details.att" hx-swap="outerHTML"><p class="small muted">Drawn when this item is open: the proposal as Mercury recorded it, with Approve and Decline.</p></div>
+      <details class="att-card" data-keep="att-card-{{ r.id }}"><summary class="btn btn-small btn-outline">Review the fix…</summary>
+      <div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:closest details.att-card" hx-swap="outerHTML"><p class="small muted">Reading the proposal as Mercury recorded it, with Approve and Decline…</p></div>
+      </details>
       {%- endif %}
       {#- Board H, artboard E's second row (C2471): a halted network's reason and Lift the
           halt, drawn from the row itself (it carries the halt). -#}
@@ -212,11 +213,14 @@
       {%- with halt_id=r.action.halt, list_name=r.action.list, device=r.action.device, halt=none, answered=false, lifted=none, refused=none, reason=none %}{% include "v2/_heal_halt.html" %}{% endwith %}
       {%- endif %}
       {#- C2838: a lost telemetry stream's Re-subscribe card (routes/resubscribe_v2.preview),
-          read from committed intent when the row is opened, in the device's own network. -#}
+          read from committed intent when Re-subscribe… is pressed, in the device's own network. -#}
       {%- if r.action.open == 'resubscribe' %}
       {%- set rd = r.action.device %}
       {%- if (nets.get(rd) or [])|length == 1 %}
-      <div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(',')) }}" hx-trigger="toggle once from:closest details.att" hx-swap="outerHTML"><p class="small muted">Drawn when this item is open: what Re-subscribe will send to {{ rd }}, from its committed intent.</p></div>
+      {#- Item 1 (C3449): drawn when Re-subscribe… is pressed, here or on the row's line. -#}
+      <details class="att-card" data-keep="att-card-{{ r.id }}"><summary class="btn btn-small btn-outline">Re-subscribe {{ rd }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</summary>
+      <div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(',')) }}" hx-trigger="toggle once from:closest details.att-card" hx-swap="outerHTML"><p class="small muted">Reading what Re-subscribe will send to {{ rd }}, from its committed intent…</p></div>
+      </details>
       {%- else %}
       <p class="small muted">Re-subscribe is not offered: {{ (nets.get(rd) or [])|length }} of the networks Mercury holds name a device {{ rd }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
       {%- endif %}
@@ -261,6 +265,63 @@
         {{ loop(r.folded) }}
       </div>
       {%- endif %}
+      {#- C493: every device is named with its network (attention._with_networks), so another
+          network's device never reads as this one's. -#}
+      {%- set seen = namespace(all=[], each_one=true) %}
+      {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
+      {%- set one = seen.all|unique|list %}
+      <p class="att-meta">
+        {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
+            press, on this line with the reading's age (the row's evidence), never beside its
+            one action; busy while it runs (`r.recheck`, modules/recheck.py). The row's id
+            names the control, so its press's answer is drawn in its place (C3360, C3361).
+            First in the line and pinned to its right (C3401), so the age's words never move
+            it and its answer is drawn below it. -#}
+        {%- if r.reader %}{{ recheck(r.reader, r.recheck, row=r.id) }}{% endif %}
+        {%- if r.devices %}
+        {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
+        {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
+        {%- endif %} · {% endif -%}
+        {% if r.since %}since {{ stamp(r.since) }}{% else %}its source does not track when it began{% endif %}
+        {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
+        {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
+      </p>
+      {#- Details, one level down and closed (item 1, C3449): what the row carries beyond its
+          summary and its incident's page does not draw. For a row with a page of its own,
+          the decision's facts and the steps Mercury took are that page's (What's wrong, What
+          Mercury has done), so they are not drawn here. -#}
+      {%- set own_why = (r.heal_cause or r.steps_taken) and not r.incident_page %}
+      {%- if fx or r.packs or own_why or r.heal_diagnosis or r.heal_analysis or ops.members or r.attached %}
+      <details class="att-more" data-keep="att-more-{{ r.id }}">
+      <summary>Details</summary>
+      <div class="att-det">
+      {%- if fx %}
+      <div class="att-fix">
+        {#- C2970: a lost stream is a warning while its device answers. Whether it does is
+            the reachability reader's stored value (attention.device_answers), said here;
+            a reading that cannot say is said as that. Then, one line, what Mercury cannot
+            see while the stream is lost; whether the same loss was seen before and how that
+            ended (drawn only when a past incident matches; a store that could not be read is
+            said, never read as "never seen"); and Mercury's own diagnosis of this loss with
+            when it was read (read, not made, absent and unreadable each said as itself). -#}
+        {%- if fx.answers %}<p class="fix-answers{% if fx.answers.state != 'answers' %} warn-text{% endif %}">{{ fx.answers.words }}</p>{% endif %}
+        {%- if fx.unseen %}<p class="fix-unseen small muted">{{ fx.unseen }}</p>{% endif %}
+        {%- if fx.seen and fx.seen.state == 'match' %}
+        {%- set s = fx.seen %}
+        <p class="fix-seen"><strong>Seen before on {{ fx.device }} ({{ when(s.from) }} to {{ when(s.to) }}):</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ when(s.ended.at) }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ when(s.held.at) }}{% endif %}{{ s.held.tail }}{% endif %} <a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
+        {%- elif fx.seen %}
+        <p class="fix-seen warn-text"><strong>Seen before on {{ fx.device }}:</strong> couldn't be checked: {{ fx.seen.why }}. Whether {{ fx.device }} lost telemetry before is not known.</p>
+        {%- endif %}
+        {%- set d = fx.diagnosis %}
+        <p class="fix-diag"><strong>Mercury's diagnosis:</strong>
+          {%- if d.state == 'read' %} {{ d.words }} <span class="muted small">Read {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, with no AI{% if d.more %}; {{ d.more }} more hypothes{{ 'is' if d.more == 1 else 'es' }} in its record{% endif %}.</span>{% if d.next %} <span class="fix-next">Next, as the diagnosis says: {{ d.next }}.</span>{% endif %}
+          {%- elif d.state == 'not_made' %} <span class="warn-text">not made. It was asked for {{ stamp(d.at) }}{% if d.by %} by {{ d.by | people }}{% endif %}, and answered: {{ d.why }}.</span>
+          {%- elif d.state == 'absent' %} <span class="muted">not read for this loss: {{ d.why }}. Self-healing reads it by itself, where it is on for the device's network, before it tells the team about a lost stream; no control on this row reads it yet.</span>
+          {%- else %} <span class="warn-text">couldn't be read: {{ d.why }}.</span>
+          {%- endif %}
+          {%- if d.list and d.state in ('read', 'not_made') %} <a href="{{ url_for('device_v2.device', name=fx.device, list=d.list, tab='history') }}">Open it on {{ fx.device }}'s History</a>{% endif %}</p>
+      </div>
+      {%- endif %}
       {#- Board NA-R: an item an alert backs offers the SAME kept Explain answer Monitoring
           shows, read when the item opens (never a call; Explain itself is a press, behind its
           cost); Mercury's own findings say why from the record, written by code. -#}
@@ -270,22 +331,19 @@
         <div hx-get="{{ url_for('v2.attention_explain', pack_id=r.packs[0]) }}" hx-trigger="toggle once from:closest details.att" hx-swap="innerHTML"><p class="small muted">Drawn when this item is open: the answer kept with its alert's evidence, if one was asked for.</p></div>
       </div>
       {%- else %}
+      {%- if own_why %}
       <div class="att-why">
         <h3>Why this happened</h3>
         {#- C2823: what happened, facts first, each at its time in the viewer's zone, then a
-            hypothesis labelled as one; then what Mercury did or would do. -#}
+            hypothesis labelled as one. A row with no page of its own keeps them here. -#}
         {%- if r.heal_cause %}{{ heal_cause(r.heal_cause) }}{% endif %}
-        <p class="att-cause">{{ r.cause }}</p>
         {#- The steps taken, ONE line, closed until a person opens it (the operator,
             2026-11-11); the cause above says why it stopped. -#}
         {%- if r.steps_taken %}{% from "v2/_run_stepper.html" import run_stepper %}
         <details class="att-taken" data-keep="att-taken-{{ r.id }}"><summary>The steps Mercury took{% if r.steps_taken.lead %}: stopped at {{ r.steps_taken.lead.words }}{% endif %} · {{ r.steps_taken.trail | length }} step{{ 's' if r.steps_taken.trail | length != 1 }} · <span class="resub-show">Show</span></summary>{{ run_stepper(r.steps_taken) }}</details>
         {%- endif %}
-        <p class="small muted">Written by Mercury from its own record: no AI.</p>
-        {#- The incident page's first slice: a self-healing row about one incident opens its
-            own page, one place per incident (a link, never a second action). -#}
-        {%- if r.incident_page %}<p class="small att-incident"><a href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}" data-incident="{{ r.incident_page.id }}" title="This incident's own page: its times, its time to repair and what Mercury did">Open the incident</a>{% if r.incident_page.drill %} <span class="inc-drill" data-drill="{{ r.incident_page.drill }}">{{ badge('Drill', 'info', title='Fault drill ' ~ r.incident_page.drill ~ ': declared before its fault was injected') }}</span>{% endif %}</p>{% endif %}
       </div>
+      {%- endif %}
       {#- Board H's amendment, H17 (19.3, artboards J and L): Mercury's diagnosis attached to
           the incident, read-only and deterministic, after Mercury's facts and before the AI
           analysis; an Alert incident's runs by itself before its notice, a Never incident's
@@ -328,10 +386,8 @@
       </div>
       {%- endif %}
       {%- endif %}
-      <div class="att-det">
-      <h3>Details</h3>
-      {%- if r.packs %}<p class="att-cause">{{ r.cause }}</p>{% endif %}
-      {%- set ops = (r.operands or {}) %}
+      {#- A lost stream's row leads with its own sentence; its alerts' cause is here. -#}
+      {%- if fx %}<p class="att-cause">{{ r.cause }}</p>{% endif %}
       {%- if ops %}
       {%- if ops.members %}
       <ul class="att-members">
@@ -350,39 +406,20 @@
       {%- endif %}
       {%- endif %}
       {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
-      {#- C493: every device is named with its network (attention._with_networks), so another
-          network's device never reads as this one's. -#}
-      {%- set seen = namespace(all=[], each_one=true) %}
-      {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
-      {%- set one = seen.all|unique|list %}
-      <p class="att-meta">
-        {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
-            press, on this line with the reading's age (the row's evidence), never beside its
-            one action; busy while it runs (`r.recheck`, modules/recheck.py). The row's id
-            names the control, so its press's answer is drawn in its place (C3360, C3361).
-            First in the line and pinned to its right (C3401), so the age's words never move
-            it and its answer is drawn below it. -#}
-        {%- if r.reader %}{{ recheck(r.reader, r.recheck, row=r.id) }}{% endif %}
-        {%- if r.devices %}
-        {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
-        {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
-        {%- endif %} · {% endif -%}
-        {% if r.since %}since {{ stamp(r.since) }}{% else %}its source does not track when it began{% endif %}
-        {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
-        {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
-      </p>
+      </div>
+      </details>
+      {%- endif %}
       {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
           operands, its ids, hashes and steps, under a collapsed "Details for the record", last;
-          what the row says stays above it, an alert's members and the rows it folded with it.
-          Times there stay UTC, as the record keeps them. -#}
-      {%- if ops.keys() | reject('equalto', 'members') | list %}
+          what the row says stays above it. Times there stay UTC, as the record keeps them.
+          Beside Details, never inside it (item 1, C3449). -#}
+      {%- if record_keys %}
       <details class="att-record" data-keep="att-rec-{{ r.id }}"><summary>Details for the record</summary>
       <dl class="att-ops">
         {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
       </dl>
       </details>
       {%- endif %}
-      </div>
       </div>
     </details>
     {%- endfor %}

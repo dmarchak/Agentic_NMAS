@@ -419,8 +419,15 @@ class TestTheRowDrawn:
         html = T.drawn([row])
         said = T.text_of(html)
         answers = row["fix"]["answers"]["words"]
-        order = [said.index(x) for x in (T.LEAD, answers, unseen, T.NEEDS, "What to do")]
+        # Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449: opened,
+        # a row is a summary): whether the device answers and what Mercury cannot see were
+        # under the lead, above What to do; a lost stream's row has no incident page, so both
+        # stay in the row, one level down under its Details, in that order.
+        order = [said.index(x) for x in (T.LEAD, T.NEEDS, "What to do", " Details ", answers,
+                                         unseen)]
         assert order == sorted(order), order
+        more = html.split('<details class="att-more"', 1)[1].split("</details>", 1)[0]
+        assert '<p class="fix-answers">' in more and '<p class="fix-unseen small muted">' in more
         assert '<p class="fix-answers">' in html and '<p class="fix-unseen small muted">' in html
         # The level's own badge and section: the warning token's class, never the critical one.
         assert '<details class="att att-warning"' in html and "att-danger" not in html
@@ -510,9 +517,10 @@ def test_a_folded_rows_action_opens_it_in_a_real_browser(world, monkeypatch):  #
             b.click("details.att details.att a.att-jump")
             b.wait_for(f"return {kids}[0].open", 10)
             after = b.js(f"return Array.from({kids}).map(function (d) {{ return d.open; }})")
-            # Opening it asks for its card (`toggle once from:closest details.att`): the slot's
+            # Opening it asks for its card (`toggle once from:closest details.att-card`, which
+            # the link opens with the row; C3449): the slot's
             # placeholder is replaced in the row pressed, and stays in the rows left closed.
-            waiting = "Drawn when this item is open: what Re-subscribe will send to "
+            waiting = "Reading what Re-subscribe will send to "
             b.wait_for(f"return {kids}[0].textContent.indexOf('{waiting}') < 0", 10)
             slots = b.js(f"return Array.from({kids}).map(function (d) {{"
                          f" return d.textContent.indexOf('{waiting}') >= 0; }})")

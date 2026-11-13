@@ -619,7 +619,9 @@ def _history_filters(request) -> dict:
         if f[name] and not _SAFE_NAME.match(f[name]):
             errors.append(f"the {name} filter {f[name]!r} is not a name")
             f[name] = ""
-    for name, parse in (("before", HS.parse_cursor), ("on", HS.parse_day)):
+    # The day jumped to is the viewer's, in their kept zone (C3466), as every time drawn is.
+    for name, parse in (("before", HS.parse_cursor),
+                        ("on", lambda text: HS.parse_day(text, viewer_zone()))):
         _place, err = parse(f[name])
         if err:
             errors.append(err)
@@ -752,7 +754,7 @@ def _history_timeline(ref, f, members) -> dict:
                     limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
                     members=members, unverified=f.get("identity") == "unverified",
                     before=HS.place(HS.parse_cursor(f.get("before"))[0],
-                                    HS.parse_day(f.get("on"))[0]),
+                                    HS.parse_day(f.get("on"), viewer_zone())[0]),
                     call=f.get("call", ""), commit=f.get("commit", ""))
     # A filter not applied (`f["error"]`) is drawn by the timeline card as itself, "Not
     # applied: ...", never among the stores that could not be read: the rows are all there.
@@ -1538,6 +1540,10 @@ def help_page(slug):
         doc = manual.load(slug)
     except manual.ManualError:
         abort(404)
+    # The page draws `page`: its blocks with the lead diagram in the flow of the text. `html`
+    # (the text without that diagram) and `lead` are the side panel's, which draws the
+    # diagram first (`help_panel`), so the page is not handed them.
+    doc = {k: v for k, v in doc.items() if k not in ("html", "lead")}
     return _page("v2/help.html", doc=doc, nav=manual.nav(), active_nav="help")
 
 

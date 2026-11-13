@@ -11,7 +11,8 @@ Lab; Every network; a range past 31 days; an empty range), beside the board's HT
 1440, 1280 and 390 is the next step of this record.
 
 Templates compared: templates/v2/_history_export.html, templates/v2/_history_body.html
-Templates sha256: `d7ee1400d2fdb04f5f1a85c5cec3c765a0365b612c77dd54c88815112035ddac`
+Hashed again 2026-11-13 (C3466, Jump to's day is the viewer's): `_history_body.html`'s Jump to field, drawn on the Timeline tab alone (`tab == 'timeline'`), has its accessible name without "(UTC)"; no line this tab draws changed. Compared by the template's diff, not by new shots; the Timeline's own record: history.md. Templates sha256 before: `d7ee1400d2fdb04f5f1a85c5cec3c765a0365b612c77dd54c88815112035ddac`.
+Templates sha256: `9e7a48f25e469cdfcea730d7eab8e226005d8872b4f403b6ed6e5c69e13fc13c`
 
 Compared again 2026-11-10 (C2942): only the "Not on <network>" line's words changed (a call
 naming no network is now the installation's own, or one recorded before 2026-11-10). It is the

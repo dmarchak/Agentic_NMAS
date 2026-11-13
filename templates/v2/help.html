@@ -13,16 +13,13 @@
 </div>
 <div class="help-grid">
   {% with current=doc.slug %}{% include "v2/_helpnav.html" %}{% endwith %}
-  <article class="help-body manual{% if doc.lead %} has-lead{% endif %}">
+  {#- The text takes the whole width beside Help's page list, and a page's diagram is drawn
+      in the flow of its text, where its file places it (`doc.page`), never in a column
+      beside it (the operator, 2026-11-13: "the Help pages' text full width with the diagram
+      above or in line"). -#}
+  <article class="help-body manual">
     <h2 class="manual-title">{{ doc.title }}</h2>
-    {%- if doc.lead %}
-    <div class="manual-cols">
-      <div class="manual-text">{{ doc.html | safe }}</div>
-      <aside class="manual-lead" aria-label="Diagram">{{ doc.lead | safe }}</aside>
-    </div>
-    {%- else %}
-    {{ doc.html | safe }}
-    {%- endif %}
+    {{ doc.page | safe }}
   </article>
 </div>
 {% endblock %}

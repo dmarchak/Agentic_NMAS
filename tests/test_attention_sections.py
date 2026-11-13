@@ -77,11 +77,16 @@ class TestTheLine:
 
     def test_what_to_do_comes_before_the_details(self, monkeypatch):
         # Part 2: Mercury's own finding says why from its record (no alert, so no Explain).
+        # Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449): opened,
+        # a row is a summary. What is wrong (its cause, said once, written by Mercury: on its
+        # hover) leads, then What to do; a finding of Mercury's own with nothing more to show
+        # has no "Why this happened" block and no Details.
         html = _panel(_page(monkeypatch, [_src(_rows())]))
         body = html.split('data-attention-row="drift:drifted:edge1"')[1].split("</details>")[0]
-        assert body.index("<h3>What to do</h3>") < body.index("Capture it, or put it back") \
-            < body.index("<h3>Why this happened</h3>") < body.index("differs by 3 lines") \
-            < body.index("<h3>Details</h3>")
+        assert body.index('<div class="att-body">') < body.index("differs by 3 lines") \
+            < body.index("<h3>What to do</h3>") < body.index("Capture it, or put it back") \
+            < body.index('class="att-meta"')
+        assert "<h3>Why this happened</h3>" not in body and "Details</summary>" not in body
         assert "Written by Mercury from its own record: no AI." in body
         assert body.count("differs by 3 lines") == 1, "the cause said once"
         assert "<h3>Explain</h3>" not in body
@@ -133,7 +138,10 @@ class TestPartTwo:
         assert pid.startswith("ep-") and f'hx-get="/v2/attention/explain/{pid}"' in html
         assert 'hx-trigger="toggle once from:closest details.att"' in html
         body = html.split(f'data-attention-row="{rows[0]["id"]}"')[1].split("</details>")[0]
-        assert body.index("<h3>Explain</h3>") < body.index("<h3>Details</h3>")
+        # Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449): Explain
+        # is one level down, under the row's Details, closed; an alert has no incident page.
+        assert body.index('<details class="att-more"') < body.index("<summary>Details</summary>") \
+            < body.index("<h3>Explain</h3>")
         assert "<h3>Why this happened</h3>" not in body, "an alert's item is explained, not"
 
 

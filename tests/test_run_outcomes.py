@@ -638,14 +638,30 @@ class TestACantFixsSteps:
                  if s["key"] not in ("d-" + k for k in said)]
         assert set(after) <= {"not_reached", "skipped"}, "a step it never reached is not done"
         assert r["event"] == inc
-        # Drawn: ONE closed line on the row, the stepper inside it; the cause above says why,
-        # so the step it stopped at is named and its sentence is not said a second time.
+        # Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449: "opened,
+        # a row is a summary; the steps taken are on the incident page"): a row with a page of
+        # its own draws no steps; they are read on its incident's page, where THE stepper
+        # draws them under What Mercury has done. A row with no page of its own keeps them.
         import app as A
         from flask import render_template
         r["networks"] = {r["devices"][0]: ["Default"]}
-        with A.app.test_request_context("/v2/"):
-            html = render_template("v2/_attention.html", a={"rows": [r], "sources": [],
-                                                             "badge": {"n": 1}})
+
+        def drawn_row(row):
+            with A.app.test_request_context("/v2/"):
+                return render_template("v2/_attention.html", a={"rows": [row], "sources": [],
+                                                                 "badge": {"n": 1}})
+        assert r["incident_page"] == {"id": inc, "list": "Default"}
+        on_row = drawn_row(r)
+        assert 'class="att-taken"' not in on_row and "data-run-stepper" not in on_row
+        monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Default"])
+        page = A.app.test_client().get(f"/v2/incident/{inc}?list=Default")
+        assert page.status_code == 200
+        done = page.get_data(as_text=True).split('id="inc-done"', 1)[1].split('id="inc-todo"')[0]
+        assert "data-run-stepper" in done and 'class="run-stages"' in done
+        # Drawn, for a row with no page: ONE closed line on the row, the stepper inside it; the
+        # cause above says why, so the step it stopped at is named and its sentence is not
+        # said a second time.
+        html = drawn_row({k: v for k, v in r.items() if k != "incident_page"})
         assert f'<details class="att-taken" data-keep="att-taken-{r["id"]}">' in html, "closed"
         line = html[html.index('<details class="att-taken"'):]
         line = line[line.index("<summary>") + 9:line.index("</summary>")]
@@ -654,7 +670,7 @@ class TestACantFixsSteps:
                         '<span class="resub-show">Show</span>'), line
         assert len(taken["lead"]["words"].split()) <= 4, "by the step's short label"
         from markupsafe import escape
-        block = html[html.index('<details class="att-taken"'):html.index('class="att-meta"')]
+        block = html[html.index('<details class="att-taken"'):html.index('class="att-why heal-diag"')]
         # Premise corrected (the operator, 2026-11-12): the steps are each stage's, under it.
         assert 'class="run-stages"' in block and 'data-lead="d-' in block
         for why in taken["lead"]["why"]:

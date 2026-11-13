@@ -100,13 +100,15 @@ def test_needs_attention_draws_review_the_fix_and_the_card_it_opens(app_client, 
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
     assert "Mercury has a fix that restarts OSPF on edge-b: it needs your decision" in html
-    # Review the fix… jumps to the card's slot, which the row loads when it is opened, naming
-    # its opener (tests/test_next_steps_act.py's OPENERS).
+    # Review the fix… jumps to the card's slot, naming its opener (tests/test_next_steps_act.py's
+    # OPENERS). Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449:
+    # opened, a row is a summary): the slot was read when the row opened; it is read when its
+    # own disclosure opens, which Review the fix… does, on the line or in What to do.
     assert f'class="btn btn-small btn-outline att-jump" data-op="heal-proposal" ' \
            f'data-next-acts="heal_proposal" href="#heal-prop-{d["id"]}">Review the fix…</a>' \
            in html
     assert (f'id="heal-prop-{d["id"]}" hx-get="{_base(d)}" '
-            'hx-trigger="toggle once from:closest details.att"') in html
+            'hx-trigger="toggle once from:closest details.att-card"') in html
     assert "Clears when a person approves it on its card" in html
     # Opened: the slot's own request draws the card, and reading it writes nothing.
     before = DS.read("Default")

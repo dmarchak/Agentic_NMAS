@@ -97,8 +97,10 @@ closes).
   Prevents: a person's pointer left on empty space, or on another control, by the answer to
   their own press. [Run the check again at 1280 and 390, before a press, at its busy answer,
   after the list's redraw and after a refused repeat: tests/test_recheck.py
-  (`test_the_button_never_moves_when_its_own_answer_appears`); every other control: not
-  mechanised]
+  (`test_the_button_never_moves_when_its_own_answer_appears`); the page's scrollbar keeping
+  its place, so that a row opened on History, a device's History tab or Needs attention moves
+  nothing sideways when the page begins to scroll (C3468, `scrollbar-gutter: stable` on the
+  page): tests/test_no_control_moves.py; every other control: not mechanised]
 
 ## Proposed by the GUI review of the recorded screens (2026-11-13)
 

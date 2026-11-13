@@ -31,7 +31,7 @@
   {%- elif h.events %}
   {#- Board D's count; the place a page starts at (Load more's, or a day jumped to) said with
       the way back to the newest. -#}
-  <p class="muted small hist-count">Showing the {% if f.before_at %}{{ h.events | length }} before {{ stamp(f.before_at) }}{% elif f.on %}{{ h.events | length }} on or before {{ f.on }} (UTC){% else %}newest {{ h.events | length }}{% endif %}{% if h.total > h.events | length %} of {{ h.total }} read{% endif %}{% if h.more %} · Load more, at the foot, reads the next {{ h.limit }}{% endif %}{% if f.before or f.on %} · <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
+  <p class="muted small hist-count">Showing the {% if f.before_at %}{{ h.events | length }} before {{ stamp(f.before_at) }}{% elif f.on %}{{ h.events | length }} on or before {{ f.on }}{% else %}newest {{ h.events | length }}{% endif %}{% if h.total > h.events | length %} of {{ h.total }} read{% endif %}{% if h.more %} · Load more, at the foot, reads the next {{ h.limit }}{% endif %}{% if f.before or f.on %} · <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
   {%- endif %}
   {{ timeline_rows(h, more_url=more_url, page_url=page_url, opened=f.call) }}
 </section>

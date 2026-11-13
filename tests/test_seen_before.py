@@ -787,9 +787,13 @@ NEEDS = ("Does it need you? Yes: the fix changes r2's configuration, so a person
 
 class TestTheRow:
     def test_the_worked_example_opened(self, world, loki, tmp_path):
-        """A past loss a console change ended, this loss diagnosed: the lead sentence, Seen
-        before, Does it need you? and Mercury's diagnosis, in that order, above the action
-        the row still names."""
+        """A past loss a console change ended, this loss diagnosed: the lead sentence and Does
+        it need you? above the action the row still names; Seen before and Mercury's
+        diagnosis, in that order, one level down under the row's Details.
+
+        Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449: opened, a
+        row is a summary): all four were above What to do; a lost stream's row has no incident
+        page, so Seen before and the diagnosis stay in the row, under Details."""
         loki["corpus"] = r2_log(CONSOLE)
         past_loss()
         diagnosed(tmp_path / "now", NOW - 60, tcp6=False)
@@ -813,8 +817,10 @@ class TestTheRow:
         diag = "Mercury's diagnosis: " + HALF_OPEN + " Read "
         for line in (LEAD, seen, NEEDS, diag, "What to do"):
             assert line in said, line
-        order = [said.index(x) for x in (LEAD, seen, NEEDS, diag, "What to do")]
+        order = [said.index(x) for x in (LEAD, NEEDS, "What to do", " Details ", seen, diag)]
         assert order == sorted(order), order
+        more = page.split('<details class="att-more"', 1)[1].split("</details>", 1)[0]
+        assert "Seen before on r2" in more and "Mercury's diagnosis:" in unescape(more)
         assert "Next, as the diagnosis says: Re-subscribe r2's streams" in said
         # The times are the records', drawn in the viewer's zone, their UTC on the hover.
         assert ('<time class="clock" datetime="2026-11-08T20:59:41Z" data-clock="date" '

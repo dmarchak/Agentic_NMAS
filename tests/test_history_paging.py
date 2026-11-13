@@ -14,7 +14,10 @@ it produced (15.14).
   stores, every load draws 50 rows and reads each source at most `ROUNDS` times, no read
   asking for more than `MAX_READ` rows; a paged store's load costs the same at page 1 and at
   page 100.
-- **Jump to a day** (`on=YYYY-MM-DD`): the page starts at the end of that day, UTC.
+- **Jump to a day** (`on=YYYY-MM-DD`): the page starts at the end of that day, the viewer's
+  day in their kept zone (C3466): its 00:00 to 24:00 there, as UTC instants for the readers,
+  in a zone ahead of UTC, one behind, and across both daylight-saving changes; the page and
+  the tab say the day without "(UTC)".
 - **The filters on the server and in the address:** a kind filter reads only the sources that
   can hold its kinds (`SOURCE_KINDS`, every source's rows held to it on a planted lab); Load
   more's fragment and the address it pushes carry every filter; a place that is not one is not
@@ -28,6 +31,8 @@ import calendar
 import html as _h
 import re
 import time
+from datetime import timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -225,7 +230,7 @@ class TestBoundedAtScale:
         first = list(paged.reads)
         paged.reads.clear()
         day = time.strftime("%Y-%m-%d", time.gmtime(BASE - 60 * 5500))
-        h = HS.timeline(None, members=[], before=HS.parse_day(day)[0])
+        h = HS.timeline(None, members=[], before=HS.parse_day(day, timezone.utc)[0])
         assert first == [50] and paged.reads == [51] and len(h["events"]) == 50
 
 
@@ -238,19 +243,124 @@ class TestJumpToADay:
                 {"at": _iso(day_end - 86400), "what": "the day's first second"},
                 {"at": _iso(day_end - 86401), "what": "the day before"}]
         stores(a=Store(rows))
-        place, err = HS.parse_day("2026-09-20")
+        place, err = HS.parse_day("2026-09-20", timezone.utc)
         assert not err and place == (day_end, "")
         whats = [e["what"] for e in HS.timeline(None, members=[], before=place)["events"]]
         assert whats == ["last second", "the day's first second", "the day before"]
 
     @pytest.mark.parametrize("text", ["2026-13-01", "20-09-2026", "yesterday", "2026-02-30"])
     def test_a_day_that_is_not_a_date_is_refused_by_name(self, text):
-        place, err = HS.parse_day(text)
+        place, err = HS.parse_day(text, timezone.utc)
         assert place is None and repr(text) in err
 
     def test_the_earlier_of_a_day_and_a_cursor_is_the_place(self):
         assert HS.place((10.0, "r-b"), (5.0, "")) == (5.0, "")
         assert HS.place(None, (5.0, "")) == (5.0, "") and HS.place(None, None) is None
+
+
+#: A day in each zone as the UTC instants of its 00:00 and its 24:00 there, written from the
+#: zones' published offsets (Kolkata UTC+05:30, Kiritimati UTC+14, Denver UTC-6 under MDT and
+#: UTC-7 under MST), never computed by the code under test: ahead of UTC, behind it, and the
+#: two days a daylight-saving change makes 25 and 23 hours long.
+LOCAL_DAYS = [
+    ("Asia/Kolkata", "2026-09-20", "2026-09-19T18:30:00Z", "2026-09-20T18:30:00Z"),
+    ("Pacific/Kiritimati", "2026-09-20", "2026-09-19T10:00:00Z", "2026-09-20T10:00:00Z"),
+    ("America/Denver", "2026-09-20", "2026-09-20T06:00:00Z", "2026-09-21T06:00:00Z"),
+    ("America/Denver", "2026-11-01", "2026-11-01T06:00:00Z", "2026-11-02T07:00:00Z"),
+    ("America/Denver", "2026-03-08", "2026-03-08T07:00:00Z", "2026-03-09T06:00:00Z"),
+]
+
+
+def _around(start, end, step=1800, **store):
+    """A store of one row every *step* seconds (30 minutes) from three hours before a day's
+    *start* to three hours after its *end*, and one at each edge's last second: ``(store, the
+    day's own rows' words, newest first)``. A row's words name its instant (`_at`), so a wrong
+    row names itself."""
+    at = {t for t in range(int(start) - 3 * 3600, int(end) + 3 * 3600 + 1, step)}
+    at |= {int(start) - 1, int(end) - 1}
+    rows = [{"at": _iso(t), "what": _at(t)} for t in sorted(at, reverse=True)]
+    return Store(rows, **store), [r["what"] for r in rows if start <= _utc(r["at"]) < end]
+
+
+def _at(t):
+    """A row's words for its instant, UTC, in a shape no screen redraws as a time."""
+    if isinstance(t, str):
+        t = _utc(t)
+    return time.strftime("row %m%d-%H%M%S", time.gmtime(t))
+
+
+class TestTheDayIsTheViewers:
+    """C3466 (the operator, 2026-11-13: "raw UTC anywhere left"): Jump to's day is the viewer's
+    day in their kept zone, its 00:00 to 24:00 there as UTC instants for the readers; the page
+    and the tab say it without "(UTC)"."""
+
+    @pytest.mark.parametrize("zone,day,start,end", LOCAL_DAYS)
+    def test_the_day_runs_midnight_to_midnight_in_the_zone(self, zone, day, start, end):
+        assert HS.day_span(day, ZoneInfo(zone)) == (_utc(start), _utc(end))
+        assert HS.parse_day(day, ZoneInfo(zone)) == ((_utc(end), ""), "")
+
+    @pytest.mark.parametrize("zone,day,start,end", LOCAL_DAYS)
+    def test_the_place_s_first_rows_are_exactly_that_day_s(self, stores, zone, day, start, end):
+        store, the_days = _around(_utc(start), _utc(end))
+        stores(a=store)
+        place, _err = HS.parse_day(day, ZoneInfo(zone))
+        h = HS.timeline(None, members=[], before=place, limit=200)
+        whats = [e["what"] for e in h["events"]]
+        hours = (_utc(end) - _utc(start)) / 3600
+        assert len(the_days) == 2 * hours + 1 and hours in (23, 24, 25), "the planted day"
+        assert whats[:len(the_days)] == the_days, "from the day's last second to its first"
+        assert whats[0] == _at(_utc(end) - 1) and whats[len(the_days) - 1] == _at(start)
+        assert whats[len(the_days)] == _at(_utc(start) - 1), "then the day before, by Load more"
+        assert _at(end) not in whats, "the next day's first second is not on the page"
+
+    def test_a_viewer_with_no_zone_kept_jumps_to_the_host_s_day(self):
+        from tests.test_local_times import zone
+        _z, day, start, end = LOCAL_DAYS[3]
+        with zone("America/Denver"):
+            assert HS.day_span(day, None) == (_utc(start), _utc(end))
+        with zone("Asia/Kolkata"):
+            assert HS.parse_day("2026-09-20", None)[0] == (_utc(LOCAL_DAYS[0][3]), "")
+
+    @pytest.mark.parametrize("zone,day,start,end", LOCAL_DAYS[:3])
+    def test_jump_to_pressed_lands_on_the_viewer_s_day(self, lab, stores, zone, day, start, end):
+        """In a real browser (Firefox, unconfined), as a person whose kept zone is *zone*: the
+        day chosen in Jump to and Show pressed on History, then Go pressed on r3's tab. Each
+        lands on that day's rows, says the day with no "(UTC)", and keeps it in the field."""
+        from tests import browser
+        from tests.test_local_times import kept_zone
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why}); the tests above still run")
+        store, the_days = _around(_utc(start), _utc(end), step=3600, devices=["r3"])
+        stores(c=store)
+        drawn = ("Array.from(document.querySelectorAll('details.tl-row .hist-what strong'))"
+                 ".map(function (e) { return e.textContent; })")
+        import app as A
+        with kept_zone(zone), browser.Served(A.app) as srv, browser.Browser() as b:
+            try:
+                for path, form in (("/v2/history?since=", "form.dev-filters"),
+                                   ("/v2/device/r3?tab=history", "form.hist-jump")):
+                    b.go(srv.url(path))
+                    b.wait_for(f"return {drawn}.length > 0", 15)
+                    assert b.js(f"return {drawn}[0]") == store.rows[0]["what"], \
+                        (path, "the newest page first: no day chosen yet")
+                    b.js("var f = document.querySelector(arguments[0] + ' input[name=on]');"
+                         "f.scrollIntoView({block: 'center'}); f.value = arguments[1]; return 1",
+                         form, day)
+                    b.click(f"{form} button[type=submit]")
+                    b.wait_for("return location.search.indexOf('on=' + arguments[0]) >= 0 && "
+                               f"{drawn}.length > 0", 15, day)
+                    whats = b.js(f"return {drawn}")
+                    assert whats[:len(the_days)] == the_days, (path, zone, whats[:3])
+                    assert whats[len(the_days)] == _at(_utc(start) - 1), (path, zone)
+                    said = b.js("return document.querySelector('.hist-count').textContent")
+                    assert f"on or before {day}" in said and "UTC" not in said, (path, said)
+                    field = b.js("var f = document.querySelector(arguments[0] + ' input[name=on]');"
+                                 "return [f.value, f.getAttribute('aria-label')]", form)
+                    assert field[0] == day and "UTC" not in field[1], (path, field)
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()
 
 
 class TestTheCursor:

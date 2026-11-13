@@ -3348,22 +3348,38 @@ def parse_cursor(text: str) -> tuple:
     return (when.timestamp(), rid), ""
 
 
-def parse_day(text: str) -> tuple:
-    """``(cursor, error)`` from an address's ``on=YYYY-MM-DD`` (Jump to): the page holds the
-    rows at or before the END of that day, UTC (the cursor is the next midnight, which no row
-    at it passes)."""
-    from datetime import datetime, timedelta, timezone
-    text = str(text or "")
-    if not text:
-        return None, ""
+def day_span(text: str, zone) -> tuple:
+    """``(start, end)``, the UTC instants (epoch seconds) at which the day ``YYYY-MM-DD``
+    begins and ends in *zone*: its 00:00 and the next day's 00:00 on that zone's own clock, so
+    a day a daylight-saving change falls in is its 23 or 25 hours. *zone* is a `tzinfo` (the
+    viewer's kept zone, `routes.v2.viewer_zone`), or None for the host's own, in which a viewer
+    with no zone kept reads every time. None when *text* is not a date."""
+    from datetime import datetime, timedelta
     try:
-        day = datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc) \
-            if _DAY.match(text) else None
+        day = datetime.strptime(text, "%Y-%m-%d") if _DAY.match(str(text or "")) else None
     except ValueError:
         day = None
     if day is None:
+        return None
+    # A day later on the wall clock, THEN the instant: an aware datetime plus a day keeps its
+    # wall time, and a naive one's `timestamp()` reads the host's zone.
+    edges = (day, day + timedelta(days=1))
+    return tuple((d.replace(tzinfo=zone) if zone is not None else d).timestamp() for d in edges)
+
+
+def parse_day(text: str, zone) -> tuple:
+    """``(cursor, error)`` from an address's ``on=YYYY-MM-DD`` (Jump to): the day is the
+    VIEWER's, read in *zone* (`day_span`; C3466: it was a UTC day, said "(UTC)", beside rows
+    drawn in the viewer's zone). The page holds the rows at or before the END of that day
+    there: the cursor is that zone's next midnight as a UTC instant (which no row at it
+    passes), so the page's first rows are that day's, from its 24:00 back to its 00:00."""
+    text = str(text or "")
+    if not text:
+        return None, ""
+    span = day_span(text, zone)
+    if span is None:
         return None, f"the day {text[:40]!r} is not a date (YYYY-MM-DD)"
-    return ((day + timedelta(days=1)).timestamp(), ""), ""
+    return (span[1], ""), ""
 
 
 def after(events: list, cursor) -> list:

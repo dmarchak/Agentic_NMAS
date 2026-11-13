@@ -23,13 +23,14 @@
   <a class="seg-btn{% if kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if kinds == [key] else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=key, on=on or None) }}">{{ words }}</a>
   {%- endfor %}
 </div>
-{#- Jump to a day (15.14 part B): the tab starts at the end of that day, UTC, keeping the kind;
-    the device page's own address, so Back and a shared link return to it. -#}
+{#- Jump to a day (15.14 part B): the tab starts at the end of that day, the viewer's day in
+    their kept zone (C3466), keeping the kind; the device page's own address, so Back and a
+    shared link return to it. -#}
 <form class="hist-jump" method="get" action="{{ url_for('device_v2.device', name=device.hostname) }}">
   <input type="hidden" name="tab" value="history">
   {%- if kinds %}<input type="hidden" name="kind" value="{{ kinds | first }}">{% endif %}
   <label class="hist-filter"><span class="muted small">Jump to</span>
-    <input type="date" name="on" value="{{ on }}" aria-label="Start the tab at the end of this day (UTC)"></label>
+    <input type="date" name="on" value="{{ on }}" aria-label="Start the tab at the end of this day"></label>
   <button type="submit" class="btn btn-small">Go</button>
 </form>
   {%- if kind_error %}
@@ -42,7 +43,7 @@
   {%- elif not h.events and not h.errors %}
   <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} yet: no golden, no intent commit, no deploy.</p>
   {%- elif before or on %}
-  <p class="muted small hist-count">Showing the {{ h.events | length }} {% if on and not before %}on or before {{ on }} (UTC){% else %}before {{ stamp(before.rpartition('~')[0]) }}{% endif %} · <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=kinds or None) }}">Back to the newest</a></p>
+  <p class="muted small hist-count">Showing the {{ h.events | length }} {% if on and not before %}on or before {{ on }}{% else %}before {{ stamp(before.rpartition('~')[0]) }}{% endif %} · <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=kinds or None) }}">Back to the newest</a></p>
   {%- elif (h.total or 0) > h.events | length %}
   <p class="muted small hist-count">Showing the newest {{ h.events | length }} of {{ h.total }} read · Load more, at the foot, reads the next {{ h.limit }}</p>
   {%- endif %}

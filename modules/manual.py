@@ -513,13 +513,17 @@ def diagram(name: str) -> str:
 
 
 def render(text: str) -> dict:
-    """``{"html", "title", "anchors", "links", "sections", "lead", "diagrams"}``.
+    """``{"html", "page", "title", "anchors", "links", "sections", "lead", "diagrams"}``.
     *sections* maps each anchor (an ``##`` or ``###`` heading) to its own HTML, for
     the side panel: an ``###`` runs to the next heading of its level or higher. *lead* is the page's first diagram when it comes before any section
-    (the brief 10b: drawn first in the panel, and beside the text on the page);
-    *diagrams* names every diagram the page draws."""
+    (the brief 10b: drawn first in the panel, before *html*, the page's text without it).
+    *page* is what the Help page draws: the same blocks with the lead diagram in the flow of
+    the text, where its file places it, marked ``diagram-lead`` (the operator, 2026-11-13:
+    "the Help pages' text full width with the diagram above or in line"; it had been a
+    column beside the text). *diagrams* names every diagram the page draws."""
     lines = text.splitlines()
     blocks, anchors, links, drawn = [], [], [], []
+    page_blocks = []        # the page's own order: every block, the lead diagram in its place
     lead = ""
     title = ""
     current = None          # (anchor, [html]) of the open ## section
@@ -530,6 +534,7 @@ def render(text: str) -> dict:
 
     def emit(h):
         blocks.append(h)
+        page_blocks.append(h)
         if current is not None:
             current[1].append(h)
         if sub is not None:
@@ -609,6 +614,8 @@ def render(text: str) -> dict:
             drawn.append(name)
             if current is None and not lead:
                 lead = fig
+                page_blocks.append(fig.replace('<figure class="diagram">',
+                                               '<figure class="diagram diagram-lead">', 1))
             else:
                 emit(fig)
             i += 1
@@ -636,8 +643,8 @@ def render(text: str) -> dict:
         i += 1
     flush_para()
     flush_list()
-    return {"html": "\n".join(blocks), "title": title, "anchors": anchors, "links": links,
-            "lead": lead, "diagrams": drawn,
+    return {"html": "\n".join(blocks), "page": "\n".join(page_blocks), "title": title,
+            "anchors": anchors, "links": links, "lead": lead, "diagrams": drawn,
             "sections": {a: "\n".join(h for h in body) for a, (_a, body) in sections.items()}}
 
 

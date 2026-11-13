@@ -17,22 +17,28 @@ The landing page answers one question: does anything need you?
   the item's title reads "<run> running since <time>, by <who>", and the right side of the
   line holds **Open the run** alone, which opens the device's page on that run's card; the
   action returns by itself when the run ends. Press the line to
-  open it: **What to do** comes first (every action with its How does this work?, how it
-  clears, and **Acknowledge…** for an event), then why: for an item a Grafana alert raised,
-  **Explain**, the same answer Monitoring › Alerts keeps for that alert's evidence (opening the
-  item asks the model nothing; with no answer kept, Explain is offered behind its cost); for
-  anything Mercury found itself, **Why this happened**, written by Mercury from its own record
-  with no AI. A self-healing can't-fix carries one closed line there too, **The steps Mercury
-  took: stopped at <step> · N steps · Show**; opened, it draws the one stepper: its stages
-  (Decided, and Fixing to Done when it acted), the step it stopped at named in its stage, each
-  stage opening to its steps, one line a step ([Self-healing](heal#act)). A self-healing item
-  about one incident ends its Why this happened with **Open the incident**, that incident's own
-  page ([An incident's page](incident)), and with **Drill** beside it when the incident opened
-  inside a declared fault drill (its drill's id on hover). A lost telemetry stream's card carries
-  its last run the same way, **The last run, <how long ago>: <how it ended> · N steps ·
-  Show**. Then the **Details**: the alerts, the devices with their networks, since when and
-  which source, and last **Details for the record**, closed until you open it: the record's
-  ids, hashes and steps. Every time on the item, the record's included, is drawn in your time
+  open it. Opened, an item is a summary, not the whole incident: **Open the incident** first,
+  where the item is about one self-healing incident, which has a page of its own
+  ([An incident's page](incident); **Drill** beside the link when the incident opened inside a
+  declared fault drill, its drill's id on hover); then what is wrong, in a sentence or two;
+  whether it needs you, where the item says so; **What to do** (every action with its How
+  does this work?, how it clears, and **Acknowledge…** for an event); and one line naming the
+  devices with their networks, since when, how old the reading is and which source. An action
+  that has a card (**Review the fix…**, **Re-subscribe <device>'s telemetry (<ids>)…**) draws
+  it under its button when you press it, there or on the item's line; opening the item draws
+  no card. What happened, fact by fact, and the steps Mercury took (the one stepper: its
+  stages, the step it stopped at named in its stage, each stage opening to its steps;
+  [Self-healing](heal#act)) are on the incident's own page, under What's wrong and What
+  Mercury has done. Everything else is one level down, under **Details**, closed until you
+  open it: for an item a Grafana alert raised, **Explain**, the same answer Monitoring ›
+  Alerts keeps for that alert's evidence (opening the item asks the model nothing; with no
+  answer kept, Explain is offered behind its cost), and the alerts themselves; for a
+  self-healing can't-fix, **Mercury's diagnosis** and the **AI analysis**; and last **Details
+  for the record**: the record's ids, hashes and steps. An item Mercury found itself that has
+  no incident page keeps **Why this happened** there, with **The steps Mercury took: stopped
+  at <step> · N steps · Show** where it holds steps. A lost telemetry stream's card carries
+  its last run as one closed line, **The last run, <how long ago>: <how it ended> · N steps ·
+  Show**. Every time on the item, the record's included, is drawn in your time
   zone (the one kept for you: Settings › Installation, Access and identity, the Time zone
   card), with UTC on hover.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
@@ -125,16 +131,16 @@ schedule, and the page draws what was last read, at once. So every value says ho
   row of its own ("… has not been read within its promise").
 
 There is no refresh button: a page left open updates itself as the reads land. One item's own
-check can be run again from its Details, below.
+check can be run again from the opened item, below.
 
 ## Run the check again {#run-the-check-again}
 
 A row a background check raised stands on that check's last reading, and some checks read
 only every half hour or hour (the scheduled workflows, NetBox's stored credentials, the
 credential health). When the cause was fixed outside {{product}} (a workflow re-run on GitHub,
-NetBox back up), the row would stand until the check's next run. Open the item: its
-**Details** line says when its reading was taken ("read 40 min ago"), and **Run the check
-again** sits at that line's right. The button never moves: whatever a press says is drawn
+NetBox back up), the row would stand until the check's next run. Open the item: the
+last line of its summary says when its reading was taken ("read 40 min ago"), and **Run the
+check again** sits at that line's right. The button never moves: whatever a press says is drawn
 below it, and it is as wide while **Checking…** as before.
 
 - **What it runs:** that check once, now, exactly as its schedule runs it: the same reads, the
@@ -644,8 +650,10 @@ answers)".
 
 ### A lost telemetry stream, opened {#a-lost-telemetry-stream}
 
-Opened, a lost telemetry stream's row says six things first, above What to do. Each is written
-by Mercury's code from its own records, with no AI:
+A lost telemetry stream's row says six things. Opened, two of them are its summary, above What
+to do: how long and what it costs, and **Does it need you?** The other four (whether the device
+answers, what Mercury cannot see, Seen before and Mercury's diagnosis) are one level down, under
+the row's **Details**. Each is written by Mercury's code from its own records, with no AI:
 
 - **How long, and what it costs:** "edge1 has sent no telemetry to the collector for 37 hours.
   Monitoring for edge1 is blind until it does." The time is measured from the alert's own
@@ -691,8 +699,8 @@ by Mercury's code from its own records, with no AI:
   diagnosis by itself where it is on for the device's network; no control on the row runs it
   yet.
 
-The action follows: Re-subscribe, in What to do. What matched, what was searched and how each
-sentence was measured are under **Details for the record**. Mercury searches its records when
+The action is Re-subscribe, in What to do. What matched, what was searched and how each
+sentence was measured are under Details too, in **Details for the record**. Mercury searches its records when
 it reads Grafana's alerts (once a minute, and only while a stream is lost), never when the
 page is drawn, so a diagnosis recorded just now appears with the next read.
 

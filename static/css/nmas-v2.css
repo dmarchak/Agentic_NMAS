@@ -100,6 +100,14 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* The page's scrollbar has its place whether or not the page scrolls (C3468; the operator,
+   2026-11-13: "no control moves when its result appears"): a row that opens, or an answer that
+   arrives, on a page that fitted its window made the page scroll, and the scrollbar that
+   appeared took 12 px from the layout, so every column, and every control placed from the
+   right, moved (measured at 1280 px on Needs attention, the incident page, the heal card,
+   History, Settings › Self-healing and Logs: 45 of 143 presses before, none after).
+   tests/test_no_control_moves.py opens rows until the page scrolls. */
+html { scrollbar-gutter: stable; }
 /* `hidden` hides, whatever the element's class draws it as (C883: `.notice`'s display: flex beat
    the browser's own [hidden] rule, so the batch preview's "The batch is running…" note, hidden
    until a batch starts, was shown on every preview). One rule for the class, not one per member. */
@@ -894,7 +902,12 @@ a.pack-cite { color: var(--accent); margin-right: 2px; }
 /* The manual (modules/manual.py): its text, the side help panel an info link
    opens, the info link itself, and the diagrams' classes (no inline style in
    an SVG, so the strict policy holds and dark mode applies). */
-.manual { max-width: 760px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+/* The text takes the whole width of its area (the Help page's, beside its page list; the
+   panel's), and a diagram is in the flow of the text, never a column beside it (the
+   operator, 2026-11-13: "the Help pages' text full width with the diagram above or in
+   line"). Measured before, at 1280 px: a page with a diagram drew its text 248 px wide beside
+   a 440 px diagram column, 24% of the main area's 1020 px. */
+.manual { font-size: 14px; line-height: 1.6; color: var(--ink); }
 .manual h2 { font-size: 17px; font-weight: 600; margin: 22px 0 6px; }
 .manual h3 { font-size: 15px; font-weight: 600; margin: 16px 0 4px; }
 .manual .manual-title { font-size: 20px; margin-top: 0; }
@@ -909,15 +922,11 @@ a.pack-cite { color: var(--accent); margin-right: 2px; }
 .manual figure.diagram { margin: 14px 0; }
 .manual figure.diagram svg { width: 100%; height: auto; max-width: 720px; }
 .manual figcaption { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
-.manual-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start; }
-.manual-lead figure.diagram { margin: 0; padding: 14px; background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-card); }
-.manual-lead figure.diagram svg { max-width: 440px; }
-@media (min-width: 1180px) {
-  .manual.has-lead { max-width: 1240px; }
-  .manual-cols { grid-template-columns: minmax(0, 1fr) 440px; }
-  .manual-lead { position: sticky; top: 16px; order: 2; }
-}
+/* A page's lead diagram (`diagram-lead`, modules/manual.py `render`): in the flow, where its
+   file places it, on its card at the size its column drew it (the card 440 px wide, the
+   drawing 410 px inside its padding and border), its words under it at the text's width. */
+.manual figure.diagram-lead svg { display: block; box-sizing: border-box; max-width: 440px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
 .help-panel-manual figure.diagram { margin: 0 0 12px; }
 .help-panel-manual figure.diagram svg { max-width: 100%; }
 /* The manual's diagram key (NSOT_GUI_BRIEF 10b): every diagram is drawn from these
@@ -3341,3 +3350,17 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   .inc-times { grid-template-columns: minmax(0, 1fr); }
   .inc-head h1 { font-size: 20px; }
 }
+
+/* Needs attention's opened row as a summary (the GUI review's item 1, C3449; the operator,
+   2026-11-13): Open the incident first, what is wrong, whether it needs a person, What to do,
+   the reading's line, then Details and Details for the record, each closed. An action's card
+   (a proposal's, a Re-subscribe's) opens under its own button; a summary is at least 24 px
+   tall (WCAG 2.5.8), and the two disclosures sit together. */
+.att-incident { margin: 0; }
+.att-wrong { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.att-card { display: flex; flex-direction: column; gap: 8px; }
+.att-card > summary { list-style: none; cursor: pointer; align-self: flex-start; width: fit-content; }
+.att-card > summary::-webkit-details-marker { display: none; }
+.att-more > summary, .att-body > .att-record > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); padding: 3px 0; }
+.att-more > .att-det { margin-top: 6px; gap: 8px; }
+.att-more + .att-record { margin-top: -8px; }
