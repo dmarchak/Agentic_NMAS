@@ -44,8 +44,7 @@ until you open it, holds the proposal's and the incident's ids, the proposal's h
 sends, the program's hash, the fix type and tier, the policy, the decision's words, what raised
 it and the steps approving runs.
 
-**Times** are drawn in your browser's time zone, with UTC on hover. The record's own times,
-under Details for the record, are UTC.
+**Times**, the record's included, are drawn in your time zone, with UTC on hover.
 
 **In dry run, approving still sends.** Dry run holds only what self-healing would do by itself.
 A proposal is a person's decision whatever the mode, so the card says above Approve: "Watching

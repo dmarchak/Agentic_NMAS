@@ -224,6 +224,10 @@ It holds every record the tool keeps about the device:
 | approval | a queued action approved or rejected |
 | break-glass | a break-glass record exported that holds this device (the row names how many devices it holds) |
 | cut off | an operation whose process ended mid-run, found when the hold was cleared |
+| self-healing | a decision, heal or action on it, with Open the card and Open the incident |
+| diagnosis | a diagnosis that read it |
+| fault drill | a fault drill declared or ended on it |
+| AI read | a read an AI analysis or troubleshoot asked of it, signed in as the read-only account |
 
 A record that could not be read is said above the timeline: the timeline lacks it, which is
 not the same as nothing having happened. On a network with no repository yet, the tab says so

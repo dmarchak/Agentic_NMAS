@@ -96,7 +96,10 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
     # (19.4, H19).
     assert tab.count(">Edit…</a>") == 10
     assert "A flap: transitions of one interface within" in tab and "3 in 10 min" in tab
-    assert "no bounce is built yet: H20" in tab
+    # Premise corrected (2026-11-13): the port bounce is built (H20, `actions.NOT_BUILT` empty),
+    # so the row names what a second need becomes and never says it is unbuilt.
+    assert "a second need within the repeat window is a dampening proposal for a person" in tab
+    assert "no bounce is built" not in tab
     # Off by default: nothing heals, so no Turn off; the defaults heal nothing.
     assert ">Turn off<" not in tab and "never confirmed: the defaults are in force" in tab
     for kind in H.TIER1_KINDS + H.TIER2_KINDS:

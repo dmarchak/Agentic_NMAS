@@ -444,8 +444,7 @@ names both dates. Hovering the chart names the window under the pointer.
 windows, the Lines view's times, whose column head names the zone) and the builder's read
 times are in your browser's time zone, named after each time; hover a time for the same
 instant in UTC, and the chart's hover gives both. The chart's axis is in the same zone.
-Mercury has no per-person or installation time zone yet, so your browser's is the
-view's. **From… to…** is typed in UTC, your local time shown beside each. These are reads:
+This view still draws its times in your browser's zone, not the one kept for you, a known gap. **From… to…** is typed in UTC, your local time shown beside each. These are reads:
 nothing is written, and nothing reaches a device. **Edit as code** from Counts over time opens
 Code mode with the count query, drawn there on the same chart.
 

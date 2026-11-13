@@ -32,8 +32,9 @@ The landing page answers one question: does anything need you?
   its last run the same way, **The last run, <how long ago>: <how it ended> · N steps ·
   Show**. Then the **Details**: the alerts, the devices with their networks, since when and
   which source, and last **Details for the record**, closed until you open it: the record's
-  ids, hashes and steps, its times in UTC. A time a self-healing item names (when a change was
-  made, when a symptom began) is drawn in your browser's time zone, with UTC on hover.
+  ids, hashes and steps. Every time on the item, the record's included, is drawn in your time
+  zone (the one kept for you: Settings › Installation, Access and identity, the Time zone
+  card), with UTC on hover.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the action that deals with it. Most rows have one; a drifted
   device's row has two, which mean opposite things (below), and so has a rollback's

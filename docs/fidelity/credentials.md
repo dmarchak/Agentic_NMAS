@@ -27,7 +27,15 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
-Templates sha256: `80e5913eeebd6ad52195fefb7c5c03c7ed0d0facdff6b6721c7194866add65ef`
+Templates sha256: `c9e8425914944fbe2c463ab3841bbce5b1fa2748033e10176a9cd0b4f4347126`
+
+**Compared again 2026-11-13 (the read-only account through intent, C2657):** by the template's
+diff against the regions below, not from new shots. In `_credential_read_account.html`, the
+**On the devices** value alone changes its words: it named the intent route as waiting on a
+measurement, and now names the `users` entry it is (`read-account:profile:<profile>`, an
+account added, never changed, deployed by a person), still "not read yet"; the same element in
+the same position, no region added, removed or moved. Every verdict stands.
+Templates sha256 before: `80e5913eeebd6ad52195fefb7c5c03c7ed0d0facdff6b6721c7194866add65ef`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_breakglass_record.html`, `_breakglass_done.html`,

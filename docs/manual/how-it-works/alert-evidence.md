@@ -277,7 +277,11 @@ is: a password, secret, community or key in a log line is a placeholder. A pack 
 labels, masked log lines, the Intent check's state and, when it differs, its differing lines
 masked (a secret, password, key or hash in one is a placeholder, by where it stands and by the
 values {{product}} knows), observed adjacencies and cables, and metric figures; never a golden,
-a captured configuration, a deploy's program or a credential. A line that reads like an instruction (in an interface description, a log line or
+a captured configuration, a deploy's program or a credential. On screen a pack names people
+by their display name. What an AI is sent of it names every person by a stable label
+("person-3f9a1c"), keyed under this installation's own secret, never their sign-in address or
+name, and any address still anywhere in a request is replaced by its label before the request
+leaves {{product}}. A line that reads like an instruction (in an interface description, a log line or
 a label) is kept and drawn as text; nothing in a pack is followed.
 
 ## Explain {#explain}

@@ -78,6 +78,9 @@ CHANGES_NO_PROTECTED_KIND = {
                                             "device, outside the product",
     ("scripts/nmas-tier2-probe", "measure"): "a measured probe the operator runs, outside the "
                                              "product",
+    ("scripts/nmas-read-account-probe", "run"): "a measured probe the operator runs, outside the "
+                                                "product: commands expected refused, answered "
+                                                "only `end` and `n`, nothing configured (C2657)",
 }
 
 #: Sends that can change a protected kind and do not ask B yet, each with the register row that

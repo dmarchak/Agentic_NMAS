@@ -83,11 +83,13 @@ Pressing it runs these steps, as you, one investigation:
 4. `pack`: what the AI is sent is built in code: the incident's evidence pack (what started it,
    the device, its History and Intent check, its neighbours, health, its log lines, what
    self-healing tried and Mercury's diagnosis, configuration only by kind), the incident's
-   attempts (each `attempt:<n>`, every person a stable label, never a name or an address),
-   Mercury's own Seen before (`seen_before:1`), the operations it may propose from, and your
-   note (`note:1`), masked as it leaves and said back to you when something in it was masked.
+   attempts (each `attempt:<n>`), Mercury's own Seen before (`seen_before:1`), the operations
+   it may propose from, and your note (`note:1`), masked as it leaves and said back to you
+   when something in it was masked. Every person in any of it is a stable label
+   ("person-3f9a1c"), never a name or an address, and any address left anywhere in the
+   request is replaced by its label before it leaves.
 5. `ask`: one call through the AI gateway, under the day cap and the per-call cap. With the
-   network's device state class on (Settings › AI), the AI may ask Mercury for up to three
+   network's device state class on (its Network tab, What AI may send), the AI may ask Mercury for up to three
    read-only reads, and a second call carries them; it cannot ask again. A read is either of
    the incident's device (each command whole on the read-only allowlist, among them its
    telemetry subscriptions' states and one subscription's receiver, run through Mercury's reads

@@ -55,9 +55,9 @@ with when it was sent. One function builds that address, so a can't-fix's email,
 end and their webhooks all link the same page.
 Every time is in the time zone of the host Mercury runs on, named once on the last line ("Times
 are in …"); a time on the other side of a daylight-saving change says its own zone beside it.
-People are named by their display name, never by their sign-in identity; in what the analysis
-is sent of the steps tried, each person is a stable label ("person-3f9a1c"), never their
-identity or name. With the address Mercury is reached by not set
+People are named by their display name, never by their sign-in identity; in anything the
+analysis is sent, each person is a stable label ("person-3f9a1c"), never their identity or
+name, and any address left in the request is replaced by its label before it leaves. With the address Mercury is reached by not set
 (Settings › Installation › Notifications, the Email relay card), the link is the page's path
 alone, and the email says why.
 

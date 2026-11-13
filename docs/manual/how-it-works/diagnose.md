@@ -35,7 +35,7 @@ again at the press; if the reads moved since the card was drawn (intent changed)
 read and the card says so, naming both fingerprints.
 
 If a device the plan reads is already in a diagnosis, the card says so in place of the button
-("edge1 is in diagnosis dg-... (started 18:40 UTC by ...); Diagnose… is offered when it ends"),
+("edge1 is in diagnosis dg-... (started 18:40 by ...); Diagnose… is offered when it ends"),
 and draws itself again when a diagnosis ends. It asks without taking the device: the press
 still refuses by name if a diagnosis starts between the card and the press.
 

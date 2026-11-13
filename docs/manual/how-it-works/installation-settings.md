@@ -313,7 +313,9 @@ name in place of the identity each time a screen reads them. Where a screen show
 exactly as it was written, the part that holds an identity is closed until you open it: **The
 identity as recorded** under a History row's "By", a folded part of an AI call's prompt or
 answer, and a commit's message in a preview. History › Export writes its files with display
-names, and each file says so in its first lines. A notification's destination address is a
+names, and each file says so in its first lines. What an AI is sent names each person by a
+stable label (`person-3f9a1c`), keyed under this installation's own secret; an older call's
+prompt keeps what it sent. A notification's destination address is a
 setting's value, not a person: Settings › Installation › Notifications draws it whole.
 
 ## Time zone {#time-zone}
@@ -339,8 +341,9 @@ times are drawn in and where it came from (your browser, or your choice, and whe
 - If the file that holds the zones cannot be read, the card says so, nothing is saved, and
   every time is drawn in the host's zone until the file is put right.
 
-Records keep UTC: History's "Details for the record", an incident's The record, receipts,
-commits, logs and exports.
+Records are stored in UTC and drawn in your zone wherever a screen shows them (History's
+"Details for the record" and an incident's The record among them); what leaves Mercury
+(receipts, commits, logs, exports, a hand-over's Markdown) says UTC.
 
 ## The local account {#local-account}
 

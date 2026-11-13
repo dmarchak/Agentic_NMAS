@@ -148,15 +148,15 @@ who, which profile and which of the account's fields were set, never a value. Cr
 lists each read-only account by its age, as it lists the deploy accounts.
 
 **What it may run** is the AI read set's show commands and bounded ping and traceroute, at a
-low privilege level. **On the devices** says what is not read yet: the account reaches each
-device as an intent change (an account added, never changed), deployed by a person, once its
-device-side shape (a privilege level or a CLI view) is measured on an IOS and an IOS-XE device.
-The intent change is one `users` entry naming the profile's account by its reference,
+low privilege level. **On the devices** says how the account reaches a device, which Mercury
+does not read yet: as an intent change (an account added, never changed), deployed by a
+person; its device-side shape (privilege 1) is measured on an IOS and an IOS-XE device before
+the rest. The intent change is one `users` entry naming the profile's account by its reference,
 `read-account:profile:<profile>` (for the default profile, `secret_ref:
 read-account:profile:default`, with `privilege: 1`), and no name or password: a deploy takes
 the account's name and its password from this card, in memory, and its preview shows the line
 with the password masked (`username <account> privilege 1 algorithm-type scrypt secret
-<masked>`). A profile with no read-only account, or an entry naming a different account,
+<redacted:read-account:profile:default>`). A profile with no read-only account, or an entry naming a different account,
 leaves the line without a value, and the deploy is refused by name before anything is sent. A
 device that already holds an account of that name with another line is refused: the deploy
 adds the account, never changes it. After its deploy verifies, Mercury keeps the device's own
