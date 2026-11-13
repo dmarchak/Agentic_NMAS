@@ -602,6 +602,14 @@ def measure() -> dict:
         from tests.utc_drawn import WALK_ZONE
         mp.setattr(time_zones, "zone_of",
                    lambda actor: time_zones.zone_info(WALK_ZONE) if actor else None)
+        # C3458: the person-label key is installed at the program's start, which a test never
+        # runs; the conftest plants it per test, but this walk is built once per process, often
+        # from a module-scoped fixture that runs before any test's own fixtures. So the walk
+        # holds the planted key itself (in memory, writing nothing), and an AI card it draws
+        # (Explain's, AI troubleshooting's) draws its fields, not "no key is installed".
+        from modules import display_names
+        from tests.conftest import PLANTED_LABEL_KEY
+        mp.setitem(display_names._LABEL_KEY, "key", PLANTED_LABEL_KEY)
         with tempfile.TemporaryDirectory(prefix="nmas-v2-context-") as tmp:
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
                 IP.seed(lab, mp, tmp)
