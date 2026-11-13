@@ -24,6 +24,19 @@ Each email is read as received (its decoded text) and holds:
   an identity; and the AI payload names nobody by identity either;
 - (d) "Open in Mercury" is the incident's absolute address (`incidents.incident_href`, behind
   `notify_link_base`), and that page opens the incident's card.
+
+And, the GUI review of 2026-11-13, item 9 (docs/UI_RULES.md, "The can't-fix email", the
+operator's approved rules), it:
+
+- (EM1) leads with the outcome and the link: its first line what happened and the outcome
+  (`heal_notice.lead`), its second What to do, its third "Open in Mercury";
+- (EM2) names no host command (no ``scripts/``, no ``--shape``);
+- (EM3) says the outcome once (no Outcome line; the Decide step does not repeat it), and the
+  steps recorded in one minute are one line with that time, each step's label in the record's
+  order;
+- (EM4) holds no code key or model internal: no platform key (``cisco_iosxe``), no log
+  mnemonic (``CONFIG_I``), no removal shape's key (``interface.ip-access-group``), no "(s)",
+  no prompt name, version or model; and no incident id but the one in its link.
 """
 import email.utils
 import json
@@ -51,10 +64,15 @@ ZONE, ZONE_OFFSET_S, ZONE_WORDS = "IST-5:30", 19800, "IST (UTC+05:30)"
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "heal_run", "rolled_back.json")
 #: A step's result, as the stepper says it in words (`run_stepper.STATE_WORDS`' ended states),
 #: and a step a later record of itself ends (`steplog.finished_steps`).
-PLAIN_RESULTS = ("done", "failed", "not fully done", "not needed in this run",
+PLAIN_RESULTS = ("done", "failed", "not fully done", "needs a person", "not needed in this run",
                  "ended: its outcome is its later line")
 _ID = re.compile(r"\bh[id]-[0-9a-f]{12}\b")
 _CODE_KEY = re.compile(r"\b[a-z]+_[a-z_]+\b|\b[dax]-[a-z]+\b")
+#: EM4's code keys and internals, each by its shape: a key in snake case (``cisco_iosxe``,
+#: ``heal_analysis``) or capitals (``CONFIG_I``), a dotted key (``interface.ip-access-group``),
+#: a count said "(s)", a model's id (``claude-…``) and a prompt's version ("v1 on").
+_INTERNALS = re.compile(r"\b[a-z]+_[a-z_]+\b|\b[A-Z]+_[A-Z_]+\b|\b[a-z]+\.[a-z]+(?:-[a-z]+)+\b"
+                        r"|\(s\)|\bclaude-|\bv\d+ on\b")
 
 
 @pytest.fixture
@@ -178,36 +196,68 @@ def tried(text):
     return out
 
 
+def tried_steps(lines):
+    """Each step a "What Mercury tried" line lists, in order: ``(time, label, result)``. A line
+    is one minute's steps, "  - HH:MM <segment>; <segment>", each segment "A, B: <result>"
+    (steps by their labels alone) or "<label>: <words>: <result>"."""
+    out = []
+    for line in lines:
+        when, rest = line[len("  - "):].split(" ", 1)
+        for seg in rest.split("; "):
+            result = next(r for r in PLAIN_RESULTS if seg.endswith(f": {r}"))
+            head = seg[:-len(f": {result}")]
+            labels = [head.split(": ", 1)[0]] if ": " in head else head.split(", ")
+            out += [(when, label, result) for label in labels]
+    return out
+
+
 def check_email(mail, incident, client):
     text = mail.get_content().replace("\r\n", "\n")   # as a mail reader shows its lines
     # The subject, unchanged.
     assert mail["Subject"] == f"[Mercury] {HOST} on {NET}: could not fix"
-    # (a) Every step taken, in order, in plain words.
+    lines = text.splitlines()
+    path = f"/v2/incident/{incident}?list={NET}"
+    # (EM1) The outcome and the link lead: what happened and the outcome, what to do, the link.
+    assert lines[0].startswith(f"{HOST}: ") and ". " in lines[0], lines[:3]
+    assert lines[1].startswith("What to do: ") and lines[2] == f"Open in Mercury: {BASE}{path}"
+    # (EM3) The outcome said once: no Outcome line, and no step repeats it.
+    outcome = lines[0].split(". ", 1)[1]
+    assert len(outcome) > 40 and text.count(outcome) == 1, outcome
+    assert not any(ln.startswith("Outcome:") for ln in lines), "the lead says the outcome"
+    # (a) Every step taken, in order, in plain words; (EM3) one minute's steps one line, its
+    # time said once.
     want = recorded_steps(incident)
     got = tried(text)
-    assert len(got) == len(want) > 3, (got, want)
-    for line, (label, at) in zip(got, want):
-        assert line.startswith(f"  - {_local(_epoch(at), day=False)} {label}"), (line, label)
-        assert line.endswith(tuple(f": {r}" for r in PLAIN_RESULTS)), line
-        assert not _CODE_KEY.search(line.split(": ", 1)[0]), line
+    steps = tried_steps(got)
+    assert [(w, label) for w, label, _r in steps] == [
+        (_local(_epoch(at), day=False), label) for label, at in want] and len(want) > 3, \
+        (got, want)
+    times = [ln[len("  - "):].split(" ", 1)[0] for ln in got]
+    assert len(times) == len(set(times)) == len({w for w, _l, _r in steps}), got
+    for _w, label, _r in steps:
+        assert not _CODE_KEY.search(label), label
     assert not [w for w in _CODE_KEY.findall("\n".join(got))
                 if w in ("cant_fix", "rolled_back", "symptom_remains", "would_heal")], got
     assert not re.search(r"step \d+'s", "\n".join(got)), "no step named by a number not drawn"
-    body = text.split("\nOpen in Mercury:")[0]
-    assert not _ID.search(body), "no raw id before the link and the incident's own line"
+    rest = "\n".join(ln for ln in lines if not ln.startswith("Open in Mercury: "))
+    assert not _ID.search(rest), "no raw id but the link's"
+    # (EM2) No host command; (EM4) no code key or model internal outside the link.
+    assert "scripts/" not in text and "--shape" not in text, text
+    assert not _INTERNALS.findall(rest), _INTERNALS.findall(rest)
     # (b) Every time local, the zone named once.
     assert text.count(ZONE_WORDS) == 1 and text.rstrip().endswith(
         f"Times are in {ZONE_WORDS}, the time zone of the host Mercury runs on.")
     assert not re.search(r"\d{2}:\d{2}(:\d{2})? UTC|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", text), text
     sent = email.utils.parsedate_to_datetime(mail["Date"]).timestamp()
-    assert any(f"Incident {incident} · sent {_local(s)}\n" in text for s in (sent, sent - 60))
+    # Premise corrected (the GUI review, item 9, EM4 and the human-readable rule: an id is a
+    # link, never bare): the foot says when it was sent; the incident's id is in the link.
+    assert any(f"\nSent {_local(s)}\n" in text for s in (sent, sent - 60))
     # (c) People by display name, never by identity.
     from modules import display_names
     assert not display_names.EMAIL.search(text), text
     # (d) The incident's absolute address, and the incident's own page at it, its stages drawn
     # (the operator's overnight item 5: "the email and Needs attention link to one place per
     # incident": /v2/incident/<id>, landed in 331722b5).
-    path = f"/v2/incident/{incident}?list={NET}"
     assert f"\nOpen in Mercury: {BASE}{path}\n" in text
     page = client.get(path).get_data(as_text=True)
     assert 'id="incident-live"' in page and 'data-stage="decided"' in page, \
@@ -235,7 +285,27 @@ class TestTheCantFixEmail:
                                                                            ai):
         inc = cant_fix()                  # the real decision: a security ACL, Tier 2
         text = check_email(told(inc, T0 + 1), inc, client)
-        assert f"Detected: CONFIG_I at {_local(T0 - 1000)}\n" in text, "detected, local"
+        # (EM1, EM2, EM4) The lead: the change as the incident's page titles it, then the
+        # outcome in plain words: the platform by its name, the removal's shape and the host
+        # command that measures it never named (Mercury has no screen for it yet: C1366).
+        # Premise corrected (the GUI review's item 5, C3453, the approved rule "A title is a
+        # summary of at most 70 characters", never a configuration line): the page's title is
+        # in plain words, so the lead quotes no line to withhold.
+        assert text.startswith(
+            f"{HOST}: access list added on GigabitEthernet2 outside Mercury. Mercury cannot "
+            "fix this yet: removing that kind of line has not been measured on IOS-XE; nothing "
+            "was sent (Tier 2)\n"), text.splitlines()[0]
+        # (EM3) The Decide step says its label and its result; the lead holds why. Premise
+        # corrected (the GUI review's item 6, C3454, the approved rule "The stepper never says
+        # "failed" for a decision that worked"): a can't-fix's Decide needs a person.
+        assert "; Decide: needs a person; " in "\n".join(tried(text)), tried(text)
+        # (EM4) The AI's line as the incident page words its measurement.
+        assert "AI analysis: Advisory (beta), a person should confirm; its answers are not " \
+               "measured on recorded cases yet\n" in text
+        # Premise corrected (EM4: CONFIG_I is a log's mnemonic): what was detected as the
+        # incident page's timeline says it, local.
+        assert (f"Detected: a configuration change from outside Mercury at "
+                f"{_local(T0 - 1000)}\n") in text, "detected, local"
         assert f"At {_local(T0 - 1000, day=False)}, {HOST}'s configuration" in text, \
             "what happened, its recorded UTC time said locally"
         card = client.get(f"/v2/device/{HOST}?list={NET}&tab=history&result={inc}").get_data(
@@ -307,6 +377,50 @@ class TestTheCantFixEmail:
         assert not display_names.EMAIL.search(got) and SETTER_NAME not in got, got
         assert got.count(display_names.label(SETTER)) == 2 and display_names.label(SAVER) in got
         assert display_names.label(SETTER) != display_names.label(SAVER), "one label a person"
+
+    def test_plain_words_name_no_shape_key_host_command_or_platform_key(self, monkeypatch):
+        """(EM2, EM4) Each of removal's refusals a decision's words carry, as the removal
+        module itself words them (`removal._unmeasured`, never typed here), said plainly: no
+        shape key, no `scripts/`, the platform by its name (`platform.FACT_WORDS`); with the
+        record of why a run could not measure it kept, its time said locally elsewhere."""
+        from modules.notify import message
+        from modules.nsot import removal
+
+        monkeypatch.setattr(removal, "measured", lambda: {
+            "state": "ok", "by_dialect": {}, "unmeasured": {"cisco_ios": {
+                "interface.ip-access-group": {"device": "s1", "at": "2026-11-09",
+                                              "reason": "the exemplar was refused"}}}})
+        chain, line = ("interface GigabitEthernet2",), "ip access-group EDGE-IN in"
+        for dialect, name, why in (("cisco_iosxe", "IOS-XE", ""),
+                                   ("cisco_ios", "IOS", " (s1, 2026-11-09: the exemplar was "
+                                                        "refused)")):
+            words = removal._unmeasured(chain, line, "leaf", dialect)
+            assert "scripts/nmas-removal-probe" in words, "the premise: removal names the probe"
+            assert message.plain(f"Mercury cannot fix this yet: {words}; nothing was sent") \
+                == (f"Mercury cannot fix this yet: removing that kind of line has not been "
+                    f"measured on {name}{why}; nothing was sent")
+        words = removal._unmeasured(chain, "ip unheard-of 1", "leaf", "cisco_iosxe")
+        assert "removal.SHAPES" in words and "scripts/" in words, "the premise"
+        got = message.plain(words)
+        assert "scripts/" not in got and "removal.SHAPES" not in got and got.endswith(
+            "so nothing is sent"), got
+        assert message.plain("1 part(s) changed, 2 line(s), 1 healed unit(s), 3 entry(s), "
+                             "on cisco_ios") == \
+            "1 part changed, 2 lines, 1 healed unit, 3 entries, on IOS"
+
+    def test_the_webhook_says_the_lead_and_the_steps_plainly(self, told, ai):
+        """The webhook's JSON, built from the same facts: its lead, outcome and steps hold no
+        host command and no platform key (a receiver may draw them to a person)."""
+        from modules import heal_notice
+        from modules.heal import steplog
+        from modules.notify import message
+
+        inc = cant_fix()
+        hook = message.payload(message.check_event(heal_notice.facts(
+            NET, steplog.incident(NET, inc))))
+        sent = json.dumps(hook)
+        assert hook["lead"].startswith(f"{HOST}: ") and "IOS-XE" in hook["outcome"]
+        assert "scripts/" not in sent and "cisco_iosxe" not in sent, sent
 
     def test_a_time_across_a_daylight_saving_change_says_its_own_zone(self, zone):
         from modules.notify import message

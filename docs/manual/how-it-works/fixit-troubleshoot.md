@@ -27,13 +27,19 @@ today's spend against the day cap. Both are summed from the record of AI calls e
 ## A failed attempt stops {#the-stop}
 
 When the newest attempt did not pass its verify, the section **stops**: it says what the run
-found, from the run's own record, and "Nothing more runs unless you choose." No page load, no
-refresh and no announcement starts another attempt or asks for another plan. The choices are
-Retry with more information, Cancel and Hand over.
+found, from the run's own record, one line per subscription with its state in words (the
+operation's outcome, or what its checks said), each line opening to its three checks with
+their addresses, ports and connection numbers, and any stale session flagged; then "Nothing
+more runs unless you choose." No page load, no refresh and no announcement starts another
+attempt or asks for another plan. The choices are Retry with more information, Cancel and Hand
+over: three buttons in one row, drawn alike, each opening its own modal beside it over the
+page, with the focus inside it. Cancel in the modal, or Escape, closes it and gives the focus
+back to its button; what you typed stays for when you open it again. A press in a modal is
+answered in the section, in place, with the focus on the answer.
 
 ## Retry with more information {#retry}
 
-Retry has a box for what you know that Mercury doesn't. Mercury's diagnosis does not read
+Retry's modal has a box for what you know that Mercury doesn't. Mercury's diagnosis does not read
 words; the AI does, masked before they are sent, and they are kept for the hand-over. Before
 you press, the panel shows what each choice costs (Mercury's diagnosis nothing; the AI at most
 two calls' worth), what the incident has spent, what it would have spent at most afterwards
@@ -122,7 +128,8 @@ the AI is asked again only when you press again.
 
 A proposal is compared with every attempt in the incident that did not pass. The same operation
 with the same parameters is drawn "Proposed before in this incident: attempt N, failed: …", with
-its time and its parameter hash. Its card then asks **what is different now**, at least three
+its time; the parameter hash the two were compared by is in the page's record (The record,
+"Proposed fix's parameter hash"). Its card then asks **what is different now**, at least three
 words, and refuses the confirm without it. The same operation with other parameters is drawn as
 a variation, naming each parameter that changed. A repeat is never hidden.
 
@@ -145,7 +152,9 @@ on the same card is Manual (an AI troubleshoot only on a person's press) or Off.
 
 ## Cancel {#cancel}
 
-**Cancel** records one line: who cancelled, when, and the attempts and AI spend as they stood.
+**Cancel** opens its confirm: **Cancel troubleshooting** records one line, and **Keep
+troubleshooting** closes the confirm with nothing recorded. The line says who cancelled, when,
+and the attempts and AI spend as they stood.
 It runs nothing, sends nothing and holds no device. The incident stays open at its page, and the
 section reads "Troubleshooting cancelled at <time> by <name>". A later Retry ends the cancelled
 state.

@@ -169,10 +169,40 @@ def today() -> dict:
 
 # ── The section, drawn ──────────────────────────────────────────────────────────────────────
 
+#: What a check's state says, as a subscription's line says it when its run names no outcome.
+CHECK_STATE_WORDS = {"fail": "did not pass", "cant_tell": "could not be told"}
+
+
+def found_said(outcome: str, checks: list) -> str:
+    """One subscription's state in words, as What it found's one line says it (the GUI
+    review's AI2, C3455): its outcome in the operation's own words, else what its checks say
+    ("the stream did not pass; the collector could not be told", "every check passed");
+    never an address, a port or a connection number, which are one level down."""
+    if outcome:
+        return outcome
+    if not checks:
+        return "nothing was read"
+    said = []
+    for state, words in CHECK_STATE_WORDS.items():
+        names = [f"the {c['name']}" for c in checks if c["state"] == state]
+        if names:
+            said.append(f"{' and '.join(names)} {words}")
+    return "; ".join(said) or "every check passed"
+
+
+def flag_kind(flag: str) -> str:
+    """A stale flag's kind, as a subscription's line names it ("stale half-open"): the words
+    before its first colon; the flag's whole words (its addresses and ports) are one level
+    down."""
+    return str(flag).split(":", 1)[0].strip()
+
+
 def _run_checks(network: str, run_id: str) -> list:
-    """What a run's own record says it found, per subscription: ``[{"sub", "outcome", "checks":
-    [{"name", "state", "words"}], "stale"}]`` (its verify reads, kept in the record). A read of
-    one record; a record that cannot be read gives nothing (its card says why)."""
+    """What a run's own record says it found, per subscription: ``[{"sub", "said", "checks":
+    [{"name", "state", "words"}], "stale", "flags"}]`` (its verify reads, kept in the record);
+    *said* its state in words (`found_said`: its outcome in the operation's words, else its
+    checks') and *flags* each stale flag's kind (`flag_kind`), once each, for its one line. A
+    read of one record; a record that cannot be read gives nothing (its card says why)."""
     from modules.heal import resubscribe as R
     from modules.nsot import privileged
 
@@ -185,12 +215,14 @@ def _run_checks(network: str, run_id: str) -> list:
         if not isinstance(s, dict):
             continue
         outcome = s.get("outcome") or ""
+        words = R.OUTCOME_WORDS.get(outcome, outcome)
+        checks = [{"name": k, "state": (v or {}).get("state") or "",
+                   "words": (v or {}).get("words") or ""}
+                  for k, v in (s.get("verify") or {}).items()]
+        stale = [str(f) for f in s.get("stale") or []]
         out.append({"sub": str(s.get("sub") or ""),
-                    "outcome": R.OUTCOME_WORDS.get(outcome, outcome),
-                    "checks": [{"name": k, "state": (v or {}).get("state") or "",
-                                "words": (v or {}).get("words") or ""}
-                               for k, v in (s.get("verify") or {}).items()],
-                    "stale": [str(f) for f in s.get("stale") or []]})
+                    "said": found_said(words, checks), "checks": checks, "stale": stale,
+                    "flags": list(dict.fromkeys(flag_kind(f) for f in stale))})
     return out
 
 

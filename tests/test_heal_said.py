@@ -372,9 +372,13 @@ class TestTheDryRunRecord:
         monkeypatch.setattr(attention, "SOURCES", [attention.heal_source])
         html = app_client.get("/v2/attention?list=Default").get_data(as_text=True)
         row = html.split(f'data-attention-row="heal:{d["id"]}"')[1]
-        assert ("edge-b: “ip route 192.0.2.128 255.255.255.128 192.0.2.10” was added to the "
-                "global configuration. Mercury would have put it back itself, but Default is "
-                "watching only (dry run), so nothing was sent") in row
+        # Premise corrected (the GUI review's item 5, C3453, the approved rule "A title is a
+        # summary of at most 70 characters", a configuration line never in it): the row's line
+        # leads with what happened as its incident's title says it; the line is its cause's.
+        line = row.split("</summary>", 1)[0]
+        assert ("edge-b: static route added outside Mercury. Mercury would have put it back "
+                "itself, but Default is watching only (dry run), so nothing was sent") in line
+        assert "ip route" not in line and "“ip route 192.0.2.128" in row
         assert f'data-next-acts="heal_mark" href="#heal-mark-{d["id"]}">Was that right?</a>' in row
         assert f'id="heal-mark-{d["id"]}"' in row and "History" not in row.split(
             "<h3>Why this happened</h3>")[0].split("<h3>What to do</h3>")[1].split(
@@ -413,7 +417,11 @@ class TestTheDryRunRecord:
         _dry_run()
         (e,) = HS.heal(_ctx())["events"]
         html = _timeline(e)
-        assert e["what"].startswith("edge-b: “ip route") and e["record_closed"]
+        # Premise corrected (C3453): History's line leads with the incident's title, in plain
+        # words; the configuration line is its detail's.
+        assert e["what"].startswith("edge-b: static route added outside Mercury. ") and \
+            e["record_closed"]
+        assert "ip route" not in e["what"] and "ip route" in html
         detail = html.split('class="hist-detail tl-more">')[1]
         assert detail.index("heal-facts") < detail.index("Mercury would have put it back") \
             < detail.index("<summary>Details for the record</summary>")

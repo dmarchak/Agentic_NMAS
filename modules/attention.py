@@ -6468,6 +6468,30 @@ def notify_source(got=None) -> dict:
                                   if got["state"] == "ok" else "no notification team is set"))
 
 
+def _heal_headline(lst: str, d: dict, triggers=()) -> str:
+    """A heal row's line: what happened as its incident's title says it, then what Mercury
+    did or would do (`said.headline`, through THE title builder `said.title`: plain words,
+    never the configuration line, which the row's cause holds; the GUI review's item 5,
+    C3453). Drawn again from the decision's record, so a decision recorded before C3453 reads
+    as one recorded after; the stored headline where the record gives no line. A decision that
+    keeps no line at all (an action's, a bounce or a dampening proposal, recorded by its own
+    writer) has none drawn here either: its row's own words stand. *triggers* are the
+    incident's, where they are held."""
+    from modules.heal import said as SAID
+
+    if not (d or {}).get("headline"):
+        return ""
+    return SAID.headline(d, lst, triggers or ()) or d["headline"]
+
+
+def _heal_triggers(lst: str) -> dict:
+    """``{incident id: its triggers}`` for *lst*, read once (unreadable or absent: none, and
+    each line is drawn from its decision alone)."""
+    from modules.heal import incidents as INC
+
+    return {i.get("id"): i.get("triggers") or [] for i in INC.read(lst)["incidents"]}
+
+
 def heal_source(got=None, now=None, found=None) -> dict:
     """What self-healing would have done, in dry run (board H, H3; docs/HEAL_TO_INTENT.md
     section 7: "the device's ordinary drift row carries it (`attach_to`), so a person resolving
@@ -6490,9 +6514,11 @@ def heal_source(got=None, now=None, found=None) -> dict:
         return source_result("heal", label, read_at=started, took_ms=0,
                              error=f"{lst}'s heal decisions could not be read: {exc}")
     out = []
+    trig = None
     for d in rows:
         if d.get("outcome") != "would_heal" or d.get("mark"):
             continue
+        trig = _heal_triggers(lst) if trig is None else trig
         at = float(d.get("epoch") or 0)
         if now - at > HD.MARK_DAYS * 86400:
             continue
@@ -6504,7 +6530,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
         # the marks on the row itself; the record's ids and hash under "Details for the record"
         # (rule 2), never "read the record on History" (rule 5, C2823's amendment).
         r = row(source="heal", kind="would_heal", key=d.get("id") or "?", level="warning",
-                what=(d.get("headline") or
+                what=(_heal_headline(lst, d, trig.get(d.get("incident"))) or
                       (f"Self-healing: dry run on {lst}: it would have {did} {host}"
                        + (f": {units}" if units else ""))),
                 cause=(f"{d.get('outcome_words') or d.get('words') or ''}. Unanswered, this "
@@ -6819,11 +6845,13 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
     from modules.heal import said as SAID
 
     out = []
+    trig = None
     for d in rows:
         if d.get("outcome") != "propose" or d.get("taken"):
             continue
         if (d.get("action") or {}).get("kind") == "dampening_proposal":
             continue                                  # its own row (`_heal_dampening_rows`)
+        trig = _heal_triggers(lst) if trig is None else trig
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [] if u.get("words"))
         from modules.heal.propose import security_choice
@@ -6838,7 +6866,7 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
         out.append(row(
             source="heal", kind="proposal", key=d.get("id") or "?", level="danger",
             devices=[host] if host else [], since=float(d.get("epoch") or 0) or None,
-            what=(d.get("headline") or
+            what=(_heal_headline(lst, d, trig.get(d.get("incident"))) or
                   (f"A fix waits for a person on {host}" + (f": {units}" if units else ""))),
             cause=(d.get("outcome_words") or d.get("words") or "a fix that needs a person"),
             action={"label": label,
@@ -6977,9 +7005,12 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
         # The decision's own words only where the decision ended it (an act's outcome, a
         # symptom remaining or a rollback, says its own).
         decided = e.get("outcome") == "cant_fix"
+        made = next((d for d in reversed(rows)
+                     if d.get("id") in (e.get("decisions") or [])), None) if decided else None
         r = row(source="heal", kind="cant_fix", key=e["incident"], level="danger",
                 event=e["incident"], devices=[host] if host else [], since=at or None,
-                what=((e.get("headline") if decided else "")
+                what=(((_heal_headline(lst, made, triggers.get(e["incident"])) if made
+                        else e.get("headline")) if decided else "")
                       or f"Self-healing could not fix {host} on {lst}: {e.get('words') or ''}"),
                 cause=(((e.get("outcome_words") if decided else "") or e.get("words") or "")
                        + (f". Where it stopped: {last.get('words')}"

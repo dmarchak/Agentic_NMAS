@@ -352,7 +352,7 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     elif (d.get("person") or {}).get("words") and d.get("outcome") in SAYS_CAUSE:
         d["words"] += (f"; the change was made outside Mercury "
                        f"({d['person']['words']})")
-    d["headline"] = said.headline(d, network)
+    d["headline"] = said.headline(d, network, incident.get("triggers") or [])
     return d
 
 

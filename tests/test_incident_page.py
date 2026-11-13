@@ -41,6 +41,7 @@ from html import unescape
 import pytest
 
 from modules import incident_page as IP
+from modules import run_stepper as RS
 from tests import people_drawn
 from tests.conftest import TEST_PERSON
 from tests.test_bgp_hold_watch import _summary
@@ -360,29 +361,34 @@ class TestAFailedVerifyNeverReadsFixed:
         assert entry["outcome"] == "rolled_back" and entry["sent"] is True
         assert IP.state_of(inc, entry, decisions) == "needs_person"
         tl = IP.timeline(inc, entry, decisions)
-        assert tl["fixed"] == {"state": "none", "at": "", "words": "not fixed: verify failed",
-                               "hover": ""}
+        # Premise corrected (the GUI review's item 6, C3454, the approved rule "Each fact
+        # appears once on a screen": "verify failed" was drawn five times on this page): the
+        # header's cells hold state words, the reason on their hover.
+        assert {k: tl["fixed"][k] for k in ("state", "at", "words")} == {
+            "state": "none", "at": "", "words": "not fixed"}
+        assert "its verify failed" in tl["fixed"]["hover"]
         assert tl["verified"]["state"] == "failed"
         assert tl["ttr"]["seconds"] is None
-        assert tl["ttr"]["words"] == "not repaired: verify failed"
+        assert tl["ttr"]["words"] == "not repaired"
         body = page(client, iid)
         assert 'data-state="needs_person"' in body and "Needs a person" in body
         assert "resolved: read-only" not in body and "(was)" not in body
         assert ">Critical<" in body and "was Critical" not in body
-        assert text_of(cell(body, "fixed")) == "Fixed — not fixed: verify failed"
+        assert text_of(cell(body, "fixed")) == "Fixed — not fixed"
         # The record's names, without "(UTC)" since its times are the viewer's (C3290); the
         # header's cell is "Verified" for every incident, so the record is read alone.
         record = body.split('class="card tl-record-d inc-record"', 1)[1]
         assert "<dt>Verify failed</dt>" in record and "<dt>Verified</dt>" not in record, \
             "the record never calls a failed verify's time verified"
-        assert "✗ verify failed" in text_of(cell(body, "verified"))
-        assert "not repaired: verify failed" in text_of(cell(body, "ttr"))
+        assert "✗ failed" in text_of(cell(body, "verified"))
+        assert text_of(cell(body, "ttr")).endswith("not repaired")
         (line,) = re.findall(r'<p class="inc-attempt[^"]*" data-attempt="1">.*?</p>', body,
                              re.S)
         said = text_of(line)
         assert "inc-attempt-failed" in line
-        assert re.search(r"Attempt 1: applied .* · verify failed: .*so what landed was undone",
-                         said), said
+        # Its state alone: why is said once, in the stage it failed in (C3454).
+        assert re.search(r"Attempt 1: applied .* · verify failed · by ", said), said
+        assert "so what landed was undone" not in said, said
         _inc, rows, _lines = raw(iid)
         (act_row,) = [r for r in rows if r["row"] == "act"]
         applied = next(s["at"] for s in act_row["steps"] if s["step"] == "intent")
@@ -403,7 +409,9 @@ class TestAFailedVerifyNeverReadsFixed:
         body = page(client, iid)
         assert fixed_claims(body) == [], outcome
         assert 'data-state="needs_person"' in body
-        assert "not repaired: verify failed" in text_of(cell(body, "ttr"))
+        # Premise corrected (C3454, "Each fact appears once"): the cell's state words alone.
+        assert text_of(cell(body, "ttr")).endswith("not repaired")
+        assert "its verify failed" in unescape(cell(body, "ttr"))
 
     def test_the_scan_finds_a_fixed_incident_s_claims(self, client):
         """The planted case: a healed incident's page holds each claim the scan looks for."""
@@ -439,16 +447,21 @@ class TestAFailedVerifyNeverReadsFixed:
                      for s in entry["steps"]]
             edited = dict(entry, outcome=outcome, steps=steps)
             assert IP.state_of(inc, edited, decisions) == "needs_person", outcome
-            assert IP.timeline(inc, edited, decisions)["ttr"]["words"] == \
-                "not repaired: verify failed", outcome
+            # Premise corrected (C3454): the cell's state words, the reason on its hover.
+            ttr = IP.timeline(inc, edited, decisions)["ttr"]
+            assert ttr["words"] == "not repaired" and "its verify failed" in ttr["hover"], \
+                outcome
 
     def test_a_heal_refused_at_its_apply_sent_nothing_and_fixed_nothing(self, client):
         iid, got = heal(read_error="timed out")
         assert got["outcome"] == "refused" and not got["sent"]
         body = page(client, iid)
         assert fixed_claims(body) == [] and 'data-state="needs_person"' in body
-        assert text_of(cell(body, "fixed")) == "Fixed — not fixed: nothing was sent"
-        assert "not repaired: nothing was sent" in text_of(cell(body, "ttr"))
+        # Premise corrected (C3454): each cell's state words, why on its hover.
+        assert text_of(cell(body, "fixed")) == "Fixed — not fixed"
+        assert 'title="Not fixed: nothing was sent."' in cell(body, "fixed")
+        assert text_of(cell(body, "ttr")).endswith("not repaired")
+        assert 'title="Not repaired: nothing was sent."' in cell(body, "ttr")
         assert "data-attempt=" not in body, "nothing was sent, so no attempt was made"
 
 
@@ -487,8 +500,10 @@ class TestNoHumanOnlyFromTheRecord:
         head = text_of(body.split('class="card inc-head', 1)[1].split("</section>", 1)[0])
         assert head.count("approved by op") == 1, "said once, beside the repair time"
         assert "policy set by" not in head and "No person needed" not in body
-        assert ", and it was put back by op" in text_of(
-            body.split("<h1", 1)[1].split("</h1>", 1)[0])
+        # Premise corrected (C3453, "A title is a summary of at most 70 characters"): the
+        # ending ", put back by <name>", short enough to keep "outside Mercury" in the title.
+        assert text_of(body.split("<h1", 1)[1].split("</h1>", 1)[0]).endswith(
+            ", put back by op")
 
     def test_a_set_display_name_is_the_one_drawn(self, client, measured):  # noqa: F811
         from modules import display_names
@@ -538,7 +553,10 @@ class TestTheStates:
         assert text_of(cell(body, "decided")).endswith("— not yet"), \
             "no fix was chosen: a can't-fix decides none"
         assert "Mercury cannot fix this yet" in body and "It needs a person." in body
-        assert 'data-step="d-decide"' in body and "run-step-failed" in body
+        # Premise corrected (C3454, the approved rule "The stepper never says "failed" for a
+        # decision that worked"): its decision is drawn as needing a person, never failed.
+        assert 'data-step="d-decide"' in body and "run-step-needs" in body
+        assert "run-step-failed" not in body and "run-stage-failed" not in body
         assert fixed_claims(body) == []
 
     def test_cleared_when_it_closed_with_no_fix_recorded(self, client):
@@ -557,7 +575,10 @@ class TestTheStates:
         body = page(client, declined())
         assert 'data-state="cancelled"' in body and ">Cancelled<" in body
         assert "declined by op" in text_of(cell(body, "decided"))
-        assert "not repaired: the fix was declined" in text_of(cell(body, "ttr"))
+        # Premise corrected (C3454): the decline is said once, in Decided; TIME TO REPAIR
+        # holds its state words, the reason on its hover.
+        assert text_of(cell(body, "ttr")).endswith("not repaired")
+        assert 'title="Not repaired: the fix was declined."' in cell(body, "ttr")
         assert fixed_claims(body) == [] and "data-attempt=" not in body
 
     def test_a_proposal_waiting_needs_a_person(self, client):
@@ -673,8 +694,12 @@ class TestThePage:
         assert said.format(PERSON) in record, "the record, as recorded"
 
     def test_an_identity_in_a_trigger_s_own_words_is_drawn_by_name(self, client):
-        """A device's log line may name the account that changed it by an identity; the
-        incident's title is built from those words before any decision, and draws the name."""
+        """A device's log line may name the account that changed it by an identity: no
+        identity is drawn outside The record, which keeps the words as recorded. Premise
+        corrected (the GUI review's item 5, C3453, the approved rule "A title is a summary of
+        at most 70 characters"; a configuration line, a mnemonic or an id is never the h1):
+        the title, built before any decision, says what happened in plain words, and never
+        the log line it came from, its mnemonic or the account it names."""
         who = "ops@example.invalid"
         got = I.sight(NET, "edge-b", dict(
             CFG, words=f"SYS-5-CONFIG_I on edge-b: configured from vty0 by {who}"),
@@ -683,18 +708,23 @@ class TestThePage:
         drawn, kept = people_drawn.scan(body)
         assert drawn == [], drawn
         assert who in {i for i, _w, _a in kept}, "The record keeps the words as recorded"
-        assert "configured from vty0 by ops" in text_of(
-            body.split("<h1", 1)[1].split("</h1>", 1)[0])
+        h1 = text_of(body.split("<h1", 1)[1].split(">", 1)[1].split("</h1>", 1)[0])
+        assert h1.startswith("edge-b: configuration changed outside Mercury"), h1
+        assert "CONFIG_I" not in h1 and "vty0" not in h1 and "ops" not in h1, h1
 
     def test_a_secret_in_a_record_is_masked_on_the_way_out(self, client):
         """The incidents store keeps a trigger's words as they arrived; the page masks every
-        text again, the title and The record alike, and leaves the store as written."""
+        text again, and leaves the store as written. Premise corrected (C3453: the title holds
+        no configuration line): the words are drawn, masked, in The record, and never in the
+        title."""
         line = "snmp-server community S3cretRO RO"
         got = I.sight(NET, "edge-b", dict(CFG, words=f"SYS-5-CONFIG_I on edge-b: {line}"),
                       now=T0 - 1000)
         body = page(client, got["incident"])
         assert "S3cretRO" not in body, "a secret's value reached the page"
-        assert body.count("snmp-server community") >= 2, "its words are drawn, masked"
+        record = body.split('class="card tl-record-d inc-record"', 1)[1]
+        assert "snmp-server community" in record, "its words are drawn, masked"
+        assert "snmp-server" not in body.split("<h1", 1)[1].split("</h1>", 1)[0]
         with open(I.path(NET), encoding="utf-8") as fh:
             assert "S3cretRO" in fh.read(), "masked on the way out only"
 
@@ -786,11 +816,18 @@ class TestThePage:
         iid, got = heal(result={"outcome": "failed", "stage": "verify", "commands": ["x"],
                                 "reason": long})
         assert got["outcome"] == "failed" and len(got["words"]) > 2 * IP.REASON_CHARS
-        (line,) = re.findall(r'<p class="inc-attempt[^"]*" data-attempt="1">.*?</p>',
-                             page(client, iid), re.S)
-        reason = text_of(line).split("verify failed: ", 1)[1].split(" · by Mercury")[0]
-        assert len(reason) <= IP.REASON_CHARS and reason.endswith("…")
-        assert long.strip() in text_of(page(client, iid).split("inc-record", 1)[1]), \
+        body = page(client, iid)
+        # Premise corrected (the GUI review's item 6, C3454: the attempt line says its state
+        # alone, and a stage's sentence is at most `run_stepper.STAGE_SAID_WORDS` words): the
+        # reason stops in the stage it failed in, cut with an ellipsis.
+        (line,) = re.findall(r'<p class="inc-attempt[^"]*" data-attempt="1">.*?</p>', body,
+                             re.S)
+        assert "the route was still there" not in text_of(line)
+        said = [text_of(s) for s in re.findall(r'class="run-stage-said"[^>]*>(.*?)</span>',
+                                                body, re.S) if "route was still" in s]
+        assert said and all(RS.said_words(s) <= RS.STAGE_SAID_WORDS and s.endswith("…")
+                            for s in said), said
+        assert long.strip() in text_of(body.split("inc-record", 1)[1]), \
             "the whole of it is in The record"
 
     def test_the_ai_frame_says_it_is_not_built_and_keeps_today_s_advisory(self, client):

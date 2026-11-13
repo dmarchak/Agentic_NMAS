@@ -2582,6 +2582,7 @@ def heal(ctx):
     if got["state"] == "unreadable":
         return _out(errors=[f"the self-healing step log could not be read: {got['error']}"])
     marks = _heal_marks(ctx["ref"].name, got["entries"])
+    made, trig = _heal_titled(ctx["ref"].name, got["entries"])
     # The AI analysis's one step per incident (19.5, H26), drawn on its incident's row after
     # Mercury's own steps: advice, which nothing in self-healing reads.
     advice = steplog.advisories(ctx["ref"].name).get("by_incident") or {}
@@ -2614,8 +2615,14 @@ def heal(ctx):
         # C2817 (the mocks' History lines): an entry its decision ended leads with what
         # happened and what Mercury did or would do, in plain words; an act's end, an action
         # and a record written before the words were kept, as before.
-        plain = (e.get("headline") if e.get("state") == "decided" and outcome in (
-            "would_heal", "propose", "cant_fix", "heal") else "")
+        # Its line leads with what happened as its incident's title says it (THE title
+        # builder, `said.title`, through `said.headline`: never the configuration line, which
+        # its detail holds; C3453), drawn again from its decision's record.
+        dec = next((made[i] for i in reversed(e.get("decisions") or []) if i in made), None)
+        plain = (((said.headline(dec, ctx["ref"].name, trig.get(e["incident"]))
+                   if dec and e.get("headline") else "") or e.get("headline"))
+                 if e.get("state") == "decided" and outcome in (
+                     "would_heal", "propose", "cant_fix", "heal") else "")
         # A declared fault drill's incident (its tag at creation) says so on its line, and its
         # declaration in the record (the operator, 2026-11-11: counted as a drill, never real).
         from modules import fault_drills
@@ -2754,6 +2761,25 @@ def _advisory_lines(rows: list, m) -> list:
     return ([("AI analysis (advice; self-healing never reads it)", m(last.get("words")))]
             + [(f"AI · {s.get('step')}", f"{s.get('result')}: {m(s.get('words'))}")
                for s in last.get("steps") or []])
+
+
+def _heal_titled(network: str, entries: list) -> tuple:
+    """What a decided heal row's line is drawn from (`heal`): ``({decision id: decision},
+    {incident id: its triggers})``, one read of each of the network's heal stores, made only
+    when an entry its decision ended is among *entries*. Unreadable, each is empty, and the
+    row's stored line stands."""
+    from modules.heal import decisions as HD
+    from modules.heal import incidents
+
+    if not any(e.get("state") == "decided" for e in entries):
+        return {}, {}
+    try:
+        made = {d.get("id"): d for d in HD.decisions(network) if d.get("id")}
+    except Exception as exc:                            # noqa: BLE001 (the stored line stands)
+        log.info("history: %s's heal decisions could not be read: %s", network, exc)
+        made = {}
+    trig = {i.get("id"): i.get("triggers") or [] for i in incidents.read(network)["incidents"]}
+    return made, trig
 
 
 def _heal_marks(network: str, entries: list) -> dict:

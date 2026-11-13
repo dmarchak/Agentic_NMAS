@@ -36,6 +36,20 @@ said locally too (`localised`). A person is named by display name (`display_name
 never by identity, in the text and the webhook's JSON alike: a message has no "identity as
 recorded" line, and the record keeps the identity.
 
+**A can't-fix leads with its outcome and its link** (the GUI review of 2026-11-13, item 9, the
+email rules of docs/UI_RULES.md, approved by the operator). An event that carries a *lead*
+(`heal_notice.facts`: what happened on the device, as its incident page's title says it, then
+the outcome) is drawn inverted: the lead, What to do, and "Open in Mercury" are its first three
+lines; then the facts, the outcome said once (no Outcome line, and a step whose words repeat
+it says only its label and result); the steps recorded in one minute are one line with their
+time, a step that ended "done" by its label alone (what it recorded is on the incident's
+page, one click away), and the message's foot is when it was sent. An event with no lead
+keeps facts first, then the link. Either way every line is said in plain words (`plain`):
+a platform by its name, never its key, a count without "(s)", and the removal measurement's
+shape key and host command (`removal._unmeasured`'s words) never named: Mercury has no screen
+for the probe yet (C1366), so the words say only that removing that kind of line is not
+measured, and the link opens the incident.
+
 **The egress mask.** Everything a message carries, an email's subject and text and a
 webhook's whole JSON, goes through `redact.egress_payload` at its sender, the one place per
 channel (`relay.build`, `webhook.request`) (masked by
@@ -74,9 +88,10 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a
 #: hypothesis labelled), before the outcome; the outcome's bound holds the plain words.
+#: *lead* is the one plain sentence a can't-fix leads with (what happened, then the outcome).
 FIELDS = {"incident": 80, "event": 20, "network": 80, "device": 80, "kind": 80,
-          "happened": 800, "outcome": 400, "detected": 400, "detected_at": 40, "steps": 20,
-          "todo": 400, "link": 400, "analysis": 1, "diagnosis": 1}
+          "lead": 800, "happened": 800, "outcome": 400, "detected": 400, "detected_at": 40,
+          "steps": 20, "todo": 400, "link": 400, "analysis": 1, "diagnosis": 1}
 #: Mercury's diagnosis block's fields (H17) and each one's bound; its hypotheses at most
 #: `DIAGNOSIS_HYPOTHESES` (the diagnosis's own `MAX_SHOWN`), each `DIAGNOSIS_HYPOTHESIS_FIELDS`;
 #: what was ruled out at most `DIAGNOSIS_RULED_OUT` checks.
@@ -87,7 +102,9 @@ DIAGNOSIS_HYPOTHESES, DIAGNOSIS_RULED_OUT = 5, 20
 #: A step's *said* is what it does in words (its operation's short label and its recorded
 #: words, `heal_notice.steps_said`), drawn in the text; *what* keeps its key, for the webhook's
 #: JSON; *at* is when it was recorded (ISO UTC, as kept), drawn in local time before it.
-STEP_FIELDS = {"what": 200, "said": 240, "result": 200, "at": 40}
+#: *label* (the stepper's two-to-four-word label) and *words* (what it recorded) are *said*'s
+#: two parts, which a message that leads with its outcome draws apart.
+STEP_FIELDS = {"what": 200, "said": 240, "label": 80, "words": 240, "result": 200, "at": 40}
 #: The AI analysis block's fields (H8) and each one's bound; its hypotheses at most
 #: `ANALYSIS_HYPOTHESES`, each `HYPOTHESIS_FIELDS`.
 ANALYSIS_FIELDS = {"state": 20, "words": 400, "label": 120, "score": 300, "rationale": 800,
@@ -136,7 +153,7 @@ def check_event(event: dict) -> dict:
         if not isinstance(s, dict) or set(s) - set(STEP_FIELDS):
             raise ValueError(f"a step carries only {', '.join(STEP_FIELDS)}")
         out["steps"].append({k: _line(s.get(k), b) for k, b in STEP_FIELDS.items()
-                             if k not in ("said", "at") or s.get(k)})
+                             if k in ("what", "result") or s.get(k)})
     return out
 
 
@@ -199,13 +216,13 @@ def diagnosis_lines(block: dict) -> list:
 
 
 def analysis_lines(block: dict) -> list:
-    """The analysis block in a message's words: its state's words, then the label and score,
-    the rationale and each hypothesis with its next step (advisory: a person confirms)."""
+    """The analysis block in a message's words: its state's words and, on the same line,
+    whether its answers are measured (`heal_notice.analysis_block`'s words), then the
+    rationale and each hypothesis with its next step (advisory: a person confirms)."""
     if not block:
         return []
-    lines = [block.get("words") or "AI analysis"]
-    if block.get("score"):
-        lines.append(f"  Measured: {block['score']}")
+    lines = [(block.get("words") or "AI analysis")
+             + (f"; {block['score']}" if block.get("score") else "")]
     if block.get("rationale"):
         lines.append(f"  {block['rationale']}")
     hyps = block.get("hypotheses") or []
@@ -308,6 +325,94 @@ def zone_line(named: str) -> str:
     return f"Times are in {named}, the time zone of the host Mercury runs on."
 
 
+# ── Plain words (the GUI review's EM2 and EM4: no host command, no code key) ────────────────
+
+#: A platform's key (`platform.DIALECTS`), said by its name (`platform.FACT_WORDS`).
+_DIALECT = re.compile(r"\bcisco_ios(?:xe)?\b")
+#: `removal._unmeasured`'s words for a shape not measured on a platform: the shape's key, and
+#: the host command that measures it. A message says only what is not measured: Mercury has
+#: no screen for the probe yet (C1366), so nothing a person can do in Mercury is named by it.
+_UNMEASURED = re.compile(r"`[a-z0-9]+(?:[.-][a-z0-9]+)+` has not been measured on")
+_PROBE = re.compile(r": run scripts/nmas-removal-probe --shape \S+ on an? \S+ device")
+_NO_SHAPE = re.compile(r"\. A shape is added to removal\.SHAPES and measured with "
+                       r"scripts/nmas-removal-probe first")
+#: A count said with "(s)": "1 part(s)", "2 line(s)", "1 healed unit(s)" (at most two words
+#: between the number and its noun).
+_COUNTED = re.compile(r"\b(\d+) ((?:[A-Za-z-]+ ){0,2})([A-Za-z]+)\(s\)")
+
+
+def _counted(m) -> str:
+    n, between, word = m.group(1), m.group(2), m.group(3)
+    if n == "1":
+        return f"{n} {between}{word}"
+    if word.endswith("y") and word[-2:-1] not in "aeiou":
+        return f"{n} {between}{word[:-1]}ies"
+    return f"{n} {between}{word}s"
+
+
+def plain(words: str) -> str:
+    """*words* as a person reads them: a platform by its name ("IOS-XE", never
+    ``cisco_iosxe``), a count without "(s)", and the removal measurement's shape key and host
+    command (`removal._unmeasured`) left out: "removing that kind of line has not been
+    measured on IOS-XE"."""
+    from modules.nsot.platform import FACT_WORDS
+
+    if not words:
+        return words or ""
+    out = _NO_SHAPE.sub("", _PROBE.sub("", str(words)))
+    out = _UNMEASURED.sub("removing that kind of line has not been measured on", out)
+    out = _DIALECT.sub(lambda m: FACT_WORDS.get(m.group(0), m.group(0)), out)
+    return _COUNTED.sub(_counted, out)
+
+
+def _tried(steps: list, outcome: str, named: str, said) -> list:
+    """The steps as a message that leads with its outcome lists them: the steps recorded in one
+    minute on one line with their time ("  - 19:43 Take incident, Check stops: done; Decide:
+    failed"), in their order; a step that ended "done" by its label alone, and a step whose
+    words repeat the outcome (said once, in the lead) by its label and its result; any other
+    step with what it recorded. A step with no label or no time is a line of its own."""
+    def repeats(words):
+        a, b = " ".join(words.split()).lower(), " ".join((outcome or "").split()).lower()
+        return bool(a and b) and (b in a or (len(a) >= 20 and a in b))
+
+    lines, group, when_of = [], [], None
+
+    def close():
+        if not group:
+            return
+        segs = []
+        for label, words, result in group:
+            if not words and segs and segs[-1][1] == "" and segs[-1][2] == result:
+                segs[-1][0].append(label)
+            else:
+                segs.append(([label], words, result))
+        lines.append(f"  - {when_of} " + "; ".join(
+            ", ".join(labels) + (f": {words}" if words else "") + f": {result}"
+            for labels, words, result in segs))
+        group.clear()
+
+    for s in steps:
+        at = epoch_of(s.get("at"))
+        if at is None or not s.get("label"):
+            close()
+            when_of = None
+            when = f"{local(at, named, day=False)} " if at is not None else ""
+            lines.append(f"  - {when}{said(s.get('said') or s['what'], at)}: "
+                         f"{said(s['result'], at)}")
+            continue
+        when = local(at, named, day=False)
+        if when != when_of:
+            close()
+            when_of = when
+        words = s.get("words") or ""
+        if s.get("result") == "done" or repeats(words):
+            words = ""
+        group.append((said(s["label"], at), said(words, at) if words else "",
+                      said(s["result"], at)))
+    close()
+    return lines
+
+
 def _people(text: str) -> str:
     """*text* with each person named by display name (`display_names.people`)."""
     from modules import display_names
@@ -321,21 +426,26 @@ def subject(facts: dict) -> str:
 
 
 def text(facts: dict, *, sent_at: float = None) -> str:
-    """The message's text, facts first, then the link; unmasked: the sender masks it at the
-    boundary (`relay.build`), so one place per channel owns the mask.
+    """The message's text: an event with a *lead* led by its outcome and its link (`_led`),
+    any other facts first, then the link; unmasked: the sender masks it at the boundary
+    (`relay.build`), so one place per channel owns the mask. Every line in plain words
+    (`plain`).
 
     Every time in it is local, its zone named once on the last line, and every person is named
     by display name (the operator, 2026-11-12, objective 2: "the can't-fix email lists the steps
     taken in plain words, with local times and display names, and links to the incident"):
-    each step leads with its own time, "  - 14:02 Read edge-b: edge-b read again: done"."""
+    each step leads with its own time, "  - 14:02 Read edge-b: edge-b read again: done", or,
+    led by its outcome, each minute's steps one line with that time (`_tried`)."""
     sent_epoch = time.time() if sent_at is None else float(sent_at)
     named = zone_name(sent_epoch)
     detected = epoch_of(facts.get("detected_at"))
     ref = detected if detected is not None else sent_epoch
 
     def said(words, at=None):
-        return localised(_people(words), ref if at is None else at, named)
+        return plain(localised(_people(words), ref if at is None else at, named))
 
+    if facts.get("lead"):
+        return _led(facts, sent_epoch, named, detected, said)
     lines = [f"Mercury: {EVENTS[facts['event']]}"]
     where = " · ".join(x for x in (facts.get("network"), facts.get("device")) if x)
     if where:
@@ -375,11 +485,49 @@ def text(facts: dict, *, sent_at: float = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _led(facts: dict, sent_epoch: float, named: str, detected, said) -> str:
+    """The text of an event that carries a *lead* (a can't-fix: the GUI review's item 9, EM1 to
+    EM4), inverted: its first three lines say what happened and the outcome (the lead), what it
+    needs of the reader (What to do) and "Open in Mercury"; then the facts, the outcome not
+    said again; the steps by minute (`_tried`); the AI analysis; when it was sent and the
+    zone. The incident's id is in the link, never bare."""
+    lines = [said(facts["lead"])]
+    if facts.get("todo"):
+        lines.append(f"What to do: {said(facts['todo'])}")
+    url, why = link_url(facts.get("link", ""))
+    if url:
+        lines.append(f"Open in Mercury: {url}{why}")
+    lines.append("")
+    where = " · ".join(x for x in (facts.get("network"), facts.get("device")) if x)
+    if where:
+        lines.append(where)
+    if facts.get("happened"):
+        lines.append(f"What happened: {said(facts['happened'])}")
+    if facts.get("detected"):
+        when = (f" at {local(detected, named)}" if detected is not None else
+                f" at {said(facts['detected_at'])}" if facts.get("detected_at") else "")
+        lines.append(f"Detected: {said(facts['detected'])}{when}")
+    if facts.get("kind"):
+        lines.append(f"Fix kind: {said(facts['kind'])}")
+    if facts.get("diagnosis"):
+        lines += [said(x) for x in diagnosis_lines(facts["diagnosis"])]
+    if facts["steps"]:
+        lines.append("What Mercury tried:")
+        lines += _tried(facts["steps"], facts.get("outcome") or "", named, said)
+    if facts.get("analysis"):
+        lines += [""] + [said(x) for x in analysis_lines(facts["analysis"])]
+    lines += ["", f"Sent {local(sent_epoch, named)}", zone_line(named)]
+    return "\n".join(lines) + "\n"
+
+
 def payload(facts: dict, *, sent_at: float = None) -> dict:
     """The generic webhook's JSON: the incident's id, network, device, kind, outcome, step
     summary and link (section 10); unmasked: the sender masks it (`webhook.request`). Its
     times stay ISO UTC, for the receiver to draw in its own reader's zone; each person in its
-    words is named by display name, as in the text (`display_names.people_payload`)."""
+    words is named by display name, as in the text (`display_names.people_payload`). Its
+    *lead*, *outcome*, *detected*, *todo* and each step's words are in plain words, as the
+    text says them (`plain`; a step's *what* keeps its key): a receiver may show them to a
+    person."""
     from modules import display_names
 
     url, _said = link_url(facts.get("link", ""))
@@ -388,8 +536,12 @@ def payload(facts: dict, *, sent_at: float = None) -> dict:
     return display_names.people_payload({"incident": facts["incident"], "event": facts["event"],
             "summary": EVENTS[facts["event"]], "network": facts.get("network", ""),
             "device": facts.get("device", ""), "kind": facts.get("kind", ""),
-            "outcome": facts.get("outcome", ""), "detected": facts.get("detected", ""),
-            "detected_at": facts.get("detected_at", ""), "steps": facts["steps"],
-            "todo": facts.get("todo", ""), "link": url, "sent_at": sent,
+            **({"lead": plain(facts["lead"])} if facts.get("lead") else {}),
+            "outcome": plain(facts.get("outcome", "")),
+            "detected": plain(facts.get("detected", "")),
+            "detected_at": facts.get("detected_at", ""),
+            "steps": [{k: (v if k == "at" else plain(v)) for k, v in s.items()}
+                      for s in facts["steps"]],
+            "todo": plain(facts.get("todo", "")), "link": url, "sent_at": sent,
             **({"analysis": facts["analysis"]} if facts.get("analysis") else {}),
             **({"diagnosis": facts["diagnosis"]} if facts.get("diagnosis") else {})})

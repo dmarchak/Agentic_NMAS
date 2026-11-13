@@ -1783,8 +1783,9 @@ def notifications():
         "A notification of a can't-fix: the notifier finds each new can't-fix recorded in the "
         "last ten minutes and not yet told, and takes it once under the store's lock; if the "
         "network's AI analysis is on it starts it as a background call and waits for it at "
-        "most 60 seconds; it then sends Mercury's facts, the analysis or its state (pending, "
-        "not run, couldn't analyse), and the link, to the network's team: an email through "
+        "most 60 seconds; it then sends the outcome and the link first, then Mercury's facts, "
+        "then the analysis or its state (pending, not run, couldn't analyse), to the network's "
+        "team: an email through "
         "the relay and each webhook, signed; each attempt is a row in the delivery log, a "
         "failure tried three times and then raised under Needs attention; a pending analysis "
         "that arrives later is sent on the same thread. Nothing reaches a device."), [
@@ -1794,13 +1795,13 @@ def notifications():
         doc("box", 14, 116, 186, 36, "The AI analysis", "a background call, if on"),
         num(14, 116, 2),
         clock(186, 170), t(14, 174, "waited for at most 60 s", "sm"),
-        band(190, 130, "Send · the facts first"),
+        band(190, 130, "Send · the outcome first"),
         svc(262, 222, 118, 30, "Email", "through the relay"),
         svc(262, 272, 118, 30, "Webhook", "signed, HMAC-SHA256"),
-        t(36, 232, "Mercury's facts, then", "tb"),
-        t(36, 246, "the analysis or its state", "sm"),
+        t(36, 232, "The outcome and the link,", "tb"),
+        t(36, 246, "then Mercury's facts", "sm"),
         num(22, 228, 3),
-        t(36, 300, "then the link to Mercury", "sm"),
+        t(36, 300, "then the analysis or its state", "sm"),
         store(14, 336, 186, 40, "The delivery log", "each attempt, History"), num(14, 336, 4),
         t(14, 394, "a failure tried three times, then", "sm"),
         t(14, 407, "a Needs attention item", "sm"),

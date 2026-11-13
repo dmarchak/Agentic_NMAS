@@ -54,7 +54,12 @@ HEALED = ("healed", "bounced", "cleared", "dampened")
 PARTLY = ("symptom_remains", "partial", "unverified", "still_flapping", "not_formed",
           "reverted", "repaired", "not_back", "reset")
 #: A decision's results that end it without a heal (drawn red on its step).
-DECISION_BAD = ("cant_fix", "held", "halted", "off")
+DECISION_BAD = ("held", "halted", "off")
+#: A decision's results that worked and hand the incident to a person: a can't-fix decided
+#: that a person is needed, and its stage reads "Can't fix: needs a person", amber, never
+#: "Decide failed" in red (the GUI review's item 6, C3454; docs/UI_RULES.md, "The stepper never
+#: says "failed" for a decision that worked").
+DECISION_NEEDS = ("cant_fix",)
 #: A decision's results that are its answer, not a failure.
 DECISION_GOOD = ("heal", "would_heal", "propose", "nothing", "deferred")
 
@@ -322,6 +327,9 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
             waits = str((g["lead"] or {}).get("wait_for") or "")
             return (WAIT_FOR_WORDS.get(waits) or RUNNING_WORDS.get(lead, "")).format(
                 device=device, lines=lines)
+        if g["key"] == "decided" and g["state"] == "needs":
+            # The decision worked: it decided a person is needed (C3454).
+            return "Can't fix: needs a person"
         if g["key"] == "done" and g["state"] in ("done", "partial", "failed"):
             outcome = facts.get("outcome") or ""
             if not outcome:
@@ -340,7 +348,10 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
             return SEEN_WORDS.get(facts.get("kind") or "", "").format(device=device)
         if g["key"] == "decided":
             head = DECIDED_WORDS.get(facts.get("decision") or "", "")
-            fixes = said.fixes_words(facts.get("units") or []) if facts.get("units") else ""
+            # The fix in plain words, never its configuration line (the GUI review's HC1:
+            # five lines in a 150 px column); the decision's own words, one level down, quote
+            # the lines.
+            fixes = said.fix_title(facts.get("units") or []) if facts.get("units") else ""
             return (f"{head}: {fixes}" if head and fixes and facts.get("decision") in (
                 "heal", "would_heal", "propose") else head)
         if g["key"] == "fixing":
@@ -420,7 +431,7 @@ def decision_phase(steps: list, *, now: float = None, prefix: str = "d-",
 
     return run_stepper.from_record(
         decide.STEPS, _drawn(steps), ended=True, now=now, prefix=prefix, good=DECISION_GOOD,
-        bad=DECISION_BAD,
+        bad=DECISION_BAD, needs=DECISION_NEEDS,
         labels=run_stepper.labels_for(decide.STEP_LABELS, device=host or "the device"))
 
 

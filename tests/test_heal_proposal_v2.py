@@ -80,9 +80,11 @@ def test_a_proposal_is_one_row_naming_the_fix_and_how_it_clears(app_client, meas
     d = proposed()
     (r,) = _rows()
     # C2817 (mock 1): what happened and that it needs a decision, in plain words, in Critical.
-    assert r["what"] == ("edge-b: in router ospf 1, “router-id 192.0.2.6” was changed to "
-                         "“router-id 192.0.2.99”. Mercury has a fix that restarts OSPF on "
-                         "edge-b: it needs your decision")
+    # Premise corrected (the GUI review's item 5, C3453, the approved rule "A title is a
+    # summary of at most 70 characters", never a configuration line): the line leads with the
+    # incident's title in plain words; the change's lines are the row's cause.
+    assert r["what"] == ("edge-b: OSPF router-id changed outside Mercury. Mercury has a fix "
+                         "that restarts OSPF on edge-b: it needs your decision")
     assert r["action"]["open"] == "heal_proposal" and r["action"]["decision"] == d["id"]
     assert r["level"] == "danger" and r["devices"] == ["edge-b"]
     assert ("heal", "proposal") in ROW_KINDS

@@ -57,7 +57,20 @@ reads as before; `_run_stepper.html` and `nmas_stepper.js` are byte for byte as 
 element moves and no region's verdict moved; read from the diff and tests/test_incident_page.py
 `TestOneDuration`, not a new shot. Templates sha256 before:
 `a82cbd147df52169bbb5deabf632f524d7bdc5f221da10146da1cd15ab19294e`.
-Templates sha256: `ab3c2064ea0636b7c9fb3603ac87749f266a8f7e7d0ba2a175c6701366e3b019`
+Compared again 2026-11-13 (the GUI review's item 6, C3454, and its heal card findings HC1 and
+HC2; the operator approved it 2026-11-13; provisional, operator review pending): a stage's
+sentence is at most `STAGE_SAID_WORDS` (12) words, cut with an ellipsis, the operation's own
+sentence whole one level down (`run-stage-long`, above the stage's steps) and a failure's why
+whole on its step's line; a failure's why is said once, by the first stage that failed, and a
+later stage that failed says its state alone, the told words left out of its steps' lines; a
+decision that worked and hands the work to a person (a heal's can't-fix) is the new `needs`
+state, "needs a person", its mark and border amber (`--warn-mark`), its step's words amber
+(`--warn`), never red. Nothing else the macro lays out moved; the heal's Decided stage names
+its fix in plain words (`said.fix_title`). Read from the diff and the pages
+tests/test_incident_titles.py and tests/test_run_outcomes.py draw, not a new shot; logged
+(docs/STANDING_APPROVAL_LOG.md, "Incident page: each fact once"). Templates sha256 before:
+`ab3c2064ea0636b7c9fb3603ac87749f266a8f7e7d0ba2a175c6701366e3b019`.
+Templates sha256: `7e5b020eaff14e1fe23ae92d02ab2bd4af1964084912c46c2b7f81ecbd1c0566`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each

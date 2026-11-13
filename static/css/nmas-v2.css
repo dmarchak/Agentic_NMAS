@@ -375,6 +375,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .crumbs { display: flex; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .crumbs a { color: var(--ink-2); text-decoration: none; }
 .crumbs a:hover { text-decoration: underline; }
+/* The last crumb on one line, cut with an ellipsis, the whole title on its hover (C3453). */
+.crumbs-cut { min-width: 0; }
+.crumbs-cut > :not(.crumb-last) { flex: none; }
+.crumbs-cut > .crumb-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page-head { display: flex; align-items: flex-start; gap: 16px; }
 .page-title { flex-grow: 1; min-width: 0; }
 .title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -1350,6 +1354,8 @@ button.menu-item[disabled]:hover { background: none; }
 .run-mark-done::before { content: "\2713"; }
 .run-mark-partial { background: var(--warn-mark); border-color: var(--warn-mark); }
 .run-mark-failed { background: var(--danger); border-color: var(--danger); }
+/* A decision that worked and hands the work to a person (a can't-fix): amber, never red (C3454). */
+.run-mark-needs { background: var(--warn-mark); border-color: var(--warn-mark); }
 .run-mark-running { border-color: var(--accent); border-top-color: var(--accent-soft); }
 /* Each step at least 76 px, wrapping onto a second row when an operation has more steps than
    fit (a deploy's twelve ran into each other in one row, the operator's shot, 2026-10-13);
@@ -1424,6 +1430,8 @@ button.menu-item[disabled]:hover { background: none; }
 .run-stage-running { border-top-color: var(--accent); color: var(--ink); }
 .run-stage-failed { border-top-color: var(--danger); color: var(--ink); }
 .run-stage-partial { border-top-color: var(--warn-mark); color: var(--ink); }
+.run-stage-needs { border-top-color: var(--warn-mark); color: var(--ink); }
+.run-stage-long { margin: 2px 0 4px; font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
 .run-stage-not_reached .run-stage-name { text-decoration: line-through; }
 .run-stage-skipped { font-style: italic; }
 .run-stage-box > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center;
@@ -1439,6 +1447,7 @@ button.menu-item[disabled]:hover { background: none; }
 .run-stage-list > .run-step { display: block; margin: 3px 0; font-weight: 400; overflow-wrap: anywhere; }
 .run-stage-list > .run-step-failed > strong { color: var(--danger); }
 .run-stage-list > .run-step-partial > strong { color: var(--warn); }
+.run-stage-list > .run-step-needs > strong { color: var(--warn); }
 .run-stage-list > .run-step-waiting, .run-stage-list > .run-step-skipped { color: var(--ink-3); }
 .run-sub { margin: 3px 0 2px 4px; }
 @container (max-width: 640px) {
@@ -1449,6 +1458,7 @@ button.menu-item[disabled]:hover { background: none; }
   .run-stage-running { border-left-color: var(--accent); }
   .run-stage-failed { border-left-color: var(--danger); }
   .run-stage-partial { border-left-color: var(--warn-mark); }
+  .run-stage-needs { border-left-color: var(--warn-mark); }
 }
 .run-checks { margin: 2px 0 0; }
 .run-checks > summary { cursor: pointer; color: var(--ink-2); }
@@ -3346,12 +3356,35 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   flex-direction: column; gap: 6px; }
 .fixit-flag { color: var(--warn); }
 .fixit-controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-start; }
-.fixit-controls details { min-width: 0; flex: 1 1 320px; }
+.fixit-controls details { min-width: 0; flex: none; }
 .fixit-controls summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .fixit-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .fixit-form textarea { width: 100%; box-sizing: border-box; font: inherit; }
 .fixit-teams { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .fixit-sent { padding-left: 18px; }
+/* C3455 (the GUI review's item 8): the three choices in one row, drawn alike; What it found
+   one line per subscription, its checks one level down. */
+.fixit-choices { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  flex-basis: 100%; }
+.fixit-found { list-style: none; padding-left: 0; display: flex; flex-direction: column;
+  gap: 2px; }
+.fixit-sub > summary { cursor: pointer; }
+.fixit-checks { list-style: none; padding-left: 20px; margin: 2px 0 4px; display: flex;
+  flex-direction: column; gap: 2px; }
+/* The modal (templates/v2/_modal.html; the operator's rule of 2026-11-12): a native dialog
+   over the page, placed beside its opener by static/js/nmas_v2.js ("The modal"), never wider
+   than the window less its gutters, scrolling inside itself only when the window is shorter
+   than it is. */
+dialog.modal { position: fixed; inset: auto; margin: 0; box-sizing: border-box;
+  width: min(36rem, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+  padding: 14px 16px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow);
+  flex-direction: column; gap: 8px; }
+dialog.modal[open] { display: flex; }
+dialog.modal::backdrop { background: var(--scrim); }
+.modal-h { margin: 0; font-size: 15px; font-weight: 600; }
+.modal p { margin: 0; overflow-wrap: anywhere; }
+.modal-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .handover-doc { display: flex; flex-direction: column; gap: 6px; }
 .handover-h { margin: 8px 0 0; font-size: 15px; }
 .handover-lines li { overflow-wrap: anywhere; }

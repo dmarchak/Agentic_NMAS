@@ -184,6 +184,191 @@ def process_of(units: list) -> str:
     return ""
 
 
+# ── The title: what happened, in plain words (the GUI review's item 5, C3453) ──────────────
+
+#: An incident's title is at most this many characters (docs/UI_RULES.md, "A title is a
+#: summary of at most 70 characters"; measured: the incident page's heading was the
+#: configuration line, 95 characters, two lines at 1280 px).
+TITLE_MAX = 70
+#: What a configuration line IS, in plain words, by its first words: a title names the thing
+#: and never quotes the line (the line is What's wrong's). First match wins; a line none
+#: matches is a setting of its section, else "configuration line".
+_THINGS = tuple((re.compile(p), w) for p, w in (
+    (r"ipv6 route\b", "IPv6 static route"), (r"ip route\b", "static route"),
+    (r"(ip access-group|ipv6 traffic-filter)\b", "access list"),
+    (r"((ip|ipv6) access-list|access-list)\b", "access list"),
+    (r"(ip|ipv6) prefix-list\b", "prefix list"), (r"route-map\b", "route map"),
+    (r"(bgp )?router-id\b", "router-id"), (r"logging (host\b|\d)", "logging host"),
+    (r"logging\b", "logging setting"), (r"ntp server\b", "NTP server"), (r"ntp\b", "NTP setting"),
+    (r"snmp-server\b", "SNMP setting"), (r"username\b", "local account"),
+    (r"enable (secret|password)\b", "enable secret"), (r"aaa\b", "AAA setting"),
+    (r"banner\b", "banner"), (r"hostname\b", "hostname"), (r"description\b", "description"),
+    (r"ipv6 address\b", "IPv6 address"), (r"ip address\b", "IP address"),
+    (r"(ip ospf|ipv6 ospf|ospfv3)\b", "OSPF setting"), (r"network\b", "network statement"),
+    (r"neighbor\b", "neighbour"), (r"passive-interface\b", "passive interface"),
+    (r"redistribute\b", "redistribution"), (r"service-policy\b", "QoS policy"),
+    (r"standby\b", "HSRP setting"), (r"vrrp\b", "VRRP setting"),
+    (r"switchport\b", "switchport setting"), (r"spanning-tree\b", "spanning-tree setting"),
+    (r"channel-group\b", "port-channel membership"), (r"ip nat\b", "NAT setting"),
+    (r"ip helper-address\b", "DHCP relay"), (r"ip dhcp\b", "DHCP setting"),
+    (r"ip name-server\b", "DNS server"), (r"ip domain\b", "domain setting"),
+    (r"ip ssh\b", "SSH setting"), (r"ip http\b", "HTTP server setting"),
+    (r"telemetry\b", "telemetry subscription"), (r"crypto\b", "crypto setting"),
+    (r"key chain\b", "key chain"), (r"line\b", "terminal lines"),
+    (r"(router ospf|router ospfv3|ipv6 router ospf)\b", "OSPF process"),
+    (r"router bgp\b", "BGP process"), (r"router eigrp\b", "EIGRP process"),
+    (r"router isis\b", "IS-IS process"), (r"vlan\b", "VLAN"),
+    (r"(vrf definition|ip vrf)\b", "VRF"), (r"mtu\b", "MTU"), (r"bandwidth\b", "bandwidth"),
+    (r"(speed|duplex)\b", "speed or duplex"), (r"cdp\b", "CDP setting"),
+    (r"lldp\b", "LLDP setting"), (r"(ip )?sla\b", "IP SLA"), (r"track\b", "tracking object"),
+    (r"event manager\b", "EEM applet"), (r"interface\b", "interface")))
+#: What happened to a unit's line on the device, by the unit's op (the op is the FIX's:
+#: ``remove`` takes away what was added).
+_VERBS = {"remove": "added", "add": "removed", "change": "changed"}
+#: What a symptom fact is, by its kind, when the trigger behind it is not held.
+_FACT_TITLES = {"config_change": "configuration changed outside Mercury",
+                "departure": "departed from its approved configuration",
+                "adjacency_log": "routing neighbour lost", "adjacency": "routing adjacency down",
+                "alert": "an alert firing", "duplicate_router_id": "duplicate router-id"}
+
+
+def thing_of(line: str) -> str:
+    """What one configuration line is, in plain words (`_THINGS`), or ``""``."""
+    text = (line or "").strip().lower()
+    text = text[3:] if text.startswith("no ") else text
+    return next((w for p, w in _THINGS if p.match(text)), "")
+
+
+def _unit_title(u: dict) -> tuple:
+    """``(thing, verb, where)`` for one unit, in plain words: ``("static route", "added",
+    "")``, ``("access list", "added", " on GigabitEthernet2")``, ``("OSPF router-id",
+    "changed", "")``. A joined unit is said by its use (its first part)."""
+    u = (u.get("parts") or [u])[0] if isinstance(u, dict) else {}
+    section = (u.get("section") or "").strip()
+    lines = list(u.get("remove") or []) + list(u.get("add") or [])
+    verb = _VERBS.get(u.get("op"), "changed")
+    if u.get("stanza") or not lines:
+        return (thing_of(section) or "configuration section", verb, "")
+    first, iface = lines[0], interface_of(u)
+    if first.strip().lower() == "shutdown" and iface:
+        return (iface, "shut down" if verb == "added" else "brought back up", "")
+    # In a section (not a top-level line, whose unit names the line as its section): a
+    # routing process's setting carries the process's name ("OSPF router-id").
+    inside = bool(section) and section not in {(l or "").strip() for l in lines}
+    proc = next((name for head, name in sorted(_PROCESS.items(), key=lambda x: -len(x[0]))
+                 if section.lower().startswith(head)), "") if inside and not iface else ""
+    thing = thing_of(first)
+    if proc and thing.startswith(proc):
+        proc = ""
+    if not thing:
+        thing = ("setting" if proc or iface else
+                 f"{thing_of(section)} setting" if inside and thing_of(section) else
+                 "configuration line")
+    return (f"{proc} {thing}" if proc else thing, verb, f" on {iface}" if iface else "")
+
+
+def _many(thing: str) -> str:
+    return thing if thing.endswith("s") else thing + "s"
+
+
+def units_title(units: list) -> str:
+    """What changed, in plain words, for a title: "static route added", "2 static routes
+    added", "access list added on GigabitEthernet2, and 1 more change"; ``""`` for none."""
+    said = [_unit_title(u) for u in units or [] if isinstance(u, dict)]
+    if not said:
+        return ""
+    thing, verb, where = said[0]
+    if len(said) > 1 and all(s == said[0] for s in said):
+        return f"{len(said)} {_many(thing)} {verb}{where}"
+    more = len(said) - 1
+    return f"{thing} {verb}{where}" + (
+        f", and {more} more change{'s' if more != 1 else ''}" if more else "")
+
+
+def fix_title(units: list) -> str:
+    """What putting the units back does, in plain words, for a stage's sentence (the Decided
+    stage: "Heal: remove the static route"; the GUI review's HC1, C3454): never the line,
+    which the decision's own words say one level down. ``""`` for none."""
+    said = [_unit_title(u) for u in units or [] if isinstance(u, dict)]
+    if not said:
+        return ""
+
+    def one(thing, verb, where, n=1):
+        what = f"{n} {_many(thing)}{where}" if n > 1 else f"the {thing}{where}"
+        return {"added": f"remove {what}", "removed": f"put back {what}",
+                "shut down": f"bring {thing} back up",
+                "brought back up": f"shut {thing} down again"}.get(verb, f"set {what} back")
+
+    if len(said) > 1 and all(s == said[0] for s in said):
+        return one(*said[0], n=len(said))
+    more = len(said) - 1
+    return one(*said[0]) + (f", and {more} more change{'s' if more != 1 else ''}"
+                            if more else "")
+
+
+def _symptom_title(t: dict, device: str, triggers: list) -> str:
+    kind, proto = t.get("kind"), t.get("protocol") or "routing"
+    if kind == "adjacency_log":
+        peer, port = t.get("peer") or "", t.get("port") or ""
+        return (f"{proto} neighbour {peer} lost" if peer else
+                f"{proto} neighbour lost on {port}" if port else f"{proto} neighbour lost")
+    if kind == "adjacency":
+        other = next((d for d in t.get("related") or [] if d != device), "")
+        return f"{proto} adjacency to {other} down" if other else f"{proto} adjacency down"
+    if kind == "alert" and t.get("subscription"):
+        n = len({x.get("subscription") for x in triggers
+                 if x.get("kind") == "alert" and x.get("subscription")})
+        return "telemetry stream lost" if n <= 1 else f"{n} telemetry streams lost"
+    if kind == "alert":
+        return f"alert “{t['rule']}” firing" if t.get("rule") else "an alert firing"
+    if kind == "duplicate_router_id":
+        return f"duplicate {t.get('protocol') or 'OSPF'} router-id"
+    return _FACT_TITLES.get(kind, "")
+
+
+def title(device: str, units: list = (), triggers: list = (), facts: list = (), *,
+          room: int = TITLE_MAX) -> str:
+    """THE title of an incident, in plain words and at most *room* characters (the GUI
+    review's item 5, C3453; docs/UI_RULES.md, "A title is a summary of at most 70
+    characters"): "<device>: <what happened>", never a configuration line, a code key, a
+    mnemonic or an id; the line itself is What's wrong's. ONE builder: the incident's page
+    (`incident_page.title`, its heading and its breadcrumb), its message's lead (through that), and
+    every Needs attention and History line that leads with what happened (`headline`).
+
+    What happened is, in this order: the decision's *units* (`units_title`: "static route
+    added"), with "outside Mercury" where a configuration change from outside opened it (its
+    cause's facts say so, else its *triggers*); else its first symptom (a trigger's own
+    fields where *triggers* are held, else its cause's *facts* by kind); else what opened it.
+    ``""`` when nothing is held. Past *room*, "outside Mercury" goes first, then the words are
+    cut with an ellipsis."""
+    host = device or "A device"
+    trig = [t for t in triggers or [] if isinstance(t, dict)]
+    facts = [f for f in facts or [] if isinstance(f, dict)]
+    outside = (any(f.get("kind") == "config_change" for f in facts) if facts else
+               any(t.get("kind") == "config_change" for t in trig))
+    what, tail = units_title(units), ""
+    if what:
+        tail = " outside Mercury" if outside else ""
+    else:
+        sym = next((t for t in trig if t.get("kind") in SYMPTOMS), None)
+        what = _symptom_title(sym, host, trig) if sym else ""
+        if not what:
+            fact = next((f for f in facts if f.get("kind") in SYMPTOMS), None)
+            what = _FACT_TITLES.get((fact or {}).get("kind"), "")
+        if not what:
+            kinds = [t.get("kind") for t in trig] + [f.get("kind") for f in facts]
+            first = next((k for k in kinds if k in ("config_change", "drift", "departure")), "")
+            what = (_FACT_TITLES["config_change"] if first == "config_change" else
+                    "departed from its golden" if first == "drift" else
+                    _FACT_TITLES["departure"] if first == "departure" else "")
+    if not what:
+        return ""
+    for text in (f"{host}: {what}{tail}", f"{host}: {what}"):
+        if len(text) <= room:
+            return text
+    return text[:max(1, room - 1)].rstrip(" ,:;") + "…"
+
+
 # ── The decision's words (`decide._outcome`) ───────────────────────────────────────────────
 
 def outcome_words(outcome: str, *, units: list, kind: str, tier: int, device: str = "",
@@ -226,16 +411,22 @@ def outcome_words(outcome: str, *, units: list, kind: str, tier: int, device: st
             f"is watching only, in dry run (Tier {tier})")
 
 
-def headline(d: dict, network: str = "") -> str:
+def headline(d: dict, network: str = "", triggers: list = ()) -> str:
     """The one line a row and a History entry lead with (C2817; the mocks' rows): what
-    happened on the device, then what Mercury did or would do and whether a person is needed.
-    ``""`` for an outcome it has no line for (its caller's own words stand)."""
+    happened on the device, as its incident's title says it (`title`, the one builder: plain
+    words, never the configuration line, which the row's cause and the incident's What's
+    wrong hold; the GUI review's item 5, C3453), then what Mercury did or would do and whether
+    a person is needed. *triggers* are its incident's, where they are held (a symptom is then
+    said by its own fields). ``""`` for an outcome it has no line for (its caller's own words
+    stand). Deterministic, from the decision alone: a reader draws it again from the record,
+    so a decision recorded before C3453 reads the same as one recorded after."""
     from modules.heal.kinds import KIND_WORDS
 
     host, outcome = d.get("device") or "the device", d.get("outcome")
     units, tier, kind = list(d.get("units") or []), int(d.get("tier") or 0), d.get("kind") or ""
+    facts = list((d.get("cause") or {}).get("facts") or [])
     changed = changes_words(units)
-    lead = f"{host}: {changed}" if changed else ""
+    lead = title(host, units, triggers, facts) if changed else ""
     if outcome == "would_heal" and lead:
         net = network or d.get("network") or "the network"
         why = (f"{net} is watching only (dry run)" if d.get("mode") != "auto" else
@@ -248,10 +439,8 @@ def headline(d: dict, network: str = "") -> str:
     if outcome == "heal" and lead:
         return f"{lead}. Mercury is putting it back itself"
     if outcome == "cant_fix" and tier >= 3 and kind in ("physical", "unknown_cause"):
-        facts = (d.get("cause") or {}).get("facts") or []
-        what = next((f["text"] for f in facts if f.get("kind") in SYMPTOMS), "") or \
-            f"{host} shows a symptom"
-        return f"{_cap(what)}. {host} itself is as intended, so no fix on {host} can cure it"
+        what = title(host, (), triggers, facts) or f"{host} shows a symptom"
+        return f"{what}. {host} itself is as intended, so no fix on {host} can cure it"
     if outcome == "cant_fix" and lead:
         return (f"{lead}. Mercury does not fix {KIND_WORDS.get(kind, kind)} by itself: it "
                 "needs a person" if tier >= 3 else

@@ -55,7 +55,10 @@ class TestTheWait:
         facts, analysis, link = (text.index("What Mercury tried:"),
                                  text.index("AI analysis: Advisory (beta)"),
                                  text.index("Open in Mercury:"))
-        assert facts < analysis < link, "Mercury's facts first, then the analysis, then the link"
+        # Premise corrected (the GUI review of 2026-11-13, item 9, EM1, the operator's approved
+        # email rules: the can't-fix's email leads with its outcome and its link): the link,
+        # then Mercury's facts, then the analysis (section 12's order of the two kept).
+        assert link < facts < analysis, "the link first, then Mercury's facts, then the analysis"
         assert "Next step: show ip interface GigabitEthernet2" in text
 
     def test_not_back_it_says_pending_then_follows_up(self, ai):

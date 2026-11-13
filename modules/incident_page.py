@@ -49,9 +49,15 @@ reaches a device, Grafana, Loki or NetBox.
 
 **A failed verify never reads "Fixed"** (the operator, 2026-11-11). An attempt that was sent
 and whose outcome is not a passed verify (rolled back, failed, partial, symptom remains,
-interrupted: `steplog.NOT_HEALED`) leaves the incident "needs a person"; its Fixed cell is
-empty with its reason, its attempt reads "applied <time> · verify failed: <reason>", and its
-TIME TO REPAIR reads "not repaired: verify failed".
+interrupted: `steplog.NOT_HEALED`) leaves the incident "needs a person"; its Fixed cell reads
+"not fixed", its Verified cell "failed" at its time, its attempt "applied <time> · verify
+failed", and its TIME TO REPAIR "not repaired".
+
+**Each fact once** (the GUI review's item 6, C3454; docs/UI_RULES.md, "Each fact appears once
+on a screen"): the header's cells and the attempt line hold state words, each reason on the
+hover; the failure's sentence is said once, in the stage where it happened, on THE stepper
+(`run_stepper.stages`), and the timeline says each attempt's outcome by its mark. Measured
+before: "verify failed" five times on the rolled-back incident's page.
 
 **The five states** (`state_of`, from the heal's own records): ``open`` (Mercury is watching
 or working), ``needs_person``, ``fixed`` (a verified fix), ``cleared`` (closed with no fix
@@ -127,8 +133,8 @@ _POLICY_BY = re.compile(r".+ \(policy set by .+\)\Z")
 #: The decision a close names, as `act`'s and `decide`'s closes end their why: "(decision
 #: hd-…)".
 _CLOSED_BY = re.compile(r"\(decision (hd-[0-9a-f]{12})\)\Z")
-#: Where a text drawn on the page stops; the whole of it is in the record.
-TITLE_CHARS = 160
+#: Where a text drawn on the page stops; the whole of it is in the record. (A title's bound
+#: is THE title builder's, `said.TITLE_MAX`.)
 REASON_CHARS = 200
 #: How many of a list the page draws before it counts the rest.
 TRIGGERS_SHOWN = 5
@@ -477,19 +483,16 @@ def ended_at(state: str, tl: dict, closed: str) -> str:
 
 def _attempts(ran: list, who: dict, kind: str) -> list:
     """One line per attempt (an act that sent something, or is running): ``{"n", "state",
-    "applied", "at", "reason", "who"}``, *state* ``verified``, ``failed`` or ``running``."""
-    from modules.heal import steplog
-
+    "applied", "at", "who"}``, *state* ``verified``, ``failed`` or ``running``. A failed one
+    says its state alone, "verify failed": why it failed is said once, in the stage where it
+    happened (the GUI review's item 6, C3454)."""
     out = []
     for a in ran:
         if not (a["sent"] or a["running"]):
             continue
         state = "running" if a["running"] else "verified" if a["passed"] else "failed"
-        reason = ""
-        if state == "failed":
-            reason = _cut(a["words"] or steplog.mark(a["outcome"], kind), REASON_CHARS)
         out.append({"n": len(out) + 1, "state": state, "applied": a["applied_at"],
-                    "at": a["ended_at"], "reason": reason, "who": _who_words(who)})
+                    "at": a["ended_at"], "who": _who_words(who)})
     return out
 
 
@@ -539,15 +542,15 @@ def _events(incident, entry: dict, decisions: list, ran: list, device: str) -> l
     for a in ran:
         if not (a["sent"] or a["running"]):
             if a["ended_at"]:
-                add(a["ended_at"], f"nothing was sent: {_cut(a['words'], REASON_CHARS)}")
+                add(a["ended_at"], "nothing was sent")
             continue
         n += 1
         if a["applied_at"]:
             add(a["applied_at"], f"attempt {n}: applied")
         if a["ended_at"]:
-            why = _cut(a["words"] or steplog.mark(a["outcome"], kind), REASON_CHARS)
+            # Its outcome by its mark ("rolled back"): why is said once, in its stage (C3454).
             add(a["ended_at"], (f"attempt {n}: verified" if a["passed"] else
-                                f"attempt {n}: verify failed: {why}"))
+                                f"attempt {n}: {steplog.mark(a['outcome'], kind)}"))
     # Its close, when a record written then says (`closed_at`): the act's record step for an
     # incident its act closed, never the act's start its store stamped.
     add(closed_at(incident, ran), "the incident closed")
@@ -611,21 +614,24 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
                        hover=(f"From Detected, when {detected['basis']}, to Verified, when "
                               f"the fix's last check passed: {seconds:,} seconds. A device's "
                               "clock is never used."))
+    # Each fact once (C3454): a cell holds its state's words, and why on its hover; the reason
+    # itself is said where it happened (a failed verify's in its stage, a decline in Decided).
     elif failed and state == "needs_person":
-        fixed = _cell("none", words="not fixed: verify failed")
-        verified = _cell("failed", failed["ended_at"], "verify failed")
-        ttr["words"] = "not repaired: verify failed"
+        why = "its verify failed: What Mercury has done says why, in the stage it failed in"
+        fixed = _cell("none", words="not fixed", hover=f"Not fixed: {why}.")
+        verified = _cell("failed", failed["ended_at"], "failed")
+        ttr.update(words="not repaired", hover=f"Not repaired: {why}.")
     elif state == "cancelled":
-        fixed = _cell("none", words="not fixed: the fix was declined")
+        fixed = _cell("none", words="not fixed", hover="Not fixed: the fix was declined.")
         verified = _cell("not_needed")
-        ttr["words"] = "not repaired: the fix was declined"
+        ttr.update(words="not repaired", hover="Not repaired: the fix was declined.")
     elif state == "cleared":
         fixed, verified = _cell("not_needed"), _cell("not_needed")
         ttr["words"] = "cleared, no repair recorded"
     elif last and not last["sent"] and not last["running"]:
-        fixed = _cell("none", words="not fixed: nothing was sent")
+        fixed = _cell("none", words="not fixed", hover="Not fixed: nothing was sent.")
         verified = _cell("not_needed")
-        ttr["words"] = "not repaired: nothing was sent"
+        ttr.update(words="not repaired", hover="Not repaired: nothing was sent.")
     else:
         fixed, verified = _cell("not_yet"), _cell("not_yet")
     closed = closed_at(incident, ran)
@@ -639,50 +645,52 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
 
 # ── The title ───────────────────────────────────────────────────────────────────────────────
 
-def _happened(incident, entry: dict, decisions: list) -> str:
-    """What happened, in words, never a bare id: "<device>: <what changed>" from the newest
-    decision's units (`said.changes_words`, as `said.headline` leads), else the symptom its
-    cause states, else "<device>: <the first trigger's words>"."""
+def _happened(incident, entry: dict, decisions: list, room: int) -> str:
+    """What happened, in plain words and at most *room* characters, from THE title builder
+    (`said.title`; the GUI review's item 5, C3453): the newest decision's units that say a
+    change ("edge-b: static route added outside Mercury"), with its cause's facts and the
+    incident's triggers, else its first symptom, else what opened it. Never the configuration
+    line, a mnemonic, a code key or an id: the line is What's wrong's."""
     from modules.heal import said
 
     inc = incident or {}
     device = inc.get("device") or entry.get("device") or "A device"
+    trig = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
+    newest = decisions[-1] if decisions else {}
     for d in reversed(decisions):
         units = [u for u in d.get("units") or [] if isinstance(u, dict)]
-        changed = said.changes_words(units) if units else ""
-        if changed:
-            return f"{device}: {changed}"
-        facts = (d.get("cause") or {}).get("facts") or []
-        symptom = next((f.get("text") for f in facts if f.get("kind") in said.SYMPTOMS
-                        and f.get("text")), "")
-        if symptom:
-            return symptom[:1].upper() + symptom[1:]
-    trig = list(inc.get("triggers") or [])
-    if trig:
-        return f"{device}: {said.symptom_words(trig[0], device)}"
-    head = str(entry.get("headline") or "")
-    return head or f"{device}: an incident whose triggers are not kept"
+        if units:
+            newest = d
+            break
+    units = [u for u in newest.get("units") or [] if isinstance(u, dict)]
+    facts = ((newest.get("cause") or entry.get("cause") or {}).get("facts")) or []
+    return (said.title(device, units, trig, facts, room=room)
+            or f"{device}: an incident whose triggers are not kept")[:room]
 
 
 def title(incident, entry: dict, decisions: list, state: str = "", who: dict = None) -> str:
-    """The page's title, built from words (the board's part C): what happened, and once the
-    incident is closed how it ended: ", and Mercury put it back" (fixed, no human), ", and it
-    was put back by <name>" (an approved fix), ", and it cleared". An action's fix (a bounce,
-    a clear) put nothing back, so it says the fix was verified."""
-    from modules.heal import steplog
+    """The page's title, at most `said.TITLE_MAX` characters (docs/UI_RULES.md, "A title is a
+    summary of at most 70 characters"; C3453), built from words (the board's part C): what
+    happened (`_happened`), and once the incident is closed how it ended: ", and Mercury put
+    it back" (fixed, no human), ", put back by <name>" (an approved fix), ", and it cleared".
+    An action's fix (a bounce, a clear) put nothing back, so it says the fix was verified.
+    The heading, the breadcrumb's last crumb and the message's lead (`heal_notice.lead`) are this
+    one string."""
+    from modules.heal import said, steplog
 
     state = state or state_of(incident, entry, decisions)
     who = who or who_of(entry, decisions)
-    what = _cut(_happened(incident, entry, decisions), TITLE_CHARS)
+    end = ""
     if state == "fixed":
-        if steplog.ACTION_FAMILY.get(entry.get("kind") or ""):
-            return f"{what}, and Mercury's fix was verified"
-        if who["kind"] == "person":
-            return f"{what}, and it was put back by {_name(who['actor'])}"
-        return f"{what}, and Mercury put it back"
-    if state == "cleared":
-        return f"{what}, and it cleared"
-    return what
+        end = (", and Mercury's fix was verified"
+               if steplog.ACTION_FAMILY.get(entry.get("kind") or "") else
+               f", put back by {_name(who['actor'])}" if who["kind"] == "person" else
+               ", and Mercury put it back")
+    elif state == "cleared":
+        end = ", and it cleared"
+    # The ending is said whole or not at all: what happened gives up its room first.
+    end = end if len(end) <= said.TITLE_MAX // 2 else ""
+    return _happened(incident, entry, decisions, said.TITLE_MAX - len(end)) + end
 
 
 # ── The page ───────────────────────────────────────────────────────────────────────────────
@@ -872,9 +880,8 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
     words = {
         # Its item's own words say what failed and what to do about it; with no item, here.
         "verify_failed": ("It needs a person." if item["state"] == "stands" else
-                          "It needs a person: a fix was applied and its verify failed. Read "
-                          f"the failed step under What Mercury has done, then {device} "
-                          "itself."),
+                          "It needs a person. Read the stage that failed under What Mercury "
+                          f"has done, then {device} itself."),
         "proposal": "It needs a person: a fix waits for a person's decision. Nothing is sent "
                     "until it is approved.",
         "decided": "It needs a person.",
@@ -1076,6 +1083,14 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
                                                 diagnosis=attached))
                  if attached or A.is_cant_fix(outcome) else None)
     pol = entry.get("policy") or newest.get("policy") or {}
+    # The configuration line is What's wrong's, never the title's (C3453): its cause's facts
+    # say it where a cause is kept; a decision kept without one says it here.
+    cause = said.drawn(newest.get("cause") or entry.get("cause"))
+    told = " ".join(f["text"] for f in (cause or {}).get("facts") or [])
+    with_units = next((d for d in reversed(decisions)
+                       if any(isinstance(u, dict) for u in d.get("units") or [])), {})
+    changed = said.changes_words([u for u in with_units.get("units") or []
+                                  if isinstance(u, dict)])
     model = dict(
         base, title=title(found["incident"], entry, decisions, state, tl["who"]),
         state=state, state_words=st["words"],
@@ -1104,7 +1119,9 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
         related=[{"incident": r.get("incident") or "", "device": r.get("device") or "",
                   "why": r.get("why") or ""} for r in inc.get("related") or []
                  if HI.match(str(r.get("incident") or ""))][:MEMBERS_SHOWN],
-        wrong={"cause": said.drawn(newest.get("cause") or entry.get("cause")),
+        wrong={"cause": cause,
+               "change": (f"What changed on {device}: {changed}."
+                          if changed and changed not in told else ""),
                "words": (newest.get("outcome_words") or entry.get("outcome_words")
                          or (newest.get("words") if not entry else "") or ""),
                # Said only while that IS the page's state (`status`: watching), never beside

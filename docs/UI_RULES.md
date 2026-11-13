@@ -159,18 +159,31 @@ proposes (none is written yet). The rules above stay as they are, word for word.
   incident), and a dry-run record's Right and Wrong…, two answers with no primary.]
 - **Each fact once, measured:** an outcome ("verify failed") is drawn at most twice on a
   screen, once as a state word in a header cell and once with its reason in its stage
-  (measured: five times on the rolled-back incident). [Proposed test: the rolled-back
-  incident's page holds "verify failed" at most twice.]
+  (measured: five times on the rolled-back incident). [Built with the review's item 6 (C3454):
+  the header's cells and the attempt line say the state, the reason on the hover; a failure's
+  why is said once, by the first stage that failed, and a later stage says its state alone
+  (`run_stepper.stages`). tests/test_incident_titles.py: every planted incident's page says
+  "verify failed" at most once (each failed verify exactly once) and each failed step's words
+  at most once, on the page and on the card its device's History reopens.]
 - **The stepper never says "failed" for a decision that worked:** a can't-fix stage reads
-  "Can't fix: needs a person", not "Decide failed". [Proposed test: the planted can't-fix
-  incident's stepper holds no "failed".]
+  "Can't fix: needs a person", not "Decide failed". [Built with the review's item 6 (C3454): a
+  decision's can't-fix is the stepper's `needs` state (`run_card.DECISION_NEEDS`), amber
+  (`--warn-mark`), never red; a stage's sentence is at most `run_stepper.STAGE_SAID_WORDS` (12)
+  words, its whole one level down. tests/test_incident_titles.py: the planted can't-fix
+  incidents' stepper holds no "failed", the stage's words and class, the CSS token, and every
+  planted page's stages within 12 words.]
 
 ### Words on the page
 
 - **A title is a summary of at most 70 characters;** a configuration line, a command or an id
   is in the body, never the h1 or the breadcrumb's last crumb (measured: the incident titles
-  are the configuration line, 95 characters, two lines at 1280 px). [Proposed test: every
-  recorded screen's h1 is at most 70 characters.]
+  are the configuration line, 95 characters, two lines at 1280 px). [Built for incidents with
+  the review's item 5 (C3453): ONE title builder, `said.title`, for the incident page's h1, its
+  breadcrumb's last crumb (cut with an ellipsis, the whole on hover), the email's lead and the
+  lines Needs attention and History lead with. tests/test_incident_titles.py: every planted
+  incident's title at most 70 characters, holding none of its records' lines and no mnemonic,
+  code key, id or address, and its h1 one line at 1280 px in Firefox. Every other recorded
+  screen's h1: not measured yet.]
 - **Mode and state words have one spelling:** Off, Dry run, Auto (never "AUTO", "auto",
   "dry_run" on a screen or in an email). [Proposed test: a scan of the recorded screens' text
   and the email for `\bAUTO\b`, `dry_run`, `cant_fix`.]
@@ -198,8 +211,14 @@ proposes (none is written yet). The rules above stay as they are, word for word.
 - **Choices of one decision are drawn alike and together:** AI troubleshooting's Retry with
   more information…, Cancel and Hand over… are three buttons in one row, left to right in
   that order, each opening its modal (today two are disclosure triangles and one a button,
-  spread across the row) (Nielsen 4, consistency). [Proposed test: inside `#inc-ai` every
-  choice is a `button`.]
+  spread across the row) (Nielsen 4, consistency). [Built with the review's item 8 (C3455):
+  the three are one row of secondary buttons, each opening its modal anchored to it
+  (`templates/v2/_modal.html`, v2's first; static/js/nmas_v2.js, "The modal"), Cancel's modal
+  its confirm, and the section draws no primary, so What to do's is the page's one.
+  tests/test_fixit_section_v2.py: `TestTheChoices` (the row, alike, none primary, each naming
+  its modal) and, in Firefox, `TestTheModals` (each opens as a modal on its press, anchored,
+  the focus inside; Escape closes it, the focus back on its button; a confirm's answer drawn
+  in place, the focus on it). Every other "…" control in section 2.9's list: not built.]
 - **A destructive action that reaches everything sits first in its own danger card,** never
   after the last card of a long page (Stop self-healing everywhere…). [not mechanised]
 

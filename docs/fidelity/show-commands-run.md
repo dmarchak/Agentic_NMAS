@@ -31,7 +31,13 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `212ab38243a2cd8eba782686817d5d025b94402d894799f1af7f8eed869ebd9e`
+Templates sha256: `ac5f63296228f8a71f8347d8224fb23239f2dddec385bdeb658e8c8e07fbdc29`
+
+**Hashed again 2026-11-13 for the one stepper's stages** (C3454, docs/fidelity/stepper.md): a
+stage draws its whole sentence one level down where its line was cut. This page draws the
+stepper's bar and counts (`run_summary`), which did not change, so no region here moved and
+every verdict stands. Templates sha256 before:
+`212ab38243a2cd8eba782686817d5d025b94402d894799f1af7f8eed869ebd9e`.
 
 **Hashed again 2026-11-12 for the one stepper's stages** (C3159 to C3163;
 docs/fidelity/stepper.md): the macro draws a run from its own record as its stages, in place

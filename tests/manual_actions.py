@@ -88,6 +88,13 @@ NOT_AN_OPERATION = {
     ("_credential_read_account.html", "Cancel"): "draws the Read-only account card again "
                                                  "without the form: nothing was saved (H28)",
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
+    # C3455: AI troubleshooting's choices open modals (`_modal.html`); each closes by its own
+    # button or Escape, the opener given the focus back.
+    ("_fixit_section.html", "Cancel"): "closes Retry with more information's or Hand over's "
+                                       "modal: nothing was asked, kept or sent, and what was "
+                                       "typed stays for when it is opened again",
+    ("_fixit_section.html", "Keep troubleshooting"): "closes Cancel's confirm: nothing was "
+                                                     "recorded",
     ("_sdn_settings.html", "Cancel"): "draws the SDN controllers card again (leaving Edit or "
                                       "Remove…), writing nothing",
     # Board H's Self-healing tab and Notifications (H9).

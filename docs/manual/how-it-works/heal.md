@@ -213,9 +213,12 @@ not drawn live while it runs.
 yet** for every person until each has opened it (nobody started it, so it is everybody's to
 read), and the device's page opens its card: the outcome first (green only for healed; amber
 for a heal partly shown or whose symptom remains; red for nothing sent, a rollback or a
-failure), who it was by and when it started and ended, then its five stages. A failure is named
-at its stage, with why, in one line ("Apply failed: …"); Done is never green over a partial or a
-failure. What a step that did not pass read sits under that step alone, closed, as **What it
+failure), who it was by and when it started and ended, then its five stages, each said in at
+most 12 words (the Decided stage names the fix in plain words, "Heal: remove the static
+route"; the lines it sends are in its steps, one level down). A failure is named at its stage,
+with why, in one line ("Apply failed: …"), the whole of why on its step's line when the stage
+is opened; a later stage that failed too says only that it failed ("Check intent failed"), so
+the failure is said once. Done is never green over a partial or a failure. What a step that did not pass read sits under that step alone, closed, as **What it
 read** (its checks, one line saying its reads, and every read one level further down); a step
 that passed shows no checks. The card is kept for 30 minutes in the running app's memory; after
 that, or after Mercury restarts, the run's row on the device's History (or on History, kind
@@ -227,13 +230,17 @@ outcome is its Needs attention row, which stays until a person acknowledges it o
 ends healed; opened, the row says why it stopped and carries one closed line under it, **The
 steps Mercury took: stopped at <step> · N steps · Show**, which opens the same stages (the
 decision's steps, the one it stopped at named); the team's notice carries each step and its
-result ([Notifications](notifications)).
+result ([Notifications](notifications)). The decision worked: it decided that a person is
+needed, so its Decided stage reads **Can't fix: needs a person**, in amber, and its Decide step
+"needs a person", never "failed" in red.
 
 ## The records {#records}
 
 Every incident is one row on **History**, kind Self-healing, its line the newest outcome with
 the mode on it ("dry run" is never read as Auto). A decision's own outcome (would have put it
-back, a proposal, can't fix) leads with what happened in plain words. Opened, the row says what
+back, a proposal, can't fix) leads with what happened in plain words, the incident's own title
+("edge-b: static route added outside Mercury"), never the configuration line, which its detail
+quotes; its Needs attention item leads with the same words. Opened, the row says what
 happened (each fact at its time, then a likely cause labelled as a hypothesis where Mercury
 holds both ends of one) and what Mercury did or would do. **Details for the record**, closed
 until you open it, holds every step and its result (a step that read says its reads after its

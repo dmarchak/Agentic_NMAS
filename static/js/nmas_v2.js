@@ -2396,6 +2396,118 @@
     if (jumpToCite(root.document, citeTarget(a.getAttribute('href')))) e.preventDefault();
   }
 
+  /* THE MODAL (the operator's rule of 2026-11-12, docs/UI_RULES.md: an action's confirm
+     "opens as a MODAL over the page, anchored to the action, with focus moved into it, and
+     closed by Cancel or Escape"; templates/v2/_modal.html). A native <dialog> opened by
+     showModal(): the page behind it is inert, so Tab stays inside it, and the browser's own
+     Escape closes it. Placed beside its opener (`modalPlace`), and again as the window scrolls
+     or resizes. Closed by Cancel or Escape, the opener has the focus back. A press inside it
+     that redraws its region takes the modal away with the old region: the focus goes to the
+     answer drawn in place (`.set-result`), else to the opener drawn again. A press that could
+     not be answered closes it, so the region's "Couldn't …" is read. While it is open it holds
+     a live redraw of its region as a card under review does (`data-holds-live`). */
+  var MODAL_GUTTER = 16, MODAL_GAP = 6;
+  var modalPress = null;    // {dlg, key, region} of the press a modal is waiting on
+
+  /* PURE: where a modal of size *box* ({w, h}) sits for an opener at *at* (its rectangle) in a
+     window *view* ({w, h}): just below the opener, else just above it, else as low as it fits;
+     its left edge at the opener's; always inside the window's gutters. {top, left} in px. */
+  function modalPlace(at, box, view) {
+    var g = MODAL_GUTTER;
+    var left = Math.max(g, Math.min(at.left, view.w - g - box.w));
+    var below = at.bottom + MODAL_GAP, above = at.top - MODAL_GAP - box.h;
+    var top = below + box.h <= view.h - g ? below
+      : (above >= g ? above : Math.max(g, view.h - g - box.h));
+    return {top: Math.round(top), left: Math.round(left)};
+  }
+
+  function placeModal(dlg) {
+    var opener = dlg.nmasOpener;
+    if (!opener || !opener.isConnected) return;
+    var r = opener.getBoundingClientRect(), b = dlg.getBoundingClientRect();
+    var at = modalPlace(r, {w: b.width, h: b.height},
+                        {w: root.document.documentElement.clientWidth, h: root.innerHeight});
+    dlg.style.top = at.top + 'px';
+    dlg.style.left = at.left + 'px';
+  }
+
+  function placeOpenModals() {
+    var open = root.document.querySelectorAll('dialog.modal[open]');
+    for (var i = 0; i < open.length; i++) placeModal(open[i]);
+  }
+
+  function openModal(opener) {
+    var id = opener.getAttribute('data-modal-open');
+    var dlg = id ? root.document.getElementById(id) : null;
+    if (!dlg || !dlg.showModal || dlg.open) return false;
+    dlg.nmasOpener = opener;
+    dlg.setAttribute('data-holds-live', '1');
+    dlg.showModal();
+    placeModal(dlg);
+    var first = dlg.querySelector('[data-modal-focus]');
+    if (first && first.focus) {
+      try { first.focus({preventScroll: true}); } catch (x) { first.focus(); }
+    }
+    return true;
+  }
+
+  function modalClosed(e) {
+    var dlg = e.target;
+    if (!dlg || !dlg.classList || !dlg.classList.contains('modal')) return;
+    dlg.removeAttribute('data-holds-live');
+    var opener = dlg.nmasOpener;
+    dlg.nmasOpener = null;
+    if (opener && opener.isConnected && opener.focus) {
+      try { opener.focus({preventScroll: true}); } catch (x) { opener.focus(); }
+    }
+  }
+
+  function modalClicked(e) {
+    var t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    var opener = t.closest('[data-modal-open]');
+    if (opener) {
+      if (!opener.disabled && openModal(opener)) e.preventDefault();
+      return;
+    }
+    var dlg = t.closest('dialog.modal');
+    if (!dlg || !dlg.open) return;
+    if (t.closest('[data-modal-close]')) { e.preventDefault(); dlg.close(); return; }
+    // "How does this work?" opens beside the page, which the open modal holds inert: the
+    // modal closes first (what was typed in it stays, for when it is opened again).
+    if (t.closest('.how-link')) dlg.close();
+  }
+
+  function modalAsked(e) {
+    var d = e.detail || {}, el = d.elt;
+    var dlg = el && el.closest ? el.closest('dialog.modal') : null;
+    if (!dlg || !dlg.open || !isWrite((d.requestConfig || {}).verb)) return;
+    modalPress = {dlg: dlg, key: dlg.nmasOpener ? dlg.nmasOpener.getAttribute('data-modal-open') : '',
+                  region: d.target && d.target.id ? d.target.id : ''};
+  }
+
+  function modalAnswered(e) {
+    var p = modalPress, d = e.detail || {};
+    if (!p || !d.elt || !p.dlg.contains(d.elt)) return;
+    if (p.dlg.isConnected && p.dlg.open && !d.successful) {
+      modalPress = null;
+      p.dlg.close();
+    }
+  }
+
+  function modalSettled(e) {
+    var p = modalPress, by = askedBy(e.detail || {}, e);
+    if (!p || !by || !p.dlg.contains(by)) return;     // another swap's settle (a live redraw)
+    modalPress = null;
+    if (p.dlg.isConnected) return;                   // answered inside the modal: it stays
+    var region = p.region ? root.document.getElementById(p.region) : null;
+    if (!region) return;
+    var to = region.querySelector('.set-result');
+    if (to) to.setAttribute('tabindex', '-1');
+    else if (p.key) to = region.querySelector('[data-modal-open="' + p.key + '"]');
+    if (to && to.focus) to.focus();
+  }
+
   /* A page the browser RESTORES from its back/forward cache comes back with its
      script state as it was left, and its live channel closed: a wait that
      ended hours ago still reads "waiting", with Stop waiting beside it (the
@@ -2450,6 +2562,15 @@
     root.document.addEventListener('htmx:configRequest', keyThePress);
     root.document.addEventListener('click', resumeHeld);
     root.document.addEventListener('click', citeClicked);
+    // The modal: opened and closed by its buttons; `close` does not bubble, so it is heard in
+    // the capture phase; placed again as the window scrolls or resizes.
+    root.document.addEventListener('click', modalClicked);
+    root.document.addEventListener('close', modalClosed, true);
+    root.document.addEventListener('htmx:beforeRequest', modalAsked);
+    root.document.addEventListener('htmx:afterRequest', modalAnswered);
+    root.document.addEventListener('htmx:afterSettle', modalSettled);
+    root.document.addEventListener('scroll', placeOpenModals, true);
+    if (root.addEventListener) root.addEventListener('resize', placeOpenModals);
     // `toggle` does not bubble: heard in the capture phase.
     root.document.addEventListener('toggle', aiSpendToggled, true);
     root.document.addEventListener('nmas:ai_calls', aiSpendPanel);
@@ -2494,7 +2615,7 @@
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
                   reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey,
-                  citeTarget: citeTarget, jumpToCite: jumpToCite,
+                  citeTarget: citeTarget, jumpToCite: jumpToCite, modalPlace: modalPlace,
                   // C2810's merge, for its tests in a real browser.
                   keyOf: keyOf, capture: capture, mergeInto: mergeInto};
 })(typeof window !== 'undefined' ? window : this);

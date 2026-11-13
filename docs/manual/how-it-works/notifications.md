@@ -5,9 +5,10 @@ know: a can't-fix, a fix waiting for a person, a network halted or a device held
 heal, and an incident cleared. Who is told, and about which events, is chosen on each network's
 **Self-healing** tab (**Who is told**); the teams, their addresses and webhooks and the email
 relay are on Settings › Installation › **Notifications** ([Notifications](settings#notifications)).
-A message carries Mercury's facts and a link, never a configuration line or a secret.
+A message carries Mercury's facts and a link, never a configuration line or a secret; a
+can't-fix's leads with its outcome and the link.
 
-![A notification of a can't-fix: the notifier finds each new can't-fix recorded in the last ten minutes and not yet told, and takes it once under the store's lock; if the network's AI analysis is on it starts it as a background call and waits for it at most 60 seconds; it then sends Mercury's facts, the analysis or its state (pending, not run, couldn't analyse), and the link, to the network's team: an email through the relay and each webhook, signed; each attempt is a row in the delivery log, a failure tried three times and then raised under Needs attention; a pending analysis that arrives later is sent on the same thread. Nothing reaches a device.](diagrams/notifications.svg)
+![A notification of a can't-fix: the notifier finds each new can't-fix recorded in the last ten minutes and not yet told, and takes it once under the store's lock; if the network's AI analysis is on it starts it as a background call and waits for it at most 60 seconds; it then sends the outcome and the link first, then Mercury's facts, then the analysis or its state (pending, not run, couldn't analyse), to the network's team: an email through the relay and each webhook, signed; each attempt is a row in the delivery log, a failure tried three times and then raised under Needs attention; a pending analysis that arrives later is sent on the same thread. Nothing reaches a device.](diagrams/notifications.svg)
 
 ## A can't-fix, told {#cant-fix}
 
@@ -36,23 +37,33 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
    asks for no read.
 6. `wait`: it waits for the analysis for up to 60 seconds, never longer, so a slow model never
    holds the notice.
-7. `send`: it sends Mercury's facts first (what was detected, Mercury's diagnosis by each
-   hypothesis's rule, the ends it read and its strength, then the steps tried and their
-   results), then the analysis, or its state (pending, not run, couldn't analyse), then the link
-   to the incident, to every destination of the network's team that is verified and on. A
-   diagnosis not finished in time is said so, and follows as its own event.
+7. `send`: it sends the outcome and the link to the incident first, then Mercury's facts (what
+   was detected, Mercury's diagnosis by each hypothesis's rule, the ends it read and its
+   strength, then the steps tried and their results), then the analysis, or its state
+   (pending, not run, couldn't analyse), to every destination of the network's team that is
+   verified and on. A diagnosis not finished in time is said so, and follows as its own event.
 8. `follow_up`: when a pending analysis arrives, it is sent on the same thread.
 
-The email's subject is "[Mercury] <device> on <network>: could not fix". Its text says, in
-order: what happened, the outcome, what was detected and when, the fix kind, Mercury's
-diagnosis, then **What Mercury tried**: every step the incident's record holds, in order, one
-line each, as the device page's stepper says it: the time it was recorded, the step's short
-label ("Read edge-b", "Decide"), what it recorded, and its result in words ("done", "failed",
-"not fully done"). Then what to do, the AI analysis or its state, **Open in Mercury**, the
-incident's own page (`/v2/incident/<id>` on its network, [An incident's page](incident)),
-which draws the incident's stages from its step log after any restart, and the incident's id
-with when it was sent. One function builds that address, so a can't-fix's email, an action's
-end and their webhooks all link the same page.
+The email's subject is "[Mercury] <device> on <network>: could not fix". Its first three
+lines say what you need: what happened and the outcome in one sentence ("edge-b: “(a
+configuration line, withheld)” was added to interface GigabitEthernet2. Mercury cannot fix
+this yet: removing that kind of line has not been measured on IOS-XE; nothing was sent"),
+**What to do**, and **Open in Mercury**, the incident's own page (`/v2/incident/<id>` on its
+network, [An incident's page](incident)), which draws the incident's stages from its step log
+after any restart. One function builds that address, so a can't-fix's email, an action's end
+and their webhooks all link the same page. Then the facts: what happened in full (when, and
+who the change's log line names), what was detected and when, the fix kind, Mercury's
+diagnosis, then **What Mercury tried**: every step the incident's record holds, in order, as
+the device page's stepper labels it ("Read edge-b", "Decide"), the steps recorded in one
+minute on one line with that time, each with its result in words ("done", "failed", "not
+fully done"). A step that ended done is said by its label alone, and a step whose words would
+repeat the outcome by its label and result, since the first line says it once; what each step
+recorded is on the incident's page. Then the AI analysis or its state, and when the email was
+sent.
+The email says it all in plain words: a platform by its name (IOS-XE), never a code key, a
+log's mnemonic or the AI's model. When a removal Mercury would need is not measured on the
+device's platform, the email says so and nothing more: measuring it is not a screen in Mercury
+yet, so the email names no command to run.
 Every time is in the time zone of the host Mercury runs on, named once on the last line ("Times
 are in …"); a time on the other side of a daylight-saving change says its own zone beside it.
 People are named by their display name, never by their sign-in identity; in anything the

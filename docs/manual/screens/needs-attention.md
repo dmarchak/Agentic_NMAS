@@ -11,7 +11,10 @@ The landing page answers one question: does anything need you?
   this browser. A severity with nothing in it has no section. The line above them counts each
   severity, and when an operation such as a Reload is running, says how many of its expected
   effects are held for it, linked to its card: they are never rows here.
-- **One line per item:** its severity, what it is, how long ago it began, and its first action
+- **One line per item:** its severity, what it is (a self-healing item leads with its
+  incident's own title, in plain words, "edge-b: static route added outside Mercury", then what
+  Mercury did or would do; the configuration line is in its cause and on the incident's page),
+  how long ago it began, and its first action
   (**Open <device>**, or its own page), which works without opening the item. While a run holds
   the device an item's action would change, the action is not offered: a second line under
   the item's title reads "<run> running since <time>, by <who>", and the right side of the

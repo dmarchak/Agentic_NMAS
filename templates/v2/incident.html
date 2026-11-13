@@ -39,7 +39,10 @@
 {#- C3290: every instant a builder wrote into the page's words (a step's "… · <iso>", a
     hand-over's time) is drawn by the clock, in the viewer's zone, its UTC on the hover. -#}
 {%- filter times %}
-<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><span>{{ p.title if p.kind == 'page' else 'Incident ' ~ p.id }}</span></nav>
+{#- The last crumb is the heading's own title (`incident_page.title`, at most 70 characters:
+    C3453), cut with an ellipsis where the row is narrower, the whole on its hover. -#}
+{%- set crumb = p.title if p.kind == 'page' else 'Incident ' ~ p.id %}
+<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><span class="crumb-last" title="{{ crumb }}">{{ crumb }}</span></nav>
 {%- if p.kind == 'other_kind' %}
 <div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
 <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>This kind of incident's page comes with S4.</strong> Only a self-healing incident (an id beginning <span class="mono">hi-</span>) has a page yet; an alert incident (<span class="mono">al-</span>) and an SDN incident (<span class="mono">resp-</span>) get theirs in a later slice of the incident page. Until then they are on <a href="{{ url_for('v2.landing') }}">Needs attention</a>.</div></div>
@@ -85,7 +88,8 @@
   <p class="inc-attempt inc-attempt-{{ a.state }}" data-attempt="{{ a.n }}">Attempt {{ a.n }}:
     {%- if a.state == 'running' %} running now{% if a.applied %}, applied {{ at(a.applied) }}{% endif %}
     {%- elif a.state == 'verified' %} applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verified {% if a.at %}{{ at(a.at) }}{% else %}at an unrecorded time{% endif %}
-    {%- else %} <strong>applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verify failed:</strong> {{ a.reason }}
+    {#- Its state alone: why it failed is said once, in the stage it failed in (C3454). -#}
+    {%- else %} <strong>applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verify failed</strong>
     {%- endif %}{% if a.who %} · {{ a.who }}{% endif %}</p>
   {%- endfor %}
 </section>
@@ -112,9 +116,12 @@
   {%- if fx.unseen %}<p class="fix-unseen small muted">{{ fx.unseen }}</p>{% endif %}
   {%- endif %}
   {%- if p.wrong.cause %}{{ heal_cause(p.wrong.cause) }}{% endif %}
+  {#- The configuration line, where no cause kept says it (the title says what changed in
+      plain words, never the line: C3453). -#}
+  {%- if p.wrong.change %}<p class="inc-change">{{ p.wrong.change }}</p>{% endif %}
   {%- if p.wrong.words %}<p>{% if p.closed_at %}Decided then: {% endif %}{{ p.wrong.words }}.</p>{% endif %}
   {%- if p.wrong.watching %}<p>{{ p.wrong.watching }}</p>{% endif %}
-  {%- if not (fx or p.wrong.cause or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
+  {%- if not (fx or p.wrong.cause or p.wrong.change or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
 </section>
 <section class="card" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
   <div class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</div>
@@ -272,7 +279,10 @@
   {#- C3290: a record's value that is an instant, or words with instants in them ("… · <iso>"),
       is drawn by the clock (`times`); its identities stay as recorded, so no `people`. -#}
   <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v | times }}</dd>{% endfor %}
-    {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}</dl>
+    {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}
+    {#- The proposed fix's parameter hash (the GUI review's AI3, C3455): the proposal's warning
+        says only that it repeats; the hash it was compared by is here. -#}
+    {%- set fxp = p.fixit.proposal or {} %}{% if fxp.flag and fxp.flag.params_hash %}<dt>Proposed fix's parameter hash</dt><dd><span class="mono">{{ fxp.flag.params_hash }}</span> · proposal {{ fxp.id }}{% if fxp.flag.kind == 'repeat' %} · the same as attempt {{ fxp.flag.attempt }}'s{% endif %}</dd>{% endif %}</dl>
 </details>
 </div>
 {%- endif %}

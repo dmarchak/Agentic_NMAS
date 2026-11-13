@@ -587,7 +587,15 @@ class TestAHealsOutcome:
         assert 'class="run-stage run-stage-failed" data-stage="fixing" data-lead="apply"' in body
         said = fixing[fixing.index('class="run-stage-said"'):]
         said = said[:said.index("</span>")]
-        assert 'role="alert">Apply failed: ' in said and "so what landed was undone" in said
+        # Premise corrected again (the GUI review's item 6, C3454, the approved rules "a
+        # stepper uses labels of 2 to 4 words", its detail at most about 12, and "Each fact
+        # appears once"): the line names the Apply and the start of why, at most
+        # `STAGE_SAID_WORDS` words; the whole why is the Apply's own line, one level down.
+        from modules import run_stepper as RS
+        assert 'role="alert">Apply failed: ' in said
+        assert RS.said_words(said.split(">", 1)[1]) <= RS.STAGE_SAID_WORDS
+        assert fixing.count("so what landed was undone") == 1
+        assert "so what landed was undone" in fixing.split('data-step="apply"', 1)[1]
         assert drawn_steps(body)["intent"] == "failed"
         assert stage_states(body)["done"] == "failed", "nothing green"
 
@@ -630,7 +638,10 @@ class TestACantFixsSteps:
         taken = r["steps_taken"]
         assert taken, "the row carries no steps taken"
         assert taken["ended"] and taken["rows"][0]["group"] == "failed", "never green"
-        assert taken["lead"]["state"] == "failed" and taken["lead"]["why"], taken["lead"]
+        # Premise corrected (the GUI review's item 6, C3454, the approved rule "The stepper
+        # never says "failed" for a decision that worked"): its decision leads, needing a
+        # person, never failed.
+        assert taken["lead"]["state"] == "needs" and taken["lead"]["why"], taken["lead"]
         said = [t["key"] for t in taken["trail"]]
         assert said[:2] == ["claim", "stops"] and said[-1] == "record", said
         assert len(taken["trail"]) == len(r["operands"]["steps"]), "every recorded step"
@@ -690,8 +701,17 @@ class TestACantFixsSteps:
         facts = N.facts("Default", entry)
         assert len(facts["steps"]) == len(entry["steps"]) > 2
         text = message.text(message.check_event(facts))
+        # Premise corrected (the GUI review of 2026-11-13, item 9, EM3, the operator's approved
+        # email rules: one minute's steps are one line with that time, a step that ended done
+        # said by its label, a step repeating the outcome by its label and result): every step
+        # by its label, in order, each followed in its segment by its result.
+        import re
+        tried = text.split("What Mercury tried:\n", 1)[1].split("\n\n", 1)[0]
+        at = 0
         for s in facts["steps"]:
-            assert f"{s['said']}: {s['result']}" in text, "each step and its result"
+            at = tried.index(s["label"], at) + len(s["label"])
+            assert re.split(r"; |\n", tried[at:], maxsplit=1)[0].endswith(f": {s['result']}"), \
+                ("each step and its result", s, tried)
 
 
 # ── The shape: a job that names its device names its card ───────────────────────────────────

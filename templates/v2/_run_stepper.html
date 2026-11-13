@@ -79,6 +79,9 @@
       <summary><span class="run-mark run-mark-{{ g.state }}" aria-hidden="true"></span><span class="run-stage-name">{{ g.name }}<span class="sr-only"> ({{ g.state_words }})</span></span>
         <span class="run-stage-said"{% if g.state == 'failed' %} role="alert"{% endif %}>{{ g.sentence }}{% if g.wait %} · <span class="run-left" data-run-wait-began="{{ g.wait.began }}" data-run-wait-s="{{ g.wait.length_s }}"{% if g.wait.bound %} data-run-wait-bound="1"{% endif %}>{{ g.wait.words }}</span>{% endif %}</span>
         <span class="run-stage-time">{% if g.began %}{{ clock(g.began) }}{% endif %}{% if g.state == 'running' and g.since %} · <span class="run-took" data-run-since="{{ g.since }}">{{ g.took_s }} s</span>{% elif g.took_words %} · {{ g.took_words }}{% endif %}</span></summary>
+      {#- The stage's own sentence whole, where its line was cut at `run_stepper.STAGE_SAID_WORDS`
+          words (C3454): one level down, above its steps. -#}
+      {%- if g.long %}<p class="run-stage-long">{{ g.long }}</p>{% endif %}
       <ol class="run-stage-list" aria-label="{{ g.name }}'s steps">
         {%- for s in g.steps %}
         <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.long %} title="{{ s.long }}"{% endif %}><strong>{{ s.words }}</strong> ({{ s.state_words }}){% if s.at %} <span class="run-at">{{ clock(s.at) }}</span>{% endif %}{% if s.said and s.state != 'running' %}: {{ s.said }}{% elif s.note %}: {{ s.note }}{% endif %}

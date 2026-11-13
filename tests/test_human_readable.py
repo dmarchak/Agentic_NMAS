@@ -433,9 +433,6 @@ KNOWN_BARE_IDENTIFIERS = {
     ('device', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
     ('device', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s # min'): 1,
     ('device', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
-    # The can't-fix's email: the incident's id in the foot (the same one, its context's words
-    # moved 2026-11-12, C3187: the sent time local, the zone's line after it).
-    ('email', 'incident_id', 'is not set: notify_link_base) Incident <incident_id> · sent #-#-# #:# Times are in'): 1,
     # History: the AI call and notification rows, and the Person filter's choice.
     ('history', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
     ('history', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
@@ -457,18 +454,24 @@ def _literal(counter) -> str:
 #: C2817: each record's line in plain words (the mocks' rows), the same on Needs attention and
 #: History. C2839: a security ACL is Tier 2, a person's, and this one is not fixed until its
 #: removal shape is measured.
-CANT_FIX = ("edge-d: “ip access-group EDGE-IN in” was added to interface GigabitEthernet2. "
-            "Mercury cannot fix it by itself: it needs a person")
-WOULD_HEAL = ("edge-b: “ip route 192.0.2.128 255.255.255.128 192.0.2.10” was added to the global "
-              "configuration. Mercury would have put it back itself, but Default is watching "
-              "only (dry run), so nothing was sent")
+#: Premise corrected (the GUI review's item 5, C3453, the approved rule "A title is a summary of
+#: at most 70 characters", never a configuration line): each line leads with its incident's
+#: title in plain words; the configuration line is its cause's.
+CANT_FIX = ("edge-d: access list added on GigabitEthernet2 outside Mercury. Mercury cannot fix "
+            "it by itself: it needs a person")
+WOULD_HEAL = ("edge-b: static route added outside Mercury. Mercury would have put it back "
+              "itself, but Default is watching only (dry run), so nothing was sent")
 DRAWS = {
     "needs_attention": (CANT_FIX, "Mercury has a fix that restarts OSPF on edge-c: it needs your "
                                   "decision", WOULD_HEAL, "Approve and run on edge-c"),
     "history": (WOULD_HEAL, CANT_FIX),
     "device": (WOULD_HEAL, CANT_FIX),
-    "email": ("Mercury: could not fix", "What happened: ", "What Mercury tried:",
-              "Open in Mercury:"),
+    # Premise corrected (the GUI review of 2026-11-13, item 9, EM1: the can't-fix's email
+    # leads with what happened and the outcome, in place of its "Mercury: could not fix" head).
+    # And C3453's: the lead is the incident's title in plain words, so no line is withheld.
+    "email": ("edge-d: access list added on GigabitEthernet2 outside Mercury. Mercury cannot "
+              "fix this yet", "What happened: ",
+              "What Mercury tried:", "Open in Mercury:"),
 }
 
 

@@ -23,9 +23,15 @@ SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
 ## The header {#header}
 
-The title says what happened in words, and once the incident is resolved how it ended: "and
-Mercury put it back", "and it was put back by" the person who approved the fix, or "and it
-cleared". Under it:
+The title says what happened in plain words, at most 70 characters on one line: the device,
+then what changed ("edge-b: static route added outside Mercury"), the symptom when nothing
+changed ("edge-b: OSPF neighbour core-a lost"), or what opened it ("edge-b: configuration
+changed outside Mercury"). It never quotes a configuration line, a log's code or an id: the
+line itself is under [What's wrong](#whats-wrong). Once the incident is resolved the title says
+how it ended: "and Mercury put it back", "put back by" the person who approved the fix, or "and
+it cleared". The same title is the last step of the breadcrumb above it, cut with "…" where the
+row is narrow (hover over it for the whole), and it leads the incident's line on Needs
+attention and on History, and the email that tells the team. Under it:
 
 - **The state**, one of five, said once for the whole page ([One state](#one-state)).
   **Open**: Mercury is watching it or working on it, or a fix a person approved is running or
@@ -53,11 +59,15 @@ cleared". Under it:
   network's policy, or "… · approved by" the person who approved the fix. A stage that has not
   happened reads "not yet", and one that was never needed reads "not needed".
 - **One line per attempt**: "applied <time> · verified <time>", or "applied <time> · verify
-  failed:" with the run's own reason.
+  failed".
 
 **A failed verify never reads Fixed.** When a fix was applied and its verify failed, the state
-is Needs a person, the Fixed time is empty with "not fixed: verify failed", the Verified cell
-says the verify failed and when, and TIME TO REPAIR reads "not repaired: verify failed".
+is Needs a person, the Fixed cell reads "not fixed", the Verified cell "failed" and when, and
+TIME TO REPAIR "not repaired"; hover over a cell for why.
+
+**Each fact is said once.** The header's cells and the attempt line say only the state; why a
+fix failed is said once, in the stage of What Mercury has done where it failed (open the stage
+for the whole of it). The timeline says each attempt's outcome ("attempt 1: rolled back").
 
 Every time is drawn in your own time zone; hover over one for its UTC time. People are named
 by their display name.
@@ -87,7 +97,9 @@ on a resolved incident and collapsed on one still open.
 ## What's wrong {#whats-wrong}
 
 What happened, as the decision stated it: the facts in time order, then what Mercury decided
-to do about it. On a resolved incident the heading reads "What's wrong (was)".
+to do about it. The configuration line the title names in plain words is quoted here (a
+decision recorded without its facts says it as "What changed on <device>: …"). On a resolved
+incident the heading reads "What's wrong (was)".
 
 For a lost telemetry stream it leads with what its Needs attention item says: how long the
 device has sent nothing to the collector and what that costs, whether the device answers
@@ -98,8 +110,11 @@ and what Mercury cannot see until the stream is back.
 
 The outcome, then the same five stages the heal's card on
 the device's page draws: **Detected**, **Decided**, **Fixing**, **Checking** and **Done**,
-each with one sentence, its time and its state. Open a stage for its steps. A failed stage
-names its step and why, once. Fixing's time is the whole fix, any wait inside its verify
+each with one sentence of at most 12 words, its time and its state. Open a stage for its
+steps, and for the whole of a sentence that was cut with "…". A failed stage names its step
+and why, once; a later stage that failed too says only that it failed. A can't-fix is a
+decision that worked: its Decided stage reads "Can't fix: needs a person", in amber, never
+"failed" in red. Fixing's time is the whole fix, any wait inside its verify
 included and named ([How long the fix took](incident-timeline#fixing)); Done's duration is the
 time to repair, in the same words. While the heal runs, the stages move as its card's do. Under it
 are links to the incident's record on the device's History and, when one was made,
@@ -142,15 +157,25 @@ read yet is never said to be absent.
 The fixes tried in this incident, one line each, with what each cost in AI and **Open the
 run**; this incident's AI spend against its cap and today's against the day cap; and what may
 be done next. With nothing tried, **Troubleshoot with AI** asks the AI once, as you, its
-estimate and the caps drawn before you press. After a fix that did not pass, the section stops:
-**Retry with more information…**, **Cancel** and **Hand over…**. Retry asks Mercury's own
-diagnosis to plan again, with no AI call, or the AI (**Ask the AI to re-plan**). Either
-proposal is drawn with **Open the fix's card…**, the AI's with what it found and what it cites;
-a proposal that repeats a failed attempt is flagged; a gap (no Mercury operation does what the
-fix needs) and an answer that couldn't be checked are said, with no Approve. Past the
-per-incident cap, neither is offered and the section says both figures. Once the incident is
-resolved, the section is read-only. Each step is on [AI troubleshooting: Troubleshoot with AI,
-Retry, Cancel and Hand over](fixit-troubleshoot).
+estimate and the caps drawn before you press. After a fix that did not pass, the section stops
+and says what the run found: one line per subscription with its state in words ("Subscription
+101: re-subscribed; the stream did not come back"), and each line opens to its checks (the
+device's connection, the stream, the collector's sessions with their addresses and ports) and
+any flag. Its choices are three buttons in one row, drawn alike: **Retry with more
+information…**, **Cancel** and **Hand over…**. Each opens its own modal beside it, over the
+page; **Cancel** (in Retry's and Hand over's) or Escape closes it, and the focus goes back to
+the button that opened it. Retry's modal asks Mercury's own diagnosis to plan again, with no AI
+call, or the AI (**Ask the AI to re-plan**). Cancel's modal is its confirm: **Cancel
+troubleshooting** records the one line, and **Keep troubleshooting** closes it with nothing
+recorded. Hand over's holds the write-up's note and teams, and **Send the hand-over**. A press
+in a modal is answered in the section, in place, and the focus goes to the answer. The
+section's buttons are never the page's primary one, which is What to do's. Either proposal is
+drawn with **Open the fix's card…**, the AI's with what it found and what it cites; a proposal
+that repeats a failed attempt is flagged, its parameter hash in The record; a gap (no Mercury
+operation does what the fix needs) and an answer that couldn't be checked are said, with no
+Approve. Past the per-incident cap, neither is offered and the section says both figures. Once
+the incident is resolved, the section is read-only. Each step is on [AI troubleshooting:
+Troubleshoot with AI, Retry, Cancel and Hand over](fixit-troubleshoot).
 
 For a can't-fix, the **AI analysis** kept for the incident is drawn under it in full: its
 label and how it has been measured, its rationale, each hypothesis with what it cites and its

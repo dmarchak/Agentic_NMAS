@@ -1,0 +1,21 @@
+{#- The modal: an action's confirm opens over the page, anchored to the action (the operator's
+    rule of 2026-11-12, docs/UI_RULES.md: "it opens as a MODAL over the page, anchored to the
+    action, with focus moved into it, and closed by Cancel or Escape. Never a card appearing
+    somewhere else on the page").
+
+    Called with its body: `{% call modal(id, title) %}…{% endcall %}`. Its opener is any button
+    carrying `data-modal-open="<id>"` (with `aria-haspopup="dialog"` and `aria-controls`); a
+    button inside carrying `data-modal-close` closes it, one carrying `data-modal-focus` takes
+    the focus when it opens (else the browser's first focusable control does). The behaviour
+    is static/js/nmas_v2.js's ("The modal"): a native `<dialog>` opened by `showModal()`, so
+    the page behind it is inert and Tab stays inside it; placed by the opener (below it, or
+    above it when there is no room, kept inside the window); Escape closes it; closed, the
+    opener has the focus back. A press inside it that redraws its region ends there, its answer
+    drawn in place: the focus goes to the answer, or to the opener drawn again. No library, no
+    inline style or script (strict CSP). -#}
+{%- macro modal(mid, title) -%}
+<dialog class="modal" id="{{ mid }}" aria-labelledby="{{ mid }}-h">
+  <h3 class="modal-h" id="{{ mid }}-h">{{ title }}</h3>
+  {{ caller() }}
+</dialog>
+{%- endmacro -%}

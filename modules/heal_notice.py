@@ -114,6 +114,9 @@ TODO = {
 #: is never offered Capture, which would record it as the approved state.
 TODO_DEFAULT = ("decide on the change: put it back to intent through the device's deploy plan, "
                 "or keep it by adding it to intent in the device's intent editor")
+#: An AI analysis not yet measured on its recorded cases, as a message says it beside its label
+#: (`analysis_block`; the incident page's AI troubleshooting section words it so).
+NOT_MEASURED_WORDS = "its answers are not measured on recorded cases yet"
 #: The act's outcomes that notify as a can't-fix, and what each says to do.
 TODO_OUTCOME = {
     "symptom_remains": "the configuration is back at intent and the symptom remains: read the "
@@ -398,12 +401,50 @@ def facts(network: str, entry: dict, incident: dict = None) -> dict:
     return {"incident": entry.get("incident") or "", "event": EVENT, "network": network,
             "device": device,
             "kind": kinds.KIND_WORDS.get(entry.get("kind"), entry.get("kind") or ""),
+            "lead": EP.withhold(lead(network, entry, incident, words), lines),
             **({"happened": EP.withhold(SAID.sentence(cause), lines)} if cause else {}),
             "outcome": EP.withhold(words, lines),
-            "detected": EP.withhold(first.get("words") or "", lines),
+            "detected": EP.withhold(detected_words(first, device, named=not cause), lines),
             "detected_at": first.get("at") or (incident or {}).get("opened_at") or "",
             "steps": steps_said(network, device, entry, lines),
             "todo": todo, "link": incident_link(network, entry.get("incident") or "", device)}
+
+
+def lead(network: str, entry: dict, incident: dict, outcome_words: str) -> str:
+    """The one plain sentence a can't-fix's message leads with (the GUI review of 2026-11-13,
+    item 9, EM1): what happened, as the incident's page titles it (`incident_page.title`: the
+    newest decision's change, else the symptom its cause states, else its first trigger),
+    then the outcome. Its caller withholds the incident's configuration lines from it."""
+    from modules import incident_page
+    from modules.heal import decisions as HD
+
+    iid = entry.get("incident") or ""
+    try:
+        made = [d for d in HD.decisions(network) if d.get("incident") == iid]
+    except Exception as exc:                          # said; the lead names the device alone
+        log.warning("heal notice: %s's decisions for %s could not be read: %s", network, iid,
+                    exc)
+        made = []
+    what = incident_page.title(incident, entry, made).rstrip(". ")
+    return f"{what}. {outcome_words}" if outcome_words else what
+
+
+def detected_words(trigger: dict, device: str, *, named: bool = True) -> str:
+    """What was detected first, as the incident's page's timeline says it (a symptom by its
+    words, `said.symptom_words`; a cause by its kind, `incidents.KIND_WORDS`: "a configuration
+    change from outside Mercury"), never a log's mnemonic or a reader's key (EM4); with the
+    person its line names when *named* (a message with no What happened line, which names
+    them otherwise)."""
+    from modules.heal import incidents, said
+
+    kind = (trigger or {}).get("kind")
+    if not kind:
+        return (trigger or {}).get("words") or ""
+    if kind in incidents.SYMPTOM_KINDS:
+        return said.symptom_words(trigger, device)
+    words = incidents.KIND_WORDS.get(kind) or trigger.get("words") or kind
+    person = ((trigger.get("person") or {}).get("words") or "") if named else ""
+    return f"{words} ({person})" if person else words
 
 
 def incident_link(network: str, incident_id: str, device: str) -> str:
@@ -451,9 +492,10 @@ def steps_said(network: str, host: str, entry: dict, lines) -> list:
             # record by its number, which a message's list does not draw.
             words = re.sub(r"(?:; )?its outcome is step \d+'s$", "", words)
             result = "ended: its outcome is its later line"
+        label = t.get("words") or s.get("step") or ""
         out.append({"what": EP.withhold(f"{s.get('step')}: {words}", lines),
-                    "said": EP.withhold(f"{t.get('words') or s.get('step')}"
-                                        + (f": {words}" if words else ""), lines),
+                    "said": EP.withhold(label + (f": {words}" if words else ""), lines),
+                    "label": label, "words": EP.withhold(words, lines),
                     "result": result,
                     "at": s.get("at") or s.get("ended_at") or stamps.get(
                         (s.get("decision") or "", s.get("row") or ""), "")})
@@ -474,6 +516,13 @@ def analysis_block(result: dict, lines) -> dict:
     b = HA.block(result)
     out = {k: EP.withhold(b.get(k) or "", lines) for k in ("state", "words", "label", "score",
                                                            "rationale")}
+    if out["score"]:
+        # Its measured reliability as the incident's page words it (the AI troubleshooting
+        # section's "beta": "The AI's answers are not measured on recorded cases yet"), never
+        # the prompt's name, its version or the model pinned (the GUI review's EM4).
+        label = (result or {}).get("label") or HA.beta()
+        out["score"] = (f"measured: {out['score']}" if label.get("state") == "measured"
+                        else NOT_MEASURED_WORDS)
     out["hypotheses"] = [{"claim": EP.withhold(h["claim"], lines),
                           "next": EP.withhold(h["next"], lines)} for h in b["hypotheses"]]
     return out

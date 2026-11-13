@@ -659,6 +659,12 @@ phone come later, through those services** (Lab 10's decision 2).
   outcome; what to do.
 - **Then, on a can't-fix, the AI analysis** (section 12).
 - **Then the link.**
+- **A can't-fix's email leads with its outcome and its link** (the GUI review of 2026-11-13,
+  item 9, the operator's approved email rules in docs/UI_RULES.md): what happened and the
+  outcome in one sentence, What to do, and the link are its first three lines; then the
+  facts, the outcome not said again, the steps recorded in one minute on one line; then the
+  AI analysis. In plain words: no host command, code key or model internal
+  (`notify.message.plain`, `_led`).
 - **Configuration lines are never in a message:** each unit is said by kind ("inbound ACL added
   on Gi2, 2 lines, content withheld"). The full masked lines are one click away in Mercury.
   This is 20.7's minimal detail plus a link, and data minimisation.
