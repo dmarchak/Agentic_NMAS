@@ -3,9 +3,21 @@
 (the operator's overnight item 9, 2026-11-12).
 
     scripts/nmas-pregate [--range A..B] [--message FILE] [--list] [--no-wait] [--repo DIR]
+    scripts/nmas-pregate --verdict TREE-OR-COMMIT
 
 The change is what is staged (`git diff --cached`), or the commits of `--range A..B`.
 
+0. **A snapshot of the tested tree** (C3421; the operator, 2026-11-13: "make it mechanical
+   rather than a promise: the pre-gate runs on a snapshot of the staged tree"). The tree is the
+   index's (`git write-tree`), or B's with `--range`; it is checked out, as scripts/nmas-gate's
+   step 2b does, into a worktree of its own in an owner-only temporary folder outside the
+   checkout, its HEAD the change's base (HEAD, or A), so the selection, every run and the
+   commit-msg hook read exactly that tree, and the working tree stays free to edit while it
+   runs. scripts/nmas-gate's SNAPSHOT_LOCAL (parsed from it, one list) is copied in, less every
+   file under `data/` (the operator's local-only files are never copied): the tests that read
+   those (CHECKOUT_ONLY) are deselected in the snapshot and run in the checkout, reading the
+   working tree's files, and the summary says so. The snapshot is removed whatever happens; one
+   a killed run left is removed by the next run once its owner is gone.
 1. **The tests, each with why.** A reason is parsed, never a substring of prose:
    - a test file that imports a changed Python module (its `import` and `from ... import`
      statements, read by `ast`, anywhere in the file), or names it as a whole string literal;
@@ -16,6 +28,17 @@ The change is what is staged (`git diff --cached`), or the commits of `--range A
      changed template (or a template that includes, extends or imports it), or a route of
      `routes/` whose function the change touches; and a BROWSER file naming a route whose
      page loads such a route by htmx (`hx-get`, `hx-post`, `src`, `href`, `action`);
+   - a changed shared filter, global, test or context name (C3421): a function registered with
+     Jinja (`app_template_filter`, `template_global`, `add_template_filter`, an
+     `app_context_processor`'s returned names, an assignment to `jinja_env.globals[...]` or
+     `.filters[...]`; in routes/, app.py or any changed Python file) whose body, registration,
+     or a name it reads the change touches, on either side: every template using it (parsed
+     from its `{{ }}` and `{% %}` code) counts as changed for the route rule above, and with a
+     changed template (a macro file, an included or imported partial) every template using it,
+     transitively, chooses the test files naming it by a whole literal;
+   - tests/test_requirements_lock.py (LOCK_TEST) when a changed Python file's imports of
+     modules outside the product (neither the standard library nor a folder or module of the
+     tree) gain or lose a name;
    - the changed test files themselves;
    - the fixed convention set (CONVENTIONS), the manual and fidelity tests (MANUAL) when
      `docs/manual/` or a template changes, and the route tests (ROUTES) when `routes/` does.
@@ -30,18 +53,28 @@ The change is what is staged (`git diff --cached`), or the commits of `--range A
    the check that refused is named.
 4. **The summary**: each test file, why it was chosen, and passed, failed or NOT RUN (with
    why); a file none of whose tests ran is not run, and so is a whole run that did not happen.
+5. **The verdict, per tree** (C3421): on every exit after the runs, a record keyed by the
+   tested tree's id, written atomically (a temporary file in the same folder, then
+   `os.replace`) to `<git common dir>/nmas-pregate/verdicts/<tree>.json`: the verdict (`pass`
+   only when the exit is 0: every chosen file ran and passed, and the message's checks passed
+   when `--message` was given; else `failed` or `not run`), the change (staged or the range)
+   and its base, the time, each chosen file with why and its state, and the notes. A later run
+   of the same tree replaces it. `--verdict TREE-OR-COMMIT` prints the record of that tree (a
+   commit's tree) and exits 0 only for a pass: the proposed pre-push hook's question.
 
-It writes nothing in the working tree: it runs in place, reads, and every run it starts has
-PYTHONDONTWRITEBYTECODE=1 and `-p no:cacheprovider`, with pytest's folders and the JUnit files
-in a temporary folder outside it. The working tree is fingerprinted before and after
-(`scripts/nmas-control`'s fingerprint); a difference is named and the exit is 3. It runs the
-working tree's files: edits not staged are said, since the gate tests only what is staged.
+It writes nothing in the working tree: every run happens in the snapshot (the CHECKOUT_ONLY
+tests excepted, said), and every run it starts has PYTHONDONTWRITEBYTECODE=1 and
+`-p no:cacheprovider`, with pytest's folders and the JUnit files in a temporary folder outside
+it. The working tree is fingerprinted before and after (`scripts/nmas-control`'s fingerprint)
+and whether it changed is said; it decides nothing, since the tree tested is the snapshot's.
+Edits not staged are said, since they are not in the tested tree.
 
 Exit: 0 when every chosen file ran and passed (and the message's checks passed); 1 when a test
 failed, a skip was not declared, or a message check refused; 2 when it cannot start (not a git
-checkout, an unreadable range, no message file); 3 the working tree changed; 4 when anything
-chosen did not run (a gate held the lock past the bound, a bound fired, no browser interpreter).
-`--list` runs nothing, says so, and exits 0.
+checkout, an unreadable range, no message file, no snapshot); 4 when anything chosen did not
+run (a gate held the lock past the bound, a bound fired, no browser interpreter). `--list` runs
+nothing, records no verdict, says so, and exits 0. `--verdict`: 0 a pass, 1 none or not a pass,
+2 no such tree.
 
 Cost: the chosen files' time, about a minute for the convention set (measured below).
 Prevents: a 20-minute gate refused on a check a chosen run meets first (2026-11-12: a CLAUDE.md
@@ -57,6 +90,7 @@ import re
 import shutil
 import signal
 import subprocess
+import json
 import sys
 import tempfile
 import time
@@ -442,12 +476,13 @@ class TestFile:
             keys.add(path[len("templates/"):])
         base = os.path.basename(path)
         by_name = path.startswith(("templates/", "scripts/", "static/"))
+        mod = module_of(path)
+        tails = tuple("/" + k for k in keys)
         for s in self.strings:
             if HOLE in s:
                 continue
-            if s in keys or any(s.endswith("/" + k) for k in keys) or (by_name and s == base):
+            if s in keys or s.endswith(tails) or (by_name and s == base):
                 return s
-            mod = module_of(path)
             if mod and s == mod:
                 return s
         return None
@@ -477,7 +512,8 @@ def data_folders(repo):
 
 
 def test_files(repo):
-    """Every tests/**/test_*.py on disk outside the data folders, parsed."""
+    """Every tests/**/test_*.py on disk outside the data folders, parsed, each one's `browser`
+    set by `browser_modules` (a real browser started by any path the suite uses)."""
     out, skip = {}, data_folders(repo)
     for root, dirs, files in os.walk(os.path.join(repo, "tests")):
         dirs[:] = sorted(d for d in dirs if d != "__pycache__")
@@ -488,7 +524,126 @@ def test_files(repo):
                     continue
                 with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
                     out[rel] = TestFile(rel, fh.read())
+    starting = browser_modules(repo)
+    for rel, tf in out.items():
+        tf.browser = tf.browser or rel in starting
     return out
+
+
+#: The names of tests/browser.py that start a real browser: `Browser`, and `available`, whose
+#: call is CI's own marker of a file that starts one (`= browser.available()`,
+#: scripts/nmas-shards' `uses_a_browser`).
+BROWSER_MODULE = "tests.browser"
+BROWSER_ROOTS = frozenset({"Browser", "available"})
+
+
+def _bindings(tree, known):
+    """``(names, modules)`` of a module's imports: ``{bound: (module, attr)}`` for each
+    `from M import attr` of a name, ``{bound: module}`` for each import binding a module of
+    *known* (`import tests.x as y`, `from tests import x`)."""
+    names, modules = {}, {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.asname:
+                    modules[a.asname] = a.name
+                else:
+                    modules[a.name.split(".")[0]] = a.name.split(".")[0]
+                    modules[a.name] = a.name
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            for a in n.names:
+                if f"{n.module}.{a.name}" in known:
+                    modules[a.asname or a.name] = f"{n.module}.{a.name}"
+                else:
+                    names[a.asname or a.name] = (n.module, a.name)
+    return names, modules
+
+
+def browser_modules(repo):
+    """The test files (paths) that start a real browser by any path the suite uses (C3421: the
+    coordinator, 2026-11-13: tests/test_v2_links_stay_on_v2.py starts one through the `served`
+    fixture it imports from another test module, and ran confined, where Firefox cannot start).
+
+    One rule, closed over every module under tests/: a top-level def or class of a module
+    STARTS one when its body reads, as a name, an attribute of a bound module, or an
+    argument (a fixture asked for by name), a name that starts one: tests/browser.py's
+    BROWSER_ROOTS, or such a def of its own module or of the module it imports it from. A file
+    starts one when anything in it does, an import of such a name by name included (a fixture
+    is used as an argument). `from tests.browser import free_port` starts none."""
+    paths, skip = {}, data_folders(repo)
+    for root, dirs, files in os.walk(os.path.join(repo, "tests")):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+        for f in sorted(files):
+            rel = os.path.relpath(os.path.join(root, f), repo).replace(os.sep, "/")
+            mod = module_of(rel)
+            if mod and not rel.startswith(skip):
+                paths[mod] = rel
+    trees = {}
+    for mod, rel in paths.items():
+        try:
+            with open(os.path.join(repo, rel), encoding="utf-8", errors="replace") as fh:
+                trees[mod] = ast.parse(fh.read())
+        except (OSError, SyntaxError, ValueError):
+            continue
+    known = set(trees) | {BROWSER_MODULE}
+    binds = {m: _bindings(t, known) for m, t in trees.items()}
+    starts = {m: set() for m in trees}
+    starts[BROWSER_MODULE] = set(BROWSER_ROOTS)
+
+    def reads(node):
+        """``(names, attrs, imported)`` *node* reads: names and arguments, ``(base, attr)``
+        pairs, and ``(module, name)`` imported by name."""
+        names, attrs, imported = set(), set(), set()
+        for x in ast.walk(node):
+            if isinstance(x, ast.Name):
+                names.add(x.id)
+            elif isinstance(x, ast.arg):
+                names.add(x.arg)
+            elif isinstance(x, ast.Attribute):
+                base = _dotted(x.value)
+                if base:
+                    attrs.add((base, x.attr))
+            elif isinstance(x, ast.ImportFrom) and x.module and not x.level:
+                imported |= {(x.module, a.name) for a in x.names}
+        return names, attrs, imported
+
+    def starter(mod, read):
+        names, attrs, imported = read
+        bound, modules = binds[mod]
+        if names & starts[mod]:
+            return True
+        for n in names:
+            src = bound.get(n)
+            if src and src[1] in starts.get(src[0], ()):
+                return True
+        if any(a in starts.get(modules.get(b, ""), ()) for b, a in attrs):
+            return True
+        return any(a in starts.get(m, ()) for m, a in imported)
+
+    tops, whole = {}, {}
+    for m, t in trees.items():
+        if m == BROWSER_MODULE:
+            continue
+        tops[m], names, attrs, imported = [], set(), set(), set()
+        for top in t.body:
+            read = reads(top)
+            if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                tops[m].append((top.name, read))
+            names |= read[0]
+            attrs |= read[1]
+            imported |= read[2]
+        whole[m] = (names, attrs, imported)
+    grew = True
+    while grew:
+        grew = False
+        for mod, defs in tops.items():
+            for name, read in defs:
+                if name not in starts[mod] and starter(mod, read):
+                    starts[mod].add(name)
+                    grew = True
+    return {paths[m] for m, tree in trees.items() if m != BROWSER_MODULE
+            and os.path.basename(paths[m]).startswith("test_")
+            and starter(m, whole[m])}
 
 
 # --- routes and templates --------------------------------------------------------------------
@@ -595,16 +750,277 @@ def template_graph(repo):
     return refs, urls
 
 
-def users_of(name, refs):
-    """*name* and every template that includes, extends or imports it, transitively."""
+def users_of(name, refs, parents=None):
+    """*name* and every template that includes, extends or imports it, transitively.
+    *parents* (``{template: {its users}}``, the reverse of *refs*) saves building it again."""
+    if parents is None:
+        parents = {}
+        for parent, children in refs.items():
+            for c in children:
+                parents.setdefault(c, set()).add(parent)
     seen, todo = {name}, [name]
     while todo:
-        t = todo.pop()
-        for parent, children in refs.items():
-            if t in children and parent not in seen:
+        for parent in parents.get(todo.pop(), ()):
+            if parent not in seen:
                 seen.add(parent)
                 todo.append(parent)
     return seen
+
+
+# --- shared filters, globals and imports (C3421) ---------------------------------------------
+
+#: A decorator registering the function under it with Jinja, and what it registers.
+JINJA_DECORATORS = {"app_template_filter": "filter", "template_filter": "filter",
+                    "app_template_global": "global", "template_global": "global",
+                    "app_template_test": "test", "template_test": "test",
+                    "app_context_processor": "context", "context_processor": "context"}
+#: A call registering its first argument, and what it registers.
+JINJA_CALLS = {"add_template_filter": "filter", "add_app_template_filter": "filter",
+               "add_template_global": "global", "add_app_template_global": "global",
+               "add_template_test": "test", "add_app_template_test": "test"}
+#: `<env>.<table>[name] = value`: the Jinja environment's tables.
+JINJA_TABLES = {"filters": "filter", "globals": "global", "tests": "test"}
+#: A template's code: what its `{{ }}` and `{% %}` hold.
+JINJA_CODE = re.compile(r"\{\{(.*?)\}\}|\{%(.*?)%\}", re.S)
+#: The lock's test, chosen when an import outside the product changes.
+LOCK_TEST = "tests/test_requirements_lock.py"
+
+
+def _spans_meet(spans, first, last):
+    return any(a <= last and b >= first for a, b in spans)
+
+
+def _context_keys(fn):
+    """The names a context processor returns: each returned dict literal's constant keys and
+    each `dict(name=...)`'s; None when a return is anything else (its names cannot be read)."""
+    keys = set()
+    for n in ast.walk(fn):
+        if not isinstance(n, ast.Return) or n.value is None:
+            continue
+        v = n.value
+        if isinstance(v, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(k.value, str)
+                                           for k in v.keys):
+            keys |= {k.value for k in v.keys}
+        elif isinstance(v, ast.Call) and getattr(v.func, "id", "") == "dict" and not v.args \
+                and all(k.arg for k in v.keywords):
+            keys |= {k.arg for k in v.keywords}
+        else:
+            return None
+    return keys
+
+
+def jinja_registrations(text):
+    """``[{kind, names, func, target, span}]``: each Jinja registration in a module's *text*.
+    *names* is the set registered (None: a context processor whose names cannot be read);
+    *func* the registered function's name in this module, *target* ``(dotted base,
+    attribute)`` when it is an attribute of another (`preview_confirm.control_gate`), *span*
+    the registering statement's lines (a decorated def's whole span)."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    out = []
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = min([n.lineno] + [d.lineno for d in n.decorator_list])
+            for d in n.decorator_list:
+                f = d.func if isinstance(d, ast.Call) else d
+                kind = JINJA_DECORATORS.get(getattr(f, "attr", getattr(f, "id", "")))
+                if not kind:
+                    continue
+                if kind == "context":
+                    names = _context_keys(n)
+                else:
+                    arg = d.args[0] if isinstance(d, ast.Call) and d.args else next(
+                        (k.value for k in getattr(d, "keywords", []) if k.arg == "name"), None)
+                    names = {arg.value if isinstance(arg, ast.Constant)
+                             and isinstance(arg.value, str) else n.name}
+                out.append({"kind": kind, "names": names, "func": n.name, "target": None,
+                            "span": (first, n.end_lineno)})
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", "") in JINJA_CALLS and n.args:
+            kind, v = JINJA_CALLS[n.func.attr], n.args[0]
+            name = n.args[1] if len(n.args) > 1 else next(
+                (k.value for k in n.keywords if k.arg == "name"), None)
+            fname = v.id if isinstance(v, ast.Name) else getattr(v, "attr", "")
+            names = {name.value if isinstance(name, ast.Constant) else fname}
+            out.append({"kind": kind, "names": names,
+                        "func": v.id if isinstance(v, ast.Name) else None,
+                        "target": (_dotted(v.value), v.attr) if isinstance(v, ast.Attribute)
+                        else None, "span": (n.lineno, n.end_lineno)})
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Attribute) \
+                        and t.value.attr in JINJA_TABLES and isinstance(t.slice, ast.Constant) \
+                        and isinstance(t.slice.value, str):
+                    v = n.value
+                    out.append({"kind": JINJA_TABLES[t.value.attr], "names": {t.slice.value},
+                                "func": v.id if isinstance(v, ast.Name) else None,
+                                "target": (_dotted(v.value), v.attr)
+                                if isinstance(v, ast.Attribute) else None,
+                                "span": (n.lineno, n.end_lineno)})
+    return out
+
+
+def _def_spans(text):
+    """``{name: [(first, last)]}`` of every def at any depth (a nested one registered by
+    name)."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return {}
+    out = {}
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = min([n.lineno] + [d.lineno for d in n.decorator_list])
+            out.setdefault(n.name, []).append((first, n.end_lineno))
+    return out
+
+
+def changed_jinja(repo, change_, affected):
+    """``[(kind, names, why)]``: the Jinja registrations the change touches, on either side:
+    the registering statement, the registered function (its top-level name among the module's
+    *affected* names, or a nested def's lines), or the attribute of a changed module it
+    registers. *affected* is ``{path: affected names or None}`` of the changed Python files.
+    Scanned: routes/*.py, app.py and every changed Python file."""
+    paths = {f for f in change_.files if f.endswith(".py")}
+    folder = os.path.join(repo, "routes")
+    paths |= {f"routes/{f}" for f in (os.listdir(folder) if os.path.isdir(folder) else ())
+              if f.endswith(".py")}
+    paths.add("app.py")
+    by_module = {module_of(f): f for f in change_.files if module_of(f)}
+    out = []
+    for path in sorted(paths):
+        sides = [("new", change_.new_spans.get(path, []))]
+        if path in change_.files:
+            sides.append(("old", change_.old_spans.get(path, [])))
+        for side, spans in sides:
+            text = change_.text(path, side)
+            if text is None and side == "new" and path not in change_.files:
+                try:
+                    with open(os.path.join(repo, path), encoding="utf-8") as fh:
+                        text = fh.read()
+                except OSError:
+                    text = None
+            if not text:
+                continue
+            defs = None
+            for reg in jinja_registrations(text):
+                why = None
+                if _spans_meet(spans, *reg["span"]):
+                    why = f"its registration in {path} changed"
+                elif reg["func"] and path in affected and (
+                        affected[path] is None or reg["func"] in affected[path]):
+                    why = f"{reg['func']} in {path} changed"
+                elif reg["func"] and spans:
+                    defs = _def_spans(text) if defs is None else defs
+                    if any(_spans_meet(spans, a, b) for a, b in defs.get(reg["func"], ())):
+                        why = f"{reg['func']} in {path} changed"
+                if why is None and reg["target"]:
+                    base, attr = reg["target"]
+                    names, modules = _bindings(ast.parse(text), set(by_module))
+                    mod = modules.get(base) or (names.get(base) and ".".join(names[base]))
+                    f = by_module.get(mod)
+                    if f and (affected.get(f) is None or attr in affected[f]):
+                        why = f"{mod}.{attr} ({f}) changed"
+                if why:
+                    out.append((reg["kind"], reg["names"], why))
+    return out
+
+
+def template_code(repo):
+    """``{template name: (filters, names, tests)}`` read from each template's Jinja code: the
+    filters it applies (`| name`, `{% filter name %}`), every identifier it reads, and the
+    tests it asks (`is name`)."""
+    out = {}
+    top = os.path.join(repo, "templates")
+    for root, _d, files in os.walk(top):
+        for f in files:
+            if f.endswith(".html"):
+                rel = os.path.relpath(os.path.join(root, f), top).replace(os.sep, "/")
+                with open(os.path.join(root, f), encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+                parts = [m.group(1) if m.group(1) is not None else m.group(2)
+                         for m in JINJA_CODE.finditer(text)]
+                code = "\n".join(parts)
+                filters = set(re.findall(r"\|\s*([A-Za-z_]\w*)", code))
+                filters |= {m.group(1) for p in parts
+                            for m in [re.match(r"-?\s*filter\s+([A-Za-z_]\w*)", p)] if m}
+                names = set(re.findall(r"(?<![\w.])([A-Za-z_]\w*)", code))
+                tests = set(re.findall(r"\bis\s+(?:not\s+)?([A-Za-z_]\w*)", code))
+                out[rel] = (filters, names, tests)
+    return out
+
+
+def templates_using(registrations, code):
+    """``{template name: why}``: each template using a changed registration."""
+    out = {}
+    for kind, names, why in registrations:
+        for t, (filters, idents, tests) in sorted(code.items()):
+            if names is None:
+                hit = "a context processor whose names cannot be read"
+            else:
+                pool = {"filter": filters, "test": tests}.get(kind, idents)
+                found = sorted(names & pool)
+                hit = f"the {kind} {found[0]}" if found else None
+            if hit:
+                out.setdefault(t, f"{t}, which uses {hit} ({why})")
+    return out
+
+
+def _is_python(path):
+    return path.endswith(".py") or (path.startswith("scripts/")
+                                    and "." not in os.path.basename(path))
+
+
+def outside_imports(text, local):
+    """The top-level names *text* imports (anywhere in it) that are neither the standard
+    library nor *local*; None when it is not Python."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+    found = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            found |= {a.name.split(".")[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            found.add(n.module.split(".")[0])
+    return {n for n in found if n not in sys.stdlib_module_names and n not in local}
+
+
+def local_names(repo, path):
+    """The names an import of *path*'s may take from the tree: the tree's top-level folders
+    and modules, and those beside *path* (a script's helper on its own folder's path)."""
+    out = set()
+    for folder in {repo, os.path.join(repo, os.path.dirname(path))}:
+        try:
+            entries = os.listdir(folder)
+        except OSError:
+            continue
+        for e in entries:
+            if os.path.isdir(os.path.join(folder, e)):
+                out.add(e)
+            elif e.endswith(".py"):
+                out.add(e[:-3])
+    return out
+
+
+def import_changes(repo, change_):
+    """``[(path, gained, lost)]``: each changed Python file whose imports outside the product
+    gained or lost a name, either side read from git."""
+    out = []
+    for f in change_.files:
+        if not _is_python(f):
+            continue
+        local = local_names(repo, f)
+        new_t, old_t = change_.text(f, "new"), change_.text(f, "old")
+        new = outside_imports(new_t, local) if new_t is not None else set()
+        old = outside_imports(old_t, local) if old_t is not None else set()
+        if new is None or old is None:
+            continue
+        if new != old:
+            out.append((f, sorted(new - old), sorted(old - new)))
+    return out
 
 
 # --- the selection ---------------------------------------------------------------------------
@@ -629,9 +1045,12 @@ def select(repo, change_, tests=None, routes=None, graph=None):
                           and f.endswith(".py") and not f.startswith(skip)
                           and os.path.exists(os.path.join(repo, f))):
             add(f, "a changed test file")
+    affected_of = {}
     for f in files:
         mod = module_of(f)
         affected = affected_names(change_, f) if mod else None
+        if mod:
+            affected_of[f] = affected
         for t, tf in tests.items():
             if t == f:
                 continue
@@ -643,21 +1062,53 @@ def select(repo, change_, tests=None, routes=None, graph=None):
             lit = tf.names_file(f)
             if lit:
                 add(t, f"names {f} (the literal {lit!r})")
-    # Templates and routes.
+    # An import outside the product gained or lost: the lock's test (C3421).
+    for f, gained, lost in import_changes(repo, change_):
+        words = ", ".join([f"+{n}" for n in gained] + [f"-{n}" for n in lost])
+        add(LOCK_TEST, f"{f} changes its imports outside the product ({words})")
+    # Templates and routes. A template using a changed filter, global, test or context name
+    # counts as changed (C3421).
     templates = [f[len("templates/"):] for f in files
                  if f.startswith("templates/") and f.endswith(".html")]
     route_files = [f for f in files if f.startswith("routes/") and f.endswith(".py")]
-    if templates or route_files:
+    uses = {name: name for name in templates}       # {template: how it counts as changed}
+    jinja = changed_jinja(repo, change_, affected_of)
+    if jinja:
+        for t, how in templates_using(jinja, template_code(repo)).items():
+            uses.setdefault(t, how)
+    if uses or route_files:
         routes = all_routes(repo) if routes is None else routes
         refs, urls = template_graph(repo) if graph is None else graph
         hit = []                                    # [(Route, why)]
-        for name in templates:
-            used = users_of(name, refs)
+        parents = {}
+        for parent, children in refs.items():
+            for c in children:
+                parents.setdefault(c, set()).add(parent)
+        rendered = {}                               # {template: how}, the first reason kept
+        for name, how0 in uses.items():
+            used = users_of(name, refs, parents)
             for r in routes:
                 via = sorted(r.templates & used)
                 if via:
-                    how = name if via == [name] else f"{via[0]}, which uses {name}"
+                    how = how0 if via == [name] else f"{via[0]}, which uses {how0}"
                     hit.append((r, f"renders {how}"))
+            for user in sorted(used):
+                if not (user == name and name in templates):    # a changed file: named above
+                    rendered.setdefault(user, how0 if user == name
+                                        else f"{user}, which uses {how0}")
+        # A test naming a template that uses it renders it (a macro file's or a partial's
+        # users, transitively, and every user of a changed filter). Each literal is indexed by
+        # its last part: `names_file` matches a whole path, its tail, or a template's name.
+        by_base = {}
+        for t, tf in tests.items():
+            for s in tf.strings:
+                if HOLE not in s:
+                    by_base.setdefault(os.path.basename(s), set()).add(t)
+        for user, via in sorted(rendered.items()):
+            for t in sorted(by_base.get(os.path.basename(user), ())):
+                lit = tests[t].names_file(f"templates/{user}")
+                if lit:
+                    add(t, f"names a template that renders it: {via} (the literal {lit!r})")
         for f in route_files:
             text = show(f) or ""
             spans = hunks.get(f, [])
@@ -780,11 +1231,13 @@ def _env(extra=None):
     return env
 
 
-def run_confined(repo, files, scratch, bound_s):
-    junit = os.path.join(scratch, "confined.xml")
+def run_confined(repo, files, scratch, bound_s, label="confined", deselect=()):
+    """The confined run of *files* (paths or node ids) in *repo* (the snapshot, or the checkout
+    for CHECKOUT_ONLY), each of *deselect* deselected."""
+    junit = os.path.join(scratch, f"{label}.xml")
     cmd = [os.path.join(repo, "scripts", "nmas-test"), "-q", "-p", "no:cacheprovider", "-n", "2",
-           "-rEfs", f"--junitxml={junit}", "--basetemp", os.path.join(scratch, "confined-t"),
-           *files]
+           "-rEfs", f"--junitxml={junit}", "--basetemp", os.path.join(scratch, f"{label}-t"),
+           *[x for d in deselect for x in ("--deselect", d)], *files]
     rc, fired = _bounded(cmd, repo, _env({"NMAS_TEST_TIMEOUT": str(bound_s)}), bound_s + 30)
     return rc, fired, junit
 
@@ -886,6 +1339,175 @@ def run_hook(repo, message, scratch, bound_s):
     return rc, refused, fired
 
 
+# --- the snapshot (C3421) --------------------------------------------------------------------
+
+#: Every snapshot's folder begins so (in the temporary directory, owner-only by `mkdtemp`);
+#: never scripts/nmas-gate's prefix, so neither sweeps the other's.
+SNAPSHOT_PREFIX = "nmas-pregate-snapshot-"
+#: The file in a snapshot's folder naming the run that owns it.
+SNAPSHOT_OWNER = "owner.pid"
+#: The local-only folder never copied into a snapshot (the operator's files: the publication
+#: denylist, the lab hosts).
+NOT_COPIED = "data/"
+#: The tests that read the checkout's local-only files under NOT_COPIED (C3421): deselected in
+#: the snapshot, run in the checkout, where those files are, and said so: they read the
+#: working tree's files, not the tested tree's (tests/test_nothing_personal_is_published.py's
+#: `published_files`). Their skip, where the files are absent, is declared for CI alone
+#: (tests/skip_reasons.py), so the gate's skip check refuses it here as the gate does.
+CHECKOUT_ONLY = {
+    "tests/test_nothing_personal_is_published.py": (
+        "TestThePublishedFiles::test_no_term_on_the_local_denylist",
+        "TestThePublishedFiles::test_no_real_host_address_is_exempted",
+    ),
+}
+
+
+def snapshot_local():
+    """scripts/nmas-gate's SNAPSHOT_LOCAL, parsed from it (one list of the files outside git
+    the tests read), less every file under NOT_COPIED."""
+    try:
+        with open(os.path.join(REPO, "scripts", "nmas-gate"), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+    except (OSError, SyntaxError, ValueError):
+        return ()
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "SNAPSHOT_LOCAL"
+                                             for t in n.targets) \
+                and isinstance(n.value, (ast.Tuple, ast.List)):
+            return tuple(e.value for e in n.value.elts if isinstance(e, ast.Constant)
+                         and isinstance(e.value, str) and not e.value.startswith(NOT_COPIED))
+    return ()
+
+
+def _owner_alive(parent):
+    try:
+        with open(os.path.join(parent, SNAPSHOT_OWNER), encoding="utf-8") as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OverflowError):
+        return True
+    return True
+
+
+def remove_stale(repo):
+    """Remove each of *repo*'s snapshot worktrees whose run is gone (killed, its `finally`
+    never ran); ``[folders removed]``. One whose run still lives is never touched."""
+    gone = []
+    r = git(repo, "worktree", "list", "--porcelain")
+    for line in r.stdout.splitlines():
+        path = line[len("worktree "):] if line.startswith("worktree ") else ""
+        parent = os.path.dirname(path)
+        if os.path.basename(parent).startswith(SNAPSHOT_PREFIX) and not _owner_alive(parent):
+            git(repo, "worktree", "remove", "--force", path)
+            shutil.rmtree(parent, ignore_errors=True)
+            gone.append(parent)
+    if gone:
+        git(repo, "worktree", "prune")
+    return gone
+
+
+def make_snapshot(repo, tree, base):
+    """``(path, remove, why)``: a worktree of *base* (its HEAD), set to exactly *tree*, index
+    and files, as scripts/nmas-gate's step 2b makes one, with `snapshot_local()` copied in;
+    ``(None, None, why)`` when git cannot. Its folder is owner-only (`mkdtemp`'s 0700), outside
+    the checkout; nothing in *repo*'s working tree or index changes."""
+    parent = tempfile.mkdtemp(prefix=SNAPSHOT_PREFIX)
+    with open(os.path.join(parent, SNAPSHOT_OWNER), "w", encoding="utf-8") as fh:
+        fh.write(str(os.getpid()))
+    snap = os.path.join(parent, "tree")
+    r = git(repo, "worktree", "add", "-q", "--no-checkout", "--detach", snap, base)
+    if r.returncode:
+        shutil.rmtree(parent, ignore_errors=True)
+        return None, None, (r.stderr or r.stdout).strip()[:400]
+
+    def remove():
+        git(repo, "worktree", "remove", "--force", snap)
+        shutil.rmtree(parent, ignore_errors=True)
+        git(repo, "worktree", "prune")
+    r = git(snap, "read-tree", "-u", "--reset", tree)
+    if r.returncode:
+        remove()
+        return None, None, (r.stderr or r.stdout).strip()[:400]
+    for rel in snapshot_local():
+        src = os.path.join(repo, rel)
+        if os.path.isfile(src):
+            os.makedirs(os.path.dirname(os.path.join(snap, rel)) or snap, exist_ok=True)
+            shutil.copy2(src, os.path.join(snap, rel))
+    return snap, remove, ""
+
+
+def _exit_on_signal(signum, _frame):
+    """SIGTERM and SIGHUP end the run as an exit does, so its `finally` removes the snapshot."""
+    raise SystemExit(128 + signum)
+
+
+# --- the verdict (C3421) ---------------------------------------------------------------------
+
+def verdict_dir(repo):
+    """``<git common dir>/nmas-pregate/verdicts``: shared by every worktree of *repo*."""
+    common = git(repo, "rev-parse", "--git-common-dir").stdout.strip()
+    if common and not os.path.isabs(common):
+        common = os.path.join(repo, common)
+    return os.path.join(common, "nmas-pregate", "verdicts")
+
+
+def record_verdict(repo, record):
+    """Write *record* as ``<tree>.json`` atomically (a temporary file in the same folder,
+    flushed and synced, then `os.replace`); returns its path."""
+    folder = verdict_dir(repo)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{record['tree']}.json")
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".writing-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(record, fh, indent=1, sort_keys=True)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return path
+
+
+def read_verdict(repo, tree):
+    """The record of *tree*, or None (none written, or unreadable: never a pass)."""
+    try:
+        with open(os.path.join(verdict_dir(repo), f"{tree}.json"), encoding="utf-8") as fh:
+            rec = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return rec if isinstance(rec, dict) and rec.get("tree") == tree else None
+
+
+def show_verdict(repo, what, say):
+    """`--verdict`: 0 only for a recorded pass of *what*'s tree; 1 none or not a pass; 2 no
+    such tree."""
+    r = git(repo, "rev-parse", "--verify", "-q", f"{what}^{{tree}}")
+    tree = r.stdout.strip()
+    if r.returncode or not tree:
+        say(f"nmas-pregate: no tree or commit {what!r} in {repo}")
+        return 2
+    rec = read_verdict(repo, tree)
+    if rec is None:
+        say(f"nmas-pregate: tree {tree}: NO VERDICT recorded (run scripts/nmas-pregate on it: "
+            "staged, or --range <base>..<commit>)")
+        return 1
+    files = rec.get("files", {})
+    say(f"nmas-pregate: tree {tree}: {rec.get('verdict')} ({rec.get('change')}, base "
+        f"{rec.get('base', '')[:10]}, at {rec.get('at')}; {len(files)} file(s); the message: "
+        f"{rec.get('message')})")
+    for t, f in sorted(files.items()):
+        if not str(f.get("state", "")).startswith("passed"):
+            say(f"  {f.get('state')}: {t}")
+    return 0 if rec.get("verdict") == "pass" else 1
+
+
 # --- the whole -------------------------------------------------------------------------------
 
 def fingerprint(repo):
@@ -909,6 +1531,8 @@ def main(argv=None):
     ap.add_argument("--message", help="a commit message file for scripts/hooks/commit-msg")
     ap.add_argument("--list", action="store_true", help="list the tests and why; run nothing")
     ap.add_argument("--no-wait", action="store_true", help="refuse at once while a gate runs")
+    ap.add_argument("--verdict", metavar="TREE-OR-COMMIT",
+                    help="print the verdict recorded for that tree; exit 0 only for a pass")
     ap.add_argument("--repo", default=None, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     def say(words):
@@ -919,37 +1543,77 @@ def main(argv=None):
     if top.returncode or not repo:
         say(f"nmas-pregate: not a git checkout: {a.repo or os.getcwd()}")
         return 2
+    if a.verdict:
+        return show_verdict(repo, a.verdict, say)
     if a.message and not os.path.isfile(a.message):
         say(f"nmas-pregate: no message file at {a.message}")
         return 2
-    got = change(repo, a.range)
-    if got is None:
+    what = f"the range {a.range}" if a.range else "staged"
+    if a.range:
+        lo, sep, hi = a.range.partition("..")
+        base_r = git(repo, "rev-parse", "--verify", "-q", f"{lo}^{{commit}}")
+        tree_r = git(repo, "rev-parse", "--verify", "-q", f"{hi or 'HEAD'}^{{tree}}")
+    else:
+        sep = ".."
+        base_r = git(repo, "rev-parse", "--verify", "-q", "HEAD^{commit}")
+        tree_r = git(repo, "write-tree")
+    base, tree = base_r.stdout.strip(), tree_r.stdout.strip()
+    if not sep or base_r.returncode or tree_r.returncode or not base or not tree:
         say(f"nmas-pregate: git cannot say what {'the range ' + a.range if a.range else 'is staged'}"
             " changes")
         return 2
-    files = got.files
-    if not files:
+    if git(repo, "diff-tree", "--quiet", base, tree).returncode == 0:
         say(f"nmas-pregate: {'the range ' + a.range if a.range else 'the index'} changes nothing")
         return 2
-    say(f"nmas-pregate: {len(files)} changed file(s) "
-        f"({'the range ' + a.range if a.range else 'staged'})")
+    for stale in remove_stale(repo):
+        say(f"nmas-pregate: removed a snapshot a run that is gone left behind: {stale}")
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit_on_signal)
+    snap, remove, why = make_snapshot(repo, tree, base)
+    if snap is None:
+        say(f"nmas-pregate: the snapshot of tree {tree} could not be made: {why}")
+        return 2
+    try:
+        return _tested(a, repo, snap, tree, base, what, say)
+    finally:
+        remove()
+
+
+def _tested(a, repo, snap, tree, base, what, say):
+    """The selection, the runs and the verdict, all in the snapshot *snap* of *tree* (its HEAD
+    *base*), the CHECKOUT_ONLY tests in *repo*."""
+    got = change(snap)
+    if got is None or not got.files:
+        say(f"nmas-pregate: git cannot say what tree {tree} changes on {base}")
+        return 2
+    files = got.files
+    say(f"nmas-pregate: {len(files)} changed file(s) ({what}); tested: tree {tree[:12]} on "
+        f"{base[:12]}, in the snapshot {snap}; the working tree is free to edit")
     if not a.range:
         loose = unstaged(repo)
         if loose:
             say(f"nmas-pregate: note: {len(loose)} file(s) differ between the index and the "
-                f"working tree, and the runs read the working tree: {', '.join(loose[:8])}"
+                f"working tree, and are not in the tested tree: {', '.join(loose[:8])}"
                 f"{' ...' if len(loose) > 8 else ''}")
-    tests = test_files(repo)
-    chosen = select(repo, got, tests=tests)
-    absent = [t for t in chosen if not os.path.isfile(os.path.join(repo, t))]
+    tests = test_files(snap)
+    chosen = select(snap, got, tests=tests)
+    absent = [t for t in chosen if not os.path.isfile(os.path.join(snap, t))]
     browser = [t for t in chosen if t in tests and tests[t].browser]
     confined = [t for t in chosen if t not in browser and t not in absent]
+    in_checkout = {t: ids for t, ids in CHECKOUT_ONLY.items() if t in confined}
     say(f"nmas-pregate: {len(chosen)} test file(s): {len(confined)} confined, "
         f"{len(browser)} browser")
+    checkout_words = [
+        f"not run in the snapshot: {t}::{i}: it reads the checkout's local-only files under "
+        f"{NOT_COPIED}, never copied into the snapshot, so it runs in the checkout, reading the "
+        f"working tree's files, not tree {tree[:12]}'s" for t, ids in in_checkout.items()
+        for i in ids]
     if a.list:
         for line in summary(chosen, {t: "listed (--list: not run)" for t in chosen}):
             say(line)
-        say("nmas-pregate: listed only; nothing was run")
+        for line in checkout_words:
+            say(f"  {line}")
+        say("nmas-pregate: listed only; nothing was run, and no verdict recorded")
         return 0
 
     w = _workers()
@@ -958,69 +1622,91 @@ def main(argv=None):
     every = int(os.environ.get("NMAS_PREGATE_POLL_S", w.WAIT_EVERY_S))
     before = fingerprint(repo)
     states, failed, not_run, extra = {}, False, bool(absent), []
+    counts, missing = {}, {}            # summed over the runs; why a file's run did not happen
     for t in absent:
-        states[t] = "NOT RUN: absent from the checkout"
+        missing[t] = "absent from the tested tree"
+    extra += checkout_words
     scratch = tempfile.mkdtemp(prefix="nmas-pregate-")
     try:
         junits = []
-        for label, group in (("confined", confined), ("browser", browser)):
+        runs = (("confined", confined, snap,
+                 [f"{t}::{i}" for t, ids in in_checkout.items() for i in ids]),
+                ("browser", browser, snap, ()),
+                ("checkout", [f"{t}::{i}" for t, ids in in_checkout.items() for i in ids],
+                 repo, ()))
+        for label, group, where, desel in runs:
             if not group:
                 continue
+            owners = list(in_checkout) if label == "checkout" else group
             why = wait_for_no_gate(lock, bound_wait, every, a.no_wait, say)
             if why:
-                for t in group:
-                    states[t] = "NOT RUN: a gate was running"
+                for t in owners:
+                    missing.setdefault(t, "a gate was running")
                 extra.append(f"the {label} run did not start: {why}")
                 not_run = True
                 continue
-            if label == "confined":
-                b = confined_bound(len(group))
-                say(f"nmas-pregate: the confined run, {len(group)} file(s), bound {b} s "
-                    f"(about 2.5x the measured {MEASURED_CONVENTIONS_S} s for the convention "
-                    f"set and {MEASURED_PER_FILE_S} s a further file)")
-                rc, fired, junit = run_confined(repo, group, scratch, b)
+            if label in ("confined", "checkout"):
+                b = confined_bound(len(owners))
+                say(f"nmas-pregate: the {label} run, in "
+                    f"{'the checkout' if label == 'checkout' else 'the snapshot'}, "
+                    f"{len(group)} {'test(s)' if label == 'checkout' else 'file(s)'}, bound "
+                    f"{b} s (about 2.5x the measured {MEASURED_CONVENTIONS_S} s for the "
+                    f"convention set and {MEASURED_PER_FILE_S} s a further file)")
+                rc, fired, junit = run_confined(where, group, scratch, b, label=label,
+                                                deselect=desel)
                 note = ""
             else:
                 b = browser_bound(len(group))
-                say(f"nmas-pregate: the browser run, unconfined, {len(group)} file(s), bound "
-                    f"{b} s (about 2.5x the measured {MEASURED_BROWSER_FILE_S} s a file, never "
-                    f"under 2.5x the slowest file's {MEASURED_BROWSER_SLOWEST_S} s)")
-                rc, fired, junit, note = run_browser(repo, group, scratch, b)
+                say(f"nmas-pregate: the browser run, unconfined, in the snapshot, {len(group)} "
+                    f"file(s), bound {b} s (about 2.5x the measured {MEASURED_BROWSER_FILE_S} s "
+                    f"a file, never under 2.5x the slowest file's {MEASURED_BROWSER_SLOWEST_S} s)")
+                rc, fired, junit, note = run_browser(where, group, scratch, b)
             if note or rc is None:
-                for t in group:
-                    states[t] = "NOT RUN: no browser interpreter"
+                for t in owners:
+                    missing.setdefault(t, "no browser interpreter")
                 extra.append(f"the {label} run did not start: {note}")
                 not_run = True
                 continue
             if fired:
                 extra.append(f"the {label} run's bound fired ({b} s); its files are not run")
-            got = None if fired else outcomes(junit, group)
+            got = None if fired else outcomes(junit, owners)
             if got is None:
-                for t in group:
-                    states[t] = "NOT RUN: " + ("the bound fired" if fired else
-                                               f"no JUnit result (exit {rc})")
+                for t in owners:
+                    missing.setdefault(t, "the bound fired" if fired else
+                                       f"no JUnit result from the {label} run (exit {rc})")
                 not_run = True
                 continue
             junits.append(junit)
-            for t in group:
-                o = got[t]
-                ran = o["passed"] + o["failed"]
-                if o["failed"]:
-                    states[t] = f"FAILED ({o['failed']} failed, {o['passed']} passed)"
-                    failed = True
-                elif not ran:
-                    states[t] = ("NOT RUN: every test skipped" if o["skipped"] else
-                                 "NOT RUN: no test collected")
-                    not_run = True
-                else:
-                    states[t] = f"passed ({o['passed']}" + (
-                        f", {o['skipped']} skipped)" if o["skipped"] else ")")
-            if rc and not any(got[t]["failed"] for t in group):
+            for t in owners:
+                c = counts.setdefault(t, {"passed": 0, "failed": 0, "skipped": 0})
+                for k in c:
+                    c[k] += got[t][k]
+                if label == "checkout" and not got[t]["passed"] + got[t]["failed"]:
+                    missing.setdefault(t, "its checkout-only tests did not run")
+            if rc and not any(got[t]["failed"] for t in owners):
                 extra.append(f"the {label} run exited {rc} with no test failed in its JUnit "
                              "file (a collection or session error: read its output above)")
                 failed = True
+        for t in chosen:
+            o = counts.get(t)
+            if o and o["failed"]:
+                states[t] = f"FAILED ({o['failed']} failed, {o['passed']} passed)"
+                failed = True
+            elif t in missing:
+                states[t] = f"NOT RUN: {missing[t]}"
+                not_run = True
+            elif o is None:
+                states[t] = "NOT RUN: no run reached it"
+                not_run = True
+            elif not o["passed"]:
+                states[t] = ("NOT RUN: every test skipped" if o["skipped"] else
+                             "NOT RUN: no test collected")
+                not_run = True
+            else:
+                states[t] = f"passed ({o['passed']}" + (
+                    f", {o['skipped']} skipped)" if o["skipped"] else ")")
         if junits:
-            rc, words = skip_check(repo, junits)
+            rc, words = skip_check(snap, junits)
             if rc:
                 extra.append(f"the skip check (scripts/nmas-skip-check --where gate) refused: "
                              f"{words}")
@@ -1038,7 +1724,7 @@ def main(argv=None):
             else:
                 say(f"nmas-pregate: scripts/hooks/commit-msg on a copy of {a.message}, bound "
                     f"{HOOK_BOUND} s")
-                rc, refused, fired = run_hook(repo, a.message, scratch, HOOK_BOUND)
+                rc, refused, fired = run_hook(snap, a.message, scratch, HOOK_BOUND)
                 if fired:
                     hook_line = f"NOT RUN: the commit-msg hook's bound fired ({HOOK_BOUND} s)"
                     not_run = True
@@ -1051,6 +1737,7 @@ def main(argv=None):
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     after = fingerprint(repo)
+    moved = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
     say("nmas-pregate: the summary")
     for line in summary(chosen, states):
         say(line)
@@ -1058,18 +1745,29 @@ def main(argv=None):
         say(f"  {hook_line}")
     for e in extra:
         say(f"  {e}")
-    if after != before:
-        moved = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
-        say(f"nmas-pregate: THE WORKING TREE CHANGED during the run: {moved}")
-        return 3
+    # The working tree decides nothing: the tree tested is the snapshot's (C3421).
+    say(f"nmas-pregate: the working tree changed during the run (not part of the verdict, which "
+        f"is tree {tree[:12]}'s): {moved}" if moved else
+        "nmas-pregate: the working tree did not change during the run")
+    rc = 1 if failed else 4 if not_run else 0
+    record = {
+        "tree": tree, "verdict": {0: "pass", 1: "failed"}.get(rc, "not run"), "exit": rc,
+        "change": what, "base": base,
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "message": hook_line or ("not given" if not a.message else "not run"),
+        "files": {t: {"why": whys, "state": states.get(t, "NOT RUN: no run reached it")}
+                  for t, whys in chosen.items()},
+        "notes": extra, "working_tree_changed": moved,
+    }
+    path = record_verdict(repo, record)
+    say(f"nmas-pregate: the verdict for tree {tree}: {record['verdict']}, recorded in {path}")
     if failed:
         say("nmas-pregate: FAILED")
-        return 1
-    if not_run:
-        say("nmas-pregate: NOT EVERYTHING RAN: no verdict")
-        return 4
-    say("nmas-pregate: every chosen file ran and passed")
-    return 0
+    elif not_run:
+        say("nmas-pregate: NOT EVERYTHING RAN: no pass")
+    else:
+        say("nmas-pregate: every chosen file ran and passed")
+    return rc
 
 
 if __name__ == "__main__":
