@@ -563,6 +563,109 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     return dict(got, **told) if told else got
 
 
+def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
+                 context: dict = None, thinking: str = None, kind: str = triggers.PERSON,
+                 cache_ttl: str = None) -> dict:
+    """The masked request body a call of the task *feature* sends, items 3 to 5 of the module's
+    docstring: the pin, the model's profile and the pin's settings checked, the schema and the
+    prompt, then the person's typed parts masked (`mask_typed`), instruction-like lines
+    withheld (`injection.withhold_parts`), the body built (`build_request`), masked as it
+    leaves (`redact.egress_payload`) and refused while a stored secret is still in it. **The
+    one home of what is sent:** `_prepared` (every call and batched request) builds its body
+    here, and so does AI troubleshooting's preview (`fixit_troubleshoot.preview`), so the
+    preview cannot drift from what a press sends. *kind* is the trigger's kind (a person's
+    single press is sent without the cache mark, C2261); *cache_ttl* a batched request's TTL.
+
+    ``{"row", "told"}`` and either ``{"refused": (kind, detail)}`` or ``{"body", "model",
+    "max_tokens", "pin", "profile"}``: *row* the fields the call's row gains (the thinking
+    sent, the schema, the prompt's sha256, what was masked and withheld, the request), *told*
+    what every result says from there on. Reads the pin, the prompt file and the values
+    Mercury keeps secret (to mask them, never returned); asks no provider, reads no API key and
+    records nothing."""
+    from modules import redact
+
+    row, told = {}, {}
+    out = {"row": row, "told": told}
+
+    def refused(kind_, detail):
+        return dict(out, refused=(kind_, detail))
+
+    pin = profiles.TASKS.get(feature) or {}
+    model = pin.get("model", "")
+    if not pin:
+        return refused("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; "
+                       f"known: {', '.join(sorted(profiles.TASKS))}")
+    if feature not in TYPED_PARTS:
+        return refused("typed_undeclared", f"{feature!r} names no typed parts in "
+                       "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
+                       "it could not be masked and said; nothing was sent")
+    max_tokens = int(pin["max_tokens"])
+    try:
+        profile = profiles.profile(model)
+    except KeyError as exc:
+        return refused("unknown_model", str(exc))
+    if profile["provider"] != profiles.ANTHROPIC:
+        return refused("unknown_model", f"{model} is not served by the Anthropic adapter")
+    # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
+    asked = dict(pin, thinking=thinking) if thinking is not None else pin
+    mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)
+    row["thinking"] = mode
+    if mode not in profiles.THINKING:
+        return refused("thinking", f"thinking {mode!r} is not one of "
+                       f"{', '.join(profiles.THINKING)}; nothing was sent")
+    if mode == "off" and not profile.get("thinking_off"):
+        return refused("thinking", f"{model}'s profile names no way to turn thinking off; "
+                       "nothing was sent")
+    temperature = asked["temperature"]
+    if temperature is not None and temperature not in profile.get("temperatures", ()):
+        return refused("temperature", f"the pin's temperature {temperature!r} is not one "
+                       f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
+                       "was sent")
+    ident = getattr(schema_model, "__ai_schema__", None)
+    if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
+        return refused("schema", f"{getattr(schema_model, '__name__', schema_model)} is not "
+                       "a registered AI schema")
+    row["schema"] = f"{ident[0]}.v{ident[1]}"
+    try:
+        prompt_file = prompts.load(*prompt)
+    except prompts.PromptError as exc:
+        return refused("prompt", str(exc))
+    row["prompt_sha256"] = prompt_file["sha256"]
+
+    values = redact.known_secret_values()
+    # What a person typed, masked here, once, for every entry point (C1845), and what was
+    # masked said to them; then the whole request masked as it leaves.
+    typed = mask_typed(parts, TYPED_PARTS[feature], values)
+    said = typed_said(typed["masked"])
+    if said:
+        row["typed_masked"] = said
+        told["typed_masked"] = said
+    # Instruction-like lines in the retrieved data, never the person's own words, withheld
+    # from the request and said on the row and every result from here on (C2271; IBN_DESIGN
+    # 13 item 5: flagging, never relied on for security).
+    from modules.ai import injection
+    held = injection.withhold_parts(typed["parts"], skip=TYPED_PARTS[feature])
+    if held["withheld"]:
+        row["withheld"] = held["withheld"]
+        told["withheld"] = held["withheld"]
+    # A call's request is built as it always was; only a batched one names its TTL. A person's
+    # single press is sent without the cache mark (C2261, the operator, 2026-11-01): presses
+    # come minutes apart, so the prefix each wrote went unread; a batch, an evaluation and a
+    # background feature's calls share their prefix and keep it.
+    ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
+    marked = bool(cache_ttl) or kind != triggers.PERSON
+    body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"], asked,
+                                               context=context, profile=profile,
+                                               cache=marked, **ttl),
+                                 values)
+    leaked = redact.contains_known_secret(body)
+    if leaked:
+        return refused("unmasked_secret", "a stored secret is still in the request after "
+                       f"masking ({', '.join(leaked)}); nothing was sent")
+    row["request"] = body
+    return dict(out, body=body, model=model, max_tokens=max_tokens, pin=pin, profile=profile)
+
+
 def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
               trigger: dict = None, context: dict = None, thinking: str = None,
               subject: dict = None, count=None, cache_ttl: str = None,
@@ -616,78 +719,14 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
         if hold:
             return refused(provider_limit.KIND, provider_limit.said(hold)["words"],
                            **_limit_fields(hold))
-    if not pin:
-        return refused("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; "
-                       f"known: {', '.join(sorted(profiles.TASKS))}")
-    if feature not in TYPED_PARTS:
-        return refused("typed_undeclared", f"{feature!r} names no typed parts in "
-                       "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
-                       "it could not be masked and said; nothing was sent")
-    max_tokens = int(pin["max_tokens"])
-    try:
-        profile = profiles.profile(model)
-    except KeyError as exc:
-        return refused("unknown_model", str(exc))
-    if profile["provider"] != profiles.ANTHROPIC:
-        return refused("unknown_model", f"{model} is not served by the Anthropic adapter")
-    # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
-    asked = dict(pin, thinking=thinking) if thinking is not None else pin
-    mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)
-    row["thinking"] = mode
-    if mode not in profiles.THINKING:
-        return refused("thinking", f"thinking {mode!r} is not one of "
-                       f"{', '.join(profiles.THINKING)}; nothing was sent")
-    if mode == "off" and not profile.get("thinking_off"):
-        return refused("thinking", f"{model}'s profile names no way to turn thinking off; "
-                       "nothing was sent")
-    temperature = asked["temperature"]
-    if temperature is not None and temperature not in profile.get("temperatures", ()):
-        return refused("temperature", f"the pin's temperature {temperature!r} is not one "
-                       f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
-                       "was sent")
-    ident = getattr(schema_model, "__ai_schema__", None)
-    if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
-        return refused("schema", f"{getattr(schema_model, '__name__', schema_model)} is not "
-                       "a registered AI schema")
-    row["schema"] = f"{ident[0]}.v{ident[1]}"
-    try:
-        prompt_file = prompts.load(*prompt)
-    except prompts.PromptError as exc:
-        return refused("prompt", str(exc))
-    row["prompt_sha256"] = prompt_file["sha256"]
-
-    from modules import redact
-    values = redact.known_secret_values()
-    # What a person typed, masked here, once, for every entry point (C1845), and what was
-    # masked said to them; then the whole request masked as it leaves.
-    typed = mask_typed(parts, TYPED_PARTS[feature], values)
-    said = typed_said(typed["masked"])
-    if said:
-        row["typed_masked"] = said
-        told["typed_masked"] = said
-    # Instruction-like lines in the retrieved data, never the person's own words, withheld
-    # from the request and said on the row and every result from here on (C2271; IBN_DESIGN
-    # 13 item 5: flagging, never relied on for security).
-    from modules.ai import injection
-    held = injection.withhold_parts(typed["parts"], skip=TYPED_PARTS[feature])
-    if held["withheld"]:
-        row["withheld"] = held["withheld"]
-        told["withheld"] = held["withheld"]
-    # A call's request is built as it always was; only a batched one names its TTL. A person's
-    # single press is sent without the cache mark (C2261, the operator, 2026-11-01): presses
-    # come minutes apart, so the prefix each wrote went unread; a batch, an evaluation and a
-    # background feature's calls share their prefix and keep it.
-    ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
-    marked = bool(cache_ttl) or named["trigger"]["kind"] != triggers.PERSON
-    body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"], asked,
-                                               context=context, profile=profile,
-                                               cache=marked, **ttl),
-                                 values)
-    leaked = redact.contains_known_secret(body)
-    if leaked:
-        return refused("unmasked_secret", "a stored secret is still in the request after "
-                       f"masking ({', '.join(leaked)}); nothing was sent")
-    row["request"] = body
+    built = request_body(feature, prompt, schema_model, parts, context=context,
+                         thinking=thinking, kind=named["trigger"]["kind"], cache_ttl=cache_ttl)
+    row.update(built["row"])
+    told.update(built["told"])
+    if "refused" in built:
+        return refused(*built["refused"])
+    body, max_tokens = built["body"], built["max_tokens"]
+    profile = built["profile"]
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
     # passed; the fallback over-estimate when the count is not had, said. Both on the row.

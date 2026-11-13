@@ -507,6 +507,29 @@ def shown(answer, said: dict = None, pass_: int = 1) -> dict:
     return out
 
 
+def loop_feature(prep: dict) -> RL.LoopFeature:
+    """The investigation as the read loop's feature, for the request *prep* (`request`): its
+    three passes' prompts and schemas, the press's own check (with the reads that ran as
+    ``mercury_reads``), what an answer cites and acts on. `troubleshoot` and `preview` share
+    it."""
+    def check_(answer, *, read_ids):
+        sections = list(prep["checked_sections"])
+        if read_ids:
+            sections.append({"ref": READS_SECTION, "name": READS_SECTION, "state": "ok",
+                             "pieces": [{"ref": r} for r in read_ids]})
+        return check(answer, prep["pack"], sections, prep["topo"])
+
+    return RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootFixitReads),
+                          second=(PROMPT_SECOND, TroubleshootSecond),
+                          plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
+                          acts_on=acts_on)
+
+
+def reads_context() -> dict:
+    """The context only the reads pass carries: the read set (`read_set`)."""
+    return {"read_set": read_set()}
+
+
 def _person(actor: str, actor_verified: str, person: bool) -> str:
     if person and actor and actor_verified not in ("", "none", None):
         return ""
@@ -548,18 +571,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
     memo = {}
-
-    def check_(answer, *, read_ids):
-        sections = list(prep["checked_sections"])
-        if read_ids:
-            sections.append({"ref": READS_SECTION, "name": READS_SECTION, "state": "ok",
-                             "pieces": [{"ref": r} for r in read_ids]})
-        return check(answer, prep["pack"], sections, prep["topo"])
-
-    feature = RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootFixitReads),
-                             second=(PROMPT_SECOND, TroubleshootSecond),
-                             plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
-                             acts_on=acts_on)
+    feature = loop_feature(prep)
 
     def ask(feature_, prompt, schema, parts, *, trigger, **kw):
         # The gateway's own ask, the press's trigger passed on; what it masked of the note is
@@ -580,7 +592,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                  data=prep["data"], actor=actor, trigger=triggers.person(actor),
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,
-                 reads_context={"read_set": read_set()})
+                 reads_context=reads_context())
     said = reads_said(got)
     ids = [c for c in got.get("call_ids") or [] if c]
     first = got.get("first") or {}
@@ -655,6 +667,144 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     words = "The AI named no fix: " + (_cut(answer.rationale) or "it gave no reason")
     out.update(state="no_fix", words=words, proposal=keep(words, shown=out["shown"]))
     return out
+
+
+# ── The preview (C3406: scripts/nmas-fixit-cases --preview) ─────────────────────────────────
+
+#: The class a preview builds the press's request with, on, whatever its switch says (the
+#: operator, 2026-11-13: "it runs the reads as if the device-state class were on (read-only,
+#: nothing sent, no record), so I review before I enable it").
+PREVIEW_CLASS = "device_state"
+#: The device's reads a preview runs (the lost stream's two shapes, through the reads engine).
+PREVIEW_DEVICE_READS = ("telemetry_brief", "telemetry_receiver")
+#: What each read a preview asks for says as its why and its hypothesis (sent in pass 2, as a
+#: model's own words would be).
+PREVIEW_WHY = "the preview runs every read of the lost stream the incident's scope allows"
+PREVIEW_HYPOTHESIS = "none: a preview's request, not the model's"
+
+
+def preview_requests(incident, *, device_reads: bool = True) -> list:
+    """Every read of the lost stream the incident's scope allows, as pass 1 would ask for it:
+    the device's subscriptions brief, then for each subscription the incident names its
+    receiver on the device, the collector's side and the stream's series. *device_reads* False
+    leaves the device's two out (only Mercury's own reads run, so the reads engine records
+    nothing)."""
+    def ask(op, **args):
+        return {"op": op, "args": dict({"device": incident.device}, **args),
+                "why": PREVIEW_WHY, "hypothesis": PREVIEW_HYPOTHESIS}
+
+    out = [ask("telemetry_brief")]
+    for sub in incident.subscriptions:
+        out += [ask("telemetry_receiver", subscription=sub),
+                ask("collector_sessions", subscription=sub),
+                ask("stream_series", subscription=sub)]
+    return [r for r in out if device_reads or r["op"] not in PREVIEW_DEVICE_READS]
+
+
+def _preview_body(prompt: tuple, schema, parts: dict, ctx: dict) -> dict:
+    """One pass's body as the press's call builds it (`gateway.request_body`, a person's
+    trigger: the one home of what is sent), with what was masked and withheld; or the
+    gateway's refusal, with no body (a request still holding a stored secret is never
+    printed)."""
+    from modules.ai import profiles, triggers
+
+    got = gateway.request_body(FEATURE, prompt, schema, parts, context=ctx or None,
+                               kind=triggers.PERSON)
+    out = {"prompt": f"{prompt[0]}.v{prompt[1]}",
+           "typed_masked": got["told"].get("typed_masked") or {},
+           "withheld": got["told"].get("withheld") or []}
+    if "refused" in got:
+        kind, detail = got["refused"]
+        return dict(out, refused={"kind": kind, "detail": detail}, body=None)
+    est = gateway.prompt_tokens(got["body"])
+    bound = int((profiles.TASKS.get(FEATURE) or {}).get("max_prompt_tokens") or 0)
+    return dict(out, schema=got["row"]["schema"], body=got["body"],
+                prompt_tokens_estimated=est, max_prompt_tokens=bound,
+                over_the_bound_by_the_estimate=bool(bound and est > bound))
+
+
+def _read_shown(r: dict) -> dict:
+    return {k: r.get(k) for k in ("id", "op", "args", "requests", "verdict", "reason", "bytes",
+                                  "sent_bytes", "cut", "withheld", "run") if k in r}
+
+
+def preview(network: str, found: dict, incident, *, actor: str = "", note: str = "",
+            device_reads: bool = True, now: float = None, resolved: float = None,
+            seen: dict = None, loki=None, prometheus=None, collector=None,
+            series=None) -> dict:
+    """What a Troubleshoot with AI press on *incident* would send with the device state class
+    on, built by the press's own code and the gateway's (`request`, `loop_feature`,
+    `read_loop.first_request` and `second_request`, `gateway.request_body`), with no provider
+    request of any kind (no send, no token count), no API key read, and nothing recorded (no
+    call row, no send log, no proposal, no spend); the class's switch is read to say what it
+    is now, never written, and never decides what is built.
+
+    ``{"network", "incident", "class", "first", "reads", "second", "said"}``: *first* pass 1's
+    body (the reads pass's), *reads* every read the incident's scope allows
+    (`preview_requests`), each judged by the loop's check with the class assumed on and run
+    by the loop's own runner, masked as the loop masks it (the device's through Mercury's
+    reads engine, which records each device read on History › Reads as it records every one;
+    *device_reads* False runs Mercury's own reads alone), *second* pass 2's body from those
+    answers (``None`` when no read ran). Raises `Refused` for a network whose marking forces
+    AI off. *collector* and *series* replace the two local reads (tests)."""
+    from modules.nsot import listref
+
+    prep = request(network, found, incident, note=note, now=now, resolved=resolved,
+                   seen=seen, loki=loki, prometheus=prometheus)
+    feature = loop_feature(prep)
+    net_id = listref.network_id(network)
+    now_off = RL.class_state(FR.FAMILY, PREVIEW_CLASS, net_id)
+    prompt, schema, parts, ctx = RL.first_request(feature, prep["data"], prep["ctx"],
+                                                  reads_context(), plain=False)
+    first = _preview_body(prompt, schema, parts, ctx)
+    scope = _scope(network, incident, actor, collector, series)
+    scope["actor"] = (f"the preview of AI troubleshooting of incident {incident.id} "
+                      f"(scripts/nmas-fixit-cases --preview, run by {actor or 'nobody named'}"
+                      "): nothing was sent to the AI")
+    scope["purpose"] = "a preview of the AI's read: nothing of it was sent to the AI"
+    asked = preview_requests(incident, device_reads=device_reads)
+    verdicts = []
+    for n, raw in enumerate(asked, 1):
+        # Each judged alone, as the loop judges a request (a pass asks for at most 3: the
+        # preview runs every one the scope allows, so its pass 2 holds all a press could send).
+        (v,) = RL.check(FR.FAMILY, [raw], network=net_id, scope=scope,
+                        assume_on=(PREVIEW_CLASS,))
+        verdicts.append(dict(v, id=f"read:{n}"))
+    # A pass 1 the gateway refuses is never sent, so no read would run: none is run here.
+    records = RL.run_reads(FR.FAMILY, verdicts, scope) if first["body"] is not None \
+        else verdicts
+    ran = [r for r in records if r.get("verdict") == "run"]
+    second = None
+    if ran:
+        prompt2, schema2, parts2, ctx2 = RL.second_request(feature, prep["data"], ctx, records)
+        second = _preview_body(prompt2, schema2, parts2, ctx2)
+    state = "on" if not now_off else "off"
+    said = [
+        f"The device state class is {state} for {network} now"
+        + (f" ({now_off})" if now_off else "") + "; this preview built what a press would "
+        "send with it on, and did not change it.",
+        f"Pass 1 is the reads pass ({first['prompt']}): the pack, the incident's own sections, "
+        "the note and the read set.",
+        f"The preview ran {len(ran)} of {len(asked)} read(s), every one the incident's scope "
+        "allows (" + ", ".join(f"{r['id']} {r.get('op')} {r.get('verdict')}"
+                                for r in records) + "). A press's real first answer asks "
+        "for at most 3 and may ask for fewer, or none; pass 2 here holds every read that ran, "
+        "so it holds all a press's pass 2 could.",
+        "Nothing was sent to the AI: no provider request, no token count (the prompt's size "
+        "is the fallback estimate), no API key read, and no call, send log, proposal or "
+        "spend recorded."
+        + (" Each device read ran through Mercury's reads engine, which records it on "
+           "History › Reads, as it records every read of a device." if device_reads else
+           " The device's reads were left out (--local-reads-only).")]
+    if second is None:
+        said.append("Pass 2 is not built: " + ("pass 1 was refused" if first["body"] is None
+                                               else "no read ran, so a press asks no pass 2"))
+    return {"network": network, "incident": {"id": incident.id, "device": incident.device,
+                                             "subscriptions": list(incident.subscriptions)},
+            "class": {"name": PREVIEW_CLASS, "now": state, "why_off": now_off,
+                      "assumed": "on, for this preview only: the setting was not written"},
+            "first": first, "reads": [_read_shown(r) for r in records], "second": second,
+            "said": said}
 
 
 # ── A recorded case (the fix-it plan's S7: scripts/nmas-fixit-cases) ──────────────────────────

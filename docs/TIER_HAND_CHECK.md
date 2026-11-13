@@ -4302,3 +4302,58 @@ a citation the actable rule does not catch, and both died.
 (each rule of `fixit_misses`, the unanswered miss, `--out`, `--stop-usd`, `--yes`, the stopping
 refusals) are outside the tier, each killed in the same runs. Not mutated: the gateway's masks,
 unchanged here.
+
+## 2026-11-13: AI troubleshooting's preview, the gateway's one body builder (C3406), by hand
+
+**What changed in the tier:** how a request to the hosted AI is built and masked, and a new
+path that builds one without sending it. The operator reviewed the gateway's diff as a
+protected file's ("Approved: the gateway change as in c3406-gateway.diff (request_body
+extracted word for word; the cache-mark line takes kind as a parameter)").
+- `gateway.request_body` (new): `_prepared`'s body-building moved into one function, word for
+  word (the pin, model, thinking, temperature, schema and prompt checks; `mask_typed`;
+  `injection.withhold_parts`; `build_request`; `redact.egress_payload`; the `unmasked_secret`
+  refusal), reading no key, asking no provider, recording nothing; `_prepared` calls it after its
+  own gates. One line changed in meaning: the cache mark takes the trigger's `kind` as a
+  parameter (`_prepared` passes the named trigger's, the preview a person's).
+- `read_loop.check(..., assume_on=())`: classes judged on without reading their switch, passed
+  by the preview alone (the device state class); a classification marking still refuses.
+- `fixit_troubleshoot.preview` and its helpers: pass 1 built by `request_body` as a person's
+  press, every read the incident's scope allows run through the loop's own runner, pass 2 from
+  their answers; no call, send log, proposal or spend. Reached from `scripts/nmas-fixit-cases
+  --preview` alone, no route (the operator's condition; the test below).
+
+The danger the hand check guards: a request leaving the host unmasked, a stored secret or a
+person's typed secret in it, an instruction line not withheld, a read run with its class off
+outside the preview, a refused request printed or followed by reads, or the preview recording
+or calling where a press would.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/c3406-hand/mut.py`), in a `scripts/nmas-control` throwaway worktree of the working
+tree; then tests/test_fixit_preview.py, test_ai_gateway.py, test_ai_gateway_ask.py,
+test_ai_gateway_parts.py, test_ai_injection.py, test_ai_read_loop.py, test_fixit_reads.py and
+test_fixit_troubleshoot.py, no `-x`, in CI's interpreter, confined, two workers; each worktree
+removed after its run. Baseline: 320 passed. **Runs:** 2026-11-13 04:11:08 to 04:14:00 UTC;
+P2 and P3 again at 04:2x UTC over test_fixit_preview.py with the test added for them.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the one body builder raises before masking | killed (many failed) | every gateway call's test, `test_each_failed_answer_is_its_own_kind` first |
+| G1 the egress mask skipped (the body built, not masked) | killed | `test_no_planted_secret_reaches_the_bytes_sent` |
+| G2 the unmasked-secret refusal off | killed (2 failed) | `test_a_stored_secret_left_after_masking_refuses_and_sends_nothing`, `…_is_refused_before_the_request_is_kept` |
+| G3 a person's typed words not masked | killed | `TestThePress::test_a_secret_in_the_note_is_masked_before_it_leaves_and_said` |
+| G4 instruction-like lines not withheld | killed (3 failed) | `test_a_planted_line_in_a_pack_is_withheld_said_and_recorded`, `test_the_card_says_a_line_was_withheld`, `test_the_data_rides_delimited_and_the_prompt_is_the_system_text` |
+| G5 the cache mark forced on a person's press | killed (3 failed) | `test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not`, pass 1 byte for byte |
+| R1 the device state class assumed on in every check, not the preview's alone | killed (4 failed) | `test_every_read_is_refused_when_the_class_is_off_naming_it` and three class-off tests |
+| R2 the preview not assuming the class on | killed (4 failed) | `test_with_the_class_off_it_builds_the_reads_pass_and_says_so` and three more |
+| P1 the preview's pass built as a background call | killed (2 failed) | pass 1 and pass 2 byte for byte |
+| P2 a pass 1 the gateway refuses still runs its reads | **survived the first run**; killed after the test was added | `test_a_pass_1_the_gateway_refuses_prints_no_body_and_runs_no_read` (added for it: the gateway's refusal planted at its prompt load, where no read looks) |
+| P3 a refused pass's body printed | **equivalent** (the operator's yes, 2026-11-13) | none can: `request_body`'s refusal returns only its row and told fields and the refusal (`dict(out, refused=...)`, `out` holding no body), so `got.get("body")` is `None` either way |
+
+**The result: 10 mutants and the canary; 9 killed, one killed once its test was added (P2), one
+equivalent with its reason (P3).** And the operator's condition: tests/test_fixit_preview.py
+`test_the_preview_is_reached_from_the_host_s_command_line_alone` parses every product file
+(app.py, routes/, modules/, scripts/; a floor of 400) and finds the preview's functions named in
+scripts/nmas-fixit-cases alone, planted routes found; its control (a call of the preview
+appended to routes/fixit_v2.py) fails it. Not mutated: `doc_addresses` (outside the tier: what
+a person reviews, never what is sent; its 5 controls in the build's report), `redact`'s masks
+and `read_loop`'s egress mask and send log, unchanged here.

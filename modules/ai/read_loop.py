@@ -723,16 +723,22 @@ def _judge(family: ReadFamily, raw, n: int, network: str, scope: dict, off: dict
             "reason": ""}
 
 
-def check(family: ReadFamily, requests, *, network: str, scope: dict = None) -> list:
+def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
+          assume_on=()) -> list:
     """Each of pass 1's *requests* judged, in order: ``[{"id": "read:<n>", "verdict":
     "allowed" | "refused", "op", "args", "why", "hypothesis", "requests", "reason"}]``. A
     refused request's *reason* names the operation and the argument it compared; *args* are
     the parsed arguments (canonical forms), *requests* what the operation sends, rendered.
-    Every string kept is masked for egress (the model's own words included)."""
+    Every string kept is masked for egress (the model's own words included).
+
+    *assume_on* names egress classes judged on for this check without reading their switch:
+    only AI troubleshooting's preview passes one (`fixit_troubleshoot.preview`, the device
+    state class: what a press would read once the class is on, nothing sent and nothing
+    recorded); the loop never does. A classification marking still refuses every request."""
     from modules import redact
 
     scope = dict(scope or {})
-    off = {}
+    off = {cls: "" for cls in assume_on}
     out = []
     for n, raw in enumerate(list(requests or ()), 1):
         got = _judge(family, raw, n, network, scope, off)
@@ -1047,6 +1053,29 @@ def _log_answered(out: dict, got: dict) -> None:
         out["logged"] = False
 
 
+def first_request(feature: LoopFeature, data: dict, context: dict, reads_context: dict = None,
+                  *, plain: bool) -> tuple:
+    """Pass 1's ``(prompt, schema, parts, context)`` as `run` asks it: the plain pass's prompt
+    and schema when *plain*, else the reads pass's with *reads_context* added to the context.
+    AI troubleshooting's preview builds the same (`fixit_troubleshoot.preview`)."""
+    ctx = dict(context or {})
+    prompt, schema = feature.plain if plain else feature.first
+    if not plain and reads_context:
+        ctx = dict(ctx, **reads_context)
+    return prompt, schema, dict(data), ctx
+
+
+def second_request(feature: LoopFeature, data: dict, context: dict, records: list) -> tuple:
+    """Pass 2's ``(prompt, schema, parts, context)`` as `run` asks it: *data* with the read
+    records as sent (`as_sent`) in the ``mercury_reads`` part, and pass 1's *context* with the
+    reads' format. AI troubleshooting's preview builds the same."""
+    parts = dict(data)
+    parts[READS_PART] = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
+                                   separators=(",", ":"))
+    prompt, schema = feature.second
+    return prompt, schema, parts, dict(context or {}, reads_format=READS_FORMAT)
+
+
 def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str, data: dict,
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
         scope: dict = None, actable=(), send=None, today: str = None,
@@ -1082,10 +1111,8 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
 
     off = _all_off(family, network)
     plain = bool(off) and feature.plain is not None
-    prompt, schema = feature.plain if plain else feature.first
-    if not plain and reads_context:
-        ctx = dict(ctx, **reads_context)
-    got = ask(feature.task, prompt, schema, dict(data), context=ctx or None, **common)
+    prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
+    got = ask(feature.task, prompt, schema, parts, context=ctx or None, **common)
     out["first"] = asked(got)
     if not got.get("ok"):
         return dict(out, error=got.get("error") or "", detail=got.get("detail") or "",
@@ -1120,12 +1147,8 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         out["words"] = (f"AI analysis: {summary}; second pass not run: the send log could not "
                         f"be written ({unlogged}), so nothing of the reads is sent")
         return out
-    parts = dict(data)
-    parts[READS_PART] = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
-                                   separators=(",", ":"))
-    prompt, schema = feature.second
-    got = ask(feature.task, prompt, schema, parts, context=dict(ctx, reads_format=READS_FORMAT),
-              **common)
+    prompt, schema, parts, ctx2 = second_request(feature, data, ctx, records)
+    got = ask(feature.task, prompt, schema, parts, context=ctx2, **common)
     out["second"] = asked(got)
     _log_answered(out, got)
     if not got.get("ok"):

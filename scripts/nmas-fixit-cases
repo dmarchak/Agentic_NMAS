@@ -7,6 +7,10 @@ recorded.json and blind.json).
     # pack (to stdout; nothing is written there), to be pasted into its case
     nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --capture --network <network> \\
         --incident <incident id>
+    # no call: exactly what a Troubleshoot with AI press would send, the device state class
+    # on for this preview alone (C3406), its addresses moved into the documentation ranges
+    nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --preview --network <network> \\
+        --incident <incident id> --doc-addresses --out /tmp/fixit-preview.json
     # no call: every case's pack captured, and its expectations borne out by it
     nmas-host nmas -- <checkout>/scripts/nmas-fixit-cases --check
     # the pilot, then the measurement: one call a case a run, recorded as an evaluation
@@ -16,7 +20,23 @@ recorded.json and blind.json).
 **Capture** (`--capture`): the request Mercury builds for the incident as Troubleshoot with AI
 would send it (`fixit_troubleshoot.request`, then `snapshot`: the evidence pack, the attempts,
 Seen before, the catalogue, the incident; the note left out, each case states its own), printed
-as JSON on stdout. Nothing is asked and nothing is written on the host.
+as JSON on stdout. Nothing is asked and nothing is written on the host. Its addresses are moved
+into the documentation ranges (`doc_addresses`; ``--raw-addresses`` keeps them as written), so a
+case is reviewed, never hand-edited: the counts moved and kept are printed beside the pack, never
+an address.
+
+**Preview** (`--preview`, C3406): the exact request bodies a Troubleshoot with AI press on the
+incident would send with the device state class on, whatever its setting says now (said, and
+never written), built by the press's and the gateway's own code (`fixit_troubleshoot.preview`,
+`gateway.request_body`): pass 1 (the reads pass), every read of the lost stream the incident's
+scope allows (the device's two telemetry shapes through Mercury's reads engine, which records
+each on History › Reads as it records every device read; the collector's side; the stream's
+series), judged and masked as the loop does, and pass 2 built from their answers. No provider
+request of any kind (no send, no token count), no API key read, no call, send log, proposal or
+spend recorded. ``--local-reads-only`` runs Mercury's own reads alone (no device read, so the
+reads engine records nothing); ``--doc-addresses`` moves its addresses as a capture's are (the
+output is then not byte for byte what is sent); ``--out`` writes it to a file outside the
+checkout (2), else stdout.
 
 **Check** (`--check`, and first thing in every recording): a case with no pack, an expected
 citation its pack cannot hold, or an expected fix still to be filled from its capture stops the
@@ -77,6 +97,178 @@ def capture(network: str, incident_id: str) -> dict:
     return {"pack": T.snapshot(prep, got["incident"])}
 
 
+def preview(network: str, incident_id: str, *, actor: str = "",
+            device_reads: bool = True) -> dict:
+    """``{"preview"}`` or ``{"error"}``: what a Troubleshoot with AI press on the incident
+    would send with the device state class on (`fixit_troubleshoot.preview`): no call, no
+    count, no key read, nothing recorded."""
+    from modules import incident_page
+    from modules.ai import fixit_troubleshoot as T
+    from modules.fixit import section
+
+    found = incident_page.resolve(network, incident_id)
+    if found["found"] != "page":
+        return {"error": f"{incident_id} is no incident of {network} with a page "
+                         f"({found['found']})"}
+    got = section.incident_of(network, found)
+    if got["incident"] is None:
+        return {"error": got["why"]}
+    try:
+        return {"preview": T.preview(network, found, got["incident"], actor=actor,
+                                     device_reads=device_reads)}
+    except T.Refused as exc:
+        return {"error": str(exc)}
+
+
+# ── Documentation addresses (C3406): a capture's addresses moved into the RFC 5737 and
+#    RFC 3849 ranges, deterministically, so a case is reviewed, never hand-edited ──────────
+
+#: The documentation ranges the addresses are moved into, in the order they are used.
+DOC_V4 = ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")
+DOC_V6 = "2001:db8::/32"
+#: An IPv6 address (and prefix): two colons at least, parsed by `ipaddress` before it counts
+#: (a time or a MAC address with colons does not parse). It may follow a colon ("ipv6:<a>").
+_V6 = (r"(?<![0-9A-Za-z.])((?:[0-9A-Fa-f]{0,4}:){2,7}"
+       r"(?:[0-9A-Fa-f]{1,4}|[0-9]{1,3}(?:\.[0-9]{1,3}){3})?)"
+       r"(?:/([0-9]{1,3}))?(?![0-9A-Za-z:])")
+#: An IPv4 address (and prefix), never part of a longer dotted run of digits (an OID). It may
+#: follow a letter or a colon ("host:<a>"), so a label run into it hides nothing.
+_V4 = (r"(?<![0-9.])([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?:/([0-9]{1,2}))?"
+       r"(?![0-9]|\.[0-9])")
+
+
+def _kept_why(addr) -> str:
+    """Why *addr* is kept as written ("" when it is moved): no address that names a lab."""
+    import ipaddress
+
+    if any(addr in ipaddress.ip_network(n) for n in (DOC_V4 if addr.version == 4
+                                                     else (DOC_V6,))):
+        return "documentation"
+    if addr.is_loopback:
+        return "loopback"
+    if addr.is_link_local:
+        return "link-local"
+    if addr.is_unspecified:
+        return "unspecified"
+    if addr.is_multicast:
+        return "multicast"
+    if addr.version == 4:
+        n = int(addr)
+        if n >> 24 == 0:
+            return "this network (0.0.0.0/8)"
+        inverse = ~n & 0xFFFFFFFF
+        if inverse & (inverse + 1) == 0:
+            return "a netmask"
+        if n & (n + 1) == 0:
+            return "a wildcard mask"
+    return ""
+
+
+def _strings(node, out: list):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            out.append(str(k))
+            _strings(v, out)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            _strings(v, out)
+    elif isinstance(node, str):
+        out.append(node)
+
+
+def _found(text: str):
+    """Each address in *text*: ``(start, end, address, prefix length or None)``."""
+    import ipaddress
+    import re
+
+    out, taken = [], []
+    for pattern in (_V6, _V4):
+        for m in re.finditer(pattern, text):
+            if any(s < m.end() and m.start() < e for s, e in taken):
+                continue
+            try:
+                addr = ipaddress.ip_address(m.group(1))
+            except ValueError:
+                continue
+            length = m.group(2)
+            if length is not None and int(length) > addr.max_prefixlen:
+                continue
+            taken.append((m.start(), m.end()))
+            out.append((m.start(), m.end(), addr, length))
+    return sorted(out, key=lambda f: f[0])
+
+
+def doc_addresses(node):
+    """``(node, said)``: *node* (JSON-able) with every IPv4 and IPv6 address and prefix in its
+    strings (its keys included) moved into the documentation ranges, and what was moved and
+    kept, by count, never an address. **Deterministic:** the distinct addresses are sorted (by
+    family, then value) and given the ranges' addresses in that order, skipping any already in
+    them, so the same address is always the same documentation address within one output,
+    distinct addresses stay distinct, and two runs over the same input agree. A prefix keeps
+    its length (its address moved as any address is, so containment is not kept). **Kept as
+    written:** loopback, link-local, unspecified, multicast, 0.0.0.0/8, netmasks and wildcard
+    masks, and addresses already in a documentation range (each names no lab)."""
+    import ipaddress
+
+    texts = []
+    _strings(node, texts)
+    seen, kept = set(), {}
+    for text in texts:
+        for _s, _e, addr, _len in _found(text):
+            seen.add(addr)
+    moving = sorted((a for a in seen if not _kept_why(a)), key=lambda a: (a.version, int(a)))
+    for a in seen:
+        why = _kept_why(a)
+        if why:
+            kept[why] = kept.get(why, 0) + 1
+    used = {a for a in seen if _kept_why(a) == "documentation"}
+    pool4 = (h for n in DOC_V4 for h in ipaddress.ip_network(n).hosts() if h not in used)
+    pool6 = (h for h in ipaddress.ip_network(DOC_V6).hosts() if h not in used)
+    mapping = {}
+    for a in moving:
+        nxt = next(pool4 if a.version == 4 else pool6, None)
+        if nxt is None:
+            raise ValueError(f"more distinct IPv4 addresses than the documentation ranges hold "
+                             f"({sum(ipaddress.ip_network(n).num_addresses - 2 for n in DOC_V4)})")
+        mapping[a] = nxt
+
+    def moved(text: str) -> str:
+        found = _found(text)
+        if not found:
+            return text
+        out, at = [], 0
+        for start, end, addr, length in found:
+            if addr not in mapping:
+                continue
+            out += [text[at:start], str(mapping[addr]) + (f"/{length}" if length else "")]
+            at = end
+        out.append(text[at:])
+        return "".join(out)
+
+    def walk(n):
+        if isinstance(n, dict):
+            return {moved(str(k)): walk(v) for k, v in n.items()}
+        if isinstance(n, (list, tuple)):
+            return [walk(v) for v in n]
+        return moved(n) if isinstance(n, str) else n
+
+    said = {"moved": {"ipv4": sum(1 for a in mapping if a.version == 4),
+                      "ipv6": sum(1 for a in mapping if a.version == 6)},
+            "kept": dict(sorted(kept.items())),
+            "ranges": list(DOC_V4) + [DOC_V6],
+            "words": "addresses moved into the documentation ranges: this output is not "
+                     "byte for byte what is sent; loopback, link-local, unspecified, "
+                     "multicast, netmasks and documentation addresses are kept as written"}
+    return walk(node), said
+
+
+def _outside(checkout: str, out: str) -> str:
+    """"" when *out* may be written, else why not (inside the checkout)."""
+    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
+        return f"--out {out} is inside the checkout; write it elsewhere"
+    return ""
+
+
 def load(checkout: str, which: str) -> list:
     """Every case of the sets *which* names, each with its set's name."""
     from modules.ai import cases
@@ -126,9 +318,9 @@ def record(checkout: str, actor: str, out: str, runs: int, stop_usd: float, yes:
     from modules.ai import cases, triggers
     from modules.ai import fixit_troubleshoot as T
 
-    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
-        print(f"nmas-fixit-cases: --out {out} is inside the checkout; write it elsewhere",
-              file=sys.stderr)
+    inside = _outside(checkout, out)
+    if inside:
+        print(f"nmas-fixit-cases: {inside}", file=sys.stderr)
         return 2
     actor, refusal = cases.evaluation_actor(actor, "fixit-cases")
     if refusal:
@@ -221,7 +413,36 @@ def main(argv=None) -> int:
     ap.add_argument("--actor", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--yes", action="store_true")
+    ap.add_argument("--preview", action="store_true")
+    ap.add_argument("--doc-addresses", action="store_true")
+    ap.add_argument("--local-reads-only", action="store_true")
+    ap.add_argument("--raw-addresses", action="store_true")
     a = ap.parse_args(argv)
+    if a.preview:
+        if not a.network or not a.incident:
+            print("nmas-fixit-cases: --preview needs --network and --incident", file=sys.stderr)
+            return 2
+        inside = _outside(a.checkout, a.out) if a.out else ""
+        if inside:
+            print(f"nmas-fixit-cases: {inside}", file=sys.stderr)
+            return 2
+        got = preview(a.network, a.incident, actor=a.actor,
+                      device_reads=not a.local_reads_only)
+        if got.get("error"):
+            print(f"nmas-fixit-cases: {got['error']}", file=sys.stderr)
+            return 3
+        shown = got["preview"]
+        if a.doc_addresses:
+            shown, said = doc_addresses(shown)
+            shown["doc_addresses"] = said
+        text = json.dumps(shown, indent=2, sort_keys=True, ensure_ascii=False)
+        if a.out:
+            with open(a.out, "w", encoding="utf-8") as fh:
+                fh.write(text + "\n")
+            print(f"nmas-fixit-cases: the preview is in {a.out}; nothing was sent to the AI")
+        else:
+            print(text)
+        return 0
     if a.check:
         problems = check(a.checkout, a.set)
         for p in problems:
@@ -236,7 +457,11 @@ def main(argv=None) -> int:
         if got.get("error"):
             print(f"nmas-fixit-cases: {got['error']}", file=sys.stderr)
             return 3
-        print(json.dumps({"pack": got["pack"]}, indent=2, sort_keys=True))
+        shown = {"pack": got["pack"]}
+        if not a.raw_addresses:
+            pack, said = doc_addresses(got["pack"])
+            shown = {"pack": pack, "doc_addresses": said}
+        print(json.dumps(shown, indent=2, sort_keys=True))
         return 0
     if not a.out:
         print("nmas-fixit-cases: --out is required", file=sys.stderr)
