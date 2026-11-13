@@ -231,9 +231,10 @@ def link_url(path: str) -> tuple:
 
 def mask(obj, values: dict = None):
     """The egress mask on *obj* (a string, or a payload of dicts, lists and strings):
-    `redact.egress_payload`, the known secrets' table read once."""
+    `redact.egress_payload`, the known secrets' table read once; its people already named by
+    display name (`_people`), so no address is labelled (C3424's labels are an AI request's)."""
     from modules import redact
-    return redact.egress_payload(obj, values)
+    return redact.egress_payload(obj, values, people=False)
 
 
 def carries_secret(data: bytes, held) -> bool:

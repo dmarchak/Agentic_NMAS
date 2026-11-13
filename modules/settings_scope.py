@@ -163,7 +163,8 @@ SCOPES: dict = {
              "records_store_explain_answers", "records_store_alert_rule_changes",
              "records_store_ai_feedback", "records_store_heal_steps"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
-    **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day",
+    **_group(HOST, "ai_gateway", "anthropic_api_key", "person_label_key", "ai_hosted",
+             "ai_cap_usd_per_day",
            "ai_cap_day_boundary",
            # Per network INSIDE one installation value (PHASE8_PLAN 18.3 rule 2): a network's
            # background AI switch is never inherited, so it cannot be a network group.

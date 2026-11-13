@@ -12,7 +12,9 @@ capture"; `fixit_troubleshoot.preview`, `gateway.request_body`, `read_loop.first
   the body `troubleshoot` hands the provider for the same incident; with it off the preview
   still builds the reads pass, says the class is off now and writes no setting; given the reads
   a press's pass 1 asks for, its pass 2 is byte for byte the press's pass 2. A device read's
-  line with a secret's shape is withheld as the loop withholds it.
+  line with a secret's shape is withheld as the loop withholds it. The incident's pack names
+  its people (intent commit, History, an approval) and the two bodies hold no address, each
+  person their stable label (C3424).
 - **The script:** ``--out`` inside the checkout refused (2), the preview written outside it,
   ``--doc-addresses`` applied to it.
 - **Documentation addresses:** IPv4 and IPv6 addresses and prefixes moved into 192.0.2.0/24,
@@ -347,6 +349,51 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
     assert len(ai.sent) == 2
     assert got["first"]["body"] == ai.sent[0]
     assert got["second"]["body"] == ai.sent[1]
+
+
+def test_the_incident_s_pack_sends_no_person_but_by_their_label(ai, reads,  # noqa: F811
+                                                                monkeypatch):
+    """C3424 (the operator's STOP of 2026-11-13: the r7 preview carried an address twice, the
+    intent piece's ``intent_commit.actor``): the incident's pack as built holds the planted
+    people (its intent commit's actor, a History record's who and its words, an approval a
+    later section carries), the control; the preview's two bodies hold no address at all, and
+    each person is their stable label (`display_names.label`)."""
+    from modules import display_names
+    from modules import evidence_pack as EP
+    alice, bob = "alice.ops@example.com", "bob.lab@example.org"
+    real = EP.build_incident
+    built = []
+
+    def planted(*a, **kw):
+        pack = real(*a, **kw)
+        # The pieces as `intent_section` and `history_section` write them (this lab's are
+        # absent: its device has no golden and no History in the window).
+        for s in pack["sections"]:
+            if s["name"] == "intent":
+                s.update(state="ok", pieces=[{
+                    "ref": "intent:1", "state": "differs", "adds": 1, "removes": 0,
+                    "lines": ["+ ntp server 192.0.2.1"], "intent_commit": {
+                        "state": "ok", "sha": "0" * 12, "actor": alice, "verified": "access",
+                        "at": "2026-11-12T00:00:00+00:00", "how": "verified sign-in"}}])
+            if s["name"] == "history":
+                s.update(state="ok", pieces=[{
+                    "ref": "history:1", "at": "2026-11-12T00:00:00Z", "kind": "intent",
+                    "what": "intent committed", "who": bob, "outcome": "", "sha": "1" * 12,
+                    "detail": f"asked by {alice}", "verified": "access"}])
+        pack["sections"].append({"ref": "approvals", "name": "approvals", "state": "ok",
+                                 "pieces": [{"ref": "approvals:1", "approved_by": bob}]})
+        built.append(pack)
+        return pack
+    monkeypatch.setattr(EP, "build_incident", planted)
+    _class(monkeypatch, True)
+    iid = stopped(ai)
+    got = _preview(iid)
+    stored = json.dumps(built[-1])
+    assert alice in stored and bob in stored, "the control: the pack holds both"
+    for name in ("first", "second"):
+        body = json.dumps(got[name]["body"])
+        assert display_names.EMAIL.search(body) is None, (name, display_names.EMAIL.search(body))
+        assert display_names.label(alice) in body and display_names.label(bob) in body, name
 
 
 # ── The script ──────────────────────────────────────────────────────────────────────────────

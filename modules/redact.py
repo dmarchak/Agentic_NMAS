@@ -691,16 +691,29 @@ def redact_egress(text: str, values: dict = None) -> str:
     return text
 
 
-def egress_payload(payload, values: dict = None):
+def egress_payload(payload, values: dict = None, *, people: bool = True):
     """`redact_egress` over every string of a payload (dicts, lists, tuples), the table of
-    known values resolved once, as `redact_payload` does."""
+    known values resolved once, as `redact_payload` does; then every email-shaped token in any
+    string, a key's included, at any depth, replaced by its person's stable label
+    (`display_names.labelled`, the one address pattern and the one labeller): the safety net
+    under every AI request (C3424, the operator, 2026-11-13: "any email address anywhere in the
+    request body becomes a label before it leaves"), so a field no code knows yet carries no
+    address either. A label holds no character JSON escapes, so a JSON text it rewrites stays
+    JSON. *people* False leaves addresses as they are, for what is no AI request: a
+    notification, which names each person by display name before this mask, and a record
+    sealed on the host whose pages draw its people (an SDN snapshot, labelled again when the
+    gateway sends it)."""
+    from modules.display_names import labelled
+
     values = known_secret_values() if values is None else values
+    person = labelled if people else (lambda text: text)
 
     def _walk(node):
         if isinstance(node, str):
-            return redact_egress(node, values)
+            return person(redact_egress(node, values))
         if isinstance(node, dict):
-            return {k: _walk(v) for k, v in node.items()}
+            return {(person(k) if isinstance(k, str) else k): _walk(v)
+                    for k, v in node.items()}
         if isinstance(node, list):
             return [_walk(v) for v in node]
         if isinstance(node, tuple):

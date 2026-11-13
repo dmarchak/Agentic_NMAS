@@ -43,8 +43,18 @@ MAX_LENGTH = 32
 #: ``git@host:path`` (a ":" or "/" with more behind it).
 #: The domain is matched whole or not at all (an atomic group), so a refused word is never
 #: taken in part.
-EMAIL = re.compile(r"(?<![\w.%+/@-])[A-Za-z0-9][A-Za-z0-9._%+-]*@"
+#: Inside a JSON-encoded text (an AI request's ``pack``, C3424) an address may follow an escape
+#: (``\n``, ``\t``, ``\"``, ``\u00e9``): the address starts after the escape, and the escape's
+#: letter is never taken as the address's first, so a replacement never leaves a ``\`` before
+#: a letter that would make an escape JSON refuses (``\person-…``). The local part may hold any
+#: letter, digit or "_", not only ASCII ones (``josé@…``, ``_ops@…``), so no part of such an
+#: address is left.
+EMAIL = re.compile(r"(?:(?<=\\[nrtbf])|(?<=\\u[0-9A-Fa-f]{4})|(?<![\w.%+/@-])"
+                   r"(?!(?<=\\)(?:[nrtbf]|u[0-9A-Fa-f]{4})))"
+                   r"\w[\w.%+-]*@"
                    r"(?>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)(?![\w-]|[:/]\S)")
+#: A stable label (`label`): what a person is in a text sent off the host.
+LABEL = re.compile(r"person-[0-9a-f]{6}")
 
 #: How Mercury names itself, a service, and nobody, on its records: never a person's name, or a
 #: record "by Mercury" could be a person's.
@@ -189,10 +199,53 @@ def people_payload(value):
     return value
 
 
-def label(actor: str) -> str:
+#: The per-installation secret a person's label is keyed under (C3426; the operator,
+#: 2026-11-13: "labels are a keyed hash (HMAC) under a per-installation secret, generated at
+#: install, kept in the credential store, never sent or shown"): generated on the
+#: installation's first label, sealed in the settings' credential store (`secrets_store`,
+#: `SECRET_KEYS`, masked on every read), held in this process once read.
+LABEL_KEY_SETTING = "person_label_key"
+_LABEL_KEY = {}
+
+
+def _label_key() -> bytes:
+    """This installation's label key: read from the credential store, or generated there once
+    (under the settings lock, read again inside it, so two processes keep one key). Never
+    logged, sent or returned by any route."""
+    held = _LABEL_KEY.get("key")
+    if held is not None:
+        return held
+    from modules import secrets_store
+    from modules.config import settings_lock
+
+    value = secrets_store.get_secret("person_label_key")
+    if not value:
+        with settings_lock():
+            value = secrets_store.get_secret("person_label_key")
+            if not value:
+                import secrets
+                value = secrets.token_hex(32)
+                secrets_store.set_secret("person_label_key", value)
+                log.info("display names: this installation's label key was generated and sealed")
+    _LABEL_KEY["key"] = value.encode("utf-8")
+    return _LABEL_KEY["key"]
+
+
+def label(actor: str, key: bytes = None) -> str:
     """A person as a text sent off the host names them: a stable label, the same for the same
-    identity in every request ("person-3f9a1c"), never their identity or a name they set."""
-    digest = hashlib.sha256(("person-label:" + str(actor).strip().lower()).encode("utf-8"))
+    identity in every request ("person-3f9a1c"), never their identity or a name they set.
+
+    **Stable:** an HMAC-SHA-256 of the identity, trimmed and lower-cased, under this
+    installation's secret key (`_label_key`; *key* replaces it in a test), behind a fixed
+    prefix, so one identity has one label in every pack, every call and every process, however
+    its case was written; distinct identities differ but by a 24-bit chance (about 1 in 3,400
+    that any two of 100 people share one). **Nothing of the address in it, and not
+    recomputable from the code** (C3424, C3426): six hex digits of a keyed one-way digest, so
+    someone holding a candidate address and this code, but not the installation's key, cannot
+    confirm the guess."""
+    import hmac
+    digest = hmac.new(_label_key() if key is None else key,
+                      str(actor).strip().lower().encode("utf-8"), hashlib.sha256)
     return "person-" + digest.hexdigest()[:6]
 
 
@@ -204,6 +257,60 @@ def labelled(text) -> str:
     if "@" not in text:
         return text
     return EMAIL.sub(lambda m: label(m.group(0)), text)
+
+
+def is_person(actor: str) -> bool:
+    """Whether *actor*, a recorded actor, names a person: not empty, not how Mercury names
+    itself, a service or nobody (`_RESERVED`, `_RESERVED_PREFIXES`), and not a label already."""
+    actor = str(actor or "").strip()
+    low = actor.casefold()
+    return bool(actor) and low not in _RESERVED and not low.startswith(_RESERVED_PREFIXES) \
+        and not LABEL.fullmatch(actor)
+
+
+def as_sent(actor, actors=()) -> str:
+    """A recorded actor (a record's ``who``, ``actor``, ``created_by``) as an AI request
+    carries it (C3424): a person's stable label (`label`); Mercury's own name, nobody, or a
+    label already, as it is; a service by its label (`default`). A value with a space in it is
+    words, not one actor ("alex (host login, not a verified identity)"): each person in it
+    labelled (`unnamed`, with *actors*' names)."""
+    actor = "" if actor is None else str(actor)
+    one = actor.strip()
+    if not one or any(c.isspace() for c in one):
+        return unnamed(actor, actors)
+    if one.casefold().startswith("service:"):
+        return default(one)
+    return label(one) if is_person(one) else actor
+
+
+def _names_of(actor: str) -> list:
+    """The ways *actor* can be written in a recorded text other than their identity: the name
+    they set and their default, longest first."""
+    out = {of(actor), default(actor)}
+    return sorted((n for n in out if n and n != actor), key=len, reverse=True)
+
+
+def unnamed(text, actors=()) -> str:
+    """*text* with no person named in it, as an AI request carries it: each email-shaped
+    identity labelled (`labelled`), and each of *actors*' display names (set or default)
+    replaced by that actor's label where it stands as a word of its own."""
+    out = labelled(text)
+    for actor in actors:
+        if not is_person(actor):
+            continue
+        mark = label(actor)
+        for name in _names_of(actor):
+            out = re.sub(r"(?<![\w.@-])" + re.escape(name) + r"(?![\w@-])", mark, out)
+    return out
+
+
+def known() -> list:
+    """Every identity the store holds (their set names are what a recorded text may name them
+    by), or none when it cannot be read. A READ: it writes nothing."""
+    try:
+        return sorted(_read())
+    except Unreadable:
+        return []
 
 
 def person_key(actor: str) -> str:

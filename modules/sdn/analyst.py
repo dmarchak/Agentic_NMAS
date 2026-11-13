@@ -424,7 +424,9 @@ def build_snapshot(network: str, collected: dict, *, by: str, previous: dict = N
             "rows": sorted((dict(r) for r in netbox.get("rows") or []),
                            key=lambda r: (r["name"], r["interface"])),
             "hosts": netbox.get("hosts"), "devices": netbox.get("devices") or 0}
-    snap = redact.egress_payload(snap)
+    # Masked as it is kept; its people left as recorded (the page draws who collected it), and
+    # labelled by the gateway's own mask when a call sends it (C3424).
+    snap = redact.egress_payload(snap, people=False)
     digest = _digest(snap)
     snap["id"] = "snap-" + digest[:16]
     snap["hash"] = _digest(snap)

@@ -387,8 +387,13 @@ class TestNeverTheDevicesOwn:
                 f"on vty0 from 2001:db8::1, r3's account as its log line names it, on the "
                 f"neighbour r3, not the alert's device [{refs['config']}]") in line
         assert f"r3 logged '{RELOAD}' [{refs['reload']}]" in line
-        assert (f"2026-10-15T08:14:00Z: r3: IP SLA probes sent: deployed by operator@example.com"
+        # The sheet is computed from the sections as sent, where each person is their stable
+        # label (C3424), never their address.
+        from modules import display_names
+        mark = display_names.label("operator@example.com")
+        assert (f"2026-10-15T08:14:00Z: r3: IP SLA probes sent: deployed by {mark}"
                 f", on the neighbour r3, not the alert's device [{refs['receipt']}]") in line
+        assert "operator@example.com" not in line
         assert f"Mercury's restart record of the neighbour [{refs['restart']}]" in line
         sheet = fact_sheet.sheet(pack, sent).split("\n")
         assert len(sheet) == 1 + len(fact_sheet.LINES) == 7

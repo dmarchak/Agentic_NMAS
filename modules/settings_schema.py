@@ -137,6 +137,10 @@ DEFAULTS: dict = {
     # a day's $1.50 stays under it), each a person's to change, with no program ceiling
     # (the operator, 2026-10-27); null is "no cap", chosen explicitly.
     "anthropic_api_key":        "",
+    # The key a person's label in an AI request is an HMAC under (C3426, display_names.label):
+    # generated on the installation's first label, sealed (secrets_store.SECRET_KEYS), never
+    # sent or shown. Empty until then, which is no label key yet, never a key of "".
+    "person_label_key":         "",
     "ai_hosted":                {},
     # Retiring (2026-10-25): each task's per-call cap is derived from its pin
     # (modules/ai/profiles.py); declared one more release, read by nothing (expand, contract).
@@ -944,6 +948,7 @@ SCHEMA: dict = {
         "ai_enabled": _BOOL,
         "background_agent_enabled": _BOOL,
         "anthropic_api_key": _STR,
+        "person_label_key": _STR,
         "ai_hosted": {"type": "object", "additionalProperties": False,
                       "properties": {"by": _STR, "at": _STR, "reason": _STR}},
         # Spend limits are the customer's, never the program's (the operator, 2026-10-27): no

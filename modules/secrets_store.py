@@ -44,6 +44,9 @@ SECRET_KEYS = (
     # family (D15); it returns sealed here with Phase 8's gateway (AI_ANTHROPIC_PLAN 3.2:
     # write-only, typed by a person, never shown).
     "anthropic_api_key",
+    # The key a person's label in an AI request is keyed under (C3426, display_names.label):
+    # generated on the installation's first label, never typed, sent or shown.
+    "person_label_key",
     "netbox_token",
     "prometheus_password",
     "prometheus_bearer_token",

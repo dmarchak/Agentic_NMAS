@@ -4357,3 +4357,67 @@ scripts/nmas-fixit-cases alone, planted routes found; its control (a call of the
 appended to routes/fixit_v2.py) fails it. Not mutated: `doc_addresses` (outside the tier: what
 a person reviews, never what is sent; its 5 controls in the build's report), `redact`'s masks
 and `read_loop`'s egress mask and send log, unchanged here.
+
+## 2026-11-13: no person's address or name in an AI request (C3424), by hand
+
+**What changed in the tier:** what of a person leaves the host in an AI request. The audit
+(C3424) found the operator's address in 3,470 Explain requests the provider received
+(2026-10-25 to 2026-11-10), from the evidence pack's people (a change's `who`, the intent
+commit's `actor`, a silence's `created_by`, and free text); hosted AI is off until this is
+deployed and the operator has scanned the r7 preview again.
+- `evidence_pack.people_labelled` (new; `PERSON_FIELDS`, `CITED_KEYS`, `people_in`): every pack's
+  sections as sent, as copies, each person field its person's stable label
+  (`display_names.as_sent`) and every other text unnamed (`display_names.unnamed`: addresses
+  labelled, the named people's display names replaced as words), what a piece is known by left
+  as it is; called by `explain.sent_sections` (Explain, the heal analysis, AI
+  troubleshooting) and `explain.v1_parts`. The stored pack keeps its identities.
+- `redact.egress_payload`: the safety net, every email-shaped token in any string or key, at
+  any depth, labelled (`display_names.labelled`) after `redact_egress` and before the
+  gateway's unmasked-secret check; `people=False` for what is no AI request (a notification, a
+  sealed SDN snapshot).
+- `display_names.EMAIL`: escape-aware (a token after a JSON escape is matched without
+  swallowing the escape's letter), so a rewritten JSON text stays JSON; `label` unchanged
+  (`"person-" + sha256("person-label:" + identity)[:6]`; unkeyed, C3426).
+
+The danger the hand check guards: an address or a display name in the bytes sent, by a person
+field, free text, a key, a field no code knows yet, or Explain's older v1 parts.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/c3424-hand/mut.py`), in a `scripts/nmas-control` throwaway worktree of the working
+tree; then tests/test_ai_requests_carry_no_address.py, test_fixit_preview.py,
+test_ai_gateway.py, test_ai_gateway_parts.py, test_display_names.py, test_explain_card.py,
+test_evidence_pack.py, test_fixit_payload.py and test_provider_redaction.py, no `-x`, in CI's
+interpreter, confined, two workers. Baseline: 252 passed, 1 skipped; with the two tests added
+below, 254 passed, 1 skipped. **Runs:** 2026-11-13 06:29:57 to 06:36:54 UTC; D2, E1 and X2
+again 06:3x to 06:40:06 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the egress mask raises | killed (many failed) | every gateway call's test |
+| R1 the safety net off (no labelling) | killed (2 failed) | `test_an_address_in_a_part_no_code_knows_never_leaves`, `test_the_safety_net_labels_keys_and_every_depth` |
+| R2 a dict key left unlabelled | killed | `test_the_safety_net_labels_keys_and_every_depth` |
+| R3 `people` False by default | killed (2 failed) | the same two |
+| R4 strings masked but not labelled | killed (2 failed) | the same two |
+| D1 `labelled` returns the text as it is | killed (3+ failed) | every section, the press, the unknown part |
+| D2 `labelled` labels only texts without "@" | killed (3+ failed) | every section, prompt v1's parts, the press (the first run's replacement matched twice and was made exact) |
+| E1 `actor` dropped from `PERSON_FIELDS` | **survived the first run**; killed once its test was added | `test_a_person_who_is_no_address_is_labelled_where_only_a_person_field_names_them` (a host login named only in the intent commit's `actor`: the planted address had been labelled as text, so nothing held a person who is no address) |
+| E2 a person field left as it is | killed (2 failed) | every section; mercury and nobody |
+| E3 free text not unnamed | killed (2 failed) | every section; the press |
+| E4 `people_labelled` returns the sections unchanged | killed (3 failed) | every section; mercury and nobody; the press |
+| X1 `sent_sections` unlabelled | killed (2 failed) | every section; the press |
+| X2 prompt v1's parts unlabelled | **survived the first run**; killed once its test was added | `test_prompt_v1_s_parts_carry_each_person_as_their_label` (v1 sends its own parts; the safety net catches an address, never a display name) |
+| K1 the label's key dropped (an HMAC under an empty key) | killed (2 failed) | `test_a_label_cannot_be_recomputed_from_the_code_alone`, `test_two_presses_give_each_person_the_same_label` (its independent keyed digest) |
+| K2 a new key for every label, none kept | killed (4+ failed) | every section, the host login, prompt v1's parts (no label stable across two calls) |
+| K3 the key stored without sealing | killed | `test_a_label_cannot_be_recomputed_from_the_code_alone` (the stored value must be `enc:v1:`) |
+
+**C3426 folded in before the commit (the operator, 2026-11-13: "labels are a keyed hash (HMAC)
+under a per-installation secret, generated at install, kept in the credential store, never sent
+or shown … a mutant that drops the key must die"):** `display_names.label` is an HMAC-SHA-256
+under the installation's key (`_label_key`: generated on the first label, under the settings
+lock and read again inside it, sealed by `secrets_store`, `person_label_key` in `SECRET_KEYS`,
+the schema and the `ai_gateway` group, documented in docs/SETTINGS.md); K1 to K3 ran
+2026-11-13 06:47:33 to 06:49:26 UTC over the same files, baseline 256 passed, 1 skipped.
+
+**The result: 16 mutants and the canary; 14 killed in their first run, E1 and X2 killed once
+the tests added for them landed, none equivalent.** Not mutated: `redact.redact_egress` and the
+unmasked-secret check (unchanged here), and `people=False`'s two callers (no AI request).

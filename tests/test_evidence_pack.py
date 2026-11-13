@@ -148,6 +148,11 @@ def pack_lab(lab, tmp_path, monkeypatch):  # noqa: F811
                        source="capture", actor="operator@example.com", allow_new=True,
                        baseline=False)["ok"]
     monkeypatch.setattr(EP, "_path", lambda: str(tmp_path / "evidence_packs.jsonl"))
+    # The concurrent section reads the alert history: its store this test's own too, so an
+    # episode another test in the same worker recorded never reaches one build and not the
+    # other (the gate of 2026-11-13: the plain build read none, the hostile one an episode).
+    monkeypatch.setattr("modules.alert_history._path",
+                        lambda: str(tmp_path / "alert_history.jsonl"))
     monkeypatch.setattr(EP, "_now", lambda: NOW)
     loki = DeviceLoki()
     monkeypatch.setattr(Q, "_client", lambda *a, **k: loki)

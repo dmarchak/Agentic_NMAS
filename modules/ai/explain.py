@@ -516,7 +516,8 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
     # One device, one id, in the pack as sent and the topology sent (C1849).
     if (topo or {}).get("sent"):
         out, _back = one_id(out, topo.get("names") or {})
-    return out
+    # Every person a stable label in every pack sent (C3424), a pack built before it included.
+    return EP.people_labelled(out)
 
 
 #: The sections whose pieces name a device by id (``dev``, beside its name ``device``), and so
@@ -616,8 +617,12 @@ def parts(pack: dict, topo: dict = None) -> dict:
 
 
 def v1_parts(pack: dict) -> dict:
-    """Prompt v1's request data: the six sections v1 knew, the alert as ``alert``."""
-    sections = [s for s in pack.get("sections") or [] if s.get("name") in V1_SECTIONS]
+    """Prompt v1's request data: the six sections v1 knew, the alert as ``alert``, every person
+    a stable label (`evidence_pack.people_labelled`, C3424)."""
+    from modules import evidence_pack as EP
+
+    sections = EP.people_labelled([s for s in pack.get("sections") or []
+                                   if s.get("name") in V1_SECTIONS])
     return {"alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}",
             "pack": json.dumps(sections, sort_keys=True, ensure_ascii=False,
                                separators=(",", ":"))}
@@ -1324,7 +1329,13 @@ def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
     # change or an action carries who made it; one whose claim does not name them has it added
     # by Mercury, kept apart from the model's words (`who.mercury_who`).
     from modules.ai import who
-    added_who = who.mercury_who(answer.hypotheses, sections)
+    # Who is read from the pack's own records, each person by their identity, never the label
+    # they were sent as (C3424): the sections sent, as stored (a citation of what was sent
+    # names the same piece there), so the card draws them by display name and the record keeps
+    # who they were; a claim naming the label names them (`who.names_who`).
+    stored = {s.get("name"): s for s in pack.get("sections") or []}
+    who_sections = [stored.get(s.get("name"), s) for s in sections]
+    added_who = who.mercury_who(answer.hypotheses, who_sections)
     # What Mercury added or read differently is recorded with the use: the call's record keeps
     # the model's answer as received, so both stand.
     note = "; ".join(
@@ -1356,7 +1367,7 @@ def _checked(pack: dict, prep: dict, got: dict, *, actor: str) -> dict:
         # entries `added_who` recorded with the use), and the pieces recording it as citations,
         # drawn after the model's claim, Mercury's as Mercury's.
         h["who"] = [dict(w, cites=[cite(r) for r in w["refs"]])
-                    for w in who.who_of(h["claim"], h["evidence_refs"], sections)]
+                    for w in who.who_of(h["claim"], h["evidence_refs"], who_sections)]
         h["cites"] = [cite(r) for r in h.pop("evidence_refs")]
     shown["checked"] = [cite(r) for r in getattr(answer, "checked", None) or []]
     # Mercury's citations, never among the model's: each the device named, where, and the piece.

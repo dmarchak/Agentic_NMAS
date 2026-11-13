@@ -30,7 +30,8 @@ from the model, and said as "no record of who" (`NO_RECORD`) where the pack hold
 **On the answer** (`mercury_who`, the operator's order (b)): a hypothesis DESCRIBES a change
 or an action when it cites one of those pieces (or the section holding it); each such
 hypothesis carries ``who`` (`who_of`: the actor of each change it cites, or no record of who).
-When its claim does not name that actor (the actor's id, or the part before its ``@``, as a
+When its claim does not name that actor (the actor's id, the stable label the request sent
+them as (C3424: every person is one in what is sent), or the part before its ``@``, as a
 whole word) or, where none is recorded, does not say "no record of who", Mercury adds it, kept
 apart from the model's words (``mercury_who``) and drawn as Mercury's ("who, added by
 Mercury"); the model's response stays as received in the call's record. `inserted` is the
@@ -198,13 +199,17 @@ def changes_cited(refs, sections) -> list:
 
 
 def names_who(text: str, who: str) -> bool:
-    """Whether *text* names the actor *who* (its id, or the part before its ``@`` when that
-    is three characters or more, each as a whole word, any case), or, *who* being "", says
-    `NO_RECORD`."""
+    """Whether *text* names the actor *who* (its id, the stable label a request sent them as,
+    `display_names.label` (C3424), or the part before its ``@`` when that is three characters
+    or more, each as a whole word, any case), or, *who* being "", says `NO_RECORD`."""
+    from modules import display_names
+
     low = (text or "").lower()
     if not who:
         return NO_RECORD in low
     forms = {who.lower()}
+    if display_names.is_person(who):
+        forms.add(display_names.label(who))
     local = who.split("@", 1)[0].lower()
     if len(local) >= 3:
         forms.add(local)

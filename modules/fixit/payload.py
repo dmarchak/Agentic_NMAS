@@ -27,7 +27,6 @@ the model reads of what was tried is what the page draws, from the operations' o
 """
 
 import logging
-import re
 
 log = logging.getLogger(__name__)
 
@@ -36,29 +35,13 @@ SOURCE_WORDS = {"mercury": "Mercury's diagnosis", "ai": "an AI answer",
                 "person": "a person's choice", "": "no proposal recorded"}
 
 
-def _names_of(actor: str) -> list:
-    """The ways *actor* can be written in a recorded text other than their identity: the name
-    they set and their default, longest first."""
-    from modules import display_names
-
-    out = {display_names.of(actor), display_names.default(actor)}
-    return sorted((n for n in out if n and n != actor), key=len, reverse=True)
-
-
 def unnamed(text, actors=()) -> str:
-    """*text* with no person named in it: each email-shaped identity labelled, and each of
-    *actors*' display names (set or default) replaced by that actor's label where it stands as
-    a word of its own."""
+    """*text* with no person named in it (`display_names.unnamed`, the one home): each
+    email-shaped identity labelled, and each of *actors*' display names (set or default)
+    replaced by that actor's label where it stands as a word of its own."""
     from modules import display_names
 
-    out = display_names.labelled(text)
-    for actor in actors:
-        if not actor:
-            continue
-        mark = display_names.label(actor)
-        for name in _names_of(actor):
-            out = re.sub(r"(?<![\w.@-])" + re.escape(name) + r"(?![\w@-])", mark, out)
-    return out
+    return display_names.unnamed(text, actors)
 
 
 def catalogue_part() -> list:

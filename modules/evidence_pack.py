@@ -1625,6 +1625,68 @@ def config_lines(entry: dict, units) -> list:
     return out
 
 
+#: The keys a pack's pieces name a person under (C3424): a History record's ``who``, an
+#: intent commit's ``actor``, a Grafana silence's ``created_by``, and an approval's or a
+#: policy's setter, wherever a later section carries one.
+PERSON_FIELDS = ("who", "actor", "created_by", "by", "set_by", "approved_by", "policy_by")
+#: What a section or a piece is known by, which a citation and the check match exactly: never
+#: rewritten here (an address in one is still labelled as it leaves, `redact.egress_payload`).
+CITED_KEYS = ("ref", "name", "device", "dev", "sha", "id", "network", "rule_uid", "fingerprint")
+
+
+def people_in(sections) -> list:
+    """Every person the pack's *sections* name in a person field (`PERSON_FIELDS`), at any
+    depth, each once, sorted."""
+    from modules import display_names
+
+    found = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in PERSON_FIELDS and isinstance(v, str) and display_names.is_person(v) \
+                        and not any(c.isspace() for c in v.strip()):
+                    found.add(v.strip())
+                else:
+                    walk(v)
+        elif isinstance(node, (list, tuple)):
+            for v in node:
+                walk(v)
+
+    walk(sections)
+    return sorted(found)
+
+
+def people_labelled(sections) -> list:
+    """*sections* as every AI request carries them (C3424, the operator, 2026-11-13: "every
+    person is a stable label in every pack"), as copies, the stored pack untouched (it is a
+    record, hashed, and its pages draw each person by display name): each person field
+    (`PERSON_FIELDS`) its person's stable label (`display_names.as_sent`), and every other text
+    with no person named in it (`display_names.unnamed`: each address labelled, and the display
+    names of the people the pack names and the display-name store holds replaced by their
+    labels as words), what a piece is known by (`CITED_KEYS`) left as it is. The same person is
+    the same label in every section, every pack and every call. Applied once more to a pack
+    already labelled, it changes nothing."""
+    from modules import display_names
+
+    actors = sorted(set(people_in(sections)) | set(display_names.known()))
+
+    def walk(node, key=""):
+        if isinstance(node, str):
+            if key in PERSON_FIELDS:
+                return display_names.as_sent(node, actors)
+            return node if key in CITED_KEYS else display_names.unnamed(node, actors)
+        if isinstance(node, dict):
+            return {k: walk(v, k) for k, v in node.items()}
+        if isinstance(node, list):
+            return [walk(v, key) for v in node]
+        if isinstance(node, tuple):
+            return tuple(walk(v, key) for v in node)
+        return node
+
+    return [walk(s) for s in sections or []]
+
+
 def unnamed(text: str, entry: dict) -> str:
     """*text*, a step's recorded words, with no person named in it, as it leaves the host (the
     operator, 2026-11-12, objective 2: no email and no name in an AI payload; a stable label
