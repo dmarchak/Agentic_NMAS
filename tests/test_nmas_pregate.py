@@ -16,7 +16,8 @@ What each test holds:
   gate;
 - the summary's states and the exit codes: passed (0), a failure (1), a skip the gate's skip
   check refuses (its file failed, 1), every test of a file
-  skipped (not run, 4), no browser interpreter (not run, 4, never "passed"), an absent fixed
+  skipped (skipped as declared, a pass, when the skip check accepts every skip for the gate,
+  C3448; not run, 4, when it cannot judge; failed when it refuses), no browser interpreter (not run, 4, never "passed"), an absent fixed
   file (not run, 4), --list (nothing run, said, 0), the working tree changed by a run (3), and
   the runs get PYTHONDONTWRITEBYTECODE=1 and `-p no:cacheprovider`;
 - the message: the commit-msg hook (the real file, its checks stood in) traced, and the check
@@ -143,6 +144,9 @@ def _repo(tmp_path):
     _write(r, "scripts/nmas-skip-check", """\
         import os, sys
         who = os.environ.get("NMAS_PREGATE_SKIP_REFUSE")
+        if os.environ.get("NMAS_PREGATE_SKIP_CANNOT"):
+            print("nmas-skip-check: cannot run: tests/skip_reasons.py unreadable")
+            sys.exit(2)
         if who:
             print(f"nmas-skip-check: REFUSED: {who}::test_a: skipped for 'x', declared for ci, not for gate")
             sys.exit(1)
@@ -412,13 +416,37 @@ class TestTheSummary:
         assert rc == 1, out
         assert "FAILED (1 failed, 0 passed)" in _line(out, "tests/test_page_probe.py")
 
-    def test_a_file_whose_tests_all_skipped_is_not_run(self, tmp_path):
+    def test_a_file_whose_every_skip_the_gate_declares_is_skipped_as_declared(self, tmp_path):
+        """C3448: tests/test_board_shots.py's shape, every test skipped for a reason the skip
+        check accepts for the gate: the gate's own state for it, so the verdict is a pass, and
+        the last line names the file as skipped, never as run."""
         r = _repo(tmp_path)
         _edit(r, "tests/test_page_probe.py", "in html", "in html  # PLANT_SKIP")
         rc, out = _run(r)
+        assert rc == 0, out
+        assert _line(out, "tests/test_page_probe.py").strip().startswith(
+            "skipped as declared (1)")
+        assert ("every chosen file ran and passed, but 1 skipped as declared for the gate: "
+                "tests/test_page_probe.py") in out
+        rec = json.loads(next((r / ".git" / "nmas-pregate" / "verdicts").iterdir()).read_text())
+        assert rec["verdict"] == "pass"
+
+    def test_a_file_whose_tests_all_skipped_is_not_run_when_the_skip_check_cannot_judge(
+            self, tmp_path):
+        r = _repo(tmp_path)
+        _edit(r, "tests/test_page_probe.py", "in html", "in html  # PLANT_SKIP")
+        rc, out = _run(r, env={"NMAS_PREGATE_SKIP_CANNOT": "1"})
         assert rc == 4, out
         assert "NOT RUN: every test skipped" in _line(out, "tests/test_page_probe.py")
         assert "every chosen file ran and passed" not in out
+
+    def test_a_file_whose_skips_the_gate_refuses_is_failed_never_skipped_as_declared(
+            self, tmp_path):
+        r = _repo(tmp_path)
+        _edit(r, "tests/test_page_probe.py", "in html", "in html  # PLANT_SKIP")
+        rc, out = _run(r, env={"NMAS_PREGATE_SKIP_REFUSE": "tests.test_page_probe"})
+        assert rc == 1, out
+        assert "FAILED: a skip the gate refuses" in _line(out, "tests/test_page_probe.py")
 
     def test_a_skip_the_gate_refuses_fails_its_file(self, tmp_path):
         r = _repo(tmp_path)

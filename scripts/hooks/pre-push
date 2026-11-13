@@ -1,0 +1,42 @@
+#!/bin/sh
+# A ci/ branch is pushed only with a passing pre-gate verdict on the tree it pushes (C3421; the
+# operator, 2026-11-13: "a pre-push hook refuses a ci/ branch without a passing verdict").
+#
+# git gives the hook, on stdin, one line per ref pushed: <local ref> <local sha> <remote ref>
+# <remote sha>. For each whose remote ref is refs/heads/ci/<anything> and whose local sha is a
+# commit (not a deletion), the commit's tree is asked of `scripts/nmas-pregate --verdict`, which
+# exits 0 only when a pre-gate run of exactly that tree recorded a pass
+# (<git common dir>/nmas-pregate/verdicts/<tree>.json). No verdict, a failed one, or one where
+# anything chosen did not run refuses the push, naming the ref, the commit, the tree and the
+# command to run. Every other ref is not asked about: the hook passes it untouched.
+#
+# The CI path (CLAUDE.md, "When the laptop's free memory is under the gate's 2-worker
+# threshold"): commit to a ci/ branch, push it, take GitHub CI on that sha as the verdict. This
+# makes "scripts/nmas-pregate runs first" mechanical: a push with no pass for its tree stops.
+#
+# Install:  ln -sf ../../scripts/hooks/pre-push .git/hooks/pre-push
+ROOT="$(git rev-parse --show-toplevel)"
+PREGATE="$ROOT/scripts/nmas-pregate"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/ci/*) ;;
+        *) continue ;;
+    esac
+    case "$local_sha" in
+        *[!0]*) ;;
+        *) continue ;;      # a deletion pushes no tree
+    esac
+    if ! tree="$(git rev-parse --verify -q "$local_sha^{tree}")"; then
+        echo "pre-push: REFUSED: $remote_ref: $local_sha names no commit with a tree" >&2
+        status=1
+        continue
+    fi
+    if ! "$PREGATE" --verdict "$tree" >&2; then
+        echo "pre-push: REFUSED: $remote_ref ($local_ref, commit $local_sha): its tree $tree" \
+             "has no passing pre-gate verdict. Run: scripts/nmas-pregate --range" \
+             "$local_sha^..$local_sha --message <the commit's message file>, then push again" >&2
+        status=1
+    fi
+done
+exit $status

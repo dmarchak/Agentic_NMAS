@@ -53,6 +53,10 @@ The change is what is staged (`git diff --cached`), or the commits of `--range A
    the check that refused is named.
 4. **The summary**: each test file, why it was chosen, and passed, failed or NOT RUN (with
    why); a file none of whose tests ran is not run, and so is a whole run that did not happen.
+   A file whose every test skipped is "skipped as declared" only when the skip check accepted
+   every skip of the run as declared for the gate (tests/skip_reasons.py; the board shots, run
+   only when asked): that is the state the gate holds it in, and it counts toward a pass. A
+   skip check that refused or could not run leaves it not run (C3448).
 5. **The verdict, per tree** (C3421): on every exit after the runs, a record keyed by the
    tested tree's id, written atomically (a temporary file in the same folder, then
    `os.replace`) to `<git common dir>/nmas-pregate/verdicts/<tree>.json`: the verdict (`pass`
@@ -1687,6 +1691,7 @@ def _tested(a, repo, snap, tree, base, what, say):
                 extra.append(f"the {label} run exited {rc} with no test failed in its JUnit "
                              "file (a collection or session error: read its output above)")
                 failed = True
+        all_skipped, skips_declared = [], False
         for t in chosen:
             o = counts.get(t)
             if o and o["failed"]:
@@ -1698,15 +1703,20 @@ def _tested(a, repo, snap, tree, base, what, say):
             elif o is None:
                 states[t] = "NOT RUN: no run reached it"
                 not_run = True
-            elif not o["passed"]:
-                states[t] = ("NOT RUN: every test skipped" if o["skipped"] else
-                             "NOT RUN: no test collected")
+            elif not o["passed"] and not o["skipped"]:
+                states[t] = "NOT RUN: no test collected"
                 not_run = True
+            elif not o["passed"]:
+                # Judged after the skip check, below: every skip declared for the gate is the
+                # file's declared state there (C3448), anything else is not run.
+                states[t] = "NOT RUN: every test skipped"
+                all_skipped.append(t)
             else:
                 states[t] = f"passed ({o['passed']}" + (
                     f", {o['skipped']} skipped)" if o["skipped"] else ")")
         if junits:
             rc, words = skip_check(snap, junits)
+            skips_declared = rc == 0
             if rc:
                 extra.append(f"the skip check (scripts/nmas-skip-check --where gate) refused: "
                              f"{words}")
@@ -1715,6 +1725,17 @@ def _tested(a, repo, snap, tree, base, what, say):
                 # Each file a refused skip belongs to says so, never "passed".
                 for t in refused_skips(words, list(states)):
                     states[t] = "FAILED: a skip the gate refuses"
+        # A file whose every test skipped is "skipped as declared" only when the skip check,
+        # over this run's JUnit files, accepted every skip as declared for the gate: that is
+        # the state the gate itself holds it in (tests/test_board_shots.py, run only when
+        # asked). A skip check that refused or could not run leaves it not run (C3448).
+        for t in all_skipped:
+            if states[t].startswith("FAILED"):
+                continue
+            if skips_declared:
+                states[t] = f"skipped as declared ({counts[t]['skipped']})"
+            else:
+                not_run = True
         hook_line = None
         if a.message:
             why = wait_for_no_gate(lock, bound_wait, every, a.no_wait, say)
@@ -1766,7 +1787,10 @@ def _tested(a, repo, snap, tree, base, what, say):
     elif not_run:
         say("nmas-pregate: NOT EVERYTHING RAN: no pass")
     else:
-        say("nmas-pregate: every chosen file ran and passed")
+        held = sorted(t for t, s in states.items() if s.startswith("skipped as declared"))
+        say("nmas-pregate: every chosen file ran and passed" + (
+            f", but {len(held)} skipped as declared for the gate: {', '.join(held)}"
+            if held else ""))
     return rc
 
 
