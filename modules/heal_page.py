@@ -383,8 +383,14 @@ def _mode_words(mode: str, until: str) -> str:
     return {"off": "Off", "dry_run": "Dry run"}.get(mode, str(mode))
 
 
+def kind_name(kind: str) -> str:
+    """A fix kind's name, its Fix kinds row's words before the colon ("Missing line"): the
+    change card's lists and the fault drill's choice (`fault_drills.fault_kinds`) name it so."""
+    return KIND_LABELS.get(kind, kind).split(":")[0]
+
+
 def _kinds_words(kinds) -> str:
-    return "; ".join(KIND_LABELS.get(k, k).split(":")[0] for k in kinds) or "none"
+    return "; ".join(kind_name(k) for k in kinds) or "none"
 
 
 def preview(network: str, p: dict, part: str) -> dict:

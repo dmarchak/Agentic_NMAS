@@ -314,6 +314,74 @@ class TestRipFromTheReader:
         assert "not implied by intent" in odd[0]["words"]
 
 
+def _s1_heard_at(stamp, timer=None):
+    """The real answer, s1's one RIP source (r1, 10.255.2.10) last heard at *stamp*, and s1's
+    own invalid timer *timer* as the reader read it (absent when None)."""
+    from tests.test_topology_graph import _rip
+    rip = _rip()
+    (src,) = rip["s1"]["rip"]
+    rip["s1"] = dict(rip["s1"], rip=[dict(src, last_update=stamp)])
+    if timer is not None:
+        rip["s1"]["rip_invalid_s"] = timer
+    return rip
+
+
+class TestRipAging:
+    """C3404 (the operator, 2026-11-13): RIP's and RIPng's State says just "up", the rest on
+    hover (RIPng's link-local next hop, RIP's last update); a RIP neighbour whose last update
+    is past half its timeout (more than 90 s of IOS's 180) reads "up · last heard <age>" in the
+    warning colour. The timeout is the device's own invalid timer where the RIP reader read it,
+    else IOS's default, and the hover names which."""
+
+    def _row(self, rip, layer="rip", host="s1"):
+        (row,) = [r for r in TestRipFromTheReader()._protos(host, rip)[layer]["rows"]
+                  if r["peer"] == "r1"]
+        return row
+
+    @pytest.mark.parametrize("stamp,seconds", [
+        ("00:01:31", 91), ("00:00:21", 21), ("01:01:48", 3708), ("4d06h", 367200),
+        ("1w1d", 691200), ("never", None), ("", None), ("12x", None)])
+    def test_a_last_update_in_the_devices_notation(self, stamp, seconds):
+        from modules import neighbours as N
+        assert N.rip_age_seconds(stamp) == seconds
+
+    def test_89_s_is_up_and_91_s_is_aging_against_ios_s_default(self):
+        young = self._row(_s1_heard_at("00:01:29"))
+        assert young["state"] == "up" and not young.get("aging"), young
+        assert "its last update 00:01:29 before the read" in young["words"]
+        assert "RIP's timeout 180 s, IOS's default (s1's own invalid timer was not read)" in \
+            young["words"]
+        old = self._row(_s1_heard_at("00:01:31"))
+        assert old["state"] == "up" and old["aging"] is True and old["age_words"] == "91 s"
+
+    def test_the_devices_own_timer_is_the_one_judged_and_named(self):
+        own = self._row(_s1_heard_at("00:01:31", timer=240))
+        assert not own.get("aging"), "91 s is under half of 240 s"
+        assert "RIP's timeout 240 s, s1's own invalid timer" in own["words"]
+        assert self._row(_s1_heard_at("00:02:01", timer=240))["age_words"] == "2 min"
+
+    def test_ripng_says_its_link_local_hop_and_never_ages(self):
+        row = self._row(_s1_heard_at("00:01:31"), layer="ripng")
+        assert row["state"] == "up" and not row.get("aging")
+        assert row["words"].startswith("hears r1 at FE80::") and "GigabitEthernet0/2" in \
+            row["words"]
+
+    def test_the_reader_reads_the_timer_from_rips_own_section(self):
+        """Each capture holds "Invalid after 0 seconds" in the application pseudo-protocol's
+        section first and RIP's 180 after it (the real captures, tests/fixtures/topology/rip/)."""
+        from modules.readers import rip as R
+        from tests.test_topology_graph import RIP
+        for h in ("r1", "r2", "s1", "s2"):
+            with open(os.path.join(RIP, f"{h}__show_ip_protocols.txt"), encoding="utf-8") as fh:
+                text = fh.read()
+            assert "Invalid after 0 seconds" in text
+            assert R.invalid_seconds(text) == 180, h
+            assert R.invalid_seconds(text.replace("Invalid after 180", "Invalid after 240")) == \
+                240
+        assert R.invalid_seconds("Routing Protocol is \"ospf 1\"\n") is None
+        assert R.invalid_seconds('Routing Protocol is "rip"\n  Redistributing: rip\n') is None
+
+
 class TestTheFleetIsReadInFixedCalls:
     def test_two_git_calls_whatever_the_size(self, tmp_path, monkeypatch):
         """The scale rule: the whole fleet's intent in one ls-tree and one
@@ -491,6 +559,28 @@ class TestThePage:
         assert '<h3 class="nb-proto">RIP</h3>' in html and '<h3 class="nb-proto">RIPng</h3>' in html
         assert "hears r1 at 10.255.2.10" in html and "hears s2 at FE80::" in html
         assert "keeps no neighbour table this page reads" not in html
+
+    @pytest.mark.parametrize("stamp,aging", [("00:01:29", False), ("00:01:31", True)])
+    def test_rip_and_ripng_say_just_up_the_rest_on_hover(self, page, monkeypatch, stamp, aging):
+        """C3404 on the tab: the State cell is the badge alone, its words its hover (no muted
+        text beside it), for RIP and RIPng; at 91 s RIP's badge reads "up · last heard 91 s
+        before the read" in the warning colour, at 89 s "up"."""
+        from modules.readers import topology_graph
+        monkeypatch.setattr(topology_graph, "rip_answer",
+                            lambda clock=None: ({"Lab": _s1_heard_at(stamp)}, ""))
+        _r, html = page("/v2/device/s1/neighbours")
+        rip = html.split('<h3 class="nb-proto">RIP</h3>')[1].split('<h3 class="nb-proto">')[0]
+        ripng = html.split('<h3 class="nb-proto">RIPng</h3>')[1]
+        for table in (rip, ripng):
+            assert '<span class="muted">hears' not in table, "no words beside the state"
+        (cell,) = re.findall(r'<span class="badge badge-(\w+)" title="([^"]*)">([^<]*)</span>',
+                             rip)
+        hover = f"hears r1 at 10.255.2.10, its last update {stamp} before the read; RIP&#39;s " \
+                "timeout 180 s, IOS&#39;s default (s1&#39;s own invalid timer was not read)"
+        assert cell == (("warn", hover, "up · last heard 91 s before the read") if aging
+                        else ("ok", hover, "up")), cell
+        hops = re.findall(r'<span class="badge badge-ok" title="(hears [^"]*)">up</span>', ripng)
+        assert hops and all(re.search(r" at FE80::\S+ on ", h) for h in hops), hops
 
     def test_rip_unread_is_not_measured_never_none(self, page):
         """No stored RIP answer (the reader has not run here): s1's RIP is not measured, its

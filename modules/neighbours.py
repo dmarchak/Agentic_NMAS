@@ -601,6 +601,59 @@ def compare(intents: dict, host: str, results: dict, up: dict, now: float = None
 #: neighbour table a MIB walk reads, so the reader asks the devices that run it (two
 #: read-only show commands each, every five minutes) and this tab draws its stored answer.
 RIP_WORDS = {"rip": "RIP", "ripng": "RIPng"}
+#: A RIP source's "Last Update" in the device's own notation: ``00:01:31`` under a day, then
+#: ``4d06h`` or ``1w1d`` (`pipeline._parse_rip_sources` keeps it as said).
+_UNIT_S = {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
+
+
+def rip_age_seconds(stamp) -> int:
+    """*stamp*, a RIP source's last update as the device said it, in seconds, or None when it
+    is no such stamp (said as read, never guessed)."""
+    s = str(stamp or "").strip()
+    m = re.fullmatch(r"(\d+):(\d{2}):(\d{2})", s)
+    if m:
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    parts = re.findall(r"(\d+)([wdhms])", s)
+    if parts and "".join(n + u for n, u in parts) == s:
+        return sum(int(n) * _UNIT_S[u] for n, u in parts)
+    return None
+
+
+def _age_words(seconds: int) -> str:
+    """A last update's age in the State column's words: seconds under two minutes, then the
+    largest whole unit."""
+    if seconds < 120:
+        return f"{seconds} s"
+    if seconds < 3600:
+        return f"{seconds // 60} min"
+    if seconds < 86400:
+        return f"{seconds // 3600} h"
+    return f"{seconds // 86400} d"
+
+
+def _rip_timer(mine: dict, host: str) -> tuple:
+    """``(seconds, words)``: RIP's timeout a last update is judged against (C3404), *host*'s
+    own invalid timer where the RIP reader read it (`readers.rip.invalid_seconds`), else IOS's
+    default, and the words naming which."""
+    from modules.readers.rip import DEFAULT_INVALID_SECONDS
+
+    own = mine.get("rip_invalid_s")
+    if isinstance(own, int) and own > 0:
+        return own, f"RIP's timeout {own} s, {host}'s own invalid timer"
+    return DEFAULT_INVALID_SECONDS, (f"RIP's timeout {DEFAULT_INVALID_SECONDS} s, IOS's default "
+                                     f"({host}'s own invalid timer was not read)")
+
+
+def _rip_aging(row: dict, stamp, timer: tuple) -> None:
+    """*row* (a RIP source heard) with its timeout named in its hover words, and ``aging`` and
+    ``age_words`` when its last update is past half the timeout (C3404, the operator,
+    2026-11-13: "up · last heard <age>" in the warning colour, so an aging neighbour is visible
+    without hovering)."""
+    limit, words = timer
+    age = rip_age_seconds(stamp)
+    row["words"] = f"{row['words']}; {words}"
+    if age is not None and age > limit / 2:
+        row.update(aging=True, age_words=_age_words(age))
 
 
 def _peer_address(hv: dict, network: str) -> str:
@@ -622,6 +675,13 @@ def _peer_address(hv: dict, network: str) -> str:
     return ""
 
 
+def _owner(owners: dict, address: str) -> str:
+    try:
+        return owners.get(ipaddress.ip_address(address), "")
+    except ValueError:
+        return ""
+
+
 def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
     """*host*'s RIP and RIPng entries in `compare`'s shape (C12, the operator's Phase 7 list),
     from the RIP reader's answer for its network (*rip*, `topology_graph.rip_answer`'s value:
@@ -630,7 +690,12 @@ def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
     screens; each row is *host*'s side: ``up`` when *host* hears the peer, ``not_seen`` when its
     read answered and it does not, ``unknown`` when it was not read. A source *host* hears that
     no adjacency explains (a speaker outside management, or on an interface intent does not run
-    RIP on) is ``unexpected``. Only a protocol *host*'s intent runs is drawn."""
+    RIP on) is ``unexpected``. Only a protocol *host*'s intent runs is drawn.
+
+    A row's ``words`` are its hover (C3404: the State column says only its state): RIPng's
+    link-local next hop, RIP's last update and the timeout it is judged against. A RIP row up
+    whose last update is past half that timeout (*host*'s own invalid timer, the reader's
+    ``rip_invalid_s``, else IOS's 180 s) carries ``aging`` and ``age_words``."""
     from modules.readers.rip import runs
     from modules.readers.topology_graph import rip_links
 
@@ -656,6 +721,7 @@ def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
         at = mine.get("read_at", "") if measured else ""
         entry = {"proto": layer, "words": words, "rows": [], "measured": measured, "why": why,
                  "source": "reader"}
+        timer = _rip_timer(mine, host) if layer == "rip" else None
         explained = set()
         for link in links.get(layer) or []:
             if host not in (link["a"], link["b"]) or not link["intended"]:
@@ -667,6 +733,11 @@ def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
             heard = link["words_by"].get(host)
             if heard:
                 row.update(state="up", words=heard)
+                if layer == "rip":
+                    # The source Topology's words came from: the last one heard from *peer*.
+                    stamp = next((s.get("last_update") for s in reversed(mine.get("rip") or [])
+                                  if _owner(owners, s.get("gateway", "")) == peer), None)
+                    _rip_aging(row, stamp, timer)
             elif measured:
                 row.update(state="not_seen", words=(
                     f"not heard; {peer} hears {host}" if peer in link["words_by"]

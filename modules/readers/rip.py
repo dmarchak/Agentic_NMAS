@@ -20,6 +20,7 @@ second witness (`readers/topology_graph`).
 """
 
 import logging
+import re
 import time
 
 from modules import reader_job
@@ -33,10 +34,29 @@ INTERVAL_SECONDS = 300
 #: What each read asks. `read_device` sends them as literals, which the device-effect scans
 #: (tests/test_one_home_per_action.py) resolve; tests/test_rip_reader.py holds the two equal.
 COMMANDS = {"rip": "show ip protocols", "ripng": "show ipv6 rip next-hops"}
+#: IOS's RIP invalid timer (``timers basic``'s second value) where a device's own is not read:
+#: the Neighbours tab judges a source's last update against half of it (C3404).
+DEFAULT_INVALID_SECONDS = 180
 
 
 def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def invalid_seconds(show_ip_protocols: str):
+    """RIP's invalid timer as the device's own ``show ip protocols`` states it, in RIP's own
+    section ("Invalid after 180 seconds, hold down 180, flushed after 240"), or None when that
+    section or the line is absent (C3404). Read from the answer the reader already asks for:
+    no further command."""
+    text = show_ip_protocols or ""
+    m = re.search(r'^Routing Protocol is "rip"\s*$', text, re.MULTILINE)
+    if not m:
+        return None
+    rest = text[m.end():]
+    end = re.search(r"^Routing Protocol is ", rest, re.MULTILINE)
+    got = re.search(r"^\s*Invalid after (\d+) seconds", rest[:end.start()] if end else rest,
+                    re.MULTILINE)
+    return int(got.group(1)) if got else None
 
 
 def runs(hv: dict) -> dict:
@@ -126,8 +146,10 @@ def read_device(row: dict, wants: dict, connect=None) -> dict:
         try:
             conn.enable()
             if wants["rip"]:
-                sources = _parse_rip_sources(conn.send_command("show ip protocols"))
+                said = conn.send_command("show ip protocols")
+                sources = _parse_rip_sources(said)
                 out["rip"] = sources if sources is not None else []
+                out["rip_invalid_s"] = invalid_seconds(said)
                 if sources is None:
                     out["error"] = "RIP is configured and `show ip protocols` names no RIP"
             if wants["ripng"]:
@@ -162,7 +184,9 @@ def population() -> list:
 
 
 def read(population_fn=None, read_fn=None, clock=time.time) -> dict:
-    """``{"lists": {list: {device: {"rip", "ripng", "error", "read_at"}}}, "devices": n}``."""
+    """``{"lists": {list: {device: {"rip", "ripng", "error", "read_at", "rip_invalid_s"?}}},
+    "devices": n}``: ``rip_invalid_s`` the device's own RIP invalid timer, when RIP was read
+    and its answer states one (`invalid_seconds`)."""
     from modules.fanout import Failed, read_each
 
     items = (population_fn or population)()

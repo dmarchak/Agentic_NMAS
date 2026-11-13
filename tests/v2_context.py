@@ -1560,7 +1560,8 @@ def _declare_drill(client, _lab, _mp):
     from modules import fault_drills
 
     form = {"list": "Lab", "device": "r3", "back": "overview", "minutes": "10",
-            "expects": "the EEM heartbeat applet removed on r3", "reason": "a rehearsal"}
+            "kind": "missing_line", "detail": "the EEM heartbeat applet on r3",
+            "reason": "a rehearsal"}
     try:
         ok = client.post("/v2/fault-drills/declared", data=form)
         assert "Declared: a drill on r3 until" in ok.get_data(as_text=True), ok.status_code

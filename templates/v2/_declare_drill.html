@@ -22,14 +22,24 @@
     {%- elif g and g.ok %}
     <p class="notice notice-ok" role="status">{{ icon('check', 16) }}<span>Declared: a drill on {{ c.host }} until {{ clock(g.record.until) }}: {{ g.record.expects }}. Inject the fault now; an incident on {{ c.host }} before {{ clock(g.record.until) }} is a drill.</span></p>
     {%- else %}
-    {%- if g %}
+    {#- A refusal about one field (C3405: no choice made) is drawn at that field, Mercury's
+        inline refusal (the range control's: `aria-invalid`, its words under it), never the
+        browser's bubble: the form is `novalidate` and nothing in it is `required`. -#}
+    {%- set bad = g.field if g and not g.ok else '' %}
+    {%- if g and not bad %}
     <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ g.error | times }}.</span></p>
     {%- endif %}
-    <form class="sc-form" hx-post="{{ url_for('device_v2.fault_drill_declare') }}" hx-target="#device-op" hx-swap="outerHTML">
+    {%- macro refused(field, id) -%}
+    {%- if bad == field %}<span class="sc-f-refused" id="{{ id }}-err" role="alert">{{ icon('warn', 14) }}<span>Refused: {{ g.error | times }}.</span></span>{% endif -%}
+    {%- endmacro %}
+    {%- macro invalid(field, id) -%}{% if bad == field %} aria-invalid="true" aria-describedby="{{ id }}-err"{% endif %}{%- endmacro %}
+    <form class="sc-form" novalidate hx-post="{{ url_for('device_v2.fault_drill_declare') }}" hx-target="#device-op" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="device" value="{{ c.host }}"><input type="hidden" name="back" value="{{ c.back }}">
       <div class="sc-filters">
-      <label class="sc-f">The expected fault<input type="text" name="expects" required minlength="10" maxlength="200" autocomplete="off" value="{{ c.expects }}" placeholder="the EEM heartbeat applet removed on {{ c.host }}"></label>
-      <label class="sc-f">Minutes (1 to {{ c.max }})<input type="number" name="minutes" min="1" max="{{ c.max }}" step="1" required value="{{ c.minutes }}"></label>
+      <label class="sc-f">The expected fault<select name="kind" id="fd-kind"{{ invalid('kind', 'fd-kind') }}><option value=""{{ ' selected' if not c.kind }}>Choose the fault…</option>
+        {%- for value, words in c.kinds %}<option value="{{ value }}"{{ ' selected' if value == c.kind }}>{{ words }}</option>{% endfor %}</select>{{ refused('kind', 'fd-kind') }}</label>
+      <label class="sc-f">Detail (optional)<input type="text" name="detail" id="fd-detail" maxlength="{{ c.detail_max }}" autocomplete="off" value="{{ c.detail }}" placeholder="the EEM heartbeat applet on {{ c.host }}"{{ invalid('detail', 'fd-detail') }}>{{ refused('detail', 'fd-detail') }}</label>
+      <label class="sc-f">Minutes (1 to {{ c.max }})<input type="number" name="minutes" id="fd-minutes" min="1" max="{{ c.max }}" step="1" value="{{ c.minutes }}"{{ invalid('minutes', 'fd-minutes') }}>{{ refused('minutes', 'fd-minutes') }}</label>
       <label class="sc-f">Reason (optional)<input type="text" name="reason" maxlength="200" autocomplete="off" value="{{ c.reason }}"></label>
       </div>
       <p class="op-act"><button type="submit" class="btn btn-primary" data-op="fault-drill" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Declare the drill</span><span class="op-busy">Declaring…</span></button>{{ how('fault-drill', compact=True, op='a fault drill') }}</p>

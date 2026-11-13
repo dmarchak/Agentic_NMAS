@@ -284,11 +284,36 @@ def baseline_words(decision: str, tags: list, source: str = "") -> dict:
         if n:
             return {"state": "not_taken", "words": f"not taken: {n} not targeted", "tag": tag}
         m = re.search(r"\(([^)]*skipped)\)", why)
-        return {"state": "denied", "words": "denied: " + (m.group(1) if m else why)[:80],
+        from modules.nsot.repo import reason_words
+        return {"state": "denied", "words": "denied: " + (m.group(1) if m else
+                                                          reason_words(why))[:80],
                 "tag": tag}
     if tag:
         return {"state": "unrecorded", "words": "not recorded", "tag": tag}
     return {"state": "", "words": "", "tag": ""}
+
+
+def baseline_detail(decision: str, tags: list, source: str = "") -> str:
+    """The Baseline line of a row's record (the operator, 2026-11-13, C3400: "draw the details
+    by the corrected rule too"): the decision read as its Baseline column reads it
+    (`baseline_words`, the one reading Needs attention shares), so the details say the
+    title's cause first, then the recorded reasons in the words a save writes now
+    (`repo.reason_words`: never "1 of an unstated number"). A heal's denial, recorded before a
+    heal stopped recording one, is "not taken" with its reasons named as what that commit
+    recorded; the record is not changed."""
+    from modules.nsot.repo import reason_words
+
+    b = baseline_words(decision, tags, source)
+    d = (decision or "").strip()
+    if not d.startswith("denied"):
+        return b["words"] or d
+    why = reason_words(d.partition(":")[2].strip()) or "no reason recorded"
+    if b["state"] == "denied":
+        return f"denied: {why}"
+    if b["words"].endswith("not targeted"):
+        return f"{b['words']} ({why})"
+    return (f"{b['words']}. Its commit recorded this before a heal stopped recording a "
+            f"decision: {why}")
 
 
 def diff(repo: str, sha: str, max_lines: int = 400, git=None) -> dict:
@@ -607,7 +632,9 @@ def measured(ctx):
         events.append(_from_commit(r, "measured", f"Measured, golden unchanged ({r['source']})",
                                  devices,
                                  record=[("Commit", r["sha"][:12]), ("Source", r["source"]),
-                                         ("Baseline", r["baseline"]), ("By", r["who"])]))
+                                         ("Baseline", baseline_detail(r["baseline"], r["tags"],
+                                                                      r["source"])),
+                                         ("By", r["who"])]))
         if len(events) >= ctx["limit"]:
             break
     return _out(events)
@@ -658,7 +685,9 @@ def decisions(ctx):
                                  f"Baseline {b['words'] or 'recorded'} "
                                  f"({r['source'] or 'no Source: trailer'})", [],
                                  outcome=b["state"],
-                                 record=[("Commit", r["sha"][:12]), ("Baseline", r["baseline"]),
+                                 record=[("Commit", r["sha"][:12]),
+                                         ("Baseline", baseline_detail(r["baseline"], r["tags"],
+                                                                      r["source"])),
                                          ("Tag", b["tag"]),
                                          ("Measured", ", ".join(sorted(r["measured"]))),
                                          ("By", r["who"])]))

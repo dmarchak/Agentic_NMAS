@@ -57,8 +57,33 @@ FIELD = "fault_drill"
 #: onset (a heartbeat's 300 s plus the rule's 60 s evaluation), as the board's I1 states.
 MAX_MINUTES = 15
 DEFAULT_MINUTES = 10
-#: The expected fault in words, at least this many: "the EEM heartbeat applet removed".
+#: The expected fault in words, at least this many: "the EEM heartbeat applet removed". A
+#: script's free text only; the card's choice is words enough (C3405).
 EXPECTS_WORDS = 3
+#: The card's last choice (C3405, the operator, 2026-11-13): a drill declared to test the drill
+#: itself, no fault injected.
+NO_FAULT = ("no_fault", "No fault (testing the drill itself)")
+#: The optional detail beside the choice, at most this many characters (the card's field).
+DETAIL_CHARS = 200
+
+
+def fault_kinds() -> list:
+    """The card's choice of the expected fault, ``[(value, words)]`` (C3405): every row of
+    self-healing's Fix kinds card, from its one table (`heal_page.KIND_LABELS` in the policy's
+    tier order, each kind once, then `heal_page.FIXED_KINDS`, valued ``tier<N>``), then
+    `NO_FAULT`. Never a second list typed here."""
+    from modules import heal_page
+    from modules.heal import policy as H
+
+    out, seen = [], set()
+    for k in H.TIER1_KINDS + H.TIER2_KINDS:
+        if k not in seen:
+            seen.add(k)
+            out.append((k, heal_page.kind_name(k)))
+    for label, tier, _words, _why in heal_page.FIXED_KINDS:
+        out.append((f"tier{tier}", label))
+    out.append(NO_FAULT)
+    return out
 #: The declaration's steps, for its How it works page (docs/manual/how-it-works/fault-drill.md).
 STEPS = (("check", "Check the declaration: a person, a device of the network, the fault in "
                    "words, a bound of at most 15 minutes"),
@@ -231,14 +256,22 @@ def _inventory_device(network: str, device: str) -> dict:
     return dev
 
 
-def record_declared(network: str, device: str, *, minutes, expects: str, by: str,
+def record_declared(network: str, device: str, *, minutes, expects: str = "", by: str,
                     actor_verified: str = "", via: str, script: str = "", reason: str = "",
-                    now: float = None, inventory=None) -> dict:
+                    now: float = None, inventory=None, kind=None, detail: str = "") -> dict:
     """Declare a fault drill on *device* of *network* from *now* for *minutes* (1 to
-    `MAX_MINUTES`): ``{"ok": True, "record"}`` or ``{"ok": False, "error"}``, the refusal
-    naming both operands it compared. *via* is ``device page`` or ``nmas-fault-drill``;
-    *script* names the injecting script, *reason* is optional words. *inventory(network,
-    device)* finds the device (the inventory by default). Silences nothing, holds nothing."""
+    `MAX_MINUTES`): ``{"ok": True, "record"}`` or ``{"ok": False, "error", "field"?}``, the
+    refusal naming both operands it compared, and the card's field it is about (``kind``,
+    ``detail`` or ``minutes``) when it is one. *via* is ``device page`` or
+    ``nmas-fault-drill``; *script* names the injecting script, *reason* is optional words.
+    *inventory(network, device)* finds the device (the inventory by default). Silences
+    nothing, holds nothing.
+
+    **The expected fault** (C3405): the card sends *kind*, one value of `fault_kinds`, and an
+    optional *detail*; the record's ``expects`` is then the choice's words and the detail
+    ("Added line: an IPv6 route on edge-b"), so every reader of a declaration reads the words
+    it always has, and ``kind`` and ``detail`` are kept beside them. *kind* ``None`` (a script
+    that names none) takes *expects* as free text, at least `EXPECTS_WORDS` words."""
     from modules import filestore
     from modules.config import open_secure
     from modules.nsot import listref
@@ -252,15 +285,30 @@ def record_declared(network: str, device: str, *, minutes, expects: str, by: str
     if not network or not listref.exists(network):
         return {"ok": False, "error": f"{network or 'no network'} is no network, so no drill "
                                       "is declared"}
+    detail = " ".join((detail or "").split())
+    if kind is not None:
+        choices = dict(fault_kinds())
+        kind = str(kind).strip()
+        if kind not in choices:
+            return {"ok": False, "field": "kind", "error": (
+                f"the expected fault is one of the {len(choices)} on its list, and "
+                + ("none was chosen" if not kind else f"{kind!r} is not one of them"))}
+        if len(detail) > DETAIL_CHARS:
+            return {"ok": False, "field": "detail", "error": (
+                f"the detail is at most {DETAIL_CHARS} characters, and {len(detail)} were "
+                "given")}
+        text = choices[kind] + (f": {detail}" if detail else "")
     try:
         minutes = int(minutes)
     except (TypeError, ValueError):
-        return {"ok": False, "error": f"the bound is a whole number of minutes, 1 to "
-                                      f"{MAX_MINUTES}, not {minutes!r}"}
+        return {"ok": False, "field": "minutes",
+                "error": f"the bound is a whole number of minutes, 1 to {MAX_MINUTES}, not "
+                         f"{minutes!r}"}
     if not 1 <= minutes <= MAX_MINUTES:
-        return {"ok": False, "error": f"a fault drill lasts 1 to {MAX_MINUTES} minutes, and "
-                                      f"{minutes} was asked"}
-    if len(text.split()) < EXPECTS_WORDS:
+        return {"ok": False, "field": "minutes",
+                "error": f"a fault drill lasts 1 to {MAX_MINUTES} minutes, and {minutes} was "
+                         "asked"}
+    if kind is None and len(text.split()) < EXPECTS_WORDS:
         return {"ok": False, "error": (f"the expected fault is said in {EXPECTS_WORDS} words or "
                                        f"more (\"the EEM heartbeat applet removed on {device}\"), "
                                        "and "
@@ -297,7 +345,8 @@ def record_declared(network: str, device: str, *, minutes, expects: str, by: str
                                            "drill, so none is declared")}
         row = {"id": "fd-" + uuid.uuid4().hex[:10], "list": network, "device": device,
                "device_id": (dev or {}).get("_netbox_id") if isinstance(dev, dict) else None,
-               "expects": text, "minutes": minutes, "from": _iso(now), "from_epoch": now,
+               "expects": text, "kind": kind or "", "detail": detail if kind else "",
+               "minutes": minutes, "from": _iso(now), "from_epoch": now,
                "until": _iso(now + minutes * 60), "until_epoch": now + minutes * 60,
                "by": by, "actor_verified": actor_verified or "", "via": via,
                "script": (script or "").strip(), "reason": (reason or "").strip(),

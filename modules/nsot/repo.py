@@ -1087,6 +1087,22 @@ def uncaptured(reasons: str) -> dict:
     return {"any": True, "only": not rest, "skipped": skipped, "detail": detail}
 
 
+#: A coverage count recorded before a save stated the inventory's size (C2105, C3165): the
+#: bracket "1 of an unstated number", which the save now writes "1 captured; the save was
+#: given no inventory size" (`_baseline_decision`).
+_UNSTATED = re.compile(r"\b(\d+) of an unstated number\b")
+
+
+def reason_words(reasons: str) -> str:
+    """A recorded decision's *reasons* in the words a save writes now (the operator,
+    2026-11-13, C3400: "draw the details by the corrected rule too"): a count recorded as "N of
+    an unstated number" is said "N captured; the save was given no inventory size", as
+    `_baseline_decision` writes it since C3165. Every other word is the record's own. The
+    record is not changed; every reader that draws a decision's reasons draws them through
+    this (Needs attention's baseline rows, History's Baseline column and its record)."""
+    return _UNSTATED.sub(r"\1 captured; the save was given no inventory size", reasons or "")
+
+
 def network_decision(source: str, decision: str) -> bool:
     """Is a recorded `Baseline:` *decision* (the trailer's value), in a commit by workflow
     *source*, a decision about the NETWORK? What `decides_for_network` asks of a commit being

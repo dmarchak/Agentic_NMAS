@@ -237,9 +237,11 @@ class TestTheAdjacencyViews:
         res, up = _for(fleet.cap, "r3")
         want = N.compare(fleet.intents, "r3", res, up, now=T0)
         got = value["views"]["Lab:r3"]
-        drawn_p = {"words", "why", "as_of", "measured"}
+        # `proto` tells the tab which tables are RIP's, and `aging`/`age_words` draw a RIP
+        # neighbour past half its timeout (C3404): both drawn since then.
+        drawn_p = {"words", "why", "as_of", "measured", "proto"}
         drawn_r = {"managed", "peer", "address", "rid", "via", "state", "words", "as_of",
-                   "at_iso"}
+                   "at_iso", "aging", "age_words"}
         assert [p["words"] for p in got["protocols"]] == [p["words"] for p in want["protocols"]]
         for g, w in zip(got["protocols"], want["protocols"]):
             assert set(g) == ({k for k in w if k in drawn_p} | {"rows"})

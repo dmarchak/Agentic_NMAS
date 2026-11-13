@@ -2192,7 +2192,11 @@ def baseline_source(log_fn=None, presence=None) -> dict:
     sha, ct, body, decision, source_line = found
     at = float(ct)
     rows = []
-    reasons = decision.split(":", 1)[1].strip() if ":" in decision else ""
+    # The recorded reasons in the words a save writes now (C3400, `repo.reason_words`): a
+    # count recorded as "1 of an unstated number" is said "1 captured; the save was given no
+    # inventory size", in the row's cause and the usability row's, as in History.
+    from modules.nsot.repo import reason_words
+    reasons = reason_words(decision.split(":", 1)[1].strip() if ":" in decision else "")
     # ONE row when the last decision was a denial AND no stored baseline is
     # usable: both say "there is no restore point", and the denial names the
     # blocker, which the usability row's remedy must name too (the operator,

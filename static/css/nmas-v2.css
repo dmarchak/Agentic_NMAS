@@ -518,6 +518,11 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .range-refused { flex-basis: 100%; display: flex; align-items: center; gap: 6px; margin: 2px 0 0;
   font-size: 12px; color: var(--warn); }
 .range-custom input[aria-invalid="true"] { border-color: var(--warn-mark); }
+/* A form field's refusal, said at the field under it, the range control's way (C3405: the
+   fault drill's choice); never the browser's bubble. */
+.sc-f-refused { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400;
+  color: var(--warn); }
+.sc-f input[aria-invalid="true"], .sc-f select[aria-invalid="true"] { border-color: var(--warn-mark); }
 /* The toolbar's own space below it, never a note pulled up into it with a negative margin. */
 .monitoring > .toolbar { margin-bottom: 16px; }
 .range-custom input { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: var(--r); padding: 5px 8px;

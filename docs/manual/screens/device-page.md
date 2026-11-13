@@ -54,8 +54,10 @@ verified offers **Verify again…** on the same menu, after Reload… (otherwise
 its Needs attention row does: it opens the Reload card's offer ([Reload a device](reload)).
 **Declare a fault drill…**, after Diagnose…, offered whenever no drill is open (it sends nothing), declares BEFORE
 you inject a fault that an incident on this device within the next 1 to 15 minutes is a drill:
-its card takes the expected fault in words, the minutes (10 by default) and a reason if you want
-one, and **Declare the drill** answers in place with the drill's end ([Declare a fault
+its card takes the expected fault as a choice (a fix kind, or **No fault (testing the drill
+itself)**) with an optional detail, the minutes (10 by default) and a reason if you want one,
+and **Declare the drill** answers in place (a press with no fault chosen is refused at the
+choice, in the card) with the drill's end ([Declare a fault
 drill](fault-drill)). While a drill is open on the device the same row reads **End the fault
 drill (until HH:MM)**: one press ends it early, once its fault is healed, and answers in place
 ("Fault drill fd-… ended at HH:MM; incidents from now are real"); a new drill can then be
@@ -332,6 +334,14 @@ each device whose intent runs RIP): up when this device hears the neighbour, not
 whether the neighbour still hears this device), a speaker intent does not explain as
 unexpected, and not measured when the reader could not read the device or its last read is
 older than its promise. Opening the tab opens no session to the device.
+
+For RIP and RIPng the **State** column says only the state ("up"); hover it for the rest:
+RIPng's link-local next hop and the interface it is heard on, and RIP's last update before
+the read with the timeout it is judged against. That timeout is the device's own RIP invalid
+timer where the RIP reader read it from `show ip protocols`, else IOS's default of 180 s, and
+the hover names which. A RIP neighbour whose last update is past half that timeout (more than
+90 s of the default) reads **up · last heard <age> before the read** in the warning colour,
+so a neighbour going quiet shows without hovering.
 
 The tab never waits on Prometheus: Mercury's adjacencies reader reads the whole fleet's routing
 tables every 60 seconds (four asks, whatever the fleet's size) and keeps each device's view;

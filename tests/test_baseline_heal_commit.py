@@ -376,6 +376,91 @@ class TestTheRecordAlreadyWritten:
         assert kept["state"] == "denied" and kept["words"] == "denied: s3 skipped"
 
 
+class TestTheDetailsByTheCorrectedRule:
+    """C3400 (the operator, 2026-11-13): "The C3165 decision row's details still say "Baseline
+    denied … 1 of an unstated number" under the title "Baseline not taken": draw the details
+    by the corrected rule too." History's decision row for the host's record (a heal's commit,
+    the recorded shape he read) and every reader of a decision's reasons say the title's cause
+    and the count as the save writes it now; the record is not changed."""
+
+    @staticmethod
+    def _decision_rows(repo):
+        import types
+        ctx = {"ref": types.SimpleNamespace(name="Lab", repo_dir=repo), "device": "",
+               "limit": 50, "since": None, "until": None, "members": None,
+               "inventory": set()}
+        return [e for e in HS.decisions(ctx)["events"] if e["kind"] == "decision"]
+
+    def test_the_hosts_record_its_details_say_the_titles_cause_and_no_unstated_number(
+            self, nine):
+        repo, captured = nine
+        assert _save_all(captured)["baseline"].startswith("baseline/")
+        sha = _old_record(repo, HEAL, f"denied: {HOST_REASON}")
+        assert HOST_REASON in _body(repo), "the record is as the old save wrote it"
+        (row,) = [e for e in self._decision_rows(repo) if dict(e["record"])["Commit"] ==
+                  sha[:12]]
+        title_cause = "not taken: a heal decides nothing for the network"
+        assert row["what"] == f"Baseline {title_cause} ({HEAL})", row["what"]
+        details = " ".join(str(v) for _k, v in row["record"])
+        assert "unstated number" not in details and "unstated" not in row["what"]
+        line = dict(row["record"])["Baseline"]
+        assert line.startswith(title_cause), line
+        assert "1 captured; the save was given no inventory size" in line, line
+        assert not line.startswith("denied"), "never the opposite of its title"
+
+    @pytest.mark.parametrize("source, decision, title, line", [
+        # Another workflow's old coverage denial is the network's: denied, the count reworded.
+        ("pipeline", f"denied: {HOST_REASON}",
+         "denied: not every inventory device was captured (1 captured; the save was given no "
+         "inven",
+         "denied: not every inventory device was captured (1 captured; the save was given no "
+         "inventory size)"),
+        # The counts a save names now are as written.
+        ("save_all", "denied: not every inventory device was captured (1 of 9)",
+         "denied: not every inventory device was captured (1 of 9)",
+         "denied: not every inventory device was captured (1 of 9)"),
+        ("pipeline", "denied: 8 device(s) not targeted: ['r1']", "not taken: 8 not targeted",
+         "not taken: 8 not targeted (8 device(s) not targeted: ['r1'])"),
+        ("save_all", "earned", "earned", "earned"),
+    ])
+    def test_every_decisions_details_read_as_its_title(self, source, decision, title, line):
+        assert HS.baseline_words(decision, [], source)["words"] == title
+        assert HS.baseline_detail(decision, [], source) == line
+
+    def test_needs_attention_says_the_count_as_the_save_writes_it_now(self, nine):
+        """A person's deploy recorded before the save stated the inventory's size: its row,
+        never passed over (C3167), names the count in today's words."""
+        repo, captured = nine
+        assert _save_all(captured)["baseline"].startswith("baseline/")
+        _old_record(repo, "pipeline", f"denied: {HOST_REASON}")
+        r = _the_row()
+        assert "unstated" not in r["cause"], r["cause"]
+        assert ("not every inventory device was captured (1 captured; the save was given no "
+                "inventory size)") in r["cause"]
+        assert r["action"]["label"].startswith("Capture the missing devices")
+
+    def test_the_usability_row_says_it_too(self, nine, monkeypatch):
+        repo, captured = nine
+        assert _save_all(captured)["baseline"].startswith("baseline/")
+        _old_record(repo, "pipeline", f"denied: {HOST_REASON}")
+        _usable_none(monkeypatch)
+        r = _the_row()
+        assert r["what"].startswith("No stored baseline can be re-applied")
+        assert "unstated" not in r["cause"] and "1 captured; the save was given no " \
+            "inventory size" in r["cause"], r["cause"]
+
+    def test_the_words_are_the_record_s_but_for_the_count(self):
+        assert R.reason_words(HOST_REASON) == ("not every inventory device was captured (1 "
+                                               "captured; the save was given no inventory "
+                                               "size)")
+        assert R.reason_words("not every inventory device was captured (12 of an unstated "
+                              "number); r2 does not match") == (
+            "not every inventory device was captured (12 captured; the save was given no "
+            "inventory size); r2 does not match")
+        for kept in ("not every inventory device was captured (1 of 13)", CUT, ""):
+            assert R.reason_words(kept) == kept
+
+
 class TestTheRowMatchesItsCause:
     """(b): a coverage reason says to capture the missing devices, and names the count."""
 

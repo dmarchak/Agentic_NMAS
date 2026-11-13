@@ -36,7 +36,11 @@ naming why.
 
 Every record the tool keeps, across every device, newest first, for the time you choose (7 days
 by default). It also holds the records that belong to no one device: a commit to the monitoring
-profile or the templates, a Save All's baseline decision, an update of the app, and each
+profile or the templates, a Save All's baseline decision (earned, denied with why, or not
+taken: a deploy that did not cover the network, or a heal's commit, which decides nothing for
+the network; its Details for the record say the same cause first, then the reasons its commit
+recorded, a count recorded as "of an unstated number" said as "N captured; the save was given
+no inventory size"), an update of the app, and each
 [import into NetBox, Remove from NetBox and Stop tracking](netbox-import) of this network (kind
 **NetBox**: who confirmed it, when it started and ended, and its counts in the NetBox page's
 own words; an import of every network is on each network's timeline it names). A device's

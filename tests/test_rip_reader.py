@@ -71,6 +71,19 @@ def test_a_device_answers_what_it_hears(stored):
     assert conns[0].sent == list(R.COMMANDS.values()) and conns[0].closed
 
 
+def test_rips_own_invalid_timer_is_kept_from_the_same_answer(stored):
+    """C3404: the Neighbours tab judges a last update against the device's own timer, read from
+    the `show ip protocols` the reader already asks (its RIP section's 180, never the
+    application section's 0 above it); no further command."""
+    conns = []
+    got = R.read_device(ROW, {"rip": True, "ripng": False},
+                        connect=lambda **p: conns.append(_Conn("s1")) or conns[-1])
+    assert got["rip_invalid_s"] == 180 and conns[0].sent == [R.COMMANDS["rip"]]
+    got = R.read_device(ROW, {"rip": False, "ripng": True},
+                        connect=lambda **p: _Conn("s1"))
+    assert "rip_invalid_s" not in got, "RIP not asked, no timer said"
+
+
 def test_only_what_its_intent_needs_is_asked(stored):
     conns = []
     R.read_device(ROW, {"rip": False, "ripng": True},

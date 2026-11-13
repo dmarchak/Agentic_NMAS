@@ -96,11 +96,13 @@ def _key(list_name: str, host: str, row: dict) -> str:
 
 #: What the Neighbours tab draws of a device's view (templates/v2/_neighbours.html), and so
 #: all a stored view carries (CLAUDE.md: every carried field is drawn): each protocol's words,
-#: why, as-of and whether it is measured, its rows; each row's peer, address, router id, via,
-#: state, words and times; the two counts the tab's head sentence adds up.
-VIEW_PROTOCOL_KEYS = ("words", "why", "as_of", "measured")
+#: why, as-of and whether it is measured, and which protocol it is (RIP's and RIPng's words
+#: are their State's hover, C3404), its rows; each row's peer, address, router id, via, state,
+#: words and times, and a RIP neighbour's aging and its age (C3404); the two counts the tab's
+#: head sentence adds up.
+VIEW_PROTOCOL_KEYS = ("proto", "words", "why", "as_of", "measured")
 VIEW_ROW_KEYS = ("managed", "peer", "address", "rid", "via", "state", "words", "as_of",
-                 "at_iso")
+                 "at_iso", "aging", "age_words")
 VIEW_COUNTS = ("down", "not_seen")
 
 

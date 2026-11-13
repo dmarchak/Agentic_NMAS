@@ -1504,15 +1504,18 @@ def drift_check_now(name):
 
 def _declare_drill_card(ref, dev, back, fields=None, got=None) -> dict:
     """Declare a fault drill…'s card (the operator's decision, 2026-11-11; the incident page's
-    board, I1): the device fixed, the expected fault, the minutes (1 to 15, 10 by default) and
-    a reason, optional; or what the declaration answered."""
+    board, I1): the device fixed, the expected fault chosen from the fix kinds with an optional
+    detail (C3405), the minutes (1 to 15, 10 by default) and a reason, optional; or what the
+    declaration answered, a refusal about one field drawn at that field."""
     from modules import fault_drills
 
     f = fields or {}
     return {"op": "declare_drill", "host": dev.get("hostname", ""), "list": ref.name,
             "back": back, "max": fault_drills.MAX_MINUTES,
             "minutes": f.get("minutes") or fault_drills.DEFAULT_MINUTES,
-            "expects": f.get("expects") or "", "reason": f.get("reason") or "", "got": got}
+            "kinds": fault_drills.fault_kinds(), "kind": f.get("kind") or "",
+            "detail": f.get("detail") or "", "detail_max": fault_drills.DETAIL_CHARS,
+            "reason": f.get("reason") or "", "got": got}
 
 
 @bp.route("/device/<name>/fault-drill", methods=["GET"])
@@ -1531,10 +1534,12 @@ def fault_drill_card(name):
 def fault_drill_declare():
     """Declare a fault drill BEFORE its fault is injected (`fault_drills.record_declared`, the
     one writer, which `scripts/nmas-fault-drill` calls on the host): one device, the expected
-    fault in words, at most 15 minutes, recorded as the verified caller. Its card's form gets
-    the card back with the answer in place; a JSON body (``{"list", "device", "minutes",
-    "expects", "reason"?, "script"?}``, a script's) gets ``{"ok", "record"}`` or ``{"ok":
-    false, "error"}``. Silences, holds and sends nothing."""
+    fault, at most 15 minutes, recorded as the verified caller. Its card's form sends the
+    expected fault as a choice (``kind``, one of `fault_drills.fault_kinds`) and an optional
+    ``detail`` (C3405), and gets the card back with the answer in place, a refusal about a
+    field (no choice made) drawn at that field; a JSON body (``{"list", "device", "minutes",
+    "expects" | "kind" and "detail"?, "reason"?, "script"?}``, a script's) gets ``{"ok",
+    "record"}`` or ``{"ok": false, "error"}``. Silences, holds and sends nothing."""
     from modules import fault_drills, identity
 
     as_json = request.is_json
@@ -1550,22 +1555,25 @@ def fault_drill_declare():
         list_name = str(data.get("list") or "")
         if not listref.exists(list_name):
             return jsonify({"ok": False, "error": f"no network is named {list_name!r}"}), 400
+        kind = data.get("kind")
         got = fault_drills.record_declared(
             list_name, device, minutes=data.get("minutes"), expects=str(data.get("expects") or ""),
             by=actor, actor_verified=verified, via="api",
-            script=str(data.get("script") or ""), reason=str(data.get("reason") or ""))
+            script=str(data.get("script") or ""), reason=str(data.get("reason") or ""),
+            kind=None if kind is None else str(kind), detail=str(data.get("detail") or ""))
         return jsonify(got), (200 if got["ok"] else 409)
     ref, dev, refusal = _named_device(device, data.get("list", ""), "v2/_declare_drill.html")
     if refusal is not None:
         return refusal
-    fields = {"minutes": data.get("minutes"), "expects": data.get("expects") or "",
-              "reason": data.get("reason") or ""}
+    fields = {"minutes": data.get("minutes"), "kind": data.get("kind") or "",
+              "detail": data.get("detail") or "", "reason": data.get("reason") or ""}
     got = fault_drills.record_declared(
-        ref.name, dev.get("hostname", ""), minutes=fields["minutes"], expects=fields["expects"],
-        by=actor, actor_verified=verified, via="device page",
+        ref.name, dev.get("hostname", ""), minutes=fields["minutes"], kind=fields["kind"],
+        detail=fields["detail"], by=actor, actor_verified=verified, via="device page",
         reason=fields["reason"], inventory=lambda _n, _d: dev)
-    # The card draws the drill's end and the fault; the whole record is History's.
-    got = {"ok": got["ok"], "error": got.get("error") or "",
+    # The card draws the drill's end and the fault; the whole record is History's. A refusal
+    # about one field is drawn at it (``field``).
+    got = {"ok": got["ok"], "error": got.get("error") or "", "field": got.get("field") or "",
            "record": {k: (got.get("record") or {}).get(k) for k in ("until", "expects")}}
     return _strict(render_template("v2/_declare_drill.html",
                                    c=_declare_drill_card(ref, dev, _back(data), fields, got)),

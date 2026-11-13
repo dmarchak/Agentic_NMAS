@@ -52,6 +52,10 @@ A, DC, DS, GD, I = (_Lazy("act"), _Lazy("decide"), _Lazy("decisions"), _Lazy("gu
 NET, DEV = "Default", "edge-b"
 BY = "op@example.com"
 EXPECTS = "an IPv6 route added on edge-b"
+#: The card's expected fault as its form sends it (C3405): a choice and its detail, and the
+#: words the declaration records from them.
+CHOSEN = {"kind": "added_line", "detail": EXPECTS}
+CHOSEN_WORDS = f"Added line: {EXPECTS}"
 MIN = 60
 
 
@@ -402,27 +406,28 @@ class TestTheCard:
         # Pressed as the card's form sends it: its own fields, and the drill recorded.
         sent = dict(re.findall(r'name="(list|device|back|minutes)"[^>]*value="([^"]*)"', card))
         assert sent == {"list": NET, "device": DEV, "back": "overview", "minutes": "10"}, sent
-        r = c.post("/v2/fault-drills/declared", data=dict(sent, expects=EXPECTS))
+        r = c.post("/v2/fault-drills/declared", data=dict(sent, **CHOSEN))
         assert r.status_code == 200 and [x["device"] for x in FD().declared(NET)] == [DEV]
 
     def test_declared_the_answer_in_place(self, page):
         r = page["client"].post("/v2/fault-drills/declared", data={
-            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS, "back": "overview"})
+            "list": NET, "device": DEV, "minutes": "10", **CHOSEN, "back": "overview"})
         html = r.get_data(as_text=True)
         (row,) = FD().declared(NET)
         assert r.status_code == 200, html[:400]
         # The end by the one clock: the viewer's zone in its words, its UTC on the hover.
         assert f"Declared: a drill on {DEV} until" in html
         assert f'title="{row["until"][:19].replace("T", " ")} UTC"' in html
-        assert (f"Inject the fault now; an incident on {DEV} before") in html and EXPECTS in html
+        assert (f"Inject the fault now; an incident on {DEV} before") in html
+        assert CHOSEN_WORDS in html and row["expects"] == CHOSEN_WORDS
         assert row["by"] == "test-person@example.invalid" and row["via"] == "device page"
         assert r.headers.get("X-NMAS-Invalidates", "").find("fault_drills") >= 0
 
     def test_a_refusal_is_said_in_place(self, page):
         page["client"].post("/v2/fault-drills/declared", data={
-            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS})
+            "list": NET, "device": DEV, "minutes": "10", **CHOSEN})
         r = page["client"].post("/v2/fault-drills/declared", data={
-            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS})
+            "list": NET, "device": DEV, "minutes": "10", **CHOSEN})
         html = r.get_data(as_text=True)
         assert r.status_code == 409 and "Couldn't declare the drill: " in html
         assert "one drill per device at a time" in html and "Declare the drill" in html
@@ -441,7 +446,7 @@ class TestTheCard:
     @pytest.mark.real_identity
     def test_a_request_no_verified_person_made_is_refused(self, page):
         r = page["client"].post("/v2/fault-drills/declared", data={
-            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS})
+            "list": NET, "device": DEV, "minutes": "10", **CHOSEN})
         assert r.status_code in (401, 403), r.status_code
         assert FD().declared(NET) == []
 
@@ -450,6 +455,100 @@ class TestTheCard:
 
         g = route_gates.GATES["device_v2.fault_drill_declare"]
         assert (g.kind, g.operation) == ("configure", "fault_drill_declare")
+
+
+class TestTheExpectedFaultIsAChoice:
+    """C3405 (the operator, 2026-11-13): "The expected fault" is a choice, the fix kinds plus
+    "No fault (testing the drill itself)", with an optional detail; a required field's error is
+    Mercury's inline message, never the browser's bubble."""
+
+    def test_the_choice_is_the_fix_kinds_card_s_rows_and_no_fault(self):
+        from modules import heal_page
+
+        got = FD().fault_kinds()
+        values = [v for v, _w in got]
+        assert len(values) == len(set(values)), "each choice once"
+        # Every row the Fix kinds card draws: each kind of its one table, then its fixed rows.
+        assert set(heal_page.KIND_LABELS) <= set(values)
+        assert [w for v, w in got if v.startswith("tier")] == \
+            [label for label, *_ in heal_page.FIXED_KINDS]
+        words = dict(got)
+        assert (words["missing_line"], words["changed_line"], words["added_line"]) == \
+            ("Missing line", "Changed line", "Added line")
+        assert words["admin_down"].startswith("Admin down")
+        assert any("link down" in w for w in words.values()), "Link down, Tier 3's row"
+        assert got[-1] == ("no_fault", "No fault (testing the drill itself)")
+
+    def test_the_card_draws_the_choice_novalidate_with_nothing_required(self, page):
+        card = page["client"].get(f"/v2/device/{DEV}/fault-drill?back=overview").get_data(
+            as_text=True)
+        (form,) = re.findall(r"<form\b[^>]*>", card)
+        assert " novalidate" in form, form
+        assert not re.search(r"\srequired(\s|=|>)", card), "no field the browser bubbles on"
+        assert not re.search(r"\sminlength=", card), "nor a length it bubbles on"
+        assert 'name="expects"' not in card, "the free-text field is gone"
+        opts = re.findall(r'<option value="([^"]*)"[^>]*>([^<]*)</option>', card)
+        assert opts[0] == ("", "Choose the fault…")
+        assert opts[1:] == [(v, w.replace("'", "&#39;")) for v, w in FD().fault_kinds()]
+        assert 'name="detail"' in card and "Detail (optional)" in card
+        # Pressed as the form sends it, its last option chosen and no detail: declared, its
+        # words the option's.
+        sent = dict(re.findall(r'name="(list|device|back|minutes)"[^>]*value="([^"]*)"', card))
+        r = page["client"].post("/v2/fault-drills/declared",
+                                data=dict(sent, kind=opts[-1][0], detail=""))
+        assert r.status_code == 200, r.status_code
+        (row,) = FD().declared(NET)
+        assert (row["kind"], row["expects"], row["detail"]) == (
+            "no_fault", "No fault (testing the drill itself)", "")
+
+    @pytest.mark.parametrize("kind,said", [
+        ("", "and none was chosen"), ("free_words", "and 'free_words' is not one of them")])
+    def test_no_choice_is_refused_at_its_field_recording_nothing(self, page, kind, said):
+        r = page["client"].post("/v2/fault-drills/declared", data={
+            "list": NET, "device": DEV, "minutes": "10", "kind": kind, "detail": "x",
+            "back": "overview"})
+        html = r.get_data(as_text=True)
+        n = len(FD().fault_kinds())
+        assert r.status_code == 409, r.status_code
+        assert re.search(r'<select name="kind" id="fd-kind" aria-invalid="true" '
+                         r'aria-describedby="fd-kind-err">', html), html[:2000]
+        assert (f'id="fd-kind-err" role="alert">') in html
+        from html import unescape
+
+        drawn = unescape(html)
+        assert f"Refused: the expected fault is one of the {n} on its list, {said}." in drawn, \
+            drawn[drawn.find('id="fd-kind-err"'):][:600]
+        assert "Couldn't declare the drill" not in html, "said once, at its field"
+        assert 'value="x"' in html, "what was typed stays"
+        assert FD().declared(NET) == []
+
+    @pytest.mark.parametrize("kind,detail,words", [
+        ("added_line", EXPECTS, CHOSEN_WORDS),
+        ("missing_line", "", "Missing line"),
+        ("no_fault", "  a  rehearsal of the badge ", "No fault (testing the drill itself): a "
+                                                     "rehearsal of the badge"),
+    ])
+    def test_the_record_keeps_its_words_built_from_the_choice(self, lab, kind, detail,  # noqa: F811
+                                                              words):
+        r = declare(T0, expects="", kind=kind, detail=detail)["record"]
+        assert (r["expects"], r["kind"]) == (words, kind)
+        assert r["detail"] == " ".join(detail.split())
+        inc = TestTheTag()._open(T0 + 30)
+        assert inc["fault_drill"]["expects"] == words, "every reader reads the words"
+
+    def test_a_long_detail_is_refused_at_its_field(self, lab):  # noqa: F811
+        got = declare(T0, expects="", kind="added_line", detail="x" * 201)
+        assert not got["ok"] and got["field"] == "detail"
+        assert "at most 200 characters, and 201 were given" in got["error"]
+
+    def test_a_script_may_name_the_choice_too(self, page):
+        r = page["client"].post("/v2/fault-drills/declared", json={
+            "list": NET, "device": DEV, "minutes": 5, **CHOSEN})
+        got = r.get_json()
+        assert r.status_code == 200 and got["record"]["expects"] == CHOSEN_WORDS, got
+        r = page["client"].post("/v2/fault-drills/declared", json={
+            "list": NET, "device": "core-a", "minutes": 5, "kind": "nope"})
+        assert r.status_code == 409 and "'nope' is not one of them" in r.get_json()["error"]
 
 
 def _cli():
@@ -607,7 +706,7 @@ class TestEndedEarly:
 class TestEndTheDrillOnThePage:
     def _declare(self, c):
         r = c.post("/v2/fault-drills/declared", data={
-            "list": NET, "device": DEV, "minutes": "10", "expects": EXPECTS, "back": "overview"})
+            "list": NET, "device": DEV, "minutes": "10", **CHOSEN, "back": "overview"})
         assert r.status_code == 200
         (row,) = FD().declared(NET)
         return row

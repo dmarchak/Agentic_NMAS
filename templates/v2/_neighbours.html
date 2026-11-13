@@ -41,7 +41,15 @@
           <th scope="row">{% if r.managed and r.peer %}<a href="{{ url_for('device_v2.device', name=r.peer) }}">{{ r.peer }}</a>{% else %}<span class="muted">outside management</span>{% endif %}</th>
           <td class="mono">{{ r.address or r.rid or '—' }}</td>
           <td>{{ r.via or '—' }}</td>
+          {#- C3404 (the operator, 2026-11-13): RIP's and RIPng's State says only its state, the
+              rest (the link-local next hop, the last update and the timeout) on hover; a RIP
+              neighbour past half its timeout reads "up · last heard <age>" in the warning
+              colour, visible without hovering. -#}
+          {%- if p.proto in ('rip', 'ripng') %}
+          <td>{% if r.aging %}{{ badge('up · last heard ' ~ r.age_words ~ ' before the read', 'warn', title=r.words) }}{% else %}{{ badge(WORD.get(r.state, r.state), KIND.get(r.state, 'muted'), title=r.words) }}{% endif %}</td>
+          {%- else %}
           <td>{{ badge(WORD.get(r.state, r.state), KIND.get(r.state, 'muted')) }}{% if r.state in ('up', 'down', 'unexpected') %} <span class="muted">{{ r.words }}</span>{% endif %}</td>
+          {%- endif %}
           <td>{% if r.as_of %}<span class="nb-asof-cell">as of {{ clock(r.as_of) }}</span>{% elif r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {%- endfor %}

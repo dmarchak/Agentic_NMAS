@@ -16,17 +16,24 @@ words>" [--script "<the injecting script and step>"] [--reason "<why>"]`. Both r
 the same writer.
 
 1. **Check the declaration** (`check`). Read: the network and its inventory. Sent: nothing.
-   Recorded: nothing yet. A declaration names one device of the network, the expected fault in
-   three words or more ("the EEM heartbeat applet removed"), a bound of 1 to 15 minutes (10 by
-   default) and who declares it: a verified person on the device page, the host's login,
-   labelled, on the host. Anything else is refused, naming what was given.
+   Recorded: nothing yet. A declaration names one device of the network, the expected fault, a
+   bound of 1 to 15 minutes (10 by default) and who declares it: a verified person on the
+   device page, the host's login, labelled, on the host. On the device page the expected fault
+   is a choice: one of the fix kinds the Self-healing tab's Fix kinds card lists (Missing line,
+   Changed line, Added line, Admin down where intent says up, the link-down row and the rest),
+   or **No fault (testing the drill itself)**, with an optional detail ("the EEM heartbeat
+   applet on edge1"); on the host it is three words or more. Anything else is refused, naming what
+   was given: a press with no fault chosen is refused at the choice itself, in the card, and
+   nothing is recorded.
 2. **Refuse a declaration after the fault** (`before`). Read: the network's incidents and its
    drills. Sent: nothing. Recorded: nothing. An incident already open on the device is named
    with its time and the declaration's: a declaration after the fault never makes it a drill,
    and there is no back-dating. A drill already open on the device is refused too: one at a
    time per device.
 3. **Record the declaration** (`record`). Read: nothing new. Sent: nothing. Recorded: one row
-   in the network's fault drills, append-only: its id, the device, the fault expected, from
+   in the network's fault drills, append-only: its id, the device, the fault expected (in
+   words: the choice and its detail, "Added line: an IPv6 route on edge1", with the choice and the
+   detail kept beside them), from
    and until, who, how it was declared, the script and the reason. History draws it as "Fault
    drill declared". The card answers in place: "Declared: a drill on <device> until HH:MM:
    <the fault>. Inject the fault now; an incident on <device> before HH:MM is a drill."
