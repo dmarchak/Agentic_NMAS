@@ -15,7 +15,7 @@
 
 :root {
   --ground: #F4F5F2; --surface: #FFFFFF; --surface-2: #F9FAF8; --hover: #F1F2EF;
-  --ink: #15191E; --ink-2: #4A5260; --ink-3: #9AA3AE;
+  --ink: #15191E; --ink-2: #4A5260; --ink-3: #626A78;
   --line: #DADDE2; --line-2: #EEF0EC;
   --accent: #1E5E8C; --accent-ink: #14476B; --accent-soft: #E6EFF6;
   --ok: #0B6B45; --ok-soft: #E7F5EE;
@@ -50,7 +50,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
-    --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #6E7A87;
+    --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #8E98A4;
     --line: #2E3843; --line-2: #232C35;
     --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
     --ok: #4CC38A; --ok-soft: #11301F;
@@ -75,7 +75,7 @@
 }
 :root[data-theme="dark"] {
   --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
-  --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #6E7A87;
+  --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #8E98A4;
   --line: #2E3843; --line-2: #232C35;
   --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
   --ok: #4CC38A; --ok-soft: #11301F;
@@ -201,6 +201,9 @@ a { color: var(--accent); }
 .jump { display: flex; align-items: center; gap: 8px; width: 300px; border: 1px solid var(--line); border-radius: var(--r);
   padding: 6px 10px; background: var(--surface-2); color: var(--ink-2); }
 .jump input { border: none; background: transparent; font: inherit; font-size: 13px; flex-grow: 1; min-width: 0; outline: none; color: var(--ink); }
+/* The field draws no ring of its own (it has no border): its box does, while the field is
+   focused, so the place typing goes is visible (WCAG 2.2 AA, 2.4.7; the operator, 2026-11-13). */
+.jump:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--ink-2); }
 .strip { font-size: 13px; color: var(--ink-2); }
 .strip-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -494,6 +497,9 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .drift-logs li { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 .stamp { color: inherit; }
+/* A time is one token: "15:19:18", or "Nov 8 19:41 MST", never broken across lines by a narrow
+   column (the review, 2026-11-13: Logs at 1280 px drew "15:19:1" over "8"). */
+time.clock { white-space: nowrap; }
 
 .notice { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--r-card); padding: 10px 14px; font-size: 13px;
   border: 1px solid var(--line); background: var(--surface); }
@@ -1030,6 +1036,9 @@ a.pack-cite { color: var(--accent); margin-right: 2px; }
 .hist-list.hist-bl { --cols: 14px minmax(0, 1fr) 90px 110px 140px 200px; }
 /* The one timeline (C369, board D): when, kind, device, what, who. */
 .hist-list.hist-tl { --cols: 14px 110px 92px 96px minmax(0, 1fr) minmax(0, 150px); }
+/* A device's own History tab: no Device column, every row being that device's (the operator,
+   2026-11-13); its width goes to What. */
+.hist-list.hist-tl.hist-own { --cols: 14px 110px 92px minmax(0, 1fr) minmax(0, 150px); }
 .hist-dev { white-space: nowrap; }
 .tl-links { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
 .hist-kinds { position: relative; }
@@ -1760,6 +1769,13 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .set-form input, .set-form select, .set-form textarea, .set-reason { font: inherit; font-size: 13px; padding: 6px 9px;
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); width: 100%;
   box-sizing: border-box; }
+/* An amount's field (the operator, 2026-11-13: "money shown as $"): the "$" drawn inside the
+   field's leading edge, the number typed after it; what the field sends stays a number. */
+.in-usd { position: relative; display: block; max-width: 100%; }
+.in-usd::before { content: "$"; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  font-size: 13px; color: var(--ink-2); pointer-events: none; }
+.in-usd.in-usd > input { padding-left: 20px; }
+.ai-cap .in-usd { width: 140px; }
 .set-form-note { grid-column: 1 / -1; margin: 4px 0 0; }
 /* A heading, a paragraph or a notice in a form spans both columns. In one cell it took the
    label column and moved every label beside the next pair's field: the read-only account's

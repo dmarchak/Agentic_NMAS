@@ -10,7 +10,7 @@
     against actual, with Turn off (the Settings › AI route and gate, its answer drawn here).
     At a glance only: the panel is held inside the screen and scrolls within (.ai-menu). Every
     figure is Mercury's, priced from its dated table; the provider bills. -#}
-{%- macro usd(v) -%}{% if v is none %}unknown{% else %}${{ '%.2f' % v if v >= 0.01 or v == 0 else '%.4f' % v }}{% endif %}{%- endmacro -%}
+{%- macro usd(v) -%}{% if v is none %}unknown{% else %}{{ v | usd }}{% endif %}{%- endmacro -%}
 {%- macro bar(fill, level, marks=False, more=0) -%}
 <svg class="ai-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="ai-bar-track" x="0" y="0" width="100" height="8"/><rect class="ai-bar-fill ai-fill-{{ level }}" x="0" y="0" width="{{ fill }}" height="8"/>{% if more %}<rect class="ai-bar-more" x="{{ fill }}" y="0" width="{{ more }}" height="8"/>{% endif %}{% if marks %}<rect class="ai-bar-mark" x="49.6" y="0" width="0.8" height="8"/><rect class="ai-bar-mark" x="79.6" y="0" width="0.8" height="8"/>{% endif %}</svg>
 {%- endmacro -%}

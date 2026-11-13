@@ -26,6 +26,7 @@ import types
 import pytest
 
 from modules import attention
+from modules import money as _money
 from modules import records_migrate as R
 from modules.ai import background as B
 from modules.ai import calls, gateway, spend
@@ -475,7 +476,7 @@ def test_a_warning_row_names_what_is_wrong_the_action_and_how_it_clears(bg):
     (row,) = attention.ai_spend_source()["rows"]
     assert row["kind"] == "warning" and row["level"] == "danger"
     assert row["what"] == "The fake loop on lab has spent 84% of its day cap"
-    assert "spent $0.4200 on lab today, 84% of its day cap $0.5000 (warned at 80%)" in \
+    assert "spent $0.42 on lab today, 84% of its day cap $0.50 (warned at 80%)" in \
         row["cause"]
     assert row["action"]["label"] == ("Read The fake loop's spend on lab; leave it, turn it "
                                       "off, or change its day cap in Settings › AI")
@@ -548,7 +549,7 @@ def test_a_day_cap_row_appears_at_its_threshold_and_not_below(chip_world, usd, k
     said = (f"AI spend reached the day cap (${usd:.2f} of $1.50)" if kind == "day_reached" else
             f"AI spend is at {pct}% of the day cap (${usd:.2f} of $1.50)")
     assert r["what"] == said
-    assert f"${usd:.4f} spent today" in r["cause"] and "day cap $1.5000" in r["cause"]
+    assert f"{_money.usd(usd, exact=True)} spent today" in r["cause"] and "day cap $1.50" in r["cause"]
     assert f"{pct}%" in r["cause"]
     assert r["operands"]["spent_usd"] == pytest.approx(usd) and r["operands"]["cap_usd"] == 1.5
     assert r["action"]["open"] == "ai_spend_panel"
@@ -634,7 +635,7 @@ def test_an_over_estimate_row_appears_at_150_percent_and_not_below(bg, monkeypat
     (r,) = rows
     assert r["level"] == "warning" and r["clears"]["ways"] == ["resolves"]
     assert r["what"] == (f"The fake loop on lab is running at {pct}% of the estimate it was "
-                         f"approved at (${per_day:.4f} a day against $0.1000)")
+                         f"approved at ({_money.usd(per_day, exact=True)} a day against $0.10)")
     assert ("over the 4 complete days since admin@example.com turned it on "
             "(2026-10-16T08:00:00Z)") in r["cause"]
     assert "a row is raised from 150%" in r["cause"]

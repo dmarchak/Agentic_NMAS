@@ -20,6 +20,8 @@ amounts, which is decision 6's default (C1953; docs/STANDING_APPROVAL_LOG.md).
 import datetime
 import logging
 
+from modules import money as _money
+
 log = logging.getLogger(__name__)
 
 #: The month names the panel says its month by (never the host's locale).
@@ -131,14 +133,14 @@ def _chip(now=None) -> dict:
             "so today's spend is unknown, and every AI call is refused until it can be read. "
             "It is never drawn as $0."))
     usd, cap, zone = c["usd_today"], c["day_cap"], calls.boundary()
-    of_cap = (f"of the day cap ${cap:.2f} ({_pct(spend._ratio(usd, cap))}%)" if cap is not None
+    of_cap = (f"of the day cap {_money.usd(cap)} ({_pct(spend._ratio(usd, cap))}%)" if cap is not None
               else "with no day cap set (an admin chose no cap)")
     n = c.get("calls_today", 0)
-    title = (f"${usd:.2f} in {n} call{'' if n == 1 else 's'} since midnight {zone} (the day "
+    title = (f"{_money.usd(usd)} in {n} call{'' if n == 1 else 's'} since midnight {zone} (the day "
              f"cap's boundary), {of_cap}. Read from the record of AI calls at "
              f"{now.strftime('%H:%M:%S')} UTC, priced from Mercury's table as of "
              f"{profiles.PRICES_AS_OF}; the provider bills what is spent.")
-    return dict(out, text=c["words"][len("AI "):], short=f"${usd:.2f}", title=title)
+    return dict(out, text=c["words"][len("AI "):], short=f"{_money.usd(usd)}", title=title)
 
 
 def network_name(slug: str) -> str:

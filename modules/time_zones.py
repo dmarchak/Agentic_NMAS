@@ -129,6 +129,25 @@ def why_not(name: str) -> str:
     return ""
 
 
+_NAMES = {"names": None}
+
+
+def zone_names(first: str = "") -> list:
+    """The zone picker's choices (`_macros.zone_picker`): *first* (the viewer's own kept zone,
+    when they have one), then "UTC", then every zone this host's database holds, by name; each
+    once. The database is read once per process (it changes with the host's packages, which a
+    restart follows). A picker offers these and a save still checks what was sent (`why_not`):
+    a name typed that is not among them is refused, naming it."""
+    if _NAMES["names"] is None:
+        from zoneinfo import available_timezones
+
+        _NAMES["names"] = sorted(z for z in available_timezones()
+                                 if "/" in z and not z.startswith(("posix/", "right/", "Etc/")))
+    lead = [z for z in (str(first or "").strip(), "UTC") if z and zone_info(z) is not None]
+    lead = list(dict.fromkeys(lead))
+    return lead + [z for z in _NAMES["names"] if z not in lead]
+
+
 def stored(actor: str) -> str:
     """*actor*'s stored zone, or "" (none stored, no actor, or an unreadable store)."""
     if not actor:

@@ -38,7 +38,7 @@ service itself; **Test** is a person asking now.
    field written with its old and new value (a card's fields are never secrets: a token is
    changed by **Replace…**, which records only its name; a value is masked as it is kept
    all the same). **History** draws each save under the kind **Installation settings**, for
-   example "AI (hosted): Cap per day $50 → $80", with who and when. If the record could not
+   example "AI (hosted): Cap per day $50.00 → $80.00", with who and when. If the record could not
    be written the card says so; the save is made either way.
 
 The **Server** card's bind address and port are read when Mercury starts: its Save says the
@@ -115,7 +115,10 @@ none is refused before anything is read or sent. No background feature runs toda
 be off for every network until an admin turns it on. **Spent today** is the day's total
 from that record; a record that cannot be read refuses every call. The day begins at midnight
 in the zone **The day begins at** names, beside the cap: UTC unless set, or a time zone's name
-such as America/Denver, its daylight-saving changes followed. **Spent today** says when the
+such as America/Denver, its daylight-saving changes followed. The field is a time-zone picker,
+the same one the Time zone card draws: it offers your own time zone first, then UTC, then every
+zone this host knows, chosen from the list or typed to narrow it; beside it is the instant the
+day next begins, in your time zone. **Spent today** says when the
 count starts again, "resets 18:00 MDT (00:00 UTC)": your own time first, from your browser,
 and UTC's beside it. It is the same instant the gateway counts by. The card's **Test**
 is one small, real call: the model is given a word Mercury chose and must give it back, so a
@@ -158,8 +161,8 @@ $0 and a negative amount are refused, saying so. To stop AI calls, turn hosted A
 instead.
 
 **A large increase asks first.** A new cap at least double the old one, or at least $50 more,
-is not saved at once: the card shows what it means, "Up to $80 a day, about $2,400 a month
-at full use" (a month counted as 30 days), with **Save** and **Cancel**. Nothing is written
+is not saved at once: the card shows what it means, "Up to $80.00 a day, about $2,400.00 a
+month at full use" (a month counted as 30 days), with **Save** and **Cancel**. Nothing is written
 until that Save, and one more press saves it. The confirmation keeps what the card showed
 when you opened it, so a change another person made to the cap meanwhile is still refused,
 naming both values. A smaller change, or a decrease, saves at once.
@@ -180,7 +183,9 @@ cap" for as long as it is set. To set a cap again, untick No cap, give an amount
 
 Every change to the cap, like every Save on these cards, is recorded with who, when, and its
 old and new value, and is drawn on **History** (the kind **Installation settings**): "AI
-(hosted): Cap per day $50 → $80".
+(hosted): Cap per day $50.00 → $80.00". Every amount Mercury shows is written this way, the
+"$" first and always with cents; one call's cost keeps four places when it is no whole number
+of cents ("$0.1251").
 
 ## The AI mark, and a control shown disabled {#ai-mark}
 

@@ -305,6 +305,79 @@ class TestNoOneLineRowOverflows:
                     ".querySelector('.hist-dev').textContent.trim()") == "9 devices"
         assert DENIED in b.js("return document.querySelector('.hist-row .hist-detail').textContent")
 
+    def test_a_devices_own_history_tab_has_no_device_column_and_its_cells_line_up(self, served):
+        """The operator, 2026-11-13: "no Device column on a device's own History tab". The tab
+        draws When, Kind, What and Who, each cell under its heading; pressed, a row opens its
+        record under the line and the line's cells stay where they were. The History page
+        keeps the Device column, its cells under their headings too."""
+        srv, b = served
+        cells = ("var list = document.querySelector('.hist-tl');"
+                 "var left = function (el) { return Math.round(el.getBoundingClientRect().left); };"
+                 "var head = Array.from(list.querySelector('.hist-head').children);"
+                 "var row = Array.from(list.querySelector('.hist-sum').children);"
+                 "return {heads: head.map(function (c) { return c.textContent; }),"
+                 " head_x: head.map(left), cells: row.map(function (c) {"
+                 " return c.className.split(' ')[0]; }), cell_x: row.map(left),"
+                 " what_w: Math.round(list.querySelector('.hist-what').getBoundingClientRect().width)}")
+        b.go(srv.url("/v2/device/r2?tab=history"))
+        b.wait_for("return document.querySelector('.hist-tl .hist-sum')", 10)
+        tab = b.js(cells)
+        assert tab["heads"] == ["", "When", "Kind", "What", "Who"], tab
+        assert tab["cells"] == ["hist-when", "hist-kind", "hist-what", "hist-who"], tab
+        # The line's marker takes the first column; each cell then sits under its heading.
+        assert tab["cell_x"] == tab["head_x"][1:], tab
+        # What takes the width the Device column had: the list's one flexible column, not a
+        # fixed narrow one (96 px was the Device column's).
+        assert tab["what_w"] > 300, tab
+        assert b.js("return document.querySelector('.hist-tl .hist-row').open") is False
+        b.click(".hist-tl .hist-sum")
+        b.wait_for("return document.querySelector('.hist-tl .hist-row').open", 5)
+        assert LONG_NOTE in b.js("return document.querySelector('.hist-row .hist-detail')"
+                                 ".textContent")
+        # Opened, the line's cells are still under their headings (the page grew a scrollbar,
+        # which narrows the list: the last column moves with its heading, never apart).
+        opened = b.js(cells)
+        assert opened["cell_x"] == opened["head_x"][1:], opened
+        assert opened["cell_x"][:3] == tab["cell_x"][:3], "the opened row's line did not move"
+        b.go(srv.url("/v2/history"))
+        b.wait_for("return document.querySelector('.hist-tl .hist-sum')", 10)
+        page = b.js(cells)
+        assert page["heads"] == ["", "When", "Kind", "Device", "What", "Who"], page
+        assert page["cells"] == ["hist-when", "hist-kind", "hist-dev", "hist-what", "hist-who"]
+        assert page["cell_x"] == page["head_x"][1:], page
+
+    def test_a_clock_is_never_broken_across_lines_by_a_narrow_column(self, served):
+        """The review, 2026-11-13: Logs at 1280 px drew its Received time as "15:19:1" over
+        "8", a cell that breaks anywhere being narrower than the time. A clock is one token:
+        in a cell 30 px wide that breaks anywhere it stays on one line, where the same words
+        outside a clock break (the measure is shown able to see)."""
+        srv, b = served
+        # The stylesheet's own rule, measured on an empty document that loads it: no page's
+        # data is needed to say what a clock does in a narrow cell.
+        b.go("about:blank")
+        b.js("var l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'css';"
+             "l.href = arguments[0]; document.head.appendChild(l);"
+             "document.body.appendChild(document.createElement('main')); return 1",
+             srv.url("/static/css/nmas-v2.css"))
+        # Loaded: the link has its sheet, and a rule other than the one measured applies
+        # (`.sr-only`, which takes an element out of the flow).
+        b.wait_for("return !!document.getElementById('css').sheet", 10)
+        assert b.js("var s = document.createElement('span'); s.className = 'sr-only';"
+                    "document.body.appendChild(s);"
+                    "return getComputedStyle(s).position") == "absolute"
+        lines = b.js(
+            "var out = {};"
+            "[['clock', 'time', 'clock'], ['plain', 'span', '']].forEach(function (k) {"
+            "  var cell = document.createElement('div'), t = document.createElement(k[1]);"
+            "  cell.style.width = '30px'; cell.style.overflowWrap = 'anywhere';"
+            "  cell.style.fontFamily = 'monospace'; cell.style.fontSize = '12.5px';"
+            "  t.className = k[2]; t.textContent = '15:19:18';"
+            "  cell.appendChild(t); document.querySelector('main').appendChild(cell);"
+            "  out[k[0]] = t.getClientRects().length; });"
+            "return out")
+        assert lines["plain"] > 1, ("the cell does break words this long", lines)
+        assert lines["clock"] == 1, lines
+
 
 class TestTheTopBarFits:
     @pytest.mark.parametrize("width", [320, 360, 390, 430, 500, 768, 1024, 1280])

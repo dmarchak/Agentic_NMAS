@@ -27,7 +27,10 @@ payload IS the context, and the renderer IS the template.
 * **Keys read as data:** a dict the template iterates (`for k in x`, `x.items()`,
   `x.values()`, `x.keys()`, `x | dictsort`) or indexes by a variable (`x[row.kind]`) has DATA
   as its keys (a device, an outcome), drawn by iteration, never by name: its keys are not
-  examined, its values are.
+  examined, its values are. So is a dict its PRODUCER keys by data (`DATA_KEYED`, each
+  recognised by the dict holding it, with its reason): the comparison is by name, so where a
+  page reads a dict of the same name on another object, the producer's data keys would
+  otherwise be compared as names.
 * **Handed on whole:** a value passed to `tojson` reaches the page whole (a confirm body, a
   script's data); nothing beneath it is examined.
 
@@ -229,15 +232,43 @@ def _fields(obj):
     return None
 
 
+#: Dicts whose PRODUCER keys them by data, whatever a template reads by the same name:
+#: ``{key: (the keys of the dict holding it that recognise it, why its keys are data)}``. The
+#: walk compares by name within a closure, not by path, so a page that reads a dict of the
+#: same name on another object would have the walk compare these data keys as names, and a
+#: key passes or fails by whether it happens to be a name some template reads.
+DATA_KEYED = {
+    "counts": (frozenset({"events", "counts", "people", "identity", "unreached", "unborn"}),
+               "history_sources.timeline's rows by kind ({'golden': 3, 'window': 1}): each "
+               "key is a row's kind, a value the reader takes from the row. No History view "
+               "draws them (KIND_COUNTS in tests/test_v2_context_is_drawn.py), but the device "
+               "page's closure reads a `counts` of other objects (Neighbours' `n.counts`, "
+               "NetBox's `nb.counts`), so on the History tab the walk reached the timeline's "
+               "by that name and compared each kind as a key name: `golden` and `intent` "
+               "passed, being names templates read, and `window`, `hostkey`, `reveal` and "
+               "`ai_call` failed "
+               "(measured 2026-11-13, once a provider drew r3's tab after rows of those kinds "
+               "were written)"),
+}
+
+
+def _data_keyed(k, v, holder) -> bool:
+    """Whether *v*, under *k* in *holder*, is a `DATA_KEYED` dict: its holder recognised."""
+    if k not in DATA_KEYED or not isinstance(v, dict) or not isinstance(holder, dict):
+        return False
+    return DATA_KEYED[k][0] <= holder.keys()
+
+
 def carried(context: dict, reads: Reads) -> tuple:
     """``(carried, undrawn)``: every key NAME the route's *context* carries, as far down as
     the template reads, and the ones it never reads.
 
     A key the template never names is undrawn, and nothing beneath it is examined (its whole
     value is undrawn: one entry, not one per key inside it). A dict reached by an iterated
-    name gives no key names (its keys are data) and its values are walked; a value handed
-    whole to `tojson` is not walked; a key that is not an identifier (an anchor, an address,
-    a panel number) is data, since a template can name it only by a constant subscript."""
+    name, or one its producer keys by data (`DATA_KEYED`), gives no key names (its keys are
+    data) and its values are walked; a value handed whole to `tojson` is not walked; a key
+    that is not an identifier (an anchor, an address, a panel number) is data, since a
+    template can name it only by a constant subscript."""
     out, undrawn, seen = set(), set(), set()
 
     def walk(obj, depth):
@@ -252,9 +283,9 @@ def carried(context: dict, reads: Reads) -> tuple:
             return
         seen.add(id(obj))
         for k, v in parts:
-            key(k, v, depth)
+            key(k, v, depth, obj)
 
-    def key(k, v, depth):
+    def key(k, v, depth, holder=None):
         if not isinstance(k, str) or not k.isidentifier():
             walk(v, depth + 1)
             return
@@ -264,14 +295,14 @@ def carried(context: dict, reads: Reads) -> tuple:
             return
         if k in reads.whole:
             return
-        if k in reads.iterated and isinstance(v, dict):
+        if (k in reads.iterated and isinstance(v, dict)) or _data_keyed(k, v, holder):
             for inner in v.values():
                 walk(inner, depth + 1)
             return
         walk(v, depth + 1)
 
     for k, v in context.items():
-        key(k, v, 0)
+        key(k, v, 0, context)
     return out, undrawn
 
 
@@ -2064,6 +2095,33 @@ def _history_runs(client, _lab, _mp):
                 os.remove(reads._path("Lab", run_id))
             except OSError:
                 pass
+
+
+def _history_beside(client, _lab, _mp):
+    """A device's own History tab names a row's other devices in its marks, since the tab has
+    no Device column (the operator's rule, 2026-11-13): one planned-restart window declared for
+    r3 and r9 together (the restarts store's own row shape, as `_reload_result`'s provider plants
+    it, read through `planned_rows`, so nothing is written), read on r3's tab, where the row says
+    "with r9". A Show commands run cannot reach it: its rows on a device's tab keep only that
+    device (`history_sources.show_commands`)."""
+    import time as _time
+
+    import pytest
+
+    from modules import restarts as R
+
+    mp = pytest.MonkeyPatch()
+    try:
+        now = _time.time()
+        w = {"devices": ["r3", "r9"], "list": "Lab", "from": R._iso(now - 3600),
+             "until": R._iso(now - 3000), "by": "op@example.com", "why": "planned reload",
+             "via": "reload", "recorded_at": R._iso(now - 3600)}
+        mp.setattr(R, "planned_rows", lambda: [w])
+        r = client.get("/v2/device/r3?list=Lab&tab=history", headers={"Accept": "text/html"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "with r9" in body, r.status_code
+    finally:
+        mp.undo()
 
 
 def _save_no_golden(client, _lab, _mp):
@@ -4798,7 +4856,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
                    _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
-                   _alert_rule_changes, _history_runs,
+                   _alert_rule_changes, _history_runs, _history_beside,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,
                    _display_names,

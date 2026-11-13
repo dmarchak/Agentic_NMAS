@@ -39,6 +39,9 @@ MODE_KEY = "ai_troubleshoot_mode"
 CAP_KEY = "ai_cap_usd_per_incident"
 MODES = ("manual", "off")
 DEFAULT_MODE = "manual"
+#: Each mode as a person reads it, on the setting's control, in a saved change's words and in a
+#: refusal (the operator, 2026-11-13: "Manual" capitalised). The stored value stays the key.
+MODE_WORDS = {"manual": "Manual", "off": "Off"}
 #: The operator's figure (2026-11-12): $1.00 an incident.
 DEFAULT_CAP_USD = 1.00
 #: How finely spent and worst case are compared: a millionth of a dollar, so a float's
@@ -49,11 +52,10 @@ PRECISION = 6
 def money(value) -> str:
     """US dollars as the cap's words say them, always with cents ("$1.00", "$0.92", "$0"
     written "$0.00"), and to four places below a cent ("$0.0257"): a spent amount and a cap
-    side by side read alike."""
-    v = round(float(value), 4)
-    if round(v, 2) == v:
-        return f"${v:,.2f}"
-    return "$" + f"{v:,.4f}".rstrip("0")
+    side by side read alike. The one formatter's exact amount (`modules.money.usd`)."""
+    from modules.money import usd
+
+    return usd(value, exact=True)
 
 
 def mode() -> dict:
@@ -71,7 +73,7 @@ def mode() -> dict:
     if raw not in MODES:
         return {"state": "unreadable", "mode": "",
                 "error": (f"the AI troubleshooting mode holds {raw!r}, and the modes are "
-                          f"{' and '.join(MODES)}")}
+                          f"{' and '.join(MODE_WORDS[m] for m in MODES)}")}
     return {"state": "ok", "mode": raw, "error": ""}
 
 
@@ -82,8 +84,8 @@ def ai_refusal() -> str:
     if got["state"] != "ok":
         return f"AI troubleshooting is not offered: {got['error']}"
     if got["mode"] == "off":
-        return ("AI troubleshooting is off for this installation (its mode is off): Mercury's "
-                "own diagnosis still proposes a fix")
+        return ("AI troubleshooting is off for this installation (its mode is "
+                f"{MODE_WORDS['off']}): Mercury's own diagnosis still proposes a fix")
     return ""
 
 

@@ -73,7 +73,8 @@ shot; no region moved. Templates sha256 before:
 `b6b2551f696e627a64d33490d5cc6dd1037ec35eb4741dac13332038ccd57d99`.
 
 Templates compared: templates/v2/incident.html, templates/v2/_fixit_section.html, templates/v2/incident_handover.html
-Templates sha256: `caa59cdd04847e4a289f07d97ef83060314717f80291ef74e4876c74d2dfdae7`
+Compared again 2026-11-13 (the operator's approved rule, "raw UTC anywhere left"; C3290): `incident.html` draws Mercury's diagnosis words and What to do's words, and `_fixit_section.html` a step's words and a hypothesis's claim, through `times` (routes/v2.py), so an instant the lost-stream runbook writes is `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover. No element moves and no region's verdict moved; compared by the templates' diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `caa59cdd04847e4a289f07d97ef83060314717f80291ef74e4876c74d2dfdae7`.
+Templates sha256: `faf97cda35f17a4ffcaa22148501009d3686d1598a9a77b554bb1a4acf874c86`
 Templates sha256 then (2026-11-12): `e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`
 (2026-11-12, local times' comparison below and S5's section merged, each kept; their own
 hashes were `fd015f548f9e98aca3ce23f8985f0233623ff2a173d6b8ba8d94f9984f8a9da1` (local times)

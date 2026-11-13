@@ -17,7 +17,8 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `7fa05ac06c052de40b3f19e5d7611eae71423aa136fbde621e1e96af7962af56`
+Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_history_ask_words.html` draws the words call's cost through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `7fa05ac06c052de40b3f19e5d7611eae71423aa136fbde621e1e96af7962af56`.
+Templates sha256: `e22516b7a804d91a2ff51ffab5a362078dba1b28bf6a58152051c51f128838f0`
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `32bec95dbec13a023b57669e9e328e31b9d2d5bb39da4b1c5253fa8dcdcb2bf3`.)

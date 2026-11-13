@@ -28,6 +28,8 @@ import logging
 import re
 import time
 
+from modules import money as _money
+
 log = logging.getLogger(__name__)
 
 
@@ -1329,7 +1331,7 @@ def ai_calls(ctx):
             head += f"joined call {r.get('joined', '?')}, nothing sent"
         else:
             head += (last or "answered") if verdict == "ok" else verdict.replace("_", " ")
-        return head + f" ({r.get('model', '?')}, ${float(r.get('cost_usd') or 0):.4f})"
+        return head + f" ({r.get('model', '?')}, {_money.usd(float(r.get('cost_usd') or 0), exact=True)})"
 
     def outcome(r):
         # The gateway's verdict; an answer it passed that its feature then refused showed the
@@ -1359,7 +1361,7 @@ def ai_calls(ctx):
                            ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
                            ("Model", r.get("model")), ("Batch", batched(r)),
                            ("Tokens", tokens(r)),
-                           ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
+                           ("Cost", f"{_money.usd(float(r.get('cost_usd') or 0), exact=True)}"),
                            ("Verdict", r.get("verdict")),
                            ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"
                                                                   if u.get("detail") else "")

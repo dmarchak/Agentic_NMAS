@@ -8,7 +8,7 @@
     modules/ai/settings_view.turn_on_form, included by _settings_ai_bg.html. -#}
 {%- set est = o.est -%}
 {%- set known = est.usd_per_day is not none -%}
-{%- macro usd(v, places=2) -%}{% if v is none %}unknown{% else %}${{ ('%.' ~ places ~ 'f') % v }}{% endif %}{%- endmacro -%}
+{%- macro usd(v, places=2) -%}{% if v is none %}unknown{% else %}{{ v | usd(places == 4) }}{% endif %}{%- endmacro -%}
 <div class="ai-feature ai-feature-open" role="listitem" id="bg-{{ o.feature }}" data-state="opening">
   <h3 class="ai-open-head">Turn on <span class="mono">{{ o.feature }}</span>: {{ o.words }} · network {{ o.network }}</h3>
   <p class="small muted ai-open-lead">Trigger: {{ o.trigger_words }}; {{ est.calls_per_finding }} call per finding, the task <span class="mono">{{ est.task }}</span> on <span class="mono">{{ est.model }}</span>. Nothing calls the model for this feature on {{ o.network }} until you turn it on.</p>
@@ -26,10 +26,10 @@
     <input type="hidden" name="shown" value="{{ est.digest }}">
     <div class="ai-caps">
       <label class="ai-cap"><span class="set-label">Day cap for this feature</span>
-        <input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else ('%.2f' % o.day_value if o.day_value is not none else '') }}"{% if o.day_value is none and not day_typed %} placeholder="type a cap"{% endif %}>
-        <span class="set-origin">{% if o.day_cap is none %}the installation has no day cap{% else %}within the installation's ${{ '%.2f' % o.day_cap }} a day{% endif %}{% if est.suggested %}; offered: twice the estimate{% else %}; nothing is offered with no measured estimate{% endif %}</span></label>
+        <span class="in-usd"><input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else ('%.2f' % o.day_value if o.day_value is not none else '') }}"{% if o.day_value is none and not day_typed %} placeholder="type a cap"{% endif %}></span>
+        <span class="set-origin">{% if o.day_cap is none %}the installation has no day cap{% else %}within the installation's {{ o.day_cap | usd }} a day{% endif %}{% if est.suggested %}; offered: twice the estimate{% else %}; nothing is offered with no measured estimate{% endif %}</span></label>
       <label class="ai-cap"><span class="set-label">Month cap</span>
-        <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else ('%.2f' % o.month_value if o.month_value is not none else '') }}"{% if o.month_value is none and not month_typed %} placeholder="type a cap"{% endif %}>
+        <span class="in-usd"><input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else ('%.2f' % o.month_value if o.month_value is not none else '') }}"{% if o.month_value is none and not month_typed %} placeholder="type a cap"{% endif %}></span>
         <span class="set-origin">US dollars in a month, this feature on {{ o.network }} only</span></label>
     </div>
     <label class="ai-accept"><input type="checkbox" name="accept" value="on"> I have read the estimate. An approval lasts {{ o.approval_days }} days: this one ends {{ clock(o.ends_iso, 'day') }}. Mercury asks for it again in Needs attention {{ o.renew_days }} days before; unless an admin turns it on again, it then stops.</label>

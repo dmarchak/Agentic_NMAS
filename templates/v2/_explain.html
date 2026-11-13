@@ -51,7 +51,7 @@
 {%- endfor %}
 {%- endmacro %}
 {%- macro hypothesis(h, pid) -%}
-<strong class="answer-claim">{{ h.claim }}</strong>
+<strong class="answer-claim">{{ h.claim | times }}</strong>
 {{- who(h, pid) }}
 <span class="answer-line"><span class="faint">Cites</span> {% for c in (h.cites or []) %}{{ cited(c, pid) }}{{ ' ' if not loop.last }}{% endfor %}</span>
 <span class="answer-line"><span class="faint">To confirm, a read:</span> <code>{{ h.confirm_with }}</code> <span class="faint">(Show commands)</span></span>
@@ -75,7 +75,7 @@
 {%- elif x.call_id %}
   {#- The link to the call's own row (15.14's links both ways): its prompt as sent, the answer
       as received, its tokens and cost. -#}
-  <p class="muted small explain-call"><a href="{{ url_for('v2.history_page', call=x.call_id) }}">This call in History</a> (${{ '%.4f' | format(x.cost_usd or 0) }})</p>
+  <p class="muted small explain-call"><a href="{{ url_for('v2.history_page', call=x.call_id) }}">This call in History</a> ({{ (x.cost_usd or 0) | usd(true) }})</p>
 {%- endif %}
 {%- endmacro %}
 <div class="explain" id="explain-{{ x.pack_id }}">
@@ -129,9 +129,9 @@
       <p class="answer-needs small" data-part="needs-a-person">{{ badge('needs a person', 'warn') }} {{ 'Something in the pack could not be read.' if nff else 'The evidence does not settle the cause.' }}</p>
       {%- endif %}
       {%- if nff %}
-      <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
+      <p class="muted small" title="{{ explain_model }}; {{ x.cost_usd | usd(true) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
       {%- else %}
-      <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">A hypothesis, not a finding: each cites the pack below{% if t.sent %} or the network around {{ t.subject }}{% endif %}. Nothing was run.</p>
+      <p class="muted small" title="{{ explain_model }}; {{ x.cost_usd | usd(true) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">A hypothesis, not a finding: each cites the pack below{% if t.sent %} or the network around {{ t.subject }}{% endif %}. Nothing was run.</p>
       {%- endif %}
       {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why | times }}.</p>{% endif %}
       {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now | times }}.</p>{% endif %}

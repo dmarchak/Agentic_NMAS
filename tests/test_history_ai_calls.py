@@ -89,7 +89,7 @@ def test_a_join_is_drawn_as_a_join_of_its_call_and_the_call_names_who_joined(wor
                for e in HS.ai_calls({"device": "", "limit": 50})["events"]}
     join, call = by_kind[True], by_kind[False]
     assert join["what"] == (f"AI call, explain on the alert {world.pack['rule']}: joined call "
-                            f"{got['call_id']}, nothing sent (claude-sonnet-5-5, $0.0000)")
+                            f"{got['call_id']}, nothing sent (claude-sonnet-5-5, $0.00)")
     assert join["outcome"] == "ok" and join["call"] == got["call_id"]
     assert dict(join["record"])["Joined call"] == got["call_id"]
     (row,) = [r for r in calls.read()["rows"] if r.get("verdict") == "joined"]

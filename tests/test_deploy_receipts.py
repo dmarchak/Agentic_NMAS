@@ -361,8 +361,14 @@ class TestTheReceiptsReadBack:
         text = _text(html)
         assert "Deployed: deployed" in text and "Matches what was confirmed yes" in text
         assert "shutdown: planned maintenance, port unused" in text
-        devices = re.findall(r'<span class="hist-dev[^"]*">([^<]*)</span>', html)
-        assert devices and "r9" not in devices, devices        # filtered to the device
+        # Filtered to the device: r3's tab draws r3's receipt alone, with no Device column (a
+        # device's own tab names no device, the operator, 2026-11-13), and the fleet's History
+        # draws both receipts, each naming its device.
+        assert html.count('data-kind="receipt"') == 1 and "hist-dev" not in html
+        _r, fleet = _get(lab, "/v2/history?list=Lab&since=")
+        devices = re.findall(r'data-kind="receipt".*?<span class="hist-dev[^"]*">\s*([^<]*?)\s*'
+                             r'</span>', fleet, re.S)
+        assert sorted(devices) == ["r3", "r9"], devices
 
     def test_a_secret_in_the_store_is_masked_on_the_way_out(self, lab):  # noqa: F811
         """A row written before masking, or by hand: the History tab is the second layer, as

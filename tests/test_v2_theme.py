@@ -12,6 +12,7 @@ import os
 import re
 
 import dukpy
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSS = os.path.join(ROOT, "static", "css", "nmas-v2.css")
@@ -180,3 +181,106 @@ var window = {
         listener = listener[:listener.index("});")]
         assert "draw(list[i], list[i].__nmasLast)" in listener and "fetch" not in listener
         assert "'#4A5260', grid: {stroke: '#EEF0EC'}" not in src      # the old hard-coded axes
+
+
+# ── WCAG 2.2 AA: contrast and focus (the operator, 2026-11-13: "WCAG 2.2 AA contrast and
+#    focus") ─────────────────────────────────────────────────────────────────────────────
+
+def _luminance(colour: str) -> float:
+    """WCAG 2.x relative luminance of a `#RRGGBB` colour."""
+    parts = []
+    for i in (1, 3, 5):
+        c = int(colour[i:i + 2], 16) / 255
+        parts.append(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]
+
+
+def contrast(a: str, b: str) -> float:
+    """WCAG 2.x contrast ratio of two `#RRGGBB` colours, 1 to 21."""
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+#: The tokens words are drawn in on a page's own grounds (each is a `color:` of the
+#: stylesheet), and the grounds a word can sit on: the page, a card, a raised card, a hovered
+#: row, and each soft ground a notice, a badge or a chosen row is filled with.
+WORDS = ("--ink", "--ink-2", "--ink-3", "--accent", "--accent-ink", "--ok", "--warn", "--danger",
+         "--lab", "--ai", "--sdn")
+GROUNDS = ("--ground", "--surface", "--surface-2", "--hover", "--muted-soft", "--line-2",
+           "--accent-soft", "--ok-soft", "--warn-soft", "--danger-soft", "--gold-soft",
+           "--lab-soft", "--ai-soft", "--sdn-soft")
+#: A word drawn on a filled control or a dark panel, with the fill it is drawn on.
+ON_FILLS = (("--on-accent", "--accent"), ("--on-danger", "--danger"), ("--side-ink", "--side"),
+            ("--side-ink", "--side-on"), ("--code-ink", "--code-bg"), ("--mark-ink", "--mark"))
+
+
+class TestContrast:
+    """1.4.3 Contrast (Minimum): words at 4.5:1 on every ground they are drawn on, in the
+    light theme and the dark; 1.4.11 and 2.4.7: the focus ring at 3:1, and no control without
+    one."""
+
+    def test_the_measure_is_wcags(self):
+        """Known answers, so the check is shown able to see: black on white is 21; #767676
+        on white passes 4.5 and #777777 does not; and the muted token as it was (#9AA3AE on
+        white, the review's 2.55:1 of 2026-11-13) fails."""
+        assert round(contrast("#000000", "#FFFFFF"), 2) == 21.0
+        assert contrast("#767676", "#FFFFFF") >= 4.5 > contrast("#777777", "#FFFFFF")
+        assert round(contrast("#9AA3AE", "#FFFFFF"), 2) == 2.55
+        assert round(contrast("#6E7A87", "#161C23"), 2) == 3.92          # the dark one, as it was
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_words_reach_4_5_on_every_ground(self, theme):
+        _, light, media, _forced = _blocks()
+        t = _tokens(light if theme == "light" else media)
+        assert all(re.fullmatch(r"#[0-9A-Fa-f]{6}", t[k].strip()) for k in WORDS + GROUNDS)
+        low = sorted(f"{w} {t[w]} on {g} {t[g]}: {contrast(t[w].strip(), t[g].strip()):.2f}"
+                     for w in WORDS for g in GROUNDS
+                     if contrast(t[w].strip(), t[g].strip()) < 4.5)
+        assert low == [], ("words under 4.5:1 (WCAG 2.2 AA, 1.4.3); change the token's value, "
+                           "in both dark blocks when it is the dark one:\n" + "\n".join(low))
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_a_word_on_a_fill_reaches_4_5(self, theme):
+        _, light, media, _forced = _blocks()
+        t = _tokens(light if theme == "light" else media)
+        low = [f"{w} on {g}: {contrast(t[w].strip(), t[g].strip()):.2f}" for w, g in ON_FILLS
+               if contrast(t[w].strip(), t[g].strip()) < 4.5]
+        assert low == [], low
+
+    def test_every_word_colour_of_the_stylesheet_is_held(self):
+        """The population, by property: each token a rule draws words in (`color: var(--x)`).
+        Each is among the words held on the grounds, the words held on their fill, or is a
+        ground itself, drawn as words only on a dark fill (`--surface`, `--side`); a new
+        colour for words joins a check or fails here. Two are drawn as marks, not held as
+        words: `--warn-mark` (an icon, a large figure) and `--line` (a locked grip)."""
+        css, *_ = _blocks()
+        used = set(re.findall(r"(?:^|[\s;{])color:\s*var\((--[\w-]+)\)", css))
+        assert len(used) >= 18, sorted(used)                              # 22 on 2026-11-13
+        held = set(WORDS) | {w for w, _g in ON_FILLS} | {"--side-ink-2", "--code-dim"}
+        fills = {"--surface", "--side"}
+        marks = {"--warn-mark", "--line"}
+        assert used - held - fills - marks == set(), sorted(used - held - fills - marks)
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_the_focus_ring_is_drawn_and_reaches_3_on_every_ground(self, theme):
+        css, light, media, _forced = _blocks()
+        ring = re.search(r"^:focus-visible \{([^}]*)\}", css, re.M)
+        assert ring and re.search(r"outline:\s*2px solid var\(--accent\)", ring.group(1)), ring
+        t = _tokens(light if theme == "light" else media)
+        low = [f"{g}: {contrast(t['--accent'].strip(), t[g].strip()):.2f}" for g in GROUNDS
+               if contrast(t["--accent"].strip(), t[g].strip()) < 3.0]
+        assert low == [], low
+
+    def test_a_rule_that_removes_the_outline_draws_focus_another_way(self):
+        """Every rule setting `outline: none` belongs to a control whose own class has another
+        rule drawing focus (an outline on `:focus-within`, a stroke on `:focus`): the search
+        field's box, the topology's link."""
+        css, *_ = _blocks()
+        removed = re.findall(r"([^{}]+)\{[^}]*outline:\s*(?:none|0)\b[^}]*\}", css)
+        assert removed, "the scan reads the rules it is about"
+        for selector in removed:
+            own = re.match(r"\s*(\.[\w-]+)", selector.strip().split(",")[0])
+            assert own, selector
+            shown = re.search(re.escape(own.group(1)) + r":focus(?:-within|-visible)?[^{]*"
+                              r"\{[^}]*(?:outline:\s*\d|stroke:)", css)
+            assert shown, f"{selector.strip()} removes the outline and draws no focus"

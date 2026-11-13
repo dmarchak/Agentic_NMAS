@@ -88,6 +88,16 @@ def register_blueprints(app) -> list:
         return explain.beta()
     app.jinja_env.globals["explain_beta"] = explain_beta
 
+    # The zone picker's choices (`_macros.zone_picker`; the operator, 2026-11-13: "The day
+    # begins at" as a time-zone picker): the viewer's own kept zone first, then UTC, then
+    # every zone this host's database holds (modules/time_zones.zone_names).
+    def zone_names():
+        from modules import time_zones
+        from routes.v2 import viewer_zone
+        mine = viewer_zone()
+        return time_zones.zone_names(first=getattr(mine, "key", "") or "")
+    app.jinja_env.globals["zone_names"] = zone_names
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.

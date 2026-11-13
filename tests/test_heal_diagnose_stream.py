@@ -21,6 +21,7 @@ interpreted, so the hypotheses that need it say their evidence is incomplete.
 - **Each rule** (`STREAM_RULES`) with a planted case; the words name no template letter.
 """
 import os
+import re
 import shutil
 
 import pytest
@@ -280,11 +281,11 @@ class TestTheRuns:
         assert rules(got)[:2] == ["outlived_cause", "half_open"], got["hypotheses"]
         first = got["hypotheses"][0]
         assert first["claim"] == (
-            "r2's telemetry hasn't recovered since r1 was put back at 20:05 UTC, 40 minutes "
+            "r2's telemetry hasn't recovered since r1 was put back at 2026-11-08T20:05:00Z, 40 minutes "
             "before this diagnosis: the stream outlived its cause, so it is stuck at r2 or "
             "the collector, not waiting on r1")
         assert got["words"].startswith("2 hypotheses, the first strong: r2's telemetry "
-                                       "hasn't recovered since r1 was put back at 20:05 UTC")
+                                       "hasn't recovered since r1 was put back at 2026-11-08T20:05:00Z")
         half = got["hypotheses"][1]
         assert "192.0.2.6 port 60235" in half["claim"] and half["incomplete"], half
         assert "C2890" in half["incomplete"][0]
@@ -304,10 +305,10 @@ class TestTheRuns:
         assert "outlived_cause" not in rules(got)
         just = next(h for h in got["hypotheses"] if h["rule"] == "cause_just_cleared")
         assert just["strength"] == "circumstantial"
-        assert just["claim"].startswith("r1 was put back at 20:44 UTC, 60 s before this "
+        assert just["claim"].startswith("r1 was put back at 2026-11-08T20:44:00Z, 60 s before this "
                                         "diagnosis, sooner than the lost-stream alert can "
                                         "clear (150 s)")
-        assert just["todo"] == "Diagnose again after 20:46 UTC"
+        assert just["todo"] == "Diagnose again after 2026-11-08T20:46:30Z"
         why = next(n["why"] for n in got["not_checked"] if n.get("rule") == "outlived_cause")
         assert why == "r1 was put back 60 s ago, sooner than the lost-stream alert can clear"
 
@@ -393,7 +394,7 @@ class TestTheRuns:
         stands = {"state": "stands", "device": "r1", "changed_at": CHANGED, "why": ""}
         got, _f = stream(tmp_path, tgt=target(stands), tcp6=False)
         h = next(h for h in got["hypotheses"] if h["rule"] == "cause_stands")
-        assert h["claim"] == ("r1's change at 20:00 UTC, the likely cause, has not been read "
+        assert h["claim"] == ("r1's change at 2026-11-08T20:00:51Z, the likely cause, has not been read "
                               "back at intent: the stream waits on it")
         assert "outlived_cause" not in rules(got)
 
@@ -608,3 +609,66 @@ class TestTheStreamItself:
                             tcp6=False)
         half = next(h for h in stale["hypotheses"] if h["rule"] == "half_open")
         assert "nothing received on it for 99 minutes" in half["claim"]
+
+
+# ── Its times (the operator, 2026-11-13: raw UTC anywhere left; C3290) ──────────────────────
+
+class TestItsTimesAreInstantsTheScreenDraws:
+    """The runbook writes no time words: "put back at 20:05 UTC" was UTC on every screen that
+    drew the claim. It writes the instant, and each screen draws it through the `times` filter
+    in the viewer's zone, its UTC on the hover."""
+
+    def test_no_string_the_module_builds_says_utc(self):
+        """Every string constant in the module, its docstrings left out, by parsing."""
+        import ast
+        with open(os.path.join(ROOT, "modules", "heal", "diagnose_stream.py"),
+                  encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        docs = {id(n.body[0].value) for n in ast.walk(tree)
+                if isinstance(n, (ast.Module, ast.FunctionDef, ast.ClassDef)) and n.body
+                and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+        said = [n.value for n in ast.walk(tree)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs]
+        # About 700 strings on 2026-11-13: a walk that read few of them reads nothing.
+        assert len(said) > 300, len(said)
+        assert [s for s in said if re.search(r"\bUTC\b", s)] == []
+
+    def test_a_claim_and_its_next_step_carry_the_instant(self, world, tmp_path):
+        got, _f = stream(tmp_path, tgt=target(cleared(at=NOW - 60)), tcp6=False)
+        just = next(h for h in got["hypotheses"] if h["rule"] == "cause_just_cleared")
+        said = " ".join([just["claim"], just["todo"]] + [e.get("line", "")
+                                                         for e in just["evidence"]])
+        assert "UTC" not in said
+        assert re.findall(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", said) == [
+            "2026-11-08T20:44:00Z", "2026-11-08T20:46:30Z",
+            "2026-11-08T20:00:51Z", "2026-11-08T20:44:00Z"], said
+
+    def test_the_screen_draws_it_in_the_viewers_zone(self, world, tmp_path):
+        import app as A
+        from flask import render_template_string
+        from tests.test_local_times import kept_zone
+        got, _f = stream(tmp_path, tcp6=False)
+        claim = got["hypotheses"][0]["claim"]
+        with kept_zone("Asia/Kolkata"), A.app.test_request_context("/v2/attention"):
+            drawn = render_template_string("{{ claim | times }}", claim=claim)
+        assert ('since r1 was put back at <time class="clock" datetime="2026-11-08T20:05:00Z"'
+                in drawn), drawn
+        words = re.sub(r"<[^>]+>", "", drawn)
+        # 20:05 UTC on 8 Nov is 01:35 on 9 Nov in Kolkata.
+        assert "put back at Nov 9 01:35" in words and "UTC" not in words, words
+
+    def test_every_screen_that_draws_a_hypothesis_draws_it_through_the_clock(self):
+        """The population, by property: each v2 template naming a hypothesis's claim or next
+        step (`h.claim`, `h.todo`). Each draws it through `times`."""
+        from tests import source_index
+        found = {}
+        for path in source_index.tracked("templates/v2", suffix=".html", recursive=False):
+            with open(path, encoding="utf-8") as fh:
+                found[os.path.basename(path)] = re.findall(
+                    r"\{\{\s*(h\.(?:claim|todo)[^}]*?)\s*\}\}", fh.read())
+        drawn = {name: exprs for name, exprs in found.items() if exprs}
+        assert {"_diagnose.html", "_attention.html", "_heal_proposal.html",
+                "_fixit_section.html"} <= set(drawn), sorted(drawn)
+        bare = [f"{name}: {e}" for name, exprs in drawn.items() for e in exprs
+                if not re.search(r"\|\s*times\b", e)]
+        assert bare == [], bare

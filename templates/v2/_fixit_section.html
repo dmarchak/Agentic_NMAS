@@ -73,11 +73,11 @@
   <p><strong>Attempt {{ s.n }} is running</strong> since {{ clock(s.started) }}: {{ s.operation }}. Its steps are on its card. <a href="{{ run_href(x.device, x.network, s.run) }}">Open the run</a></p>
   {%- elif S == 'passed' %}
   {%- set s = x.stop %}
-  <p><strong>Attempt {{ s.n }} passed its verify</strong>{% if s.finished %} at {{ clock(s.finished) }}{% endif %}: {{ s.words }}. The incident closes when its symptom clears.</p>
+  <p><strong>Attempt {{ s.n }} passed its verify</strong>{% if s.finished %} at {{ clock(s.finished) }}{% endif %}: {{ s.words | times }}. The incident closes when its symptom clears.</p>
   {%- elif S == 'stopped' %}
   {%- set s = x.stop %}
   <div class="fixit-stop">
-    <p><strong>Stopped: {{ s.words }}</strong> (attempt {{ s.n }}{% if s.finished %}, {{ clock(s.finished) }}{% endif %})</p>
+    <p><strong>Stopped: {{ s.words | times }}</strong> (attempt {{ s.n }}{% if s.finished %}, {{ clock(s.finished) }}{% endif %})</p>
     {%- if s.found %}
     <p class="small"><strong>What it found</strong> (the run's own record):</p>
     <ul class="small fixit-found">
@@ -97,7 +97,7 @@
     <div class="fixit-ai-answer">
       <p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>
       {%- if sh.hypotheses %}
-      <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim }} <span class="mono faint">{{ h.cites | join(' · ') }}</span></li>{% endfor %}</ol>
+      <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span></li>{% endfor %}</ol>
       {%- endif %}
       {%- if sh.why %}<p class="small">Why this fix: {{ sh.why }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
       {%- if sh.gap %}<p class="small">What the fix needs, which no Mercury operation does yet: {{ sh.gap }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}

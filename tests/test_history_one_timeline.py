@@ -220,11 +220,39 @@ class TestOneReaderTheSameRows:
         monkeypatch.setattr("modules.device.load_saved_devices",
                             lambda *a, **k: [{"hostname": d} for d in DEVICES])
 
-        def rows(html):
-            text = lambda s: " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", s)).split())  # noqa: E731
-            return [text(s) for s in re.findall(r'<summary class="hist-sum">(.*?)</summary>',
-                                                html, re.S)]
+        # The same rows, the same words. One difference by design (the operator, 2026-11-13,
+        # "no Device column on a device's own History tab"): the page names each row's devices
+        # in its Device cell, and the tab, where every row is that device's, draws no such
+        # cell and says what the cell held beyond this device as a mark on the line.
+        device = re.compile(r'<span class="hist-dev[^"]*">(.*?)</span>', re.S)
+        also = re.compile(r'<span class="tl-mark tl-also"> · (.*?)</span>', re.S)
+
+        def text(s):
+            return " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", s)).split())
+
+        def rows(html, cell):
+            """Each line's words without *cell*, and what *cell* said (or "")."""
+            lines = re.findall(r'<summary class="hist-sum">(.*?)</summary>', html, re.S)
+            return [(text(cell.sub("", s)), text("".join(cell.findall(s)))) for s in lines]
+
+        def beyond(named, d):
+            """What the tab's mark says for a Device cell reading *named*."""
+            if named in (d, ""):
+                return ""
+            if named == "every device" or not re.fullmatch(r"[\w., -]+", named):
+                return named
+            if named.endswith(" devices"):
+                return f"with {int(named.split()[0]) - 1} other devices"
+            return "with " + ", ".join(n for n in named.split(", ") if n != d)
+
+        marked = 0
         for d in DEVICES:
-            tab = rows(_get(lab, f"/v2/device/{d}/history")[1])
-            page = rows(lab["client"].get(f"/v2/history?device={d}&since=").get_data(as_text=True))
-            assert tab and tab == page[:len(tab)], d
+            tab = rows(_get(lab, f"/v2/device/{d}/history")[1], also)
+            page = rows(lab["client"].get(f"/v2/history?device={d}&since=").get_data(as_text=True),
+                        device)[:len(tab)]
+            assert tab and [words for words, _ in tab] == [words for words, _ in page], d
+            assert [mark for _, mark in tab] == [beyond(named, d) for _, named in page], d
+            assert all(named for _, named in page), "the page names each row's devices"
+            marked += sum(1 for _, mark in tab if mark)
+        # The lab reaches rows of more than one device (a Save All, a fleet's window).
+        assert marked >= 2, marked

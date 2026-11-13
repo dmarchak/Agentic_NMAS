@@ -107,10 +107,21 @@ def key_log_words(list_name: str, hostname: str, since: str, *, now: float = Non
     from modules import history_logq as Q
     from modules import redact, restarts
 
+    def iso(epoch) -> str:
+        # An instant in these words is written as one (ISO, UTC): the card draws it through
+        # the `times` filter in the viewer's zone, its UTC on the hover (C3443, C3290).
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
     now = time.time() if now is None else now
-    start = max(restarts._epoch(since or "") or 0, now - KEY_LINES_WINDOW_S)
-    frm = Q._utc(int(start // 60) * 60, "%Y-%m-%d %H:%M")
-    to = Q._utc(-(-int(now) // 60) * 60, "%Y-%m-%d %H:%M")
+    # Never after now (a kept time a clock wrote ahead), never more than a day back.
+    start = max(min(restarts._epoch(since or "") or 0, now), now - KEY_LINES_WINDOW_S)
+    # The builder reads whole minutes: from the minute the key was kept in to the end of the
+    # minute now is in, and always at least one minute. A key kept in the minute it is read
+    # in (C3443: the page opened as its window opened) is a range of that one minute, which
+    # is asked and answers "no line", never a From that is not before its To.
+    first = int(start // 60) * 60
+    last = max(-(-int(now) // 60) * 60, first + 60)
+    frm, to = Q._utc(first, "%Y-%m-%d %H:%M"), Q._utc(last, "%Y-%m-%d %H:%M")
     spec, errs = Q.ask({"dev": [hostname], "show": "lines", "range": "custom", "from": frm,
                         "to": to})
     rng = Q.window(spec, now)
@@ -134,10 +145,10 @@ def key_log_words(list_name: str, hostname: str, since: str, *, now: float = Non
     rows = [r for r in got.get("rows") or []
             if r.get("device") == hostname and re.search(KEY_LINES, r.get("text") or "")]
     if not rows:
-        return (f"its log holds no key or SSH line between {rng['words']}: no key "
-                "generated or imported was logged")
+        return (f"its log holds no key or SSH line between {iso(rng['start'])} and "
+                f"{iso(rng['end'])}: no key generated or imported was logged")
     rows = sorted(rows, key=lambda r: r.get("iso") or "", reverse=True)
-    shown = "; ".join(f"{(r.get('iso') or '')[:19].replace('T', ' ')} UTC "
+    shown = "; ".join(f"{(r.get('iso') or '')[:19]}Z "
                       f"{redact.redact_text(r.get('text') or '')}"
                       for r in rows[:KEY_LINES_SHOWN])
     more = len(rows) - KEY_LINES_SHOWN

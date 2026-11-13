@@ -304,7 +304,7 @@ class TestRefusedAtThePress:
         _r, html = page(ai.client, iid)
         assert "/fixit/troubleshoot" not in sec_of(html)
         r, html = press(ai, iid)
-        assert r.status_code == 409 and "its mode is off" in sec_of(html)
+        assert r.status_code == 409 and "its mode is Off" in sec_of(html)
         assert ai.sent == []
 
     def test_an_unverified_press_sends_nothing(self, ai, monkeypatch):

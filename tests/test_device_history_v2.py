@@ -140,3 +140,84 @@ class TestTheTab:
         # the device is a History row (C3142).
         assert keys == ["goldens", "deploy_job", "restarts", "fault_drills", "acknowledgements",
                         "rotation", "device_state", "inventory", "reveals"]
+
+
+HEAD = re.compile(r'<div class="hist-head"[^>]*>(.*?)</div>', re.S)
+
+
+def _columns(html):
+    return re.findall(r"<span>([^<]*)</span>", HEAD.search(html).group(1))
+
+
+class TestTheTabHasNoDeviceColumn:
+    """The operator, 2026-11-13: "no Device column on a device's own History tab". Every row
+    there is that device's, so the column is not drawn; the fleet's History keeps it. A row
+    that is also another device's still says so, in its line.
+
+    The one timeline macro (templates/v2/_timeline.html) drawn over the lab's own rows, as
+    the reader returns them (`device_page.history`): with the device named (*here*, the tab)
+    and without (the History page). In a real browser, where its cells line up under their
+    headings and a pressed row opens: tests/test_v2_layout_in_a_browser.py."""
+
+    DRAW = ('{% from "v2/_timeline.html" import timeline_rows, timeline_page %}'
+            "{{ timeline_rows(h, here=here) }}|MORE|{{ timeline_page(h, here=here) }}")
+
+    def _drawn(self, lab, here, change=None):
+        import app as A
+        from flask import render_template_string
+        from modules import device_page
+        from modules.nsot import listref
+
+        got = device_page.history(listref.resolve("Lab"), {"hostname": "r3"})
+        if change:
+            change(next(e for e in got["events"] if e["kind"] == "golden"))
+        with A.app.test_request_context("/v2/device/r3/history?list=Lab"):
+            return render_template_string(self.DRAW, h=got, here=here).split("|MORE|")
+
+    def test_the_tab_draws_no_device_column_and_history_keeps_it(self, lab):
+        _receipt()
+        tab, more = self._drawn(lab, "r3")
+        assert tab.count('class="hist-sum"') >= 2, "the golden and the deploy are drawn"
+        assert _columns(tab) == ["", "When", "Kind", "What", "Who"]
+        assert 'class="hist-list hist-tl hist-own"' in tab and "hist-dev" not in tab
+        # Each line has as many cells as its head: when, kind, what, who; Load more's rows
+        # (the macro's page alone) the same.
+        for line in re.findall(r'<summary class="hist-sum">(.*?)</summary>', tab + more, re.S):
+            assert re.findall(r'<span class="(hist-\w+)', line) == [
+                "hist-when", "hist-kind", "hist-what", "hist-who"], line
+        assert more.count('class="hist-sum"') >= 2
+        page, _more = self._drawn(lab, "")
+        assert _columns(page) == ["", "When", "Kind", "Device", "What", "Who"]
+        assert 'class="hist-list hist-tl"' in page
+        devices = re.findall(r'<span class="hist-dev[^"]*">\s*([^<]*?)\s*</span>', page)
+        assert set(devices) == {"r3"} and len(devices) == page.count('class="hist-sum"')
+
+    @pytest.mark.parametrize("devices, said", [
+        (["r3"], None),
+        (["r3", "r9"], "with r9"),
+        (["r3", "r8", "r9"], "with r8, r9"),
+        (["r1", "r2", "r3", "r4", "r6", "s1", "s2", "s3", "s4"], "with 8 other devices"),
+        (["*"], "every device"),
+        ([], "fleet"),
+    ])
+    def test_a_row_that_is_not_this_devices_alone_says_so_in_its_line(self, lab, devices, said):
+        """The lab's own golden row as the reader returns it, its devices changed: what the
+        Device cell said beyond this device joins the line's marks; on the History page,
+        which names the devices in their column, the line says nothing more."""
+        from modules import history_sources
+
+        def change(row):
+            row["devices"] = list(devices)
+            row["devices_words"] = history_sources.devices_words(devices)
+
+        line = re.compile(r'data-kind="golden"[^>]*>\s*<summary class="hist-sum">(.*?)</summary>',
+                          re.S)
+        also = re.compile(r'<span class="tl-mark tl-also"> · ([^<]*)</span>')
+        tab, _more = self._drawn(lab, "r3", change)
+        assert also.findall(line.search(tab).group(1)) == ([said] if said else [])
+        assert "hist-dev" not in tab
+        page, _more = self._drawn(lab, "", change)
+        assert also.findall(line.search(page).group(1)) == []
+        assert (history_sources.devices_words(devices)
+                in re.search(r'<span class="hist-dev[^"]*">\s*([^<]*?)\s*</span>',
+                             line.search(page).group(1)).group(1))

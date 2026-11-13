@@ -27,7 +27,8 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
-Templates sha256: `88b16e5fd0b2ee63c061a5d8a0d1abad4235aaddc4c98b7c8c1156f00bee5f73`
+Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_intent_words.html` draws the drafting call's cost, in its three notices, through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `88b16e5fd0b2ee63c061a5d8a0d1abad4235aaddc4c98b7c8c1156f00bee5f73`.
+Templates sha256: `2c8805fe7dbaf6963556923f5495346c704dd048806fc9d791de0494d97c1a6e`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_intent_edit.html`, `_intent_words.html` and

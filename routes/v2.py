@@ -85,6 +85,17 @@ def people(text) -> str:
     return display_names.people(text)
 
 
+@bp.app_template_filter("usd")
+def usd(value, exact=False) -> str:
+    """An amount as every screen draws it, "$0.25" (`modules.money.usd`, the one formatter; the
+    operator, 2026-11-13: "money shown as $"): a figure to the cent, or *exact*, to four places
+    when it is no whole number of cents (one call's cost). A template says what an amount it
+    does not have is ("unknown", "no cap"); None never reaches here."""
+    from modules import money
+
+    return money.usd(value, exact)
+
+
 @bp.app_template_filter("utc_when")
 def utc_when(ts, fmt="dt", to=None) -> dict:
     """An instant (epoch seconds or an ISO time), or the span *ts* to *to*, as History › Query's

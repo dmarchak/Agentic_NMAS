@@ -36,6 +36,7 @@ import time
 
 import pytest
 
+from modules import money as _money
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, gateway, reservations, triggers
 from tests.ai_person import pressed_by
@@ -354,7 +355,7 @@ def test_needs_attention_names_an_unrecorded_call_until_the_record_takes_it(worl
     (r,) = rows
     assert r["level"] == "danger" and r["id"] == f"ai_spend:unrecorded:{first['call_id']}"
     assert r["what"] == f"AI call {first['call_id']}'s cost could not be recorded"
-    assert f"its cost ${first['cost_usd']:.4f} is held against the AI caps" in r["cause"]
+    assert f"its cost {_money.usd(first['cost_usd'], exact=True)} is held against the AI caps" in r["cause"]
     assert "refuses writes" in r["action"]["label"]
     assert _ask(world, "b", send=world.send)["ok"] is True
     assert [r for r in attention.ai_spend_source()["rows"] if r["kind"] == "unrecorded"] == []

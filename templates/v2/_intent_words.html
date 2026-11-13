@@ -36,7 +36,7 @@
 {%- elif w and w.ok and w.pair %}
 {#- C1908 (board F7-Q, Q1): one draft holding both ends of the link, side by side, the ends
     checked to match before it was offered; one commit covers both. -#}
-<div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>One draft, both ends</strong> of the link {{ w.pair.device }} {{ w.pair.port }} ↔ {{ w.pair.far }} {{ w.pair.far_port }}{% if w.pair.facts %} · the ends match: {{ w.pair.facts | join('; ') }}{% endif %} <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+<div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>One draft, both ends</strong> of the link {{ w.pair.device }} {{ w.pair.port }} ↔ {{ w.pair.far }} {{ w.pair.far_port }}{% if w.pair.facts %} · the ends match: {{ w.pair.facts | join('; ') }}{% endif %} <span class="faint">({{ w.model }}, {{ w.cost_usd | usd(true) }})</span></p></div>
 {#- C1933 (the operator's decision, 2026-10-27; a deviation from F7-Q, which draws the
     refusal only): a mismatch already in committed intent that the draft leaves as it is,
     said beside the draft, which proceeds; when it bears on what the draft changes, that this
@@ -73,7 +73,7 @@
 </div>
 {%- elif w and w.ok %}
 {%- set p = w.previews[0] %}
-<div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below, then commit this draft; nothing is written until you do.</p></div>
+<div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, {{ w.cost_usd | usd(true) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below, then commit this draft; nothing is written until you do.</p></div>
 {%- if w.decided %}<p class="iw-decided muted">Your words, as decided: <q>{{ w.decided }}</q></p>{% endif %}
 <div class="iw-draft">
   <h3 class="ie-k">The changes, as Mercury would make them</h3>
@@ -111,7 +111,7 @@
   {%- if w.call_id %}{% with fb=ai_feedback(w.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
 </div>
 {%- elif w and w.error == 'ask' %}
-<div class="notice" role="status">{{ icon('info', 16) }}<p><strong>One question first:</strong> {{ w.clarify }} Add the answer to your words, then draft again. <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+<div class="notice" role="status">{{ icon('info', 16) }}<p><strong>One question first:</strong> {{ w.clarify }} Add the answer to your words, then draft again. <span class="faint">({{ w.model }}, {{ w.cost_usd | usd(true) }})</span></p></div>
 {%- elif w and w.error == 'choose' %}
 {#- Part 1: a reference with several matches, asked before any call; each candidate a button
     naming its neighbour or its description, and "Both" or "All N"; the choice continues the

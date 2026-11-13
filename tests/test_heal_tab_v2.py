@@ -20,6 +20,8 @@ modules/heal/policy.py, on a temporary store of four networks. No device, no net
 import json
 import re
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -181,6 +183,59 @@ def test_auto_on_a_lab_network_takes_the_expiry_as_people_write_it(networks):
     # Eight days away is refused in the preview, naming the limit.
     _r, far = _post(networks, base + "/preview", dict(data, heal_mode_until=_until(8 * 24)))
     assert "at most 7 days" in far
+
+
+RAW_INSTANT = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+
+def _words(html):
+    """What a person reads: the tags gone, and with them every attribute (a hover, a
+    machine-readable ``datetime=``, a hidden field's value)."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+
+def test_autos_expiry_is_drawn_in_the_viewers_zone_never_as_the_stored_instant(networks):
+    """C3158 (the review, 2026-11-13: the confirm read "…until 2026-11-18T11:49:00Z"): the
+    preview's confirm button, its summary and its gate draw Auto's expiry through the one
+    clock, in the viewer's zone, its UTC on the hover; and the tab the confirm answers with
+    (drawn whole inside `times`, C3290) says it the same way in its Confirmed notice, its
+    Mode row and its policy history."""
+    from tests.test_local_times import kept_zone
+
+    _mark_lab()
+    base = BASE.format(n="Default")
+    p = H.plan("Default", {"heal_kinds_auto": ["added_line"]})
+    H.apply("Default", {"heal_kinds_auto": ["added_line"]}, p["fingerprint"], reason="kinds",
+            actor="admin@example.com", actor_verified="access", person=True)
+    at = time.time() + 48 * 3600
+    at -= at % 60
+    kept = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+    data = {"part": "mode", "heal_mode": "auto",
+            "heal_mode_until": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(at))}
+    clock = f'<time class="clock" datetime="{kept}" data-clock="date"'
+    with kept_zone("Asia/Kolkata"):
+        local = datetime.fromtimestamp(at, ZoneInfo("Asia/Kolkata"))
+        said = f"until {local.strftime('%b')} {local.day} {local.strftime('%H:%M')}"
+        _r, pv = _post(networks, base + "/preview", data)
+        button = re.search(r'<span class="op-idle">(Turn on Auto.*?)</span>\s*<span class="op-busy"',
+                           pv, re.S).group(1)
+        assert clock in button and said in _words(button), button
+        # The preview's own sentences too (its summary, through `times`). Its program, one
+        # level down, lists each stored value as it will be stored, the instant among them:
+        # a program is quoted, never reworded.
+        program = re.compile(r'<ol class="set-steps mono small">.*?</ol>', re.S)
+        assert f"heal_mode_until: none -&gt; {kept}" in "".join(program.findall(pv))
+        assert f"AUTO {said}" in _words(pv)
+        assert not RAW_INSTANT.search(_words(program.sub("", pv))), _words(pv)
+        r, tab = _preview_and_confirm(networks, "Default", data)
+        assert r.status_code == 200 and H.current("Default")["until"] == kept
+        # The Confirmed notice, the Mode row and the policy history's line, each a clock.
+        assert tab.count(clock) >= 3, tab.count(clock)
+        words = _words(tab)
+        assert f"self-healing is Auto {said}" in words, words
+        assert f"at the expiry ( {said[len('until '):]}" in words, words
+        assert f"confirmed auto {said}" in words, words
+        assert not RAW_INSTANT.search(words), RAW_INSTANT.findall(words)
 
 
 def test_the_fix_kinds_and_a_hard_stop_are_changed_the_same_way(networks):

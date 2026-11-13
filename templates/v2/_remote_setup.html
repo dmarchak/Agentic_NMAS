@@ -54,7 +54,7 @@
       {%- elif s.acknowledged['values'] %}<ul class="small">{% for v in s.acknowledged['values'] %}<li><code>{{ v.kind }}</code> <span class="mono">{{ v.fingerprint }}</span> in {{ v.devices | join(', ') or '?' }}</li>{% endfor %}</ul>{% endif %}
       {%- else %}nothing yet{% endif %}</dd>
     <dt>Automatic pushing</dt><dd>{% if r.auto_push %}on{% elif r.last_push %}off{% else %}off: offered after a successful push{% endif %}</dd>
-    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }} {{ badge(r.last_push.how, 'neutral') }}{% if r.last_push.by %} by {{ r.last_push.by | people }}{% endif %}: {{ r.last_push.what }}{% else %}none yet{% endif %}</dd>
+    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }} {{ badge({'manual': 'Manual', 'auto': 'Auto'}.get(r.last_push.how, r.last_push.how), 'neutral') }}{% if r.last_push.by %} by {{ r.last_push.by | people }}{% endif %}: {{ r.last_push.what }}{% else %}none yet{% endif %}</dd>
   </dl>
   <div class="set-foot">
     <form method="post" action="{{ url_for('remote_v2.write_probe') }}" hx-post="{{ url_for('remote_v2.write_probe') }}" hx-target="#remote-setup" hx-swap="outerHTML">

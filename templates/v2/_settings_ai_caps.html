@@ -12,11 +12,11 @@
   <form class="ai-on-form" method="post" action="{{ url_for('settings_v2.ai_caps', network=ai.network, feature=f.name) }}" hx-post="{{ url_for('settings_v2.ai_caps', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML">
     <div class="ai-caps">
       <label class="ai-cap"><span class="set-label">Day cap</span>
-        <input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else '%.2f' % f.caps.day }}">
-        <span class="set-origin">now ${{ '%.2f' % f.caps.day }}; {% if ai.day_cap is none %}the installation has no day cap{% else %}within the installation's ${{ '%.2f' % ai.day_cap }} a day{% endif %}</span></label>
+        <span class="in-usd"><input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else '%.2f' % f.caps.day }}"></span>
+        <span class="set-origin">now {{ f.caps.day | usd }}; {% if ai.day_cap is none %}the installation has no day cap{% else %}within the installation's {{ ai.day_cap | usd }} a day{% endif %}</span></label>
       <label class="ai-cap"><span class="set-label">Month cap</span>
-        <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else '%.2f' % f.caps.month }}">
-        <span class="set-origin">now ${{ '%.2f' % f.caps.month }}</span></label>
+        <span class="in-usd"><input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else '%.2f' % f.caps.month }}"></span>
+        <span class="set-origin">now {{ f.caps.month | usd }}</span></label>
     </div>
     <p class="set-origin ai-open-note">The approval still ends {{ clock(f.ends_iso, 'date') }}: changing caps never extends it. Recorded with the old and new caps.</p>
     <div class="ai-open-act">

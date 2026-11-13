@@ -65,7 +65,8 @@ nearer board AI1's case 5 ("An admin turns it on in Settings › AI"). Every sho
 `test_ai_spend` taken again: nothing drawn moved (the hover is not shot; its words are
 tests/test_ai_spend_v2.py's). No row below changes.
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `158dba33bedb58292979ad3aed54466b2c47c7b9396e12e263076e2cd928a023`
+Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_ai_spend.html`'s own amount macro draws through the `usd` filter (`modules.money.usd`, the one formatter) in place of formatting in the template; a figure reads as it did ("$0.65", "$1.50"; under a cent, four places), and the chip's words, built by `ai/spend.py`, go through the same function. No element moves and no region's verdict moved; compared by the template's diff and from new shots at 1280 (~/Documents/nmas-reports/captures/gui-overnight-2/fixes/2-ai-spend-before.png and -after.png); logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `158dba33bedb58292979ad3aed54466b2c47c7b9396e12e263076e2cd928a023`.
+Templates sha256: `507fa1d099b1efa6a503495a0f607d7cf6e9a989c5b4a773346b8cba373a5075`
 Templates sha256 before: `4a67e6a59a47a0ddf5637a79603fea1bcfca3b7a254de43e988bea7f902e49c7`.
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, zone_picker -%}
 {#- The viewer's time zone (the operator, 2026-11-12: "a per-person setting like display names,
     defaulting from the browser on first visit"): Settings › Installation › Access and
     identity's Time zone card, beside Display names, from modules/time_zones.view through
@@ -36,7 +36,7 @@
           <form class="set-inline" method="post" action="{{ url_for('settings_v2.time_zone') }}"
                 hx-post="{{ url_for('settings_v2.time_zone') }}" hx-target="#card-time-zone" hx-swap="outerHTML" autocomplete="off">
             <label for="tz-zone">Time zone</label>
-            <input id="tz-zone" name="zone" type="text" value="{{ typed if refused else tz.zone }}" placeholder="America/Denver" title="An IANA time zone name, for example America/Denver, Europe/London or UTC">
+            {{ zone_picker('tz-zone', 'zone', typed if refused else tz.zone) }}
             <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'time-zone', op='a time zone') }}</span>
           </form>
         </details>

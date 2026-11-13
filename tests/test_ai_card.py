@@ -71,14 +71,16 @@ def test_the_card_draws_off_by_default(networks, no_send):
     assert ">off<" in card and "every call is refused until a person allows hosted AI" in card
     assert "API key" in card and ">not set<" in card
     assert 'name="ai_cap_usd_per_call"' not in card, "a call's cap is its task's (retiring)"
-    assert 'name="ai_cap_usd_per_day"' in card and 'value="1.5"' in card
-    assert "Spent today" in card and "$0.0000" in card and "in 0 calls today" in card
+    assert 'name="ai_cap_usd_per_day"' in card and 'value="1.50"' in card
+    assert '<span class="in-usd"><input id="f-ai-ai_cap_usd_per_day"' in card, "the $ is the field's"
+    assert "Spent today" in card and "$0.00" in card and "in 0 calls today" in card
 
 
 def test_the_card_draws_each_task_s_pinned_model_and_prices_read_only(networks, no_send):
     """The operator, 2026-10-25: task → model (its exact id) → input and output price per
     million tokens → the page and the date; each task's cap from its pin."""
     from modules.ai import profiles
+    from modules.money import usd
     card = unescape(_card(_page(networks)))
     for name, t in profiles.TASKS.items():
         p = profiles.MODELS[t["model"]]["price"]
@@ -86,8 +88,8 @@ def test_the_card_draws_each_task_s_pinned_model_and_prices_read_only(networks, 
                         + r"</td>(.*?)</tr>", card)
         assert row, name
         cells = row.group(1)
-        assert t["model"] in cells and f"${p['input']} / ${p['output']}" in cells, cells
-        assert f"${profiles.cap_per_call(name):.4f}" in cells, cells
+        assert t["model"] in cells and f"{usd(p['input'], True)} / {usd(p['output'], True)}" in cells, cells
+        assert usd(profiles.cap_per_call(name), True) in cells, cells
     assert profiles.PRICES_SOURCE in card and f"read {profiles.PRICES_AS_OF}" in card
     assert "older than" not in card, "fresh prices say no staleness"
     assert '<input' not in card.split('class="set-prices"')[1].split("</div>")[0], "read-only"

@@ -21,8 +21,8 @@ by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-
 The second card, **AI troubleshooting**, holds the two settings an incident's AI
 troubleshooting section is held to, for every network:
 
-- **AI mode**: `manual` (the default), in which an AI troubleshoot runs only when a person
-  presses it on an incident's page and never on its own, or `off`, in which none is offered and
+- **AI mode**: **Manual** (the default), in which an AI troubleshoot runs only when a person
+  presses it on an incident's page and never on its own, or **Off**, in which none is offered and
   Mercury's own diagnosis still proposes a fix. There is no automatic mode: a model asked on its
   own would be a background feature, below.
 - **AI spend per incident**: $1.00 by default. What one incident's AI calls have cost plus the

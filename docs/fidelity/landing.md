@@ -68,7 +68,8 @@ row's Details line"); its place on the line is a further **deviation**, logged
 right"). Compared by the template diff and the real-browser test tests/test_recheck.py
 (`test_the_button_never_moves_when_its_own_answer_appears`, at 1280 and 390), not a new shot.
 Templates sha256 before: `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`.
-Templates sha256: `bc35314f80a3fcc76b47e556d6bcafee68460faae9b61a34c483e276635bd667`
+Compared again 2026-11-13 (the operator's approved rules, "raw UTC anywhere left" and "money shown as $"; C3290): `_attention.html` draws a diagnosis hypothesis's claim and next step through `times` (routes/v2.py), and `_heal_analysis.html` its hypothesis's claim the same way and its call's cost through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the templates' diff, not by new shots; logged once each (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds" and "Money through one formatter"). Templates sha256 before: `bc35314f80a3fcc76b47e556d6bcafee68460faae9b61a34c483e276635bd667`.
+Templates sha256: `002adf75ada9ae050b329769aea42c4cebfec0019d93f17c8c4b1e20baa713c7`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

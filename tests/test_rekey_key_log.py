@@ -34,7 +34,7 @@ def test_the_device_s_key_lines_are_named_newest_first(near):
     got = _words(near, [("08:11:02", KEY), ("08:11:51", SSH),
                         ("08:12:00", "%LINK-3-UPDOWN: Interface Vlan1, changed state to up")])
     assert got.startswith("2 key or SSH lines in its log since the key was kept, the newest "
-                          "first: 2026-10-15 08:11:51 UTC "), got
+                          "first: 2026-10-15T08:11:51Z "), got
     assert got.index("SSH-5-ENABLED") < got.index("KEY_ADDITION")
     assert "UPDOWN" not in got
 
@@ -68,3 +68,53 @@ def test_it_reads_at_most_a_day_back(near, since):
     near.loki.planted = {"r3": [("08:11:02", _line("r3", "08:11:02", KEY))]}
     got = rekey_op.key_log_words("Lab", "r3", since, now=NOW, client=near.loki)
     assert got.startswith("1 key or SSH line in its log"), got
+
+
+# ── C3443: a key kept in the minute it is read in, and every instant as an instant ──────────
+
+@pytest.mark.parametrize("kept, now", [
+    ("08:25:00", "08:25:00"),          # the same second, on the minute: From was not before To
+    ("08:25:20", "08:25:40"),          # the same minute
+    ("08:25:30", "08:25:00"),          # a kept time a clock wrote ahead of now
+], ids=["same-second", "same-minute", "ahead-of-now"])
+def test_a_key_kept_in_the_minute_it_is_read_in_is_asked_and_reads_as_no_line(near, kept, now):
+    """The Re-key page opened as its window opened refused its own read ("its log could not be
+    asked: From (2026-11-13 10:17) is not before To (2026-11-13 10:17)"). The range is that
+    one minute, asked, and the answer is that no line is logged."""
+    near.loki.planted = {"r3": []}
+    got = rekey_op.key_log_words("Lab", "r3", f"2026-10-15T{kept}Z", now=_t(now),
+                                 client=near.loki)
+    assert got == ("its log holds no key or SSH line between 2026-10-15T08:25:00Z and "
+                   "2026-10-15T08:26:00Z: no key generated or imported was logged"), got
+
+
+def test_a_line_logged_in_that_minute_is_found(near):
+    """The one-minute range is a real read: a key line of that minute is named, so "no line"
+    above is Loki's answer, never a read that could not have found one."""
+    near.loki.planted = {"r3": [("08:25:07", _line("r3", "08:25:07", KEY))]}
+    got = rekey_op.key_log_words("Lab", "r3", "2026-10-15T08:25:00Z", now=_t("08:25:00") + 10,
+                                 client=near.loki)
+    assert got.startswith("1 key or SSH line in its log since the key was kept, the newest "
+                          "first: 2026-10-15T08:25:07Z %CRYPTO_ENGINE-5-KEY_ADDITION"), got
+
+
+def test_no_words_say_utc_and_the_card_draws_each_instant_in_the_viewers_zone(near):
+    import re
+
+    import app as A
+    from flask import render_template_string
+    from tests.test_local_times import kept_zone
+
+    none = _words(near, [])
+    some = _words(near, [("08:11:02", KEY), ("08:11:51", SSH)])
+    for said in (none, some):
+        assert "UTC" not in said and "is not before" not in said, said
+    assert none == ("its log holds no key or SSH line between 2026-10-15T08:00:00Z and "
+                    "2026-10-15T08:25:00Z: no key generated or imported was logged")
+    # As the card draws an operand's value (templates/v2/_rekey.html): through `times`.
+    with kept_zone("Asia/Kolkata"), A.app.test_request_context("/v2/device/r3/rekey"):
+        drawn = render_template_string("{{ v | times }}", v=some)
+    assert drawn.count('<time class="clock" datetime="2026-10-15T08:11:') == 2, drawn
+    words = re.sub(r"<[^>]+>", "", drawn)
+    # 08:11 UTC is 13:41 in Kolkata.
+    assert "13:41" in words and "08:11" not in words and "UTC" not in words, words

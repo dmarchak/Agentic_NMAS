@@ -30,6 +30,8 @@ import os
 import re
 import time
 
+from modules.fixit import policy as _fixit_policy
+
 log = logging.getLogger(__name__)
 
 #: The page's tabs (board F), in order. Server's one card is on Connections (C664: the operator,
@@ -309,8 +311,11 @@ KINDS = {
 }
 
 
-def _f(key, label, kind, note="", choices=()):
-    return {"key": key, "label": label, "kind": kind, "note": note, "choices": choices}
+def _f(key, label, kind, note="", choices=(), words=None):
+    """One card field. *words*: what a person reads for each of a choice's stored values (the
+    control's options and a saved change's words; a choice without one is drawn as stored)."""
+    return {"key": key, "label": label, "kind": kind, "note": note, "choices": choices,
+            "words": dict(words or {})}
 
 
 #: The cards, in the page's order. ``secret``: the secret Replace… changes (with ``with_id``,
@@ -382,9 +387,10 @@ CARDS = {
     "fixit": {
         "group": "ai_troubleshoot", "title": "AI troubleshooting", "tab": "ai",
         "fields": (_f("ai_troubleshoot_mode", "AI mode", "choice",
-                      "manual: an AI troubleshoot runs only when a person presses it on an "
-                      "incident's page, never on its own; off: none is offered, and Mercury's "
-                      "own diagnosis still proposes a fix", ("manual", "off")),
+                      "Manual: an AI troubleshoot runs only when a person presses it on an "
+                      "incident's page, never on its own; Off: none is offered, and Mercury's "
+                      "own diagnosis still proposes a fix", _fixit_policy.MODES,
+                      _fixit_policy.MODE_WORDS),
                    _f("ai_cap_usd_per_incident", "AI spend per incident", "usd",
                       "what one incident's AI calls may cost: spent plus the next attempt's "
                       "worst case, refused past it, naming both; there is no \"no cap\", and "
@@ -542,6 +548,9 @@ def card(name: str, ai_state: bool = True, typed: dict = None) -> dict:
                 f["value"] = raw not in (None, "", "off", "0", "false")
             elif raw is not None:
                 f["value"] = raw
+    for f in fields:
+        if f["kind"] == "usd":
+            f["amount"] = amount_text(f["value"])
     if spec["integration"]:
         out["health"] = _health(spec["integration"])
     if name == "netbox":
@@ -597,33 +606,50 @@ def no_cap_record() -> dict:
 
 
 def money(value) -> str:
-    """US dollars as a person reads them: "$80", "$2,400", "$1.50", "$0.0125"; None is no
-    cap."""
+    """A cap as a person reads it, through the one formatter (`modules.money.usd`, an exact
+    amount): "$80.00", "$2,400.00", "$1.50", "$0.0125"; None is no cap."""
+    from modules.money import usd
+
+    return "no cap" if value is None else usd(value, exact=True)
+
+
+def amount_text(value) -> str:
+    """An amount as its field holds it, the "$" drawn beside the field: "1.50", "5000.00",
+    "0.0125"; no cap is an empty field, and what a person typed (a refused Save's form) is
+    left as typed."""
     if value is None:
-        return "no cap"
-    v = round(float(value), 4)
-    if v == int(v):
-        return f"${v:,.0f}"
-    if round(v, 2) == v:
-        return f"${v:,.2f}"
-    return "$" + f"{v:,.4f}".rstrip("0").rstrip(".")
+        return ""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    return money(value).lstrip("$").replace(",", "")
 
 
-def value_words(kind: str, value) -> str:
+def value_words(kind: str, value, words: dict = None) -> str:
     """A card field's value in a change's words: money for an amount, on or off for a switch,
+    a choice as its control draws it (*words*, the field's own: "Manual" for ``manual``),
     "empty" for nothing."""
     if kind == "usd":
         return money(value)
     if kind == "switch":
         return "on" if value else "off"
-    return "empty" if value in (None, "") else str(value)
+    if value in (None, ""):
+        return "empty"
+    return (words or {}).get(value, str(value)) if isinstance(value, str) else str(value)
+
+
+def _words_of(key: str) -> dict:
+    """The words a card's choice field draws its values by, or ``{}``: declared once, on the
+    field (`_f`)."""
+    return next((f["words"] for c in CARDS.values() for f in c["fields"] if f["key"] == key),
+                {})
 
 
 def change_words(change: dict) -> str:
-    """One recorded change: "Cap per day $50 → $80"."""
-    kind = change.get("kind", "")
+    """One recorded change: "Cap per day $50 → $80", "AI mode Manual → Off"."""
+    kind, words = change.get("kind", ""), _words_of(change.get("key", ""))
     return (f"{change.get('label') or change.get('key', '?')} "
-            f"{value_words(kind, change.get('old'))} → {value_words(kind, change.get('new'))}")
+            f"{value_words(kind, change.get('old'), words)} → "
+            f"{value_words(kind, change.get('new'), words)}")
 
 
 def _kept(value):

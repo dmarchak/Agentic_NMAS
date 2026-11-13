@@ -35,6 +35,8 @@ import re
 import time
 from urllib.parse import urlencode
 
+from modules import money as _money
+
 log = logging.getLogger(__name__)
 
 #: Worst first. The browser draws the level; it never decides it. There is no
@@ -7369,9 +7371,9 @@ def _ai_day_cap_rows(usd: float, cap: float, today: str, zone: str) -> list:
         return [row(
             source="ai_spend", kind="day_reached", key=f"day_cap:{today}", level="danger",
             clears_at=_ai_period_end("day", today, zone), operands=operands,
-            what=f"AI spend reached the day cap (${usd:.2f} of ${cap:.2f})",
-            cause=(f"${usd:.4f} spent today (since midnight {zone}, the day cap's boundary), "
-                   f"{pct}% of the installation's day cap ${cap:.4f}: every AI call is "
+            what=f"AI spend reached the day cap ({_money.usd(usd)} of {_money.usd(cap)})",
+            cause=(f"{_money.usd(usd, exact=True)} spent today (since midnight {zone}, the day cap's boundary), "
+                   f"{pct}% of the installation's day cap {_money.usd(cap, exact=True)}: every AI call is "
                    "refused until the day ends, people's presses and background features "
                    "alike"),
             action={"label": ("Open the spend panel to see what spent it; leave it until the "
@@ -7381,9 +7383,9 @@ def _ai_day_cap_rows(usd: float, cap: float, today: str, zone: str) -> list:
         source="ai_spend", kind="day_warning", key=f"day_cap:{today}",
         level="danger" if warned == "80" else "warning",
         clears_at=_ai_period_end("day", today, zone), operands=operands,
-        what=f"AI spend is at {pct}% of the day cap (${usd:.2f} of ${cap:.2f})",
-        cause=(f"${usd:.4f} spent today (since midnight {zone}, the day cap's boundary), {pct}% "
-               f"of the installation's day cap ${cap:.4f} (warned at {warned}%). At the cap "
+        what=f"AI spend is at {pct}% of the day cap ({_money.usd(usd)} of {_money.usd(cap)})",
+        cause=(f"{_money.usd(usd, exact=True)} spent today (since midnight {zone}, the day cap's boundary), {pct}% "
+               f"of the installation's day cap {_money.usd(cap, exact=True)} (warned at {warned}%). At the cap "
                "every AI call is refused until the day ends, people's presses and background "
                "features alike; a call is refused sooner when its worst case would pass what "
                "is left"),
@@ -7408,10 +7410,10 @@ def _ai_over_estimate_row(f: dict):
         source="ai_spend", kind="over_estimate", key=f"{net}:{f['feature']}:estimate",
         level="warning",
         what=(f"{name} on {net} is running at {pct}% of the estimate it was approved at "
-              f"(${actual:.4f} a day against ${est:.4f})"),
-        cause=(f"{name} averaged ${actual:.4f} a day on {net} over the {n} complete "
+              f"({_money.usd(actual, exact=True)} a day against {_money.usd(est, exact=True)})"),
+        cause=(f"{name} averaged {_money.usd(actual, exact=True)} a day on {net} over the {n} complete "
                f"day{'' if n == 1 else 's'} since {f['on_by'] or 'an admin'} turned it on "
-               f"({f['on_at'] or 'time not recorded'}), against the estimate ${est:.4f} a day "
+               f"({f['on_at'] or 'time not recorded'}), against the estimate {_money.usd(est, exact=True)} a day "
                f"shown then: {pct}% of it, and a row is raised from "
                f"{spend.whole_pct(spend.OVER_ESTIMATE_AT)}%"),
         operands={"actual_usd_per_day": round(actual, 6), "estimate_usd_per_day": est,
@@ -7514,7 +7516,7 @@ def _ai_unrecorded_rows() -> list:
             cause=(f"The record of AI calls refused the row of {c['id']}{many}"
                    + (f" ({c['feature']})" if c["feature"] else "")
                    + f", sent at {c['at']}: the call is missing from History, and its cost "
-                   f"${c['usd']:.4f} is held against the AI caps as a call in flight, today "
+                   f"{_money.usd(c['usd'], exact=True)} is held against the AI caps as a call in flight, today "
                    "and every day until the record takes the row"),
             operands={"call_id": c["id"], "usd": round(c["usd"], 6), "at": c["at"],
                       "rows": c["rows"]},
@@ -7648,7 +7650,7 @@ def ai_spend_source(now=None) -> dict:
                              error=f"the record of AI calls could not be read: {got['error']}")
     usd = spend.day_usd(got["rows"], today, zone) if on else float(got["usd"] or 0.0)
     rows = limit_rows + ([] if why_no_day else _ai_day_cap_rows(usd, cap, today, zone))
-    day_said =why_no_day or (f"today's spend ${usd:.2f} against the day cap ${cap:.2f}: "
+    day_said =why_no_day or (f"today's spend {_money.usd(usd)} against the day cap {_money.usd(cap)}: "
                               f"{len(rows)} row(s)")
     for f in (spend.feature_summaries(got["rows"], today, zone, now) if on else []):
         over = _ai_over_estimate_row(f)
@@ -7666,8 +7668,8 @@ def ai_spend_source(now=None) -> dict:
                 since=_ts(f["stopped_at"][w]),
                 clears_at=_ai_period_end(w, today, zone),
                 what=f"{name} on {net} stopped: it reached its {w} cap",
-                cause=(f"{name} spent ${spent[w]:.4f} on {net} {period[w]} against its {w} cap "
-                       f"${f['caps'][w]:.4f}, and the gateway refused its next call "
+                cause=(f"{name} spent {_money.usd(spent[w], exact=True)} on {net} {period[w]} against its {w} cap "
+                       f"{_money.usd(f['caps'][w], exact=True)}, and the gateway refused its next call "
                        f"({f['stopped_at'][w]}); it makes no call until the {w} ends"),
                 operands={"spent_usd": round(spent[w], 6), "cap_usd": f["caps"][w], "cap": w,
                           "network": net, "feature": f["feature"]},
@@ -7684,8 +7686,8 @@ def ai_spend_source(now=None) -> dict:
             level="danger" if f["warning"] == "80" else "warning",
             clears_at=_ai_period_end(w, today, zone),
             what=f"{name} on {net} has spent {pct}% of its {w} cap",
-            cause=(f"{name} spent ${spent[w]:.4f} on {net} {period[w]}, {pct}% of its {w} cap "
-                   f"${f['caps'][w]:.4f} (warned at {f['warning']}%); at its cap it stops "
+            cause=(f"{name} spent {_money.usd(spent[w], exact=True)} on {net} {period[w]}, {pct}% of its {w} cap "
+                   f"{_money.usd(f['caps'][w], exact=True)} (warned at {f['warning']}%); at its cap it stops "
                    f"until the {w} ends"),
             operands={"spent_usd": round(spent[w], 6), "cap_usd": f["caps"][w], "cap": w,
                       "network": net, "feature": f["feature"]},

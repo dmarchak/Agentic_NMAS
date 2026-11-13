@@ -173,6 +173,71 @@ def test_the_card_states_the_boundary_and_its_reset_is_the_counter_s(networks, m
     assert 'title="2026-10-27 06:00:00 UTC · 00:00 America/Denver: the cap' in card
 
 
+PICKER = re.compile(r'<input id="(?P<id>[^"]+)" name="(?P<name>[^"]+)" type="text" '
+                    r'class="zone-pick" list="(?P<list>[^"]+)" value="(?P<value>[^"]*)"[^>]*>'
+                    r'\s*<datalist id="(?P<names>[^"]+)">(?P<options>.*?)</datalist>', re.S)
+
+
+def _picker(html, name):
+    """The zone picker for the field *name*: its value and the zones it offers, in order."""
+    m = next((m for m in PICKER.finditer(html) if m.group("name") == name), None)
+    assert m, f"no zone picker is drawn for {name}"
+    assert m.group("list") == m.group("names") == m.group("id") + "-names"
+    return m.group("value"), re.findall(r'<option value="([^"]*)"></option>', m.group("options"))
+
+
+def _day_begins(card):
+    """The line beside the picker saying when the day next begins, as drawn."""
+    m = re.search(r'<span class="set-origin set-day-begins">(.*?)</span>', card)
+    assert m, "no line beside The day begins at says when the day next begins"
+    return m.group(1)
+
+
+def test_the_day_begins_at_is_the_zone_picker_and_says_its_next_instant(networks, monkeypatch):
+    """The operator, 2026-11-13: "The day begins at" as a time-zone picker. The field is the
+    one picker the Time zone card draws: the viewer's own kept zone offered first, then UTC,
+    then every zone the host holds; beside it the instant the day next begins, in the viewer's
+    zone with its UTC on the hover. What it stores stays the zone's name."""
+    from modules.settings_schema import get_setting
+    from tests.test_local_times import kept_zone
+
+    monkeypatch.setattr(calls, "_now", lambda: _at("2026-10-26T13:00:00Z"))
+    with kept_zone("Asia/Kolkata"):
+        card = _card(networks)
+        value, offered = _picker(card, "ai_cap_day_boundary")
+        assert value == "UTC" and offered[:2] == ["Asia/Kolkata", "UTC"], offered[:4]
+        # Every zone once, the host's database behind them (598 names on 2026-11-13).
+        assert len(offered) == len(set(offered)) and len(offered) > 300, len(offered)
+        assert {"America/Denver", "Europe/London", "Pacific/Auckland"} <= set(offered)
+        # The day next begins at midnight UTC, 05:30 on 27 Oct for this viewer.
+        said = _day_begins(card)
+        assert said.startswith('midnight in UTC: next <time class="clock" '
+                               'datetime="2026-10-27T00:00:00Z" data-clock="date" '
+                               'title="2026-10-27 00:00:00 UTC'), said
+        assert re.sub(r"<[^>]+>", "", said) == "midnight in UTC: next Oct 27 05:30 IST", said
+        # The Time zone card draws the same picker, the same choices in the same order.
+        tz = networks["client"].get("/v2/settings/installation/time-zone").get_data(as_text=True)
+        assert _picker(tz, "zone") == ("Asia/Kolkata", offered)
+        # A zone chosen from it is stored as its name, and the instant follows it.
+        loaded = re.search(r"name=\"loaded\" value='([^']*)'", card).group(1)
+        from html import unescape
+        r = networks["client"].post(
+            "/v2/settings/installation/card/ai/save", headers={"HX-Request": "true"},
+            data={"ai_cap_usd_per_day": "1.50", "ai_cap_day_boundary": offered[0],
+                  "loaded": unescape(loaded)})
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        assert get_setting("ai_cap_day_boundary", "") == "Asia/Kolkata"
+        card = _card(networks)
+        assert _picker(card, "ai_cap_day_boundary")[0] == "Asia/Kolkata"
+        said = _day_begins(card)
+        # 13:00 UTC is 18:30 on 26 Oct in Kolkata: its next midnight is 18:30 UTC.
+        assert 'datetime="2026-10-26T18:30:00Z"' in said
+        assert re.sub(r"<[^>]+>", "", said) == "midnight in Asia/Kolkata: next Oct 27 00:00 IST"
+    # A viewer with no kept zone is offered UTC first, and no zone twice.
+    value, offered = _picker(_card(networks), "ai_cap_day_boundary")
+    assert offered[0] == "UTC" and len(offered) == len(set(offered))
+
+
 def test_an_ai_control_s_day_cap_reason_says_when_it_resets(monkeypatch):
     from flask import render_template_string
     import app as APP
@@ -211,9 +276,9 @@ def test_in_a_browser_in_denver_the_reset_is_its_local_time(networks, monkeypatc
             with first_visit() as kept_zone:
                 assert kept_zone == "America/Denver"
                 b.go(srv.url("/v2/settings/installation?tab=ai"))
-                b.wait_for("var t = document.querySelector('#card-ai time[data-clock]');"
+                b.wait_for("var t = document.querySelector('#card-ai .set-origin:not(.set-day-begins) > time[data-clock]');"
                            " return t && t.textContent", 15)
-                words, hover = b.js("var t = document.querySelector('#card-ai time[data-clock]');"
+                words, hover = b.js("var t = document.querySelector('#card-ai .set-origin:not(.set-day-begins) > time[data-clock]');"
                                     " return [t.parentNode.textContent, t.title]")
         finally:
             b.go("about:blank")

@@ -31,6 +31,7 @@ import calendar
 import datetime
 import logging
 
+from modules import money as _money
 from modules.ai import calls
 
 log = logging.getLogger(__name__)
@@ -189,7 +190,7 @@ def chip(now=None) -> dict:
                     words="AI spend unknown: the record of AI calls cannot be read")
     usd = float(spent["usd"] or 0.0)
     return dict(base, state="on", usd_today=usd, level=_level(_ratio(usd, base["day_cap"])),
-                calls_today=spent["calls"], words=f"AI ${usd:.2f} today · {on} background on")
+                calls_today=spent["calls"], words=f"AI {_money.usd(usd)} today · {on} background on")
 
 
 def _averages(by_day: dict, today: str) -> dict:
@@ -247,7 +248,7 @@ def panel(viewer: str = "", now=None) -> dict:
         "month": {"usd": mtd, "days": dim, "elapsed_days": round(elapsed, 3),
                   "projection": mtd / elapsed * dim,
                   "cap": cap * dim if cap is not None else None,
-                  "cap_basis": (f"the day cap ${cap:.2f} times the month's {dim} days"
+                  "cap_basis": (f"the day cap {_money.usd(cap)} times the month's {dim} days"
                                 if cap is not None else "no day cap is set, so no month cap")},
         "mine_today": _usd(r for r in today_rows if viewer and r.get("actor") == viewer),
         "by_kind_today": kinds, "runs_today": runs,

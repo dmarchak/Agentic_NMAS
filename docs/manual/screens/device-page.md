@@ -184,7 +184,9 @@ See [Set a secret reference's value](set-secret-value).
 
 The History page's timeline filtered to this device, over all time. It is the same reader
 drawing the same rows, so the two can never disagree; the link at the top opens the History page
-filtered to the device. It shows the newest 50 records; **Load more**, under the last, reads
+filtered to the device. The tab has no Device column, every row being this device's; a record
+that is also another device's says so in its line (the other device by name, "with 8 other
+devices", or "every device"). It shows the newest 50 records; **Load more**, under the last, reads
 the next 50 older than it and draws them in place (busy, "Loading…", until they arrive), and the
 device page's address takes the place it reached (`before=`), so Back and a shared link return
 there, with **Back to the newest** above the records. **Jump to** a day and **Go** start the tab

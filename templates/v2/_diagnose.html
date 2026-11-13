@@ -99,9 +99,9 @@
     {%- if d.hypotheses %}
     <table class="table set-table"><thead><tr><th scope="col">#</th><th scope="col">Hypothesis</th><th scope="col">Layer · strength</th><th scope="col">Evidence (masked)</th><th scope="col">Would rule it out</th></tr></thead><tbody>
       {%- for h in d.hypotheses %}
-      <tr><td>{{ h.n }}</td><td><strong>{{ h.claim }}</strong>{% if h.incomplete %} {{ badge('evidence incomplete', 'neutral', title=h.incomplete | join('; ')) }}<span class="muted"> {{ h.incomplete | join('; ') }}</span>{% endif %}{% if h.todo %}<span class="muted"> {{ h.todo }}</span>{% endif %}</td>
+      <tr><td>{{ h.n }}</td><td><strong>{{ h.claim | times }}</strong>{% if h.incomplete %} {{ badge('evidence incomplete', 'neutral', title=h.incomplete | join('; ')) }}<span class="muted"> {{ h.incomplete | join('; ') }}</span>{% endif %}{% if h.todo %}<span class="muted"> {{ h.todo | times }}</span>{% endif %}</td>
         <td>{{ h.layer }} · {{ h.strength }}</td>
-        <td>{%- for e in h.evidence %}{% if e.run %}<a href="{{ url_for('reads_v2.show_commands_result', run_id=e.run, list=c.list) }}">{{ e.label }}</a>{% else %}{{ e.label }}{% endif %}{{ ': "' ~ e.line ~ '"' if e.line }}{{ '; intent: ' ~ e.intent if e.intent }}{{ '' if loop.last else '; ' }}{% endfor %}</td>
+        <td>{%- for e in h.evidence %}{% if e.run %}<a href="{{ url_for('reads_v2.show_commands_result', run_id=e.run, list=c.list) }}">{{ e.label }}</a>{% else %}{{ e.label }}{% endif %}{{ (': "' ~ e.line ~ '"' if e.line else '') | times }}{{ '; intent: ' ~ e.intent if e.intent }}{{ '' if loop.last else '; ' }}{% endfor %}</td>
         <td>{{ h.rule_out }}</td></tr>
       {%- endfor %}
     </tbody></table>
@@ -128,7 +128,7 @@
   </ul></div></div>
   {%- endif %}
   <div class="op-part"><h3>Step by step</h3><div><ol>
-    {%- for s in d.steps %}<li><strong>{{ s.step }}</strong>{{ ' · ' ~ s.device if s.device }} · {{ s.result }}: {{ s.words }}</li>{% endfor %}
+    {%- for s in d.steps %}<li><strong>{{ s.step }}</strong>{{ ' · ' ~ s.device if s.device }} · {{ s.result }}: {{ s.words | times }}</li>{% endfor %}
   </ol></div></div>
   <div class="op-part"><h3>Next</h3><div>
     <span class="op-act"><a class="btn btn-small" data-op="diagnose" href="{{ url_for('device_v2.device', name=c.host, tab=c.back, op='diagnose') }}" hx-get="{{ url_for('device_v2.diagnose_card', name=c.host, back=c.back) }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Run again…</span><span class="op-busy">Opening…</span></a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span>

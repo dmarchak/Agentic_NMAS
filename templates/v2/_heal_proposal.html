@@ -28,7 +28,7 @@
   <p class="small"><a href="{{ url_for('device_v2.device', name=declined.device, list=declined.network, tab='history') }}">Open {{ declined.device }}'s History</a></p>
   <details class="heal-record"><summary>Details for the record</summary>
     <p class="small">Recorded: {{ declined.records.approval }}; the step log {{ declined.records.step_log or 'not written' }}.</p>
-    <ol class="set-list small">{% for s in declined.steps %}<li><span class="mono">{{ s.step }}</span> ({{ s.result }}): {{ s.words }}</li>{% endfor %}</ol>
+    <ol class="set-list small">{% for s in declined.steps %}<li><span class="mono">{{ s.step }}</span> ({{ s.result }}): {{ s.words | times }}</li>{% endfor %}</ol>
   </details>
 {#- C2470: withdrawn by the heal's own pass, the device read back at intent or changed since;
     the words name the read and the state the proposal was bound to. -#}
@@ -80,7 +80,7 @@
   {%- set dd = dg.result %}
   <p class="small"><strong>Mercury's diagnosis</strong>, run before this was offered: <span title="by {{ dd.actor | people }}">{{ dd.runbook_words }}</span>, {{ dd.commands }} read(s) on {{ dd.devices | join(', ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}: {{ badge(dd.chip, dd.level) }}</p>
   {%- if dd.hypotheses %}
-  <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
+  <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim | times }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo | times }}.{% endif %}</li>{% endfor %}</ol>
   {%- else %}
   <p class="small">{{ dd.words or 'no cause found in what Mercury reads' }}.</p>
   {%- endif %}

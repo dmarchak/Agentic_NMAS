@@ -108,12 +108,12 @@
   {%- else %}
   <p>Nothing has run in this incident.</p>
   {%- endif %}
-  {%- if p.done.diagnosis %}<p class="small">Mercury's diagnosis ({{ p.done.diagnosis.words }}) ran{% if p.done.diagnosis.at %} at {{ at(p.done.diagnosis.at) }}{% endif %}, with no AI: {{ p.done.diagnosis.hypotheses }} hypothes{{ 'is' if p.done.diagnosis.hypotheses == 1 else 'es' }}, on {{ p.device }}'s History.</p>{% endif %}
+  {%- if p.done.diagnosis %}<p class="small">Mercury's diagnosis ({{ p.done.diagnosis.words | times }}) ran{% if p.done.diagnosis.at %} at {{ at(p.done.diagnosis.at) }}{% endif %}, with no AI: {{ p.done.diagnosis.hypotheses }} hypothes{{ 'is' if p.done.diagnosis.hypotheses == 1 else 'es' }}, on {{ p.device }}'s History.</p>{% endif %}
   <p class="small inc-links"><a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open its record on {{ p.device }}'s History</a>{% if p.done.change_record %} · <a href="{{ url_for('heal_proposal_v2.change_record_md', list_name=p.network, incident_id=p.id) }}" download title="Mercury's change record for this incident, masked: deterministic, no AI call">Download the change record (.md)</a>{% endif %}</p>
 </section>
 <section class="card" id="inc-todo" aria-labelledby="h-inc-todo">
   <div class="card-head"><h2 id="h-inc-todo">What to do</h2></div>
-  <p>{{ p.todo.words }}</p>
+  <p>{{ p.todo.words | times }}</p>
   <p class="small inc-links">
     {%- for l in p.todo.links %}
     {%- if l == 'attention' %}<a href="{{ url_for('v2.landing') }}">Open Needs attention</a>

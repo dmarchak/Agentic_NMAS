@@ -16,7 +16,8 @@ step of this record.
 
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
 Compared again 2026-11-13 (C3290, the words Python builds): `_sdn_op.html` is drawn under `{% filter times %}` (routes/v2.py), so each instant an SDN operation's words carry (a flow's hard timeout, a refusal's time) is `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover; its request line is marked `data-verbatim` (the request as sent). No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `44de5b7ad9a63298de43ea7b7eabd7734d1dfb568cf865f02df56b8358d835c0`.
-Templates sha256: `4eccdcc695bdfc18ddd29eb78730b30af14c7c6070b725bd536af6bff184ee86`
+Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_sdn_policies.html` draws the pinned model's per-call cap ("at most … a call") and `_sdn_policy_answer.html` an answer's cost ("One AI call, …") through the `usd` filter (`modules.money.usd`, an exact amount), in place of a "$" typed before the number. No element moves and no region's verdict moved; compared by the templates' diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `4eccdcc695bdfc18ddd29eb78730b30af14c7c6070b725bd536af6bff184ee86`.
+Templates sha256: `3894edfb5841d59908c2c56202fb91257d4e73df9e572c244bdc39b3f1d9b389`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_sdn_policies.html`, the policies table's "by" column

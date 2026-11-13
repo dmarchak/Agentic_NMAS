@@ -88,7 +88,7 @@ class TestTheSettings:
     def test_off_says_why_no_ai_troubleshoot_is_offered(self, lab):  # noqa: F811
         setting(ai_troubleshoot_mode="off")
         assert P.ai_refusal() == ("AI troubleshooting is off for this installation (its mode is "
-                                  "off): Mercury's own diagnosis still proposes a fix")
+                                  "Off): Mercury's own diagnosis still proposes a fix")
 
     @pytest.mark.parametrize("raw", ["automatic", 7, None])
     def test_a_hand_edited_mode_is_unreadable_never_either(self, lab, raw):  # noqa: F811
@@ -96,7 +96,7 @@ class TestTheSettings:
         got = P.mode()
         assert (got["state"], got["mode"]) == ("unreadable", "")
         assert got["error"] == (f"the AI troubleshooting mode holds {raw!r}, and the modes are "
-                                "manual and off")
+                                "Manual and Off")
         assert P.ai_refusal() == f"AI troubleshooting is not offered: {got['error']}"
 
     def test_an_unreadable_settings_file_allows_nothing(self, lab):  # noqa: F811

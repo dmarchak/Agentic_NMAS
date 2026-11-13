@@ -37,7 +37,7 @@
 {%- for o in a.offers %} {% if o.kind %}<button class="btn btn-small" type="submit" name="instead_kind" value="{{ o.kind }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again as a drop; no AI call; nothing is sent"><span class="op-idle">Drop instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% else %}<button class="btn btn-small" type="submit" name="instead_place" value="{{ o.place }}" hx-disabled-elt="this" data-op="sdn-policy" title="Checks the same policy again with its meter on {{ o.name }}, which reports meters; no AI call; nothing is sent"><span class="op-idle">Rate-limit at {{ o.name }} instead…</span><span class="op-busy">Checking…</span></button>{{ how('sdn-policy', compact=True) }}{% endif %}{% endfor %}</form>
 {%- endif %}</div></div>
 {%- endif %}
-<p class="faint small">{% if a.by == 'mercury' %}Answered by Mercury in code: no AI call was made, nothing was spent.{% elif a.call_id %}One AI call, ${{ a.cost }}: <a href="{{ url_for('v2.history_page', call=a.call_id) }}">the call</a>.{% else %}Checked by Mercury in code, with no AI call.{% endif %}</p>
+<p class="faint small">{% if a.by == 'mercury' %}Answered by Mercury in code: no AI call was made, nothing was spent.{% elif a.call_id %}One AI call, {{ a.cost | usd(true) }}: <a href="{{ url_for('v2.history_page', call=a.call_id) }}">the call</a>.{% else %}Checked by Mercury in code, with no AI call.{% endif %}</p>
 {%- if a.call_id and a.by != 'mercury' %}
 {%- with fb=ai_feedback(a.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
 {%- endif %}

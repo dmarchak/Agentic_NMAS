@@ -35,8 +35,10 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
   {%- endfor %}
   {%- if h.events %}
-  <div class="hist-list hist-tl">
-    <div class="hist-head" aria-hidden="true"><span></span><span>When</span><span>Kind</span><span>Device</span><span>What</span><span>Who</span></div>
+  {#- A device's own History tab (*here*) has no Device column: every row is that device's
+      (the operator, 2026-11-13). A row that is also another device's says so in its line. -#}
+  <div class="hist-list hist-tl{% if here %} hist-own{% endif %}">
+    <div class="hist-head" aria-hidden="true"><span></span><span>When</span><span>Kind</span>{% if not here %}<span>Device</span>{% endif %}<span>What</span><span>Who</span></div>
     {{ timeline_page(h, here, more_url, page_url, opened) }}
   </div>
   {%- elif h.unreached %}
@@ -63,12 +65,24 @@
     {#- The row's id is its address (`#<id>`) and Load more's cursor (15.14 part B); an AI
         call's is its own id, which a feature's "in History" link opens. -#}
     {%- set rid = ('run-' ~ run[-1].id) if run else e.id %}
+    {#- On a device's own tab the Device cell is not drawn; what it would have said beyond
+        this device (every device, the others by name or count, a fleet record) joins the
+        line's marks, so a record that touched nine devices never reads as this one's alone. -#}
+    {%- set beside = [] %}
+    {%- if here %}
+      {%- set oth = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
+      {%- if '*' in e.devices %}{% set _ = beside.append('every device') %}
+      {%- elif not e.devices %}{% if e.devices_words %}{% set _ = beside.append(e.devices_words) %}{% endif %}
+      {%- elif oth %}{% set _ = beside.append('with ' ~ (oth | join(', ') if oth | length <= 2 else (oth | length ~ ' other devices'))) %}{% endif %}
+    {%- endif %}
     <details class="hist-row tl-row{% if run %} tl-run{% endif %}" id="{{ rid }}" data-kind="{{ e.kind }}" data-keep="tl-{{ rid }}"{% if opened and e.call == opened %} open{% endif %}>
       <summary class="hist-sum"><span class="hist-when">{{ stamp(e.at) }}</span><span class="hist-kind">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }}</span>
+        {%- if not here %}
         <span class="hist-dev{% if not e.devices %} muted{% endif %}">{{ e.devices_words }}</span>
+        {%- endif %}
         {#- Board E2a: the line names each person by display name (the `people` filter, over
             the recorded words); the identity as recorded is in the row's record below. -#}
-        <span class="hist-what"><strong>{{ e.what | people | times }}</strong>{% if run %}<span class="tl-run-n"> ×{{ run | length }}</span>{% endif %}{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m | people | times }}</span>{% endfor %}{% if run %}<span class="tl-mark tl-run-span"> · {{ clock(run[-1].at, 'date-seconds') }} to {{ clock(e.at, 'date-seconds') }}</span>{% endif %}</span>
+        <span class="hist-what"><strong>{{ e.what | people | times }}</strong>{% if run %}<span class="tl-run-n"> ×{{ run | length }}</span>{% endif %}{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m | people | times }}</span>{% endfor %}{% for m in beside %}<span class="tl-mark tl-also"> · {{ m }}</span>{% endfor %}{% if run %}<span class="tl-mark tl-run-span"> · {{ clock(run[-1].at, 'date-seconds') }} to {{ clock(e.at, 'date-seconds') }}</span>{% endif %}</span>
         <span class="hist-who">{{ e.who_short | people }}</span></summary>
       {%- if run %}
       <div class="hist-detail tl-more tl-run-rows">

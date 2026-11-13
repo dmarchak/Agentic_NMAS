@@ -501,6 +501,31 @@ class TestTheSetting:
         assert s.status_code == 200, s.get_data(as_text=True)
         assert P.mode()["mode"] == "off" and P.cap_usd()["usd"] == 1.0
 
+    def test_the_mode_reads_manual_and_off_capitalised_and_stores_its_key(self, web):
+        """The operator, 2026-11-13: "Manual" capitalised. The control's options, its note and
+        a saved change's words say Manual and Off; what is posted and stored stays the key."""
+        import json
+
+        from modules import installation_settings as I
+        from modules.fixit import policy as P
+        html = web.get("/v2/settings/installation?tab=ai").get_data(as_text=True)
+        card = html.split('id="card-fixit"', 1)[1].split("</section>", 1)[0]
+        select = card.split('name="ai_troubleshoot_mode"', 1)[1].split("</select>", 1)[0]
+        assert re.findall(r"<option([^>]*)>([^<]*)</option>", select) == [
+            (' value="manual" selected', "Manual"), (' value="off"', "Off")], select
+        # No lower-case mode is left in the card's words (its note names each mode too).
+        words = re.sub(r"<[^>]+>", " ", card.split("</select>", 1)[1])
+        assert "Manual: an AI troubleshoot runs only when a person presses it" in words
+        assert not re.search(r"\bmanual\b", words), words
+        r = web.post("/v2/settings/installation/card/fixit/save", headers=HX,
+                     data={"ai_troubleshoot_mode": "off", "ai_cap_usd_per_incident": "1.00",
+                           "loaded": json.dumps(I.card("fixit")["loaded"])})
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200 and "AI mode Manual → Off" in out, out
+        assert P.mode()["mode"] == "off"
+        row = I.changes(kinds=("card_save",))["rows"][0]
+        assert [(c["old"], c["new"]) for c in row["changes"]] == [("manual", "off")]
+
     def test_a_save_writes_both_recorded_and_the_policy_reads_them(self, web):
         import json
 

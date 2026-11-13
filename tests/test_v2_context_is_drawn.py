@@ -1183,6 +1183,41 @@ class TestTheCheckCanFail:
                                           "{% for k, v in ops.items() %}{{ k }}{{ v }}"
                                           "{% endfor %}"}) == set()
 
+    #: The History timeline's result as a device's History tab carries it (`h`), its rows by
+    #: kind under `counts`, beside another object's `counts` the same page reads by name.
+    TIMELINE = {"events": [], "people": [], "identity": {}, "unreached": [], "unborn": [],
+                "counts": {"golden": 3, "window": 1, "hostkey": 2}}
+    READS_ALL = ("{{ h.events }}{{ h.people }}{{ h.identity }}{{ h.unreached }}{{ h.unborn }}"
+                 "{{ n.counts.get('down') }}")
+
+    def test_a_producers_data_keyed_dict_gives_no_key_names(self):
+        """The timeline's `counts`, reached by the name another object's `counts` is read by
+        (V.DATA_KEYED): its keys are kinds, data, never compared as names (measured
+        2026-11-13: `window`, `hostkey`, `reveal` and `ai_call` read as undrawn on a device's
+        History tab)."""
+        assert self._undrawn({"h": self.TIMELINE, "n": {"counts": {"down": 0}}},
+                             **{"t.html": self.READS_ALL}) == set()
+
+    def test_a_same_named_dict_of_another_holder_is_still_examined(self):
+        """Only the timeline's `counts` is data: Neighbours' `n.counts` keeps its key names
+        examined, a planted one found."""
+        assert self._undrawn({"h": self.TIMELINE, "n": {"counts": {"down": 0, "planted": 1}}},
+                             **{"t.html": self.READS_ALL}) == {"planted"}
+
+    def test_the_timelines_own_result_is_the_one_recognised(self, tmp_path):
+        """The holder's keys `DATA_KEYED` recognises are the reader's own: a real
+        `history_sources.timeline` result holds every one (a network with no repository yet,
+        so its rows are none and its shape is the reader's)."""
+        import types
+
+        from modules import history_sources as HS
+
+        ref = types.SimpleNamespace(name="Lab", repo_dir=str(tmp_path / "config_repo"),
+                                    data_dir=str(tmp_path),
+                                    csv_path=str(tmp_path / "devices.csv"))
+        got = HS.timeline(ref, members=[], since_days="")
+        assert V._data_keyed("counts", got["counts"], got), sorted(got)
+
     def test_values_under_data_keys_are_still_examined(self):
         assert self._undrawn({"by": {"r1": {"shown": 1, "planted": 2}}},
                              **{"t.html": "{% for k, v in by.items() %}{{ v.shown }}"

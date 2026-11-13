@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp, resets -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, resets, clock, zone_picker -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- Board F3 (signed off 2026-10-09): one of Settings › Installation's cards (NetBox
     connection, Proxmox, Commit author, Server), every setting a control, in the board's order
@@ -104,10 +104,22 @@
     <div><label class="set-switch"><input id="{{ fid }}" name="{{ f.key }}" type="checkbox" value="on"{% if f.value %} checked{% endif %}> on</label>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- elif f.kind == 'choice' %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c == f.value %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c in f.words %} value="{{ c }}"{% endif %}{% if c == f.value %} selected{% endif %}>{{ f.words.get(c, c) }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- elif f.kind == 'zone' %}
+    {#- A zone is chosen, never only typed (the operator, 2026-11-13: "The day begins at" as a
+        time-zone picker): the one picker, the viewer's own zone offered first, and beside it
+        the instant the day next begins, in the viewer's zone (UTC on its hover). What is
+        stored stays the zone's name; the day begins at midnight there. -#}
+    <label for="{{ fid }}">{{ f.label }}</label>
+    <div>{{ zone_picker(fid, f.key, f.value if f.value is not none else '') }}
+      {%- if k.resets %} <span class="set-origin set-day-begins">midnight in {{ k.resets.zone }}: next {{ clock(k.resets.at, 'date', note="when the day cap's count starts again") }}</span>{% endif %}
+      {%- if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- else %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">
+    {#- An amount (the operator, 2026-11-13: "money shown as $"): the "$" is drawn in the
+        field (`.in-usd`), and its value to the cent as every amount is; what is typed and
+        sent stays a number. -#}
+    <div>{% if f.kind == 'usd' %}<span class="in-usd">{% endif %}<input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids', 'usd') %} class="mono"{% endif %}{% if f.kind == 'usd' %} inputmode="decimal"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.amount if f.kind == 'usd' else (f.value if f.value is not none else '') }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.kind == 'usd' %}</span>{% endif %}
       {%- if k.no_cap and f.key == k.no_cap.key %} <label class="set-switch" title="No cap is a choice of its own: saving it asks you to type “{{ k.no_cap.typed }}” to confirm"><input id="{{ fid }}-none" name="no_cap" type="checkbox" value="on"{% if k.no_cap.set %} checked{% endif %}> No cap</label>{% endif %}
       {%- if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- endif %}
@@ -134,7 +146,7 @@
       {%- endif %}</div>
     <span class="set-label">Spent today</span>
     <div>{%- if k.spent.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} <span class="set-origin">the record of AI calls could not be read ({{ k.spent.error }}), so every call is refused</span>
-      {%- else %}<span class="mono">${{ '%.4f' % k.spent.usd }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today, against the day cap; {{ resets(k.resets) }}</span>{% endif %}</div>
+      {%- else %}<span class="mono">{{ k.spent.usd | usd(true) }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today, against the day cap; {{ resets(k.resets) }}</span>{% endif %}</div>
     {%- endif %}
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>
@@ -158,7 +170,7 @@
   <div class="set-prices">
     <table class="table set-table" aria-label="Each task's pinned model and the prices its cap uses"><thead><tr><th scope="col">Task</th><th scope="col">Model</th><th scope="col">Input / output</th><th scope="col">Cache write / read</th><th scope="col">Cap per call</th></tr></thead><tbody>
     {%- for r in pt.rows %}
-      <tr data-task="{{ r.task }}"><td>{{ r.words }}</td><td class="mono" title="{{ r.model_words }}{% if r.long_prompt_tokens %}: every rate 5x for a prompt over {{ r.long_prompt_tokens }} tokens; this task's prompts are held under {{ r.max_prompt_tokens }}{% endif %}">{{ r.model }}</td><td class="mono">${{ r.price.input }} / ${{ r.price.output }}</td><td class="mono">${{ r.price.cache_write }} / ${{ r.price.cache_read }}</td><td class="mono" title="the worst case at {{ r.max_prompt_tokens }} prompt tokens and {{ r.max_tokens }} answer tokens">${{ '%.4f' % r.cap_usd }}</td></tr>
+      <tr data-task="{{ r.task }}"><td>{{ r.words }}</td><td class="mono" title="{{ r.model_words }}{% if r.long_prompt_tokens %}: every rate 5x for a prompt over {{ r.long_prompt_tokens }} tokens; this task's prompts are held under {{ r.max_prompt_tokens }}{% endif %}">{{ r.model }}</td><td class="mono">{{ r.price.input | usd(true) }} / {{ r.price.output | usd(true) }}</td><td class="mono">{{ r.price.cache_write | usd(true) }} / {{ r.price.cache_read | usd(true) }}</td><td class="mono" title="the worst case at {{ r.max_prompt_tokens }} prompt tokens and {{ r.max_tokens }} answer tokens">{{ r.cap_usd | usd(true) }}</td></tr>
     {%- endfor %}
     </tbody></table>
     <span class="set-origin">US dollars per million tokens, from Anthropic's pricing page (<span class="mono">{{ pt.source }}</span>), read {{ pt.as_of }}{% if pt.stale %}: <strong>{{ pt.age_days }} days ago, older than {{ pt.stale_days }}; read the page again and update the table</strong>{% endif %}. Each task's model is pinned; changing one re-runs its recorded cases.</span>

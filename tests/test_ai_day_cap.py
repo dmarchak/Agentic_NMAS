@@ -8,7 +8,7 @@ own limit). Limits belong to the customer, not the program.
 - **The card** (Settings › Installation › AI, AI (hosted), through the real route as a
   verified person) saves $80 and $5,000; refuses $0 and a negative, saying so, writing nothing.
 - **History**: a card's Save records each field's old and new value, and History draws it:
-  "AI (hosted): Cap per day $50 → $80", who and when.
+  "AI (hosted): Cap per day $50.00 → $80.00", who and when.
 - **A large increase** (`installation_settings.is_large`: at least double, or at least $50
   more) draws its confirmation, "Up to $X a day, about $Y a month at full use", and writes
   nothing until its Save; the confirmation carries what the card drew (R17), so a change
@@ -128,12 +128,12 @@ def test_80_and_5000_save(networks, no_send):
     is: saved by its confirmation's Save, the thousands comma taken."""
     _set(networks, 60.0)
     r, html = _save(networks, "80")
-    assert r.status_code == 200 and "Saved" in html and "Cap per day $60 → $80" in html, html
+    assert r.status_code == 200 and "Saved" in html and "Cap per day $60.00 → $80.00" in html, html
     assert _cap() == 80.0
     r, html = _save(networks, "5,000")
     assert r.status_code == 200 and "A large increase" in html and _cap() == 80.0
     r, html = _post(networks, _confirm_form(html))
-    assert r.status_code == 200 and "Cap per day $80 → $5,000" in html and _cap() == 5000.0
+    assert r.status_code == 200 and "Cap per day $80.00 → $5,000.00" in html and _cap() == 5000.0
 
 
 @pytest.mark.parametrize("typed", ["0", "0.00", "-5", "-0.01"])
@@ -167,12 +167,12 @@ def test_a_change_is_recorded_old_and_new_and_history_draws_it_with_who_and_when
     assert row["fields"] == ["ai_cap_usd_per_day"] and row["actor"] and row["at_iso"]
     (e,) = H.installation_settings({"device": "", "since": None})["events"]
     assert e["kind"] == "setting" and e["devices"] == []
-    assert e["what"] == "AI (hosted): Cap per day $50 → $80"
+    assert e["what"] == "AI (hosted): Cap per day $50.00 → $80.00"
     assert e["who"].startswith(row["actor"]) and e["at"] == row["at_iso"]
-    assert ("Changes", "Cap per day $50 → $80") in e["record"]
+    assert ("Changes", "Cap per day $50.00 → $80.00") in e["record"]
     # Through the History page, under its kind filter.
     page = networks["client"].get("/v2/history?kind=settings").get_data(as_text=True)
-    assert "AI (hosted): Cap per day $50 → $80" in unescape(page)
+    assert "AI (hosted): Cap per day $50.00 → $80.00" in unescape(page)
     assert H.installation_settings({"device": "r1", "since": None})["events"] == [], (
         "the installation's, never one device's")
 
@@ -207,19 +207,19 @@ def test_a_large_increase_shows_its_implication_and_writes_nothing_until_confirm
     _set(networks, 10.0)
     r, html = _save(networks, "80")
     assert r.status_code == 200 and _cap() == 10.0 and _record(networks) == []
-    assert ("A large increase: Cap per day $10 → $80. Up to $80 a day, about $2,400 a month "
+    assert ("A large increase: Cap per day $10.00 → $80.00. Up to $80.00 a day, about $2,400.00 a month "
             "at full use.") in _text(html)
     sent = _confirm_form(html)
     assert sent["confirm"] == "80.0" and sent["ai_cap_usd_per_day"] == "80.0"
-    assert "Save $80 a day" in html and "Cancel" in html
+    assert "Save $80.00 a day" in html and "Cancel" in html
     r, html = _post(networks, sent)
-    assert r.status_code == 200 and _cap() == 80.0 and "Cap per day $10 → $80" in html
+    assert r.status_code == 200 and _cap() == 80.0 and "Cap per day $10.00 → $80.00" in html
 
 
 def test_a_confirm_for_another_amount_asks_again(networks, no_send):
     _set(networks, 10.0)
     r, html = _save(networks, "800", confirm="80")
-    assert r.status_code == 200 and "Up to $800 a day, about $24,000 a month" in html
+    assert r.status_code == 200 and "Up to $800.00 a day, about $24,000.00 a month" in html
     assert _cap() == 10.0
 
 
@@ -368,7 +368,7 @@ def test_the_card_says_who_chose_no_cap_is_not_recorded_or_not_known(networks, n
 def test_from_no_cap_a_cap_is_set_again_without_a_confirmation(networks, no_send):
     _set(networks, None)
     r, html = _save(networks, "5000")
-    assert r.status_code == 200 and "Cap per day no cap → $5,000" in html and _cap() == 5000.0
+    assert r.status_code == 200 and "Cap per day no cap → $5,000.00" in html and _cap() == 5000.0
     # No cap kept ticked with nothing else changed writes nothing.
     _set(networks, None)
     r, html = _save(networks, "", no_cap="on")

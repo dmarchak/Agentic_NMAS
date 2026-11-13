@@ -440,8 +440,8 @@ panel**, which opens the top bar's spend panel in place on the page you are on (
   month cap, and stopped when it reached one. These clear when the day or month ends, or when
   its caps change or it is turned off.
 - **A background feature running above its estimate**: at 150% or more of the estimate it was
-  approved at ("running at 367% of the estimate it was approved at ($0.4400 a day against
-  $0.1200)"), its average over the complete days since it was turned on. It clears when that
+  approved at ("running at 367% of the estimate it was approved at ($0.44 a day against
+  $0.12)"), its average over the complete days since it was turned on. It clears when that
   average falls under 150%, when an admin turns it on again with a new estimate, or when it is
   turned off.
 - **A background feature's approval ending**, per network: from 3 days before its 14-day

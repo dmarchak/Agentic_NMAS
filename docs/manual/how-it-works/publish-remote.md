@@ -114,7 +114,7 @@ while a push is held, or while the remote has no branch yet. It needs a signed-i
    Recorded: the reader's answer, which redraws the header.
 
 The button says **Pushed**, or **Not pushed** with the reason. Automatic pushing can then be
-turned on in [Remote set-up…](#auto-push), whose Last push says how it went (manual or auto)
+turned on in [Remote set-up…](#auto-push), whose Last push says how it went (Manual or Auto)
 and what went out: the commit and its tags, or a tag only.
 
 ## Verify the remote {#verify}

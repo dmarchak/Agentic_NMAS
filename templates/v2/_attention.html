@@ -298,7 +298,7 @@
         {%- set dd = hd.result %}
         <p>{{ badge(dd.chip, dd.level) }} <span class="small muted">{{ dd.runbook_words }}{% if dd.actor %}, by {{ dd.actor | people }}{% endif %}, {{ dd.commands }} read(s) on {{ dd.devices | join(' and ') }}{% if dd.finished_at %}, {{ stamp(dd.finished_at) }}{% endif %}{% if dd.incident %}, incident <span class="mono">{{ dd.incident }}</span>{% endif %}</span></p>
         {%- if dd.hypotheses %}
-        <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo }}.{% endif %}</li>{% endfor %}</ol>
+        <ol class="set-list small">{% for h in dd.hypotheses %}<li>{{ h.claim | times }} <span class="muted">({{ h.strength }}, {{ h.layer }}{% if h.incomplete %}; evidence incomplete: {{ h.incomplete | join('; ') }}{% endif %})</span>{% if h.todo %} {{ h.todo | times }}.{% endif %}</li>{% endfor %}</ol>
         {%- else %}
         <p class="small">{{ dd.words or 'no cause found in what Mercury reads' }}.</p>
         {%- endif %}

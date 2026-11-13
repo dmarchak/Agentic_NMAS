@@ -19,7 +19,8 @@ Compared again 2026-11-07 (C2700), by the template: `_deploy.html` draws The pro
 `_macros.html`'s `program_lines` (a guide per level before a nested line, docs/fidelity/device.md
 says it); the Change record part, its place and its foot are unchanged, so no region below moved.
 Templates sha256 before: `052c3c83b90fcb6632fae9efdb21d43e6af59ccc23bf9e023bbffcf791cec650`.
-Templates sha256: `b58af4ae7e61b63a5c6ae9be23ea66133157ff8e59bbec903d223d204c0aa3c1`
+Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_change_record.html` draws the drafting call's cost through the `usd` filter (`modules.money.usd`, an exact amount: four places when it is no whole number of cents, as before; cents alone otherwise). No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `b58af4ae7e61b63a5c6ae9be23ea66133157ff8e59bbec903d223d204c0aa3c1`.
+Templates sha256: `20d5e91b9e2e54f8b8a512045735e093b6d7590e9196e266aa4d5cb105d59c41`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_change_record.html`, the draft's "trigger person

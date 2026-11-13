@@ -28,6 +28,7 @@ without the mark.
 """
 import logging
 
+from modules import money as _money
 from modules.ai import calls, gateway, profiles, provider_limit
 
 log = logging.getLogger(__name__)
@@ -224,7 +225,7 @@ def mark_title(task: str) -> str:
     pin = profiles.task(task)
     model = profiles.profile(pin["model"])
     return (f"AI: {pin['words']}. Pinned model: {model['words']} ({pin['model']}). "
-            f"At most ${profiles.cap_per_call(task):.4f} a call.")
+            f"At most {_money.usd(profiles.cap_per_call(task), exact=True)} a call.")
 
 
 def readiness(task: str, today: str = None, spent=None) -> dict:

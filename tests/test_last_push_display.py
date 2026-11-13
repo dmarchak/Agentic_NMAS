@@ -76,10 +76,10 @@ class TestItSaysHowItWasPublished:
     that made this field misleading."""
 
     def test_a_person_reads_as_manual(self, networks):  # noqa: F811
-        assert '<span class="badge badge-neutral">manual</span>' in render(networks, MANUAL_COMMIT)
+        assert '<span class="badge badge-neutral">Manual</span>' in render(networks, MANUAL_COMMIT)
 
     def test_the_hook_reads_as_auto(self, networks):  # noqa: F811
-        assert '<span class="badge badge-neutral">auto</span>' in render(networks, AUTO_TAG_ONLY)
+        assert '<span class="badge badge-neutral">Auto</span>' in render(networks, AUTO_TAG_ONLY)
 
     def test_the_actor_is_still_named(self, networks):  # noqa: F811
         # By display name (board E2a), never the address.

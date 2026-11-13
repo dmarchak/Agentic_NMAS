@@ -30,7 +30,7 @@
     <label class="lq-lab" for="pol-words">The policy, as you would say it {{ ai.mark(aic) }}</label>
     <textarea id="pol-words" name="words" rows="2" maxlength="300" required placeholder="Block desk2 from reaching the web servers on TCP 443 for an hour"{{ ai.input_attrs(aic) }}></textarea>
     <div class="row pol-draft-row"><span class="op-act"><button type="submit" class="btn btn-primary" data-op="sdn-policy" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="Resolves the names in code, then one recorded AI call, capped, drafts the policy; every check is code; nothing is sent to a switch"><span class="op-idle">Draft the policy</span><span class="op-busy">Drafting…</span></button>{{ how('sdn-policy') }}</span>
-    <span class="faint small">{{ g.pin.model }} (the economy tier) · at most ${{ g.pin.cap }} a call{% if g.export.sha256 %} · checked against the committed NSOT export <span class="mono" title="sha256:{{ g.export.sha256 }}">{{ g.export.sha256[:7] }}</span>{% endif %}</span></div>
+    <span class="faint small">{{ g.pin.model }} (the economy tier) · at most {{ g.pin.cap | usd(true) }} a call{% if g.export.sha256 %} · checked against the committed NSOT export <span class="mono" title="sha256:{{ g.export.sha256 }}">{{ g.export.sha256[:7] }}</span>{% endif %}</span></div>
     {{- ai.reason(aic) }}
   </form>
   <div id="pol-answer" aria-live="polite"></div>

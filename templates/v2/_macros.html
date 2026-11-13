@@ -144,6 +144,17 @@ resets {{ clock(r.at, note=r.zone_hm ~ " " ~ r.zone ~ ": the cap's day begins at
 {{ clock(m.at, 'date') }}
 {%- endmacro %}
 
+{#- The one time-zone picker (the operator, 2026-11-13: "The day begins at" as a time-zone
+    picker): a field that offers the viewer's own kept zone first, then UTC, then every zone
+    this host's database holds (`zone_names`, routes/__init__.py), chosen from the list or
+    typed to narrow it. The Time zone card (_time_zone.html) and a settings card's zone field
+    (_install_card.html) both draw it; the save still checks what was sent. Its parameters are
+    named apart from any field a page carries. -#}
+{% macro zone_picker(zone_id, zone_field, zone_value='') -%}
+<input id="{{ zone_id }}" name="{{ zone_field }}" type="text" class="zone-pick" list="{{ zone_id }}-names" value="{{ zone_value }}" placeholder="America/Denver" autocomplete="off" spellcheck="false" title="A time zone: choose one, or type part of its name (America/Denver, Europe/London, UTC)">
+<datalist id="{{ zone_id }}-names">{% for z in zone_names() %}<option value="{{ z }}"></option>{% endfor %}</datalist>
+{%- endmacro %}
+
 {#- The provider's workspace usage limit, in the words every AI screen shares (C2084): *u* is
     `provider_limit.said`'s. -#}
 {% macro unavailable(u) -%}

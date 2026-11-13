@@ -112,8 +112,12 @@ class Refused(D.Refused):
     """The runbook asks no device; the words say why."""
 
 
-def _hhmm(epoch: float) -> str:
-    return time.strftime("%H:%M", time.gmtime(float(epoch)))
+def _at(epoch: float) -> str:
+    """An instant as this module writes it into its words: ISO, UTC. Python builds no time
+    words for a screen (docs/UI_RULES.md, one time zone per screen; C3290): the screen draws
+    it through the `times` filter in the viewer's zone, its UTC on the hover, and an email in
+    the installation's (`notify.message.localised`)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(epoch)))
 
 
 def _ago(seconds: float) -> str:
@@ -704,10 +708,10 @@ def run_plan(p: dict, out: dict, actor: str, *, session=None, logs=None, collect
 def _cause_step(cause: dict) -> str:
     state = cause.get("state")
     if state == "cleared":
-        return (f"{cause['device']} changed at {_hhmm(cause['changed_at'])} UTC and was "
-                f"{cause['how']} at {_hhmm(cause['cleared_at'])} UTC (the heal records)")
+        return (f"{cause['device']} changed at {_at(cause['changed_at'])} and was "
+                f"{cause['how']} at {_at(cause['cleared_at'])} (the heal records)")
     if state == "stands":
-        return (f"{cause['device']} changed at {_hhmm(cause['changed_at'])} UTC, and no decision "
+        return (f"{cause['device']} changed at {_at(cause['changed_at'])}, and no decision "
                 "has read it back at intent since (the heal records)")
     return f"no cause named: {cause.get('why') or 'not read'}"
 
@@ -1025,8 +1029,8 @@ def _r_stream_flowing(rule, ctx):
 
 def _cause_ev(cause: dict) -> dict:
     return D.ev(f"the heal records of {cause['device']}",
-                f"{cause['device']} changed at {_hhmm(cause['changed_at'])} UTC" + (
-                    f", {cause['how']} at {_hhmm(cause['cleared_at'])} UTC"
+                f"{cause['device']} changed at {_at(cause['changed_at'])}" + (
+                    f", {cause['how']} at {_at(cause['cleared_at'])}"
                     if cause.get("cleared_at") else ""))
 
 
@@ -1053,7 +1057,7 @@ def _r_outlived_cause(rule, ctx):
         return [], ""
     return [D.finding(rule, (f"{ctx.host}'s telemetry hasn't recovered since "
                              f"{cause['device']} was {cause['how']} at "
-                             f"{_hhmm(cause['cleared_at'])} UTC, {_ago(age)} before this "
+                             f"{_at(cause['cleared_at'])}, {_ago(age)} before this "
                              "diagnosis: the stream outlived its cause, so it is stuck at "
                              f"{ctx.host} or the collector, not waiting on {cause['device']}"),
                       [_cause_ev(cause)],
@@ -1070,19 +1074,19 @@ def _r_cause_just_cleared(rule, ctx):
         return [], (f"{cause['device']} was {cause['how']} {_ago(age)} before this "
                     f"diagnosis, longer than the lost-stream alert takes to clear ({settle} s)")
     return [D.finding(rule, (f"{cause['device']} was {cause['how']} at "
-                             f"{_hhmm(cause['cleared_at'])} UTC, {_ago(age)} before this "
+                             f"{_at(cause['cleared_at'])}, {_ago(age)} before this "
                              f"diagnosis, sooner than the lost-stream alert can clear "
                              f"({settle} s): {ctx.host}'s stream may be back already"),
                       [_cause_ev(cause)], rule_out="the alert's clearing time passing",
                       todo=(f"Diagnose again after "
-                            f"{_hhmm(float(cause['cleared_at']) + settle)} UTC"))], ""
+                            f"{_at(float(cause['cleared_at']) + settle)}"))], ""
 
 
 def _r_cause_stands(rule, ctx):
     if not _cause_why(ctx, rule, "stands"):
         return [], ""
     cause = ctx.cause
-    return [D.finding(rule, (f"{cause['device']}'s change at {_hhmm(cause['changed_at'])} UTC, "
+    return [D.finding(rule, (f"{cause['device']}'s change at {_at(cause['changed_at'])}, "
                              "the likely cause, has not been read back at intent: the stream "
                              "waits on it"), [_cause_ev(cause)],
                       rule_out=f"{cause['device']} read back at intent",
