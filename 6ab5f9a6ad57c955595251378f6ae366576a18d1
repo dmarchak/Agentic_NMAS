@@ -1,0 +1,90 @@
+{
+ "at": "2026-11-13T23:29:55Z",
+ "base": "94329fd2676c449a9aa2ee9a2d30a7b1a1e5002b",
+ "gate": "94329fd2676c449a9aa2ee9a2d30a7b1a1e5002b",
+ "host": "workstation",
+ "python": "3.12.3",
+ "schema": 1,
+ "scope": "full",
+ "sha": "6ab5f9a6ad57c955595251378f6ae366576a18d1",
+ "state": "passed",
+ "steps": [
+  {
+   "name": "the staged tree, as staged",
+   "number": "1",
+   "result": "staged; nothing staged by the gate"
+  },
+  {
+   "name": "the stage guard",
+   "number": "2",
+   "result": "passed"
+  },
+  {
+   "name": "the snapshot",
+   "number": "2b",
+   "result": "tree 1190a3a6e43a697a6e1c7b22f436af5c3aeb7d77 of 94329fd2676c449a9aa2ee9a2d30a7b1a1e5002b"
+  },
+  {
+   "name": "CI's interpreter holds what CI installs",
+   "number": "3",
+   "result": "it does"
+  },
+  {
+   "name": "the suite",
+   "number": "4",
+   "result": "browser1: 6429 passed in 883.60s (0:14:43); browser2: 6031 passed in 883.56s (0:14:43); browser3: 4712 passed in 878.60s (0:14:38); a: 7191 passed in 891.99s (0:14:51); b: 5582 passed, 66 skipped in 877.99s (0:14:37)"
+  },
+  {
+   "name": "the tests of root's real files",
+   "number": "4c",
+   "result": "3 passed, 143 deselected in 2.51s"
+  },
+  {
+   "name": "every skip declared",
+   "number": "4d",
+   "result": "nmas-skip-check: 66 skip(s) in 6 file(s), 0 undeclared for gate"
+  },
+  {
+   "name": "the coverage ratchet",
+   "number": "4b",
+   "result": "holds"
+  },
+  {
+   "name": "the browser tests, unconfined",
+   "number": "5",
+   "result": "407 passed in 527.17s (0:08:47)"
+  },
+  {
+   "name": "the container harness on Python 3.5",
+   "number": "4e",
+   "result": "passed in 44 s: nmas-harness: app test run: the worked app passed 5 on Python 3.5 in 0.52 s (81d144faca6c); with one assert broken it failed 1 in 0.53 s (pytest exited 1: 1 failed, 0 errors, 4 passed)"
+  },
+  {
+   "name": "the container harness on Python 3.9",
+   "number": "4e",
+   "result": "passed in 44 s: nmas-harness: app test run: the worked app passed 5 on Python 3.9 in 0.52 s (81d144faca6c); with one assert broken it failed 1 in 0.51 s (pytest exited 1: 1 failed, 0 errors, 4 passed)"
+  },
+  {
+   "name": "the second pass, by the commit's own checks",
+   "number": "6a",
+   "result": "they agree"
+  },
+  {
+   "name": "the message",
+   "number": "6",
+   "result": "its first line starts with --expect"
+  },
+  {
+   "name": "commit, judged by the parent commit's hooks",
+   "number": "7",
+   "result": "committed 6ab5f9a6ad57c955595251378f6ae366576a18d1"
+  },
+  {
+   "name": "push",
+   "number": "8",
+   "result": "pushed 6ab5f9a6ad57c955595251378f6ae366576a18d1"
+  }
+ ],
+ "tree": "1190a3a6e43a697a6e1c7b22f436af5c3aeb7d77",
+ "workers": 2
+}
