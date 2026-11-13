@@ -73,6 +73,7 @@ import os
 import time
 from enum import Enum
 
+from modules import display_names
 from modules.ai import calls, gateway
 from modules.ai import read_loop as RL
 from modules.ai import router_reads as RR
@@ -604,6 +605,12 @@ def analyse(network: str, incident_id: str, *, job: str, send=None, today: str =
         out = dict(base, state="not_cant_fix", detail=str(exc),
                    words=words_of("not_cant_fix", str(exc)))
         return _kept(network, out, keep)
+    except display_names.LabelKeyMissing as exc:      # C3458: said, and nothing is sent
+        log.error("heal analysis: %s's incident %s was not asked: %s", network, incident_id,
+                  exc)
+        out = dict(base, state="couldnt_analyse", detail=str(exc),
+                   words=words_of("couldnt_analyse", str(exc)))
+        return _stepped(network, _kept(network, out, keep), keep)
     except Exception as exc:                          # said, and nothing is sent
         log.error("heal analysis: %s's incident %s could not be read: %s", network,
                   incident_id, exc)

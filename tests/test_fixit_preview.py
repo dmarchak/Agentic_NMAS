@@ -155,6 +155,49 @@ def test_the_preview_asks_no_provider_and_writes_nothing(ai, reads, monkeypatch,
     assert ai.sent == []
 
 
+def _no_label_key_held(mp):
+    """No label key held by this process (the suite's planted one taken away), and none in
+    the store: ``(the stored value to put back, the settings writer)``."""
+    from modules import display_names, secrets_store
+    from modules.config import get_user_setting, set_user_setting
+    mp.delitem(display_names._LABEL_KEY, "key", raising=False)
+    was = get_user_setting(display_names.LABEL_KEY_SETTING, "")
+    secrets_store.set_secret(display_names.LABEL_KEY_SETTING, "")
+    return was, set_user_setting
+
+
+@pytest.mark.parametrize("installed", [False, True], ids=["no key", "installed key"])
+def test_the_preview_writes_nothing_whatever_asked_for_the_label_key_first(
+        ai, reads, monkeypatch, tmp_path, installed):  # noqa: F811
+    """C3458: the preview the first thing in its process to ask for the label key (none held),
+    with none installed: refused, the key named, nothing sent and nothing written (it once made
+    the key, writing user_settings.json); with one installed at the start: labelled from it,
+    and nothing written either."""
+    from modules import display_names
+    _class(monkeypatch, False)
+    iid = stopped(ai)
+    was, put_back = _no_label_key_held(monkeypatch)
+    try:
+        if installed:
+            assert display_names.install_label_key() == "installed"
+        before = _tree(tmp_path, os.environ["NMAS_DATA_DIR"])
+        with pytest.MonkeyPatch.context() as mp:
+            reached = _no_way_out(mp)
+            got = _script().preview(NET, iid, actor="operator")
+        assert reached == [], reached
+        assert _tree(tmp_path, os.environ["NMAS_DATA_DIR"]) == before, "a store was written"
+        if installed:
+            assert got["preview"]["first"]["body"], got
+            assert "person-" in json.dumps(got["preview"]["first"]["body"])
+        else:
+            assert "preview" not in got, "a person was labelled with no key installed"
+            assert display_names.LABEL_KEY_SETTING in got["error"], got
+            assert "nothing was sent" in got["error"]
+        assert ai.sent == []
+    finally:
+        put_back(display_names.LABEL_KEY_SETTING, was)
+
+
 def test_a_pass_1_the_gateway_refuses_prints_no_body_and_runs_no_read(ai, reads,  # noqa: F811
                                                                      monkeypatch):
     """A request the gateway refuses is never sent, so a press would run no read: the preview

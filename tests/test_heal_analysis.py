@@ -173,6 +173,39 @@ class TestTheTrigger:
         assert got["state"] == "couldnt_analyse" and "could not be read" in got["words"]
         assert ai.sent == []
 
+    def test_a_pack_naming_a_person_with_no_label_key_asks_nothing_and_names_the_key(
+            self, ai, monkeypatch):
+        """C3458: the incident's pack names a person and no label key is installed: nothing
+        is sent, no key is made, and the words name the missing key (never "could not be
+        read": the step log read)."""
+        from modules import display_names, secrets_store
+        from modules import evidence_pack as EP
+        from modules.config import get_user_setting, set_user_setting
+        turn_on()
+        inc = cant_fix()
+        built = EP.build_incident
+
+        def naming_a_person(*a, **kw):
+            pack = built(*a, **kw)
+            pack["sections"].append({"ref": "history", "name": "history", "state": "ok",
+                                     "pieces": [{"ref": "history:9", "kind": "note",
+                                                 "who": "alice.ops@example.com",
+                                                 "what": "checked the ACL"}]})
+            return pack
+        monkeypatch.setattr(EP, "build_incident", naming_a_person)
+        monkeypatch.delitem(display_names._LABEL_KEY, "key", raising=False)
+        was = get_user_setting(display_names.LABEL_KEY_SETTING, "")
+        secrets_store.set_secret(display_names.LABEL_KEY_SETTING, "")
+        try:
+            got = analyse(ai, inc)
+            assert get_user_setting(display_names.LABEL_KEY_SETTING, "") == "", "a key made"
+        finally:
+            set_user_setting(display_names.LABEL_KEY_SETTING, was)
+        assert got["state"] == "couldnt_analyse", got
+        assert display_names.LABEL_KEY_SETTING in got["words"]
+        assert "nothing was sent" in got["words"] and "could not be read" not in got["words"]
+        assert ai.sent == []
+
 
 # ── Off by default per network ────────────────────────────────────────────────────────────────
 

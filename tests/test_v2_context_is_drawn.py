@@ -869,7 +869,14 @@ def _flat(table):
 
 @pytest.fixture(scope="module")
 def measured():
-    return V.measure()
+    # The walk runs once per module, before any test's own fixtures, so it holds the planted
+    # label key itself (C3458: the conftest plants it per test; with none, an AI card the walk
+    # draws, such as Explain's, would say no key is installed in place of its fields).
+    from modules import display_names
+    from tests.conftest import PLANTED_LABEL_KEY
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(display_names._LABEL_KEY, "key", PLANTED_LABEL_KEY)
+        return V.measure()
 
 
 def _forward(measured):

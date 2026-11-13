@@ -4462,3 +4462,68 @@ passed. **Runs:** 2026-11-13 06:50:47 to 06:54:52 UTC; P3 again to 06:55:47 UTC.
 **The result: 6 mutants and the canary; 5 killed in the first run, P3 killed once its test was
 added, none equivalent.** Not mutated: `credentials.set_read_account` and the store's sealing
 (unchanged here), `redact`'s masks (C3424's section above).
+
+## 2026-11-13: the person label key installed at the start, never by a read (C3458), by hand
+
+**What changed in the tier:** when the secret a person's label is keyed under is made, and
+what an AI request does without it. A gate's doc-set run (2026-11-13) failed
+tests/test_fixit_preview.py's "writes nothing" test: the r7 press preview, a read that must
+write nothing, was the first in its worker to ask for the label key, and `_label_key` made it
+there, writing user_settings.json. The operator's words for the key (C3426): "generated at
+install, kept in the credential store, never sent or shown".
+- `display_names._label_key`: reads the key and holds it; with none stored (or one that cannot
+  be opened) it raises `LabelKeyMissing`, naming `person_label_key`, and makes none.
+- `display_names.install_label_key` (new): generates and seals the key when none is stored,
+  under the settings lock, read again inside it; a stored key is kept, one that cannot be
+  opened included (never written over). Called by app.py's `_install` (new), run only when
+  app.py runs as a program, before the background services start and before it serves.
+- The refusals, nothing sent and no key made: the gateway's `request_body` (`label_key`, a
+  not-sent kind in `read_loop.NOT_SENT_KINDS` and a gate verdict in
+  `history_export.GATE_VERDICTS`); `Counter.measure` estimates and never asks the provider's
+  count for a body it could not label; Explain's `_prepare_pack` (its `done` refusal); AI
+  troubleshooting's `request` (`Refused`, its press and its preview); the heal analysis
+  (`couldnt_analyse`, the key named); a refused read's row in the read loop keeps its person
+  as written, so the pass that would carry it is refused by the gateway.
+- The suite: every test's process holds a planted key (tests/conftest.py
+  `_a_label_key_installed`, `PLANTED_LABEL_KEY`, put back after each test), so no test's
+  labels depend on which test asked first and none writes the store; a test of the key takes
+  it away.
+
+The danger the hand check guards: a key made by a read (a preview or a page writing the
+store), a person's address sent because no key labelled it, a label the code alone computes,
+two keys for one installation, and a stored key written over.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/c3458-agent/mut.py`), in a `scripts/nmas-control` throwaway worktree of the working
+tree; then tests/test_ai_requests_carry_no_address.py, test_fixit_preview.py,
+test_heal_analysis.py, test_evidence_pack.py, test_ai_gateway.py, test_ai_token_count.py,
+test_display_names.py, test_provider_redaction.py, test_explain_card.py and
+test_fixit_payload.py, no `-x`, in CI's interpreter, confined, two workers. Baseline: 324
+passed, 1 skipped. **Runs:** 2026-11-13 12:20:08 to 12:28:03 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: every label one constant | killed (5 failed) | every section sent, two presses, two keys, the start's install, the fix-it payload's stable labels |
+| CTL1 the start's install dropped from app.py's `__main__` | killed | `test_the_program_installs_the_key_before_it_serves` |
+| CTL2 a read generates the key again (`_label_key` installs it) | killed (8 failed) | `test_a_label_with_no_key_installed_fails_closed_and_writes_nothing`, `test_the_preview_writes_nothing_whatever_asked_for_the_label_key_first[no key]`, the heal analysis's, Explain's, the gateway's, the count's and the refused read's no-key tests, the unopenable key |
+| CTL3 the gateway's missing-key refusal dropped (the request sent unlabelled) | killed (2 failed) | `test_with_no_key_a_request_naming_a_person_is_refused_and_nothing_sent`, `test_with_no_key_a_refused_read_keeps_its_people_for_the_gateway_to_refuse` |
+| K1 the operator's: the key dropped from the HMAC (an empty key) | killed (11 failed) | `test_a_label_cannot_be_recomputed_from_the_code_alone`, `test_two_presses_give_each_person_the_same_label` (its independent keyed digest), `test_the_start_installs_the_key_once` (the same), every no-key test |
+| K1b the key dropped, a passed key too | killed (12 failed) | the same, and `test_a_label_is_keyed_two_keys_two_labels` |
+| I1 `_install` installs nothing | killed | `test_the_start_installs_the_key_once` |
+| I2 a key made at every start | killed (3 failed) | the start's install (two starts, one key), the lock, the unopenable key |
+| I3 a key that cannot be opened written over | killed | `test_the_install_never_writes_over_a_key_it_cannot_open` |
+| I4 the install outside the settings lock | killed | `test_the_install_reads_and_writes_under_the_settings_lock` |
+| G2 the refusal's kind another gate's (`prompt`) | killed (3 failed) | the gateway's, Explain's and the refused read's no-key tests |
+| V1 `label_key` not a not-sent kind | killed | `test_with_no_key_a_request_naming_a_person_is_refused_and_nothing_sent` (`read_loop.left_host`) |
+| V2 `label_key` not a gate verdict in History's export | killed | the same (`history_export.outcome`) |
+| N1 the count asked of the provider for an unlabelled body | killed | `test_with_no_key_a_count_is_never_asked_of_the_provider` |
+| X1 Explain's refusal dropped | killed | `test_with_no_key_explain_is_refused_and_nothing_sent` |
+| F1 AI troubleshooting's refusal dropped | killed | `test_the_preview_writes_nothing_whatever_asked_for_the_label_key_first[no key]` |
+| H1 the heal analysis's named branch dropped (the generic "could not be read") | killed | `test_a_pack_naming_a_person_with_no_label_key_asks_nothing_and_names_the_key` |
+| L1 the read loop's refused row raises with no key | killed | `test_with_no_key_a_refused_read_keeps_its_people_for_the_gateway_to_refuse` |
+
+**The result: 17 mutants and the canary, all killed in their first run, none equivalent.** Not
+mutated: `display_names.label`'s digest and `redact.egress_payload`'s labelling (C3424's section
+above; unchanged here but for the key's source), and the evaluation scripts
+(scripts/nmas-fixit-cases, scripts/nmas-heal-cases), which run on the host where the start has
+installed the key.

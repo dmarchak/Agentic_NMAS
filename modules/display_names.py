@@ -201,34 +201,71 @@ def people_payload(value):
 
 #: The per-installation secret a person's label is keyed under (C3426; the operator,
 #: 2026-11-13: "labels are a keyed hash (HMAC) under a per-installation secret, generated at
-#: install, kept in the credential store, never sent or shown"): generated on the
-#: installation's first label, sealed in the settings' credential store (`secrets_store`,
-#: `SECRET_KEYS`, masked on every read), held in this process once read.
+#: install, kept in the credential store, never sent or shown"): generated at install, when
+#: Mercury starts (`install_label_key`, from app.py's start, before a request is served),
+#: sealed in the settings' credential store (`secrets_store`, `SECRET_KEYS`, masked on every
+#: read), held in this process once read. **Never generated on a read** (C3458: a preview, a
+#: read that must write nothing, wrote the store when it was the first to ask): a label asked
+#: for with no key installed fails closed (`LabelKeyMissing`), and the AI request it was for
+#: is refused with nothing sent. A screen never needs it: screens draw display names.
 LABEL_KEY_SETTING = "person_label_key"
 _LABEL_KEY = {}
 
 
+class LabelKeyMissing(RuntimeError):
+    """No label key is installed (or the stored one cannot be opened): a person in an AI
+    request cannot be labelled, so the request is refused and nothing is sent. The message
+    names the key, never a value."""
+
+
+#: What every refusal for a missing key says (`LabelKeyMissing`'s message).
+NO_LABEL_KEY = (f"no person label key is installed ({LABEL_KEY_SETTING}, in the credential "
+                "store): a person in this AI request cannot be labelled, so nothing was sent; "
+                "Mercury installs the key when it starts")
+
+
 def _label_key() -> bytes:
-    """This installation's label key: read from the credential store, or generated there once
-    (under the settings lock, read again inside it, so two processes keep one key). Never
-    logged, sent or returned by any route."""
+    """This installation's label key, read from the credential store and held once read.
+    Raises `LabelKeyMissing` when none is installed, or the stored one cannot be opened: it
+    is installed at Mercury's start (`install_label_key`), never here, so a read writes
+    nothing. Never logged, sent or returned by any route."""
     held = _LABEL_KEY.get("key")
     if held is not None:
         return held
     from modules import secrets_store
-    from modules.config import settings_lock
 
+    # The literal key, not LABEL_KEY_SETTING: a global read of a computed key is listed by
+    # tests/test_network_settings_read_for_a_list.py, and this one names a single key.
     value = secrets_store.get_secret("person_label_key")
     if not value:
-        with settings_lock():
-            value = secrets_store.get_secret("person_label_key")
-            if not value:
-                import secrets
-                value = secrets.token_hex(32)
-                secrets_store.set_secret("person_label_key", value)
-                log.info("display names: this installation's label key was generated and sealed")
+        raise LabelKeyMissing(NO_LABEL_KEY)
     _LABEL_KEY["key"] = value.encode("utf-8")
     return _LABEL_KEY["key"]
+
+
+def install_label_key() -> str:
+    """Install this installation's label key, once: generated and sealed in the credential
+    store when none is stored (under the settings lock, read again inside it, so two starting
+    processes keep one key). Called by Mercury's start (app.py), before any request is served;
+    never by a read. ``"installed"`` (generated now), ``"present"`` (one was stored already),
+    or ``"unreadable"``: a value is stored that cannot be opened (a restored or rotated
+    ``key.key``), which is never written over, so labels fail closed until it is fixed.
+    Never logs or returns the value."""
+    from modules import secrets_store
+    from modules.config import settings_lock
+
+    with settings_lock():
+        if secrets_store.is_set("person_label_key"):
+            if secrets_store.get_secret("person_label_key"):
+                return "present"
+            log.error("display names: the stored label key (%s) cannot be opened; it is not "
+                      "written over, and every AI request naming a person is refused until it "
+                      "is", LABEL_KEY_SETTING)
+            return "unreadable"
+        import secrets
+        secrets_store.set_secret("person_label_key", secrets.token_hex(32))
+    log.info("display names: this installation's label key was generated and sealed")
+    return "installed"
 
 
 def label(actor: str, key: bytes = None) -> str:

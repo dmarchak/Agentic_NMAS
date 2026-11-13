@@ -1222,6 +1222,19 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
 
 
 def _prepare_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> dict:
+    """`_prepared_pack`, or its refusal when a person in the pack cannot be labelled because no
+    label key is installed (C3458, `display_names.LabelKeyMissing`): ``{"done": {"ok": False,
+    "error": "label_key", ...}}``, the key named, nothing sent and no key made."""
+    from modules import display_names
+
+    try:
+        return _prepared_pack(pack, actor=actor, trigger=trigger, prompt=prompt)
+    except display_names.LabelKeyMissing as exc:
+        return {"done": {"ok": False, "error": gateway.LABEL_KEY_REFUSAL,
+                         "pack_id": pack.get("id") or "", "detail": str(exc)}}
+
+
+def _prepared_pack(pack: dict, *, actor: str, trigger: dict, prompt: tuple) -> dict:
     """What `explain_pack` sends for *pack* with *prompt*, before any call: ``{"done": <its
     refusal>}`` (a pack changed since it was built, or a network AI is forced off for), or
     ``{"schema", "data", "ctx", "subject", "round", ...}``, the request's parts and what the

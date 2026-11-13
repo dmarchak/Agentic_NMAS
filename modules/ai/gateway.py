@@ -28,7 +28,8 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    ``typed_masked``; a question with nothing to mask is sent as typed, and nothing is said).
    Then the request built (the prompt as the system text, each part as delimited data, never
    as instructions), then `redact.egress_payload` over all of it; a known stored secret still
-   present refuses the call (`unmasked_secret`), naming its label.
+   present refuses the call (`unmasked_secret`), naming its label, and a person in it while no
+   label key is installed refuses it too (`label_key`, C3458), naming the key.
 5. **The prompt's length** (C1898): the provider's count of the masked request (`Counter`,
    `anthropic_adapter.count_tokens`), or, when the count is not had, the fallback
    over-estimate from its size (`CHARS_PER_TOKEN`, calibrated against the recorded calls),
@@ -175,6 +176,9 @@ MASK_WORDS = {
 }
 #: A value masked because Mercury holds it (`redact.known_secret_values`).
 BY_VALUE_WORDS = "a credential Mercury holds"
+#: The refusal of a request naming a person while no label key is installed (C3458,
+#: `display_names.LabelKeyMissing`): nothing is sent, and no key is made by the request.
+LABEL_KEY_REFUSAL = "label_key"
 
 _MASK = re.compile(r"<redacted:([^<>\s]*)>")
 
@@ -405,16 +409,25 @@ class Counter:
         body is already masked (the gateway's own)."""
         import hashlib
 
-        from modules import redact
+        from modules import display_names, redact
 
+        unlabelled = False
         if not masked:
-            body = redact.egress_payload(body)
+            try:
+                body = redact.egress_payload(body)
+            except display_names.LabelKeyMissing:
+                # A person in it and no label key (C3458): estimated here, never counted by
+                # the provider; the call that would send it is refused (`label_key`).
+                body, unlabelled = redact.egress_payload(body, people=False), True
         chars = len(json.dumps(body, ensure_ascii=False))
         est = tokens_of_chars(chars)
 
         def estimated(why):
             return {"tokens": est, "how": "estimated", "why": why,
                     "chars_per_token": CHARS_PER_TOKEN}
+
+        if unlabelled:
+            return estimated(display_names.NO_LABEL_KEY)
 
         if budget is not None and est <= budget:
             return estimated("the fallback over-estimate is within the bound, so no count "
@@ -654,10 +667,16 @@ def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
     # background feature's calls share their prefix and keep it.
     ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
     marked = bool(cache_ttl) or kind != triggers.PERSON
-    body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"], asked,
-                                               context=context, profile=profile,
-                                               cache=marked, **ttl),
-                                 values)
+    from modules import display_names
+    try:
+        body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"],
+                                                   asked, context=context, profile=profile,
+                                                   cache=marked, **ttl),
+                                     values)
+    except display_names.LabelKeyMissing as exc:
+        # A person in the request and no label key to name them by (C3458): refused, never
+        # sent with the address in it, and never a key made here (a preview builds this body).
+        return refused(LABEL_KEY_REFUSAL, str(exc))
     leaked = redact.contains_known_secret(body)
     if leaked:
         return refused("unmasked_secret", "a stored secret is still in the request after "

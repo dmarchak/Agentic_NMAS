@@ -138,8 +138,9 @@ DEFAULTS: dict = {
     # (the operator, 2026-10-27); null is "no cap", chosen explicitly.
     "anthropic_api_key":        "",
     # The key a person's label in an AI request is an HMAC under (C3426, display_names.label):
-    # generated on the installation's first label, sealed (secrets_store.SECRET_KEYS), never
-    # sent or shown. Empty until then, which is no label key yet, never a key of "".
+    # generated at install, when Mercury starts (display_names.install_label_key, C3458),
+    # sealed (secrets_store.SECRET_KEYS), never sent or shown. Empty until then, which is no
+    # label key yet, never a key of "": a request naming a person is then refused.
     "person_label_key":         "",
     "ai_hosted":                {},
     # Retiring (2026-10-25): each task's per-call cap is derived from its pin

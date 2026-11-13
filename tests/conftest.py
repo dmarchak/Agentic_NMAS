@@ -724,6 +724,23 @@ def syslog_job_measured(monkeypatch):
     monkeypatch.setattr(device_logs, "_JOBS", {})
 
 
+#: The label key every test's process holds (C3458), as an installed one is held once read:
+#: the product makes its key only at Mercury's start (`display_names.install_label_key`), never
+#: on a read, so a test that builds an AI request naming a person has one without any test's
+#: run writing the store. A test of the key itself takes it away (`monkeypatch.delitem`).
+PLANTED_LABEL_KEY = b"test-installation-label-key-c3458"
+
+
+@pytest.fixture(autouse=True)
+def _a_label_key_installed(monkeypatch):
+    """Each test holds `PLANTED_LABEL_KEY` in `display_names._LABEL_KEY` (put back as it was
+    after), so no test's labels depend on which test asked for the key first, and none writes
+    the store to make one (C3458)."""
+    from modules import display_names
+
+    monkeypatch.setitem(display_names._LABEL_KEY, "key", PLANTED_LABEL_KEY)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact

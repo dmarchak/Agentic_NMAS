@@ -281,7 +281,9 @@ a captured configuration, a deploy's program or a credential. On screen a pack n
 by their display name. What an AI is sent of it names every person by a stable label
 ("person-3f9a1c"), keyed under this installation's own secret, never their sign-in address or
 name, and any address still anywhere in a request is replaced by its label before the request
-leaves {{product}}. A line that reads like an instruction (in an interface description, a log line or
+leaves {{product}}. The secret is made at install, when {{product}} starts, kept in its
+credential store and never shown; if it is missing, a request that names a person is refused,
+saying so, and nothing is sent. A line that reads like an instruction (in an interface description, a log line or
 a label) is kept and drawn as text; nothing in a pack is followed.
 
 ## Explain {#explain}

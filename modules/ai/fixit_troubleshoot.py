@@ -327,6 +327,21 @@ def read_set() -> str:
 
 def request(network: str, found: dict, incident, *, note: str = "", now: float = None,
             resolved: float = None, seen: dict = None, loki=None, prometheus=None) -> dict:
+    """`built_request`, or `Refused` with nothing sent when a person in it cannot be labelled
+    because no label key is installed (C3458, `display_names.LabelKeyMissing`, the key named):
+    a press and its preview alike, and no key is made by either."""
+    from modules import display_names
+
+    try:
+        return built_request(network, found, incident, note=note, now=now, resolved=resolved,
+                             seen=seen, loki=loki, prometheus=prometheus)
+    except display_names.LabelKeyMissing as exc:
+        raise Refused(f"Not asked: {exc}") from None
+
+
+def built_request(network: str, found: dict, incident, *, note: str = "", now: float = None,
+                  resolved: float = None, seen: dict = None, loki=None,
+                  prometheus=None) -> dict:
     """The investigation's request for the incident `incident_page.resolve` *found* (its
     `fixit.incident.Incident`, *incident*), before any call: ``{"pack", "topo", "sections",
     "checked_sections", "data", "ctx", "subject", "actable", "said"}``. *sections* are what is

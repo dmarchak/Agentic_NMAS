@@ -670,9 +670,27 @@ def _start_background_daemons():
         app.logger.error("Scheduled rotation timer did not start: %s", _e)
 
 
+def _install():
+    """What this installation needs before it serves a request, made once, at its start
+    (called ONLY when app.py runs as a program, never by importing it): the person label key
+    (C3426, C3458; the operator, 2026-11-13: "generated at install, kept in the credential
+    store"), generated and sealed when none is stored and kept as it is when one is
+    (`display_names.install_label_key`). No read makes it: an AI request naming a person with
+    no key installed is refused, and nothing is sent. A failure is logged and the app still
+    starts: labels then fail closed."""
+    try:
+        from modules import display_names as _display_names
+        return _display_names.install_label_key()
+    except Exception as _e:                   # noqa: BLE001
+        app.logger.error("The person label key was not installed (%s): every AI request "
+                         "naming a person is refused until it is", type(_e).__name__)
+        return "failed"
+
+
 # Run the Flask app with Socket.IO
 if __name__ == "__main__":
     import sys
+    _install()
     _start_background_daemons()
     try:
         url = f"http://{'127.0.0.1' if FLASK_HOST == '0.0.0.0' else FLASK_HOST}:{FLASK_PORT}"

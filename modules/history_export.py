@@ -80,7 +80,7 @@ OUTCOMES = {"ok": "ok", "validation": "refused by validation", "cap": "refused a
 CAP_VERDICTS = ("over_cap", "feature_cap")
 GATE_VERDICTS = ("trigger", "ai_off", "feature_off", "no_key", "workspace_limit",
                  "unknown_task", "typed_undeclared", "unknown_model", "thinking", "temperature",
-                 "prompt", "unmasked_secret", "prompt_too_long")
+                 "prompt", "unmasked_secret", "prompt_too_long", "label_key")
 
 #: The failure log's kinds, in the order the page counts them: (key, one, many).
 KINDS = (

@@ -143,7 +143,7 @@ CLI_VERBS = ("show", "ping", "traceroute")
 #: The gateway's refusals that are a cap (said as one), and those made before anything is sent.
 CAP_KINDS = {"over_cap": "a cap is reached", "feature_cap": "this feature's cap is reached"}
 NOT_SENT_KINDS = ("feature_off", "ai_off", "no_key", "trigger", "prompt_too_long",
-                  "unmasked_secret", "workspace_limit", "classified")
+                  "unmasked_secret", "workspace_limit", "classified", "label_key")
 
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 _PATH = re.compile(r"/[A-Za-z0-9_./{}:-]*")
@@ -725,6 +725,19 @@ def _judge(family: ReadFamily, raw, n: int, network: str, scope: dict, off: dict
             "reason": ""}
 
 
+def _refused_row(row: dict) -> dict:
+    """A refused read's row as pass 2 is sent it: masked for egress, each person labelled
+    (`redact.egress_payload`). With no label key installed (C3458) its people are left as
+    written here, and the gateway refuses the pass that would carry them (``label_key``):
+    nothing is sent, and no key is made by a read."""
+    from modules import display_names, redact
+
+    try:
+        return redact.egress_payload(row)
+    except display_names.LabelKeyMissing:
+        return redact.egress_payload(row, people=False)
+
+
 def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
           assume_on=()) -> list:
     """Each of pass 1's *requests* judged, in order: ``[{"id": "read:<n>", "verdict":
@@ -757,7 +770,7 @@ def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
             # is: one holding a value Mercury keeps secret is never any of those.
             row.update(verdict="refused", requests=[], args={},
                        reason=f"{row['op']}'s arguments hold a value Mercury keeps secret")
-        out.append(redact.egress_payload(row) if row["verdict"] == "refused"
+        out.append(_refused_row(row) if row["verdict"] == "refused"
                    else dict(row, why=redact.redact_egress(row["why"]),
                              hypothesis=redact.redact_egress(row["hypothesis"])))
     return out

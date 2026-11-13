@@ -45,7 +45,8 @@ SECRET_KEYS = (
     # write-only, typed by a person, never shown).
     "anthropic_api_key",
     # The key a person's label in an AI request is keyed under (C3426, display_names.label):
-    # generated on the installation's first label, never typed, sent or shown.
+    # generated at install, when Mercury starts (display_names.install_label_key, C3458), never
+    # on a read, and never typed, sent or shown.
     "person_label_key",
     "netbox_token",
     "prometheus_password",

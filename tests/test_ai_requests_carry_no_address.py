@@ -270,17 +270,17 @@ def test_a_label_is_keyed_two_keys_two_labels():
         assert display_names.LABEL.fullmatch(a) and display_names.LABEL.fullmatch(b), (a, b)
 
 
-def test_a_label_cannot_be_recomputed_from_the_code_alone(monkeypatch):
+def test_a_label_cannot_be_recomputed_from_the_code_alone(no_key, monkeypatch):
     """C3426: "the label can't be recomputed from the code alone": the installation's key is
-    generated on its first label, sealed in the credential store (never kept as plain text),
-    kept across reads (one key, so labels stay stable), and the label is neither the unkeyed
-    digest the code once used nor a digest under an empty or a guessable key."""
+    generated at install (C3458: Mercury's start, `display_names.install_label_key`, never a
+    label), sealed in the credential store (never kept as plain text), kept across reads (one
+    key, so labels stay stable), and the label is neither the unkeyed digest the code once used
+    nor a digest under an empty or a guessable key."""
     from modules import secrets_store
     from modules.config import get_user_setting
-    # A fresh installation: no key stored, none held by this process.
-    monkeypatch.delitem(display_names._LABEL_KEY, "key", raising=False)
-    secrets_store.set_secret(display_names.LABEL_KEY_SETTING, "")
+    # A fresh installation: no key stored, none held by this process (`no_key`).
     assert get_user_setting(display_names.LABEL_KEY_SETTING, "") == "", "no key before"
+    assert display_names.install_label_key() == "installed"
     first = display_names.label(ALICE)
     raw = get_user_setting(display_names.LABEL_KEY_SETTING, "")
     assert raw.startswith("enc:v1:"), "the key is sealed in the credential store"
@@ -309,6 +309,197 @@ def test_a_label_holds_no_part_of_the_address(address):
         for i in range(len(piece) - 2):
             assert piece[i:i + 3] not in tail, (piece, mark)
     assert "@" not in mark and "." not in mark
+
+
+# ── the key: installed at the start, never by a read (C3458) ─────────────────────────────────
+
+@pytest.fixture
+def no_key(monkeypatch):
+    """An installation with no label key: none stored (the test store's value put back after)
+    and none held by this process (the suite's planted key taken away for this test)."""
+    from modules import secrets_store
+    from modules.config import get_user_setting, set_user_setting
+    monkeypatch.delitem(display_names._LABEL_KEY, "key", raising=False)
+    was = get_user_setting(display_names.LABEL_KEY_SETTING, "")
+    secrets_store.set_secret(display_names.LABEL_KEY_SETTING, "")
+    yield
+    set_user_setting(display_names.LABEL_KEY_SETTING, was)
+
+
+def _settings_bytes() -> bytes:
+    from modules.config import USER_SETTINGS_FILE
+    try:
+        with open(USER_SETTINGS_FILE, "rb") as fh:
+            return fh.read()
+    except FileNotFoundError:
+        return b""
+
+
+def test_a_label_with_no_key_installed_fails_closed_and_writes_nothing(no_key):
+    """C3458: a label asked for with no key installed raises, naming the key, and makes none:
+    the store is byte for byte as it was (a read that must write nothing wrote it, when the
+    first label generated the key)."""
+    before = _settings_bytes()
+    for ask in (lambda: display_names.label(ALICE), lambda: display_names.labelled(f"by {BOB}"),
+                lambda: EP.people_labelled([{"name": "history", "pieces": [{"who": ALICE}]}])):
+        with pytest.raises(display_names.LabelKeyMissing) as raised:
+            ask()
+        assert display_names.LABEL_KEY_SETTING in str(raised.value)
+        assert "nothing was sent" in str(raised.value)
+    assert _settings_bytes() == before, "a label with no key wrote the store"
+    assert "key" not in display_names._LABEL_KEY
+    # Text with no person in it needs no key, and is left as it is.
+    assert display_names.labelled("no address here") == "no address here"
+
+
+def test_the_start_installs_the_key_once(no_key):
+    """Mercury's start (app.py `_install`) installs the key: two starts, one key, and the
+    second writes nothing."""
+    import app
+    from modules import secrets_store
+    from modules.config import get_user_setting
+    assert app._install() == "installed"
+    key = secrets_store.get_secret(display_names.LABEL_KEY_SETTING)
+    assert len(key) == 64 and get_user_setting(display_names.LABEL_KEY_SETTING).startswith(
+        "enc:v1:"), "a 32-byte key, sealed"
+    after_first = _settings_bytes()
+    assert app._install() == "present"
+    assert secrets_store.get_secret(display_names.LABEL_KEY_SETTING) == key
+    assert _settings_bytes() == after_first, "a second start wrote the store"
+    # Labels now come from the installed key, and asking for one writes nothing.
+    mark = "person-" + hmac.new(key.encode("utf-8"), ALICE.lower().encode("utf-8"),
+                                hashlib.sha256).hexdigest()[:6]
+    assert display_names.label(ALICE) == mark
+    assert _settings_bytes() == after_first
+
+
+def test_the_program_installs_the_key_before_it_serves(no_key):
+    """app.py run as a program calls `_install` before the background services start and
+    before it serves a request; importing it installs nothing (the suite imported it, and
+    `no_key` found no key held)."""
+    import ast
+    import os
+    tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "app.py"), encoding="utf-8").read())
+    (main,) = [n for n in tree.body if isinstance(n, ast.If)
+               and ast.unparse(n.test) == "__name__ == '__main__'"]
+    calls = [ast.unparse(c.func) for c in ast.walk(main) if isinstance(c, ast.Call)]
+    assert "_install" in calls, calls
+    assert calls.index("_install") < calls.index("_start_background_daemons") \
+        < calls.index("socketio.run"), calls
+    # Called only there: no module-level call that an import would run.
+    top = [ast.unparse(c.func) for n in tree.body if not isinstance(n, (ast.If, ast.FunctionDef))
+           for c in ast.walk(n) if isinstance(c, ast.Call)]
+    assert "_install" not in top and "install_label_key" not in " ".join(top)
+
+
+def test_the_install_reads_and_writes_under_the_settings_lock(no_key, monkeypatch):
+    """Two starting processes keep one key: the install's read and its write are both made
+    holding the settings lock (`config.settings_lock`, across processes)."""
+    import contextlib
+
+    from modules import config, secrets_store
+    held, seen = [], []
+    real_lock, real_is_set, real_set = config.settings_lock, secrets_store.is_set, \
+        secrets_store.set_secret
+
+    @contextlib.contextmanager
+    def lock():
+        with real_lock():
+            held.append(True)
+            try:
+                yield
+            finally:
+                held.pop()
+    monkeypatch.setattr(config, "settings_lock", lock)
+    monkeypatch.setattr(secrets_store, "is_set",
+                        lambda k: seen.append(("read", bool(held))) or real_is_set(k))
+    monkeypatch.setattr(secrets_store, "set_secret",
+                        lambda k, v: seen.append(("write", bool(held))) or real_set(k, v))
+    assert display_names.install_label_key() == "installed"
+    assert ("read", True) in seen and ("write", True) in seen, seen
+    assert all(under for _what, under in seen), seen
+
+
+def test_the_install_never_writes_over_a_key_it_cannot_open(no_key):
+    """A stored value that cannot be opened (a restored or rotated key.key) is kept as it is:
+    the install says so, and labels fail closed until it is fixed."""
+    from modules.config import get_user_setting, set_user_setting
+    set_user_setting(display_names.LABEL_KEY_SETTING, "enc:v1:not-a-fernet-token")
+    before = _settings_bytes()
+    assert display_names.install_label_key() == "unreadable"
+    assert get_user_setting(display_names.LABEL_KEY_SETTING) == "enc:v1:not-a-fernet-token"
+    assert _settings_bytes() == before
+    with pytest.raises(display_names.LabelKeyMissing):
+        display_names.label(ALICE)
+
+
+def test_with_no_key_a_request_naming_a_person_is_refused_and_nothing_sent(  # noqa: F811
+        world, no_key):
+    """Through the real gateway: a request with a person in it is refused (`label_key`),
+    naming the key; the provider is never asked, and the refusal is recorded as one made
+    before anything was sent."""
+    from modules.ai import calls, read_loop
+    before = _settings_bytes()
+    parts = {"pack": "[]", "the_alert": f"x on r1, seen by {ALICE}", "fact_sheet": ""}
+    got = gateway.request_body("explain", explain.PROMPT, explain.ExplanationV2, parts,
+                               kind=triggers.PERSON)
+    kind, detail = got["refused"]
+    assert kind == gateway.LABEL_KEY_REFUSAL == "label_key"
+    assert display_names.LABEL_KEY_SETTING in detail and "body" not in got
+    with pressed_by("operator@example.com"):
+        asked = gateway.ask("explain", explain.PROMPT, explain.ExplanationV2, parts,
+                            actor="operator@example.com",
+                            trigger=triggers.person("operator@example.com"), send=world.send,
+                            today="2026-10-25")
+    assert asked["ok"] is False and asked["error"] == "label_key", asked
+    assert display_names.LABEL_KEY_SETTING in asked["detail"]
+    assert world.sent == [], "the provider was asked"
+    assert not read_loop.left_host(asked)
+    row = calls.find(asked["call_id"])["row"]
+    assert row["verdict"] == "label_key"
+    # History's export reads it as a gate's refusal, recorded before anything was sent.
+    from modules import history_export
+    assert history_export.outcome(row, []) == "gate"
+    assert _settings_bytes() == before, "the request wrote the store"
+
+
+def test_with_no_key_explain_is_refused_and_nothing_sent(planted, no_key):
+    """Explain's press of a pack naming people, with no key installed: refused before any
+    call, the key named, nothing sent, and no key made."""
+    planted.answer = _answer(planted.planted)
+    before = _settings_bytes()
+    got = _press(planted)
+    assert got["ok"] is False and got["error"] == "label_key", got
+    assert display_names.LABEL_KEY_SETTING in got["detail"]
+    assert planted.sent == []
+    assert _settings_bytes() == before
+
+
+def test_with_no_key_a_count_is_never_asked_of_the_provider(no_key):
+    """A selector's count of a body naming a person (`gateway.Counter.measure`): with no key
+    the body is never counted by the provider (it would leave unlabelled), only estimated, the
+    key named."""
+    asked = []
+    counter = gateway.Counter("claude-haiku-5-5", "k", count=lambda *a, **kw: asked.append(a))
+    got = counter.measure({"messages": [{"role": "user", "content": f"from {ALICE}"}]})
+    assert got["how"] == "estimated" and display_names.LABEL_KEY_SETTING in got["why"], got
+    assert asked == []
+
+
+def test_with_no_key_a_refused_read_keeps_its_people_for_the_gateway_to_refuse(no_key):
+    """A read the loop refused, its words naming a person, with no key: the row is masked for
+    egress with its person left as written (never labelled under a made key), so the pass that
+    would carry it is refused by the gateway; nothing raises in the loop."""
+    from modules.ai import read_loop
+    row = {"id": "read:1", "op": "show", "args": {}, "why": f"asked by {ALICE}",
+           "hypothesis": "", "requests": [], "verdict": "refused", "reason": "x"}
+    got = read_loop._refused_row(row)
+    assert got["why"] == f"asked by {ALICE}"
+    parts = {"pack": "[]", "the_alert": "x", "fact_sheet": "", "reads": json.dumps([got])}
+    refused = gateway.request_body("explain", explain.PROMPT, explain.ExplanationV2, parts,
+                                   kind=triggers.PERSON)
+    assert refused["refused"][0] == "label_key"
 
 
 # ── who stays the record's ───────────────────────────────────────────────────────────────────

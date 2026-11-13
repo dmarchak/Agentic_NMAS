@@ -99,3 +99,129 @@ closes).
   after the list's redraw and after a refused repeat: tests/test_recheck.py
   (`test_the_button_never_moves_when_its_own_answer_appears`); every other control: not
   mechanised]
+
+## Proposed by the GUI review of the recorded screens (2026-11-13)
+
+The review of the screens the course lab's video records (Needs attention, the incident page,
+the heal card, History, Settings › Self-healing, Logs, the can't-fix email, AI
+troubleshooting; the review's report, kept with the operator's reports, holds the screenshots
+and the measurements behind each rule). **Proposals: none is in force until the operator approves it**,
+and none changes a rule above. Each names its source and, where a test can hold it, the test it
+proposes (none is written yet). The rules above stay as they are, word for word.
+
+### Summary first, detail one level down
+
+- **A list screen opens with one summary line of counts by state** (Needs attention's "55 items
+  · 9 critical · 43 warning", Logs' "77 lines … 3 error or worse"), before any row (Few: the
+  glanceable summary first; NN/g progressive disclosure). [Proposed test: a browser walk of
+  each list screen finds a summary element with a count before the first row.]
+- **Rows of one shape collapse into one row.** Rows that differ only in a name (33 rows
+  "reader:<name> has never run on this host" in the landing walk's world) are one row naming
+  the count, the names one click down; adjacent identical log lines (same device, mnemonic and
+  message once its numbers are removed) are one "×N" row with the first and last times, as
+  History's runs are (C3399) (PagerDuty: group related alerts into one incident; alert
+  fatigue). Measured: 33 of the landing walk's 55 rows are one shape. [Proposed test: in the landing walk's world no two Needs attention rows share their
+  words once each device or source name is replaced by a token; in the Logs fixture no two
+  adjacent rows share device, mnemonic and digit-stripped message.]
+- **An opened Needs attention row is a summary, not the incident.** Opened, a row says at most
+  three things (what is wrong in one sentence, whether it needs a person, its one action) and
+  links to its home ("Open the incident" as the row's first link, never its last); the
+  steps taken, the diagnosis, the analysis, a proposal's six parts and the record are on the
+  incident page. Measured: the heal proposal's opened row is 634 words and about 1,100 px tall
+  at 1280 px. [Proposed test: for each self-healing, lost-stream and proposal row in the
+  landing and heal worlds, the opened row's body is at most 60 words before its link to the
+  incident page.]
+- **Disclosure stops at two levels:** no `<details>` inside a `<details>` inside a
+  `<details>` in a page's main area (NN/g: designs past two levels lose people). [Proposed
+  test: a scan of each rendered recorded screen.]
+
+### One state, one action
+
+- **An incident's state is said once, from one function,** and every part of its page agrees:
+  the header badge, What to do and AI troubleshooting never disagree (measured: "No person
+  needed" and "Nothing yet: Mercury is working on it" beside "Stopped … Nothing more runs
+  unless you choose") (Nielsen 1, visibility of system status; CLAUDE.md, "Never let a wrong
+  thing look like a working thing"). [Proposed test: tests/test_incident_page.py gains a case
+  per state: a stopped fix-it attempt draws "Needs a person" in the header and an action in
+  What to do.]
+- **A page that says a person is needed carries that person's action on itself:** What to do
+  holds the one action as a button (Review the fix…, Re-subscribe…, Lift the halt…), never
+  "what a person may do about it is on Needs attention". Measured: the incident page has no
+  button in any of its four planted states. [Proposed test: every incident page whose state
+  is "Needs a person" draws exactly one primary button inside What to do.]
+- **Each fact once, measured:** an outcome ("verify failed") is drawn at most twice on a
+  screen, once as a state word in a header cell and once with its reason in its stage
+  (measured: five times on the rolled-back incident). [Proposed test: the rolled-back
+  incident's page holds "verify failed" at most twice.]
+- **The stepper never says "failed" for a decision that worked:** a can't-fix stage reads
+  "Can't fix: needs a person", not "Decide failed". [Proposed test: the planted can't-fix
+  incident's stepper holds no "failed".]
+
+### Words on the page
+
+- **A title is a summary of at most 70 characters;** a configuration line, a command or an id
+  is in the body, never the h1 or the breadcrumb's last crumb (measured: the incident titles
+  are the configuration line, 95 characters, two lines at 1280 px). [Proposed test: every
+  recorded screen's h1 is at most 70 characters.]
+- **Mode and state words have one spelling:** Off, Dry run, Auto (never "AUTO", "auto",
+  "dry_run" on a screen or in an email). [Proposed test: a scan of the recorded screens' text
+  and the email for `\bAUTO\b`, `dry_run`, `cant_fix`.]
+- **No raw time or code in a control's label:** a button names a time in the viewer's zone
+  ("Turn on Auto until Tue 18 Nov, 04:49") and never an ISO instant (measured: "Turn on Auto
+  for Default until 2026-11-18T11:49:00Z"). [Proposed test: tests/test_no_utc_drawn.py's
+  walk refuses an ISO instant or "UTC" inside a button's or a link's text.]
+- **A notice that is context, not a warning, is a line under the header,** never a banner
+  above the h1 (GOV.UK: at most one notification banner, only for what the person must
+  know); the incident's "Folded into" and "Related" notices become one "Related:" line.
+  [Proposed test: nothing but a danger or warning notice precedes a recorded screen's h1.]
+
+### Tables and controls
+
+- **A cell holding a time, a mnemonic, an id or a hash never breaks inside it** (measured on
+  Logs at 1280 px: "15:19:1 / 8" and "%SSH-4-SSH2_UNEXPECTED_MS / G"); the column is as
+  wide as its widest token, and the message column takes what is left. [Proposed test: at
+  1280 px every `td` of a time or mnemonic column in Logs, History and the incident timeline
+  is one line tall.]
+- **Something drawn as a control is one:** a segmented control's segments are buttons or
+  labelled inputs, or the segments are drawn as plain text (measured: Settings ›
+  Self-healing's Heal / Dry run only segments are spans that look pressable; C3158 makes
+  them the control). [Proposed test: every `.seg-btn` in a rendered page is a `button` or a
+  `label` for an input.]
+- **Choices of one decision are drawn alike and together:** AI troubleshooting's Retry with
+  more information…, Cancel and Hand over… are three buttons in one row, left to right in
+  that order, each opening its modal (today two are disclosure triangles and one a button,
+  spread across the row) (Nielsen 4, consistency). [Proposed test: inside `#inc-ai` every
+  choice is a `button`.]
+- **A destructive action that reaches everything sits first in its own danger card,** never
+  after the last card of a long page (Stop self-healing everywhere…). [not mechanised]
+
+### WCAG 2.2 AA, measured on the recorded screens
+
+- **Text contrast 1.4.3:** body text at least 4.5:1, large text 3:1. Measured: the muted
+  token `--ink-3` (#9AA3AE) on white is 2.55:1 and draws every section label ("What to do",
+  "Detected", "What happened") on every recorded screen; its replacement is at least 4.5:1
+  on the card background in light and dark. [Proposed test: tests/test_v2_theme.py computes
+  each text token's ratio against each background token, in both themes.]
+- **Non-text contrast 1.4.11:** an icon that is a control (the compact "How does this work?"
+  (i), drawn in `--ink-3`) and a control's border are at least 3:1 against what is next to
+  them. [Proposed test: the same token check for icon and border tokens.]
+- **Target size 2.5.8:** every pointer target is at least 24 by 24 CSS px, or spaced so a
+  24 px circle on it touches no other target. Measured: the compact (i) is 15 px, 4 px from
+  its button; a `summary` is 17 to 22 px tall. [Proposed test: a browser walk of the recorded
+  screens measures each button, summary and icon link.]
+- **Focus visible 2.4.7 and not obscured 2.4.11:** the global `:focus-visible` outline (2 px,
+  the accent) stays on every control, and a control focused by Tab is never wholly under the
+  sticky top bar. [Proposed test: a browser walk tabs through each recorded screen, reading
+  each focused element's outline and its rectangle against the top bar's.]
+- **Keyboard 2.1.1:** every action is reachable and operable by keyboard; no click handler on
+  an element that cannot take focus. [Proposed test: a template scan refuses `x-on:click` or
+  `hx-trigger="click"` on a `div` or `span` without a `role` and a `tabindex`.]
+
+### The can't-fix email
+
+- **The email leads with the outcome and the link:** its first three lines say what happened,
+  whether it needs the reader, and "Open in Mercury: <link>"; it holds no host command, no code
+  key (`interface.ip-access-group`, `cisco_iosxe`, `CONFIG_I`) and no model or measurement
+  internals, and says the outcome once (today in Outcome and again in the Decide step).
+  [Proposed test: tests/test_cant_fix_email.py's `check_email` holds the link line within the
+  first six lines and no `scripts/` in the text.]
