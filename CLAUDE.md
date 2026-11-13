@@ -212,7 +212,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   too (the suite with its browser tests, root's files, the coverage ratchet, the container
   harness); a step the gate gains that CI lacks joins this list. Cost: CI's minutes in place of
   the laptop's. Prevents: gates waiting 45 minutes for memory an everyday desktop holds, and a
-  deploy on another sha's verdict. [not mechanised]
+  deploy on another sha's verdict. **Since the adaptive waves (the operator, 2026-11-13), that
+  threshold is the waves' floor, 11.7 GiB free:** from 18.5 GiB the gate runs its five shards
+  at once, from 11.7 GiB in two waves capped at 10.7 GiB (browser1, browser2, a; then browser3,
+  b; a failed wave stops the next), and under 11.7 GiB it refuses, naming this path. [the
+  waves, their floor and the refusal: tests/test_nmas_gate.py (`TestTheAdaptiveWaves`); the
+  rest: not mechanised]
 
 ### Publication (the repository is public, its history unrewritten)
 
