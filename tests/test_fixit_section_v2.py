@@ -436,9 +436,15 @@ class TestHandOver:
             assert title in doc
         assert "read the collector&#39;s sessions first" in doc
         assert f"/v2/incident/{iid}" in doc and "Download as Markdown" in doc
+        # C3290: the write-up's time is the viewer's, drawn by the clock, its UTC on the hover;
+        # the Markdown, which leaves Mercury, says it in UTC.
+        drawn = re.search(r'Handed over <time class="clock" datetime="(\d{4}-\d\d-\d\dT\d\d:\d\dZ)"'
+                          r' data-clock[^>]* title="(\d{4}-\d\d-\d\d \d\d:\d\d):00 UTC"', doc)
+        assert drawn, doc.split('class="card handover-doc"')[1][:400]
         md = web.get(f"/v2/incident/{iid}/handover/1?list={NET}&download=md")
         assert md.status_code == 200 and md.mimetype == "text/markdown"
         assert md.get_data(as_text=True).startswith(f"# Hand-over 1: {iid}")
+        assert f"Handed over {drawn.group(2)} UTC by " in md.get_data(as_text=True)
         _r, html = page(web, iid)
         assert f"/v2/incident/{iid}/handover/1" in html.split('class="card tl-record-d')[1]
 

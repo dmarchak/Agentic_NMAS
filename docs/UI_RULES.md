@@ -86,3 +86,16 @@ closes).
   8 h, 24 h, 7 days) plus a date-time picker in local time, showing the UTC beside it.
 - **Every "…" button in Mercury is reviewed for the modal rule**, and listed with its fix (the
   review's section 3).
+- **No control moves when its own result appears** (the operator, 2026-11-13, on Run the check
+  again: "the message pushes the button onto a new line. The button never moves: draw the
+  message below it (or in reserved space)"; C3401). A control's answer (a refusal, "Checked
+  just now", a failure, its busy words) is drawn below it or in space reserved for it, never
+  beside it where it can wrap the control onto another line; a busy label is laid in the same
+  cell as the idle one, so the control is as wide busy as idle; and a control placed after
+  words that its own press changes (an age, "read just now") is placed by something those
+  words cannot move. Cost: a reserved place per control, and a real-browser check of each.
+  Prevents: a person's pointer left on empty space, or on another control, by the answer to
+  their own press. [Run the check again at 1280 and 390, before a press, at its busy answer,
+  after the list's redraw and after a refused repeat: tests/test_recheck.py
+  (`test_the_button_never_moves_when_its_own_answer_appears`); every other control: not
+  mechanised]

@@ -36,9 +36,11 @@ DECLARED = "data-verbatim"
 
 #: A recorded instant as a machine writes it: an ISO time (``2026-11-12T02:33:45Z``, with an
 #: offset or none) or a log line's ``2026-11-12 02:33:45``, which the records keep in UTC. The
-#: clock never writes a time this way: its words are "Nov 12 08:03" in the viewer's zone.
+#: clock never writes a time this way: its words are "Nov 12 08:03" in the viewer's zone. A
+#: colon after it ends a sentence's words (C3290: "Attempt 1, <iso>: …" had gone unseen); only
+#: ":<digit>" would be more of a time.
 ISO_Z = re.compile(r"\b\d{4}-\d\d-\d\d[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?"
-                   r"(?:Z|[+-]\d\d:?\d\d)?(?:\s*\(?(?:UTC|GMT)\b\)?)?(?![\w:])")
+                   r"(?:Z|[+-]\d\d:?\d\d)?(?:\s*\(?(?:UTC|GMT)\b\)?)?(?!\w|:\d)")
 #: A clock time with "UTC" or "GMT" beside it (an offset zone, "UTC+05:45", is the clock's).
 UTC_TIME = re.compile(
     r"\b\d{1,2}:\d\d(?::\d\d(?:\.\d+)?)?\s*\(?(?:UTC|GMT)\b(?![+-]\d)"

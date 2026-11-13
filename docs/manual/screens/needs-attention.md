@@ -132,8 +132,9 @@ A row a background check raised stands on that check's last reading, and some ch
 only every half hour or hour (the scheduled workflows, NetBox's stored credentials, the
 credential health). When the cause was fixed outside {{product}} (a workflow re-run on GitHub,
 NetBox back up), the row would stand until the check's next run. Open the item: its
-**Details** line ends with when its reading was taken ("read 40 min ago") and **Run the check
-again**.
+**Details** line says when its reading was taken ("read 40 min ago"), and **Run the check
+again** sits at that line's right. The button never moves: whatever a press says is drawn
+below it, and it is as wide while **Checking…** as before.
 
 - **What it runs:** that check once, now, exactly as its schedule runs it: the same reads, the
   same time limits, recorded as your request ("checked on your request" on its hover). It
@@ -141,7 +142,7 @@ again**.
 - **While it runs** the button reads **Checking…** and cannot be pressed again; nothing else on
   the page waits for it. When its answer lands the item is drawn again in place: gone if the
   fresh reading no longer finds the problem, or still there with the new reading's age
-  ("read 3 s ago"). A check that failed says **The check failed** with its error, beside the
+  ("read 3 s ago"). A check that failed says **The check failed** with its error, below the
   button.
 - **When the check is already reading** (its schedule's run, another person's press, or the
   run after an operation), your press waits for that run rather than starting a second: the
@@ -151,7 +152,7 @@ again**.
   the answer: **Checked just now (HH:MM): still found**, or **no longer found** (the item then
   leaves the list), or **the check failed** with its error. It is as fresh as a new read would
   be.
-- **When it is not run**, it says why beside the button, naming both sides of the comparison:
+- **When it is not run**, it says why below the button, naming both sides of the comparison:
   - your own press is still running (from another tab), and since when; the item is drawn
     again when that run ends;
   - your own press began a read within the minimum spacing, and from when it can be asked

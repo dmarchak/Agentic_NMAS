@@ -199,8 +199,10 @@ def clock_words(value, mode="", named=False) -> dict:
 
 
 #: An instant a builder wrote into its words (C3290): ISO, in UTC (``Z``) or at an offset, whole.
+#: A colon after it ends a sentence's words ("Attempt 1, <iso>: …"); only ":<digit>" would be
+#: more of a time.
 INSTANT_IN_WORDS = re.compile(r"(?<![\w:.+-])\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?"
-                              r"(?:Z|[+-]\d\d:\d\d)(?![\w:])")
+                              r"(?:Z|[+-]\d\d:\d\d)(?!\w|:\d)")
 
 
 @bp.app_template_filter("times")

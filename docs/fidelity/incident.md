@@ -58,8 +58,22 @@ templates. Compared by the template diff and the page tests/test_incident_page.p
 opens in Firefox, not a new shot. Templates sha256 before:
 `e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`.
 
+**Compared again 2026-11-13 (C3290's last gap: local times on the incident page and its
+hand-over):** `incident.html` is drawn under `{% filter times %}` and The record's values
+through `times`, so every instant a builder wrote into the page's words (a step's "… · <instant>",
+a decision's "at …", the store's close, a hand-over's time) is `_macros.clock`'s, the viewer's
+own, its UTC on hover, in the same element and position; The record's names lose "(UTC)"
+("Detected", "Verify failed", "Closed, by its act's record step"), and its note says the times
+are the viewer's. Its identities stay as recorded (no `people`). `incident_handover.html` is
+drawn under `{% filter times %}`: its builder (modules/fixit/handover.py) writes "Handed over
+<instant>", "since <instant>" and "Attempt n, <instant>:", and the Markdown download and a
+team's message, which leave Mercury, say them in UTC as before. Compared by the template diff
+and the pages tests/test_incident_page.py and tests/test_fixit_section_v2.py draw, not a new
+shot; no region moved. Templates sha256 before:
+`b6b2551f696e627a64d33490d5cc6dd1037ec35eb4741dac13332038ccd57d99`.
+
 Templates compared: templates/v2/incident.html, templates/v2/_fixit_section.html, templates/v2/incident_handover.html
-Templates sha256: `b6b2551f696e627a64d33490d5cc6dd1037ec35eb4741dac13332038ccd57d99`
+Templates sha256: `caa59cdd04847e4a289f07d97ef83060314717f80291ef74e4876c74d2dfdae7`
 Templates sha256 then (2026-11-12): `e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`
 (2026-11-12, local times' comparison below and S5's section merged, each kept; their own
 hashes were `fd015f548f9e98aca3ce23f8985f0233623ff2a173d6b8ba8d94f9984f8a9da1` (local times)
@@ -109,7 +123,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The live region with the section | not drawn | the page redraws on self-healing's `drift` and an operation's `privileged`, the section with it | **deviation** (log: Board recurring-fixes v2 built, 6) |
 | Evidence | collapsed, six parts: the alerts, the evidence pack, Mercury's diagnosis, the reading, the changes, members | collapsed: the triggers, the detect pass's reads, where the changes are recorded, and each member with why; a diagnosis is said under What Mercury has done | **later** (the build plan's S4: alert incidents bring the alerts, the pack and the reading) |
 | Seen before | up to three past incidents, each linked | not drawn | **later** (the build plan's S4, from the incident index) |
-| The record | collapsed: ids, the store's state, triggers kept, members, decisions, the program's hash, every step with its result, words and UTC time, the raw times, the tag, the index row's id, who acted by identity | collapsed, the same lines but the tag and the index row's id; a failed verify's time is labelled "Verify failed (UTC)"; each hand-over last, with Open the write-up | **later** (the build plan's S3 and S8: the index row's id and the tag) |
+| The record | collapsed: ids, the store's state, triggers kept, members, decisions, the program's hash, every step with its result, words and UTC time, the raw times, the tag, the index row's id, who acted by identity | collapsed, the same lines but the tag and the index row's id; a failed verify's time is labelled "Verify failed"; every time the viewer's, its UTC on hover (C3290); each hand-over last, with Open the write-up | **later** (the build plan's S3 and S8: the index row's id and the tag) |
 | A fold | the old address answers 302; the surviving page leads "Folded into this incident at 10:41: … was taken in because …" with Open the old record | the 302; the line with its time, the device, the old id and the reason; no link to the old record | **later** (the build plan's S4: the old record's own view) |
 | Moved and promoted | "Related: hi-… (… both changed: a cause spanning devices)"; a promoted incident says when its device changed | the Related line, a link to the other incident's page; the promoted line is not drawn | **later** (the build plan's S4) |
 | An unknown id | a 404 on the frame: "No incident <id> is recorded.", the index and the incidents list named | the 404 and its first sentence; then where it looked, and links to Needs attention and History; another kind of id says its page comes later | **deviation** (log: Board incident-page B built, 7) |

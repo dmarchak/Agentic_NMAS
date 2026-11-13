@@ -124,7 +124,7 @@
       {%- if a.mercury_needs_human %}
       {#- Mercury's needs_human (the operator's order of 2026-10-29, C2141): the model found no
           fault and did not ask for a person while the alert's own source shows it firing. -#}
-      <p class="answer-needs small explain-mercury-needs-human" data-part="needs-a-person" title="The model answered no fault found and did not ask for a person; Mercury set this. The model's answer is kept as received in History.">{{ badge('needs a person', 'warn') }} {{ badge('set by Mercury', 'neutral') }} {{ a.mercury_needs_human.reason }}.</p>
+      <p class="answer-needs small explain-mercury-needs-human" data-part="needs-a-person" title="The model answered no fault found and did not ask for a person; Mercury set this. The model's answer is kept as received in History.">{{ badge('needs a person', 'warn') }} {{ badge('set by Mercury', 'neutral') }} {{ a.mercury_needs_human.reason | times }}.</p>
       {%- elif a.needs_human %}
       <p class="answer-needs small" data-part="needs-a-person">{{ badge('needs a person', 'warn') }} {{ 'Something in the pack could not be read.' if nff else 'The evidence does not settle the cause.' }}</p>
       {%- endif %}

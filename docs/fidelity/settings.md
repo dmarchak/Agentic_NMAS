@@ -94,7 +94,15 @@ Templates sha256 before: `dca3439cdb4bf79093497aaa028d58e7dd61697a5047a93aad1115
 | CR: Saved | D: Saved in green, saying to press Fetch now | the same words, drawn muted | **deviation** (log: D8-R 4) |
 | CR: phone width | F: fields stacked, Save and Fetch now below | the card's set-field layout, as every Settings card at phone width; not shot | **later** (C2858: the card's board shot at 390) |
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html, templates/v2/_ai_classes.html, templates/v2/_code_repo.html
-Templates sha256: `ab3aab9f5da9d0ea3c6f6e9178f90188e365e612ad9b290faf2a359420c77063`
+Templates sha256: `a7d6a3cfefea0cd4e622695dbd7508c565ad6e1a205e030f75ad24afe69afa36`
+
+**Compared again 2026-11-13 (C3290's last gap):** in `_ai_classes.html`, Device state's line
+"turned on by <person> at <instant>: “<reason>”" is drawn through `times`, so its instant is
+`_macros.clock`'s, the viewer's, its UTC on hover, in the same element and position. An
+instant before a sentence's colon had been left by `times` and unseen by
+tests/test_no_utc_drawn.py's scan; both now take it. Compared by the template diff, not a new
+shot; no region moved. Templates sha256 before:
+`ab3aab9f5da9d0ea3c6f6e9178f90188e365e612ad9b290faf2a359420c77063`.
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `settings.html`, a deleted network's time beside its age is `_macros.clock`'s, the viewer's own date and time, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `f2fe868369275da2bb37ae6b52713768b2c8bab8398e33be29206089210f127a`.
 

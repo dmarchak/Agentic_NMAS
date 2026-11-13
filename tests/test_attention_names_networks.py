@@ -89,7 +89,19 @@ def _article(text, row_id):
 
 
 def _meta(article):
-    return re.search(r'<p class="att-meta">(.*?)</p>', article).group(1)
+    """The Details line's words: the line as drawn, less its Run the check again control,
+    which is first in its source and pinned to the line's right since C3401 (the operator,
+    2026-11-13: "The button never moves"), so the line's words begin after it."""
+    line = re.search(r'<p class="att-meta">(.*?)</p>', article).group(1)
+    start = line.find('<span class="att-recheck')
+    if start < 0:
+        return line
+    depth = 0
+    for tag in re.finditer(r"<(/?)span\b[^>]*>", line[start:]):
+        depth += -1 if tag.group(1) else 1
+        if depth == 0:
+            return line[:start] + line[start + tag.end():]
+    raise AssertionError(f"the control's span never closes: {line[start:][:300]}")
 
 
 class TestEveryDeviceRowNamesItsNetwork:

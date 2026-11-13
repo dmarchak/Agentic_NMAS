@@ -712,7 +712,21 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-ops dd { margin: 0; overflow-wrap: anywhere; }
 .att-members { margin: 2px 0 0; padding-left: 18px; font-size: 12px; }
 .att-also { margin: 0; font-size: 12px; color: var(--ink-2); }
-.att-meta { margin: 0; font-size: 12px; color: var(--ink-2); }
+.att-meta { margin: 0; font-size: 12px; color: var(--ink-2); display: flow-root; }
+/* Run the check again never moves when its own answer appears (C3401; docs/UI_RULES.md, "No
+   control moves when its own result appears"): first on the Details line and pinned to its
+   right, so its place depends on nothing the line says; its answer (a refusal, "Checked just
+   now", a failed check) takes a line of its own below the button, inside the control's own
+   column; busy, both its words are laid in one cell and the idle ones hidden, so the button is
+   as wide busy as idle. tests/test_recheck.py presses it at 1280 and at 390. */
+.att-meta > .att-recheck { float: right; display: flex; flex-wrap: wrap; justify-content: flex-end;
+  align-items: center; gap: 2px 4px; max-width: min(100%, 36em); margin: 0 0 2px 12px; }
+.att-recheck > .refusal, .att-recheck > .att-checked { flex: 1 1 100%; }
+.att-recheck > .btn { display: inline-grid; justify-items: center; }
+.att-recheck > .btn > .op-idle, .att-recheck > .btn > .op-busy { grid-area: 1 / 1; display: inline; }
+.att-recheck > .btn > .op-busy,
+.att-recheck > .btn:is(.htmx-request, [aria-busy="true"]) > .op-idle { visibility: hidden; }
+.att-recheck > .btn:is(.htmx-request, [aria-busy="true"]) > .op-busy { visibility: visible; }
 .att-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px; }
 .att-label { font-weight: 500; }
 .att-label.muted { font-weight: 400; }

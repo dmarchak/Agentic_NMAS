@@ -21,7 +21,7 @@
     {%- for r in aic.rows %}<tr data-ai-class="{{ r.key }}">
       <th scope="row">{{ r.name }}</th>
       <td>{{ r.what }}</td>
-      <td><span title="{{ r.detail | people }}">{{ badge(r.words, r.state) }}</span>{% if r.key == 'device_state' and r.detail %}<div class="small muted">{{ r.detail | people }}</div>{% endif %}</td>
+      <td><span title="{{ r.detail | people }}">{{ badge(r.words, r.state) }}</span>{% if r.key == 'device_state' and r.detail %}<div class="small muted">{{ r.detail | people | times }}</div>{% endif %}</td>
       <td>
         {%- if r.key == 'device_state' and not aic.marked %}
         {%- if aic.device_state_on %}

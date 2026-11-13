@@ -116,8 +116,9 @@ each device attached to it with the reason it was attached.
 ## The record {#the-record}
 
 Collapsed. The incident's id, its network, its state as its own store keeps it, each
-decision's id, the program's hash and its lines (masked), the times behind the header in UTC,
-every step with its result and words, and who acted, by their identity as recorded. This is
+decision's id, the program's hash and its lines (masked), the times behind the header, every
+step with its result, words and time, and who acted, by their identity as recorded. Every
+time is in your time zone, its UTC on the hover, as everywhere on the page. This is
 the only place on the page an identity is drawn. Each hand-over is listed last, with **Open the
 write-up**.
 

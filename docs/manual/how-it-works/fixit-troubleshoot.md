@@ -155,7 +155,9 @@ summary, the impact now, what Mercury knows, what was tried, what the AI said (o
 asked), the configuration now, the next steps, the notes and the cost. People are named by
 display name and teams by name; no email address and no secret is in it. Each hand-over is kept
 as a new version, never written over, on its own page, linked from the section and from the
-incident's record, with Download as Markdown. **Send the hand-over** sends it to the teams you
+incident's record, with Download as Markdown. Its page draws every time in your time zone, its
+UTC on the hover; the Markdown and the message sent to a team say each time in UTC, since
+they leave Mercury. **Send the hand-over** sends it to the teams you
 tick, each one of the teams told about the network's can't-fix (Settings › Notifications); with
 none ticked it is kept and sent to nobody. A send that fails says so, with **Send again**. Once
 the incident is resolved, the section is read-only: a Cancel, Retry or Hand over sent to it then

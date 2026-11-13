@@ -31,11 +31,6 @@ from tests.utc_drawn import scan
 #: done here. ONLY SHRINKS: a template fixed leaves the list (`test_each_known_gap_is_still_one`
 #: says when), and a new one is never added to get a change through.
 KNOWN_GAPS = {
-    # The incident page: its builder (modules/incident_page.py) words its times in UTC; it was
-    # being changed by another build when C3290 was done.
-    "v2/incident.html": "C3290: the incident page's times, left for the build changing it",
-    "v2/incident_handover.html": "C3290: the incident page's times, left for the build "
-                                 "changing it",
     # History › Query's answers write their own times in the browser over UTC words.
     "v2/history_ask_logs.html": "C3291: History › Query's own way of drawing a time",
     "v2/_history_ask_logs.html": "C3291: History › Query's own way of drawing a time",
@@ -82,8 +77,8 @@ class TestEveryResponse:
             + "\n".join(found))
 
     def test_each_known_gap_is_still_one(self):
-        walked = _walked()
         """A known gap the walk no longer finds is fixed: it leaves `KNOWN_GAPS`."""
+        walked = _walked()
         still = {_gap(templates) for (_route, templates) in walked["utc"]} - {""}
         assert set(KNOWN_GAPS) <= still, (
             f"no longer a gap, so remove it from KNOWN_GAPS: {sorted(set(KNOWN_GAPS) - still)}")
@@ -102,6 +97,9 @@ class TestTheScanSees:
         ('<td class="mono">2026-11-12 02:33:45</td>', "2026-11-12 02:33:45", "td"),
         ("<p>Seen by Mercury 2026-11-12T02:33:45</p>", "2026-11-12T02:33:45", "p"),
         ("<li>back by ~01:12 (UTC)</li>", "01:12 (UTC", "li"),
+        # An instant before a sentence's colon (a hand-over's "Attempt 1, <iso>: …", C3290).
+        ("<li>Attempt 1, 2026-11-12T02:33:45Z: Re-subscribe</li>", "2026-11-12T02:33:45Z",
+         "li"),
         ("<p>from UTC 09:30 to 10:30</p>", "UTC 09:30", "p"),
         # A record a person opens is on the screen too.
         ('<details class="tl-record-d"><summary>Details</summary><dl><dd>'
@@ -161,6 +159,13 @@ class TestTimes:
         assert got == ('held by Deploy since <time class="clock" datetime="2026-11-08T19:41:07Z"'
                        ' data-clock="date" title="2026-11-08 19:41:07 UTC">Nov 8 12:41 MST</time>'
                        ', by Sam &amp; co'), got
+
+    def test_an_instant_before_a_sentence_s_colon_is_drawn(self):
+        # A hand-over's "Attempt 1, <iso>: …" and its AI line "<iso>: proposed …" (C3290): a
+        # colon that ends the instant's words is no part of a time, as ":40" would be.
+        got = _times('{{ "Attempt 1, 2026-11-08T19:41:07Z: Re-subscribe" | times }}')
+        assert got.count("<time ") == 1 and got.endswith("</time>: Re-subscribe"), got
+        assert _times('{{ "2026-11-08T19:41Z:07" | times }}') == "2026-11-08T19:41Z:07"
 
     def test_a_value_that_is_an_instant_is_drawn_with_its_seconds(self):
         got = _times('{{ "2026-11-08T19:41:07Z" | times }}')

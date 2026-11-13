@@ -52,7 +52,23 @@ alone, over the templates as committed, hashed
 `1298bcc70c44306e39f2a8d7e01d7f20c7e0bde6591d436e936a33e3ebcdf3ae`; the hash below is over the
 working tree, which also holds the concurrent local-times edit to `_attention.html` (its
 `filter times`), compared by its own build.
-Templates sha256: `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`
+Templates sha256 then (the drill's badge): `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`
+
+**Compared again 2026-11-13 (the operator's test of Run the check again, C3401: "the message
+pushes the button onto a new line. The button never moves"; docs/UI_RULES.md, "No control
+moves when its own result appears"):** in `_attention.html` and `_attention_recheck.html`,
+**Run the check again** is first on the opened row's Details line and pinned to that line's
+right (it ended the line, after "· read <age> · <source> ·"), so the age's words, which a press
+shortens ("read just now"), never move it; every answer (a refusal, "Checked just now", a
+failed check) is drawn below the button, never beside it; and busy it is as wide as idle (its
+idle words hidden in the same cell). Words, states and every other region as compared. Board
+NA-R draws no such control (the logged deviation, "Needs attention: Run the check again on a
+row's Details line"); its place on the line is a further **deviation**, logged
+(docs/STANDING_APPROVAL_LOG.md, "Needs attention: Run the check again pinned to its line's
+right"). Compared by the template diff and the real-browser test tests/test_recheck.py
+(`test_the_button_never_moves_when_its_own_answer_appears`, at 1280 and 390), not a new shot.
+Templates sha256 before: `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`.
+Templates sha256: `bc35314f80a3fcc76b47e556d6bcafee68460faae9b61a34c483e276635bd667`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

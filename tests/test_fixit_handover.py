@@ -109,15 +109,22 @@ class TestTheWriteUp:
             "summary", "impact", "known", "tried", "ai", "config", "next", "notes", "cost"]
         s = {x["key"]: x["lines"] for x in doc["sections"]}
         assert s["summary"] == ["r2: telemetry stream lost (101, 102); 1 fix tried; not fixed."]
+        # Each time is kept as its instant (C3290): the page draws it in the viewer's zone, and
+        # the Markdown and a team's message, which leave Mercury, say it in UTC.
         assert s["impact"][0].startswith("r2 has sent no telemetry for subscription 101 and "
-                                         "102 since 2026-11-09 17:46 UTC (")
+                                         "102 since 2026-11-09T17:46Z (")
         assert s["known"][0].startswith("strong (half_open): the collector still holds an "
                                         "established session from r2")
         assert "(read " in s["known"][0] and "Mercury's diagnosis " in s["known"][0]
         (tried,) = s["tried"]
-        assert tried.startswith("Attempt 1, 2026-11-09 18:46:40 UTC: Re-subscribe a device's "
+        assert tried.startswith("Attempt 1, 2026-11-09T18:46:40Z: Re-subscribe a device's "
                                 "lost telemetry streams (subs 101, 102); proposed by "
                                 f"Mercury's diagnosis; approved by {NAME}; did not pass: ")
+        md = doc["markdown"]
+        assert ("- r2 has sent no telemetry for subscription 101 and 102 since "
+                "2026-11-09 17:46 UTC (") in md
+        assert "- Attempt 1, 2026-11-09 18:46:40 UTC: Re-subscribe a device's " in md
+        assert "T17:46Z" not in md and "T18:46:40Z" not in md
         assert failed["why"].split(";")[0] in tried
         assert s["ai"][0].startswith("2026-11-09T19:01:40Z: proposed no operation Mercury has")
         assert s["config"] == ["No receiver a run left removed on r2."]

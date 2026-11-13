@@ -717,9 +717,11 @@ def _todo(state: str, device: str, tl: dict) -> dict:
 
 
 def _record(found: dict, tl: dict) -> list:
-    """The record, collapsed on the page: ids, hashes, the raw times behind the header (UTC),
-    every step of every run with its result, words and time, and who acted as their identity
-    was recorded. ``[(name, value)]``, an empty value left out."""
+    """The record, collapsed on the page: ids, hashes, the raw times behind the header, every
+    step of every run with its result, words and time, and who acted as their identity was
+    recorded. ``[(name, value)]``, an empty value left out. Every time is the instant as
+    recorded (ISO UTC), never worded here: the page draws each in the viewer's zone, its UTC
+    on the hover (the `times` filter; C3290)."""
     from modules.nsot.deploy import config_line_count
 
     inc, entry, decisions = found["incident"] or {}, found["entry"], found["decisions"]
@@ -738,7 +740,7 @@ def _record(found: dict, tl: dict) -> list:
                     if inc.get("state") == "closed" else "")),
         # The store's close as kept above; an act stamps it with the time its job started, so
         # the close a screen draws is its act's record step (`closed_at`).
-        ("Closed, by its act's record step (UTC)",
+        ("Closed, by its act's record step",
          tl["closed"] if tl["closed"] and tl["closed"] != inc.get("closed_at") else ""),
         ("Triggers", (f"{len(trig)} of {inc.get('triggers_seen') or len(trig)} kept"
                       if inc else "")),
@@ -759,11 +761,11 @@ def _record(found: dict, tl: dict) -> list:
         ("Program lines (masked)", "; ".join(entry.get("program") or [])),
         ("Golden commit", str((entry.get("records") or {}).get("golden") or "")[:12]),
         ("Approval", (entry.get("records") or {}).get("approval")),
-        ("Detected (UTC)", tl["detected"]["at"]),
-        ("Decided (UTC)" if tl["decided"]["state"] == "at" else "Declined (UTC)",
+        ("Detected", tl["detected"]["at"]),
+        ("Decided" if tl["decided"]["state"] == "at" else "Declined",
          tl["decided"]["at"]),
-        ("Fixed (UTC)", tl["fixed"]["at"]),
-        ("Verified (UTC)" if tl["verified"]["state"] == "at" else "Verify failed (UTC)",
+        ("Fixed", tl["fixed"]["at"]),
+        ("Verified" if tl["verified"]["state"] == "at" else "Verify failed",
          tl["verified"]["at"]),
         ("Time to repair", tl["ttr"]["words"]),
     ]

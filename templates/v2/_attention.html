@@ -356,6 +356,13 @@
       {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
       {%- set one = seen.all|unique|list %}
       <p class="att-meta">
+        {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
+            press, on this line with the reading's age (the row's evidence), never beside its
+            one action; busy while it runs (`r.recheck`, modules/recheck.py). The row's id
+            names the control, so its press's answer is drawn in its place (C3360, C3361).
+            First in the line and pinned to its right (C3401), so the age's words never move
+            it and its answer is drawn below it. -#}
+        {%- if r.reader %}{{ recheck(r.reader, r.recheck, row=r.id) }}{% endif %}
         {%- if r.devices %}
         {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
         {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
@@ -363,11 +370,6 @@
         {% if r.since %}since {{ stamp(r.since) }}{% else %}its source does not track when it began{% endif %}
         {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
-        {#- The overnight item 9 (2026-11-12): the reader that reading came from runs again on a
-            press, here beside the reading's age (the row's evidence), never beside its one
-            action; busy while it runs (`r.recheck`, modules/recheck.py). The row's id names
-            the control, so its press's answer is drawn in its place (C3360, C3361). -#}
-        {%- if r.reader %} · {{ recheck(r.reader, r.recheck, row=r.id) }}{% endif %}
       </p>
       {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
           operands, its ids, hashes and steps, under a collapsed "Details for the record", last;

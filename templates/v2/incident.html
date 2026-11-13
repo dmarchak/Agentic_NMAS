@@ -26,6 +26,9 @@
 {%- endmacro -%}
 {% block title %}{{ p.title if p.kind == 'page' else 'Incident ' ~ p.id }} · {{ brand.short }}{% endblock %}
 {% block main %}
+{#- C3290: every instant a builder wrote into the page's words (a step's "… · <iso>", a
+    hand-over's time) is drawn by the clock, in the viewer's zone, its UTC on the hover. -#}
+{%- filter times %}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><span>{{ p.title if p.kind == 'page' else 'Incident ' ~ p.id }}</span></nav>
 {%- if p.kind == 'other_kind' %}
 <div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
@@ -139,10 +142,13 @@
 </details>
 <details class="card tl-record-d inc-record" data-keep="inc-record-{{ p.id }}">
   <summary>The record</summary>
-  <p class="small muted">Ids, hashes, the times as recorded (UTC), every step with its result and words, and who acted as their identity was recorded.</p>
-  <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}
+  <p class="small muted">Ids, hashes, the times as recorded (each yours, its UTC on hover), every step with its result and words, and who acted as their identity was recorded.</p>
+  {#- C3290: a record's value that is an instant, or words with instants in them ("… · <iso>"),
+      is drawn by the clock (`times`); its identities stay as recorded, so no `people`. -#}
+  <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v | times }}</dd>{% endfor %}
     {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}</dl>
 </details>
 </div>
 {%- endif %}
+{%- endfilter %}
 {% endblock %}

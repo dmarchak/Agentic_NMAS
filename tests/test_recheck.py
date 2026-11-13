@@ -694,3 +694,129 @@ def test_one_press_leaves_one_control_after_its_answer_and_after_the_list_s_redr
     assert reader_job._parse_iso(age) > now - 60, f"the new reading's age: {age}"
     assert repeated[:2] == (1, 1) and "within its minimum spacing" in repeated[2], repeated
     assert planted["reads"] == 2, "the repeat ran nothing"
+
+
+# ---------------------------------------------------------------------------
+# (6) In a real browser: the control never moves when its own answer appears (C3401)
+# ---------------------------------------------------------------------------
+
+#: Two reads of the button's box this far apart agree when the page has settled; a box still
+#: moving at BOX_SETTLE_BOUND_S fails. The same step and bound as the reader's place
+#: (tests/browser.py PLACE_STEP_S, PLACE_SETTLE_BOUND_S, measured there).
+BOX_STEP_S = 0.1
+BOX_SETTLE_BOUND_S = 0.5
+#: Two boxes are the same place within this many CSS pixels: below any move a person sees.
+BOX_SAME_PX = 0.5
+
+
+def _settled_box(b, row: str) -> tuple:
+    """The row's Run the check again button's box on the page (x, y with the reader's place
+    added, width, height), with the list's summary line's height, read once htmx has no request
+    in flight, the reader's place has settled (`Browser.settled_place`) and two reads
+    BOX_STEP_S apart agree."""
+    import time
+
+    b.wait_for("return !document.querySelector('.htmx-request')", 10)
+    box = (f"var r = {row}.querySelector('.att-recheck > button').getBoundingClientRect(),"
+           " s = document.querySelector('.att-summary').getBoundingClientRect();"
+           " return [r.x + window.scrollX, r.y + window.scrollY, r.width, r.height, s.height]")
+    place = b.settled_place()
+    reads = [b.js(box)]
+    deadline = time.monotonic() + BOX_SETTLE_BOUND_S
+    while True:
+        time.sleep(BOX_STEP_S)
+        reads.append(b.js(box))
+        if reads[-1] == reads[-2]:
+            assert b.settled_place() == place, "the reader's place moved while the box was read"
+            return tuple(reads[-1])
+        if time.monotonic() > deadline:
+            raise AssertionError(f"the button's box did not settle within "
+                                 f"{BOX_SETTLE_BOUND_S} s: {reads}")
+
+
+@pytest.mark.parametrize("width", [1280, 390])
+def test_the_button_never_moves_when_its_own_answer_appears(planted, monkeypatch, width):
+    """C3401 (the operator's test, 2026-11-13: "the message pushes the button onto a new line.
+    The button never moves: draw the message below it"; docs/UI_RULES.md, "No control moves
+    when its own result appears"). Pressed in a real browser at 1280 wide and at a phone's 390:
+    the button's box (x, y, width, height) is the same before a first press, at its busy answer,
+    after the list's redraw ("read just now"), and after a repeat press whose refusal is drawn;
+    the refusal is drawn below the button, never beside it."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tests above still run")
+    import time
+
+    import app as nmas
+
+    monkeypatch.setattr(A, "SOURCES", (_source,))
+    reader_job.run_once(RC._reader(NAME))
+    now = time.time()
+    _attempt_at(3600, now)
+    _rewrite_value_at(3600, now)
+    row = "document.querySelector('details.att[data-attention-row=\"job_health:planted.service\"]')"
+    idle = f"!!{row}.querySelector('.att-recheck button[hx-post]:not([aria-busy])')"
+    # A phone's width is a frame that wide, the page and its presses inside it: geckodriver will
+    # not make a window narrower than 500 px (measured here, 2026-11-12: a 390 window, at either
+    # pixel ratio, drew 500 wide), and the strict policy's frame-ancestors is opened to 'self'
+    # for this test's frame alone (as tests/test_device_capture_v2.py does).
+    phone = width < 500
+    if phone:
+        from modules import csp
+        monkeypatch.setattr(csp, "STRICT_POLICY", csp.STRICT_POLICY.replace(
+            "frame-ancestors 'none'", "frame-ancestors 'self'"))
+    with browser.Served(nmas.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect",
+                    {"width": 1280, "height": 900})
+            b.go(srv.url("/v2/"))
+            b.wait_for(f"return !!window.htmx && !!{row}", 15)
+            if phone:
+                b.js(f"var f = document.createElement('iframe'); f.width = '{width}';"
+                     " f.height = '800'; f.style.position = 'fixed'; f.style.left = '0';"
+                     " f.style.top = '0'; f.style.border = '0'; f.style.zIndex = '9999';"
+                     " f.src = location.origin + '/v2/'; document.body.appendChild(f); return 1")
+                b.wait_for("var f = document.querySelector('iframe'); return f &&"
+                           " f.contentWindow.htmx && f.contentDocument.querySelector("
+                           "'details.att[data-attention-row=\"job_health:planted.service\"]')",
+                           15)
+                b._call("POST", f"/session/{b.session}/frame", {"id": 0})
+                b.wait_for(f"return !!window.htmx && !!{row}", 15)
+            inner = b.js("return window.innerWidth")
+            b.js(f"{row}.open = true; return 1")
+            boxes = {"before": _settled_box(b, row)}
+            b.click('details.att .att-recheck button[hx-post]')
+            b.wait_for(f"return !!{row}.querySelector('.att-recheck button[aria-busy=\"true\"]')",
+                       10)
+            boxes["busy answer"] = _settled_box(b, row)
+            b.js("htmx.trigger(document.body, 'nmas:attention'); return 1")
+            b.wait_for(f"return {idle}", 15)
+            boxes["redrawn"] = _settled_box(b, row)
+            b.click('details.att .att-recheck button[hx-post]')
+            b.wait_for(f"return !!{row}.querySelector('.att-recheck .refusal')", 10)
+            boxes["repeat refused"] = _settled_box(b, row)
+            said = b.js(
+                f"var m = {row}.querySelector('.att-recheck .refusal').getBoundingClientRect(),"
+                f" k = {row}.querySelector('.att-recheck > button').getBoundingClientRect();"
+                " return [m.top - k.bottom, m.width, m.height,"
+                f" {row}.querySelector('.att-recheck .refusal').textContent]")
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert abs(inner - width) <= 20, f"the window drew {inner} px wide, not about {width}"
+    assert planted["reads"] == 2, "one press ran the check, the repeat ran nothing"
+    assert "within its minimum spacing" in said[3], said
+    assert said[1] > 0 and said[2] > 0, f"the refusal is drawn: {said}"
+    # The box with the list's summary line's height taken out of its y: that line, above every
+    # row, loses "the oldest 1 h ago" once the planted source reads afresh, and at a phone's
+    # width it is a line shorter, so the whole list rises with it (measured here, 2026-11-12:
+    # 37.7 px to 18.85 px, the row 18.85 px higher). The list moving under the summary is the
+    # list's, not the control's; anything else that moves the button fails. Equal within
+    # BOX_SAME_PX: the subtraction leaves float noise (measured 3e-5 px), a move is a pixel.
+    held = {k: (x, y - s, w, h) for k, (x, y, w, h, s) in boxes.items()}
+    first = held["before"]
+    moved = {k: (v, boxes[k]) for k, v in held.items()
+             if any(abs(a - z) > BOX_SAME_PX for a, z in zip(v, first))}
+    assert not moved, f"the button moved from {first} (summary {boxes['before'][4]}): {moved}"
+    assert said[0] >= 0, f"the refusal is drawn below the button, not beside it: {said}"

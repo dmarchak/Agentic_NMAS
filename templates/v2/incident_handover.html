@@ -8,6 +8,9 @@
     version is never written over. -#}
 {% block title %}Hand-over {{ version }} · {{ title }} · {{ brand.short }}{% endblock %}
 {% block main %}
+{#- C3290: the write-up keeps each time as an instant (`handover._instant`, a recorded
+    attempt's own): drawn here by the clock, in the viewer's zone, its UTC on the hover. -#}
+{%- filter times %}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><a href="{{ url_for('incident_v2.incident', incident_id=incident_id, list=network) }}">{{ title }}</a><span aria-hidden="true">/</span><span>Hand-over {{ version }}</span></nav>
 <div class="page-head"><div class="page-title"><h1>Hand-over {{ version }}: {{ title }} {{ info('fixit-troubleshoot', 'hand-over') }}</h1></div></div>
 {%- if doc is none %}
@@ -24,4 +27,5 @@
   <p class="small inc-links"><a href="{{ doc.link or url_for('incident_v2.incident', incident_id=incident_id, list=network) }}" title="Incident {{ doc.incident }}">Open the incident's page</a> · <a href="{{ url_for('fixit_v2.handover_page', incident_id=incident_id, version=version, list=network, download='md') }}" download>Download as Markdown</a></p>
 </section>
 {%- endif %}
+{%- endfilter %}
 {% endblock %}

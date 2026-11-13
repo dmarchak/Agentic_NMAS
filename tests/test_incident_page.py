@@ -370,7 +370,10 @@ class TestAFailedVerifyNeverReadsFixed:
         assert "resolved: read-only" not in body and "(was)" not in body
         assert ">Critical<" in body and "was Critical" not in body
         assert text_of(cell(body, "fixed")) == "Fixed — not fixed: verify failed"
-        assert "Verify failed (UTC)" in body and "Verified (UTC)" not in body, \
+        # The record's names, without "(UTC)" since its times are the viewer's (C3290); the
+        # header's cell is "Verified" for every incident, so the record is read alone.
+        record = body.split('class="card tl-record-d inc-record"', 1)[1]
+        assert "<dt>Verify failed</dt>" in record and "<dt>Verified</dt>" not in record, \
             "the record never calls a failed verify's time verified"
         assert "✗ verify failed" in text_of(cell(body, "verified"))
         assert "not repaired: verify failed" in text_of(cell(body, "ttr"))
@@ -1110,8 +1113,12 @@ class TestItEndsWhenItsFixIsVerified:
         tl = IP.timeline(*model(iid))
         assert (tl["closed"], tl["ended"]) == (verified, verified)
         record = unescape(body.split("inc-record", 1)[1])
-        assert f"{inc['closed_at']}: {inc['closed_why']}" in record, "kept as recorded"
-        assert "Closed, by its act's record step (UTC)" in record
+        # Kept as recorded: the store's instant (drawn by the clock, the viewer's, the instant
+        # itself its datetime; C3290) and its words.
+        assert re.search(rf'<time class="clock" datetime="{re.escape(inc["closed_at"])}"[^>]*>'
+                         rf'[^<]+</time>: {re.escape(inc["closed_why"])}', record), \
+            "kept as recorded"
+        assert "<dt>Closed, by its act's record step</dt>" in record
 
     def test_a_close_no_act_made_is_its_store_s(self, client):
         """A decision that closed its incident (a cleared one) stamped its own time."""

@@ -43,6 +43,7 @@ mask at its sender).
 import json
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -74,10 +75,24 @@ class Refused(ValueError):
     """Nothing was kept or sent; the words say why."""
 
 
-def _utc(epoch) -> str:
+def _instant(epoch) -> str:
+    """An instant as the write-up keeps it in its words (C3290): ISO UTC to the minute, never
+    worded here. The page draws it in the viewer's zone, its UTC on the hover (the `times`
+    filter); a file or a message leaving Mercury says it in UTC (`utc_words`)."""
     if epoch is None:
         return ""
-    return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(float(epoch)))
+    return time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(float(epoch)))
+
+
+#: An ISO UTC instant in the write-up's words, as `_instant` and a recorded attempt write it.
+_INSTANT = re.compile(r"(?<![\w:.+-])(\d{4}-\d\d-\d\d)T(\d\d:\d\d(?::\d\d(?:\.\d+)?)?)Z(?!\w|:\d)")
+
+
+def utc_words(text: str) -> str:
+    """*text* with each ISO UTC instant in it said in UTC ("2026-11-09 17:46 UTC"): for the
+    Markdown download and the message sent to a team, which leave Mercury, so no viewer's zone
+    is theirs. The page draws the same instants in the viewer's zone (C3290)."""
+    return _INSTANT.sub(r"\1 \2 UTC", str(text or ""))
 
 
 def _ago(seconds: float) -> str:
@@ -196,10 +211,10 @@ def _summary(incident, title: str, tried: list, resolved) -> list:
 
 
 def _impact(incident, resolved, now: float) -> list:
-    since = _utc(incident.detected)
+    since = _instant(incident.detected)
     if resolved is not None:
-        return [f"Resolved at {_utc(resolved)}, after {_ago(float(resolved) - incident.detected)}"
-                f" (detected {since})."]
+        return [f"Resolved at {_instant(resolved)}, after "
+                f"{_ago(float(resolved) - incident.detected)} (detected {since})."]
     if incident.subscriptions:
         return [f"{incident.device} has sent no telemetry for subscription "
                 f"{_listed(incident.subscriptions)} since {since} "
@@ -236,7 +251,7 @@ def _tried(tried: list) -> list:
         params = "; ".join(f"{k} {', '.join(v) if isinstance(v, list) else v}"
                            for k, v in a["params"].items()
                            if v not in ("", [], False))
-        out.append(f"Attempt {a['n']}, {a['at'].replace('T', ' ').replace('Z', ' UTC')}: "
+        out.append(f"Attempt {a['n']}, {a['at']}: "
                    f"{op.words if op else a['operation']} ({params or 'no parameter'}); "
                    f"proposed by {SOURCE_WORDS.get(a['source'], a['source'])}; approved by "
                    f"{_person(a['actor'])}; "
@@ -357,7 +372,7 @@ def build(incident, *, version: int, actor: str, at: float, note: str = "", note
         "cost": _cost(incident),
     }
     doc = {"version": version, "incident": incident.id, "network": incident.network,
-           "device": incident.device, "at": _utc(at), "by": _person(actor),
+           "device": incident.device, "at": _instant(at), "by": _person(actor),
            "teams": list(teams), "link": page(incident),
            "sections": [{"key": k, "title": t, "lines": lines[k]} for k, t in SECTIONS]}
     doc = redact_payload(doc)
@@ -366,14 +381,15 @@ def build(incident, *, version: int, actor: str, at: float, note: str = "", note
 
 
 def markdown(doc: dict) -> str:
-    """A write-up as Markdown, its sections in order: the board's Download as Markdown."""
+    """A write-up as Markdown, its sections in order: the board's Download as Markdown. A file
+    leaves Mercury, so its times are said in UTC (`utc_words`)."""
     head = (f"# Hand-over {doc['version']}: {doc['incident']}"
             + (f" on {doc['device']}" if doc.get("device") else ""))
     out = [head, "", f"Handed over {doc['at']} by {doc['by']}"
            + (f" to {_listed(doc['teams'])}" if doc.get("teams") else "") + ".", ""]
     for s in doc["sections"]:
         out += [f"## {s['title']}", ""] + [f"- {ln}" for ln in s["lines"]] + [""]
-    return "\n".join(out)
+    return utc_words("\n".join(out))
 
 
 def page(incident) -> str:
@@ -462,11 +478,13 @@ def event(incident, doc: dict) -> dict:
     return {"incident": incident.id, "event": EVENT, "network": incident.network,
             "device": incident.device, "kind": "hand-over to an engineer",
             "happened": " ".join(sections["summary"]),
-            "outcome": (f"Handed over by {doc['by']} at {doc['at']} (version {doc['version']}). "
-                        + " ".join(sections["impact"])),
+            # A message leaves Mercury: its times are said in UTC (`utc_words`).
+            "outcome": utc_words(f"Handed over by {doc['by']} at {doc['at']} "
+                                 f"(version {doc['version']}). "
+                                 + " ".join(sections["impact"])),
             "detected": " ".join(sections["known"][:2]),
             "detected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(incident.detected)),
-            "steps": [{"what": ln, "result": ""} for ln in sections["tried"][:SHOWN]],
+            "steps": [{"what": utc_words(ln), "result": ""} for ln in sections["tried"][:SHOWN]],
             "todo": "Open the incident's page: its write-up has the nine sections.",
             "link": doc.get("link") or page(incident)}
 
