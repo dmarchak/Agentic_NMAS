@@ -132,7 +132,7 @@ class TestAcknowledgingAFailedRun:
         assert (rec["row"], rec["event"], rec["by"], rec["why"]) == (ROW, RUN_68, PERSON, WHY)
         assert rec["expires"] == "next_scheduled_run"
         assert rec["until"] in {_iso(before), _iso(after)}
-        when = f"{rec['until'][:10]} 14:00 UTC"
+        when = rec["until"]          # the instant, drawn in the viewer's zone (C3290)
         said = f"Acknowledged by {SHOWN} until the next scheduled run ({when}): {WHY}"
         assert got.get_json()["words"] == (f"Recorded: {said}. If that run has not succeeded "
                                            "by then, the row comes back by itself.")
@@ -143,7 +143,10 @@ class TestAcknowledgingAFailedRun:
         # The count re-reads at that moment, when the row comes back by itself.
         assert a["badge"]["next_change_at"] == rec["until"]
         html = _client().get("/v2/attention").get_data(as_text=True)
-        assert "Acknowledged, so not listed" in html and said in html
+        # The page draws the moment through the clock, in the viewer's zone (C3290).
+        before, after = said.split(when)
+        assert "Acknowledged, so not listed" in html and before in html and after in html
+        assert f'{before}<time class="clock" datetime="{when}"' in html
 
     def test_past_its_moment_the_row_comes_back_naming_it(self, failed):
         from modules import acknowledgements as ACK

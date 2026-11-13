@@ -29,10 +29,17 @@ cleared". Under it:
   person**: it stands on a decision only a person can act on, a proposed fix waits, or a fix was
   applied and its verify failed. **Fixed**: a fix was applied and its verify passed. **Cleared**:
   it closed with no fix recorded. **Cancelled**: a person declined the fix proposed.
+- **Drill**, beside the state, when the incident opened inside a declared fault drill
+  ([Declare a fault drill](fault-drill)): hover over it for the drill's id (`fd-…`), who
+  declared it and the fault it expected. A drill is never drawn as a real incident; its
+  figures are counted as a drill's. The same tag is beside **Open the incident** on its Needs
+  attention item.
 - **The level** its Needs attention item has or had (Critical or Warning), or **No person
   needed** for an incident that never needed one.
 - **The device**, a link to its page, with the network and how many devices were attached to
-  the incident.
+  the incident; and, once it is resolved, its span: from when it was detected to when it ended.
+  A fixed incident ends when its fix is verified
+  ([When it ended](incident-timeline#when-it-ended)).
 - **The four times and TIME TO REPAIR**: Detected, Decided, Fixed and Verified, each from a
   record Mercury wrote at the time, then the time to repair in whole seconds with who it was
   by: "by Mercury's self-healing · policy set by" the name of the person who confirmed the
@@ -64,7 +71,9 @@ to do about it. On a resolved incident the heading reads "What's wrong (was)".
 The outcome, then the same five stages the heal's card on
 the device's page draws: **Detected**, **Decided**, **Fixing**, **Checking** and **Done**,
 each with one sentence, its time and its state. Open a stage for its steps. A failed stage
-names its step and why, once. While the heal runs, the stages move as its card's do. Under it
+names its step and why, once. Fixing's time is the whole fix, any wait inside its verify
+included and named ([How long the fix took](incident-timeline#fixing)); Done's duration is the
+time to repair, in the same words. While the heal runs, the stages move as its card's do. Under it
 are links to the incident's record on the device's History and, when one was made,
 **Download the change record (.md)**. Before any decision it reads "Nothing has run in this
 incident."

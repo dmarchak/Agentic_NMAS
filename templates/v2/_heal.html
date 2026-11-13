@@ -6,6 +6,8 @@
     switch. Every control posts routes/heal_v2.py, answered with this tab again and its answer in
     place; nothing here contacts a device. From modules/heal_page.view (and .change for the
     change card). -#}
+{#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- set cur = h.cur -%}
 {%- set net = h.network -%}
 <div class="heal-tab" id="heal-tab">
@@ -180,3 +182,4 @@
 </div>
 </div>
 </div>
+{%- endfilter %}

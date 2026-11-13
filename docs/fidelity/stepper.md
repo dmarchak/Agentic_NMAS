@@ -48,7 +48,16 @@ template only what it draws). The row's name is drawn unlinked, as a non-device 
 is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
 new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `a82cbd147df52169bbb5deabf632f524d7bdc5f221da10146da1cd15ab19294e`
+Compared again 2026-11-13 (the incident page slice's "one duration everywhere"; the operator's
+test of the incident page, 2026-11-13: "Done's "6 min 34 s" vs TIME TO REPAIR's 399 s … Both
+from the same two recorded times"): modules/run_stepper.py `duration_words`, the stepper's one
+duration format, reaches days ("3 d 19 h 50 min", a zero part left out) where it stopped at
+hours ("91 h 50 min"), and the unused `span_words` is removed. A stage's duration under an hour
+reads as before; `_run_stepper.html` and `nmas_stepper.js` are byte for byte as they were. No
+element moves and no region's verdict moved; read from the diff and tests/test_incident_page.py
+`TestOneDuration`, not a new shot. Templates sha256 before:
+`a82cbd147df52169bbb5deabf632f524d7bdc5f221da10146da1cd15ab19294e`.
+Templates sha256: `ab3c2064ea0636b7c9fb3603ac87749f266a8f7e7d0ba2a175c6701366e3b019`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each

@@ -47,7 +47,8 @@ after `nmas_credentials.js`. It draws nothing, so nothing in the top bar or In p
 compared by reading the diff, with no new shot (the templates then hashed
 `41f236b3a625127c6c2f9fc4a3c85e59f1f13f086506e709ef09e3636b73b1a4` before it).
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `888e40eb8be1876169b741a4d4b5b02a4d75424ccc04fa788c2fa9706b8d1994`
+Compared again 2026-11-13 (C3290, the words Python builds): the panel's "since" and a finished run's "at" (`_in_progress.html`) are `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover, where they drew the "21:03 UTC" modules/in_flight.py wrote (`_clock` now writes the instant). No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `888e40eb8be1876169b741a4d4b5b02a4d75424ccc04fa788c2fa9706b8d1994`.
+Templates sha256: `44f5831d2bca7341a81b044edbc2f4847f406bad908d54c62d28b5f701b2e531`
 
 **Compared again 2026-11-12 (local times, the viewer's time zone):** `base.html`'s `<body>` carries `data-tz-first` (where a verified person's first visit sends the browser's zone) only while no zone is kept for them: an attribute nothing draws, so no region moves and no shot was taken again; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `3f16fde7e5fd13c20f80a9f26cf6f655f44abfdc15e43294b340cb4820966390`.
 

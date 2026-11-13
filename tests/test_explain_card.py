@@ -500,7 +500,7 @@ def drawn_words(html: str) -> str:
     alert's labels as Grafana holds them: the test pack's planted description says "resolved"
     on purpose), scripts and styles."""
     html = re.sub(r"<(script|style)\b.*?</\1>", " ", html, flags=re.S)
-    html = re.sub(r'<span class="[^"]*\bpack-text\b[^"]*">[^<]*</span>', " ", html)
+    html = re.sub(r'<span class="[^"]*\bpack-text\b[^"]*"[^>]*>[^<]*</span>', " ", html)
     html = re.sub(r'<span class="[^"]*\balert-labels\b[^"]*"[^>]*>[^<]*</span>', " ", html)
     hovers = " ".join(re.findall(r'\btitle="([^"]*)"', html))
     return unescape(re.sub(r"<[^>]+>", " ", html) + " " + hovers)
@@ -513,7 +513,10 @@ def test_no_alert_s_end_is_drawn_as_resolved(history):  # noqa: F811
         views.append((url, history["client"].get(url).get_data(as_text=True), False))
     joined = " ".join(drawn_words(h) for _n, h, _f in views)
     # The floor: the ends are drawn, as cleared.
-    assert "fired and cleared" in joined and "cleared at 2026-10-15T08:30:00Z" in joined
+    # Its end's moment drawn by the clock, in the viewer's zone (C3290).
+    assert "fired and cleared" in joined and any(
+        'cleared at <time class="clock" datetime="2026-10-15T08:30:00Z"' in h
+        for _n, h, _f in views)
     assert re.search(r"\bCleared\b", joined) and re.search(r"\bcleared\b", joined)
     for name, html, _f in views:
         # An alert's end in words: "resolved", or "its resolve" as a noun ("resolves an

@@ -82,7 +82,9 @@ def row_of(html, label):
 
 
 def clock_of(epoch):
-    return time.strftime("%H:%M UTC", time.gmtime(epoch))
+    """The hold's start as its words carry it: the instant, which a screen draws in its
+    viewer's zone through the clock (C3290)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
 class TestOneOwner:
@@ -137,7 +139,9 @@ class TestTheActionsMenu:
                 row = row_of(html, label)
                 assert 'aria-disabled="true"' in row and "<a " not in row, label
                 assert f'title="Not offered: {short}"' in row, label
-                assert f"(not offered: {short})" in row, f"{label}: said to a reader too"
+                # Said to a reader too, its time drawn by the clock in the viewer's zone (C3290).
+                assert re.search(r"\(not offered: held by Re-subscribe telemetry since "
+                                 r"<time [^>]*datetime=\"[^\"]+\"[^>]*>[^<]+</time>\)", row), label
             for label in READS:
                 assert "<a " in row_of(html, label) and "aria-disabled" not in row_of(
                     html, label), f"{label} is a read: it stays offered (C3095)"

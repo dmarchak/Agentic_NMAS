@@ -130,12 +130,12 @@
       <dt>Proposal hash</dt><dd class="mono">{{ v.hash }}</dd>
       <dt>Program</dt><dd><span class="mono">{{ v.program_hash or 'no hash' }}</span>, {{ v.lines | length }} line(s) on {{ host }} ({{ v.platform or 'platform unknown' }})</dd>
       <dt>Fix</dt><dd>{{ v.kind_words }} (<span class="mono">{{ v.kind }}</span>) · {{ badge('Propose', 'warn') }} (Tier {{ v.tier }}){% for u in v.units %}<span class="set-origin heal-why">{{ u }}</span>{% endfor %}</dd>
-      {%- if v.reset %}<dt>Reset</dt><dd><span class="mono">{{ v.reset.key }}</span>: {{ v.reset.command }}, read by {{ v.reset.read }}{% if v.reset.measured %}, measured on {{ v.reset.measured.device }} at {{ v.reset.measured.at }}{% endif %}{% if v.reset.bound_s %}; verify waits up to {{ v.reset.bound_s }} s{% endif %}{% if v.reset.refused %}; {{ v.reset.refused }}{% endif %}</dd>{% endif %}
+      {%- if v.reset %}<dt>Reset</dt><dd><span class="mono">{{ v.reset.key }}</span>: {{ v.reset.command }}, read by {{ v.reset.read }}{% if v.reset.measured %}, measured on {{ v.reset.measured.device }} at {{ clock(v.reset.measured.at, 'date-seconds') }}{% endif %}{% if v.reset.bound_s %}; verify waits up to {{ v.reset.bound_s }} s{% endif %}{% if v.reset.refused %}; {{ v.reset.refused }}{% endif %}</dd>{% endif %}
       <dt>Policy</dt><dd><span class="mono">{{ v.policy.fingerprint or 'no fingerprint recorded' }}</span>{% if v.policy.by %}, confirmed by {{ v.policy.by | people }}{% if v.policy.reason %} (“{{ v.policy.reason }}”){% endif %}{% endif %}</dd>
-      <dt>Proposed</dt><dd>{{ v.at or 'not recorded' }}</dd>
-      <dt>The decision</dt><dd>{{ v.words or 'No words are recorded with this decision.' }}{% if v.outcome_words and v.outcome_words != v.words %} ({{ v.outcome_words }}){% endif %}</dd>
+      <dt>Proposed</dt><dd>{{ clock(v.at, 'date-seconds', missing='not recorded') }}</dd>
+      <dt>The decision</dt><dd>{{ (v.words or 'No words are recorded with this decision.') | times }}{% if v.outcome_words and v.outcome_words != v.words %} ({{ v.outcome_words }}){% endif %}</dd>
       {%- if v.person %}<dt>The change's person</dt><dd>{{ v.person }}</dd>{% endif %}
-      {%- if v.triggers %}<dt>What raised it</dt><dd><ul class="set-list small">{% for t in v.triggers %}<li>{{ t }}</li>{% endfor %}</ul></dd>{% endif %}
+      {%- if v.triggers %}<dt>What raised it</dt><dd><ul class="set-list small">{% for t in v.triggers %}<li>{{ t | times }}</li>{% endfor %}</ul></dd>{% endif %}
       <dt>What approving runs</dt><dd><ol class="set-list small">{% for s in v.steps %}<li>{{ s }}</li>{% endfor %}</ol></dd>
     </dl>
   </details>

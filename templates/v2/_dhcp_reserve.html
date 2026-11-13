@@ -57,11 +57,11 @@
   {#- Board B draws the change under the fields, one part; a removal has no fields. #}
   <div class="op-part{{ ' dh-cont' if s.op != 'remove' }}"><h3>{{ 'Change' if s.op == 'remove' }}</h3><div>
     <p class="muted">{% if s.op == 'add' %}subnet {{ p.subnet_id }} ({{ p.prefix }}){% else %}subnet {{ p.subnet_id }} ({{ p.prefix }}), reservation {{ name }}{% endif %}</p>
-    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else 'op-del' }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
+    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else 'op-del' }}">{{ sign }} {{ line | times }}</span>{% if not loop.last %}
 {% endif %}{% endfor %}</pre></div></div>
   {%- if p.checks %}
   <div class="op-part"><h3>Checks</h3><div>
-    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'apply': 'at confirm', 'note': 'note', 'fail': 'fail'}[state], {'pass': 'ok', 'apply': '', 'note': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
+    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'apply': 'at confirm', 'note': 'note', 'fail': 'fail'}[state], {'pass': 'ok', 'apply': '', 'note': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text | times }}</span></li>{% endfor %}</ul></div></div>
   {%- endif %}
   <div class="op-part"><h3>{{ 'What survives' if s.op == 'remove' else 'Not done' }}</h3><div>
     {%- for n in p.not_done %}<p>{{ n }}</p>{% else %}<p class="muted">Nothing left out: the client is given this address at its next request.</p>{% endfor %}</div></div>

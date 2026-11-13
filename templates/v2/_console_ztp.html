@@ -31,7 +31,7 @@
   <div class="op-hd"><h2 id="console-ztp-title">{{ 'Console survey of ' if survey else 'Console kick-start of ' }}{{ who }}
     {%- if c.state == 'result' %} {{ badge(chip, level) }}{% elif c.state == 'running' %} {{ badge('running', 'warn') }}{% elif c.state in ('failed', 'lost') %} {{ badge('not finished', 'warn') }}{% endif %}</h2>
     <div class="op-hd-actions">{{ how('onboard', section) }}</div></div>
-  {%- if c.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Refused:</strong> {{ c.error }}</p></div>{% endif %}
+  {%- if c.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Refused:</strong> {{ c.error | times }}</p></div>{% endif %}
 
   {%- if c.state in ('choose', 'confirm') and p %}
   <div class="op-part"><h3>Through</h3><div>
@@ -49,7 +49,7 @@
   <div class="op-part"><h3>Checks ({{ p.refusals | length }} refused)</h3><div>
     <ul class="op-gates">
       {%- for key, why in p.refused_by.items() %}
-      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'list': 'The network', 'profile': 'The console profile', 'device': 'The device', 'netbox': 'NetBox', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'survey': 'The survey it stands on', 'params': 'The parameters'}.get(key, key) }}:</strong> {{ why | people }}</span></li>
+      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'list': 'The network', 'profile': 'The console profile', 'device': 'The device', 'netbox': 'NetBox', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'survey': 'The survey it stands on', 'params': 'The parameters'}.get(key, key) }}:</strong> {{ why | people | times }}</span></li>
       {%- endfor %}
     </ul>
     {%- if p.refused_by.port %}<p class="small">Console-server ports are set up on <a href="{{ url_for('settings_v2.installation', tab='console') }}">Settings › Installation › Console servers</a>.</p>{% endif %}</div></div>
@@ -96,7 +96,7 @@
     </ul>
     <p class="faint small">It ends at the {{ p.program.ends }} prompt. Otherwise: {{ p.program.stops }}.</p></div></div>
   {%- else %}
-  <div class="op-part"><h3>Stands on</h3><div><p>{{ p.survey_words | people }}{% if p.survey and p.survey.mac %}, which read MAC <span class="mono">{{ p.survey.mac }}</span>{% endif %}.</p></div></div>
+  <div class="op-part"><h3>Stands on</h3><div><p>{{ p.survey_words | people | times }}{% if p.survey and p.survey.mac %}, which read MAC <span class="mono">{{ p.survey.mac }}</span>{% endif %}.</p></div></div>
   <div class="op-part"><h3>The lines</h3><div>
     <p>Exactly these, in this order, after the wake, the prelude and the blank check again:</p>
     <pre class="ask-pre">{% for line in p.lines %}{{ line }}

@@ -13,7 +13,7 @@ the browser-written time elements) it refuses an ISO time sliced to its clock (`
 a time's suffix (``{{ t }} UTC``, ``~ ' UTC'``). What it leaves: "UTC" in prose about whole UTC
 days or a typed field's unit (a time a person TYPES is Phase 2's), and a date cut to ``[:10]``
 (which a commit's short hash shares). The words Python builds for a screen are not templates:
-C3290 holds them (the survey's second half)."""
+tests/test_no_utc_drawn.py reads them on every response the v2 walk receives (C3290)."""
 
 import ast
 import json

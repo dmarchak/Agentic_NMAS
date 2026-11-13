@@ -25,8 +25,30 @@ none is read from a device's clock.
 
 ## Time to repair {#time-to-repair}
 
-Time to repair is Verified minus Detected, in whole seconds. It is computed each time the page
-is drawn, from those two records. Hover over it for both times in UTC and what each one is.
+Time to repair is Verified minus Detected, in whole seconds, with the same length in minutes
+beside it from a minute up ("399 s (6 min 39 s)"). It is computed each time the page is drawn,
+from those two records. Hover over it for what each of the two times is; the times themselves
+are in the Detected and Verified cells, in your time zone, with UTC on their hover.
+
+The Done stage under What Mercury has done says the same duration in the same words ("Healed
+and verified in 6 min 39 s"): one computation, from the same two records, wherever it is drawn.
+
+## When it ended {#when-it-ended}
+
+A fixed incident ends when its fix is verified: the header's span runs from Detected to
+Verified, and the timeline's "the incident closed" is at that time too. A declined fix ends the
+incident when it was declined, and a cleared one when it closed. Self-healing's own store keeps
+the time its fix's job started as the close; The record shows that as kept, beside the close
+the page draws.
+
+## How long the fix took {#fixing}
+
+The Fixing stage's time is the whole of the fix: from its first check to the end of its apply,
+including every wait inside the deploy's verify. When the verify waited out a BGP hold time,
+the stage says so: "Applied 3 lines to edge1 (11 s), then waited out edge1's BGP hold
+(3 min)". A
+program's lines are counted as you read them: a sub-mode's exit (`exit`,
+`exit-address-family`) and `!` are not lines.
 
 It is drawn only from a passed verify. Otherwise it reads:
 

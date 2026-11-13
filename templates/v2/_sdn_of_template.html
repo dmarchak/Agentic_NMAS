@@ -13,8 +13,8 @@
     <dt>Template</dt><dd><span class="mono">{{ d.template }}</span> ({{ d.family }}), {{ d.lines | length }} lines <span class="mono" title="sha256:{{ d.template_sha256 }}">sha256:{{ d.template_sha256[:8] }}…</span></dd>
   </dl>
   <div class="of-cols">
-    <ol class="of-lines mono small">{% for line in d.lines %}<li><pre>{{ line.text }}</pre><span class="faint">{{ line.why }} · cites {{ line.cite | join(', ') }}{% if line.when %} · when {{ line.when if line.when is string else line.when | join(' and ') }}{% endif %}</span></li>{% endfor %}</ol>
-    <pre class="mono small of-capture">{{ d.capture.text if d.capture.text else "the capture's answer is archived: read it again" }}</pre>
+    <ol class="of-lines mono small">{% for line in d.lines %}<li><pre data-verbatim="the template's line">{{ line.text }}</pre><span class="faint">{{ line.why }} · cites {{ line.cite | join(', ') }}{% if line.when %} · when {{ line.when if line.when is string else line.when | join(' and ') }}{% endif %}</span></li>{% endfor %}</ol>
+    <pre class="mono small of-capture" data-verbatim="the capture's answer">{{ d.capture.text if d.capture.text else "the capture's answer is archived: read it again" }}</pre>
   </div>
   <p class="muted small">You judge that the template's syntax fits this release. Recorded in {{ net }}'s repository as you (<span class="mono">openflow_confirmations/{{ d.template }}.yml</span>: the capture, its hash and the template's hash); a changed template is a draft again.</p>
   <form class="sdn-op-confirm" hx-post="{{ url_for('sdn_switches_v2.template_confirm') }}" hx-target="#of-template-op" hx-swap="outerHTML">

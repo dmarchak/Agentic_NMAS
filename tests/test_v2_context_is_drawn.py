@@ -624,9 +624,7 @@ EMPTY_IN_FIXTURE = {
     "v2/_history_ask_metrics.html s['if']": _METRICS_ASK,
     "v2/_history_ask_metrics.html s[…]": _METRICS_ASK,
     "v2/_history_body.html b.baselines": "History's baselines: the lab's repository holds no baseline tag",
-    "v2/_history_body.html g": "History's kind filter's summary for exactly one kind chosen: the walk filters by no single kind",
     "v2/_history_body.html idn.others": "History's identity line with the filter on: the walk never turns the not-verified filter on",
-    "v2/_history_body.html kind_groups": "History's kind filter's summary for exactly one kind chosen: the walk filters by no single kind",
     "v2/_history_metric.html lq.lines": _LOKI,
     "v2/_history_metric.html m.interfaces": "a metrics question's interface choices: no Prometheus answers the walk with the device's interfaces",
     "v2/_history_metric.html rec.rows": "a metrics question's restart record: no restart is recorded on the walk's store",
@@ -854,7 +852,9 @@ EMPTY_IN_FIXTURE = {
 #: 328 with the Neighbours provider (C3166 slice 3, 2026-11-12): the adjacencies reader's real
 #: run over the fleet's configs and Prometheus's captured answer, r3's tab drawn from its
 #: stored view, so `_neighbours.html`'s rows per protocol drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 328
+#: 326 with History's alert rule changes provider (C3290, 2026-11-13): one kind chosen, so the
+#: kind filter's summary (`g`, `kind_groups`) drew, measured.
+EMPTY_IN_FIXTURE_CEILING = 326
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

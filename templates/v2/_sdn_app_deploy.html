@@ -78,7 +78,7 @@
   {%- for c in d.configs %}
   <h4>{{ c.app }} {{ c.version }}'s start-time config, staged to <span class="mono">{{ c.path }}</span> {{ badge(c.state if c.state != 'same' else 'the same as now', 'warn' if c.state == 'changed' else 'ok') }}</h4>
   <p class="small muted">Compiled by {{ brand.short }} before this plan; its sha256 <span class="mono">{{ c.sha[:4] }}…{{ c.sha[-4:] }}</span> is in the request, checked by the apply script before the restart, and read by the app at load.{% for n in c.notes %} {{ n }}.{% endfor %}</p>
-  <pre class="mono apps-dropin">{{ c.text }}</pre>
+  <pre class="mono apps-dropin" data-verbatim="the file as it is written">{{ c.text }}</pre>
   {%- endfor %}
 </section>
 <section class="apps-sec" aria-label="Conformance and the drop-in">
@@ -90,7 +90,7 @@
   </table></div>
   <h4>The drop-in, before and after</h4>
   <p class="small muted"><span class="mono">{{ d.dropin_path }}</span>, rendered by the apply script's own function (Mercury previews the same text). The before is read from <span class="mono">systemctl cat</span>; the apply script keeps it as <span class="mono">mercury.conf.prev</span>.</p>
-  <pre class="mono apps-dropin">{% for l in d.dropin %}<span class="apps-{{ l.kind }}">{{ l.text }}</span>
+  <pre class="mono apps-dropin" data-verbatim="the file as it is written">{% for l in d.dropin %}<span class="apps-{{ l.kind }}">{{ l.text }}</span>
 {% endfor %}</pre>
 </section>
 </div>

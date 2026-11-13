@@ -33,13 +33,13 @@
       {%- if changes.offered %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="deploy" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Plan a deploy…</a>{{ how('deploy', compact=True, op='deploy') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Plan a deploy…<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Plan a deploy…<span class="sr-only"> (not offered: {{ changes.why | times }})</span></span></div>
       {%- endif %}
       {% for label, op, words in [('Capture', 'capture', 'capture'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
       {%- if not held and (changes.offered or (op != 'restore' and not changes.host)) %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">{{ label }}<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">{{ label }}<span class="sr-only"> (not offered: {{ changes.why | times }})</span></span></div>
       {%- endif %}
       {% endfor %}
       {#- Mode B lives in the deploy card (C403): the row opens it at what is left on the device;
@@ -47,7 +47,7 @@
       {%- if changes.offered %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="removal" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='deploy', focus='removal') }}" hx-get="{{ url_for('device_v2.deploy', name=device.hostname, back=tab, focus='removal') }}" hx-target="this" hx-swap="outerHTML">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Remove lines (Mode B)…<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Remove lines (Mode B)…<span class="sr-only"> (not offered: {{ changes.why | times }})</span></span></div>
       {%- endif %}
       <div class="menu-rule"></div>
       {#- The two ways out of a rollback (board 11): offered only while a block stands; else
@@ -56,25 +56,25 @@
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='revert') }}" hx-get="{{ url_for('device_v2.revert', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}</div>
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retry') }}" hx-get="{{ url_for('device_v2.retry', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retry rolled-back change…</a>{{ how('revert-retry', compact=True, op='retry') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Revert intent…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Retry rolled-back change…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Revert intent…<span class="sr-only"> (not offered: {{ block.why | times }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Retry rolled-back change…<span class="sr-only"> (not offered: {{ block.why | times }})</span></span></div>
       {%- endif %}
       <div class="menu-rule"></div>
       {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
       {%- if changes.offered %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">{{ label }}<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">{{ label }}<span class="sr-only"> (not offered: {{ changes.why | times }})</span></span></div>
       {%- endif %}
       {% endfor %}
       {%- if changes.offered %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="privileged" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='privileged') }}" hx-get="{{ url_for('privileged_v2.privileged', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Run a privileged command…</a>{{ how('privileged', compact=True, op='privileged command') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Run a privileged command…<span class="sr-only"> (not offered: {{ changes.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ changes.why }}">Run a privileged command…<span class="sr-only"> (not offered: {{ changes.why | times }})</span></span></div>
       {%- endif %}
       {#- Reload (P.14, cutover blocker 6): its card reads the device and judges six gates. -#}
       {%- if held %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.short }}">Reload…<span class="sr-only"> (not offered: {{ held.short }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.short }}">Reload…<span class="sr-only"> (not offered: {{ held.short | times }})</span></span></div>
       {%- else %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload') }}" hx-get="{{ url_for('device_v2.reload_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Reload…</a>{{ how('reload', compact=True, op='reload') }}</div>
       {%- endif %}
@@ -83,7 +83,7 @@
       {%- if verify_again and verify_again.offered %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload_verify') }}" hx-get="{{ url_for('device_v2.reload_verify_offer', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Verify again…</a>{{ how('reload', section='verify-again', compact=True, op='verify again') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ verify_again.why if verify_again else 'not read' }}">Verify again…<span class="sr-only"> (not offered: {{ verify_again.why if verify_again else 'not read' }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ verify_again.why if verify_again else 'not read' }}">Verify again…<span class="sr-only"> (not offered: {{ (verify_again.why if verify_again else 'not read') | times }})</span></span></div>
       {%- endif %}
       {#- Check drift now (C2336): one device's drift read, read-only, its result on its drift
           row; always offered. -#}
@@ -99,7 +99,7 @@
           neither, saying why. -#}
       {%- set drill = drill or {} %}
       {%- if drill.why %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ drill.why }}">Declare a fault drill…<span class="sr-only"> (not offered: {{ drill.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ drill.why }}">Declare a fault drill…<span class="sr-only"> (not offered: {{ drill.why | times }})</span></span></div>
       {%- elif drill.id %}
       <div class="menu-row"><button type="button" role="menuitem" class="menu-item" data-op="fault-drill" hx-post="{{ url_for('device_v2.fault_drill_end') }}" hx-vals='{{ {"list": list_name, "device": device.hostname, "back": tab, "drill": drill.id} | tojson }}' hx-target="#tab-body" hx-swap="innerHTML" hx-disabled-elt="this" x-on:htmx:after-request="close" title="Ends {{ drill.id }} now: an incident on {{ device.hostname }} from now is real; sends nothing to {{ device.hostname }}"{{ gate('configure') }}><span class="op-idle">End the fault drill (until {{ clock(drill.until) }})</span><span class="op-busy">Ending the drill…</span></button>{{ how('fault-drill', section='end', compact=True, op='ending a fault drill') }}</div>
       {%- else %}
@@ -110,11 +110,11 @@
       {%- if rekey.held %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="rekey" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='rekey') }}" hx-get="{{ url_for('device_v2.rekey', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Re-key…</a>{{ how('rekey', compact=True, op='re-key') }}</div>
       {%- else %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ rekey.why }}">Re-key…<span class="sr-only"> (not offered: {{ rekey.why }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ rekey.why }}">Re-key…<span class="sr-only"> (not offered: {{ rekey.why | times }})</span></span></div>
       {%- endif %}
       <div class="menu-rule"></div>
       {%- if held %}
-      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.short }}">Retire…<span class="sr-only"> (not offered: {{ held.short }})</span></span></div>
+      <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ held.short }}">Retire…<span class="sr-only"> (not offered: {{ held.short | times }})</span></span></div>
       {%- else %}
       <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close" title="Sends nothing to {{ device.hostname }}: takes it out of management in {{ brand.short }}'s records and, where NetBox writes are on, in NetBox's record of it. Its preview lists every change, and what survives and where, before anything is done.">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
       {%- endif %}

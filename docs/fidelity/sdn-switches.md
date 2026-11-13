@@ -13,7 +13,8 @@ card), beside the board's HTML. A shot at 1440, 1280 and 390 is the next step of
 (the register row the main thread names for it).
 
 Templates compared: templates/v2/sdn_switches.html, templates/v2/_sdn_switches.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_of_config.html, templates/v2/_sdn_of_template.html, templates/v2/_sdn_of_verify.html, templates/v2/_sdn_of_slot.html, templates/v2/_sdn_built_from.html
-Templates sha256: `12424ca74b099d6c6d5a60f613adc8c1e303afbc35f9f6d591ade97f9ed8ee81`
+Compared again 2026-11-13 (C3290, the words Python builds): the Templates card's capture picker draws each option through `_macros.clock_option`, its capture's time in the viewer's kept zone with the UTC instant on the option's hover, where it drew the raw ISO instant; `_sdn_of_config.html`'s program and `_sdn_of_template.html`'s lines and capture are marked `data-verbatim` (the text as sent and as read), an attribute only. No element moves and no region's verdict moved; compared by the templates' diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `12424ca74b099d6c6d5a60f613adc8c1e303afbc35f9f6d591ade97f9ed8ee81`.
+Templates sha256: `4f6a00b2616bd5592c1c9cfacb3beb85b721ded541ff959fc9598712c5417431`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_sdn_switches.html` and `_sdn_of_template.html`, each

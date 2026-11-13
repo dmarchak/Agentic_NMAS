@@ -12,7 +12,7 @@
   <div class="notice notice-ok" role="status">{{ icon('tick', 16) }}<p><strong>{{ r.passed }} passed</strong>{% if r.skipped %}, {{ r.skipped }} skipped{% endif %} on Python {{ r.python }} in the container harness, at <span class="mono">sha256:{{ (r.content_sha256 or '')[:4] }}…{{ (r.content_sha256 or '')[-4:] }}</span>. Kept with {{ p.name }} {{ p.version }}'s record as run <span class="mono">{{ p.entry.id }}</span>.</p></div>
   {%- elif r and r.passed is not none and r.failed is not none %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Its tests did not pass</strong>: {{ r.passed }} passed, {{ r.failed }} failed, {{ r.errors }} errors{% if r.skipped %}, {{ r.skipped }} skipped (a skip is not a pass){% endif %} on Python {{ r.python }}{% if r.content_sha256 %} at <span class="mono">sha256:{{ r.content_sha256[:4] }}…{{ r.content_sha256[-4:] }}</span>{% endif %}.{% if p.entry %} Kept as run <span class="mono">{{ p.entry.id }}</span>.{% endif %} A new commit, fetched, is a new pin to test.</p></div>
-  {%- if r.output %}<details open><summary>The output's last lines</summary><pre class="mono small apps-dropin">{{ r.output }}</pre></details>{% endif %}
+  {%- if r.output %}<details open><summary>The output's last lines</summary><pre class="mono small apps-dropin" data-verbatim="the command's output">{{ r.output }}</pre></details>{% endif %}
   {%- else %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run</strong>: {{ p.error }}.</p></div>
   {%- endif %}

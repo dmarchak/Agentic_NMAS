@@ -586,7 +586,11 @@ STAGE_WORDS = {"done": "done", "running": "in progress", "waiting": "not started
 
 
 def duration_words(seconds) -> str:
-    """*seconds* as a person reads a duration: ``45 s``, ``4 min 12 s``, ``1 h 3 min``."""
+    """*seconds* as a person reads a duration: ``45 s``, ``4 min 12 s``, ``1 h 3 min``,
+    ``3 d 19 h 50 min`` (seconds left out from an hour up, a zero part left out). THE words for
+    a length of time on a run's stages and an incident's page alike (an incident's TIME TO
+    REPAIR and its Done stage say one duration in one format: the operator's test of the
+    incident page, 2026-11-13)."""
     s = int(round(max(0.0, float(seconds or 0))))
     if s < 60:
         return f"{s} s"
@@ -594,7 +598,8 @@ def duration_words(seconds) -> str:
     if m < 60:
         return f"{m} min {s} s" if s else f"{m} min"
     h, m = divmod(m, 60)
-    return f"{h} h {m} min" if m else f"{h} h"
+    d, h = divmod(h, 24)
+    return " ".join(f"{n} {unit}" for n, unit in ((d, "d"), (h, "h"), (m, "min")) if n)
 
 
 def stage_state(states, ended: bool) -> str:

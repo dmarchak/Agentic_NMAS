@@ -251,7 +251,8 @@ class TestALastGoodValueSaysWhen:
         got = attention.adjacency_source(cached={"state": "ok", "doc": {"last_good": {
             "value": value, "value_at": "2026-10-12T03:40:00Z"}, "stale_after_seconds": 300}})
         cause = got["rows"][0]["cause"]
-        assert "r1 Gi2 reports it INIT (as of 03:36 UTC, its last good scrape)" in cause
+        # Its instant, which the screen draws in its viewer's zone (C3290).
+        assert "r1 Gi2 reports it INIT (as of 2026-10-12T03:36:59Z, its last good scrape)" in cause
 
 
 class TestRipFromTheReader:

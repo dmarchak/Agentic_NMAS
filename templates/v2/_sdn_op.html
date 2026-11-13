@@ -10,6 +10,8 @@
     `flow_ops.keep_refusal`), for a verified person: the card says it is recorded, linking
     History's SDN rows; that it is not recorded, for a press nobody verified, with what to
     do; or that it could not be and why (`refusal_kept`). -#}
+{#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- macro refusal_kept(r, network) -%}
 {%- if r.kept %}
 <p class="small faint sdn-op-refusal">This refusal is recorded in <a href="{{ url_for('v2.history_page', list=network, kind='sdn') }}">History</a>, as you: what was asked and what of the protected set refused it.</p>
@@ -37,7 +39,7 @@
 <ul class="sdn-op-list">{% for w in d.words %}<li>{{ w }}</li>{% endfor %}</ul>
 <h4 class="sdn-op-h">Exactly these requests</h4>
 {%- for r in d.requests %}
-<pre class="mono sdn-op-req">{{ r.line }}
+<pre class="mono sdn-op-req" data-verbatim="the request as it is sent">{{ r.line }}
 {{ r.body }}</pre>
 {%- endfor %}
 <p class="faint small">{{ d.count }} request{{ 's' if d.count != 1 }} to {{ d.connection }}, as the driver renders {{ 'them' if d.count != 1 else 'it' }}; an empty actions list is a drop. Sent exactly so: the confirm below binds their hash.</p>
@@ -88,3 +90,4 @@
 {%- endif %}
 {%- endif %}
 </div>
+{%- endfilter %}

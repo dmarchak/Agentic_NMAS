@@ -757,6 +757,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     from modules import identity, pipeline
     from modules.heal import decide, decisions, incidents, kinds, steplog
     from modules.nsot import authorisation
+    from modules.nsot.deploy import config_line_count
     from modules.redact import redact_text
 
     now = time.time() if now is None else float(now)
@@ -859,7 +860,10 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     if prog["refused"] or c.get("blocked") or c["tier"] != 1:
         return refuse("plan", f"the program refuses a unit now: "
                               f"{(prog['refused'] or [{}])[0].get('reason') or c.get('blocked')}")
-    step("plan", "ok", f"the program recomputed from the read: {len(prog['commands'])} line(s), "
+    # The one count of a program's lines (`deploy.config_line_count`): a sub-mode's exit is not
+    # a line re-applied.
+    step("plan", "ok", f"the program recomputed from the read: "
+                       f"{config_line_count(prog['commands'])} line(s), "
                        f"hash {prog['hash']}, the decision's")
     held.update(prog=prog, platform=platform)
     # C3164: a unit that re-applies the heartbeat applet makes the heartbeat itself a symptom
@@ -913,11 +917,14 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
         state = src.intent_state(device, post, platform) if post else {
             "state": "unknown", "words": "no read after the change"}
         record = {"intent": {"left": left, **state}}
+        # What the deploy's verify waited out before this check, kept on its step (the first
+        # after the apply), so the heal's Fixing stage says the wait inside its duration.
+        waited = bgp_hold(result)
         if left:
-            step("intent", "failed", f"{len(left)} unit(s) not at intent: {left[0]}")
+            step("intent", "failed", f"{len(left)} unit(s) not at intent: {left[0]}", **waited)
             return {"rollback": (f"{len(left)} healed unit(s) not at intent after the change "
                                  f"({left[0]}), so what landed was undone"), "record": record}
-        step("intent", "ok", f"each healed unit at intent; intent: {state['words']}")
+        step("intent", "ok", f"each healed unit at intent; intent: {state['words']}", **waited)
         if not feature_removed(c["units"]):
             # Any other symptom decides no rollback, so it is read once the device is saved
             # and released (`_judge`), never while it is held.
@@ -985,6 +992,28 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
 
     return _judge(device, r, report, src, via, step, finish, symptom, begin=begin,
                   more=heartbeat_after if beats else None)
+
+
+#: The field a heal's first step after its apply keeps what the deploy's verify waited out on:
+#: BGP's hold time (C178, `pipeline._watch_bgp_hold`), ``{"hold_s", "watched_s"}``.
+BGP_HOLD = "bgp_hold"
+
+
+def bgp_hold(result) -> dict:
+    """``{"bgp_hold": {"hold_s", "watched_s"}}`` when the deploy's verify of *result* (the
+    device's row of the apply's report) watched BGP to its hold time: the hold, and how long
+    after the push BGP was read again (`pipeline._watch_bgp_hold`'s own measurement); else
+    ``{}`` (BGP not watched, or skipped)."""
+    watch = ((result or {}).get("verify") or {}).get("bgp_watch") or {}
+    if not isinstance(watch, dict):
+        return {}
+    try:
+        watched = int(watch.get("watched_s") or 0)
+    except (TypeError, ValueError):
+        watched = 0
+    if watched <= 0:
+        return {}
+    return {BGP_HOLD: {"hold_s": int(watch.get("hold_s") or 0), "watched_s": watched}}
 
 
 def symptom_bound(triggers: list) -> int:

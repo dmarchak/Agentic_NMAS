@@ -88,6 +88,62 @@ def heal_tables(approved: bool = False) -> tuple:
         (bounce.STEPS, bounce.STEP_LABELS), (session_clear.STEPS, session_clear.STEP_LABELS))
 
 
+def repair_seconds(detected, verified):
+    """How long a repair took, in whole seconds: from *detected* (the first trigger's receive
+    time, an epoch with its fraction) to *verified* (the ``at`` of the act's ``record`` step),
+    or None when either is not recorded. THE one duration of an incident: its page's TIME TO
+    REPAIR and its Done stage are this, from these two recorded times (the operator's test of
+    the incident page, 2026-11-13: "6 min 34 s" against "399 s" was two computations). A
+    device's clock is never used."""
+    from modules import run_stepper
+
+    end = run_stepper._epoch(verified) if isinstance(verified, str) else verified
+    try:
+        start = float(detected) if detected not in (None, "") else None
+    except (TypeError, ValueError):
+        start = None
+    if end is None or not start:
+        return None
+    return int(end) - int(start)
+
+
+def ended_steps(steps: list) -> list:
+    """An ENDED act's *steps* with each step it recorded ``running`` that only other steps
+    followed given its end, as copies (the recorded steps are never rewritten): ``began`` its
+    own time and ``at`` the next step's start, the rule a finished record reads it by
+    (`steplog.finished_steps`, C3173: "a step with no end of its own ended when the next
+    began"). The act records its apply as running when it sends and writes no end of it, so
+    without this its Fixing stage ended when the apply began and the apply's own time, the
+    deploy's verify and every wait in it (BGP's hold), was drawn in no stage (the operator's
+    test of the incident page, 2026-11-13). A step a later record of itself ends, and the
+    last step of a record that ended inside it, are left as recorded."""
+    out = [dict(s) if isinstance(s, dict) else s for s in steps or []]
+    for n, s in enumerate(out):
+        if not isinstance(s, dict) or s.get("result") != "running" or s.get("began") \
+                or not s.get("at"):
+            continue
+        later = [x for x in out[n + 1:] if isinstance(x, dict)]
+        if not later or any(x.get("step") == s.get("step") for x in later):
+            continue
+        end = next((x.get("began") or x.get("at") for x in later
+                    if x.get("began") or x.get("at")), "")
+        if end:
+            out[n] = dict(s, began=s["at"], at=end)
+    return out
+
+
+def waited(steps: list) -> dict:
+    """What the act's apply waited out inside the deploy's verify, as its first step after the
+    apply keeps it (`act.bgp_hold`): ``{"hold_s", "watched_s"}``, or ``{}`` when none is
+    recorded (a record written before it was kept says no wait)."""
+    from modules.heal import act
+
+    for s in steps or []:
+        if isinstance(s, dict) and isinstance(s.get(act.BGP_HOLD), dict):
+            return dict(s[act.BGP_HOLD])
+    return {}
+
+
 def _drawn(steps: list) -> list:
     """*steps* as a screen draws them (board E2a): each step's recorded words with every
     person named by display name (`display_names.people`: "as the policy set by <identity>"
@@ -272,8 +328,10 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
                 return ""
             words = act.OUTCOME_WORDS.get(outcome) or steplog.mark(outcome,
                                                                    facts.get("act_kind") or "")
+            # The incident's one duration (`repair_seconds`): from its first trigger's receive
+            # time to its record step, the times its page's TIME TO REPAIR is computed from.
             end = max((run_stepper._epoch(s.get("at")) or 0 for s in g["steps"]), default=0)
-            took = end - facts["since"] if facts.get("since") and end else None
+            took = repair_seconds(facts.get("since"), end or None)
             return run_stepper._first_said(words) + (
                 f" in {run_stepper.duration_words(took)}" if took and took >= 1 else "")
         if g["state"] != "done":
@@ -288,7 +346,19 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
         if g["key"] == "fixing":
             sent = any(s["key"] == act_prefix + "apply" and s["state"] == "done"
                        for s in g["steps"])
-            return f"Applied {lines} to {device}" if sent else ""
+            if not sent:
+                return ""
+            # Its whole duration is its time (the apply ended where the next step began,
+            # `ended_steps`); a wait the deploy's verify made inside it is said by name, from
+            # its own measurement (`waited`): "applied 3 lines (11 s), then waited out the
+            # device's BGP hold (180 s)".
+            hold = int((facts.get("waited") or {}).get("watched_s") or 0)
+            took = g.get("took_s")
+            if hold and took and took > hold:
+                return (f"Applied {lines} to {device} ({run_stepper.duration_words(took - hold)})"
+                        f", then waited out {device}'s BGP hold "
+                        f"({run_stepper.duration_words(hold)})")
+            return f"Applied {lines} to {device}"
         if g["key"] == "checking":
             read = next((s for s in g["steps"] if s["key"] == act_prefix + "symptom"
                          and s["state"] == "done"), None)
@@ -302,18 +372,25 @@ def heal_stages(card: dict, *, host: str, facts: dict, ended: bool, now: float =
 
 
 def _facts(decision: dict, incident: dict, outcome: str = "", act_kind: str = "") -> dict:
-    """What a heal's stage sentences say, from its decision and its incident (`heal_stages`)."""
-    from modules import run_stepper
+    """What a heal's stage sentences say, from its decision and its incident (`heal_stages`):
+    its program's lines by the one count (`deploy.config_line_count`: a sub-mode's exit is no
+    line re-applied), and ``since``, the first trigger's receive time, the start of the
+    incident's one duration (`repair_seconds`); None when its incident keeps no trigger time,
+    so no other start stands in for it."""
+    from modules.nsot.deploy import config_line_count
 
     triggers = [t for t in (incident or {}).get("triggers") or [] if isinstance(t, dict)]
     program = decision.get("program")
+    try:
+        since = float((triggers[0].get("epoch") if triggers else 0) or 0) or None
+    except (TypeError, ValueError):
+        since = None
     return {"kind": (triggers[0].get("kind") if triggers else "") or "",
             "decision": decision.get("outcome") or "",
             "units": [u for u in decision.get("units") or [] if isinstance(u, dict)],
-            "lines": len(program) if isinstance(program, list) else None,
+            "lines": config_line_count(program) if isinstance(program, list) else None,
             "outcome": outcome, "act_kind": act_kind or decision.get("kind") or "",
-            "since": (incident or {}).get("opened_epoch") or run_stepper._epoch(
-                (incident or {}).get("opened_at")) or run_stepper._epoch(decision.get("at"))}
+            "since": since}
 
 
 def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = None,
@@ -327,7 +404,8 @@ def act_phase(steps: list, *, ended: bool, approved: bool = False, now: float = 
 
     table, labels = _declared(steps, approved)
     return run_stepper.from_record(
-        table, _drawn(steps), ended=ended, now=now, prefix=prefix,
+        table, _drawn(ended_steps(steps) if ended else steps), ended=ended, now=now,
+        prefix=prefix,
         good=HEALED + ("gone", "none"),
         bad=("present", "rolled_back", "interrupted", "rejected", "cant_fix"),
         conditional=("repair", "rollback", "reset"),
@@ -375,7 +453,7 @@ def steps_card(host: str, entry: dict) -> dict:
     return heal_stages(card, host=host, ended=ended, act_prefix="a-", facts={
         "kind": "", "decision": next((s.get("result") for s in reversed(decided)
                                       if s.get("step") not in ("record",)), "") or "",
-        "units": [], "lines": None, "outcome": acted_outcome,
+        "units": [], "lines": None, "outcome": acted_outcome, "waited": waited(acted),
         "act_kind": entry.get("kind") or "", "since": None})
 
 
@@ -419,7 +497,8 @@ def heal_card(network: str, host: str, job_id: str, got="unread") -> dict:
     phases, facts = _decided(network, result.get("decision") or "", host)
     phases.append(act_phase(steps, ended=True, host=host))
     level = level_of(outcome)
-    facts.update(outcome=outcome, act_kind=result.get("kind") or facts.get("act_kind") or "")
+    facts.update(outcome=outcome, act_kind=result.get("kind") or facts.get("act_kind") or "",
+                 waited=waited(steps))
     return dict(card, state="result", level=level, outcome=outcome,
                 words=steplog.mark(outcome, result.get("kind") or ""),
                 steps=heal_stages(
@@ -490,7 +569,7 @@ def record_heal_card(network: str, host: str, entry: dict) -> dict:
     words = ("ended before it recorded its outcome" if stopped else
              steplog.mark(outcome, entry.get("kind") or ""))
     facts.update(outcome="" if stopped else outcome,
-                 act_kind=entry.get("kind") or facts.get("act_kind") or "")
+                 act_kind=entry.get("kind") or facts.get("act_kind") or "", waited=waited(acted))
     actor, kind = entry_by(entry)
     times = [t for t in (run_stepper._epoch(s.get("began") or s.get("at")) for s in acted)
              if t is not None]

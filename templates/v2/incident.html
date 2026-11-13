@@ -12,7 +12,9 @@
     again when self-healing announces, and while its heal runs on each step, as its device's
     card is. Every time is the viewer's own (the page's clock element, UTC on hover);
     every person is drawn by display name, and the identity as recorded is only in The record.
-    A failed verify never reads "Fixed". -#}
+    A failed verify never reads "Fixed". A declared fault drill's incident says Drill beside
+    its state, its drill's fd- id on hover (`incident_page.drill_of`, from the tag the incident
+    took at its creation): a drill never reads as real. -#}
 {%- macro at(iso) -%}{{ clock(iso, 'date-seconds') }}{%- endmacro -%}
 {%- macro cell(c) -%}
   {%- if c.state == 'at' %}{{ at(c.at) }}{% if c.words %} <span class="inc-by">· {{ c.words }}</span>{% endif %}
@@ -50,8 +52,10 @@
 <section class="card inc-head inc-{{ p.state }}" aria-labelledby="inc-title">
   <div class="page-head"><div class="page-title">
     <h1 id="inc-title">{{ p.title }} {{ info('incident') }}</h1>
-    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span> <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span> <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
-      {%- if p.resolved %} <span>{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.closed_at %}{{ at(p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
+    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span> <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
+      {#- A resolved incident's span ends when it ended (a fixed one at its verify, a declined
+          one at the decline, a cleared one at its close: `incident_page.ended_at`). -#}
+      {%- if p.resolved %} <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
       {%- elif p.opened %} <span>since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
   </div></div>
   <dl class="inc-times">

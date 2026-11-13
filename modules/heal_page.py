@@ -270,7 +270,7 @@ def _analysis(network: str, now: float = None) -> dict:
                 "words": ("an admin turns it on in Settings › Installation › AI, after its "
                           "estimate; until then a can't-fix is told without an analysis")}
     who = (f"turned on by {entry.get('by') or 'an unrecorded admin'} "
-           f"{utc_words(entry.get('at') or '') or 'at an unrecorded time'}")
+           f"{'at ' + entry['at'] if entry.get('at') else 'at an unrecorded time'}")
     if not background.in_force(entry):
         return {"state": "ended", "badge": "approval ended", "level": "warn",
                 "words": (f"{who}; its {background.APPROVAL_DAYS}-day approval has ended, so "
@@ -280,7 +280,7 @@ def _analysis(network: str, now: float = None) -> dict:
                                                         ("month", caps["month"])) if v)
     ends = background.approval_ends(entry)
     tail = (f"{who}; caps {cap_words or 'not readable (it refuses)'}; approval ends "
-            f"{utc_words(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(ends)))}; "
+            f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(ends))}; "
             f"{HA.beta()['label']}, {HA.beta()['words']}")
     if not gateway.hosted_allowed()["allowed"]:
         return {"state": "ai_off", "badge": "on, hosted AI off", "level": "warn",
@@ -318,8 +318,8 @@ def view(network: str, now: float = None) -> dict:
     return {
         "network": network, "cur": {k: cur[k] for k in CUR_DRAWN},
         "chip": _chip(cur), "means": MODE_MEANS.get(cur["mode"], ""),
-        "until_words": utc_words(cur["until"]) if cur["until"] else "",
-        "confirmed_words": utc_words(cur["confirmed"].get("at", "")),
+        "until_words": cur["until"] or "",
+        "confirmed_words": cur["confirmed"].get("at", ""),
         "kinds": _kinds(cur, lab), "fixed": FIXED_KINDS, "guards": _guards(cur, lab),
         "always": ALWAYS, "bar": PRODUCTION_BAR, "stopped": cur["stopped"],
         "told": told, "told_loaded": heal_notify.drawn(told), "choices": heal_notify.CHOICES,
@@ -379,7 +379,7 @@ def _auto_refusal(network: str) -> str:
 
 def _mode_words(mode: str, until: str) -> str:
     if mode == "auto":
-        return f"Auto until {utc_words(until)}, then dry run" if until else "Auto"
+        return f"Auto until {until}, then dry run" if until else "Auto"
     return {"off": "Off", "dry_run": "Dry run"}.get(mode, str(mode))
 
 
@@ -419,7 +419,7 @@ def preview(network: str, p: dict, part: str) -> dict:
         button = mode if mode in H.MODES else "off"
     return {"rows": rows, "refusals": refusals, "button": button, "auto": mode == "auto",
             "guard_label": next((r[0] for r in GUARD_ROWS if r[1][0] == part), part),
-            "until_words": utc_words(a.get(H.UNTIL_KEY)) if a.get(H.UNTIL_KEY) else "",
+            "until_words": a.get(H.UNTIL_KEY) or "",
             "confirmable": p["confirmable"], "fingerprint": p["fingerprint"],
             "operands": p["operands"],
             "stopped": {"stopped": p["stopped"]["stopped"], "words": p["stopped"]["words"]}}

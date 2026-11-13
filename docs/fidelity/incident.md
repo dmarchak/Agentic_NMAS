@@ -47,8 +47,20 @@ template diff and that HTML; no new shot was taken (the board is text). The rows
 more information, The proposal, Nothing tried, The head and AI off are drawn again, and The
 gap and Answer unchecked are added. Templates sha256 before: `ecfb220f7aa8d7f158980c24a3aa53a360889b79f59d88141a3949e76ca40264`.
 
+**Compared again 2026-11-13, the operator's test of the page ("structure PASSES. Fixes, as
+one slice before the full run"):** a declared fault drill's incident draws a "Drill" badge
+beside its state, its hover the drill's `fd-` id, who declared it and the fault it expected;
+the resolved span ends when the incident ended (a fixed one at its verify), and so does the
+timeline's "the incident closed", never the act's start its store kept as the close; TIME TO
+REPAIR's span and its hover's words (no time worded there: the times are the cells'). The
+stepper's Fixing and Done sentences changed in the shared heal card, not in this page's
+templates. Compared by the template diff and the page tests/test_incident_page.py draws and
+opens in Firefox, not a new shot. Templates sha256 before:
+`e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`.
+
 Templates compared: templates/v2/incident.html, templates/v2/_fixit_section.html, templates/v2/incident_handover.html
-Templates sha256: `e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`
+Templates sha256: `b6b2551f696e627a64d33490d5cc6dd1037ec35eb4741dac13332038ccd57d99`
+Templates sha256 then (2026-11-12): `e1db7ab84d6ce006eda3411be83278ae90190fbb692b3285c9c28d187f04c0fa`
 (2026-11-12, local times' comparison below and S5's section merged, each kept; their own
 hashes were `fd015f548f9e98aca3ce23f8985f0233623ff2a173d6b8ba8d94f9984f8a9da1` (local times)
 and `38b178a3941bf6b526b783769ed3ac5a711adde528041779d109b7c405c33e2f` (S5).)
@@ -66,10 +78,10 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | States of a closed heal | F: a failed verify is "needs a person", never "Fixed" | the same; and such an incident is not drawn "resolved: read-only" (it says when self-healing ended its own work on it); a heal refused at its apply reads "not fixed: nothing was sent"; a declined proposal is Cancelled | **deviation** (log: Board incident-page B built, 3) |
 | The level | the level its Needs attention card has or had, from the index row; "No person needed" for one that never had a card; "was Warning" once resolved | Critical or Warning derived from the incident's own outcome, "was …" once resolved, "No person needed" | **deviation** (log: Board incident-page B built, 9) |
 | The device | the device (its page's link), its network, its attached members by name | the device's link, the network, and how many devices are attached; each by name in Evidence | **same** |
-| Open for, or its span | "open 2 d 19 h"; "Nov 8, 14:30 to Nov 12, 10:21 · resolved: read-only" | "since <time> (2 d ago)", the age kept current by the page; "<time> to <time> · resolved: read-only" | **same** |
+| Open for, or its span | "open 2 d 19 h"; "Nov 8, 14:30 to Nov 12, 10:21 · resolved: read-only" | "since <time> (2 d ago)", the age kept current by the page; "<time> to <time> · resolved: read-only", the span ending when the incident ended (a fixed one at its verify, never the act's start its store kept as the close) | **same** |
 | The four times | Detected, Decided, Fixed, Verified, each from the record B0 names; "— not yet", "— not needed", "— not fixed: verify failed", "✗ verify failed 09:49" | the same cells and words, each time from the same record | **same** |
 | How a time is drawn | "11:05:12", the viewer's zone, UTC on hover | "Nov 11 11:05:12 MST" by the page's clock element, UTC on hover | **deviation** (log: Board incident-page B built, 1) |
-| TIME TO REPAIR | "212 s · no human"; "330,612 s (3 d 19 h 50 min) · approved by <name>"; "not repaired"; "not repaired: verify failed"; "cleared, no repair recorded"; 32px; its hover naming both records | the same figures, words and size (20px when there is no figure), the span in words from a minute up, the hover with both times in UTC and what each is, and "How time to repair is measured" beside it; who it was by as the next row says | **same** |
+| TIME TO REPAIR | "212 s · no human"; "330,612 s (3 d 19 h 50 min) · approved by <name>"; "not repaired"; "not repaired: verify failed"; "cleared, no repair recorded"; 32px; its hover naming both records | the same figures, words and size (20px when there is no figure), the span in words from a minute up in the one format Done's duration uses too (one computation from the same two records), the hover saying what each of its two times is (the times are the Detected and Verified cells', UTC on their hover), and "How time to repair is measured" beside it; who it was by as the next row says | **same** |
 | Who took part | "no human" or "approved by <name>" in Decided, in TIME TO REPAIR and on the attempt's line | said once: beside TIME TO REPAIR when repaired, on the attempt's line when not, as "by Mercury's self-healing · policy set by <display name>" or "… · approved by <display name>" (the heal's card's and History's words); the no-person hover as the board words it, without the policy's date | **deviation** (log: Board incident-page B built, 2) |
 | One line per attempt | "Attempt 1: … applied 09:39 · verify failed: <the run's own reason>" under the cells | the same line, green, red or blue at its edge; "applied <time> · verified <time>" for one that passed; the reason cut at 200 characters, whole in The record | **same** |
 | The timeline | B4: every recorded event, oldest first, on the resolved page | a card on every state, open when resolved and collapsed otherwise; the first five triggers and members said, the rest counted | **deviation** (log: Board incident-page B built, 4) |
@@ -105,4 +117,4 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The live fragment | the header with What Mercury has done, drawn again when its sources announce; never a poll | the whole incident, drawn again on self-healing's announcement, and on each step while its heal runs | **deviation** (log: Board incident-page B built, 8) |
 | Phone width | not drawn | the times stack in one column, the stepper's steps run down (its own phone layout), nothing scrolls sideways | **same** |
 | The presenter's view | `?view=present`, two columns, larger sizes | not drawn | **later** (the build plan's S12) |
-| The fault drill chip | a chip beside the title, Retag… | not drawn | **later** (the build plan's S8 and S9) |
+| The fault drill chip | a chip beside the title, Retag… | a "Drill" badge beside the state, its hover the drill's `fd-` id, who declared it and the fault it expected; the same badge beside Open the incident on its Needs attention item; no Retag… | **deviation** (log: Board incident-page B built, 10) |

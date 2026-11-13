@@ -16,14 +16,14 @@
     {%- if e and e.ok %}
     <p class="notice notice-ok" role="status">{{ icon('check', 16) }}<span>Fault drill {{ e.id }} ended at {{ clock(e.at) }}; incidents from now are real.</span></p>
     {%- elif e %}
-    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't end the drill: {{ e.error }}.</span></p>
+    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't end the drill: {{ e.error | times }}.</span></p>
     {%- elif c.state in ('refused_list', 'failed') %}
     <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ c.error or ('the network ' ~ (c.list or 'none') ~ ' is not known') }}.</span></p>
     {%- elif g and g.ok %}
     <p class="notice notice-ok" role="status">{{ icon('check', 16) }}<span>Declared: a drill on {{ c.host }} until {{ clock(g.record.until) }}: {{ g.record.expects }}. Inject the fault now; an incident on {{ c.host }} before {{ clock(g.record.until) }} is a drill.</span></p>
     {%- else %}
     {%- if g %}
-    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ g.error }}.</span></p>
+    <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Couldn't declare the drill: {{ g.error | times }}.</span></p>
     {%- endif %}
     <form class="sc-form" hx-post="{{ url_for('device_v2.fault_drill_declare') }}" hx-target="#device-op" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="device" value="{{ c.host }}"><input type="hidden" name="back" value="{{ c.back }}">

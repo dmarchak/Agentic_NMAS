@@ -38,9 +38,21 @@ Templates compared: templates/v2/landing.html, templates/v2/_attention.html, tem
 Templates sha256 then (local times' included): `6bd7a689cdf2a7a2164120e15e5288b691024e5160e11a14e545fd50c26e8440`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_attention.html` and `_heal_analysis.html`, a row's "Clears when … (by …)" time, a Grafana silence's end, Seen before's times and the can't-fix analysis's call time are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; a row's words that Python builds keep theirs (C3290). Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`.
-Templates sha256: `38c26a97b54f9e8d8b31d716a193a6ab3e99c32696d9fd6480c32c3c484baeb5`
+Templates sha256 then (local times and Run the check again): `38c26a97b54f9e8d8b31d716a193a6ab3e99c32696d9fd6480c32c3c484baeb5`
 (Run the check again's fix alone hashed `697ab1d52342ff21f6d78b0fc1bfb166e0b03f2d6820692592cc3b0c189d9cb7`;
 this is the set over local times, which touched `_attention.html` too.)
+
+**Compared again 2026-11-13 (the operator's test of the incident page: "A drill's incident
+says so"):** in `_attention.html`, a self-healing item about a declared fault drill's incident
+draws a "Drill" badge after its **Open the incident**, its hover naming the drill's `fd-` id;
+every other item, and the link itself, as compared. The board draws the chip on the incident's
+page beside its title: **deviation** (log: Board incident-page B built, 10). Compared by the
+template diff and the row tests/test_incident_page.py draws, not a new shot. This slice's edit
+alone, over the templates as committed, hashed
+`1298bcc70c44306e39f2a8d7e01d7f20c7e0bde6591d436e936a33e3ebcdf3ae`; the hash below is over the
+working tree, which also holds the concurrent local-times edit to `_attention.html` (its
+`filter times`), compared by its own build.
+Templates sha256: `599e34d6a47e6570e6fe341723c2940402076a9e79d1438f2b9bd23e1c3a7940`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

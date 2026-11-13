@@ -748,7 +748,7 @@ RESTORE_SHOWN = 5
 def _moment_words(point: dict) -> str:
     if point.get("kind") == "head":
         return "Golden now"
-    when = (point.get("created") or "")[:16].replace("T", " ")
+    when = point.get("created") or "at an unrecorded time"   # drawn by the clock (C3290)
     if point.get("kind") == "baseline":
         return f"Baseline {when}"
     return f"Its golden {when}"

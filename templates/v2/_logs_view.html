@@ -95,7 +95,7 @@
       {%- if o.lines or o.older %}
       <div class="table-wrap"><table class="table lg-lines" aria-label="{{ r.device }}'s lines, newest first">
         <thead><tr><th scope="col">Received</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
-        <tbody>{% for l in o.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+        <tbody>{% for l in o.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td></tr>{% endfor %}</tbody>
         {#- C3166: the lines before what the logs reader holds are asked of Loki by this part,
             after the region has drawn; it draws them in its own place. -#}
         {%- if o.older %}

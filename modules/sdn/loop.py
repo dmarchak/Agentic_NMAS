@@ -966,7 +966,7 @@ def _judge_holds(network: str, collected: dict, seen: dict, candidates: list,
                 f"{named} would hold {_source_words(d)} off and is not in force: {h['words']}; "
                 "Needs attention names it and SDN › Flows offers its Re-apply… (C2018); "
                 "answered as new" if h["state"] == "lost" else
-                f"{named} held {_source_words(d)} off until {_iso(h['until'])} UTC, its hard "
+                f"{named} held {_source_words(d)} off until {_iso(h['until'])}, its hard "
                 "timeout; answered as new" if h["state"] == "expired" else
                 f"{named} may hold {_source_words(d)} off and is not judged: {h['words']}; "
                 "answered as new")
@@ -1569,7 +1569,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                          hold["id"], row["until"])
                 line("respond", (
                     f"{_source_words(d)} fired again while mitigated by response {hold['id']} "
-                    f"({hold['action']}, operation {hold['key']}) until {row['until']} UTC: "
+                    f"({hold['action']}, operation {hold['key']}) until {row['until']}: "
                     f"{hold['words']}; recorded as already mitigated ({row['id']}), not "
                     "proposed: no AI call, nothing sent"), hold=row["id"], by=hold["id"])
                 continue
@@ -1837,7 +1837,7 @@ def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, drive
         job["thread"] = threading.Thread(target=run, name=f"sdn-loop-{network}", daemon=True)
         _jobs[network] = job
     say(network, "start", f"started by {actor}, every {interval:g} s, for at most "
-                          f"{run_for / 60:g} minutes (until {job['until']} UTC) or "
+                          f"{run_for / 60:g} minutes (until {job['until']}) or "
                           f"{job['max_passes']} passes, as job {job['id']}",
         run_for_s=run_for, until=job["until"], max_passes=job["max_passes"])
     job["thread"].start()

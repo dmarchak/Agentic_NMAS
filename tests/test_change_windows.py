@@ -77,9 +77,22 @@ class TestAConfiguredWindow:
                     {"start": "10:00", "end": "11:00", "reason": "two"})["ok"]
         got = CW.holding(_at("10:15:00"))
         assert got == {"start": "10:00", "end": "11:00", "reason": "two"}
-        assert CW.words(got) == "the no-change window 10:00 to 11:00 UTC (two)"
-        assert CW.words({"start": "10:00", "end": "11:00", "reason": ""}) == \
-            "the no-change window 10:00 to 11:00 UTC"
+        # By its span's instants, which a screen draws in its viewer's zone (C3290).
+        assert CW.words(got, _at("10:15:00")) == ("the daily no-change window "
+                                                  "2026-10-12T10:00:00Z to 2026-10-12T11:00:00Z "
+                                                  "(two)")
+        assert CW.words({"start": "10:00", "end": "11:00", "reason": ""}, _at("10:15:00")) == \
+            "the daily no-change window 2026-10-12T10:00:00Z to 2026-10-12T11:00:00Z"
+
+    def test_its_words_name_the_span_holding_now_or_the_next(self, data):
+        """A window past midnight, asked after midnight, is the span that began the day
+        before; asked after it ended, the next one (C3290: its instants, not its HH:MM)."""
+        w = {"start": "22:00", "end": "02:00", "reason": ""}
+        assert CW.occurrence(w, _at("01:00:00")) == (_at("00:00:00") - 7200,
+                                                     _at("02:00:00"))
+        assert CW.occurrence(w, _at("03:00:00")) == (_at("22:00:00"), _at("22:00:00") + 14400)
+        assert CW.words(w, _at("03:00:00")) == ("the daily no-change window "
+                                                "2026-10-12T22:00:00Z to 2026-10-13T02:00:00Z")
 
 
 class TestTheShapeIsHeld:
@@ -115,7 +128,8 @@ class TestTheProfilesPageNamesThem:
         assert SR.page_view(_at("12:00:00"))["no_change_set"] == []
         assert _set({"start": "22:00", "end": "23:00", "reason": "a freeze"})["ok"]
         view = SR.page_view(_at("12:00:00"))
-        assert view["no_change_set"] == ["the no-change window 22:00 to 23:00 UTC (a freeze)"]
+        assert view["no_change_set"] == ["the daily no-change window 2026-10-12T22:00:00Z to "
+                                         "2026-10-12T23:00:00Z (a freeze)"]
         assert view["no_change"] == ""
         assert SR.page_view(_at("22:30:00"))["no_change"] == view["no_change_set"][0]
 

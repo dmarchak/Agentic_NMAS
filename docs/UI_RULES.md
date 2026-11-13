@@ -61,8 +61,13 @@ Each is `[not mechanised]` until the review proposes its test.
   run card: "The card mixes "20:01 UTC" with steps in MST"). Every time a template draws goes
   through `_macros.clock`, drawn by the server in the viewer's kept zone (a per-person setting,
   from the browser on the first visit; the operator, 2026-11-12), the zone named once per
-  screen, the record's UTC on hover. [the templates and the zone: tests/test_local_times.py;
-  the words Python builds: not mechanised yet, C3290]
+  screen, the record's UTC on hover. Python builds no time words for a screen: a builder
+  writes the instant (ISO UTC) into its words or a record's value, and the template draws
+  them through the `times` filter (routes/v2.py), which gives each instant to the same clock;
+  a quoted text (a log line, a program, a model's prompt) is marked `data-verbatim` and left
+  (C3290, the operator, 2026-11-13). [the templates and the zone: tests/test_local_times.py;
+  every response the v2 walk receives, its known gaps named and only shrinking:
+  tests/test_no_utc_drawn.py]
 
 ## Rules added 2026-11-12 (the operator)
 

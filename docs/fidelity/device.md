@@ -199,7 +199,8 @@ the pages tests/test_drained.py draws, not a new shot. Templates sha256 before:
 `82f488b184b6275ca53f8b1212f51bde13fe2ce43644fe27f86837595b756202`.
 Slice 3 alone hashed `6449d7c91a908c1e9944b2721ad2b052581eab8940ebee268bdb32b98293600a`; over
 local times (above), the two changes touch different templates, and the merged set hashes:
-Templates sha256: `d16937fb2cdf9f2ed3fbaf1fa346987b2d6d90a01ff01f29ca6dc6777767d4be`
+Compared again 2026-11-13 (C3290, the words Python builds): the Actions menu's reasons said to a reader (`_actions_menu.html`'s screen-reader text) and the fault drill's refusals (`_declare_drill.html`) are drawn through the `times` filter (routes/v2.py), so the instant a hold's or a drill's words carry is `_macros.clock`'s, in the viewer's kept zone; the hovers keep the instant. `_status.html`'s "since" draws its age words on the server (`age_words`), where it drew the raw ISO instant until the page's script ran. `_restore.html`'s restore points name their moment through `times`, where they drew the commit's time cut to minutes with no zone named (modules/device_actions.py `_moment_words` now writes the instant). No element moves and no region's verdict moved; compared by the templates' diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `d16937fb2cdf9f2ed3fbaf1fa346987b2d6d90a01ff01f29ca6dc6777767d4be`.
+Templates sha256: `784f8c6353f9559ab42e7c9d117ecf940931170a03cc8ee69395a81ee696213e`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and

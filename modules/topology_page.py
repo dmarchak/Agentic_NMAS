@@ -324,16 +324,13 @@ def _intended_words(adj: dict, layer: str) -> str:
     return "as intended"
 
 
-def _since_text(iso: str, seen: bool = True, today: str = "") -> str:
-    """The board's "since 21:02 UTC": the time of day in UTC, with the date when it is not
-    today's; "at least since" when the state was already so at the reader's first read."""
+def _since_text(iso: str, seen: bool = True) -> str:
+    """The board's "since 21:02": the instant itself, which the screen draws in its viewer's
+    zone, with the date when it is not today's there (routes/v2.py `times`, C3290); "at least
+    since" when the state was already so at the reader's first read."""
     if not iso or len(iso) < 16:
         return ""
-    if not today:
-        import time
-        today = time.strftime("%Y-%m-%d", time.gmtime())
-    when = iso[11:16] if iso[:10] == today else f"{iso[:10]} {iso[11:16]}"
-    return f"{'since' if seen else 'at least since'} {when} UTC"
+    return f"{'since' if seen else 'at least since'} {iso}"
 
 
 def _states(adjs: list) -> str:

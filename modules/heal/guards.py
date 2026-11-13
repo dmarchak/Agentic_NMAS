@@ -104,7 +104,7 @@ def g3_planned(network: str, device: str, now: float, *, explained=None, holder=
     w = (window or change_windows.holding)(now)
     if w:
         start, end = w.get("start", ""), w.get("end", "")
-        return hit(3, "held", f"{change_windows.words(w)} holds every change now; checked "
+        return hit(3, "held", f"{change_windows.words(w, now)} holds every change now; checked "
                               "again after it", {"window": f"{start}-{end}"}, now + 15 * 60)
     return None
 

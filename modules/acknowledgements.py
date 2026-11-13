@@ -103,8 +103,10 @@ def expired(ack: dict, now: float = None) -> bool:
 
 
 def _until_words(ack: dict) -> str:
-    until = str(ack.get("until") or "")
-    return (f"{until[:10]} {until[11:16]} UTC" if _epoch(until) is not None
+    """The expiry as its instant (ISO UTC), which a screen draws in its viewer's zone
+    (routes/v2.py `times`, C3290); "an unreadable time" when it cannot be read."""
+    until = _epoch(ack.get("until"))
+    return (_iso(until) if until is not None
             else "an unreadable time")
 
 

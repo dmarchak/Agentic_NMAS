@@ -17,7 +17,8 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `019be9d19542bd4c3d62104fe59e297686f393ff9c31fe6a452d3533d63b634b`
+Compared again 2026-11-13 (C3290, the words Python builds): `_logs_older.html`'s line time is `_macros.clock`'s (`date-seconds`), in the viewer's kept zone with its UTC instant on hover, where it drew the stored UTC text with no zone named, as `_logs_view.html`'s lines already did; the message cell in both is marked `data-verbatim` (the device's line as sent, its own clock's "UTC" kept). No element moves and no region's verdict moved; compared by the templates' diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `019be9d19542bd4c3d62104fe59e297686f393ff9c31fe6a452d3533d63b634b`.
+Templates sha256: `10427bbcdece680ec2a97aa9d248f497c65c1396a8d6b316689fb7007605fbcf`
 (2026-11-12, the two comparisons below merged: the tail slice's stale line and local times'
 clock in the same `_logs_view.html` line pair, each kept; their own hashes were
 `e82b7456ce24c06e6e712faabf681e0424e15c73f85b7e574c283c0001349b10` (the tail slice) and

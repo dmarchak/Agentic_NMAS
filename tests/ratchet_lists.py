@@ -81,6 +81,7 @@ RATCHETS = (
     ("tests/test_no_new_v1_capability.py", "NON_GUI", "shrinks"),
     ("tests/test_no_page_waits.py", "NOT_YET_CONVERTED", "shrinks"),
     ("tests/test_no_unreachable_ui.py", "KNOWN_DEAD", "shrinks"),
+    ("tests/test_no_utc_drawn.py", "KNOWN_GAPS", "shrinks"),
     ("tests/test_one_home_per_action.py", "KNOWN_DUPLICATES", "shrinks"),
     ("tests/test_one_stepper.py", "NOT_YET", "shrinks"),
     ("tests/test_one_template_resolver.py", "EXEMPT", "shrinks"),

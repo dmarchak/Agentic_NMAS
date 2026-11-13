@@ -35,6 +35,11 @@ READ_BY = {
                                  "drill_counts counts them apart",
     "modules/heal/steplog.py": "keeps a decision's tag on its rows, for History",
     "modules/history_sources.py": "History: a drill heal's row says it was a drill",
+    "modules/incident_page.py": "the incident's page: a drill's incident says Drill, its id on "
+                                "hover, and its record keeps the tag (the operator's test of "
+                                "the page, 2026-11-13); it decides nothing",
+    "modules/attention.py": "Needs attention: Drill beside a drill's Open the incident, from "
+                            "its decisions' tag; it decides nothing",
 }
 SCANNED_AT_LEAST = 300
 

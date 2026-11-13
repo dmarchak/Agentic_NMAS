@@ -335,7 +335,7 @@ class TestConfigureFromNetBox:
         r = c.post(f"{BASE}/configure/preview", data={"list": LIST, "device": "ovs1"})
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and "ovs1 · Open vSwitch (one OVSDB transaction)" in html
-        (program,) = re.findall(r'<pre class="mono small of-program">(.*?)</pre>', html, re.S)
+        (program,) = re.findall(r'<pre class="mono small of-program"[^>]*>(.*?)</pre>', html, re.S)
         program = unescape(program)
         assert program.startswith("sudo -n ovs-vsctl --may-exist add-br ")
         assert " -- set-controller " in program and "tcp:192.0.2.1:6653" in program
@@ -568,7 +568,7 @@ class TestTheTemplatesCard:
         m = re.search(rf'<select id="of-cap-{template}"[^>]*>(.*?)</select>', page, re.S)
         if not m:
             return {"options": [], "selected": []}
-        opts = re.findall(r'<option value="([^"]+)"( selected)?>', m.group(1))
+        opts = re.findall(r'<option value="([^"]+)"( selected)?[^>]*>', m.group(1))
         return {"options": [unescape(n) for n, _s in opts],
                 "selected": [unescape(n) for n, s in opts if s]}
 
@@ -579,7 +579,7 @@ class TestTheTemplatesCard:
                 "devices") in before
         name = self._capture(monkeypatch)
         page = c.get(f"{BASE}?list={LIST}").get_data(as_text=True)
-        assert f'<option value="{name}" selected>' in page
+        assert f'<option value="{name}" selected' in page
         r = c.post(f"{BASE}/template/preview", data={"list": LIST, "template": "arista_eos",
                                                      "capture": name})
         html = unescape(r.get_data(as_text=True))

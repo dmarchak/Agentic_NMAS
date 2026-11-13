@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, run_href -%}
+{%- from "v2/_macros.html" import icon, badge, how, run_href, clock -%}
 {#- The In progress chip in every v2 page's top bar (C537; boards A and B, canvas v66, counted as
     signed off 2026-10-16 under the Phase 7 mode). Drawn from `/operations/in_flight` asked by
     htmx (`in_flight.chip`): absent while nothing runs and nothing waits to be opened; else the
@@ -36,7 +36,7 @@
     {%- for r in ip.running %}
     <div class="ip-row">
       <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
-        <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ r.since }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
+        <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
       {%- if r.run %}
       <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=r.list, device=r.device) }}">Open its stepper</a>
       {%- elif r.page %}
@@ -56,7 +56,7 @@
     {%- for f in ip.finished %}
     <div class="ip-row">
       <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
-        <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
+        <small>{{ f.outcome }}{% if f.at %} at {{ clock(f.at) }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
       {#- C3081: opening or dismissing it is kept for this person (`seen_runs`), so it leaves
           their list and chip for good; with nobody verified, or the store unreadable, there
           is nothing to keep, and Open the result is the page's own link. -#}

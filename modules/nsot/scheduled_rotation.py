@@ -125,7 +125,7 @@ def _no_change_words(now=None) -> str:
     """The window covering *now* in words, or "" when none does."""
     from modules import change_windows
     w = in_no_change_window(now)
-    return change_windows.words(w) if w else ""
+    return change_windows.words(w, _now(now)) if w else ""
 
 
 def in_window(policy: dict, now=None) -> bool:
@@ -561,7 +561,7 @@ def expected(states: list, now=None, *, rows=None, windows=None, whole: bool = T
         if not (w_start == w_end or (w_start == 0 and w_end == 24)):     # `in_window`'s whole day
             basis.append(f"inside its preferred window ({policy_words(pol)})")
         if windows:
-            basis.append("outside " + "; ".join(change_windows.words(w) for w in windows))
+            basis.append("outside " + "; ".join(change_windows.words(w, now) for w in windows))
         if limit:
             basis.append(f"at most {limit} a run, oldest first"
                          + ("" if whole else ", the devices ahead of this one not counted "
@@ -1177,7 +1177,7 @@ def page_view(now=None) -> dict:
             "runs_error": got.get("error", ""), "last": last,
             "stopped": halted(got["rows"]) is not None,      # the same rule as the timer
             "no_change": _no_change_words(now), "now": _iso(now),
-            "no_change_set": [change_windows.words(w) for w in change_windows.windows()]}
+            "no_change_set": [change_windows.words(w, now) for w in change_windows.windows()]}
 
 
 # ------------------------------------------------------------------ the timer

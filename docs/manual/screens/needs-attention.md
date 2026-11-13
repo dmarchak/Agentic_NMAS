@@ -27,7 +27,8 @@ The landing page answers one question: does anything need you?
   (Decided, and Fixing to Done when it acted), the step it stopped at named in its stage, each
   stage opening to its steps, one line a step ([Self-healing](heal#act)). A self-healing item
   about one incident ends its Why this happened with **Open the incident**, that incident's own
-  page ([An incident's page](incident)). A lost telemetry stream's card carries
+  page ([An incident's page](incident)), and with **Drill** beside it when the incident opened
+  inside a declared fault drill (its drill's id on hover). A lost telemetry stream's card carries
   its last run the same way, **The last run, <how long ago>: <how it ended> · N steps ·
   Show**. Then the **Details**: the alerts, the devices with their networks, since when and
   which source, and last **Details for the record**, closed until you open it: the record's

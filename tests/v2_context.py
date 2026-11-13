@@ -427,20 +427,32 @@ class _Recorder:
         # responses were read for them (tests/test_display_names_drawn.py).
         # and how many of them kept an identity inside a collapsed record.
         self.addresses, self.bodies, self.records = {}, 0, 0
+        # C3290: each HTML response's UTC times outside a hover (tests/utc_drawn.py), by the
+        # route and templates that drew them (tests/test_no_utc_drawn.py), and how many
+        # responses showed a time in the viewer's zone (the clock's own words).
+        self.utc, self.clocked = {}, 0
+
+    def _key(self, out) -> tuple:
+        route = sorted({r for r, _n, _c in self.buf}) or [
+            f"{out.request.method} {out.request.path}"]
+        return (", ".join(route), ", ".join(sorted({n for _r, n, _c in self.buf})))
 
     def _people(self, out) -> None:
         from tests.people_drawn import scan
+        from tests.utc_drawn import scan as utc_scan
 
         if getattr(out, "mimetype", "") != "text/html":
             return
         self.bodies += 1
-        found, kept = scan(out.get_data(as_text=True))
+        body = out.get_data(as_text=True)
+        found, kept = scan(body)
         self.records += 1 if kept else 0
         if found:
-            route = sorted({r for r, _n, _c in self.buf}) or [
-                f"{out.request.method} {out.request.path}"]
-            key = (", ".join(route), ", ".join(sorted({n for _r, n, _c in self.buf})))
-            self.addresses.setdefault(key, set()).update(found)
+            self.addresses.setdefault(self._key(out), set()).update(found)
+        self.clocked += 1 if "data-clock" in body else 0
+        times = utc_scan(body)
+        if times:
+            self.utc.setdefault(self._key(out), set()).update(times)
 
     def __call__(self, sender, template, context, **_extra):
         from flask import request
@@ -582,6 +594,14 @@ def measure() -> dict:
     aside = _store_aside()
     try:
         IP.as_a_verified_person(mp)
+        # C3290: the walk's person reads every screen in a zone that is not UTC (nor the
+        # laptop's or CI's host zone), so a UTC time on a page is one no clock drew
+        # (tests/utc_drawn.py). Their kept zone as `viewer_zone` asks for it; the store itself
+        # is untouched, so the first visit's send is drawn as on any first visit.
+        from modules import time_zones
+        from tests.utc_drawn import WALK_ZONE
+        mp.setattr(time_zones, "zone_of",
+                   lambda actor: time_zones.zone_info(WALK_ZONE) if actor else None)
         with tempfile.TemporaryDirectory(prefix="nmas-v2-context-") as tmp:
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
                 IP.seed(lab, mp, tmp)
@@ -604,7 +624,8 @@ def measure() -> dict:
     _CACHE["m"] = {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
                    "providers": len(PROVIDERS), "upstream": upstream, "drew": drew,
                    "addresses": recorder.addresses, "bodies": recorder.bodies,
-                   "records": recorder.records}
+                   "records": recorder.records, "utc": recorder.utc,
+                   "clocked": recorder.clocked}
     return _CACHE["m"]
 
 
@@ -1976,6 +1997,40 @@ def _alert_history(client, _lab, _mp):
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def _alert_rule_changes(client, _lab, _mp):
+    """History's alert rule changes (C1886), whose records carry instants (C3290, the
+    operator's test of 2026-11-13: "Saved in Grafana 2026-11-12T02:33:45Z" drawn as text):
+    the captured ruler recorded once, then saved again in Grafana with a new threshold, by
+    tests/test_alert_rule_changes.py's own minimal edits, on this lab's network; History drawn
+    with its alert rule rows, each record in it. Its patches and store are undone after."""
+    import shutil
+    import tempfile
+
+    import pytest
+
+    from modules import alert_history
+    from modules import alert_rule_changes as ARC
+    from tests.test_alert_rule_changes import LATER, NOW, _threshold, load, saved
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-rules-")
+    try:
+        mp.setattr(ARC, "_path", lambda: os.path.join(folder, "alert_rule_changes.jsonl"))
+        mp.setattr(alert_history, "_networks", lambda: {"grafana-alerts": ["Lab"]})
+        mp.setattr(ARC, "_LAST_SEEN", {})
+        ARC.record("grafana-alerts", ARC.from_ruler(load("ruler")), ["Lab"], now=NOW)
+        ruler = load("ruler")
+        _threshold(saved(ruler)).update(params=[2])
+        ARC.record("grafana-alerts", ARC.from_ruler(ruler), ["Lab"], now=LATER)
+        r = client.get("/v2/history?list=Lab&kind=alert_rules&since=",
+                       headers={"Accept": "text/html"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Saved in Grafana" in body, r.status_code
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def _save_no_golden(client, _lab, _mp):
     """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
     golden and is left out, named; r9 holds none and is planned."""
@@ -2084,9 +2139,11 @@ def _no_change_window(client, _lab, _mp):
         mp.setattr(change_windows, "windows",
                    lambda: [{"start": "22:00", "end": "23:00", "reason": "a freeze"}])
         r = client.get("/v2/credentials/profiles?list=Lab", headers={"Accept": "text/html"})
-        assert r.status_code == 200 and ("No run starts inside the no-change window 22:00 to "
-                                         "23:00 UTC (a freeze).") in r.get_data(as_text=True), \
-            r.status_code
+        # The window by its span's instants (C3290), which tests/test_no_utc_drawn.py reads
+        # drawn by the clock in the viewer's zone.
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "No run starts inside the daily no-change window " in \
+            body and "T22:00:00Z" in body and " (a freeze)." in body, r.status_code
     finally:
         mp.undo()
 
@@ -4706,6 +4763,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
                    _silenced_alert,
                    _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
+                   _alert_rule_changes,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _read_only_account, _lab9_sitting_findings,
                    _display_names,

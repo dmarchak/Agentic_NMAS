@@ -19,7 +19,7 @@
   <p class="notice notice-warn" role="status">The log could not be read: {{ lg.error }}.</p>
   {%- else %}
   <p class="muted small">{{ lg.lines | length }} of the last {{ lg.read }} lines{% if lg.contains %} contain "{{ lg.contains }}"{% endif %}.</p>
-  <pre class="set-log">{% for line in lg.lines %}{{ line }}
+  <pre class="set-log" data-verbatim="Mercury's own log, as written">{% for line in lg.lines %}{{ line }}
 {% endfor %}</pre>
   {%- endif %}
 </section>

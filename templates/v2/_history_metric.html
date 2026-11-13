@@ -70,7 +70,7 @@
   {%- else %}
   <div class="table-wrap"><table class="table lg-lines">
     <thead><tr><th>Received</th><th>Stream</th><th>Line</th></tr></thead>
-    <tbody>{% for l in lq.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td class="mono small muted">{{ l.labels }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for l in lq.lines %}<tr><td class="mono">{{ clock(l.at, 'date-seconds') }}</td><td class="mono small muted">{{ l.labels }}</td><td class="lg-msg" data-verbatim="the device's log line">{{ l.text }}</td></tr>{% endfor %}</tbody>
   </table></div>
   {%- if lq.cut %}<p class="muted small">The newest {{ lq.lines | length }} lines are drawn; there are more: narrow the query or the range.</p>{% endif %}
   {%- endif %}

@@ -26,7 +26,7 @@
 </div>
 {%- if lg.job %}
 <p class="small faint sdn-log-sum">{% if lg.drawn < lg.count %}The newest {{ lg.drawn }} of this run's {{ lg.count }} lines, newest first: Download log has every line.{% else %}All {{ lg.count }} line{{ 's' if lg.count != 1 }} of this run, newest first.{% endif %} {{ clock(lg.at, 'date-seconds') }} to {{ clock(lg.until, 'date-seconds') }}.</p>
-<pre class="mono sdn-log" tabindex="0">{% for l in lg.lines %}{{ clock(l.at, 'seconds') }} {{ l.step }}: {{ l.words | people }}
+<pre class="mono sdn-log" tabindex="0">{% for l in lg.lines %}{{ clock(l.at, 'seconds') }} {{ l.step }}: {{ l.words | people | times }}
 {% endfor %}</pre>
 {%- endif %}
 {%- endif %}

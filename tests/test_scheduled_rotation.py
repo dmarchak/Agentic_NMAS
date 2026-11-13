@@ -24,6 +24,7 @@ the run.
 import calendar
 import json
 import os
+import re
 import threading
 import time
 
@@ -202,7 +203,10 @@ def test_the_per_run_limit_takes_the_oldest_first():
 #: configured as a backup's, shows a configured window holds a run exactly as that constant
 #: did, so they keep their names.
 WINDOW = {"start": "08:30", "end": "09:10", "reason": "a nightly backup"}
-SAID = "the no-change window 08:30 to 09:10 UTC (a nightly backup)"
+#: The window by its span's instants (C3290: a screen draws them in its viewer's zone), on the day
+#: the run's own clock is in.
+SAID = (r"the daily no-change window \d{4}-\d\d-\d\dT08:30:00Z to \d{4}-\d\d-\d\dT09:10:00Z "
+        r"\(a nightly backup\)")
 
 
 def _set_window(*windows):
@@ -238,7 +242,8 @@ def test_no_run_starts_in_the_backup_window(data, monkeypatch):
     rot = Rotations()
     got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot,
                now=_at("2026-10-12T08:45:00Z"))
-    assert got["state"] == "refused" and f"inside {SAID}: no run starts then" in got["error"]
+    assert got["state"] == "refused" and re.search(f"inside {SAID}: no run starts then",
+                                                   got["error"])
     assert rot.calls == []
     assert SR.runs()["rows"][-1]["state"] == "refused"
 
@@ -251,7 +256,7 @@ def test_a_run_that_reaches_the_backup_window_stops_there(data, monkeypatch):
                clock=lambda: next(times))
     assert [c["device"] for c in rot.calls] == ["r3"]
     assert [n["device"] for n in got["not_reached"]] == ["r1"]
-    assert f"stopped at {SAID}" in got["error"]
+    assert re.search(f"stopped at {SAID}", got["error"]), got["error"]
 
 
 def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypatch):
@@ -275,7 +280,7 @@ def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypa
                  checks=CLEAN)
     assert [c["device"] for c in rot.calls] == ["r3"]
     assert [n["device"] for n in got["not_reached"]] == ["r1"]
-    assert f"stopped at {SAID}" in got["error"]
+    assert re.search(f"stopped at {SAID}", got["error"]), got["error"]
     assert got["finished"] != got["started"], "the run's finish is its own time"
 
 
@@ -945,19 +950,28 @@ def test_the_profiles_page_names_each_window_set(client, data):
     assert "No run starts inside" not in html
     _set_window(WINDOW)
     html = client.get("/v2/credentials/profiles?list=Lab").get_data(as_text=True)
-    assert f"No run starts inside {SAID}." in html
+    # Drawn by the clock in the viewer's zone, each instant's UTC on its hover (C3290).
+    assert re.search(r"No run starts inside the daily no-change window <time [^>]*datetime=\""
+                     r"[^\"]*T08:30:00Z\"[^>]*>[^<]+</time> to <time [^>]*datetime=\"[^\"]*"
+                     r"T09:10:00Z\"[^>]*>[^<]+</time> \(a nightly backup\)\.", html), html
 
 
 def test_inside_a_window_the_confirm_is_refused_naming_it(client, data, monkeypatch):
     started = []
+    said = ("the daily no-change window 2026-10-12T08:30:00Z to 2026-10-12T09:10:00Z "
+            "(a nightly backup)")
+    assert re.fullmatch(SAID, said)
     monkeypatch.setattr(SR, "start_now", lambda **kw: started.append(kw) or ("j", "r"))
     monkeypatch.setattr(SR, "preview", lambda now=None: {
         "chosen": [{"list": "Lab", "device": "r1", "profile": "role:router",
                     "age_words": "never rotated by Mercury"}], "waiting": [],
-        "hash": "abc", "no_change": SAID, "covered": 1, "total": 1})
+        "hash": "abc", "no_change": said, "covered": 1, "total": 1})
     r = client.post("/v2/credentials/profiles/rotate-due", data={"hash": "abc"})
     assert r.status_code == 409 and started == []
-    assert f"inside {SAID}: no run starts then" in r.get_data(as_text=True)
+    body = r.get_data(as_text=True)
+    assert re.search(r"inside the daily no-change window <time [^>]*datetime=\"2026-10-12T08:30:00Z"
+                     r"\"[^>]*>[^<]+</time> to <time [^>]*>[^<]+</time> \(a nightly backup\): "
+                     r"no run starts then", body), body
 
 
 def test_the_confirm_is_bound_to_the_previewed_list(client, data, monkeypatch):

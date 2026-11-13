@@ -5,24 +5,24 @@
 <p class="notice notice-warn">{{ icon('warn') }} {{ c.error }}.</p>
 {%- else %}
 <div class="hist-ai">
-  <dl class="tl-record">{% for k, v in c.meta %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+  <dl class="tl-record">{% for k, v in c.meta %}<dt>{{ k }}</dt><dd>{{ v | times }}</dd>{% endfor %}</dl>
   {%- if c.not_sent %}
   <p class="muted small">Nothing was sent: the call was refused ({{ c.verdict | replace('_', ' ') }}) before its request was built.</p>
   {%- else %}
   <h4 class="hist-ai-head">Sent to the model</h4>
   {%- for p in c.sent %}
   {%- if p.fold %}
-  <details class="hist-ai-part" data-keep="ai-part-{{ c.id }}-{{ loop.index }}"><summary>{{ p.name }} <span class="muted small">({{ p.size }} characters, folded{% if p.names %}: it names a person by their identity, exactly as it was sent{% endif %})</span></summary><pre class="hist-diff">{{ p.text }}</pre></details>
+  <details class="hist-ai-part" data-keep="ai-part-{{ c.id }}-{{ loop.index }}"><summary>{{ p.name }} <span class="muted small">({{ p.size }} characters, folded{% if p.names %}: it names a person by their identity, exactly as it was sent{% endif %})</span></summary><pre class="hist-diff" data-verbatim="the prompt as it was sent">{{ p.text }}</pre></details>
   {%- else %}
-  <p class="hist-ai-name small">{{ p.name }}</p><pre class="hist-diff">{{ p.text }}</pre>
+  <p class="hist-ai-name small">{{ p.name }}</p><pre class="hist-diff" data-verbatim="the prompt as it was sent">{{ p.text }}</pre>
   {%- endif %}
   {%- endfor %}
   {%- endif %}
   <h4 class="hist-ai-head">Received</h4>
   {#- Board E2a: an answer that names a person by their identity is the record exactly as
       received, so it is folded (a collapsed record), never rewritten. -#}
-  {%- if c.raw and c.received_names %}<details class="hist-ai-part" data-keep="ai-received-{{ c.id }}"><summary>The answer <span class="muted small">(folded: it names a person by their identity, exactly as it was received)</span></summary><pre class="hist-diff">{{ c.received }}</pre></details>
-  {%- elif c.raw %}<pre class="hist-diff">{{ c.received }}</pre>
+  {%- if c.raw and c.received_names %}<details class="hist-ai-part" data-keep="ai-received-{{ c.id }}"><summary>The answer <span class="muted small">(folded: it names a person by their identity, exactly as it was received)</span></summary><pre class="hist-diff" data-verbatim="the answer as it was received">{{ c.received }}</pre></details>
+  {%- elif c.raw %}<pre class="hist-diff" data-verbatim="the answer as it was received">{{ c.received }}</pre>
   {%- if c.received != c.raw %}<p class="muted small">Laid out for reading; the answer's bytes as received are kept in the record.</p>{% endif %}
   {%- else %}<p class="muted small">No answer was received.</p>{% endif %}
   <p class="muted small">Secrets are masked: this is the prompt as it left the host. The unmasked form never left it and is never stored.</p>

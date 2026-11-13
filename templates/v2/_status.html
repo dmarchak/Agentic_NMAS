@@ -7,5 +7,5 @@
 {%- elif answer.state == 'danger' %}{% if answer.link %}<a class="status-op" href="{{ url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'danger', 'warn', answer.title or '') }}{% if answer.link %}</a>{% endif %}
 {%- elif answer.state == 'planned' %}{% if answer.link %}<a class="status-op" href="{{ url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'warn', 'history', answer.title) }}{% if answer.link %}</a>{% endif %}
 {%- else %}{{ badge('Not probed yet', 'muted') }}{% endif -%}
-{%- if answer.since %}<span class="status-since" title="checked {{ answer.checked_at }}">since <time data-age="{{ answer.since }}" datetime="{{ answer.since }}">{{ answer.since }}</time></span>{% endif -%}
+{%- if answer.since %}<span class="status-since" title="checked {{ answer.checked_at }}">since <time data-age="{{ answer.since }}" datetime="{{ answer.since }}">{{ answer.since | age_words }}</time></span>{% endif -%}
 </span>

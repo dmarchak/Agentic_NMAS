@@ -662,7 +662,10 @@ def logs_section(ref, host: str, onset, now: float, client=None) -> dict:
     spec, errs = Q.ask({"dev": [host], "show": "lines", "range": "custom", "from": frm,
                         "to": to})
     rng = Q.window(spec, now)
-    window = {"from": _iso(rng["start"]), "to": _iso(rng["end"]), "words": rng["words"]}
+    # The span by its instants, which the screen draws in its viewer's zone, and its length in
+    # words: never the range's own UTC words beside them (C3290).
+    window = {"from": _iso(rng["start"]), "to": _iso(rng["end"]),
+              "words": Q.duration_words(rng["end"] - rng["start"])}
     if errs or rng["error"]:
         return _section("logs", source, now, "unreadable", "; ".join(errs + [rng["error"]]
                                                                      if rng["error"] else errs),
@@ -794,7 +797,10 @@ def _neighbour_lines(ref, names: list, onset: float, start: float, end: float, n
     spec, errs = Q.ask({"dev": list(names), "show": "lines", "range": "custom", "from": frm,
                         "to": to})
     rng = Q.window(spec, now)
-    window = {"from": _iso(rng["start"]), "to": _iso(rng["end"]), "words": rng["words"]}
+    # The span by its instants, which the screen draws in its viewer's zone, and its length in
+    # words: never the range's own UTC words beside them (C3290).
+    window = {"from": _iso(rng["start"]), "to": _iso(rng["end"]),
+              "words": Q.duration_words(rng["end"] - rng["start"])}
     out = {"state": "", "why": "", "rows": [], "total": 0, "window": window}
     if errs or rng["error"]:
         return dict(out, state="unreadable", why="; ".join(errs + ([rng["error"]]

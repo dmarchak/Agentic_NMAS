@@ -25,7 +25,14 @@ nothing, creates no network and reaches no device.
 - **Verified:** the ``at`` of the act's ``record`` step, when its outcome is a passed verify
   (`passed`: `run_card.HEALED`, an allowlist).
 - **TIME TO REPAIR:** verified minus detected, in whole seconds, drawn only from a passed
-  verify. Computed each time, never stored.
+  verify, by THE one function its Done stage uses too (`run_card.repair_seconds`), its span in
+  the one format (`run_stepper.duration_words`). Computed each time, never stored.
+- **Its span:** a resolved incident ends when it ended (`ended_at`): a fixed one at its
+  verify, a declined one at the decline, a cleared one at its close. Its close is the act's
+  record step for an incident its act closed (`closed_at`), never the act's start, with which
+  the act stamps its store's close.
+- **A drill:** a declared fault drill's incident says Drill beside its state, its drill's
+  ``fd-`` id on hover (`drill_of`), by the tag it took at its creation (`drill_tag`).
 - **who:** "by Mercury's self-healing · policy set by <display name>" (`run_card.by_words`,
   the words its card and History use) only where the record shows no person in the
   incident: the act ran in Auto as the policy, no approval is recorded, and every take was the
@@ -89,6 +96,9 @@ APPLIED_STEPS = ("intent", "send")
 APPROVED, DECLINED, POLICY_TAKE = ": approved", ": declined", ": the apply"
 #: The policy's ``by`` on an act row, as `steplog.policy_words` writes it.
 _POLICY_BY = re.compile(r".+ \(policy set by .+\)\Z")
+#: The decision a close names, as `act`'s and `decide`'s closes end their why: "(decision
+#: hd-…)".
+_CLOSED_BY = re.compile(r"\(decision (hd-[0-9a-f]{12})\)\Z")
 #: Where a text drawn on the page stops; the whole of it is in the record.
 TITLE_CHARS = 160
 REASON_CHARS = 200
@@ -122,19 +132,6 @@ def _iso(epoch) -> str:
 def _cut(text: str, limit: int) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
-
-
-def span_words(seconds) -> str:
-    """A length of time in words: "3 min 32 s", "3 d 19 h 50 min" (seconds are left out from
-    an hour up)."""
-    s = max(0, int(seconds))
-    d, s = divmod(s, 86400)
-    h, s = divmod(s, 3600)
-    m, s = divmod(s, 60)
-    parts = [f"{n} {unit}" for n, unit in ((d, "d"), (h, "h"), (m, "min")) if n]
-    if not (d or h) and (s or not parts):
-        parts.append(f"{s} s")
-    return " ".join(parts)
 
 
 def passed(outcome: str) -> bool:
@@ -371,6 +368,36 @@ def _who_words(who: dict) -> str:
     return ""
 
 
+def closed_at(incident, ran: list) -> str:
+    """When the incident closed, from a record written then: the ``at`` of the record step of
+    the act that closed it (its ``closed_why`` names that act's decision: the act's last step
+    is "Record the outcome and close the incident", `act.STEPS`), else its store's
+    ``closed_at``; "" while it is open. The act stamps its store's close with the time its job
+    STARTED (`act.apply_decision`'s ``now``), so a heal verified at 20:46:18 kept a close of
+    20:42:07, when it was taken (the operator's test of the incident page, 2026-11-13): that
+    stamp is in The record as kept, and no screen draws it as the close."""
+    inc = incident or {}
+    if inc.get("state") != "closed":
+        return ""
+    m = _CLOSED_BY.search(str(inc.get("closed_why") or ""))
+    act = next((a for a in reversed(ran) if m and a["decision"] == m.group(1)
+                and a["ended_at"]), None)
+    return act["ended_at"] if act else str(inc.get("closed_at") or "")
+
+
+def ended_at(state: str, tl: dict, closed: str) -> str:
+    """When a RESOLVED incident ended: a fixed one when its fix was verified (its Verified
+    cell's time), a cancelled one when the fix was declined, a cleared one when it closed;
+    "" otherwise (an open incident, or one a person still needs, has not ended)."""
+    if state == "fixed":
+        return tl["verified"]["at"] if tl["verified"]["state"] == "at" else ""
+    if state == "cancelled":
+        return tl["decided"]["at"]
+    if state == "cleared":
+        return closed
+    return ""
+
+
 def _attempts(ran: list, who: dict, kind: str) -> list:
     """One line per attempt (an act that sent something, or is running): ``{"n", "state",
     "applied", "at", "reason", "who"}``, *state* ``verified``, ``failed`` or ``running``."""
@@ -444,17 +471,23 @@ def _events(incident, entry: dict, decisions: list, ran: list, device: str) -> l
             why = _cut(a["words"] or steplog.mark(a["outcome"], kind), REASON_CHARS)
             add(a["ended_at"], (f"attempt {n}: verified" if a["passed"] else
                                 f"attempt {n}: verify failed: {why}"))
-    if inc.get("state") == "closed":
-        add(inc.get("closed_at"), "the incident closed")
+    # Its close, when a record written then says (`closed_at`): the act's record step for an
+    # incident its act closed, never the act's start its store stamped.
+    add(closed_at(incident, ran), "the incident closed")
     out.sort(key=lambda e: e["epoch"])
     return [{"at": e["at"], "words": e["words"]} for e in out]
 
 
 def timeline(incident, entry: dict, decisions: list) -> dict:
     """The header's times and what follows from them: ``{"detected", "decided", "fixed",
-    "verified", "ttr", "attempts", "events", "who"}``. Each of the first four is a cell
-    (`_cell`); ``ttr`` is ``{"seconds", "words", "span", "who", "hover"}``, *seconds* None
-    unless a verify passed. Every time is a record's own: nothing here reads a clock."""
+    "verified", "ttr", "attempts", "events", "who", "closed", "ended"}``. Each of the first
+    four is a cell (`_cell`); ``ttr`` is ``{"seconds", "words", "span", "who", "hover"}``,
+    *seconds* None unless a verify passed; ``closed`` when it closed (`closed_at`), ``ended``
+    when a resolved one ended (`ended_at`). Every time is a record's own: nothing here reads a
+    clock."""
+    from modules import run_stepper
+    from modules.heal import run_card
+
     inc = incident or {}
     device = inc.get("device") or entry.get("device") or "the device"
     ran = acts(entry)
@@ -491,13 +524,15 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
             ttr["words"] = ("not recorded: closed before verify times were kept"
                             if end is None else "not recorded: its detected time is not kept")
         else:
-            seconds = int(end) - detected["epoch"]
+            # THE one duration (`run_card.repair_seconds`), from the two times its Done stage
+            # says too, drawn in the one format (`run_stepper.duration_words`). Its hover names
+            # what each time is; the times themselves are the Detected and Verified cells'
+            # (each the viewer's own, UTC on hover): no time is worded here.
+            seconds = run_card.repair_seconds(detected["epoch"], fixed_by["ended_at"])
             ttr.update(seconds=seconds, words=f"{seconds:,} s", who=said_who,
-                       span=span_words(seconds) if seconds >= 60 else "",
-                       hover=(f"From {detected['at'][:19].replace('T', ' ')} UTC, when "
-                              f"{detected['basis']}, to "
-                              f"{fixed_by['ended_at'][:19].replace('T', ' ')} UTC, when the "
-                              f"fix's last check passed. {seconds:,} seconds. A device's "
+                       span=run_stepper.duration_words(seconds) if seconds >= 60 else "",
+                       hover=(f"From Detected, when {detected['basis']}, to Verified, when "
+                              f"the fix's last check passed: {seconds:,} seconds. A device's "
                               "clock is never used."))
     elif failed and state == "needs_person":
         fixed = _cell("none", words="not fixed: verify failed")
@@ -516,10 +551,13 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
         ttr["words"] = "not repaired: nothing was sent"
     else:
         fixed, verified = _cell("not_yet"), _cell("not_yet")
-    return {"detected": {k: detected[k] for k in ("state", "at", "words", "hover")},
-            "decided": decided, "fixed": fixed, "verified": verified, "ttr": ttr,
-            "attempts": tries, "who": who,
-            "events": _events(incident, entry, decisions, ran, device)}
+    closed = closed_at(incident, ran)
+    out = {"detected": {k: detected[k] for k in ("state", "at", "words", "hover")},
+           "decided": decided, "fixed": fixed, "verified": verified, "ttr": ttr,
+           "attempts": tries, "who": who, "closed": closed,
+           "events": _events(incident, entry, decisions, ran, device)}
+    out["ended"] = ended_at(state, out, closed)
+    return out
 
 
 # ── The title ───────────────────────────────────────────────────────────────────────────────
@@ -618,6 +656,39 @@ def heal_card(network: str, device: str, entry: dict):
     return {"state": "decision", "steps": steps, "by": run_card.by_words(*run_card.entry_by(entry))}
 
 
+def drill_tag(found: dict):
+    """The declared fault drill this incident is, by the tag it took at its creation
+    (`fault_drills.tag_of`): on its own record, else on its step log's entry or a decision,
+    which carry the incident's tag (`steplog._of`, `decide`). Keyed on that tag alone, never
+    on a name or a word. None for a real incident (the operator, 2026-11-11: a drill is
+    counted as a drill, never as real)."""
+    from modules import fault_drills
+
+    records = [found.get("incident"), found.get("entry")] + list(found.get("decisions") or [])
+    for record in records:
+        tag = fault_drills.tag_of(record)
+        if tag:
+            return tag
+    return None
+
+
+def drill_of(found: dict):
+    """What the page draws of a drill (`drill_tag`): ``{"id", "hover"}``, the hover naming
+    the declaration's ``fd-`` id, who declared it (by display name) and the fault it expected;
+    or None for a real incident."""
+    from modules import identity
+
+    tag = drill_tag(found)
+    if not tag:
+        return None
+    by = identity.display_name(tag["declared_by"]) if tag.get("declared_by") else \
+        "a person not recorded"
+    return {"id": tag["id"],
+            "hover": (f"Fault drill {tag['id']}, declared by {by} before its fault was "
+                      f"injected: {tag.get('expects') or 'no fault named'}. A drill's figures "
+                      "are counted as a drill's, never as a real incident's.")}
+
+
 def _todo(state: str, device: str, tl: dict) -> dict:
     """What to do, in words, with the links it names: ``{"words", "links"}``; *links* are keys
     the template draws (``attention``, ``device``, ``history``, ``intent``). Links only: this
@@ -649,7 +720,10 @@ def _record(found: dict, tl: dict) -> list:
     """The record, collapsed on the page: ids, hashes, the raw times behind the header (UTC),
     every step of every run with its result, words and time, and who acted as their identity
     was recorded. ``[(name, value)]``, an empty value left out."""
+    from modules.nsot.deploy import config_line_count
+
     inc, entry, decisions = found["incident"] or {}, found["entry"], found["decisions"]
+    drill = drill_tag(found)
     standing = inc.get("standing") or {}
     trig = list(inc.get("triggers") or [])
     pol = entry.get("policy") or {}
@@ -662,6 +736,10 @@ def _record(found: dict, tl: dict) -> list:
                                    if standing else "")) if inc else ""),
         ("Closed", (f"{inc.get('closed_at')}: {inc.get('closed_why')}"
                     if inc.get("state") == "closed" else "")),
+        # The store's close as kept above; an act stamps it with the time its job started, so
+        # the close a screen draws is its act's record step (`closed_at`).
+        ("Closed, by its act's record step (UTC)",
+         tl["closed"] if tl["closed"] and tl["closed"] != inc.get("closed_at") else ""),
         ("Triggers", (f"{len(trig)} of {inc.get('triggers_seen') or len(trig)} kept"
                       if inc else "")),
         ("Members", str(len(inc.get("attached") or [])) if inc else ""),
@@ -672,7 +750,11 @@ def _record(found: dict, tl: dict) -> list:
         ("Mode", entry.get("mode")), ("Fix kind", entry.get("kind")),
         ("Policy", (f"{pol.get('fingerprint')} confirmed by {pol.get('by')}"
                     if pol.get("fingerprint") else "")),
-        ("Program", (f"{len(entry.get('program') or [])} line(s), hash "
+        ("Fault drill", (f"{drill['id']}, declared by {drill.get('declared_by')}: "
+                         f"{drill.get('expects')}, until {drill.get('until')}" if drill else "")),
+        # The one count of a program's lines (`deploy.config_line_count`); every line as sent
+        # is the next line's.
+        ("Program", (f"{config_line_count(entry.get('program') or [])} line(s), hash "
                      f"{entry.get('program_hash')}" if entry.get("program_hash") else "")),
         ("Program lines (masked)", "; ".join(entry.get("program") or [])),
         ("Golden commit", str((entry.get("records") or {}).get("golden") or "")[:12]),
@@ -744,7 +826,10 @@ def page(network: str, incident_id: str) -> dict:
                         state, "muted"),
         severity=sev, device=device, resolved=resolved,
         opened=tl["detected"]["at"] or inc.get("opened_at") or entry.get("first_at") or "",
-        closed_at=(inc.get("closed_at") if inc.get("state") == "closed" else "") or "",
+        # When it closed, and when a resolved one ended (the operator's test, 2026-11-13: a
+        # fixed incident ends when its fix is verified), each from a record written then.
+        closed_at=tl["closed"], ended_at=tl["ended"],
+        drill=drill_of(found),
         only_log=not inc,
         header=[dict(tl[k], name=name) for k, name in (
             ("detected", "Detected"), ("decided", "Decided"), ("fixed", "Fixed"),

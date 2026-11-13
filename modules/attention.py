@@ -5816,7 +5816,7 @@ def adjacency_source(cached=None) -> dict:
              if rip else
              f"{s['device']}{(' ' + s['via']) if s.get('via') else ''} reports "
              + ("it " + s["words"] if s["state"] == "down" else "no such neighbour")
-             + (f" (as of {s['as_of'][11:16]} UTC, its last good scrape)" if s.get("as_of")
+             + (f" (as of {s['as_of']}, its last good scrape)" if s.get("as_of")
                 else ""))
             for s in a.get("sides") or [])
         if a.get("managed") and len(devs) == 2:
@@ -5993,8 +5993,7 @@ def _duplicate_rows(v: dict, value_at, names: dict) -> list:
             via += [f"in area {a}" for a in r.get("areas") or []]
             n = r.get("count") or 0
             return (f"{d} logged it {' '.join(via) or 'with no neighbour named'}, {n} "
-                    f"time{'' if n == 1 else 's'}, the last at {str(r.get('last_at'))[11:19]} "
-                    "UTC")
+                    f"time{'' if n == 1 else 's'}, the last at {r.get('last_at')}")
 
         if len(claimers) > 1:
             what = f"{_and(claimers)} both claim {proto} router-id {rid}" if len(
@@ -6120,7 +6119,7 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
             what = (f"{a['device']}'s {a['protocol']} adjacency to {to} went down "
                     f"{n} time{'' if n == 1 else 's'} in the last day")
             cause = (f"{a['device']} logged it down{where} {n} time{'' if n == 1 else 's'}, the "
-                     f"last at {last['at'][11:16]} UTC ({'; '.join(reasons)}), outside any "
+                     f"last at {last['at']} ({'; '.join(reasons)}), outside any "
                      "planned restart or deploy. Prometheus scrapes once a minute and cannot "
                      "see a drop that recovers between two scrapes, so only the device's log "
                      f"shows it. Its highest daily count in the last {v.get('window_days', 7)} "
@@ -6135,7 +6134,7 @@ def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
                 operands={"list": a.get("list"), "band": a.get("band"),
                           "band_reading": {"value": n, "at": good.get("value_at")},
                           "events": sorted(d["epoch"] for d in kept)},
-                action={"label": (f"Read {a['device']}'s Logs around {last['at'][11:16]} UTC "
+                action={"label": (f"Read {a['device']}'s Logs around {last['at']} "
                                   "and its Neighbours; if the cause is known, acknowledge it "
                                   "within its measured band"),
                         "href": (f"/v2/device/{a['device']}?tab=logs"
@@ -6408,7 +6407,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
                              error=f"whether self-healing on {lst} is halted cannot be read: "
                                    f"{exc}")
     out += halted
-    _link_incident_pages(lst, out)
+    _link_incident_pages(lst, out, rows)
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
@@ -6422,18 +6421,27 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   + "".join(f"; {w}" for w in said)))
 
 
-def _link_incident_pages(lst: str, rows: list) -> None:
+def _link_incident_pages(lst: str, rows: list, decisions: list = ()) -> None:
     """Each self-healing row about one incident (its operands name an ``hi-`` id) opens that
     incident's own page (the incident page's first slice: "the email and Needs attention link
     to one place per incident"), a link beside the row's one action, never a second action.
     Its address is the page's route (`routes/incident_v2.py`); a row about no one incident (a
-    halt, the fold window, a cap) has none."""
-    from modules import incident_page
+    halt, the fold window, a cap) has none. A declared fault drill's incident says so beside
+    its link (``drill``, its ``fd-`` id: the operator's test of the incident page, 2026-11-13,
+    "a drill never reads as real"), by the tag its *decisions* carry from the incident's
+    creation (`fault_drills.tag_of`), never by a name."""
+    from modules import fault_drills, incident_page
 
+    drills = {}
+    for d in decisions or ():
+        tag = fault_drills.tag_of(d)
+        if tag and d.get("incident"):
+            drills.setdefault(d["incident"], tag["id"])
     for r in rows:
         iid = str((r.get("operands") or {}).get("incident") or "")
         if incident_page.HI.match(iid):
-            r["incident_page"] = {"id": iid, "list": lst}
+            r["incident_page"] = dict({"id": iid, "list": lst},
+                                      **({"drill": drills[iid]} if iid in drills else {}))
 
 
 #: How many rules the fold window row names (`_heal_fold_rows`); the rest are counted.
@@ -7957,13 +7965,14 @@ def coverage_words(ack: dict, cover: dict) -> str:
     if not at:
         return (f"Acknowledged by {ack.get('by')} at an unrecorded time, so what it covers "
                 "cannot be told and the row is shown")
-    who = f"Acknowledged by {ack.get('by')} on {at[:10]} at {at[11:16]} UTC"
+    # Each time as its instant, which the screen draws in its viewer's zone (C3290).
+    who = f"Acknowledged by {ack.get('by')} at {at}"
     if ack.get("until"):
-        who += f" for a quiet period until {ack['until'][11:16]} UTC on {ack['until'][:10]}"
-    when = _iso(float(cover["after"]))[:16].replace("T", " ")
+        who += f" for a quiet period until {ack['until']}"
+    when = _iso(float(cover["after"]))
     return (f"{who}; it covers what came before it"
             + ("" if ack.get("until") else " and the cycle then under way until it settled")
-            + f", and this came after, at {when} UTC, so it is shown")
+            + f", and this came after, at {when}, so it is shown")
 
 
 def _acknowledgements_now() -> tuple:
@@ -8199,8 +8208,8 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                         "succeeded by then, the row comes back by itself.")
     elif entry.get("until"):
         # A quiet period hides the row whatever its band, and says when it ends (C2316).
-        out["words"] = (f"Recorded: a quiet period until {entry['until'][11:16]} UTC on "
-                        f"{entry['until'][:10]}; anything after it raises the row again.")
+        out["words"] = (f"Recorded: a quiet period until {entry['until']}; anything after it "
+                        "raises the row again.")
     elif "band" in extra:
         # An acknowledgement within a band that cannot hide its row NOW says so (C533, the
         # operator, 2026-10-06: three acknowledgements recorded, each above its band, and the

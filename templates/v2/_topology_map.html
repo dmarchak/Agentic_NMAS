@@ -14,7 +14,7 @@
 <a class="{{ cls }}" href="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}" hx-get="{{ url_for('topology_v2.region') }}{{ t.qs(over) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}{% if zoom %} data-topo-zoom="{{ zoom }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
 {%- macro ic(name, cls='') -%}<svg class="topo-ico {{ cls }}" aria-hidden="true"><use href="#ti-{{ name }}"></use></svg>{%- endmacro -%}
-{%- macro since_words(iso, seen) -%}{% if iso %}<time datetime="{{ iso }}" title="{{ iso }}">{{ t.since_text(iso, seen) }}</time>{% endif %}{%- endmacro -%}
+{%- macro since_words(iso, seen) -%}{% if iso %}{{ t.since_text(iso, seen) | times }}{% endif %}{%- endmacro -%}
 {%- macro hidden_state(t, skip) -%}
 <input type="hidden" name="list" value="{{ t.list }}">
 {%- for k, v in t.s.items() if k not in skip and v not in (none, '') %}{% if k == 'p' %}<input type="hidden" name="p" value="{{ v | join(',') }}">{% else %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
@@ -31,6 +31,8 @@
       <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
     </form>
 {%- endmacro -%}
+{#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- set flow_shown = t.flow and t.flow.state != 'form' -%}
 <div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}{{ ', nmas:sdn from:body' if t.flow }}, nmas:device_holds from:body, nmas:device_progress from:body throttle:5s, nmas:restarts from:body" hx-swap="outerHTML">
 <svg class="topo-defs" width="0" height="0" aria-hidden="true"><defs>{{ t.symbols | safe }}</defs></svg>
@@ -348,7 +350,7 @@
           </div>
         </form>
         {%- endif %}
-      {%- else %}<span class="mono">{{ w.device }} {{ badge('island', 'danger') }}</span><span class="topo-what">Island: {{ w.why }}. {% if w.became %}Became an island: {{ t.since_text(w.since) }}.{% elif w.since %}An island {{ t.since_text(w.since) }}.{% endif %}</span>
+      {%- else %}<span class="mono">{{ w.device }} {{ badge('island', 'danger') }}</span><span class="topo-what">Island: {{ w.why }}. {% if w.became %}Became an island: {{ t.since_text(w.since) | times }}.{% elif w.since %}An island {{ t.since_text(w.since) | times }}.{% endif %}</span>
         <span><a class="btn btn-small" data-op="topology" href="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-get="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-target="#topo" hx-swap="outerHTML">Mark as expected…</a>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
         {%- if op.state == 'form' and op.device == w.device %}
         <form class="set-form topo-expect" method="post" action="{{ url_for('topology_v2.expected_declare') }}" hx-post="{{ url_for('topology_v2.expected_declare') }}" hx-target="#topo" hx-swap="outerHTML" autocomplete="off">
@@ -441,3 +443,4 @@
 <p class="small topo-faint topo-foot">Icons: every symbol is Mercury's own (static/img/topology/, the project's licence). A device's class comes from its role and what it runs: a switch with a routing neighbourship is an L3 switch. Mercury's host is drawn where it attaches, measured: the device interface whose subnet holds this host's address. What this cannot see: a link with no LLDP (a device with LLDP off, or through a bridge that drops it), shared conduits and power, anything outside management, and protocols Mercury does not read.</p>
 {%- endif %}
 </div>
+{%- endfilter %}

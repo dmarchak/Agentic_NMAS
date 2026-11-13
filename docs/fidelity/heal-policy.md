@@ -12,7 +12,8 @@ docs/boards. The states the shots do not draw (a network not marked lab, a refus
 answer, the kill switch stopped and its resume card, Who is told's refusals) are compared by
 the templates and tests/test_heal_tab_v2.py.
 Templates compared: templates/v2/_heal.html, templates/v2/_heal_change.html, templates/v2/_heal_preview.html
-Templates sha256: `e46799b907c6edc567067ac1793092456ddd9a3641c9e277111ce668a643d7d8`
+Compared again 2026-11-13 (C3290, the words Python builds): `_heal.html` is drawn under `{% filter times %}` (routes/v2.py), so the policy's Set time, AUTO's expiry and the analysis' "turned on …" and "approval ends …" are `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover, where modules/heal_page.py wrote "20 Nov 18:00 UTC" (it now writes the instant; the typed "Auto until" field keeps its own form); the change's preview (`_heal_preview.html`) draws its Mode row's before and after ("Auto until …, then dry run") through the `times` filter. No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `e46799b907c6edc567067ac1793092456ddd9a3641c9e277111ce668a643d7d8`.
+Templates sha256: `53afc6031e7998bd65bac0bfe25f303331cac6822ace9ddb35922f3d69a591ba`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a

@@ -24,6 +24,12 @@ incident planted by the heal modules' own writers. No device, no network.
   through `identity.viewer()`, a read that writes nothing and reaches nothing but the
   network's own stores (the page-speed rule), and one place per incident: History's heal rows
   and Needs attention's heal rows link it.
+- **The operator's test of the page, 2026-11-13:** a drill's incident says Drill (beside its
+  state and beside its Needs attention link, its fd- id on hover, keyed on the record's tag); a
+  fixed incident ends at its verify, never at the act's start its store kept as the close; the
+  Fixing stage holds the whole apply and names the BGP hold the deploy's verify waited out (on
+  r3's real captures, through the real pipeline's watch); TIME TO REPAIR and Done say one
+  duration, from the same two records, in one format; a sub-mode's exit is no line.
 """
 import calendar
 import json
@@ -37,6 +43,8 @@ import pytest
 from modules import incident_page as IP
 from tests import people_drawn
 from tests.conftest import TEST_PERSON
+from tests.test_bgp_hold_watch import _summary
+from tests.test_bgp_hold_watch import world  # noqa: F401  (the fixture `bgp_watch` builds on)
 from tests.test_heal_act import ADJ, SETTER, FakeAct
 from tests.test_heal_analysis import ACL_RUNNING
 from tests.test_heal_decide import GOLDEN, ROUTE4, Fake, settle
@@ -936,3 +944,329 @@ class TestOnePlacePerIncident:
         row = H._event("2026-11-11T00:00:00Z", "notification", "a notice", ["edge-b"],
                        record=[("Incident", "hi-0123456789ab")])
         assert "incident_page" not in row
+
+
+# ── The operator's test of the page, 2026-11-13: "structure PASSES. Fixes, as one slice" ──
+
+#: The fault each planted drill expects, in its declaration's words.
+EXPECTS = "an IPv4 route added on edge-b"
+
+
+def declare(at=DETECTED - 30):
+    """A fault drill on edge-b declared BEFORE its fault (the declaration's one writer,
+    `fault_drills.record_declared`), covering the planted incidents' sight at T0 - 1000: its
+    record."""
+    from modules import fault_drills
+
+    got = fault_drills.record_declared(
+        NET, "edge-b", minutes=10, expects=EXPECTS, by="op@example.com",
+        actor_verified="access", via="test", now=at,
+        inventory=lambda _n, d: {"hostname": d, "_netbox_id": 41})
+    assert got["ok"], got
+    return got["record"]
+
+
+def stage(body, key):
+    """One of the heal's five stages as drawn: ``(its sentence, its time)``, in words."""
+    m = re.search(rf'<li class="run-stage[^"]*" data-stage="{key}".*?<summary>(.*?)</summary>',
+                  body, re.S)
+    assert m, f"no {key} stage is drawn"
+    said = re.search(r'<span class="run-stage-said"[^>]*>(.*?)</span>\s*<span class="run-stage-'
+                     r'time">', m.group(1), re.S)
+    when = re.search(r'<span class="run-stage-time">(.*)</span>', m.group(1), re.S)
+    return text_of(said.group(1)), text_of(when.group(1))
+
+
+def act_steps(iid):
+    _inc, rows, _lines = raw(iid)
+    (act_row,) = [r for r in rows if r["row"] == "act"]
+    return act_row["steps"]
+
+
+def heal_with(src, running, kinds=("added_line",)):
+    """One incident decided in Auto and acted on by the real act over *src* (an act's fake
+    sources), its steps 7 s apart (`Ticking`): its id, healed."""
+    auto(NET, now=T0 - 60, kinds=kinds)
+    settle(running, triggers=[CFG], claim=False)
+    (d,) = DC.run(NET, now=T0, sources=Fake(running))["decided"]
+    assert d["outcome"] == "heal", d
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("modules.heal.act.time", Ticking())
+        got = A.act_one(NET, d["decision"], now=T0 + 5, sources=src)
+    assert got["outcome"] == "healed", got["words"]
+    return d["incident"]
+
+
+class HeldBGP(FakeAct):
+    """The act's sources, whose apply's deploy verify waited out BGP's hold first: *watch* is
+    the pipeline's own record of that wait (`pipeline._watch_bgp_hold`, on r3's real
+    captures), and the act's clock moves by the seconds it watched, as the deploy's sleep
+    moves the wall clock."""
+
+    def __init__(self, running, watch, **kw):
+        super().__init__(running, **kw)
+        self.watch = watch
+
+    def apply(self, device, **kw):
+        inner = kw["after_verify"]
+
+        def after_verify(host, r, ctx):
+            from modules.heal import act
+
+            act.time.now += self.watch["watched_s"]
+            return inner(host, dict(r, verify={"bgp_watch": self.watch}), ctx)
+
+        return super().apply(device, **dict(kw, after_verify=after_verify))
+
+
+@pytest.fixture
+def bgp_watch(world):
+    """The pipeline's verify watching r3's real BGP sessions to their hold time (IOS's 180 s)
+    and finding them held: its ``bgp_watch``, as the deploy's row carries it."""
+    from modules import pipeline
+
+    ctx, _clock = world(_summary())
+    pipeline._stage_verify(ctx)
+    watch = ctx.verify_result["x"]["bgp_watch"]
+    assert (watch["state"], watch["hold_s"], watch["watched_s"]) == ("converged", 180, 180)
+    return watch
+
+
+class TestADrillSaysSo:
+    """1. "A drill's incident says so": a Drill tag beside the state (its fd- id on hover) and
+    beside its link on Needs attention, keyed on the tag the incident took at its creation
+    (`fault_drills.tag_of`), never on a name; a real incident has none."""
+
+    def test_a_drill_s_incident_carries_the_tag_and_its_drill_s_id(self, client):
+        drill = declare()
+        iid = healed()
+        inc, _rows, _lines = raw(iid)
+        assert inc["fault_drill"]["id"] == drill["id"], "the premise: tagged at creation"
+        body = page(client, iid)
+        head = body.split('class="card inc-head', 1)[1].split("</section>", 1)[0]
+        (tag,) = re.findall(r'<span class="inc-drill" data-drill="([^"]+)">(.*?)</span></span>',
+                            head, re.S)
+        assert tag[0] == drill["id"] and tag[0].startswith("fd-")
+        assert text_of(tag[1]) == "Drill"
+        hover = unescape(re.search(r'title="([^"]+)"', tag[1]).group(1))
+        assert hover.startswith(f"Fault drill {drill['id']}, declared by op before its fault")
+        assert EXPECTS in hover and "op@example.com" not in hover
+        record = unescape(body.split("inc-record", 1)[1])
+        assert f"{drill['id']}, declared by op@example.com: {EXPECTS}" in record
+
+    def test_a_real_incident_never_carries_it(self, client):
+        body = page(client, healed())
+        assert "inc-drill" not in body and "data-drill" not in body
+        assert "Fault drill" not in body
+
+    def test_the_tag_is_the_record_s_never_a_word(self):
+        """A drill's id in the words alone tags nothing; the tag on any of the incident's own
+        records does."""
+        tag = {"id": "fd-0123456789", "declared_by": "op@example.com", "expects": EXPECTS,
+               "until": "2026-09-21T14:00:00Z"}
+        words = {"incident": {"id": "hi-0123456789ab", "closed_why": "fd-0123456789 drill"},
+                 "entry": {"words": "Fault drill fd-0123456789"}, "decisions": []}
+        assert IP.drill_tag(words) is None
+        for where in ("incident", "entry"):
+            assert IP.drill_tag(dict(words, **{where: {"fault_drill": tag}}))["id"] == tag["id"]
+        assert IP.drill_tag(dict(words, decisions=[{"fault_drill": tag}]))["id"] == tag["id"]
+
+    def test_needs_attention_s_row_for_a_drill_says_drill_beside_its_link(self, client,
+                                                                         monkeypatch):
+        from modules import attention
+
+        drill = declare()
+        iid = cant_fix()
+        monkeypatch.setattr(attention, "SOURCES", [attention.heal_source])
+        monkeypatch.setattr(attention, "CANT_FIX_DAYS", 10 ** 5)
+        body = read(client, f"/v2/attention?list={NET}").get_data(as_text=True)
+        assert incident_links(body) == [(f"/v2/incident/{iid}?list={NET}", "Open the incident")]
+        line = re.search(r'<p class="small att-incident">.*?</p>', body, re.S).group(0)
+        assert f'data-drill="{drill["id"]}"' in line and text_of(line) == \
+            "Open the incident Drill"
+
+
+class TestItEndsWhenItsFixIsVerified:
+    """2. "The incident ends when its fix is verified ... not at 20:42:07": the act stamps its
+    store's close with the time its job started, so the header's span and the timeline's
+    close are its act's record step, the verify that passed."""
+
+    def test_the_span_and_the_close_are_the_verify_never_the_act_s_start(self, client):
+        iid = healed()
+        inc, _rows, lines = raw(iid)
+        verified = next(s["at"] for s in act_steps(iid)
+                        if s["step"] == "record" and s["result"] == "healed")
+        taken = next(x["at"] for x in lines if x.get("row") == "taken")
+        assert inc["closed_at"] == taken != verified, \
+            "the premise, as the host's record held it: the store's close is the act's start"
+        body = page(client, iid)
+        span = re.search(r'<span class="inc-span">(.*?)</span> <span class="inc-ro">', body,
+                         re.S).group(1)
+        assert times_in(span) == [iso(inc["triggers"][0]["epoch"]), verified]
+        events = re.findall(r"<li>(<time [^>]*>[^<]*</time>): (.*?)</li>",
+                            body.split('class="inc-event-list"', 1)[1].split("</ol>", 1)[0])
+        closed = [times_in(t) for t, words in events if words == "the incident closed"]
+        assert closed == [[verified]], events
+        tl = IP.timeline(*model(iid))
+        assert (tl["closed"], tl["ended"]) == (verified, verified)
+        record = unescape(body.split("inc-record", 1)[1])
+        assert f"{inc['closed_at']}: {inc['closed_why']}" in record, "kept as recorded"
+        assert "Closed, by its act's record step (UTC)" in record
+
+    def test_a_close_no_act_made_is_its_store_s(self, client):
+        """A decision that closed its incident (a cleared one) stamped its own time."""
+        iid = cant_fix()
+        I.close(NET, iid, "nothing: it went back by itself (decision hd-000000000000)", T0 + 9)
+        tl = IP.timeline(*model(iid))
+        assert tl["closed"] == iso(T0 + 9)
+
+
+class TestFixingShowsItsWholeDuration:
+    """3. "Fixing shows its whole duration, including waits: e.g. "applied 3 lines (11 s),
+    then waited out r3's BGP hold (180 s)", from the recorded step times."""
+
+    def test_the_apply_ends_where_the_next_step_began(self, client):
+        from modules.run_stepper import duration_words
+
+        iid = healed()
+        steps = act_steps(iid)
+        (apply,) = [s for s in steps if s["step"] == "apply"]
+        intent = next(s for s in steps if s["step"] == "intent")
+        first = min(seconds(s["at"]) for s in steps if s.get("at"))
+        assert apply["result"] == "running", "the premise: the act writes no end of its apply"
+        said, when = stage(page(client, iid), "fixing")
+        assert said == "Applied 1 line to edge-b"
+        assert when.endswith(" · " + duration_words(seconds(intent["at"]) - first)), when
+
+    def test_a_wait_the_deploy_s_verify_made_is_said_inside_it(self, client, bgp_watch):
+        from modules.run_stepper import duration_words
+
+        iid = heal_with(HeldBGP(GOLDEN + ROUTE4, bgp_watch), GOLDEN + ROUTE4)
+        steps = act_steps(iid)
+        intent = next(s for s in steps if s["step"] == "intent")
+        assert intent["bgp_hold"] == {"hold_s": 180, "watched_s": 180}
+        whole = seconds(intent["at"]) - min(seconds(s["at"]) for s in steps if s.get("at"))
+        said, when = stage(page(client, iid), "fixing")
+        assert said == (f"Applied 1 line to edge-b ({duration_words(whole - 180)}), then "
+                        "waited out edge-b's BGP hold (3 min)"), said
+        assert when.endswith(" · " + duration_words(whole)) and whole > 180, when
+
+
+class TestOneDuration:
+    """4. "One duration everywhere": TIME TO REPAIR and Done from the same two recorded times
+    (the first trigger's receive time, the act's record step), by one function, in one
+    format."""
+
+    def test_time_to_repair_and_done_say_one_duration(self, client):
+        from modules.run_stepper import duration_words
+
+        iid = healed()
+        inc, _rows, _lines = raw(iid)
+        verified = next(s["at"] for s in act_steps(iid) if s["step"] == "record")
+        ttr = seconds(verified) - int(inc["triggers"][0]["epoch"])
+        assert int(inc["opened_epoch"]) != int(inc["triggers"][0]["epoch"]), \
+            "the premise: Mercury's sight and the trigger's receive time differ"
+        body = page(client, iid)
+        assert text_of(cell(body, "ttr")).split(" · ")[0].endswith(
+            f"{ttr:,} s ({duration_words(ttr)})")
+        said, _when = stage(body, "done")
+        assert said == f"Healed and verified in {duration_words(ttr)}", said
+
+    def test_no_time_is_worded_in_python(self, client):
+        body = page(client, healed())
+        hover = unescape(re.search(r'data-cell="ttr" title="([^"]+)"', body).group(1))
+        assert hover.startswith("From Detected, when ") and "to Verified, when" in hover
+        assert "UTC" not in hover and not re.search(r"\d\d:\d\d", hover), hover
+
+    def test_the_one_format_reaches_days(self):
+        from modules.run_stepper import duration_words
+
+        assert [duration_words(s) for s in (45, 399, 3780, 330612, 86400)] == [
+            "45 s", "6 min 39 s", "1 h 3 min", "3 d 19 h 50 min", "1 d"]
+
+
+class TestLinesAsAPersonCountsThem:
+    """5. "3 lines, not 4": a sub-mode's exit is not a line re-applied; one count
+    (`deploy.config_line_count`) wherever the count is drawn."""
+
+    APPLET = ("event manager applet HB\n event timer watchdog time 60\n"
+              " action 1 syslog msg heartbeat\n")
+
+    def test_a_stanza_put_back_is_its_three_lines(self, client):
+        running = GOLDEN.replace(self.APPLET, "")
+        iid = heal_with(FakeAct(running), running, kinds=("missing_line",))
+        _inc, entry, _d = model(iid)
+        assert entry["program"][-1] == "exit" and len(entry["program"]) == 4, \
+            "the premise: the program sends the applet's three lines and the exit"
+        body = page(client, iid)
+        said, _when = stage(body, "fixing")
+        assert said == "Applied 3 lines to edge-b", said
+        record = unescape(body.split("inc-record", 1)[1])
+        assert re.search(r"<dt>Program</dt><dd>3 line\(s\), hash ", record)
+        decided = next(s for s in entry["steps"] if s["step"] == "classify")
+        plan = next(s for s in act_steps(iid) if s["step"] == "plan")
+        assert "the fix 3 line(s)" in decided["words"] and ": 3 line(s)," in plan["words"]
+
+    def test_the_count_leaves_out_every_sub_mode_exit(self):
+        from modules.nsot import receipts
+        from modules.nsot.deploy import config_line_count
+
+        program = ["router bgp 65001", " address-family ipv4", "  neighbor 192.0.2.1 activate",
+                   " exit-address-family", "exit", "!", "", "ipv6 route 2001:db8:9::/48 Null0"]
+        assert config_line_count(program) == 4
+        assert receipts.config_lines({"program": program}) == 4, "the receipt's count is it"
+
+
+class TestTheTagAndTheEndInARealBrowser:
+    """In Firefox (where one runs; skipped naming why elsewhere): a drill's page shows its Drill
+    tag beside the state, its drill's id on hover, and the header's span and the timeline's
+    close end at the verify that passed; once the drill is ended, the page drawn again when
+    self-healing announces keeps the tag (the incident's, from its creation) and the end."""
+
+    #: What the page draws of the tag and the end, read in the browser.
+    READ = ("var t = document.querySelector('.inc-head .inc-line .inc-drill .badge');"
+            "var s = document.querySelectorAll('.inc-span time');"
+            "var c = Array.prototype.filter.call(document.querySelectorAll('.inc-event-list li'),"
+            " function (l) { return /: the incident closed$/.test(l.textContent); });"
+            "return t && [t.textContent, t.title, t.getBoundingClientRect().width > 0,"
+            " t.closest('.inc-drill').previousElementSibling.dataset.state,"
+            " s.length && s[s.length - 1].getAttribute('datetime'),"
+            " c.map(function (l) { return l.querySelector('time').getAttribute('datetime'); })]")
+
+    def test_the_drill_tag_and_the_end_are_drawn_and_kept(self, client):
+        from modules import fault_drills
+        from tests import browser
+
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why}); the page's own checks above still run")
+        import app as APP
+
+        drill = declare()
+        iid = healed()
+        verified = next(s["at"] for s in act_steps(iid) if s["step"] == "record")
+        with browser.Served(APP.app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
+                first = b.wait_for(self.READ)
+                ended = fault_drills.record_ended(NET, drill["id"], by="op@example.com",
+                                                  actor_verified="access", via="test",
+                                                  now=T0 - 900)
+                assert ended["ok"], ended
+                # Self-healing's announcement, as the page's relay fires it; the region's own
+                # request answered and settled is the redraw.
+                b.js("window.__incDrawn = 0; document.body.addEventListener('htmx:afterSettle',"
+                     " function (e) { var d = e.detail || {}; var p = (d.pathInfo || {})"
+                     ".requestPath || (d.requestConfig || {}).path || '';"
+                     " if (p.indexOf('/v2/incident/') === 0) window.__incDrawn++; });"
+                     "document.body.dispatchEvent(new CustomEvent('nmas:drift')); return 1")
+                again = b.wait_for("return window.__incDrawn > 0 && (function () {"
+                                   + self.READ + "})()", 15)
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()
+        assert first[0] == "Drill" and first[2], first
+        assert first[1].startswith(f"Fault drill {drill['id']}, declared by op"), first
+        assert first[3] == "fixed", "the tag sits beside the state"
+        assert first[4:] == [verified, [verified]], "the span and the close end at the verify"
+        assert again == first, "ending the drill changes no incident already tagged"

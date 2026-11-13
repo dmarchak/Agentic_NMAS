@@ -122,8 +122,9 @@ def test_a_no_change_window_moves_it_to_the_windows_end():
     window = {"start": "01:00", "end": "01:45", "reason": "a nightly backup"}
     got = _by_device(SR.expected(_states(), NOW, rows=[LAST_RUN], windows=[window]))
     assert got["r6"]["expected_at"] == "2026-10-29T01:45:00Z"
-    assert ("outside the no-change window 01:00 to 01:45 UTC (a nightly backup)"
-            in got["r6"]["expected_basis"])
+    # By its span's instants, which a screen draws in its viewer's zone (C3290).
+    assert ("outside the daily no-change window 2026-10-29T01:00:00Z to 2026-10-29T01:45:00Z "
+            "(a nightly backup)" in got["r6"]["expected_basis"]), got["r6"]["expected_basis"]
 
 
 def test_the_limit_leaves_the_newest_for_a_later_pass():
@@ -184,7 +185,9 @@ def test_the_profiles_page_draws_it_in_its_own_column(data, monkeypatch):
     cell = re.search(r'<td data-rotation-expected="r6"[^>]*>.*?</td>', body, re.S)
     assert cell, "the r6 row's estimate cell is drawn"
     words = " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", cell.group(0))).split())
-    assert words == f"about {PASS} (estimate)"
+    # The estimate's moment drawn by the clock, in the viewer's zone (C3290).
+    assert f'about <time class="clock" datetime="{PASS}"' in cell.group(0), cell.group(0)
+    assert re.fullmatch(r"about [A-Z][a-z]{2} \d{1,2} \d\d:\d\d( \S+)? \(estimate\)", words), words
     title = _h.unescape(re.search(r'title="([^"]*)"', cell.group(0)).group(1))
     assert title.startswith("an estimate: default's policy runs on the timer at most once")
 

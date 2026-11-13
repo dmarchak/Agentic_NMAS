@@ -57,6 +57,8 @@
     busy, and drawn again when it lands (the store announces `attention`). `store.checked_at`:
     when it was assembled; `store.oldest_at`: its oldest source's read; each source's own is
     under What was checked. A value drawn straight from `needs_attention()` carries no store. -#}
+{#- Every instant a row's builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- set store = a.store or {} %}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
      hx-trigger="{{ attention_trigger }}"{% if store.state == 'reading' %} aria-busy="true"{% endif %}>
@@ -282,7 +284,7 @@
         <p class="small muted">Written by Mercury from its own record: no AI.</p>
         {#- The incident page's first slice: a self-healing row about one incident opens its
             own page, one place per incident (a link, never a second action). -#}
-        {%- if r.incident_page %}<p class="small att-incident"><a href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}" data-incident="{{ r.incident_page.id }}" title="This incident's own page: its times, its time to repair and what Mercury did">Open the incident</a></p>{% endif %}
+        {%- if r.incident_page %}<p class="small att-incident"><a href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}" data-incident="{{ r.incident_page.id }}" title="This incident's own page: its times, its time to repair and what Mercury did">Open the incident</a>{% if r.incident_page.drill %} <span class="inc-drill" data-drill="{{ r.incident_page.drill }}">{{ badge('Drill', 'info', title='Fault drill ' ~ r.incident_page.drill ~ ': declared before its fault was injected') }}</span>{% endif %}</p>{% endif %}
       </div>
       {#- Board H's amendment, H17 (19.3, artboards J and L): Mercury's diagnosis attached to
           the incident, read-only and deterministic, after Mercury's facts and before the AI
@@ -428,3 +430,4 @@
   </details>
   {%- endif %}
 </div>
+{%- endfilter %}

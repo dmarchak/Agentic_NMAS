@@ -288,7 +288,8 @@ def test_a_device_opened_draws_its_filters_trend_and_lines(web, monkeypatch):
     older = re.search(r'<tbody id="lg-older" hx-get="([^"]+)" hx-trigger="load"', html)
     assert older and "Loading older lines" in html
     part = web.get(older.group(1).replace("&amp;", "&")).get_data(as_text=True)
-    rows = re.findall(r'<tr><td class="mono">(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)</td>', part)
+    # Each line's time drawn by the clock in the viewer's zone, its instant in datetime (C3290).
+    rows = re.findall(r'<tr><td class="mono"><time class="clock" datetime="([^"]+)"', part)
     assert len(rows) == 50 and rows == sorted(rows, reverse=True)
     assert "the next 50" in part
     q = asked[-1]["query"]

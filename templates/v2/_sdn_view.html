@@ -27,6 +27,8 @@
 {%- macro elsewhere_links(names, endpoint) -%}
 {%- if names %} {{ names | length }} other network{{ 's' if names | length != 1 }} {{ 'have' if names | length != 1 else 'has' }} one: {% for n in names %}<a class="sdn-elsewhere" href="{{ url_for(endpoint, list=n) }}">Open {{ n }}'s SDN</a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
 {%- endmacro %}
+{#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- if g.tab == 'apps' %}
 {% include "v2/_sdn_apps.html" %}
 {%- elif g.tab == 'responses' %}
@@ -201,4 +203,5 @@
 </section>
 {%- endif %}
 {%- endif %}
+{%- endfilter %}
 </div>

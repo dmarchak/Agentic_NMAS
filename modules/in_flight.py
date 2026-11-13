@@ -186,8 +186,9 @@ STEPPED = ("rotate", "deploy", "restore", "reload")
 
 
 def _clock(iso: str) -> str:
-    """``21:03 UTC`` from an ISO time; "" when it is not one."""
-    return f"{iso[11:16]} UTC" if len(iso or "") >= 16 else ""
+    """The instant itself, ISO UTC, which a screen draws in its viewer's zone through
+    `_macros.clock` (C3290: Python builds no time words for a screen); "" when it is not one."""
+    return iso if len(iso or "") >= 16 else ""
 
 
 def _who(actor: str, viewer: str) -> str:

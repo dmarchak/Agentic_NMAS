@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, clock -%}
 {#- Devices' In progress list (board D of docs/boards/oob-onboarding.html, counted as signed off
     2026-10-23 under the Phase 7 mode): the top bar's In progress read (`in_flight.chip`), drawn
     on Devices as a short list of what runs now, each row opening its live stepper (a console
@@ -14,7 +14,7 @@
     {%- for r in ip.running %}
     <li class="ip-row">
       <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
-        <small>{{ r.step }} · {{ r.who | people }}{% if r.since %} · since {{ r.since }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
+        <small>{{ r.step }} · {{ r.who | people }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
       {%- if r.run %}
       <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=r.list, device=r.device) }}">Open its stepper</a>
       {%- elif r.page %}

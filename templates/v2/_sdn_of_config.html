@@ -17,7 +17,7 @@
   <h3>{{ p.device }} · {{ p.family }}{% if p.template == 'ovs' %} (one OVSDB transaction){% endif %}{% if p.unchanged %} {{ badge('already as intended', 'ok') }}{% endif %}</h3>
   {%- if p.unchanged %}<p class="small">{{ p.device }} already reads as its program sets it: nothing is sent; Verify still reads it back and the controller's switch list.</p>
   {%- else %}
-  <pre class="mono small of-program">{{ p.program | join('\n') }}</pre>
+  <pre class="mono small of-program" data-verbatim="the program as it is sent">{{ p.program | join('\n') }}</pre>
   {%- endif %}
   <dl class="sdn-kv">
     {%- if p.changes %}<dt>Changes</dt><dd>{% for c in p.changes %}<div class="of-change"><span class="of-change-value">{{ c.value }}</span>: {{ c.before }} → {{ c.after }}</div>{% endfor %}</dd>{% endif %}

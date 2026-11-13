@@ -183,7 +183,9 @@ class TestAFinishedRecord:
         steps = steplog.incident("Default", d["incident"])["steps"]
         k = next(i for i, s in enumerate(steps) if s["step"] == "apply")
         assert steps[k]["result"] == "running", "drawing rewrote nothing"
-        assert f"(ended {steps[k + 1]['at']}, when the next step began)" in apply
+        # Drawn by the clock in the viewer's zone, the instant in its datetime (C3290).
+        assert (f'(ended <time class="clock" datetime="{steps[k + 1]["at"]}"' in apply
+                and apply.endswith(", when the next step began)")), apply
 
     def test_a_step_a_later_record_of_itself_ends_names_that_step(self):
         """The real rolled-back heal's steps: its apply recorded running, then its intent read,

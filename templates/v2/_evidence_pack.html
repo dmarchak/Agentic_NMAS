@@ -28,6 +28,8 @@
 {%- macro timeouts(p) %}{% if p.idle_timeout and p.hard_timeout %}idle {{ p.idle_timeout }} s, hard {{ p.hard_timeout }} s{% elif p.idle_timeout %}idle {{ p.idle_timeout }} s, no hard timeout{% elif p.hard_timeout %}hard {{ p.hard_timeout }} s{% else %}no timeout{% endif %}{% endmacro -%}
 {%- macro cite(i) %}{% set r = sdn.refs.get(i) %}{% if r %}<a class="pack-ref pack-cite" href="#{{ pack.id }}-{{ r.ref }}" title="{{ i }}">{{ r.ref }}</a> {{ r.what }}{% else %}<span class="mono small" title="not kept in this pack">{{ i }}</span>{% endif %}{% endmacro -%}
 {%- macro cited(p) %}{% if p.id in sdn.cited %} {{ badge('cited by the detection', 'muted') }}{% endif %}{% endmacro -%}
+{#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
+{%- filter times %}
 {%- if not pack %}
 <p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
 {%- else %}
@@ -189,10 +191,10 @@
         {#- A neighbour's line or History record (C2176), drawn as the device's own logs and
             History are, its neighbour named first: never the alert's device's. -#}
         <strong data-neighbour-of="{{ p.ref }}" title="a neighbour one hop away; {{ p.dev or 'not in the network model' }}">{{ p.device }}</strong>
-        {%- if p.evidence == 'log' %} · {{ clock(p.at, 'seconds') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text">{{ p.text }}</span>
+        {%- if p.evidence == 'log' %} · {{ clock(p.at, 'seconds') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text" data-verbatim="the device's log line">{{ p.text }}</span>
         {%- else %} · {{ stamp(p.at) }} · {{ p.kind }} · {{ p.what }}{% if p.outcome %} · {{ p.outcome }}{% endif %}{% if p.who %} · <span{% if p.verified is defined %} title="Actor-Verified: {{ p.verified or 'not recorded' }}"{% endif %}>{{ p.who | people }}</span>{% endif %}{% if p.sha %} <span class="mono small">{{ p.sha }}</span>{% endif %}{% if p.detail %} <span class="muted small">{{ p.detail }}</span>{% endif %}{% endif %}
         {%- elif s.name == 'logs' %}
-        {{ clock(p.at, 'seconds') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.device }} · {{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text">{{ p.text }}</span>
+        {{ clock(p.at, 'seconds') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.device }} · {{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text" data-verbatim="the device's log line">{{ p.text }}</span>
         {%- endif %}
       </li>
       {%- endfor %}
@@ -219,3 +221,4 @@
   <p class="card-foot">Every line in the pack is masked as every line Mercury shows, and is drawn as text: nothing in it is followed. {{ how('alert-evidence') }}</p>
 </div>
 {%- endif %}
+{%- endfilter %}

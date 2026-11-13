@@ -43,7 +43,8 @@ decision that ran nothing); no board of this tab draws it: **deviation** (log: B
 incident-page F built for History, 1). Nothing else on a row moves. Compared by the template
 diff, not a new shot. Templates sha256 before:
 `0e2cffcd1a0461b1f655b1db15854992c3200f973ebf2c91e33540f82e992321`.
-Templates sha256: `1e67c43a40e0b35b97f7f065f0b7bfa651ba250e6928d3fd11fe4ed1c02f510d`
+Compared again 2026-11-13 (C3290): `_timeline.html` draws a row's words, marks, detail, correction and record values through `people | times` (routes/v2.py), so an instant in them, and a record's value that is one ("Saved in Grafana"), is `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover. No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `1e67c43a40e0b35b97f7f065f0b7bfa651ba250e6928d3fd11fe4ed1c02f510d`.
+Templates sha256: `4fc80791c3ace9bf178c4c29ae6f02690fc341ca9ad835b02bf6f86537699004`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_timeline.html`, each place that draws a person now

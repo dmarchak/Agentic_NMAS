@@ -34,7 +34,7 @@
       {%- for m in c.moments %}
       <li>
         <input type="radio" name="chosen" value="{{ m.ref }}" id="mo-{{ loop.index }}"{% if m.ref == c.chosen %} checked{% endif %}{% if m.why_not %} disabled title="Cannot be chosen: {{ m.why_not }}"{% endif %}>
-        <label for="mo-{{ loop.index }}"><strong>{{ m.words }}</strong> <span class="mono muted">{{ m.ref }}</span>{% if m.claim %} <span class="muted" title="{{ m.claim_detail }}">({{ m.claim }})</span>{% endif %}
+        <label for="mo-{{ loop.index }}"><strong>{{ m.words | times }}</strong> <span class="mono muted">{{ m.ref }}</span>{% if m.claim %} <span class="muted" title="{{ m.claim_detail }}">({{ m.claim }})</span>{% endif %}
           {#- C868: the message its tag records (what made it and through what, e.g. "golden r2
               via capture"), as today's chooser drew it; the golden now's is only the words
               "its golden now", so it is not repeated. -#}

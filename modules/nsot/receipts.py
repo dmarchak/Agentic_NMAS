@@ -111,13 +111,14 @@ def is_heal(row: dict) -> bool:
 
 def config_lines(row: dict) -> int:
     """The configuration lines *row*'s program sent: each line under its header, never the
-    ``exit`` that closes a sub-mode (`deploy.program_lines`), so a heal's row counts the lines
-    its card says it re-applied (an applet's header, ``event`` and ``action`` are 3, its
-    program 4 with the ``exit``). A row kept without its program counts its program's size."""
-    from modules.nsot.deploy import program_lines
+    ``exit`` that closes a sub-mode (`deploy.config_line_count`, the one count), so a heal's row
+    counts the lines its card says it re-applied (an applet's header, ``event`` and ``action``
+    are 3, its program 4 with the ``exit``). A row kept without its program counts its
+    program's size."""
+    from modules.nsot.deploy import config_line_count
 
     program = (row or {}).get("program") or []
-    return len(program_lines(program)) if program else int((row or {}).get("program_lines") or 0)
+    return config_line_count(program) if program else int((row or {}).get("program_lines") or 0)
 
 
 def operation(scope: str) -> str:

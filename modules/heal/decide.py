@@ -77,6 +77,12 @@ def _hhmm(epoch: float) -> str:
     return time.strftime("%H:%M", time.gmtime(float(epoch)))
 
 
+def _config_line_count(program) -> int:
+    from modules.nsot.deploy import config_line_count
+
+    return config_line_count(program)
+
+
 class Sources:
     """Where the decision reads, each replaceable in a test. None of them sends to a device:
     `read` is the capture path's one checked ``show running-config``."""
@@ -565,7 +571,9 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                           "intent": "intent_match on the read after the change"}
     passed("classify", (f"{len(c['units'])} part(s) changed, "
                         f"{kinds.KIND_WORDS.get(c['kind'], c['kind'])} (Tier {c['tier']})"
-                        + (f"; the fix {len(base['program'])} line(s)"
+                        # The one count of a program's lines (`deploy.config_line_count`): a
+                        # sub-mode's exit is not a line re-applied.
+                        + (f"; the fix {_config_line_count(base['program'])} line(s)"
                            if base["program_hash"] else "")),
            "decide")
     outcome, words = _outcome(mode, c, list(mode.get("kinds_auto") or []),

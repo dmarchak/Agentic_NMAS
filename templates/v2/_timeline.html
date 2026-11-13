@@ -66,7 +66,7 @@
         <span class="hist-dev{% if not e.devices %} muted{% endif %}">{{ e.devices_words }}</span>
         {#- Board E2a: the line names each person by display name (the `people` filter, over
             the recorded words); the identity as recorded is in the row's record below. -#}
-        <span class="hist-what"><strong>{{ e.what | people }}</strong>{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m | people }}</span>{% endfor %}</span>
+        <span class="hist-what"><strong>{{ e.what | people | times }}</strong>{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m | people | times }}</span>{% endfor %}</span>
         <span class="hist-who">{{ e.who_short | people }}</span></summary>
       <div class="hist-detail tl-more">
         {#- C2823: what happened, as the decision stated it, facts first (their times in the
@@ -77,10 +77,10 @@
             kept them (`history_sources.sdn_operations`). -#}
         {%- if e.built_from %}<p class="tl-built">{% with b = e.built_from %}{% include "v2/_sdn_built_from.html" %}{% endwith %}.</p>{% endif %}
         {%- if e.changes %}<ul class="tl-changes">{% for c in e.changes %}<li><span class="of-change-value">{{ c.value }}</span>: {{ c.before }} → {{ c.after }}</li>{% endfor %}</ul>{% endif %}
-        <p>{{ e.detail | people }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
+        <p>{{ e.detail | people | times }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
         {%- if e.who %}<p class="muted">By {{ e.who | people }}</p>{% endif %}
         {%- if e.kind == 'golden' %}<p class="muted" data-concept="golden-is-a-record">A golden is a record of what the device ran when it was captured, not a target: the target is its committed intent, rendered, and a deploy sends that.</p>{% endif %}
-        {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction | people }}</p>{% endif %}
+        {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction | people | times }}</p>{% endif %}
         {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by | people }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why | people }}</p>{% endif %}
         {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
         {#- A self-healing dry-run record's Right / Wrong (board H artboard C, C2399), its mark
@@ -91,7 +91,7 @@
             other record drawn open, as before. C3175 (the operator, 2026-11-12: "4. Step lines
             use display names. An email appears only under "The identity as recorded"."): each
             line names a person by display name, closed or open. -#}
-        {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 | people }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
+        {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 | people | times }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
         {#- Board E2a: the identity a row's By names, as recorded, closed and after the row's own
             record (a row's line names the person by display name). -#}
         {%- if e.who and '@' in e.who %}<details class="id-record small muted" data-keep="tl-who-{{ e.id }}"><summary>The identity as recorded</summary>{{ e.who }}</details>{% endif %}

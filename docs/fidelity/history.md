@@ -58,7 +58,8 @@ button; a decision that ran nothing (no card) draws the link alone. No board of 
 draws it: **deviation** (log: Board incident-page F built for History, 1). Nothing else on a
 row moves. Compared by the template diff, not a new shot. Templates sha256 before:
 `c7001f001587bf7f384d82ff84c9e93321b0f2ff43d2f5b7d39f6390b672c946`.
-Templates sha256: `5ff7225111c495223a65da35f868dc077139d5ef57861ccf448e46eb1b53e593`
+Compared again 2026-11-13 (C3290; the operator's test of 2026-11-13, "Local times FAILS on History": an alert rule change's record read "Saved in Grafana 2026-11-12T02:33:45Z"): `_timeline.html` draws a row's words, its marks, its detail, its correction and every value of its record through `people | times` (routes/v2.py), so a record's value that is an instant is `_macros.clock`'s, with its date and seconds, in the viewer's kept zone with the UTC instant on hover, and an instant inside a row's words is the clock's too. No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py, which reads History's alert rule rows with their records), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `5ff7225111c495223a65da35f868dc077139d5ef57861ccf448e46eb1b53e593`.
+Templates sha256: `60973fb243e7652053a41055f6111dc8aec542d7ab55421503190221332f2412`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

@@ -16,7 +16,7 @@
   <div class="op-part"><h3>What</h3><div>
     <p>{{ c.summary }}</p>
     <dl class="op-ops">
-      {%- for o in c.key_pair %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+      {%- for o in c.key_pair %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value | times }}</dd>{% endfor %}
     </dl>
     {%- if c.steps %}
     <p class="op-wait">In the tool, in order; nothing is sent to the device:</p>
@@ -28,7 +28,7 @@
     {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Operands</h3><div>
     <dl class="op-ops">
-      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value | times }}</dd>{% endfor %}
     </dl></div></div>
   <div class="op-part"><h3>Checks</h3><div>
     <ul class="op-gates">
@@ -72,7 +72,7 @@
   <div class="op-part"><h3>What happened</h3><div><p>
   {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a re-key keeps a key for a device of one list. Nothing was kept.
   {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no plan to be bound to. Nothing was kept.
-  {%- elif c.state == 'refused_reason' %}Refused: {{ c.error }}. Nothing was kept; preview it again and say why the new key is {{ c.host }}'s own.
-  {%- else %}Nothing was kept: {{ c.error }}.{% endif %}</p></div></div>
+  {%- elif c.state == 'refused_reason' %}Refused: {{ c.error | times }}. Nothing was kept; preview it again and say why the new key is {{ c.host }}'s own.
+  {%- else %}Nothing was kept: {{ c.error | times }}.{% endif %}</p></div></div>
 </section>
 {%- endif %}

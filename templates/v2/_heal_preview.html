@@ -14,8 +14,8 @@
   <thead><tr><th>Where</th><th>Now</th><th>After confirm</th></tr></thead>
   <tbody>
     {%- for r in p.rows %}
-    {%- if r.same %}<tr><td>{{ r.where }}</td><td colspan="2">{{ r.now }} <span class="muted">(unchanged)</span></td></tr>
-    {%- else %}<tr><td>{{ r.where }}</td><td>{{ r.now }}</td><td><strong>{{ r.after }}</strong></td></tr>{% endif %}
+    {%- if r.same %}<tr><td>{{ r.where }}</td><td colspan="2">{{ r.now | times }} <span class="muted">(unchanged)</span></td></tr>
+    {%- else %}<tr><td>{{ r.where }}</td><td>{{ r.now | times }}</td><td><strong>{{ r.after | times }}</strong></td></tr>{% endif %}
     {%- endfor %}
     <tr><td>Devices it may act on</td><td colspan="2">every device of {{ list_name }}, less any device held, in a planned window or with a golden that departs from intent</td></tr>
   </tbody>

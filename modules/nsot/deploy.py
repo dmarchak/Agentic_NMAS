@@ -547,6 +547,19 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
 #: entirely, and a command list that ends config mode part-way through is a
 #: different program than the one the operator confirmed.
 CONTROL_WORDS = ("exit",)
+#: A program's lines that carry no configuration a person reads as a line re-applied: a
+#: sub-mode's ``exit`` (`CONTROL_WORDS`), an ``exit-…`` (``exit-address-family``) and ``!``.
+NOT_A_LINE = CONTROL_WORDS + ("!",)
+
+
+def config_line_count(commands) -> int:
+    """How many configuration lines *commands* (a program, in order) holds as a person reads
+    them: every line but a blank one, a sub-mode's exit (``exit``, ``exit-address-family``)
+    and ``!`` (`NOT_A_LINE`). THE count wherever a program's size is drawn (the operator's
+    test of the incident page, 2026-11-13: "3 lines, not 4"; an applet's header, ``event``
+    and ``action`` are 3, its program 4 with the ``exit``)."""
+    return sum(1 for c in commands or [] for s in [str(c).strip()]
+               if s and s not in NOT_A_LINE and not s.startswith("exit-"))
 
 
 def residue_in_context(residue: list, running_config: str) -> list:

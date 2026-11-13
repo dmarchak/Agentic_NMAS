@@ -198,6 +198,89 @@ def clock_words(value, mode="", named=False) -> dict:
             "words": words}
 
 
+#: An instant a builder wrote into its words (C3290): ISO, in UTC (``Z``) or at an offset, whole.
+INSTANT_IN_WORDS = re.compile(r"(?<![\w:.+-])\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?"
+                              r"(?:Z|[+-]\d\d:\d\d)(?![\w:])")
+
+
+@bp.app_template_filter("times")
+def times(text, clock_mode=None):
+    """Words a builder wrote, each instant in them drawn by `_macros.clock` (C3290; the operator,
+    2026-11-13: "every time a person sees, in the page or in record details, goes through the
+    viewer's zone"). Python builds no time words for a screen: it writes the instant (ISO UTC)
+    into its words, and the screen draws it here, in the viewer's zone with its UTC on the hover,
+    through the one clock. A value that IS an instant (a record's "Saved in Grafana") is drawn
+    'date-seconds'; an instant inside a sentence '' when it is today in the viewer's zone, else
+    'date'; *clock_mode* names one instead. Every other word is left as written: escaped, or as
+    the Markup it came as (the `people` filter's)."""
+    from datetime import datetime
+
+    from flask import get_template_attribute
+    from markupsafe import Markup, escape as _esc
+
+    if text is None or text == "":
+        return text
+    raw = str(text)
+    found = list(INSTANT_IN_WORDS.finditer(raw))
+    if not found:
+        return text
+    clock = get_template_attribute("v2/_macros.html", "clock")
+    whole = len(found) == 1 and found[0].group(0) == raw.strip()
+    tz = viewer_zone()
+
+    def mode(iso):
+        if clock_mode is not None:
+            return clock_mode
+        if whole:
+            return "date-seconds"
+        at = instant(iso)
+        if tz is None:
+            d, now = datetime.fromtimestamp(at).astimezone(), datetime.now().astimezone()
+        else:
+            d, now = datetime.fromtimestamp(at, tz), datetime.now(tz)
+        return "" if d.date() == now.date() else "date"
+
+    def drawn(words: str) -> str:
+        out, at = [], 0
+        for m in INSTANT_IN_WORDS.finditer(words):
+            out.append(words[at:m.start()])
+            out.append(str(clock(m.group(0), mode(m.group(0)))))
+            at = m.end()
+        return "".join(out) + words[at:]
+
+    if not hasattr(text, "__html__"):
+        return Markup(drawn(str(_esc(raw))))
+    # Markup (a block drawn under `{% filter times %}`, or the `people` filter's): only its
+    # text is a person's words; a tag and its attributes (a hover, a machine field) are left,
+    # and so is everything inside an element that draws a time already or quotes a source.
+    out, skip, at = [], None, 0
+    for tag in _TAG.finditer(raw):
+        between = raw[at:tag.start()]
+        out.append(between if skip is not None else drawn(between))
+        part, at = tag.group(0), tag.end()
+        closing, name = tag.group(1) == "/", (tag.group(2) or "").lower()
+        if skip is None and not closing and name not in _VOID_TAGS and (
+                name in _DRAWN_INSIDE or "data-verbatim" in part):
+            skip = [name, 1]
+        elif skip is not None and name == skip[0] and name not in _VOID_TAGS:
+            skip[1] += -1 if closing else (0 if part.endswith("/>") else 1)
+            if skip[1] == 0:
+                skip = None
+        out.append(part)
+    rest = raw[at:]
+    out.append(rest if skip is not None else drawn(rest))
+    return Markup("".join(out))
+
+
+#: A tag in drawn HTML, its quoted attribute values read whole (a ``>`` inside one is no end).
+_TAG = re.compile(r"""<(/?)([a-zA-Z][\w-]*)(?:[^"'>]|"[^"]*"|'[^']*')*>|<!--.*?-->""", re.S)
+#: Elements whose text `times` leaves: a time already drawn, a script, a style, a typed field,
+#: an SVG hover.
+_DRAWN_INSIDE = frozenset({"time", "script", "style", "textarea", "title"})
+_VOID_TAGS = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+                        "meta", "param", "source", "track", "wbr"})
+
+
 @bp.app_context_processor
 def _time_zone_first():
     """``tz_first``: where a verified person's first visit sends their browser's zone (the

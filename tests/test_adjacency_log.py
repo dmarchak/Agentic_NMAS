@@ -14,6 +14,7 @@ neighbour beside the IPv4 one (docs/IPV6_PARITY.md's standing rule).
   day's count holds, and returns above it.
 """
 
+import re
 import time
 
 import pytest
@@ -316,7 +317,9 @@ class TestAcknowledgedWithinItsBand:
         row = rows[f"adjacency_log:{self.K}"]
         assert row["what"].endswith("went down 4 times in the last day"), row["what"]
         assert row["operands"]["band_reading"]["value"] <= row["operands"]["band"], "in band"
-        assert "Acknowledged by op@example.invalid on " in row["cause"]
+        # Its time as its instant, which the screen draws in its viewer's zone (C3290).
+        assert re.search(r"Acknowledged by op@example.invalid at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ;",
+                         row["cause"]), row["cause"]
         assert ("it covers what came before it and the cycle then under way until it "
                 "settled, and this came after, at ") in row["cause"], row["cause"]
 

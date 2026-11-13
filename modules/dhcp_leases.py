@@ -213,7 +213,7 @@ def words(r: dict, times: bool = True) -> str:
     who = f"{r.get('by')} {r['identity']}" if r.get("identity") else "no identity"
     host = f", {r['hostname']}" if r.get("hostname") else ""
     state = f", {r['state']}" if r.get("state") not in (None, "active") else ""
-    ends = f", ends {r['ends'][:16].replace('T', ' ')} UTC" if times and r.get("ends") else ""
+    ends = f", ends {r['ends']}" if times and r.get("ends") else ""   # drawn by the clock (C3290)
     return f"{shown(r)} ({r['family']}, {who}{host}{state}{ends})"
 
 
@@ -484,7 +484,7 @@ def plan(list_name: str, values, kea=None) -> dict:
     noun = "prefix" if delegated else "address"
     if lease["state"] == "active":
         p["checks"].append(("note", f"active: its client last renewed it "
-                                    f"{lease['last_seen'][:16].replace('T', ' ')} UTC. Kea "
+                                    f"{lease['last_seen']}. Kea "
                                     f"cannot tell whether the client still uses the {noun}: a "
                                     "client that does keeps using it until it next renews, and "
                                     "is then answered afresh"))

@@ -68,12 +68,31 @@ def holding(now=None, given=None):
     return None
 
 
-def words(window: dict) -> str:
-    """A window as the screens and records say it: "the no-change window 22:00 to 23:00 UTC
-    (a maintenance freeze)"."""
-    if window["start"] == window["end"]:
-        span = f"{window['start']} to {window['end']} UTC, which holds nothing"
-    else:
-        span = f"{window['start']} to {window['end']} UTC"
+def _iso(t: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
+def occurrence(window: dict, now=None) -> tuple:
+    """``(start, end)``, epoch seconds: the day's span of *window* holding *now*, else the next
+    one to begin (a window set in UTC is the same instants for every viewer; C3290)."""
+    now = time.time() if now is None else float(now)
+    day = now - now % 86400
+    start, end = _minute(window["start"]) * 60, _minute(window["end"]) * 60
+    length = (end - start) % 86400
+    for d in (day - 86400, day, day + 86400):
+        if d + start + length > now:
+            return d + start, d + start + length
+    return day + 86400 + start, day + 86400 + start + length
+
+
+def words(window: dict, now=None) -> str:
+    """A window as the screens and records say it, by the instants of its span holding *now*
+    or next to begin, which a screen draws in its viewer's zone (routes/v2.py `times`, C3290):
+    "the daily no-change window 2026-11-12T22:00:00Z to 2026-11-12T23:00:00Z (a maintenance
+    freeze)"; the times as set (in UTC) when it holds nothing."""
     reason = f" ({window['reason']})" if window.get("reason") else ""
-    return f"the no-change window {span}{reason}"
+    if window["start"] == window["end"]:
+        return (f"the no-change window {window['start']} to {window['end']} UTC, which holds "
+                f"nothing{reason}")
+    start, end = occurrence(window, now)
+    return f"the daily no-change window {_iso(start)} to {_iso(end)}{reason}"
