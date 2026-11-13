@@ -136,6 +136,154 @@ BROWSER_SHARDS = 3
 BOUND_AT_CI_WORKERS = 740
 
 
+#: ADAPTIVE WAVES (the operator, 2026-11-12: "≥18.5 GiB free → all five shards at once (as
+#: today); 11.7–18.5 GiB → the two waves (browser1, browser2, a; then browser3, b), each capped
+#: at 10.7 GiB; below that → the CI path. The shards start as the gate starts them now (not
+#: through &)"). Measured 2026-11-12 on the laptop at 2 workers a shard, each wave in its own
+#: capped scope: wave 1 (browser1, browser2, a) peaked at 9.7 GiB in 10.6 min, wave 2
+#: (browser3, b) at 6.8 GiB in 9.0 min; all five at once 16.6 to 17.1 GiB in 12 to 13 min.
+GIB = 1024 ** 3
+ALL_AT_ONCE_FROM = 185 * GIB // 10
+WAVES_FROM = 117 * GIB // 10
+WAVES = (("browser1", "browser2", "a"), ("browser3", "b"))
+#: Each wave's cap: wave 1's measured 9.7 GiB peak plus 1 GiB (the gate's cap rule, its
+#: worker count's measured peak + 1 GiB, scripts/nmas-workers CAP_OVER_PEAK).
+WAVE_CAP = 107 * GIB // 10
+#: The waves' workers a shard: the count they were measured at.
+WAVE_WORKERS = 2
+
+
+def waves_partition_shards(waves=WAVES, shards=SHARDS) -> str:
+    """"" when every shard of *shards* is in exactly one wave of *waves* and the waves name no
+    other; else what is wrong, naming each shard (the operator, 2026-11-13: checked at the
+    gate's start, which refuses otherwise)."""
+    named = [s for w in waves for s in w]
+    twice = sorted({s for s in named if named.count(s) > 1})
+    missing = [s for s in shards if s not in named]
+    extra = sorted({s for s in named if s not in shards})
+    said = ([f"in more than one wave: {', '.join(twice)}"] if twice else []) \
+        + ([f"in no wave: {', '.join(missing)}"] if missing else []) \
+        + ([f"in a wave but not a shard: {', '.join(extra)}"] if extra else [])
+    return ("the shards (SHARDS) and the waves (WAVES) differ: " + "; ".join(said)) if said else ""
+
+
+def suite_plan(available: int) -> tuple:
+    """``(mode, waves)`` for *available* bytes free: ``("all", (SHARDS,))`` from
+    ALL_AT_ONCE_FROM, ``("waves", WAVES)`` from WAVES_FROM, else ``("ci-path", ())``: the gate
+    refuses and the commit goes the CI path (CLAUDE.md, "When the laptop's free memory is under
+    the gate's 2-worker threshold")."""
+    if available >= ALL_AT_ONCE_FROM:
+        return "all", (SHARDS,)
+    if available >= WAVES_FROM:
+        return "waves", WAVES
+    return "ci-path", ()
+
+
+def own_scope(cgroup_file: str = None) -> str:
+    """The systemd user scope this gate runs in (its unit name), or "" when it runs in none:
+    the waves' cap is set on it, so a wave's overrun ends the gate alone. NMAS_GATE_CGROUP
+    names the file in the gate's own tests, so no test caps the scope a real gate runs in."""
+    cgroup_file = cgroup_file or os.environ.get("NMAS_GATE_CGROUP") or "/proc/self/cgroup"
+    try:
+        with open(cgroup_file, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("0::"):
+                    leaf = line.strip()[3:].rstrip("/").rsplit("/", 1)[-1]
+                    return leaf if leaf.endswith(".scope") and "/user@" in line else ""
+    except OSError:
+        pass
+    return ""
+
+
+def _scope_cap(cgroup_file: str = None) -> str:
+    """This gate's own cgroup's memory.max as systemd takes it back (bytes, or "infinity" for
+    "max"), so the waves' cap is put back after them; "" when unreadable."""
+    cgroup_file = cgroup_file or os.environ.get("NMAS_GATE_CGROUP") or "/proc/self/cgroup"
+    try:
+        with open(cgroup_file, encoding="utf-8") as fh:
+            rel = next((ln.strip()[3:] for ln in fh if ln.startswith("0::")), "")
+        with open(f"/sys/fs/cgroup{rel}/memory.max", encoding="utf-8") as fh:
+            got = fh.read().strip()
+    except (OSError, StopIteration):
+        return ""
+    return "infinity" if got == "max" else got
+
+
+def cap_scope(unit: str, cap, run=subprocess.run) -> str:
+    """Set *unit*'s MemoryMax to *cap* bytes for this boot (systemctl --user set-property
+    --runtime); "" when set, else why not."""
+    got = run(["systemctl", "--user", "set-property", "--runtime", unit, f"MemoryMax={cap}"],
+              capture_output=True, text=True)
+    return "" if got.returncode == 0 else (got.stderr or got.stdout or "").strip() \
+        or f"systemctl exited {got.returncode}"
+
+
+def cap_for_waves(scope=own_scope, before=_scope_cap, cap=cap_scope) -> tuple:
+    """``(unit, its cap before, why not)``: this gate's own scope capped at WAVE_CAP; *why
+    not* names what stopped it (no scope of its own, or systemd's refusal), and the waves do
+    not start."""
+    unit = scope()
+    if not unit:
+        return "", "", ("this gate runs in no systemd user scope of its own, so a wave cannot "
+                        "be capped: start it in one (systemd-run --user --scope)")
+    was = before()
+    why = cap(unit, WAVE_CAP)
+    if why:
+        return unit, was, f"{unit}'s MemoryMax could not be set to {WAVE_CAP} bytes: {why}"
+    return unit, was, ""
+
+
+def run_in_waves(runs: dict, waves: tuple, repo, env, unit: str = "", was: str = "",
+                 cap=cap_scope) -> tuple:
+    """Each wave's shards at once through `run_all_to_files` (one Popen each, as the gate has
+    always started them), the next wave only once every shard of this one has ended; then
+    *unit*'s cap put back to *was*. A wave with a shard that failed (a non-zero exit) stops
+    the waves after it, which are not run (the operator, 2026-11-13). ``({name: exit code},
+    the put-back in words, the waves not run in words: "" when every wave ran)``; a shard not
+    run has no exit code."""
+    codes, not_run = {}, ""
+    for i, wave in enumerate(waves, 1):
+        if not_run:
+            break
+        ran = run_all_to_files({s: runs[s] for s in wave if s in runs}, repo, env)
+        codes.update(ran)
+        failed = sorted(s for s, rc in ran.items() if rc != 0)
+        if failed and i < len(waves):
+            rest = range(i + 1, len(waves) + 1)
+            not_run = (f"wave{'s' if len(rest) > 1 else ''} "
+                       + ", ".join(str(n) for n in rest)
+                       + f" not run: wave {i} failed ({', '.join(failed)})")
+    if not unit:
+        return codes, "no scope was capped", not_run
+    why = cap(unit, was or "infinity")
+    return codes, (f"{unit}'s cap put back to {was or 'infinity'}" if not why else
+                   f"{unit}'s cap NOT put back ({why}); the rest runs under {WAVE_CAP} bytes"
+                   ), not_run
+
+
+def suite_verdict(runs: dict, codes: dict, not_run: str = "") -> tuple:
+    """Step 4's verdict over every run: ``(the result line, the refusal or "", the first failed
+    run's output file)``. A run with no exit code was not run (a wave after a failed one) and
+    is said so; the waves not run end the refusal (the operator, 2026-11-13: "wave 2 not run:
+    wave 1 failed")."""
+    whys, lines = [], []
+    for name, (_cmd, out) in runs.items():
+        if name not in codes:                       # a wave not run (`run_in_waves`)
+            lines.append(f"{name}: not run")
+            continue
+        why = verdict(out, codes[name]) or browser_skipped(out)
+        if why:
+            whys.append((name, why, out))
+        lines.append((f"{name}: " if len(runs) > 1 else "")
+                     + (last_line(out) if os.path.isfile(out) else "(no output)"))
+    if not (whys or not_run):
+        return "; ".join(lines), "", None
+    name, why, out = whys[0] if whys else ("", "a wave failed", None)
+    return "; ".join(lines), ((f"job {name}: " if len(runs) > 1 and name else "") + why
+                              + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else "")
+                              + (f"; {not_run}" if not_run else "")), out
+
+
 def suite_bound(n: int) -> int:
     """Each shard's NMAS_TEST_TIMEOUT at *n* workers: BOUND_AT_CI_WORKERS scaled by CI_WORKERS/n."""
     return int(BOUND_AT_CI_WORKERS * CI_WORKERS / max(1, n))
@@ -928,6 +1076,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if not a.expect.strip():
         ap.error("--expect must name the subject: an empty prefix matches every message")
+    why = waves_partition_shards()
+    if why:
+        refuse("the waves", why)
     repo = a.repo or subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
                                     capture_output=True, text=True).stdout.strip()
     rc = from_base(repo, argv if argv is not None else sys.argv[1:], has_repo=bool(a.repo))
@@ -1079,12 +1230,31 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
     if docs_only:
         say(f"4. docs only: every one of the {len(changed)} changed path(s) is under docs/, so "
             "the doc set runs (tests/doc_tests.py) and the rest does not")
+    waves, wave_unit, unit_cap_before = None, "", ""
     if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
         runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
     else:
-        n, words = suite_workers()
+        available = _workers_module().mem_available()
+        n, words = suite_workers(available)
         if docs_only:
             n = min(CI_WORKERS, n * len(SHARDS))     # one run has the five runs' memory
+        else:
+            mode, plan = suite_plan(available)
+            if mode == "ci-path":
+                refuse("the memory", f"MemAvailable {available / GIB:.1f} GiB is under the "
+                       f"waves' {WAVES_FROM / GIB:.1f} GiB: commit on the CI path (a ci/ "
+                       "branch, GitHub CI on that exact sha; CLAUDE.md, \"When the laptop's "
+                       "free memory is under the gate's 2-worker threshold\")")
+            if mode == "waves":
+                wave_unit, unit_cap_before, why = cap_for_waves()
+                if why:
+                    refuse("the waves' cap", why)
+                n, waves = WAVE_WORKERS, plan
+                words = (f"{n} worker(s) per shard in two waves ("
+                         + "; then ".join(", ".join(w) for w in plan)
+                         + f"), each capped at {WAVE_CAP / GIB:.1f} GiB on {wave_unit}: "
+                         f"MemAvailable {available / GIB:.1f} GiB, from "
+                         f"{WAVES_FROM / GIB:.1f} and under {ALL_AT_ONCE_FROM / GIB:.1f} GiB")
         say(f"4. workers, from the memory available now: {words}; each shard bound at "
             f"{suite_bound(n)} s")
         workers = n
@@ -1097,20 +1267,16 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
     held = hold_full_suite(f"nmas-gate (pid {os.getpid()})")
     if isinstance(held, str):
         refuse("the full-suite lock", held)
-    codes = run_all_to_files(runs, snap, env)
-    whys, lines = [], []
-    for name, (_cmd, out) in runs.items():
-        why = verdict(out, codes[name]) or browser_skipped(out)
-        if why:
-            whys.append((name, why, out))
-        lines.append((f"{name}: " if len(runs) > 1 else "")
-                     + (last_line(out) if os.path.isfile(out) else "(no output)"))
-    result_line = "; ".join(lines)
+    if waves:
+        codes, put_back, not_run = run_in_waves(runs, waves, snap, env, wave_unit,
+                                                unit_cap_before)
+        say(f"4. the waves ran{'; ' + not_run if not_run else ''}; {put_back}")
+    else:
+        codes, not_run = run_all_to_files(runs, snap, env), ""
+    result_line, refusal, out = suite_verdict(runs, codes, not_run)
     say(f"4. the suite: {result_line}")
-    if whys:
-        name, why, out = whys[0]
-        refuse("the suite", (f"job {name}: " if len(runs) > 1 else "") + why
-               + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else ""), out)
+    if refusal:
+        refuse("the suite", refusal, out)
     done("4", "the suite" + (", docs only" if docs_only else ""), result_line)
 
     stand_in = bool(os.environ.get("NMAS_GATE_SUITE"))
