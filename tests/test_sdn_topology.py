@@ -440,7 +440,10 @@ def test_the_strip_names_each_source_and_the_legend_both_symbols(web):
     html = _map(web)
     strip = re.search(r'<div class="topo-cov small".*?</div>', html, re.S).group(0)
     assert "LLDP · the Topology reader, read" in strip
-    assert f"controller (c1) · read {READ_AT} · 2 switches, 1 link, 6 hosts" in strip
+    # The read's instant is drawn by the clock since C3290 (its datetime the reader's, the
+    # viewer's zone on screen, UTC on the hover); the words around it are as before.
+    assert re.search(r"controller \(c1\) · read <time\b[^>]*\bdatetime=\"" + re.escape(READ_AT)
+                     + r"\"[^>]*>.*?</time> · 2 switches, 1 link, 6 hosts", strip, re.S), strip
     legend = re.search(r'<div class="topo-legend small".*?</div>', html, re.S).group(0)
     assert "a switch a controller programs (OpenFlow)" in legend
     assert "a link the controller reports" in legend and "a host the controller learned" in legend

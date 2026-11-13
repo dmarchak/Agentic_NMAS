@@ -91,7 +91,8 @@ packaging==24.0
 # crashing script ship, so the helpers that decide what a card SAYS are executed. An embedded
 # engine, since node is on neither the laptop nor the host.
 dukpy==0.6.0
-# Imported by the suite directly; also arrives with Jinja2.
+# Imported by the suite directly, and by routes/v2.py's `times` filter (C3290); also arrives
+# with Jinja2.
 MarkupSafe==2.1.5
 
 # Held for the first venv only: the host has it from apt, and nothing on Linux needs it

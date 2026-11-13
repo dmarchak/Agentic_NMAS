@@ -122,7 +122,7 @@ def test_the_walk_s_scan_under_its_rate_limit_is_recorded_not_proposed_and_costs
     (said,) = respond_lines(out)
     assert said.startswith(f"SDN scan from 192.0.2.1 on 0000000000000001 fired again while "
                            f"mitigated by response {WALK_OP} (rate_limit_source, operation "
-                           f"{WALK_OP}) until 2026-10-27T23:15:23Z UTC: its 3 flow(s) on the "
+                           f"{WALK_OP}) until 2026-10-27T23:15:23Z: its 3 flow(s) on the "
                            "switch as this collection read it")
     assert said.endswith("not proposed: no AI call, nothing sent")
     (hold,) = LP.open_holds(NET)["rows"]
@@ -199,7 +199,7 @@ def test_once_its_hard_timeout_passed_the_scan_is_answered_as_new_naming_it(worl
     assert len(world.sent) == 1, "classified as any new detection is"
     assert respond_lines(out)[0] == (
         f"response {WALK_OP} (rate_limit_source, operation {WALK_OP}) held SDN scan from "
-        "192.0.2.1 on 0000000000000001 off until 2026-10-27T23:15:23Z UTC, its hard timeout; "
+        "192.0.2.1 on 0000000000000001 off until 2026-10-27T23:15:23Z, its hard timeout; "
         "answered as new")
 
 
@@ -265,7 +265,7 @@ def test_a_source_held_off_is_held_whatever_its_key_or_spelling(
     (m,) = out["mitigated"]
     assert (m["by"], m["until"]) == (card["id"], F._iso(T + 600))
     assert asked == [] and LP.awaiting(NET)["rows"] == []
-    assert f"until {F._iso(T + 600)} UTC: its 1 flow(s) on the switch" in respond_lines(out)[0]
+    assert f"until {F._iso(T + 600)}: its 1 flow(s) on the switch" in respond_lines(out)[0]
 
 
 def test_an_ipv6_drop_lost_in_a_restart_is_answered_as_new_and_its_row_is_up(lab):  # noqa: F811
