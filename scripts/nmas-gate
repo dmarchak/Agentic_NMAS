@@ -136,14 +136,19 @@ BROWSER_SHARDS = 3
 BOUND_AT_CI_WORKERS = 740
 
 
-#: ADAPTIVE WAVES (the operator, 2026-11-12: "≥18.5 GiB free → all five shards at once (as
+#: ADAPTIVE WAVES (their thresholds and cap measured again 2026-11-14: below; the operator,
+#: 2026-11-12: "≥18.5 GiB free → all five shards at once (as
 #: today); 11.7–18.5 GiB → the two waves (browser1, browser2, a; then browser3, b), each capped
 #: at 10.7 GiB; below that → the CI path. The shards start as the gate starts them now (not
 #: through &)"). Measured 2026-11-12 on the laptop at 2 workers a shard, each wave in its own
 #: capped scope: wave 1 (browser1, browser2, a) peaked at 9.7 GiB in 10.6 min, wave 2
 #: (browser3, b) at 6.8 GiB in 9.0 min; all five at once 16.6 to 17.1 GiB in 12 to 13 min.
 GIB = 1024 ** 3
-ALL_AT_ONCE_FROM = 185 * GIB // 10
+#: All five at once from 20.6 GiB free (the operator, 2026-11-14: "Approved: ALL_AT_ONCE_FROM
+#: 20.6 GiB from tonight's measurement."): the five shards' peaks measured alone on 41130b02
+#: sum to 18.54 GiB, plus 2 GiB for the rest of the laptop (a gate started at 20.9 GiB free fell
+#: to 2.4 GiB, 2026-11-14 01:06 UTC). It was 18.5 GiB (C3567).
+ALL_AT_ONCE_FROM = 206 * GIB // 10
 WAVES_FROM = 117 * GIB // 10
 WAVES = (("browser1", "browser2", "a"), ("browser3", "b"))
 #: Each wave's cap: the larger wave's measured peak plus 1 GiB (the gate's cap rule, its worker

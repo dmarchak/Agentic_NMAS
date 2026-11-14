@@ -33,7 +33,18 @@ ENV = dict(os.environ, GIT_AUTHOR_NAME="T", GIT_AUTHOR_EMAIL="t@example.com",
            # Each gate run here is a stand-in inside the real gate's suite: its full-suite lock
            # is its own (the real one is held by the gate running this test, 2026-10-19).
            NMAS_FULL_LOCK=os.path.join(tempfile.gettempdir(),
-                                       f"nmas-gate-test-full-{os.getpid()}.lock"))
+                                       f"nmas-gate-test-full-{os.getpid()}.lock"),
+           # CI #1704 (2026-11-13): the stand-ins start no suite, so their gates read no memory;
+           # they read this machine's when one was misjudged a suite, and waited 30 s a turn for
+           # it on CI's loaded runner, never here. So every gate here reads a MemAvailable under
+           # every floor (this laptop's /proc/meminfo, its MemAvailable edited to 1 GiB, under
+           # scripts/nmas-workers GATE_FLOOR's 9.4) and no build's beside lock: a stand-in
+           # misjudged so waits on every machine. A test of the memory rule plants its own
+           # reading (TestTheAdaptiveWaves._gate_at).
+           NMAS_MEMINFO=os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures",
+                                     "meminfo", "under_every_floor"),
+           NMAS_BESIDE_LOCK=os.path.join(tempfile.gettempdir(),
+                                         f"nmas-gate-test-beside-{os.getpid()}.lock"))
 # C2457: a gate's run from the base carries a marker; a base that predates the launcher never
 # takes it out, so a test run inside that gate inherits it, and each gate a test starts would
 # run as "already the base" (C2457's first gate, 2026-11-04: three ratchet tests). The tests'
@@ -658,8 +669,11 @@ class TestTheAdaptiveWaves:
     def test_the_plan_follows_the_memory_free(self):
         gate = _gate_module()
         at = lambda tenths: gate.suite_plan(tenths * self.GIB // 10)  # noqa: E731
-        assert at(300) == ("all", (gate.SHARDS,)) and at(185) == ("all", (gate.SHARDS,))
-        assert at(184) == ("waves", (("browser1", "browser2", "a"), ("browser3", "b")))
+        # All at once from 20.6 GiB (the operator, 2026-11-14: "Approved: ALL_AT_ONCE_FROM 20.6
+        # GiB from tonight's measurement."; it was 18.5, C3567).
+        assert at(300) == ("all", (gate.SHARDS,)) and at(206) == ("all", (gate.SHARDS,))
+        assert at(205) == ("waves", (("browser1", "browser2", "a"), ("browser3", "b")))
+        assert at(185) == ("waves", (("browser1", "browser2", "a"), ("browser3", "b")))
         assert at(117)[0] == "waves" and at(116) == ("ci-path", ()) and at(0)[0] == "ci-path"
         # The two waves are the five shards, each once.
         assert sorted(s for w in gate.WAVES for s in w) == sorted(gate.SHARDS)
@@ -872,9 +886,10 @@ class TestTheAdaptiveWaves:
         assert "4. workers" not in r.stdout and _commits(repo) == 2
 
     def test_from_the_all_at_once_floor_the_five_start_together_as_today(self, repo, tmp_path):
-        """20 GiB free: no waves, no cap asked; the five shards start at once (here each fails
-        at once, the stand-in repository holding no scripts/nmas-test)."""
-        r = self._gate_at(repo, tmp_path, 20, self.SESSION)
+        """21 GiB free (over the 20.6 GiB all-at-once floor, the operator, 2026-11-14): no waves,
+        no cap asked; the five shards start at once (here each fails at once, the stand-in
+        repository holding no scripts/nmas-test)."""
+        r = self._gate_at(repo, tmp_path, 21, self.SESSION)
         assert "4. workers, from the memory available now: 2 worker(s) per run" in r.stdout, \
             r.stdout + r.stderr
         assert "two waves" not in r.stdout and "waves' cap" not in r.stdout
