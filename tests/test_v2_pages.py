@@ -296,9 +296,12 @@ class TestTheLanding:
 #: The sidebar, top to bottom: NSOT_STAGE7_PLAN.md acceptance criterion 10 (signed off
 #: 2026-09-30), as the operator has moved it since: Topology joined OBSERVE (P.11), DHCP moved
 #: to SOURCE OF TRUTH after NetBox (C529, 2026-10-06), Show commands joined OBSERVE, Intent leads
-#: SOURCE OF TRUTH (board FC's FC2, C2283, 2026-11-02). "—" is the rule above Help and Settings
-#: at the bottom.
+#: SOURCE OF TRUTH (board FC's FC2, C2283, 2026-11-02), TROUBLESHOOTING above OBSERVE with
+#: Incidents and Self-healing (board T, approved provisionally by the operator 2026-11-13;
+#: its suggested Problems, Drills and Reports have no page and are not drawn). "—" is the rule
+#: above Help and Settings at the bottom.
 SIDEBAR = ("Needs attention", "Devices", "History",
+           "TROUBLESHOOTING", "Incidents", "Self-healing",
            "OBSERVE", "Monitoring", "Topology", "SDN", "Show commands", "Logs",
            "SOURCE OF TRUTH", "Intent", "Templates", "NetBox", "DHCP", "Credentials",
            "—", "Help", "Settings")
@@ -327,6 +330,15 @@ class TestTheSidebar:
         nav = self._nav()
         nav = re.sub(r'<div class="brand">.*?</div>\s*</div>', "", nav, count=1, flags=re.S)
         nav = re.sub(r'<span id="attention-count".*?</span>', "", nav, count=1, flags=re.S)
+        # Board T's two chips (Incidents' open count, Self-healing's mode), each a count or a
+        # state like Needs attention's, and Incidents' row of its tabs, which says exactly its
+        # two tabs (the board's suggested Problems tab has no page).
+        for chip in ("incidents-count", "heal-mode-chip"):
+            nav, n = re.subn(rf'<span id="{chip}".*?</span>', "", nav, count=1, flags=re.S)
+            assert n == 1, chip
+        tabs = re.search(r'<div class="nav-sub">(.*?)</div>', nav, re.S)
+        assert _text(tabs.group(1)).split() == ["Open", "·", "Closed"]
+        nav = nav.replace(tabs.group(0), "")
         words = _text(nav).split()
         assert words == " ".join(s for s in SIDEBAR if s != "—").split(), words
 

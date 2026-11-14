@@ -153,6 +153,7 @@ PAGES = (
      "concepts/credentials-lifecycle.md"),
     ("testing", "Run the tests and their coverage", "Concepts", "concepts/testing.md"),
     ("needs-attention", "Needs attention", "Screens", "screens/needs-attention.md"),
+    ("incidents", "Incidents", "Screens", "screens/incidents.md"),
     ("incident", "An incident's page", "Screens", "screens/incident.md"),
     ("devices", "Devices", "Screens", "screens/devices.md"),
     ("onboard-discovered", "Onboard devices: Discovered", "Screens",
@@ -193,6 +194,9 @@ ON_TODAYS_APP = frozenset()
 #: Screens page it opens.
 SCREENS = {
     "Needs attention": "needs-attention", "Devices": "devices", "History": "history",
+    # Board T's Troubleshooting section (provisional, operator review pending): Self-healing
+    # opens Settings' Self-healing tab, whose section is on the Settings page.
+    "Incidents": "incidents", "Self-healing": "settings",
     "Monitoring": "monitoring", "Topology": "topology", "SDN": "sdn", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Intent": "intent-layers", "Templates": "templates",
     "NetBox": "netbox", "Credentials": "credentials", "Help": "help", "Settings": "settings",
 }

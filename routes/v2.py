@@ -175,6 +175,20 @@ def viewer_zone():
     return g.nmas_time_zone
 
 
+@bp.app_template_global("viewer_zone_name")
+def viewer_zone_name() -> str:
+    """The name of the zone this request's viewer reads times in (`viewer_zone`), for a field
+    that takes a time in it and a confirm that names it (Self-healing's "Auto until", C3158):
+    their kept zone's IANA name ("America/Denver"), else the host's own as `time.localtime`
+    names it."""
+    tz = viewer_zone()
+    if tz is not None:
+        return str(getattr(tz, "key", "") or tz)
+    from modules import time_zones
+
+    return time_zones.host_zone_name()
+
+
 def _zone_said(d) -> str:
     """An aware datetime's zone as a person reads it: its abbreviation ("MST"), or its offset
     from UTC where the zone has none ("UTC+05:45")."""
@@ -424,6 +438,10 @@ def _attention() -> dict:
         recheck.mark(a.get("rows") or [])
     except Exception as exc:                          # noqa: BLE001 (the control stays idle)
         log.warning("v2: which rows' checks are running again could not be read: %s", exc)
+    # The GUI review's item 10 (C3457): rows of one shape drawn as one row, its members under
+    # it, after the holds and the checks are marked on each; the count stays the findings'.
+    from modules import attention
+    a["rows"] = attention.group_alike(a.get("rows") or [])
     return a
 
 

@@ -48,5 +48,6 @@ def incident(incident_id):
         return redirect(url_for("incident_v2.incident", incident_id=p["into"], list=ref.name),
                         code=302)
     code = 404 if p["kind"] in ("unknown", "other_kind") else 200
-    return _strict(render_template("v2/incident.html", p=p, who=_who(), active_nav="attention"),
+    # Its home is Troubleshooting › Incidents (board T; provisional, operator review pending).
+    return _strict(render_template("v2/incident.html", p=p, who=_who(), active_nav="incidents"),
                    code)

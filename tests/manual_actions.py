@@ -71,6 +71,9 @@ NOT_AN_OPERATION = {
                                         "built again, or the one it was built from) in the "
                                         "card, a read of the pack record (C1862)",
     ("devices.html", "Discovered"): "opens Onboard devices › Discovered, a page of its own",
+    # Troubleshooting › Incidents (board T; provisional, operator review pending).
+    ("incidents.html", "Show"): "narrows the incidents list to words and a device, a read of "
+                                "the network's heal stores",
     ("_onboard_discovered.html", "Search"): "narrows the discovered devices to a MAC, client-id "
                                             "or hostname, a read of the reader's stored value",
     ("heartbeat.html", "Copy"): "copies the host step's command to the clipboard",
@@ -83,6 +86,9 @@ NOT_AN_OPERATION = {
                                                   "read (C2817)"),
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
+    # The GUI review's item 10 (C3457): a group of alike rows opens to its members, each with
+    # its own action and its own How does this work?.
+    ("_attention.html", "Open the list"): "opens a group of alike items to its list, a read",
     ("_ai_classes.html", "Cancel"): "draws What AI may send again without the reason: device "
                                     "state stays off, nothing was written (H28)",
     ("_credential_read_account.html", "Cancel"): "draws the Read-only account card again "
@@ -113,8 +119,10 @@ NOT_AN_OPERATION = {
     # Board H's Self-healing tab and Notifications (H9).
     ("_heal.html", "Cancel"): "draws the Self-healing tab again without the stop's or the "
                               "resume's card: nothing was stopped or resumed",
-    ("_heal_change.html", "Cancel"): "draws the Self-healing tab again without the change: "
-                                     "nothing was previewed into the policy or saved",
+    # C3158: each change is a modal (`_modal.html`), closed by its Cancel or Escape.
+    ("_heal_change.html", "Cancel"): "closes the change's modal, the mode's dropdown back on "
+                                     "the mode in force: nothing was saved, and what was "
+                                     "chosen stays for when it is opened again",
     ("_notify_relay.html", "Cancel"): "draws the Email relay card again without the password's "
                                       "field or Test send to…: nothing was stored or sent",
     ("_notify.html", "Cancel"): "opens Notifications again without the form: nothing was added "

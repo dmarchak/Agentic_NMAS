@@ -10,6 +10,9 @@ starts nothing and changes nothing: only a person's press does. How each time is
 
 **How to open it.** One place per incident, from wherever it is named:
 
+- on [Incidents](incidents), under Troubleshooting in the sidebar, the incident's own home:
+  select its title on the **Open** or **Closed** tab. The page's breadcrumb leads back there,
+  **Incidents**, then the tab the incident is on;
 - on [Needs attention](needs-attention), open an item about one incident (a self-healing
   item, or a lost telemetry stream whose device's network holds an open incident for it):
   **Open the incident** is the first link in the opened item;
@@ -29,8 +32,9 @@ changed ("edge-b: OSPF neighbour core-a lost"), or what opened it ("edge-b: conf
 changed outside Mercury"). It never quotes a configuration line, a log's code or an id: the
 line itself is under [What's wrong](#whats-wrong). Once the incident is resolved the title says
 how it ended: "and Mercury put it back", "put back by" the person who approved the fix, or "and
-it cleared". The same title is the last step of the breadcrumb above it, cut with "…" where the
-row is narrow (hover over it for the whole), and it leads the incident's line on Needs
+it cleared". The same title is the last step of the breadcrumb above it (after **Incidents**
+and **Open** or **Closed**), cut with "…" where the row is narrow (hover over it for the
+whole), and it is each row's title on [Incidents](incidents) and leads the incident's line on Needs
 attention and on History, and the email that tells the team. Under it:
 
 - **The state**, one of five, said once for the whole page ([One state](#one-state)).

@@ -40,9 +40,13 @@
     hand-over's time) is drawn by the clock, in the viewer's zone, its UTC on the hover. -#}
 {%- filter times %}
 {#- The last crumb is the heading's own title (`incident_page.title`, at most 70 characters:
-    C3453), cut with an ellipsis where the row is narrower, the whole on its hover. -#}
+    C3453), cut with an ellipsis where the row is narrower, the whole on its hover. The crumbs
+    before it lead from the incident's own home, Troubleshooting › Incidents, and its tab, Open
+    or Closed (board T, part 2: "the breadcrumb becomes Incidents › Open (or Closed) › the
+    title"; the GUI review's IN9; provisional, operator review pending). -#}
 {%- set crumb = p.title if p.kind == 'page' else 'Incident ' ~ p.id %}
-<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="{{ url_for('v2.landing') }}">Needs attention</a><span aria-hidden="true">/</span><span class="crumb-last" title="{{ crumb }}">{{ crumb }}</span></nav>
+{%- set crumb_tab = 'closed' if p.kind == 'page' and p.resolved else 'open' %}
+<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="{{ url_for('incidents_v2.page', list=p.network) }}">Incidents</a><span aria-hidden="true">/</span>{% if p.kind == 'page' %}<a href="{{ url_for('incidents_v2.page', tab=crumb_tab, list=p.network) }}">{{ 'Closed' if crumb_tab == 'closed' else 'Open' }}</a><span aria-hidden="true">/</span>{% endif %}<span class="crumb-last" title="{{ crumb }}">{{ crumb }}</span></nav>
 {%- if p.kind == 'other_kind' %}
 <div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
 <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>This kind of incident's page comes with S4.</strong> Only a self-healing incident (an id beginning <span class="mono">hi-</span>) has a page yet; an alert incident (<span class="mono">al-</span>) and an SDN incident (<span class="mono">resp-</span>) get theirs in a later slice of the incident page. Until then they are on <a href="{{ url_for('v2.landing') }}">Needs attention</a>.</div></div>

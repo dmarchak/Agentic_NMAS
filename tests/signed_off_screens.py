@@ -278,6 +278,14 @@ SIGNED_OFF = {
                                              "(docs/STANDING_APPROVAL_LOG.md, \"Board "
                                              "recurring-fixes v2\"); compared, "
                                              "docs/fidelity/incident.md"),
+    "incidents.html": ("2026-11-13", "board T, the sidebar's Troubleshooting section "
+                                     "(troubleshooting-nav.html, kept with the operator's "
+                                     "reports; the GUI review's proposal 17 and finding IN9): "
+                                     "Incidents, its Open and Closed tabs, the incident's own "
+                                     "home. Provisional, operator review pending: approved "
+                                     "provisionally by the operator for initial implementation "
+                                     "and testing (2026-11-13, docs/STANDING_APPROVAL_LOG.md, "
+                                     "\"Board T\"); compared, docs/fidelity/incidents.md"),
 }
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.

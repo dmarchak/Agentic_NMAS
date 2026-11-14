@@ -81,9 +81,17 @@ closes).
   by Cancel or Escape. Never a card appearing somewhere else on the page.
 - **Self-healing:** the Fix kinds table's Heal / Dry run only toggle IS the control; pressing
   it opens that modal (what this changes, reason, Confirm). The mode is a dropdown (Off / Dry
-  run / Auto) opening the same modal (C3158).
+  run / Auto) opening the same modal (C3158). [Built 2026-11-13 (the GUI review's item 7): each
+  toggle a button opening its kind's modal, the dropdown's choice opening its mode's, Change
+  fix kinds… and each hard stop's Edit… theirs, a refused confirm's opened again:
+  tests/test_heal_tab_v2.py, in Firefox too (pressed from the keyboard, anchored, the focus
+  inside, Escape and Cancel closing it, the focus and the dropdown back)]
 - **A time limit is never a typed UTC string** ("Auto until"): quick choices (1 h, 2 h, 4 h,
-  8 h, 24 h, 7 days) plus a date-time picker in local time, showing the UTC beside it.
+  8 h, 24 h, 7 days) plus a date-time picker in local time, showing the UTC beside it. [Auto
+  until on Self-healing, 2026-11-13: the picker read in the viewer's kept zone and converted
+  once by the server, a quick choice resolved once and drawn into the picker, the confirm in
+  the viewer's time naming the zone: tests/test_heal_tab_v2.py; every other time limit: not
+  mechanised]
 - **Every "…" button in Mercury is reviewed for the modal rule**, and listed with its fix (the
   review's section 3).
 - **No control moves when its own result appears** (the operator, 2026-11-13, on Run the check
@@ -124,7 +132,17 @@ proposes (none is written yet). The rules above stay as they are, word for word.
   History's runs are (C3399) (PagerDuty: group related alerts into one incident; alert
   fatigue). Measured: 33 of the landing walk's 55 rows are one shape. [Proposed test: in the landing walk's world no two Needs attention rows share their
   words once each device or source name is replaced by a token; in the Logs fixture no two
-  adjacent rows share device, mnemonic and digit-stripped message.]
+  adjacent rows share device, mnemonic and digit-stripped message.] [Built for Needs attention
+  with the review's item 10 (C3457; provisional, operator review pending): rows from one
+  source, of one kind, whose words differ only in their subject are one row from two of them
+  (`attention.group_alike`, applied as the page is drawn, the members under it as C2970's
+  collector row holds its own), its level its worst member's, its action theirs or Open the
+  list; every count stays the findings' and says its rows; and every row's line names its
+  action (`attention.first_action`'s control, else its words, else how it clears). Measured on
+  the landing walk's world: 56 rows drawn before, 17 after; 5 of 9 critical lines drew no
+  action before, none after. tests/test_attention_alike.py: no two drawn rows share their words
+  once each subject is a token, each finding drawn once as itself, the counts, every line's
+  action, 900 alike devices one closed row, and in Firefox Open the list and the line's words.]
 - **An opened Needs attention row is a summary, not the incident.** Opened, a row says at most
   three things (what is wrong in one sentence, whether it needs a person, its one action) and
   links to its home ("Open the incident" as the row's first link, never its last); the

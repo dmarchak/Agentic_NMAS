@@ -3947,8 +3947,9 @@ def _heal_world(tmp_path, monkeypatch):
 
 def test_heal_tab(tmp_path, monkeypatch):
     """Board H, artboard A (heal-to-intent.html, 1440) beside Settings · Default › Self-healing
-    at rest (`heal-tab`), and with Change mode… pressed, Auto chosen and its expiry typed, so
-    What this changes and the confirm are drawn in place (`heal-tab-change`)."""
+    at rest (`heal-tab`), and with Auto chosen in the mode's dropdown, its modal open over the
+    page with the 24 h quick choice and a reason, so What this changes and the confirm are
+    drawn in the modal (`heal-tab-change`; C3158)."""
     from tests import browser
 
     if not browser.available()[0]:
@@ -3962,15 +3963,18 @@ def test_heal_tab(tmp_path, monkeypatch):
     until = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(time.time() + 5 * 86400))
 
     def change(b):
-        b.js("document.querySelector('#heal-mode a.btn').click(); return 1")
-        b.wait_for("return !!document.querySelector('#heal-change input[value=auto]')")
-        b.js("var f = document.querySelector('#heal-change-form');"
-             f"f.querySelector('[name=heal_mode_until]').value = '{until}';"
-             "f.querySelector('[name=reason]').value = "
+        # C3158: the mode's dropdown chooses Auto, whose modal opens anchored to it; its 24 h
+        # quick choice is drawn into the picker in the viewer's zone, with its UTC beside it.
+        b.js("var s = document.getElementById('heal-mode-pick'); s.value = 'auto';"
+             " s.dispatchEvent(new Event('change', {bubbles: true})); return 1")
+        b.wait_for("return document.getElementById('heal-mode-auto').open")
+        b.js("var d = document.getElementById('heal-mode-auto');"
+             "d.querySelector('[name=reason]').value = "
              "'Lab walks: Tier 1 kinds whose scenarios passed in dry run';"
-             "var r = f.querySelector('input[value=auto]'); r.checked = true;"
+             "var r = d.querySelector('input[name=heal_mode_for][value=\"24\"]'); r.checked = true;"
              "r.dispatchEvent(new Event('change', {bubbles: true})); return 1")
-        b.wait_for("return !!document.querySelector('#heal-preview .heal-changes')")
+        b.wait_for("return !!document.querySelector('#heal-mode-auto-preview .heal-changes')"
+                   " && document.getElementById('heal-until-local').value !== ''")
 
     import app as A
     with browser.Served(A.app) as served:

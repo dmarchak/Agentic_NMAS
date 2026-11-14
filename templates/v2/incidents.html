@@ -1,0 +1,90 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, info, clock, stamp -%}
+{#- Troubleshooting › Incidents, the incident's own home (board T, the sidebar's Troubleshooting
+    section: part 2's Incidents card and part 4's wireframe; the GUI review's proposal 17 and
+    finding IN9; provisional, operator review pending, the operator 2026-11-13).
+    `modules/incidents_list.page` is its model, from routes/incidents_v2. Top to bottom: the
+    heading, the tabs (Open, Closed, each with its count; the board's suggested Problems tab has
+    no page yet and is not drawn) and when the stores were read, then one live region: the
+    summary (counts by group), the search and the device filter, and the groups, each a
+    details element, open while the tab holds few rows and closed at a large fleet's count, each
+    drawing at most its first rows and counting the rest. A row says the incident's state, its
+    title (THE title builder's, the incident page's heading), its device, when it began (Open)
+    or ended with its TIME TO REPAIR and who fixed it (Closed), and opens the incident's own
+    page. Nothing here acts on a device. The live region is drawn again when self-healing
+    announces. -#}
+{% block title %}Incidents · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Incidents {{ info('incidents') }}</h1>
+    <p class="sub">{{ p.network }}: every self-healing incident, what is open now and how each closed one ended.</p>
+  </div>
+</div>
+<nav class="tabs" aria-label="Incidents">
+  {%- for t in p.tabs %}
+  <a class="tab{{ ' on' if t.key == p.tab }}" href="{{ url_for('incidents_v2.page', tab=t.key, list=p.network) }}"{% if t.key == p.tab %} aria-current="page"{% endif %} data-tab="{{ t.key }}">{{ t.words }} · {{ t.n }}</a>
+  {%- endfor %}
+  <span class="inc-list-age muted">checked {{ stamp(p.read_at) }}</span>
+</nav>
+<div id="incidents-live" class="tab-body" hx-disinherit="*" hx-get="{{ url_for('incidents_v2.page', tab=p.tab, q=p.q or None, device=p.device or None, list=p.network) }}" hx-select="#incidents-live" hx-trigger="nmas:drift from:body, nmas:attention from:body" hx-swap="outerHTML">
+{%- if p.unreadable %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of {{ p.network }}'s self-healing record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. What could be read is listed below, so this list may be short: an incident it does not show is not known to be absent.</div></div>
+{%- endif %}
+<p class="inc-list-sum" data-total="{{ p.total }}">
+  {%- if not p.total %}{{ 'No incident is open on ' ~ p.network ~ '.' if p.tab == 'open' else 'No closed incident is kept for ' ~ p.network ~ '.' }}
+  {%- else %}<strong>{{ p.total }} {{ 'open' if p.tab == 'open' else 'closed' }}</strong>{% for s in p.summary %} · {{ s }}{% endfor %}{% endif -%}
+</p>
+{%- if p.total %}
+<form class="inc-list-filter" method="get" action="{{ url_for('incidents_v2.page') }}" role="search">
+  <input type="hidden" name="list" value="{{ p.network }}">
+  <input type="hidden" name="tab" value="{{ p.tab }}">
+  <label class="sr" for="inc-q">Search the incidents</label>
+  <input id="inc-q" type="search" name="q" value="{{ p.q }}" placeholder="Search a title, device or id" maxlength="80">
+  <label class="sr" for="inc-device">Device</label>
+  <select id="inc-device" name="device">
+    <option value="">Every device</option>
+    {%- for d in p.devices %}<option value="{{ d }}"{% if d == p.device %} selected{% endif %}>{{ d }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-small">Show</button>
+  {%- if p.q or p.device %}
+  <span class="muted" data-matched="{{ p.matched }}">{{ p.matched }} of {{ p.total }} match · <a href="{{ url_for('incidents_v2.page', tab=p.tab, list=p.network) }}">Show all</a></span>
+  {%- endif %}
+</form>
+{%- endif %}
+{%- for g in p.groups %}
+<details class="inc-group card" data-group="{{ g.key }}" data-keep="inc-group-{{ g.key }}"{% if g.open %} open{% endif %}>
+  <summary class="inc-group-head">{{ badge(g.words, g.kind) }} <span class="muted">{{ g.n }}</span></summary>
+  <ul class="inc-rows">
+    {%- for r in g.rows %}
+    <li class="inc-row" data-state="{{ r.state }}" data-incident="{{ r.id }}"{% if r.drill %} data-drill="{{ r.drill.id }}"{% endif %}>
+      <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}</span>
+      <span class="inc-row-what">
+        {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
+        <span class="inc-row-sub muted">{{ r.device or 'no device recorded' }}
+          {%- if p.tab == 'open' %}{% if r.waits %} · {{ r.waits }}{% endif %}
+          {%- else %}{% if r.by %} · fixed by {{ r.by }}{% endif %}{% if r.ttr %} · time to repair {{ r.ttr }}{% endif %}{% endif %}</span>
+      </span>
+      <span class="inc-row-when muted">
+        {%- if p.tab == 'open' %}since {{ clock(r.since, 'date') }}
+        {%- else %}{% if r.ended %}ended {{ clock(r.ended, 'date') }}{% else %}began {{ clock(r.since, 'date') }}{% endif %}{% endif -%}
+      </span>
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- if g.more %}
+  <p class="inc-more muted">{{ g.more }} more: search, or choose a device, to narrow them.</p>
+  {%- endif %}
+</details>
+{%- endfor %}
+{%- if p.total and not p.groups %}
+<p class="muted">No {{ 'open' if p.tab == 'open' else 'closed' }} incident matches. <a href="{{ url_for('incidents_v2.page', tab=p.tab, list=p.network) }}">Show all</a></p>
+{%- endif %}
+{%- if p.folded %}
+<p class="muted inc-list-note">{{ p.folded }} closed {{ 'incident was' if p.folded == 1 else 'incidents were' }} folded into another incident: each is listed as part of the incident it joined, whose page draws it.</p>
+{%- endif %}
+{%- if p.tab == 'closed' %}
+<p class="muted inc-list-note">Self-healing keeps {{ p.network }}'s open incidents and its newest {{ p.kept }} closed ones; an older one that reached a decision is listed from its step log, and every one is on <a href="{{ url_for('v2.history_page', kind='heal') }}">History</a>.</p>
+{%- endif %}
+</div>
+{% endblock %}

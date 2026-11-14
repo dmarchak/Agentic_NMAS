@@ -11,11 +11,27 @@ The landing page answers one question: does anything need you?
   this browser. A severity with nothing in it has no section. The line above them counts each
   severity, and when an operation such as a Reload is running, says how many of its expected
   effects are held for it, linked to its card: they are never rows here.
+- **Items alike are one row.** Items from one source that say the same thing, each about a
+  different subject (34 readers that have never run, 5 jobs failing, 3 devices not
+  monitored), are one row: "34 readers have never run on this host". Its severity is the
+  worst of its items'; its action, on its line, is the one they all share, or **Open the
+  list**, which opens the row and takes you to its items. Opened, it names the first few of
+  them, says it clears when every one of them has, and lists each item as itself, closed, with
+  its own action, how it clears and **Acknowledge…** where it has one. One item of a kind is its
+  own row. An item about one incident, one a run holds, or one whose action is a card
+  (**Review the fix…**, **Lift the halt…**, **Was that right?**, a lost stream's
+  **Re-subscribe <device>'s telemetry (<ids>)…**) is never grouped. Every count still counts items, not rows: the line above the list says "56 items ·
+  9 critical · … in 17 rows (3 are groups of alike items)", a heading "Critical · 9 in 5 rows",
+  and the sidebar's count is the items'.
 - **One line per item:** its severity, what it is (a self-healing item leads with its
   incident's own title, in plain words, "edge-b: static route added outside Mercury", then what
   Mercury did or would do; the configuration line is in its cause and on the incident's page),
   how long ago it began, and its first action
-  (**Open <device>**, or its own page), which works without opening the item. While a run holds
+  (**Open <device>**, or its own page), which works without opening the item. An action with
+  no button of its own is its words on the line, cut to one line with the whole on hover
+  ("Read the job's own output on the host"); an item whose action is not known says how it
+  clears there instead ("Clears when …"). Those words step aside while the item is open, whose
+  What to do says them, and nothing on the line moves. While a run holds
   the device an item's action would change, the action is not offered: a second line under
   the item's title reads "<run> running since <time>, by <who>", and the right side of the
   line holds **Open the run** alone, which opens the device's page on that run's card; the

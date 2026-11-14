@@ -52,6 +52,15 @@
 {%- elif first == 'likely' %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
 {%- elif first == 'device' %}{% set d = r.devices[0] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>
 {%- elif first == 'href' %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>
+{#- The GUI review's item 10 (C3457): a group of alike rows whose members' actions differ opens
+    to its list (nmas_v2.js `citeClicked`, `a.att-jump`: the row opened, its list focused). -#}
+{%- elif first == 'alike' %}<a class="btn btn-small btn-outline att-jump" href="#{{ r.action.anchor }}">Open the list</a>
+{#- Item 10 (C3457; CLAUDE.md, "every row names something wrong AND an action"): an action with
+    no control of its own is its words on the line, the whole on hover; an action not known is
+    how the row clears. Hidden while the row is open, whose What to do says them (each fact
+    once), in place, so nothing on the line moves. -#}
+{%- elif r.action and r.action.label and r.action.known != false %}<span class="att-said" title="{{ r.action.label }}">{{ r.action.label }}</span>
+{%- elif r.clears and r.clears.when %}<span class="att-said att-said-clears" title="Clears when {{ r.clears.when }}">Clears when {{ r.clears.when }}</span>
 {%- endif %}
 {%- endmacro -%}
 {#- A moment a record holds, in the viewer's own zone with its date, the UTC on hover (the one
@@ -70,11 +79,14 @@
   {%- if store.state == 'reading' %}
   <p class="att-summary" role="status"><strong>Reading Needs attention&#8230;</strong> <span class="muted">Its sources are read in the background; this fills itself when their first value lands.</span></p>
   {%- else %}
-  {%- set counts = namespace(danger=0, warning=0, unknown=0) %}
-  {%- for r in rows %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}
+  {#- The GUI review's item 10 (C3457): counts are of findings, a group of alike rows counted as
+      its members (each by its own level), and the summary says how many rows draw them. -#}
+  {%- set counts = namespace(danger=0, warning=0, unknown=0, grouped=0) %}
+  {%- for top in rows %}{% if top.alike %}{% set counts.grouped = counts.grouped + 1 %}{% endif %}{% for r in (top.folded if top.alike else [top]) %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}{% endfor %}
   <p class="att-summary">
     {%- if rows %}<strong>{{ a.badge.n }} item{{ '' if a.badge.n == 1 else 's' }}</strong>
     {%- if counts.danger %} · {{ counts.danger }} critical{% endif %}{% if counts.warning %} · {{ counts.warning }} warning{% endif %}{% if counts.unknown %} · {{ counts.unknown }} unknown{% endif %}
+    {%- if counts.grouped %} · <span class="att-grouped" title="Items that say the same thing about a different subject are one row, opening to each of them">in {{ rows|length }} row{{ '' if rows|length == 1 else 's' }} ({{ counts.grouped }} {{ 'is a group' if counts.grouped == 1 else 'are groups' }} of alike items)</span>{% endif %}
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
     {%- if a.acknowledged %} · {{ a.acknowledged|length }} acknowledged{% endif %}
     · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
@@ -91,7 +103,8 @@
     {%- set group = rows|selectattr('level', 'equalto', level)|list %}
     {%- if group %}
     <details class="att-grp att-grp-{{ level }}" data-keep="att-grp-{{ level }}"{% if level != 'danger' %} data-remember="att-grp-{{ level }}"{% endif %} open>
-      <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ group|length }}</summary>
+      {%- set inlevel = namespace(n=0) %}{% for top in group %}{% set inlevel.n = inlevel.n + (top.alike.count if top.alike else 1) %}{% endfor %}
+      <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ inlevel.n }}{% if inlevel.n != group|length %} <span class="att-grp-rows">in {{ group|length }} row{{ '' if group|length == 1 else 's' }}</span>{% endif %}</summary>
     {%- for r in group recursive %}
     {%- set nets = r.networks or {} %}
     <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}">
@@ -182,6 +195,8 @@
         {%- elif r.action.open == 'heal_mark' %}
         {#- C2838: a lost stream's Re-subscribe is its card, drawn below. -#}
         {%- elif r.action.open == 'resubscribe' %}
+        {#- Item 10 (C3457): a group's members are its list, drawn below, each with its action. -#}
+        {%- elif r.action.open == 'alike' %}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
@@ -264,7 +279,12 @@
           item about the collector), each drawn as itself, closed, with its own action. -#}
       {%- if r.folded %}
       <div class="att-folded">
+        {#- Item 10 (C3457): a group of alike rows, its members' list (Open the list's target). -#}
+        {%- if r.alike %}
+        <h3 id="{{ r.alike.anchor }}">{{ r.alike.count }} {{ r.alike.noun }} in this group</h3>
+        {%- else %}
         <h3>{{ r.folded|length }} device{{ '' if r.folded|length == 1 else 's' }} under this item</h3>
+        {%- endif %}
         {{ loop(r.folded) }}
       </div>
       {%- endif %}

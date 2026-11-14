@@ -171,6 +171,17 @@ a { color: var(--accent); }
 /* May be out of date (live updates stopped, or a source past its promise): a quiet mark on
    the number, never a confident wrong one. The title says why. */
 .count-maybe { opacity: 0.55; outline: 1px dashed currentColor; outline-offset: 1px; }
+/* Board T (the sidebar's Troubleshooting section; provisional, operator review pending):
+   Incidents' open count and Self-healing's mode, each outlined, a count of things or a state,
+   never an alarm (Needs attention keeps the one filled badge); Auto in the accent's ink. The
+   Incidents tabs' row under its item, smaller and muted. */
+.nav-chip { border: 1px solid var(--side-ink-2); color: var(--side-ink-2); border-radius: 10px; font-size: 11px;
+  font-weight: 600; padding: 0 6px; white-space: nowrap; }
+.nav-chip-auto { border-color: var(--side-ink); color: var(--side-ink); }
+.nav-chip-unread { border-style: dashed; }
+.nav-sub { display: flex; gap: 6px; padding: 0 10px 4px 38px; font-size: 12px; color: var(--side-ink-2); }
+.nav-sub a { color: var(--side-ink-2); text-decoration: none; }
+.nav-sub a:hover { color: var(--side-ink); text-decoration: underline; }
 .icon-btn.menu-btn { display: none; }   /* after .icon-btn's display, or it never hides */
 .scrim { display: none; }
 
@@ -444,6 +455,27 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .tab.off { color: var(--ink-3); cursor: default; }
 .tab-body { display: flex; flex-direction: column; gap: 14px; transition: opacity 120ms ease; }
 .tab-body.htmx-request:not([data-nmas-live]) { opacity: 0.55; }
+/* Troubleshooting › Incidents (board T, part 4; provisional, operator review pending): the
+   summary, the filter, and one <details> per group, each row one line that wraps at phone
+   width: its state, its title and device, then when. */
+.tabs .inc-list-age { margin-left: auto; align-self: center; font-size: 12px; }
+.inc-list-sum { margin: 0; }
+.inc-list-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inc-list-filter input[type="search"] { min-width: 0; flex: 1 1 220px; max-width: 360px; }
+.inc-group { padding: 10px 14px; }
+.inc-group-head { cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.inc-rows { list-style: none; margin: 8px 0 0; padding: 0; }
+.inc-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; align-items: baseline;
+  padding: 7px 0; border-top: 1px solid var(--line); }
+.inc-row-what { min-width: 0; display: flex; flex-direction: column; }
+.inc-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inc-row-sub, .inc-row-when { font-size: 12.5px; }
+.inc-row-when { white-space: nowrap; }
+.inc-more, .inc-list-note { margin: 6px 0 0; font-size: 12.5px; }
+@media (max-width: 640px) {
+  .inc-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .inc-row-when { white-space: normal; }
+}
 
 /* ---- cards, facts, checks ---- */
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -697,6 +729,13 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-line::-webkit-details-marker { display: none; }
 .att-line .att-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .att-age { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+/* The GUI review's item 10 (C3457): an action with no control of its own, or how an action-less
+   row clears, as words on the row's line, one line cut with an ellipsis (the whole on hover and
+   under What to do); hidden in place while the row is open, so nothing on the line moves. */
+.att-said { display: block; max-width: 36ch; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 13px; color: var(--ink-2); }
+.att[open] > .att-line .att-said { visibility: hidden; }
+.att-grp-rows { font-weight: 400; font-size: 13px; color: var(--ink-2); }
 .att-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 16px 14px 108px; }
 .att-todo, .att-det, .att-why { display: flex; flex-direction: column; gap: 4px; }
 .att-why { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
@@ -3152,9 +3191,30 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .tl-record-d .tl-record { margin-top: 6px; }
 .att-record .att-ops { margin-top: 6px; }
 .heal-what { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.heal-radio { display: flex; gap: 16px; font-size: 13px; align-items: center; flex-wrap: wrap; }
-.heal-radio label { display: inline-flex; align-items: center; gap: 4px; }
-.heal-auto-off { margin: 0; }
+/* "Auto until" (C3158): quick choices, then a date-time picker in the viewer's zone with its
+   UTC beside it. */
+.heal-until { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.heal-until-h { padding: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.heal-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.heal-quick-c { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 13px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); cursor: pointer; }
+.heal-quick-c:has(input:checked) { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.heal-until-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.heal-until-pick input { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); color: var(--ink); max-width: 100%; }
+/* The mode IS the control (C3158): a dropdown whose choice opens its modal. */
+.heal-mode-pick { gap: 6px; font-size: 13px; }
+.heal-mode-pick select { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); color: var(--ink); }
+/* A fix kind's toggle IS the control (C3158): the setting in force pressed, the other a button
+   opening its change. */
+.heal-seg button.seg-btn { font: inherit; border: 0; border-left: 1px solid var(--line); background: none;
+  color: var(--ink-2); cursor: pointer; }
+.heal-seg button.seg-btn:first-child { border-left: none; }
+.heal-seg button.seg-btn:not(:disabled):hover { background: var(--hover); color: var(--ink); }
+.heal-seg button.seg-btn.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; cursor: default; }
+/* A modal holding a preview's table (Self-healing's changes): wider than a confirm's. */
+dialog.modal.modal-wide { width: min(46rem, calc(100vw - 32px)); }
 .heal-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .heal-field input, .heal-field select, .heal-field textarea { font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); box-sizing: border-box; max-width: 100%; }

@@ -1,17 +1,21 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_heal_change.html" import change_modal -%}
 {#- Settings · <network> › Self-healing (board H, artboard A, approved by the operator
     2026-11-03; part H9; docs/fidelity/heal-policy.md). The network's own heal policy, never
     inherited from Default: at left the mode at rest and the tier per fix kind; at right a change
     being previewed (when one is open), the hard stops, who is told, and the installation's kill
     switch. Every control posts routes/heal_v2.py, answered with this tab again and its answer in
-    place; nothing here contacts a device. From modules/heal_page.view (and .change for the
-    change card). -#}
+    place; nothing here contacts a device. A change (the mode dropdown, a fix kind's toggle,
+    Change fix kinds…, a hard stop's Edit…) opens its own modal anchored to its control
+    (C3158; `_heal_change.html`, drawn at the tab's foot). From modules/heal_page.view, its
+    `modals` from heal_page.modals. -#}
 {#- Every instant its builders wrote into its words is drawn by the clock (C3290). -#}
 {%- filter times %}
 {%- set cur = h.cur -%}
 {%- set net = h.network -%}
+{%- set M = h.modals -%}
 <div class="heal-tab" id="heal-tab">
-  {%- if refused and not change and not stopping and not resuming %}
+  {%- if refused and not M.reopen and not stopping and not resuming %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}. Nothing was changed.</p></div>
   {%- endif %}
   {%- if h.stopped.stopped %}
@@ -45,7 +49,19 @@
       <dt>Policy fingerprint</dt><dd class="mono">{{ cur.fingerprint or 'none' }}{% if cur.confirmed.fingerprint and cur.confirmed.fingerprint != cur.fingerprint %} <span class="set-origin">(confirmed {{ cur.confirmed.fingerprint }})</span>{% endif %}</dd>
     </dl>
     <div class="set-foot">
-      <span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part='mode') }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change beside the policy: nothing changes until you confirm it">Change mode…</a>{{ how('settings', 'self-healing', compact=True, op='changing the mode') }}</span>
+      {#- The mode IS the control (C3158; the operator's rule of 2026-11-12): a dropdown whose
+          choice opens that mode's modal anchored to it, previewed there and confirmed with a
+          reason; Cancel or Escape puts the dropdown back. -#}
+      <span class="op-act heal-mode-pick"><label for="heal-mode-pick">Mode</label>
+        <select id="heal-mode-pick" data-modal-select aria-haspopup="dialog" title="Choosing a mode opens its change: nothing changes until you confirm it">
+          {%- for m, words in (('off', 'Off'), ('dry_run', 'Dry run'), ('auto', 'Auto')) %}
+          {%- set refused_auto = m == 'auto' and M.auto_refused and m != cur.mode %}
+          <option value="{{ m }}"{% if m == cur.mode %} selected{% elif not refused_auto %} data-modal-choice="heal-mode-{{ m }}"{% endif %}{% if refused_auto %} disabled title="{{ M.auto_refused }}"{% endif %}>{{ words }}{% if refused_auto %} (a network marked lab only){% endif %}</option>
+          {%- endfor %}
+        </select>{{ how('settings', 'self-healing', compact=True, op='changing the mode') }}</span>
+      {%- if cur.mode == 'auto' %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="settings" data-modal-open="heal-mode-auto" aria-haspopup="dialog" aria-controls="heal-mode-auto" title="Opens Auto's change with its expiry: nothing changes until you confirm it">Change Auto's expiry…</button>{{ how('settings', 'self-healing', compact=True, op="changing Auto's expiry") }}</span>
+      {%- endif %}
       {%- if cur.set and cur.set != 'off' %}
       <span class="op-act"><button type="button" class="btn" data-op="settings" hx-post="{{ url_for('heal_v2.turn_off', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this" title="One press, no confirm: nothing new starts, and a heal already applying finishes its own verify and rollback"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('settings', 'self-healing', compact=True, op='Turn off') }}</span>
       {%- endif %}
@@ -75,7 +91,13 @@
         {%- for k in h.kinds %}
         <tr><td>{{ k.label }}</td>
           <td>{{ badge('1 auto', 'ok') if k.tier == 1 else badge('2 propose', 'warn') }}</td>
-          <td><span class="seg heal-seg" aria-label="{{ k.on_words if k.on else k.off_words }}"><span class="seg-btn{{ ' on' if k.on }}">{{ k.on_words }}</span><span class="seg-btn{{ ' on' if not k.on }}">{{ k.off_words }}</span></span></td></tr>
+          {#- The toggle IS the control (C3158): the setting in force is drawn pressed, and the
+              other opens its change as a modal anchored to it. -#}
+          <td><span class="seg heal-seg" role="group" aria-label="{{ k.label.split(':')[0] }}: {{ k.on_words if k.on else k.off_words }}">
+            {%- for words, on in ((k.on_words, true), (k.off_words, false)) %}
+            {%- if k.on == on %}<button type="button" class="seg-btn on" aria-pressed="true" disabled title="In force now">{{ words }}</button>
+            {%- else %}<button type="button" class="seg-btn" aria-pressed="false" data-modal-open="heal-kind-{{ k.kind }}" aria-haspopup="dialog" aria-controls="heal-kind-{{ k.kind }}" title="Opens this change: nothing changes until you confirm it">{{ words }}</button>{% endif %}
+            {%- endfor %}</span></td></tr>
         {%- endfor %}
         {%- for label, tier, words, why in h.fixed %}
         <tr><td>{{ label }}</td><td>{{ badge('3 alert', 'muted') if tier == 3 else badge('4 never', 'danger') }}</td>
@@ -83,13 +105,11 @@
         {%- endfor %}
       </tbody>
     </table></div>
-    <div class="set-foot"><span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part='kinds') }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change beside the policy: nothing changes until you confirm it">Change fix kinds…</a>{{ how('settings', 'self-healing', compact=True, op='changing the fix kinds') }}</span></div>
+    <div class="set-foot"><span class="op-act"><button type="button" class="btn" data-op="settings" data-modal-open="heal-kinds" aria-haspopup="dialog" aria-controls="heal-kinds" title="Opens the change over the page: nothing changes until you confirm it">Change fix kinds…</button>{{ how('settings', 'self-healing', compact=True, op='changing the fix kinds') }}</span></div>
   </section>
 </div>
 
 <div class="heal-col">
-  {%- if change %}{% include "v2/_heal_change.html" %}{% endif %}
-
   <section class="card set-card heal-card" id="heal-guards" aria-labelledby="h-heal-guards">
     <div class="card-head"><h2 id="h-heal-guards">Hard stops and guards</h2><span class="card-head-how">{{ how('settings', 'self-healing') }}</span></div>
     <div class="table-wrap"><table class="table heal-table">
@@ -97,7 +117,7 @@
       <tbody>
         {%- for g in h.guards %}
         <tr><td>{{ g.label }}</td><td>{{ g.value }} <span class="set-origin">{{ g.source }}</span></td><td>{{ g.default }}</td>
-          <td class="set-row-acts"><span class="op-act"><a data-op="settings" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.change_card', list_name=net, part=g.part) }}" hx-target="#heal-tab" hx-swap="outerHTML" title="Opens the change: nothing changes until you confirm it">Edit…</a>{{ how('settings', 'self-healing', compact=True, op='changing a hard stop') }}</span></td></tr>
+          <td class="set-row-acts"><span class="op-act"><button type="button" class="btn btn-small" data-op="settings" data-modal-open="heal-guard-{{ g.part }}" aria-haspopup="dialog" aria-controls="heal-guard-{{ g.part }}" title="Opens the change over the page: nothing changes until you confirm it">Edit…</button>{{ how('settings', 'self-healing', compact=True, op='changing a hard stop') }}</span></td></tr>
         {%- endfor %}
         {%- for label, words in h.always %}
         <tr><td>{{ label }}</td><td colspan="2"><span class="muted">{{ words }}</span></td><td></td></tr>
@@ -181,5 +201,12 @@
   </div>
 </div>
 </div>
+{#- Every change the tab offers, each its own modal (C3158), drawn closed inside the tab so a
+    redraw of the tab draws them again; a refused confirm's opened again (`M.reopen`). -#}
+{%- set said = (refused or '') if M.reopen else '' %}
+{%- for c in M.mode %}{{ change_modal(c, net, said if c.mid == M.reopen else '') }}{% endfor %}
+{{- change_modal(M.several, net, said if M.several.mid == M.reopen else '') }}
+{%- for c in M.flips %}{{ change_modal(c, net, said if c.mid == M.reopen else '') }}{% endfor %}
+{%- for c in M.guards %}{{ change_modal(c, net, said if c.mid == M.reopen else '') }}{% endfor %}
 </div>
 {%- endfilter %}

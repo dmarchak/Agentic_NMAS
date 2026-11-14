@@ -50,6 +50,17 @@
   <a class="nav-item{% if active_nav == 'attention' %} active{% endif %}" href="{{ url_for('v2.landing') }}"{% if active_nav == 'attention' %} aria-current="page"{% endif %}>{{ icon('attention') }}<span class="grow">Needs attention</span>{% with initial=True, ok=True, badge=None %}{% include "v2/_count.html" %}{% endwith %}</a>
   <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('v2.devices') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>
   <a class="nav-item{% if active_nav == 'history' %} active{% endif %}" href="{{ url_for('v2.history_page') }}"{% if active_nav == 'history' %} aria-current="page"{% endif %}>{{ icon('history') }}<span>History</span></a>
+  {#- Board T, the sidebar's Troubleshooting section (provisional, operator review pending; the
+      operator, 2026-11-13), above OBSERVE: Incidents, the incident's own home (its Open and
+      Closed tabs, its count of open incidents), and Self-healing, which opens the network's
+      Self-healing tab in Settings until its own page is built (its mode as the chip). The
+      board's suggested Problems tab, Drills and Reports have no page yet, so they are not
+      drawn. -#}
+  {%- set heal_net = list_name if list_name and list_name != '(unreadable)' else '' %}
+  <div class="nav-head">TROUBLESHOOTING</div>
+  <a class="nav-item{% if active_nav == 'incidents' %} active{% endif %}" href="{{ url_for('incidents_v2.page') }}"{% if active_nav == 'incidents' %} aria-current="page"{% endif %}>{{ icon('incidents') }}<span class="grow">Incidents</span>{% with initial=True, chip='count' %}{% include "v2/_incidents_chip.html" %}{% endwith %}</a>
+  <div class="nav-sub"><a href="{{ url_for('incidents_v2.page', tab='open') }}">Open</a><span aria-hidden="true">·</span><a href="{{ url_for('incidents_v2.page', tab='closed') }}">Closed</a></div>
+  <a class="nav-item" href="{{ url_for('settings_v2.network', list_name=heal_net, tab='heal') if heal_net else url_for('settings_v2.index') }}">{{ icon('heal') }}<span class="grow">Self-healing</span>{% with initial=True, chip='mode' %}{% include "v2/_incidents_chip.html" %}{% endwith %}</a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
   <a class="nav-item{% if active_nav == 'topology' %} active{% endif %}" href="{{ url_for('topology_v2.page') }}"{% if active_nav == 'topology' %} aria-current="page"{% endif %}>{{ icon('topology') }}<span>Topology</span></a>

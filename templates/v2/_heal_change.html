@@ -1,33 +1,82 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
-{#- Board H, artboard A's right column: a change to the network's heal policy, opened by Change
-    mode…, Change fix kinds… or a hard stop's Edit… (`change.part`). A choice previews in place
-    (routes/heal_v2.policy_preview, writing nothing): What this changes, then the confirm, bound
-    to the preview's fingerprint and needing a verified person and a reason. Included by
-    _heal.html with `change` from modules/heal_page.change. -#}
-{%- set c = change -%}
-{%- set net = c.network -%}
-<section class="card set-card heal-card heal-change" id="heal-change" aria-labelledby="h-heal-change">
-  <div class="card-head"><h2 id="h-heal-change">{% if c.part == 'mode' %}Change self-healing on {{ net }}{% elif c.part == 'kinds' %}Change the fix kinds on {{ net }}{% else %}Change “{{ c.guard.label }}” on {{ net }}{% endif %}</h2></div>
+{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_modal.html" import modal -%}
+{#- Board H, artboard A: a change to the network's heal policy, each opened as a MODAL anchored
+    to the control that opens it (the operator's rule of 2026-11-12, C3158; `_modal.html`):
+    the mode dropdown's Off, Dry run and Auto, a fix kind's toggle, Change fix kinds… and a hard
+    stop's Edit…, one modal each (`heal_page.modals`). A choice previews in place
+    (routes/heal_v2.policy_preview, writing nothing): What this changes, then the confirm,
+    bound to the preview's fingerprint and needing a verified person and a reason. A change
+    with nothing left to choose (a mode, a toggle) previews as its modal opens. A refused
+    confirm draws the tab again with its modal opened again (`reopen`), the refusal and what
+    was sent inside it. Imported by _heal.html; `until_utc` and `until_picker` by
+    _heal_preview.html, which draws them again out of band. -#}
+
+{#- Beside "Auto until"'s picker, the UTC of the time it holds (the operator's rule: "a date-time
+    picker in local time, showing the UTC beside it"); the server's own conversion, in the
+    clock's own UTC words (`clock_words`' *utc*, every time's hover), drawn again by each
+    preview. -#}
+{%- macro until_utc(at, oob=False) -%}
+{%- set w = at | clock_words -%}
+<output class="set-origin heal-until-utc" id="heal-until-utc" for="heal-until-local" aria-live="polite"{% if oob %} hx-swap-oob="true"{% endif %}>{% if w %}{{ w.utc }}{% else %}its UTC is drawn here once a time is chosen{% endif %}</output>
+{%- endmacro -%}
+
+{#- "Auto until"'s date-time picker, in the viewer's own zone (`viewer_zone_name`): the value
+    the server converts once (`heal_page.parse_until_local`). A quick choice's preview hands it
+    that choice's time (`_heal_preview.html`), so the confirm sends exactly the time previewed. -#}
+{%- macro until_picker(value) -%}
+<input type="datetime-local" id="heal-until-local" name="heal_mode_until_local" value="{{ value or '' }}" step="60" autocomplete="off" data-quick-picker>
+{%- endmacro -%}
+
+{%- macro change_modal(c, net, refused='') -%}
+{%- set preview_url = url_for('heal_v2.policy_preview', list_name=net) -%}
+{%- if c.part == 'mode' -%}
+{%- set title = {'off': 'Turn self-healing off on ' ~ net, 'dry_run': 'Set ' ~ net ~ ' to dry run', 'auto': 'Turn on Auto for ' ~ net}[c.mode] -%}
+{%- elif c.flip -%}
+{%- set title = c.flip.label.split(':')[0] ~ ': ' ~ (c.flip.on_words if c.flip.on else c.flip.off_words) ~ ' on ' ~ net -%}
+{%- elif c.part == 'kinds' -%}
+{%- set title = 'Change the fix kinds on ' ~ net -%}
+{%- else -%}
+{%- set title = 'Change “' ~ c.guard.label ~ '” on ' ~ net -%}
+{%- endif -%}
+{#- Nothing is left to choose in a mode's or a toggle's modal: it previews as it opens; and a
+    refused confirm's, opened again holding what was sent, previews that again. -#}
+{%- set on_open = (c.part == 'mode' and c.mode != 'auto') or c.flip or refused != '' -%}
+{%- call modal(c.mid, title, reopen=(refused != ''), wide=True) %}
   {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not saved:</strong> {{ refused }}. Nothing was changed; what you chose is kept below.</p></div>
   {%- endif %}
   {#- Enter in a field previews (the form's submit); only the confirm button below saves. -#}
-  <form class="heal-form" id="heal-change-form" method="post" action="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-post="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-trigger="submit" hx-target="#heal-preview" hx-swap="innerHTML">
+  <form class="heal-form" method="post" action="{{ preview_url }}" hx-post="{{ preview_url }}" hx-trigger="submit" hx-target="#{{ c.mid }}-preview" hx-swap="innerHTML">
     <input type="hidden" name="part" value="{{ c.part }}">
-    <fieldset class="heal-what" hx-post="{{ url_for('heal_v2.policy_preview', list_name=net) }}" hx-trigger="change" hx-target="#heal-preview" hx-swap="innerHTML">
+    <input type="hidden" name="modal" value="{{ c.mid }}">
+    <fieldset class="heal-what" hx-post="{{ preview_url }}" hx-trigger="change{{ ', nmas:modal-open from:closest dialog' if on_open }}" hx-target="#{{ c.mid }}-preview" hx-swap="innerHTML">
       <legend class="sr-only">What changes</legend>
       {%- if c.part == 'mode' %}
-      <div class="heal-radio" role="radiogroup" aria-label="Mode">
-        <label><input type="radio" name="heal_mode" value="off"{% if c.mode == 'off' %} checked{% endif %}> Off</label>
-        <label><input type="radio" name="heal_mode" value="dry_run"{% if c.mode == 'dry_run' %} checked{% endif %}> Dry run</label>
-        <label{% if c.auto_refused %} title="{{ c.auto_refused }}"{% endif %}><input type="radio" name="heal_mode" value="auto"{% if c.mode == 'auto' %} checked{% endif %}{% if c.auto_refused %} disabled{% endif %}> Auto</label>
-      </div>
-      {%- if c.auto_refused %}
-      <p class="small muted heal-auto-off">Auto is turned on only on a network marked lab until the AUTO production-readiness gate is complete; {{ net }} is {{ ('marked ' ~ c.cur.stage.stage) if c.cur.stage.stage else 'not marked' }}.</p>
+      <input type="hidden" name="heal_mode" value="{{ c.mode }}">
+      <p class="small">{{ c.means }}.</p>
+      {%- if c.mode == 'auto' %}
+      <fieldset class="heal-until">
+        <legend class="heal-until-h">Auto until</legend>
+        <div class="heal-quick" role="radiogroup" aria-label="Auto for">
+          {%- for hours, words in c.quick %}
+          <label class="heal-quick-c"><input type="radio" name="heal_mode_for" value="{{ hours }}" data-quick-of="heal-until-local"{% if c.until_for == hours | string %} checked{% endif %}> {{ words }}</label>
+          {%- endfor %}
+        </div>
+        <label class="heal-field" for="heal-until-local">Or a time, {{ viewer_zone_name() }}</label>
+        <span class="heal-until-pick">{{ until_picker(c.until_value) }} {{ until_utc(c.until_at) }}</span>
+        <span class="set-origin">At most 7 days away. At its end the mode returns to dry run, and History of this policy says so.</span>
+      </fieldset>
       {%- endif %}
-      <label class="heal-field">Auto until
-        <input type="text" name="heal_mode_until" value="{{ c.until }}" placeholder="2026-11-20 18:00 UTC" autocomplete="off">
-        <span class="set-origin">Required for Auto, at most 7 days away, in UTC. At its end the mode returns to dry run, and History of this policy says so.</span></label>
+      {%- elif c.flip %}
+      {%- set f = c.flip %}
+      <p class="small"><strong>{{ f.label }}</strong></p>
+      <p class="small">Now: {{ c.was.on_words if c.was.on else c.was.off_words }}. After you confirm: <strong>{{ f.on_words if f.on else f.off_words }}</strong>.{% if f.tier == 1 and f.on %} Allow a kind in Auto only after its lab scenario has passed: one more Tier 1 kind at a time.{% endif %}</p>
+      <input type="hidden" name="heal_kinds_auto" value="">
+      <input type="hidden" name="heal_kinds_propose" value="">
+      {%- for x in c.kinds %}
+      {%- if x.on %}<input type="hidden" name="{{ 'heal_kinds_auto' if x.tier == 1 else 'heal_kinds_propose' }}" value="{{ x.kind }}">{% endif %}
+      {%- if x.keep %}<input type="hidden" name="{{ x.keep }}" value="{{ x.kind }}">{% endif %}
+      {%- endfor %}
       {%- elif c.part == 'kinds' %}
       <p class="small muted">Allow a kind in Auto only after its lab scenario has passed: one more Tier 1 kind at a time.</p>
       <input type="hidden" name="heal_kinds_auto" value="">
@@ -48,10 +97,12 @@
     </fieldset>
     <label class="heal-field">Reason
       <textarea name="reason" rows="2" required>{{ c.reason }}</textarea></label>
-    <div class="heal-preview" id="heal-preview">
-      {%- if refused %}<p class="small muted">Choose again, or press Enter in a field, to preview what it changes.</p>
+    <div class="heal-preview" id="{{ c.mid }}-preview">
+      {%- if on_open %}<p class="small muted">Reading what it changes…</p>
+      {%- elif refused %}<p class="small muted">Choose again, or press Enter in a field, to preview what it changes.</p>
       {%- else %}<p class="small muted">Choose what to change: what it changes is drawn here before anything is saved.</p>{% endif %}
     </div>
-    <div class="set-foot"><a class="btn" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">Cancel</a></div>
+    <span class="modal-actions"><button type="button" class="btn btn-small" data-modal-close>Cancel</button></span>
   </form>
-</section>
+{%- endcall %}
+{%- endmacro -%}

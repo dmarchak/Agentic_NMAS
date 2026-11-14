@@ -30,6 +30,8 @@ reported beside it, so the host's measurement decides whether it moves to a
 cache, rather than a guess.
 """
 
+import hashlib
+import json
 import logging
 import re
 import time
@@ -6660,7 +6662,7 @@ def _link_stream_incidents(rows: list, read=None) -> None:
 
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
 #: incident's page draw a control for.
-FIRST_ACTIONS = ("run", "ai_spend_panel", "heal_proposal", "heal_halt", "heal_mark",
+FIRST_ACTIONS = ("run", "alike", "ai_spend_panel", "heal_proposal", "heal_halt", "heal_mark",
                  "resubscribe", "update_page", "likely", "device", "href", "")
 #: The actions whose control is a card drawn in place when it is pressed.
 IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe")
@@ -6684,11 +6686,16 @@ def first_action(r: dict) -> str:
     place); the action's own control where it has one (the spend panel, a proposal's card, a
     halt's, a dry-run record's mark, Re-subscribe, a host step's Update page); the device a
     can't-fix names as its likeliest cause; the row's first device; the address the action
-    names on these pages; else ``""`` (the action is its words alone)."""
+    names on these pages; else ``""`` (the action is its words alone, which the line draws,
+    or, where the action is not known, how the row clears: the GUI review's item 10, C3457).
+    A group of alike rows whose members offer different actions (`group_alike`) offers
+    ``alike``: Open the list, its members each with their own."""
     act = r.get("action") or {}
     opens = act.get("open")
     if r.get("held"):
         return "run"
+    if opens == "alike":
+        return "alike"
     if opens == "resubscribe" and len(row_device_networks(r, act.get("device"))) != 1:
         # Re-subscribe is sent only to a device found in exactly one network (the row's own
         # card says "is not offered" otherwise), so its line offers the device instead, never
@@ -6705,6 +6712,171 @@ def first_action(r: dict) -> str:
     if str(act.get("href") or "").startswith("/v2/"):
         return "href"
     return ""
+
+
+#: Rows of one shape are one row from this many (the GUI review's item 10, C3457; the
+#: operator, 2026-11-13): "a group of one is its row".
+ALIKE_FROM = 2
+#: How many of a group's subjects its words name before "and N more".
+ALIKE_NAMED = 5
+#: The subject's place in a row's words, once it is taken out (`_alike_shape`).
+_SUBJECT = "\0"
+#: A character that may stand before and after a subject inside a longer token, so a short
+#: name is never found inside a longer one (one device's name inside another's, or a reader's).
+_TOKEN = r"[\w.:/@-]"
+#: A sentence that begins with its subject reads in the plural with these verbs: "34 readers
+#: have never run"; any other begins "Each of 34 readers …", which is right with any verb.
+_PLURAL_VERBS = {"is": "are", "has": "have", "was": "were", "does": "do", "holds": "hold",
+                 "keeps": "keep", "reads": "read", "accepts": "accept", "differs": "differ"}
+#: What a group's subjects are called, by source, where they are not devices and their names
+#: carry no "<kind>:" prefix of their own ("reader:adjacencies" is a reader).
+_ALIKE_NOUNS = {"job_health": "jobs"}
+
+
+def _alike_shape(r: dict):
+    """``(subject, words)`` of a row whose words name one subject once: its key (its id after
+    its source, a job's unit) or else one of its devices, *words* its own with the subject
+    taken out; None for a row whose words name neither exactly once (its own row)."""
+    what = str(r.get("what") or "")
+    prefix = f"{r.get('source')}:"
+    key = r["id"][len(prefix):] if str(r.get("id") or "").startswith(prefix) else ""
+    for subject in [key] + list(r.get("devices") or []):
+        if not subject:
+            continue
+        found = re.compile(rf"(?<!{_TOKEN}){re.escape(subject)}(?!{_TOKEN})")
+        if len(found.findall(what)) == 1 and _SUBJECT not in what:
+            return subject, found.sub(lambda _m: _SUBJECT, what)
+    return None
+
+
+def _groupable(r: dict) -> bool:
+    """Whether *r* may stand in a group of alike rows: never a row that is already one row
+    about several (a collector's, `folded`), one about one incident with its own page (an
+    incident is its own grouping), one a run holds, or one whose action is a card drawn in
+    place (a proposal's, a halt's, a mark's, a Re-subscribe's: a person's decision, offered on
+    its own line)."""
+    return not (r.get("folded") or r.get("incident_page") or r.get("held")
+                or first_action(r) in IN_PLACE + ("run",))
+
+
+def _alike_noun(members: list, subjects: list) -> str:
+    if all(s in (m.get("devices") or []) for m, s in zip(members, subjects)):
+        return "devices"
+    kinds = {s.split(":", 1)[0] for s in subjects if ":" in s}
+    if len(kinds) == 1 and all(":" in s for s in subjects) and next(iter(kinds)).isalpha():
+        return next(iter(kinds)) + "s"
+    return _ALIKE_NOUNS.get(str(members[0].get("source") or "").split("@", 1)[0], "items")
+
+
+def _alike_title(words: str, n: int, noun: str) -> str:
+    """One row's words for *n* alike rows (*words* holding `_SUBJECT` once): "34 readers have
+    never run on this host"; "The last deploy to each of 2 devices: failed"."""
+    if words.startswith(_SUBJECT + " "):
+        verb, _sp, rest = words[len(_SUBJECT) + 1:].partition(" ")
+        if verb in _PLURAL_VERBS:
+            # "3 devices are not monitored: each has no committed golden", never "it has".
+            rest = re.sub(r"\bit (has|is|was|does)\b", r"each \1", rest)
+            return f"{n} {noun} {_PLURAL_VERBS[verb]} {rest}".rstrip()
+        return f"Each of {n} {noun} {verb} {rest}".rstrip()
+    return words.replace(_SUBJECT, f"each of {n} {noun}", 1)
+
+
+def _shared_action(members: list):
+    """``(first, action, devices)`` the members all offer alike, or None where they differ: the
+    same control (`first_action`) with the same action, and, for a control that opens a
+    device, the same device."""
+    firsts = {first_action(m) for m in members}
+    if len(firsts) != 1:
+        return None
+    first = next(iter(firsts))
+    if len({json.dumps(m.get("action") or {}, sort_keys=True, default=str)
+            for m in members}) != 1:
+        return None
+    if first in ("device", "likely") and len(
+            {json.dumps([m.get("devices"), m.get("likely")], sort_keys=True, default=str)
+             for m in members}) != 1:
+        return None
+    return first, dict(members[0].get("action") or {}), list(members[0].get("devices") or [])
+
+
+def group_alike(rows: list) -> list:
+    """Rows of one shape as one row (the GUI review's item 10, C3457; the operator,
+    2026-11-13; docs/UI_RULES.md, "Rows of one shape collapse into one row"): rows from one
+    source, of one kind, whose words are the same but for their subject (`_alike_shape`: 34
+    rows "reader:<name> has never run on this host" in the landing walk's world), from
+    `ALIKE_FROM` of them, are ONE row about them all, its members folded under it
+    (``folded``, the one shape a row about several takes, C2970's collector row; drawn by the
+    same loop, each member as itself, closed, with its own action, how it clears and its
+    Acknowledge…). Its level is its worst member's; its action the one its members share, else
+    Open the list (``alike``); it clears when every member has. A group of one is its row.
+
+    A display of the findings, never a finding: applied to the page the background holds as it
+    is drawn (routes/v2._attention), so the sidebar's count, the record of sightings, the
+    incident page and every other reader of the list count and find each finding as itself
+    ("counts stay counts of findings"), and the group carries ``alike`` (its count, what its
+    members are, the anchor of their list) for the page to say so. Rows that may not stand in
+    a group (`_groupable`) stand alone. Order: each group where its first member stood."""
+    shapes, order = {}, []
+    for r in rows:
+        shape = _alike_shape(r) if _groupable(r) else None
+        if shape is None:
+            order.append(("row", r))
+            continue
+        key = (r.get("source"), r.get("kind"), shape[1])
+        if key not in shapes:
+            shapes[key] = []
+            order.append(("shape", key))
+        shapes[key].append((shape[0], r))
+    out = []
+    for what, item in order:
+        if what == "row":
+            out.append(item)
+            continue
+        members = shapes[item]
+        if len(members) < ALIKE_FROM:
+            out.extend(r for _s, r in members)
+            continue
+        members.sort(key=lambda sr: (LEVELS.index(sr[1]["level"]), sr[1]["id"]))
+        subjects = [s for s, _r in members]
+        rs = [r for _s, r in members]
+        source, kind, words = item
+        noun = _alike_noun(rs, subjects)
+        n = len(rs)
+        tag = hashlib.sha256(f"{source}\0{kind}\0{words}".encode()).hexdigest()[:12]
+        anchor = f"alike-{tag}"
+        shared = _shared_action(rs)
+        named = ", ".join(subjects[:ALIKE_NAMED]) + (
+            f" and {n - ALIKE_NAMED} more" if n > ALIKE_NAMED else "")
+        sinces = [r["since"] for r in rs if r.get("since")]
+        reads = [r["read_at"] for r in rs if r.get("read_at")]
+        group = {
+            "id": f"alike:{source}:{kind}:{tag}", "source": source, "kind": kind,
+            "what": _alike_title(words, n, noun),
+            "cause": (f"{n} {noun} say the same thing, each about its own: {named}. Each is "
+                      "its own item in this list, with its own reading, its action and how it "
+                      "clears."),
+            "level": min((r["level"] for r in rs), key=LEVELS.index),
+            "since": min(sinces, key=lambda v: _ts(v) or 0) if sinces else None,
+            "read_at": min(reads, key=lambda v: _ts(v) or 0) if reads else None,
+            "devices": [], "networks": {}, "operands": {}, "attached": [], "triage": None,
+            "event": None, "acknowledge": False, "clears_at": None,
+            "clears": {"ways": sorted({w for r in rs for w in (r.get("clears") or {})
+                                       .get("ways") or ()}, key=CLEAR_WAYS.index),
+                       "when": "every item in it has cleared, each as its own line says"},
+            "action": {"known": True, "open": "alike", "anchor": anchor,
+                       "label": f"Act on each of the {n} {noun} in this group: each names its "
+                                "own action and how it clears"},
+            "folded": rs, "alike": {"count": n, "noun": noun, "anchor": anchor}}
+        if shared is not None:
+            first, action, devices = shared
+            group["action"] = action
+            if first in ("device", "likely"):
+                group["devices"] = devices
+                group["networks"] = dict(rs[0].get("networks") or {})
+                if first == "likely":
+                    group["likely"] = rs[0].get("likely")
+        out.append(group)
+    return out
 
 
 def is_cant_fix(outcome) -> bool:

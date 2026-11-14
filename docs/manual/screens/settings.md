@@ -198,31 +198,46 @@ a device to its committed intent; nothing on this tab contacts a device.
   the chip says **not in force: off**. **History of this policy** opens the network's own
   records of it: each confirmed change, each Turn off, an Auto that reached its expiry, and Who
   is told's saves.
-- **Change mode…** opens the change beside the policy: choose **Off**, **Dry run** or **Auto**
-  (drawn disabled on a network not marked lab, saying why), and for Auto its **Auto until**, in
-  UTC (`2026-11-20 18:00 UTC`), at most 7 days away. Each choice is previewed in place, writing
-  nothing: **What this changes** (the mode, the kinds that heal without a person, the kinds
-  proposed, each hard stop that moves; now and after the confirm), each check that refuses it,
-  and the preview's six parts one level down. The confirm names the work: **Turn on Auto for
-  <network> until <time>**, **Set <network> to dry run** or **Turn self-healing off for
-  <network>** (and, for the cards below, **Save the fix kinds for <network>** or **Set
-  “<guard>” for <network>**). It needs a verified person and a **Reason**. It is bound to
-  the preview's fingerprint: if the policy, the network's stage or the kill switch moved since,
-  it is refused naming what moved, and nothing is saved. Its steps are `check`, `re-plan`,
-  `compare`, `write` and `record`. The answer is drawn in the policy's card.
+- **Mode** is a dropdown, the mode in force chosen: choosing **Off**, **Dry run** or **Auto**
+  (Auto offered only on a network marked lab; elsewhere it is drawn disabled, saying why) opens
+  that change as a window over the page, beside the dropdown, with the focus inside it. Every
+  change on this tab opens the same way, and nothing changes until you confirm: **Cancel** or
+  Escape closes it, the dropdown back on the mode in force and the focus back on what you
+  pressed. While Auto is in force, **Change Auto's expiry…** opens Auto's change again. Off and
+  Dry run are previewed as they open. For Auto, **Auto until** is a quick choice, **1 h**,
+  **2 h**, **4 h**, **8 h**, **24 h** or **7 days** from the preview, or **a time** in the
+  date-time picker, in your own time zone (the one every time on the screens is drawn in,
+  named beside the picker), with its UTC drawn beside it; at most 7 days away. A quick choice's
+  time is drawn into the picker when it is previewed, and that time is the one confirmed,
+  however long after you press. Each choice is previewed in the window, writing nothing:
+  **What this changes** (the mode, the kinds that heal without a person, the kinds proposed,
+  each hard stop that moves; now and after the confirm), each check that refuses it, and the
+  preview's six parts one level down. The confirm names the work: **Turn on Auto for
+  <network> until <time> (<your time zone>)**, **Set <network> to dry run** or **Turn
+  self-healing off for <network>** (and, for the changes below, **Save the fix kinds for
+  <network>** or **Set “<guard>” for <network>**). It needs a verified person and a
+  **Reason**. It is bound to the preview's fingerprint: if the policy, the network's stage or
+  the kill switch moved since, it is refused naming what moved, and nothing is saved; the
+  window opens again with the refusal, what you chose and your reason kept, previewed again.
+  Its steps are `check`, `re-plan`, `compare`, `write` and `record`. The answer is drawn in
+  the policy's card.
 - **Turn off**: one press, no confirm, effective at once, recorded with who and when (its steps
   `write` and `record`). Nothing new starts; a heal already applying finishes its own verify and
   rollback. Turning a network back on is a change, previewed and confirmed as above.
 - **Fix kinds**: each kind's tier, fixed by Mercury (1 heals in Auto, 2 is proposed to a person,
-  3 only alerts, 4 is never automatic). **Change fix kinds…** chooses which Tier 1 kinds heal in
-  Auto (one more at a time, each after its lab scenario passed) and which Tier 2 kinds are
-  proposed, previewed and confirmed as a mode change is. A proposal waits on **Needs
+  3 only alerts, 4 is never automatic). Each Tier 1 kind's toggle (**Heal** or **Dry run only**)
+  and each Tier 2 kind's (**Propose** or **Alert only**) is the control: the setting in force is
+  drawn pressed, and pressing the other opens that one change, previewed as it opens and
+  confirmed with a reason as a mode change is. **Change fix kinds…** chooses several at once:
+  which Tier 1 kinds heal in Auto (one more at a time, each after its lab scenario passed) and
+  which Tier 2 kinds are proposed. A proposal waits on **Needs
   attention** as a Critical row naming what changed and that the fix needs your decision:
   **Review the fix…** opens its card, with **Approve and run on <device>** (by its hash, a
   reason optional unless a line needs one) and **Decline** (with a reason; nothing is sent)
   ([Approve or decline a self-healing proposal](heal-proposal)).
 - **Hard stops and guards**: each value, where it comes from (set, lab default or default) and
-  its default, with **Edit…**, previewed and confirmed as a mode change is. On a network marked
+  its default, with **Edit…**, which opens its change beside it, previewed and confirmed as a
+  mode change is. On a network marked
   lab the grace period and the hold after a nearby change read 120 s and 60 minutes unless set.
   Planned work, held devices and no-change windows always stop a heal; a rolled-back heal always
   halts the policy until a person lifts it. **A flap: transitions of one interface within** (3 in

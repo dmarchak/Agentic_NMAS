@@ -338,6 +338,9 @@ class TestTheOneResolver:
     ROWS = [
         ({"held": {"device": "r1", "list": NET, "name": "A capture", "since": "", "by": "op"},
           "action": {"open": "heal_proposal", "decision": "hd-1"}}, "run", "Open the run"),
+        # The GUI review's item 10 (C3457): a group of alike rows whose members' actions differ.
+        ({"action": {"open": "alike", "anchor": "alike-1"}, "devices": ["r1"]}, "alike",
+         "Open the list"),
         ({"action": {"open": "heal_proposal", "decision": "hd-1"}, "devices": ["r1"]},
          "heal_proposal", "Review the fix…"),
         ({"action": {"open": "heal_halt", "halt": "hh-1"}, "devices": ["r1"]}, "heal_halt",

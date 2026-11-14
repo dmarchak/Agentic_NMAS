@@ -110,7 +110,39 @@ Templates sha256 before: `002adf75ada9ae050b329769aea42c4cebfec0019d93f17c8c4b1e
 | Open the incident on a lost stream's row (C3487) | the incident page's first slice: on self-healing's rows only | on a lost stream's row too, its first link, where an open incident of its device names one of its subscriptions | **deviation** (log: Needs attention: a lost stream's row opens its incident) |
 
 Templates sha256 before: `4d3bf927b798a270485663c134a6c6ed8b170b25430206277a747fe83cb5f86f`.
-Templates sha256: `1ff25f10f89a3ffdcb20e0bf1e96809fdedf7be51165a2e6830bf45a9ea5f538`
+
+**Compared again 2026-11-13 (the GUI review's item 10, C3457; the operator, 2026-11-13,
+approving the review's items; provisional, operator review pending): alike items are one row,
+and every line names its action.** Two changes reach the list. (1) Items from one source, of
+one kind, whose words differ only in their subject are one row from two of them
+(`attention.group_alike`, applied by routes/v2's `_attention` as the page is drawn): "34 readers
+have never run on this host", its level its worst item's, its line's action the one its items
+share or **Open the list** (which opens it and focuses "N … in this group"), opened to what is
+wrong (the first five subjects named), What to do with how it clears ("every item in it has
+cleared"), then each item as itself, closed, with its own line, action and Acknowledge…, in
+the place C2970's collector row draws the devices under it. The summary and each severity's
+heading still count items, and say their rows ("56 items · 9 critical · 44 warning · 3 unknown
+· in 17 rows (3 are groups of alike items)"; "Critical · 9 in 5 rows"). (2) A row whose action
+has no control of its own draws the action's words on its line, one line cut with an ellipsis
+and the whole on hover; a row whose action is not known says "Clears when …" there; the words
+hidden in place while the row is open. Measured on the landing walk's world before and after
+(the same 56 items): 56 rows drawn, 34 of them one shape, then 17; 5 of the 9 critical rows
+drew nothing on their line, then every row and every item draws its action; the list at
+1280 px 2,646 px tall and 696 words, then 1,018 px and 444. Compared from shots at 1280 px and
+at the narrowest window geckodriver makes (500 px) before (the change taken out in a control
+worktree) and after, closed and with the critical group opened by its Open the list (kept with
+the operator's reports, `items/10-landing-*`), and by tests/test_attention_alike.py, whose
+real-browser test presses Open the list and opens a worded row at 1280 px and reads every line
+in a 390 px frame.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Alike items (C3457) | board NA-R: one line per item | one row per shape of two or more items, its count in its title, opening to each item as itself | **deviation** (log: Needs attention: alike items are one row) |
+| A line's action (C3457) | board NA-R: the item's primary action, a control, or nothing | the control `attention.first_action` names, else the action's words, else how it clears, hidden in place while the row is open | **deviation** (log: Needs attention: every line names its action) |
+| The counts (C3457) | "Critical · 2", items counted | items counted still, the rows said beside them where a group draws several | **same** |
+
+Templates sha256 before: `1ff25f10f89a3ffdcb20e0bf1e96809fdedf7be51165a2e6830bf45a9ea5f538`.
+Templates sha256: `bb8ff923d1b36b02e3f82ff791115e205a3c636c050f46880958bf2b921b0b8a`
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

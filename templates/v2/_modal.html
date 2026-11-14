@@ -13,8 +13,11 @@
     opener has the focus back. A press inside it that redraws its region ends there, its answer
     drawn in place: the focus goes to the answer, or to the opener drawn again. No library, no
     inline style or script (strict CSP). -#}
-{%- macro modal(mid, title) -%}
-<dialog class="modal" id="{{ mid }}" aria-labelledby="{{ mid }}-h">
+{#- *reopen*: drawn by a refused confirm's answer, so the modal opens again over the region the
+    answer drew, anchored to its opener, its refusal and what was sent inside it (C3158). *wide*:
+    a modal holding a preview's table (Self-healing's changes). -#}
+{%- macro modal(mid, title, reopen=False, wide=False) -%}
+<dialog class="modal{{ ' modal-wide' if wide }}" id="{{ mid }}" aria-labelledby="{{ mid }}-h"{% if reopen %} data-modal-reopen{% endif %}>
   <h3 class="modal-h" id="{{ mid }}-h">{{ title }}</h3>
   {{ caller() }}
 </dialog>

@@ -1,0 +1,19 @@
+{#- The sidebar's two Troubleshooting chips (board T, part 1; provisional, operator review
+    pending): **Incidents**' count of open incidents, outlined ("3 open": a count of things, not
+    an alarm; Needs attention keeps the one red badge), and **Self-healing**'s mode as it runs
+    now (Off, Dry run or Auto; its policy's own sentence on hover). `initial` is the first render
+    inside base.html, which asks for each once (`load`); after it each reads itself again when
+    self-healing announces (`drift`, which every heal step announces), when Needs attention's
+    store re-assembles (`attention`), and, for the mode, when a setting is saved (`settings`).
+    routes/incidents_v2.py `count` and `heal_mode`; modules/incidents_list.py. -#}
+{%- if chip == 'count' -%}
+<span id="incidents-count" class="nav-chip{{ ' nav-chip-unread' if not initial and not c.ok }}" hx-get="{{ url_for('incidents_v2.count', list=list_name) }}" hx-swap="outerHTML" hx-trigger="{% if initial %}load, {% endif %}nmas:drift from:body, nmas:attention from:body"
+  {%- if not initial and not c.ok %} title="A self-healing store could not be read, so how many incidents are open is not known: Incidents says which"{% endif %}>
+  {%- if initial %}…{% elif not c.ok %}?{% else %}{{ c.n }} open{% endif -%}
+</span>
+{%- else -%}
+<span id="heal-mode-chip" class="nav-chip nav-chip-{{ m.mode if not initial else 'off' }}" hx-get="{{ url_for('incidents_v2.heal_mode', list=list_name) }}" hx-swap="outerHTML" hx-trigger="{% if initial %}load, {% endif %}nmas:drift from:body, nmas:settings from:body"
+  {%- if not initial and m.why %} title="Self-healing: {{ m.why }}"{% endif %}>
+  {%- if initial %}…{% else %}{{ m.words or '?' }}{% endif -%}
+</span>
+{%- endif %}

@@ -66,7 +66,10 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "incident.html": "incident.md",
            # Its hand-over's write-up page (board recurring-fixes v2, step 8; the fix-it plan's
            # S4), compared in the same record as the page it is reached from.
-           "incident_handover.html": "incident.md"}
+           "incident_handover.html": "incident.md",
+           # Troubleshooting › Incidents (board T, the sidebar's Troubleshooting section;
+           # provisional, operator review pending, the operator 2026-11-13).
+           "incidents.html": "incidents.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.

@@ -1049,6 +1049,32 @@ def _attention_withheld(client, _lab, _mp):
         mp.undo()
 
 
+def _attention_alike(client, _lab, _mp):
+    """Needs attention with alike rows (the GUI review's item 10, C3457): three failing jobs
+    are one row, Open the list on its line, each job inside it as itself."""
+    import pytest
+
+    from modules import attention
+
+    def jobs():
+        rows = [attention.row(source="job_health", kind="job", key=f"nmas-job-{n}",
+                              what=f"nmas-job-{n} is failing", cause="its last run failed",
+                              action={"label": f"Read job {n}'s output"}, level="danger")
+                for n in range(3)]
+        return attention.source_result("job_health", "Job health", read_at=0, took_ms=0,
+                                       rows=rows, checked="3 job-health row(s), 0 ok")
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(attention, "SOURCES", [jobs])
+        r = client.get("/v2/attention")
+        assert r.status_code == 200, r.status_code
+        html = r.get_data(as_text=True)
+        assert "3 jobs are failing" in html and "Open the list" in html, "no group drawn"
+    finally:
+        mp.undo()
+
+
 def _attention_quiet_period(client, _lab, _mp):
     """Needs attention with an adjacency-log row, a band row (C2316): its Acknowledge… form
     draws the planned quiet period's hours. The reader's value planted for this provider
@@ -4029,17 +4055,29 @@ def _heal_and_notify(client, _lab, _mp):
         H.apply("Lab", {"heal_mode": "dry_run"}, p["fingerprint"], reason="dry run first",
                 actor="v2-context", actor_verified="access", person=True)
         base = "/v2/settings/network/Lab/heal"
+        # Every change is a modal the tab draws with it (C3158): no route draws a change card.
         for url in ("/v2/settings/network/Lab?tab=heal", base + "/tab",
-                    base + "/change?part=mode", base + "/change?part=kinds",
-                    base + "/change?part=heal_grace_seconds",
                     "/v2/settings/installation/heal/stop/ask?list_name=Lab"):
             assert client.get(url, headers=hx).status_code == 200, url
         for data in ({"part": "mode", "heal_mode": "off"},
                      {"part": "kinds", "heal_kinds_auto": "", "heal_kinds_propose": ""},
                      # Two Tier 1 kinds at once: drawn, and not confirmable (its refusal).
-                     {"part": "kinds", "heal_kinds_auto": ["", "missing_line", "added_line"]}):
+                     {"part": "kinds", "heal_kinds_auto": ["", "missing_line", "added_line"]},
+                     # A kind's toggle: its modal's lists, that one kind flipped.
+                     {"part": "kinds", "modal": "heal-kind-qos_policy", "heal_kinds_auto": "",
+                      "heal_kinds_propose": ["", "process_reset"]}):
             assert client.post(base + "/preview", data=data, headers=hx).status_code == 200
-        assert client.post(base + "/preview", data={"part": "mode", "heal_mode": "auto"},
+        # Auto's modal, its picker sent empty with no quick choice: refused (Lab is not marked
+        # lab, and no time was chosen), the UTC beside the picker drawn again saying so.
+        assert client.post(base + "/preview", data={"part": "mode", "heal_mode": "auto",
+                                                    "modal": "heal-mode-auto",
+                                                    "heal_mode_until_local": ""},
+                           headers=hx).status_code == 409
+        # A refused confirm: the tab drawn with the toggle's modal opened again.
+        assert client.post(base, data={"part": "kinds", "modal": "heal-kind-qos_policy",
+                                       "heal_kinds_auto": "",
+                                       "heal_kinds_propose": ["", "process_reset"],
+                                       "fingerprint": "0" * 16, "reason": "a stale card"},
                            headers=hx).status_code == 409
         assert client.post("/v2/settings/installation/heal/stop?list_name=Lab",
                            data={"why": "a drill"}, headers=hx).status_code == 200
@@ -4997,11 +5035,62 @@ def _fixit_section(client, _lab, _mp):
             capture_job._jobs.pop(k, None)
 
 
+def _incidents_list(client, _lab, _mp):
+    """Troubleshooting › Incidents (board T; provisional, operator review pending) on Lab, its
+    two tabs with rows, a search and a device filter, and the sidebar's two chips, from the
+    stores tests/fixtures/incident_page/ keeps (real captures, one edit: the device edge-b named
+    r3, as `_incident_page` does): a heal done with no human, a heal rolled back, and a
+    can't-fix that took another device's incident in, with a related one watching. Lab's three
+    heal stores are written for this provider alone, and put back as they were after."""
+    import json as _json
+    import os as _os
+
+    from modules.heal import decisions as HD
+    from modules.heal import incidents as HI
+    from modules.heal import steplog as SL
+
+    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab")}
+    kept = {p: (open(p, "rb").read() if _os.path.exists(p) else None) for p in paths.values()}
+    made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
+    docs = []
+    for name in ("healed", "failed", "busy"):
+        with open(_os.path.join(_os.path.dirname(__file__), "fixtures", "incident_page",
+                                f"{name}.json"), encoding="utf-8") as fh:
+            docs.append(_json.loads(fh.read().replace("edge-b", "r3")))
+    try:
+        for p in paths.values():
+            _os.makedirs(_os.path.dirname(p), exist_ok=True)
+        with open(paths["incidents"], "w", encoding="utf-8") as fh:
+            _json.dump({"version": HI.VERSION,
+                        "incidents": [i for d in docs for i in d["incidents"]]}, fh)
+        for key in ("decisions", "steps"):
+            with open(paths[key], "w", encoding="utf-8") as fh:
+                fh.writelines(_json.dumps(row) + "\n" for d in docs for row in d[key])
+        for url, words in (("/v2/incidents?list=Lab", "3 open</strong>"),
+                           ("/v2/incidents?tab=closed&list=Lab", "1 closed</strong>"),
+                           ("/v2/incidents?list=Lab&q=r3&device=r3", "2 of 3 match"),
+                           ("/v2/incidents/count?list=Lab", "3 open"),
+                           ("/v2/incidents/heal-mode?list=Lab", "heal-mode-chip")):
+            r = client.get(url)
+            assert r.status_code == 200 and words in r.get_data(as_text=True), (url, r.status_code)
+    finally:
+        for p, data in kept.items():
+            if data is None:
+                if _os.path.exists(p):
+                    _os.remove(p)
+            else:
+                with open(p, "wb") as fh:
+                    fh.write(data)
+        for d in made:
+            if _os.path.isdir(d) and not _os.listdir(d):
+                _os.rmdir(d)
+
+
 PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects,
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_heal_analysis,
-                   _attention_withheld,
+                   _attention_withheld, _attention_alike,
                    _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
@@ -5017,6 +5106,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
+                   _incidents_list,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,

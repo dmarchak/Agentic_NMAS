@@ -1101,7 +1101,10 @@ def network(list_name):
     if v.get("tab") == "heal" and not v.get("error"):
         # Board H, artboard A (H9): the network's Self-healing tab, its own template.
         from modules import heal_page
+        from routes.v2 import viewer_zone
         heal = heal_page.view(list_name)
+        # Every change the tab offers, each its own modal (C3158).
+        heal["modals"] = heal_page.modals(heal, list_name, zone=viewer_zone())
     return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal,
                  aic=aic, crepo=crepo)
 

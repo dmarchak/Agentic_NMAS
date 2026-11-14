@@ -4,8 +4,10 @@
 `modules/heal_notify.py` (who is told). Reads only; every write is those modules'.
 
 - `view(network)`: the tab at rest, its cards in the board's order;
-- `change(network, part, form)`: the change card for one part (the mode, the fix kinds, or
-  one hard stop), with the values as the form holds them;
+- `modals(view, network)`: every change the tab offers, each its own modal (the mode
+  dropdown's three, Change fix kinds…, each kind's toggle, each hard stop's Edit…);
+  `change(network, part, form)`: one of them as a refused confirm draws it again, with the
+  values as the form holds them;
 - `preview(network, plan)`: a plan put into the card's What this changes table and its
   confirm button's words.
 """
@@ -98,20 +100,11 @@ CUR_DRAWN = ("state", "error", "words", "mode", "set", "confirmed", "stage", "fi
 HISTORY_ROWS = 10
 
 
-def utc_words(iso: str) -> str:
-    """``2026-11-20T18:00:00Z`` as the tab says it, ``20 Nov 18:00 UTC``; anything else as it
-    is."""
-    try:
-        t = time.strptime(str(iso), "%Y-%m-%dT%H:%M:%SZ")
-    except (TypeError, ValueError):
-        return str(iso or "")
-    return f"{t.tm_mday} {time.strftime('%b %H:%M', t)} UTC"
-
-
 def parse_until(text: str) -> str:
-    """AUTO's expiry as typed (``2026-11-20 18:00 UTC``, ``2026-11-20 18:00``, or the stored
-    ``2026-11-20T18:00:00Z``) as the policy keeps it; anything else is returned as typed, so
-    the policy's refusal names it."""
+    """AUTO's expiry as H1's callers outside the tab send it (``2026-11-20 18:00 UTC``,
+    ``2026-11-20 18:00``, or the stored ``2026-11-20T18:00:00Z``) as the policy keeps it;
+    anything else is returned as sent, so the policy's refusal names it. The tab sends its
+    picker's local time or a quick choice instead (`parse_until_local`, `until_in`)."""
     raw = " ".join(str(text or "").split())
     if raw.upper().endswith("UTC"):
         raw = raw[:-3].strip()
@@ -125,6 +118,56 @@ def parse_until(text: str) -> str:
             continue
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
     return str(text or "").strip()
+
+
+#: "Auto until"'s quick choices (docs/UI_RULES.md, "A time limit is never a typed UTC string":
+#: the operator, 2026-11-12, C3158): (hours from now, the words a person presses).
+QUICK_HOURS = ((1, "1 h"), (2, "2 h"), (4, "4 h"), (8, "8 h"), (24, "24 h"), (168, "7 days"))
+
+
+def until_in(hours, now: float = None) -> str:
+    """A quick choice (*hours* from now, one of `QUICK_HOURS`') as the instant the policy keeps,
+    to the minute below (so "7 days" is never past the policy's 7-day limit), ISO UTC; anything
+    else is returned as sent, so the policy's refusal names it."""
+    try:
+        h = int(str(hours).strip())
+    except (TypeError, ValueError):
+        return str(hours or "").strip()
+    if h not in dict(QUICK_HOURS):
+        return str(hours or "").strip()
+    at = (time.time() if now is None else now) + h * 3600
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at - at % 60))
+
+
+def parse_until_local(text: str, zone) -> str:
+    """"Auto until" as its date-time picker sends it (``2026-11-18T04:49``, the viewer's own
+    time) read in *zone* (a `ZoneInfo`, or None for the host's own, as `routes.v2.viewer_zone`
+    gives it) and kept as the policy keeps it, ISO UTC: the server's one conversion. Anything
+    else is returned as sent, so the policy's refusal names it."""
+    from datetime import datetime, timezone
+
+    raw = str(text or "").strip()
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            d = datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+        d = d.replace(tzinfo=zone) if zone is not None else d.astimezone()
+        return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return raw
+
+
+def local_value(iso: str, zone) -> str:
+    """An instant the policy keeps as the date-time picker's value in *zone* (``2026-11-18T04:49``),
+    or "" when it is empty or unreadable: a field's value, never words a person reads."""
+    from datetime import datetime
+
+    try:
+        t = calendar.timegm(time.strptime(str(iso), "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError):
+        return ""
+    d = datetime.fromtimestamp(t, zone) if zone is not None else datetime.fromtimestamp(t)
+    return d.strftime("%Y-%m-%dT%H:%M")
 
 
 def _guard_value(row, values: dict) -> str:
@@ -336,34 +379,143 @@ def view(network: str, now: float = None) -> dict:
     }
 
 
-def change(network: str, part: str, form=None) -> dict:
-    """The change card for *part* (``mode``, ``kinds`` or a hard stop's first key), with the
-    values the form holds (the stored ones when it holds none)."""
+#: The date-time picker's field and the quick choice's (C3158): what "Auto until" sends.
+UNTIL_LOCAL_FIELD = "heal_mode_until_local"
+UNTIL_FOR_FIELD = "heal_mode_for"
+#: The hidden field naming the modal a change was confirmed from, so a refused confirm opens
+#: that modal again holding what was chosen (a modal's id, `modal_id`; checked against them).
+MODAL_FIELD = "modal"
+
+
+def modal_id(part: str, mode: str = "", kind: str = "") -> str:
+    """The id of the modal that changes *part* (`_heal_change.html`): one per mode the
+    dropdown offers, one for the fix kinds, one per kind's toggle, one per hard stop."""
+    if part == "mode":
+        return f"heal-mode-{mode or 'off'}"
+    if part == "kinds":
+        return f"heal-kind-{kind}" if kind else "heal-kinds"
+    return f"heal-guard-{part}"
+
+
+def _flip(kinds: list, kind: str) -> list:
+    """The fix kinds as the toggle for *kind* would leave them: that one kind's tier list
+    flipped, every other kind as it is."""
+    return [dict(k, on=not k["on"]) if k["kind"] == kind else k for k in kinds]
+
+
+def _until_drawn(cur: dict, form, zone, now: float = None) -> tuple:
+    """"Auto until"'s picker as its modal draws it: ``(value, at)``, the picker's value in
+    *zone* and the instant whose UTC is drawn beside it. A refused confirm's form gives them
+    as sent (its picker's time converted once, else its quick choice's); otherwise Auto's
+    expiry now, while it is set and still ahead, else nothing chosen."""
     from modules.heal import policy as H
 
-    form = form or {}
-    v = view(network)
+    sent = form.get(UNTIL_LOCAL_FIELD)
+    if sent:
+        at = parse_until_local(sent, zone)
+        return sent, (at if _instant(at) else "")
+    if form.get(UNTIL_FOR_FIELD):
+        at = until_in(form.get(UNTIL_FOR_FIELD), now)
+        return (local_value(at, zone), at) if _instant(at) else ("", "")
+    if sent is not None:
+        return "", ""
+    until = cur["until"] if cur["set"] == "auto" else ""
+    try:
+        ahead = H.parse_until(until) > (time.time() if now is None else now)
+    except H.PolicyRefused:
+        ahead = False
+    return (local_value(until, zone), until) if ahead else ("", "")
+
+
+def _instant(iso: str) -> bool:
+    try:
+        time.strptime(str(iso), "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _change(v: dict, network: str, part: str, form, auto_refused: str, mode: str = "",
+            flip: str = "", zone=None) -> dict:
+    """One modal's change (`_heal_change.html`): *part* (``mode``, ``kinds`` or a hard stop's
+    first key), for the mode the dropdown chose (*mode*) or the one kind a toggle flips
+    (*flip*), with the values *form* holds (the stored ones when it holds none); "Auto
+    until"'s picker in *zone*, the viewer's (`routes.v2.viewer_zone`)."""
+    from modules.heal import policy as H
+
     cur = v["cur"]
     guard = next((g for g in v["guards"] if g["part"] == part), None)
-    if part not in PARTS and guard is None:
-        raise H.PolicyRefused(f"{part!r} is not a part of the heal policy a card changes: "
-                              f"{', '.join(PARTS)}, or a hard stop "
-                              f"({', '.join(g['part'] for g in v['guards'])})")
-    mode = form.get(H.MODE_KEY) or cur["set"] or "off"
-    until = form.get(H.UNTIL_KEY)
-    if until is None:
-        until = utc_words(cur["until"]) if cur["until"] else ""
     if guard is not None:
         guard = dict(guard, values={k: form.get(k, guard["values"][k]) for k in guard["keys"]})
-    kinds = v["kinds"]
+    kinds = _flip(v["kinds"], flip) if flip else v["kinds"]
     if form.get(H.KINDS_AUTO_KEY) is not None or form.get(H.KINDS_PROPOSE_KEY) is not None:
         auto = _sent_list(form, H.KINDS_AUTO_KEY)
         propose = _sent_list(form, H.KINDS_PROPOSE_KEY)
         kinds = [dict(k, on=k["kind"] in (auto if k["tier"] == 1 else propose)) for k in kinds]
-    return dict(v, part=part, guard=guard, mode=mode, until=until, kinds=kinds,
-                guard_words=dict(H.GUARD_WORDS),
-                auto_refused=_auto_refusal(network),
-                reason=form.get("reason", ""))
+    flipped = next((k for k in kinds if k["kind"] == flip), None) if flip else None
+    value, at = _until_drawn(cur, form, zone) if mode == "auto" else ("", "")
+    return {"part": part, "mid": modal_id(part, mode, flip), "mode": mode, "guard": guard,
+            "means": MODE_MEANS.get(mode, ""), "kinds": kinds, "flip": flipped,
+            "was": (next(k for k in v["kinds"] if k["kind"] == flip) if flipped else None),
+            "quick": QUICK_HOURS, "until_value": value, "until_at": at,
+            "until_for": str(form.get(UNTIL_FOR_FIELD) or ""),
+            "guard_words": dict(H.GUARD_WORDS), "auto_refused": auto_refused,
+            "reason": form.get("reason", ""), "network": network}
+
+
+def change(network: str, part: str, form=None, v: dict = None, zone=None) -> dict:
+    """The change for *part* (``mode``, ``kinds`` or a hard stop's first key) as a refused
+    confirm draws it again (its modal opened again, holding what the form sent): the mode the
+    form chose, the kind its toggle flipped (*form*'s `MODAL_FIELD`), and the values it held."""
+    from modules.heal import policy as H
+
+    form = form or {}
+    v = v or view(network)
+    guards = [g["part"] for g in v["guards"]]
+    if part not in PARTS and part not in guards:
+        raise H.PolicyRefused(f"{part!r} is not a part of the heal policy a card changes: "
+                              f"{', '.join(PARTS)}, or a hard stop ({', '.join(guards)})")
+    mode = (form.get(H.MODE_KEY) or v["cur"]["set"] or "off") if part == "mode" else ""
+    if mode not in H.MODES:
+        mode = "off"
+    flips = {modal_id("kinds", kind=k["kind"]): k["kind"] for k in v["kinds"]}
+    flip = flips.get(form.get(MODAL_FIELD, ""), "") if part == "kinds" else ""
+    return _change(v, network, part, form, _auto_refusal(network), mode=mode, flip=flip,
+                   zone=zone)
+
+
+def modals(v: dict, network: str, refused: dict = None, zone=None) -> dict:
+    """Every change the tab offers, each drawn as its own modal anchored to the control that
+    opens it (the operator's rule of 2026-11-12, C3158): the mode dropdown's Off, Dry run and
+    Auto, Change fix kinds…, each kind's toggle, and each hard stop's Edit…; and *refused*
+    (`change`'s, for a refused confirm) in place of its part's own, opened again
+    (``reopen``). "Auto until"'s picker is in *zone*, the viewer's."""
+    from modules.heal import policy as H
+
+    auto_refused = _auto_refusal(network)
+    now = v["cur"]["mode"]
+    # The dropdown offers each mode but the one in force, and Auto only where it is allowed;
+    # Auto in force is offered again by Change Auto's expiry….
+    offered = [m for m in H.MODES
+               if (m != now and not (m == "auto" and auto_refused)) or (m == "auto" == now)]
+    out = {"mode": [_change(v, network, "mode", {}, auto_refused, mode=m, zone=zone)
+                    for m in offered],
+           "several": _change(v, network, "kinds", {}, auto_refused),
+           "flips": [_change(v, network, "kinds", {}, auto_refused, flip=k["kind"])
+                     for k in v["kinds"]],
+           "guards": [_change(v, network, g["part"], {}, auto_refused) for g in v["guards"]],
+           "reopen": "", "auto_refused": auto_refused}
+    if refused:
+        # Opened again only where its modal is still drawn (a mode now in force is not
+        # offered): otherwise the refusal is said at the tab's head.
+        for key in ("mode", "flips", "guards"):
+            if any(c["mid"] == refused["mid"] for c in out[key]):
+                out[key] = [refused if c["mid"] == refused["mid"] else c for c in out[key]]
+                out["reopen"] = refused["mid"]
+        if out["several"]["mid"] == refused["mid"]:
+            out["several"] = refused
+            out["reopen"] = refused["mid"]
+    return out
 
 
 def _sent_list(form, key) -> list:

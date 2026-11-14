@@ -40,6 +40,8 @@ READ_BY = {
                                 "the page, 2026-11-13); it decides nothing",
     "modules/attention.py": "Needs attention: Drill beside a drill's Open the incident, from "
                             "its decisions' tag; it decides nothing",
+    "modules/incidents_list.py": "Troubleshooting › Incidents (board T): a drill's row says "
+                                 "Drill, through incident_page.drill_of; it decides nothing",
 }
 SCANNED_AT_LEAST = 300
 

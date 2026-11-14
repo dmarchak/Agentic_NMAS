@@ -1,11 +1,16 @@
 {%- from "v2/_macros.html" import icon, badge, how, clock -%}
 {%- from "v2/_preview_parts.html" import preview_parts -%}
+{%- from "v2/_heal_change.html" import until_utc -%}
 {#- Board H, artboard A: a heal policy change previewed in place (routes/heal_v2.policy_preview,
-    writing nothing), inside the change card's form: What this changes (where, now, after
+    writing nothing), inside the change's modal form: What this changes (where, now, after
     confirm), what the policy does on Auto, each check that refuses it, the six parts one level
     down, and the confirm, which names the work and sends the preview's fingerprint and what it
     saw (`seen`), so a confirm after anything moved is refused naming it. From
-    modules/heal_page.preview. -#}
+    modules/heal_page.preview. For Auto's modal (`until`, routes/heal_v2._drawn_until), the UTC
+    of the time previewed is drawn again beside its picker, out of band, and a quick choice's
+    time is handed to the picker (`data-quick-time`, static/js/nmas_v2.js `quickDrawn`), so the
+    confirm sends exactly the time previewed (C3158). -#}
+{%- if until %}{{ until_utc(until.at, oob=True) }}{% if until.quick %}<span hidden data-quick-for="heal-until-local" data-quick-time="{{ until.value }}"></span>{% endif %}{% endif %}
 {%- if refused %}
 <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not previewed:</strong> {{ refused }}. Nothing was saved.</p></div>
 {%- else %}
@@ -34,6 +39,6 @@
 <input type="hidden" name="seen" value='{{ p.operands | tojson }}'>
 <p class="small muted">{{ pv.confirm.statement }} The confirm is bound to this preview's fingerprint (<span class="mono">{{ p.fingerprint }}</span>) and needs a reason.</p>
 <div class="set-foot">
-  <span class="op-act"><button type="button" class="btn btn-primary" data-op="settings" hx-post="{{ url_for('heal_v2.policy_confirm', list_name=list_name) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this"{% if p.confirmable %}{{ gate('configure') }}{% else %} disabled aria-disabled="true" title="{{ p.refusals | join('; ') }}"{% endif %}><span class="op-idle">{% if p.button == 'kinds' %}Save the fix kinds for {{ list_name }}{% elif p.button == 'guard' %}Set “{{ p.guard_label }}” for {{ list_name }}{% elif p.button == 'auto' %}Turn on Auto for {{ list_name }} until {{ clock(p.until_words, 'date') }}{% elif p.button == 'dry_run' %}Set {{ list_name }} to dry run{% else %}Turn self-healing off for {{ list_name }}{% endif %}</span><span class="op-busy">Confirming…</span></button>{{ how('settings', 'self-healing', compact=True, op='confirming a policy change') }}</span>
+  <span class="op-act"><button type="button" class="btn btn-primary" data-op="settings" hx-post="{{ url_for('heal_v2.policy_confirm', list_name=list_name) }}" hx-target="#heal-tab" hx-swap="outerHTML" hx-disabled-elt="this"{% if p.confirmable %}{{ gate('configure') }}{% else %} disabled aria-disabled="true" title="{{ p.refusals | join('; ') }}"{% endif %}><span class="op-idle">{% if p.button == 'kinds' %}Save the fix kinds for {{ list_name }}{% elif p.button == 'guard' %}Set “{{ p.guard_label }}” for {{ list_name }}{% elif p.button == 'auto' %}Turn on Auto for {{ list_name }} until {{ clock(p.until_words, 'date') }} ({{ viewer_zone_name() }}){% elif p.button == 'dry_run' %}Set {{ list_name }} to dry run{% else %}Turn self-healing off for {{ list_name }}{% endif %}</span><span class="op-busy">Confirming…</span></button>{{ how('settings', 'self-healing', compact=True, op='confirming a policy change') }}</span>
 </div>
 {%- endif %}

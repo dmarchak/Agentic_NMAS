@@ -2445,8 +2445,11 @@
     for (var i = 0; i < open.length; i++) placeModal(open[i]);
   }
 
-  function openModal(opener) {
-    var id = opener.getAttribute('data-modal-open');
+  /* *mid*: the modal a choice names (a dropdown's option, `modalChosen`); a button names its
+     own. Once open, the modal is told (`nmas:modal-open`, on the dialog), so a modal with
+     nothing left to choose previews as it opens (Self-healing's, C3158). */
+  function openModal(opener, mid) {
+    var id = mid || opener.getAttribute('data-modal-open');
     var dlg = id ? root.document.getElementById(id) : null;
     if (!dlg || !dlg.showModal || dlg.open) return false;
     dlg.nmasOpener = opener;
@@ -2457,7 +2460,36 @@
     if (first && first.focus) {
       try { first.focus({preventScroll: true}); } catch (x) { first.focus(); }
     }
+    if (root.CustomEvent) dlg.dispatchEvent(new root.CustomEvent('nmas:modal-open'));
     return true;
+  }
+
+  /* A choice that opens a modal (C3158; the operator's rule of 2026-11-12: Self-healing's
+     mode "is a dropdown (Off / Dry run / Auto) opening the same modal"): a <select
+     data-modal-select> whose chosen <option data-modal-choice="<id>"> names the modal opens it
+     anchored to the dropdown, as a button's press opens its own. Closed by Cancel or Escape,
+     the dropdown goes back to the choice it was drawn with: nothing changed. */
+  function modalChosen(e) {
+    var sel = e.target;
+    if (!sel || sel.tagName !== 'SELECT' || !sel.hasAttribute('data-modal-select')) return;
+    var opt = sel.options[sel.selectedIndex];
+    var id = opt ? opt.getAttribute('data-modal-choice') : '';
+    if (id) openModal(sel, id);
+  }
+
+  function drawnChoice(sel) {
+    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = sel.options[i].defaultSelected;
+  }
+
+  /* The control that opens modal *id* in *region*: its button, or the dropdown whose option
+     names it (that option chosen). */
+  function openerOf(region, id) {
+    var b = region.querySelector('[data-modal-open="' + id + '"]');
+    if (b) return b;
+    var opt = region.querySelector('option[data-modal-choice="' + id + '"]');
+    var sel = opt ? opt.closest('select') : null;
+    if (sel) opt.selected = true;
+    return sel;
   }
 
   function modalClosed(e) {
@@ -2466,6 +2498,7 @@
     dlg.removeAttribute('data-holds-live');
     var opener = dlg.nmasOpener;
     dlg.nmasOpener = null;
+    if (opener && opener.isConnected && opener.tagName === 'SELECT') drawnChoice(opener);
     if (opener && opener.isConnected && opener.focus) {
       try { opener.focus({preventScroll: true}); } catch (x) { opener.focus(); }
     }
@@ -2511,10 +2544,48 @@
     if (p.dlg.isConnected) return;                   // answered inside the modal: it stays
     var region = p.region ? root.document.getElementById(p.region) : null;
     if (!region) return;
+    // A refused confirm's answer draws its modal again to be opened (`data-modal-reopen`,
+    // C3158): opened over the region, anchored to its opener, the focus on its refusal.
+    var again = region.querySelector('dialog.modal[data-modal-reopen]');
+    var by2 = again ? openerOf(region, again.id) : null;
+    if (by2 && openModal(by2, again.id)) {
+      var said = again.querySelector('.set-result');
+      if (said) { said.setAttribute('tabindex', '-1'); said.focus(); }
+      return;
+    }
     var to = region.querySelector('.set-result');
     if (to) to.setAttribute('tabindex', '-1');
     else if (p.key) to = region.querySelector('[data-modal-open="' + p.key + '"]');
     if (to && to.focus) to.focus();
+  }
+
+  /* "AUTO UNTIL"'S QUICK CHOICES (C3158; docs/UI_RULES.md, "A time limit is never a typed UTC
+     string"): a quick choice (a radio carrying data-quick-of="<picker id>") and the date-time
+     picker beside it are one answer, the one chosen last. Choosing a quick choice empties the
+     picker, and a time put in the picker clears the quick choices, each before htmx reads the
+     form (heard in the capture phase), so the server reads exactly one and converts it once;
+     the preview then draws the quick choice's time into the picker. */
+  function quickChosen(e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    var of = t.getAttribute('data-quick-of');
+    if (of) {
+      var picker = t.checked ? root.document.getElementById(of) : null;
+      if (picker) picker.value = '';
+      return;
+    }
+    if (!t.hasAttribute('data-quick-picker') || !t.value || !t.id) return;
+    var quick = root.document.querySelectorAll('[data-quick-of="' + t.id + '"]');
+    for (var i = 0; i < quick.length; i++) quick[i].checked = false;
+  }
+
+  /* A quick choice's preview names the time it resolved the choice to, in the viewer's zone
+     (`data-quick-time`, for the picker `data-quick-for` names): that time goes into the
+     picker, so the confirm sends exactly the time previewed, however long after. */
+  function quickDrawn(e) {
+    var at = e.target && e.target.querySelector ? e.target.querySelector('[data-quick-time]') : null;
+    var picker = at ? root.document.getElementById(at.getAttribute('data-quick-for')) : null;
+    if (picker) picker.value = at.getAttribute('data-quick-time');
   }
 
   /* A page the browser RESTORES from its back/forward cache comes back with its
@@ -2574,10 +2645,19 @@
     // The modal: opened and closed by its buttons; `close` does not bubble, so it is heard in
     // the capture phase; placed again as the window scrolls or resizes.
     root.document.addEventListener('click', modalClicked);
+    root.document.addEventListener('change', modalChosen);
     root.document.addEventListener('close', modalClosed, true);
+    // "Auto until"'s quick choices and its picker (C3158): heard first, before htmx reads the
+    // form they are sent in.
+    root.document.addEventListener('change', quickChosen, true);
+    root.document.addEventListener('input', quickChosen, true);
+    root.document.addEventListener('htmx:afterSettle', quickDrawn);
     root.document.addEventListener('htmx:beforeRequest', modalAsked);
     root.document.addEventListener('htmx:afterRequest', modalAnswered);
     root.document.addEventListener('htmx:afterSettle', modalSettled);
+    // A modal whose answer grows it (a preview drawn inside it, C3158) is placed again, so its
+    // foot never falls below the window.
+    root.document.addEventListener('htmx:afterSettle', placeOpenModals);
     root.document.addEventListener('scroll', placeOpenModals, true);
     if (root.addEventListener) root.addEventListener('resize', placeOpenModals);
     // `toggle` does not bubble: heard in the capture phase.

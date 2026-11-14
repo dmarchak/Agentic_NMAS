@@ -275,7 +275,7 @@ UNDRAWN = {
                    "Installation; the NetBox page's badge shows no age")],
     "GET /v2/settings": [("bucket", SCOPE_ROW), ("choice explicit follows url", GROUP_STATE)],
     "GET /v2/settings/installation": [
-        ("bucket mode", SCOPE_ROW),
+        ("bucket", SCOPE_ROW),
         ("built", "a list equal to every tab, left from when some tabs were unbuilt; nothing "
                   "reads it"),
         ("certs_url", "the identity provider's key endpoint, derived from the team domain "
@@ -387,7 +387,7 @@ UNDRAWN = {
 #: -3 2026-11-12: C3166 slice 3, the Neighbours tab draws the adjacencies reader's stored view,
 #: which carries only what the tab draws (adjacencies `VIEW_*`): no protocol id `proto` (on
 #: the tab or the device page) and no RIP `source` marker.
-UNDRAWN_CEILING = 377
+UNDRAWN_CEILING = 376
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.
