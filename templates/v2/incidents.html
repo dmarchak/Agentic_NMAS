@@ -58,7 +58,7 @@
   <ul class="inc-rows">
     {%- for r in g.rows %}
     <li class="inc-row" data-state="{{ r.state }}" data-incident="{{ r.id }}"{% if r.drill %} data-drill="{{ r.drill.id }}"{% endif %}>
-      <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}</span>
+      <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}{% if r.acknowledged %} {{ badge('Acknowledged', 'muted', title=r.acknowledged) }}{% endif %}</span>
       <span class="inc-row-what">
         {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
         <span class="inc-row-sub muted">{{ r.device or 'no device recorded' }}

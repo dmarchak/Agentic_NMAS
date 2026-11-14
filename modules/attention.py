@@ -263,6 +263,10 @@ ROW_KINDS = {
     ("heal", "cant_fix"): ("self-healing could not fix a device's problem",
                            "read what Mercury tried, then the action the reason names (adopt "
                            "into intent, capture, check the link, or decide on the change)"),
+    # C3701: an open incident that needs a person and that no other row names (Needs attention
+    # and Troubleshooting › Incidents from one state, `_incidents_agree`).
+    ("heal", "incident"): ("an open incident needs a person and no other row names it",
+                           "open the incident's page and decide what to do"),
     # Board H's amendment, H20 (19.4): self-healing's port bounce held by a guard, or one that
     # did not end bounced and stable (reverted by its timer, repaired, NOT RESTORED, still
     # flapping, its adjacency not formed, its stability unread, or refused at its apply).
@@ -657,6 +661,10 @@ CLEARS = {
     ("heal", "cant_fix"): (("resolves", "acknowledge"),
                            "a later decision finds the device with nothing to heal, or a later "
                            "heal of it is healed and verified; or acknowledged with a reason"),
+    ("heal", "incident"): (("resolves", "acknowledge"),
+                           "the incident is resolved or no longer needs a person (its page "
+                           "says which), or another row names it; or acknowledged with a "
+                           "reason"),
     ("heal", "bounce"): (("resolves", "acknowledge", "time"),
                          "a later bounce of the same port ends bounced and stable, or 7 days "
                          "pass (CANT_FIX_DAYS); or acknowledged with what was found on the "
@@ -758,6 +766,8 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "interrupted"),
                                # One can't-fix incident (board H, H8), by its incident's id.
                                ("heal", "cant_fix"),
+                               # One open incident no other row names (C3701), by its id.
+                               ("heal", "incident"),
                                # One hold a person resolves (board H, H9), by its decision.
                                ("heal", "held"),
                                # One held or failed port bounce (board H, H20), by its
@@ -6600,13 +6610,21 @@ def _link_incident_pages(lst: str, rows: list, decisions: list = ()) -> None:
     creation (`fault_drills.tag_of`), never by a name."""
     from modules import fault_drills, incident_page
 
-    drills = {}
+    drills, of_decision = {}, {}
     for d in decisions or ():
         tag = fault_drills.tag_of(d)
         if tag and d.get("incident"):
             drills.setdefault(d["incident"], tag["id"])
+        if d.get("id") and d.get("incident"):
+            of_decision[d["id"]] = d["incident"]
     for r in rows:
-        iid = str((r.get("operands") or {}).get("incident") or "")
+        ops = r.get("operands") or {}
+        # A hold a person resolves is about its decision's incident too (C3701: a guard-4 hold
+        # named no incident, so Needs attention linked none while Incidents held it open,
+        # needing a person). A halt names a decision too, and is about the network, not one
+        # incident: it links none.
+        held = of_decision.get(ops.get("decision") or "") if r.get("kind") == "held" else ""
+        iid = str(ops.get("incident") or held or "")
         if incident_page.HI.match(iid):
             r["incident_page"] = dict({"id": iid, "list": lst},
                                       **({"drill": drills[iid]} if iid in drills else {}))
@@ -6658,6 +6676,72 @@ def _link_stream_incidents(rows: list, read=None) -> None:
                 r["incident_page"] = dict({"id": inc["id"], "list": net},
                                           **({"drill": tag["id"]} if tag else {}))
                 break
+
+
+def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
+    """C3701 (the operator, 2026-11-14: "Fix so both pages derive from one source: an open
+    incident that needs a person ⇔ a Needs attention row linking to it"): Needs attention's
+    links to incidents, held to THE incident state Troubleshooting › Incidents draws
+    (`incidents_list.rows`: `incident_page.status` over the network's heal stores, one read of
+    each), after every row has taken its link (`_link_incident_pages`,
+    `_link_stream_incidents`) and before acknowledgements are applied (an acknowledged row
+    still links its incident, and both pages say so):
+    - a row linking an incident that is resolved, or open with no person needed, loses the
+      link (the row stays about what it says), and a can't-fix row about a RESOLVED incident
+      goes (C3699: `hi-126fa0771352`, closed at can't fix before C2813, kept its row while
+      Incidents said it cleared);
+    - an open incident that needs a person and that no row links takes one row of its own
+      (``heal``/``incident``), opening its page (C3700's class: an incident read as needing a
+      person on Incidents for six days with no row).
+    *listed* is `incidents_list.rows`'s answer (tests). An unreadable store changes nothing:
+    its own row says it cannot be read."""
+    from modules import incidents_list
+
+    lst = lst or _page_network()
+    try:
+        got = listed if listed is not None else incidents_list.rows(lst)
+    except Exception as exc:                        # noqa: BLE001 (the rows stay as they are)
+        log.warning("attention: %s's incidents could not be read to match: %s", lst, exc)
+        return rows
+    if got.get("unreadable"):
+        return rows
+    by_id = {r["id"]: r for r in got.get("rows") or []}
+    needs = {i for i, r in by_id.items() if not r["resolved"] and r["state"] == "needs_person"}
+    linked = set()
+
+    def keep(r) -> bool:
+        iid = str((r.get("incident_page") or {}).get("id") or "")
+        if not iid or (r["incident_page"].get("list") or lst) != lst or iid not in by_id:
+            return True
+        if iid in needs:
+            linked.add(iid)
+            return True
+        if by_id[iid]["resolved"] and (r.get("source"), r.get("kind")) == ("heal", "cant_fix"):
+            return False
+        r.pop("incident_page", None)
+        return True
+
+    out = []
+    for top in rows:
+        if top.get("folded"):
+            top["folded"] = [f for f in top["folded"] if keep(f)]
+        if keep(top):
+            out.append(top)
+    for iid in sorted(needs - linked):
+        inc = by_id[iid]
+        r = row(source="heal", kind="incident", key=iid, level="warning", event=iid,
+                devices=[inc["device"]] if inc.get("device") else [],
+                since=_ts(inc.get("since")),
+                what=f"{inc['title']}: it needs a person",
+                cause=(f"Troubleshooting › Incidents holds {iid} open: "
+                       f"{inc.get('waits') or inc.get('state_words') or 'it waits for a person'}"
+                       ", and no other row here names it"),
+                action={"label": "Open the incident and decide what to do",
+                        "href": inc.get("href") or ""},
+                operands={"list": lst, "incident": iid})
+        r["incident_page"] = {"id": iid, "list": lst}
+        out.append(r)
+    return out
 
 
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
@@ -7116,8 +7200,12 @@ def _heal_dampening_rows(lst: str, rows: list, now: float) -> list:
     return out
 
 
-#: A can't-fix stays on Needs attention this long unless a later decision or heal of its
-#: device clears it, or a person acknowledges it (the step log keeps it for ever).
+#: A held or failed port bounce and BGP session clear stay on Needs attention this long unless
+#: a later one clears it, or a person acknowledges it (the step log keeps it for ever). A
+#: can't-fix (a rolled-back heal included) never ages out: it stays until it is resolved or
+#: acknowledged (C3620; the coordinator's decision of 2026-11-14 under the Phase 7 mode:
+#: Needs attention is the one count, so an incident that needs a person is never only on
+#: Incidents).
 CANT_FIX_DAYS = 7
 
 
@@ -7135,8 +7223,9 @@ def _later_done(rows: list) -> dict:
 def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
     """Board H, H8 (sections 9 and 12): ONE row per incident that stopped at can't fix
     (`heal_analysis.CANT_FIX`: the decision's can't fix, or an act whose symptom remained or
-    that rolled back), under `CANT_FIX_DAYS` old, until a later decision finds its device with
-    nothing to heal or a later heal of it is healed, or a person acknowledges it. Opened: What
+    that rolled back), at any age (C3620: it still needs a person), until a later decision
+    finds its device with nothing to heal or a later heal of it is healed, or a person
+    acknowledges it, as its `CLEARS` says. Opened: What
     to do (the action), then Mercury's facts (the cause: detected, the steps tried, their
     results), then the AI analysis, advisory, drawn from what it kept (``heal_analysis``, the
     template loads it when the item opens: never a call)."""
@@ -7162,7 +7251,7 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
         if e.get("outcome") not in HA.CANT_FIX or not e.get("incident"):
             continue
         host, at = e.get("device") or "", float(e.get("epoch") or 0)
-        if now - at > CANT_FIX_DAYS * 86400 or later.get(host, 0.0) > at:
+        if later.get(host, 0.0) > at:
             continue
         steps = e.get("steps") or []
         failed = [s for s in steps if s.get("result") not in ("ok", "")]
@@ -8863,6 +8952,9 @@ def assemble(results: list) -> dict:
             r["folded"] = _with_networks(r["folded"])
     # C3487: a lost stream's row opens its incident's own page, as a heal's row does.
     _link_stream_incidents(rows)
+    # C3701: every link held to the incident's own state, and an incident that needs a person
+    # never only on Incidents.
+    rows = _incidents_agree(rows)
     # The acknowledgement record and its current list read ONCE for both uses (C3230).
     held = _acknowledgements_now()
     rows, acknowledged, ack_result = _without_acknowledged(rows, held)

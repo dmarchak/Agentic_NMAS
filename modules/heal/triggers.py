@@ -364,21 +364,53 @@ def from_syslog(store: str, value: dict, now: float = None) -> dict:
     return _deliver(ctx, out, counts)
 
 
+#: How many times one alert episode is sighted again after incidents holding it closed while it
+#: still fires (C3699): one for each such incident, at most this many, so an incident that
+#: closes and reopens on every read cannot loop; past it the episode is said in the log.
+RESIGHT_MOST = 3
+
+
+def _closed_holding(incs: list, key: str) -> dict:
+    """The newest CLOSED incident of *incs* holding trigger *key* (as its own or an attached
+    member's), when no OPEN one holds it; ``{}`` when an open one holds it, or none ever did
+    (an episode first seen where healing was off is not replayed: the module's rule)."""
+    from modules.heal import incidents
+
+    holding = [i for i in incs if key in incidents._keys(i)]
+    if any(i.get("state") in incidents.OPEN_STATES for i in holding):
+        return {}
+    closed = [i for i in holding if i.get("state") == "closed"]
+    # The newest by its close, the store's order breaking a tie within one second (an incident
+    # is appended when it opens).
+    return max(enumerate(closed), key=lambda p: (str(p[1].get("closed_at") or ""), p[0]))[1] \
+        if closed else {}
+
+
 def from_alerts(store: str, value: dict, now: float = None) -> dict:
-    """The `grafana-alerts` step (N2): each firing alert on a managed device, once an episode."""
+    """The `grafana-alerts` step (N2): each firing alert on a managed device, once an episode;
+    and AGAIN, once for each incident that held it and closed while it still fires (C3699: an
+    incident closed by a rule since changed, a can't fix closing before C2813, left a firing
+    alert with no open incident for good, on Needs attention and on no incident). An episode
+    an open incident holds is never sighted again (`sight` would call it a duplicate), and
+    `RESIGHT_MOST` bounds the times one episode is."""
     from modules.evidence_pack import alert_key, firing
+    from modules.heal import incidents
 
     now = time.time() if now is None else float(now)
     insts = firing(value or {})
     keys = {alert_key(i): i for i in insts}
-    seen = set((_cursors().get("seen") or {}).get(store) or [])
+    cur = _cursors()
+    seen = set((cur.get("seen") or {}).get(store) or [])
+    resighted = dict((cur.get("resighted") or {}).get(store) or {})
     _move(lambda d: d.setdefault("seen", {}).__setitem__(store, sorted(keys)))
-    new = [(k, i) for k, i in keys.items() if k not in seen]
-    if not new:
+    new = [(k, i, False) for k, i in keys.items() if k not in seen]
+    again = [(k, i, True) for k, i in keys.items() if k in seen]
+    if not new and not again:
         return _counts()
     ctx, counts, out = _Context(now), _counts(), []
     allowed = _store_networks(store, "grafana-alerts")
-    for key, inst in new:
+    held, redone = {}, {}
+    for key, inst, is_again in new + again:
         device = inst.get("device") or ""
         if not device and inst.get("address"):
             found = ctx.by_address(inst["address"])
@@ -396,8 +428,30 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
             counts["unplaced"].append(why)
             continue
         if ctx.mode(network) == "off":
-            counts["off"] += 1
+            if not is_again:
+                counts["off"] += 1
             continue
+        again_words = ""
+        if is_again:
+            if network not in held:
+                got = incidents.read(network)
+                held[network] = (None if got.get("state") == "unreadable"
+                                 else got.get("incidents") or [])
+            if held[network] is None:
+                continue                      # unreadable: nothing is judged, nothing opened
+            closed = _closed_holding(held[network], f"alert:{key}")
+            done = list(resighted.get(key) or [])
+            if not closed or closed.get("id") in done:
+                continue
+            if len(done) >= RESIGHT_MOST:
+                log.warning("heal: the alert %s on %s still fires with no open incident, "
+                            "and it was sighted again %d times already: not again",
+                            inst.get("rule"), device, len(done))
+                continue
+            redone[key] = done + [closed["id"]]
+            again_words = (f"; it still fires and no open incident holds it: its incident "
+                           f"{closed['id']} closed at {closed.get('closed_at') or '?'} "
+                           f"({str(closed.get('closed_why') or '').split(':', 1)[0] or '?'})")
         labels = inst.get("labels") or {}
         iface = next((labels[k] for k in INTERFACE_LABELS if labels.get(k)), "")
         far = far_ends(ctx.intents(network), device, iface) if iface else []
@@ -416,12 +470,15 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
         out.append((network, device, dict(
             base, key=f"alert:{key}", related=far,
             words=(f"the alert {inst.get('rule') or '?'} fired on {device}{on}{silenced}"
-                   + (f": {inst['absence']}" if inst.get("absence") else "")))))
-        for end in far:
+                   + (f": {inst['absence']}" if inst.get("absence") else "") + again_words))))
+        for end in far if not is_again else ():
             out.append((network, end, dict(
                 base, key=f"alert:{key}:{end}", related=[device],
                 words=(f"the alert {inst.get('rule') or '?'} fired on {device}{on}{silenced}; "
                        f"{end} is the far end committed intent names for it"))))
+    if redone or resighted:
+        kept = {k: v for k, v in dict(resighted, **redone).items() if k in keys}
+        _move(lambda d: d.setdefault("resighted", {}).__setitem__(store, kept))
     return _deliver(ctx, out, counts)
 
 

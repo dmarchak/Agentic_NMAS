@@ -291,9 +291,11 @@ class TestTheOnePrimaryButton:
         assert T.text_of(todo).split("What to do", 1)[1].strip().startswith("Nothing")
 
     def test_an_item_that_left_needs_attention_is_said_and_the_device_opened(self, client):  # noqa: F811
-        """The lab decides in 2026-09, past the days a can't-fix stays on Needs attention: the
-        list was read and holds no item for it."""
-        todo = section(T.page(client, T.cant_fix()), "inc-todo")
+        """A person acknowledged the can't-fix's item: the list was read and holds no item for
+        it. Premise corrected (C3620, 2026-11-14: "an incident that still needs a person ...
+        stays on Needs attention until it is resolved or acknowledged, with no age-out"): it
+        left by the acknowledgement, where it had left by the lab's age (decided in 2026-09)."""
+        todo = section(T.page(client, T.acknowledged(T.cant_fix())), "inc-todo")
         assert 'data-item="none"' in todo.split(">", 1)[0]
         assert "Its item is not on Needs attention now" in T.text_of(todo)
         button = the_primary(todo)

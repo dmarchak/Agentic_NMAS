@@ -140,6 +140,17 @@ def cant_fix():
     return d["incident"]
 
 
+def acknowledged(iid: str) -> str:
+    """*iid*'s can't-fix item acknowledged by a person, its own way off Needs attention (a
+    can't-fix never ages out, C3620): the item's id and event are its incident's."""
+    from modules import acknowledgements
+
+    acknowledgements.record(f"heal:{iid}", iid, why="planted: the cause was found on the device",
+                            by="alex@example.com", verified="person", kind="cant_fix",
+                            what=f"planted acknowledgement of {iid}", devices=["edge-b"])
+    return iid
+
+
 def approved(src=None):
     """A Tier 2 proposal a person approved, applied as them and verified."""
     d = proposed()
@@ -793,9 +804,11 @@ class TestThePage:
         under What to do, the incident's Needs attention item's (the GUI review's item 2,
         C3450; held in full by tests/test_incident_state.py). Until then What to do was three
         links, the first of them back to Needs attention: the page had no action of its own.
-        This can't-fix's item has left Needs attention (the lab decides in 2026-09), so its
-        one action opens its device."""
-        body = page(client, cant_fix())
+        This can't-fix's item has left Needs attention, so its one action opens its device.
+        Premise corrected (C3620, 2026-11-14: "an incident that still needs a person ... stays
+        on Needs attention until it is resolved or acknowledged, with no age-out"): it left by
+        a person's acknowledgement, where it had left by the lab's age (decided in 2026-09)."""
+        body = page(client, acknowledged(cant_fix()))
         live = body.split('id="incident-live"', 1)[1].split("</main>", 1)[0]
         assert "<form" not in live and "<button" not in live and "hx-post" not in live
         todo = live.split('id="inc-todo"', 1)[1].split("</section>", 1)[0]

@@ -70,7 +70,7 @@ CLOSED_GROUPS = (("fixed_mercury", "Fixed by Mercury", "ok"),
                  ("cancelled", "Declined", "muted"))
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
-         "ended", "ttr", "by", "drill")
+         "ended", "ttr", "by", "drill", "acknowledged")
 #: A state's badge kind, as the incident's own page colours its state.
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
@@ -167,7 +167,13 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "ended": tl["ended"] if resolved else "",
             "ttr": tl["ttr"]["words"] if st["state"] == "fixed" else "",
             "by": by if st["state"] == "fixed" else "",
-            "drill": IP.drill_of(found), "only_log": not inc}
+            "drill": IP.drill_of(found), "only_log": not inc,
+            # The Needs attention rows about it, by the ids an acknowledgement is keyed on
+            # (C3701): its own row (a can't-fix, or the incident's row, keyed by its id) and a
+            # hold keyed by one of its decisions.
+            "ack_ids": [f"heal:{found['id']}"] + [f"heal:{d['id']}" for d in decisions
+                                                  if d.get("id")],
+            "acknowledged": ""}
 
 
 def rows(network: str) -> dict:
@@ -226,6 +232,35 @@ def _found(held: list, entries: list, decided: list) -> tuple:
     return out, folded
 
 
+def _acknowledged(open_rows: list) -> None:
+    """C3701 (the operator, 2026-11-14: "acknowledged ones shown as acknowledged on both"): each
+    open incident whose Needs attention row a person acknowledged says so, with who and why,
+    from the acknowledgements in force (`acknowledgements.current`, the record Needs attention
+    hides its acknowledged rows by), matched by the row ids `_row` names (``ack_ids``). One
+    read of the record. An acknowledgement of another source's row (a Grafana alert's) is not
+    matched to an incident here: it is keyed on the alert, not the incident. A record that
+    cannot be read marks nothing (Needs attention says it cannot be read)."""
+    from modules import acknowledgements as ACK
+    from modules import identity
+
+    if not open_rows:
+        return
+    try:
+        got = ACK.read()
+        held = [] if got["state"] == "unreadable" else ACK.current(got["rows"])
+    except Exception as exc:                        # noqa: BLE001 (marks nothing)
+        log.warning("incidents: the acknowledgements could not be read: %s", exc)
+        return
+    by_id = {}
+    for a in reversed(held):                       # the newest of a row's first
+        by_id.setdefault(str(a.get("row") or ""), a)
+    for r in open_rows:
+        a = next((by_id[i] for i in r.get("ack_ids") or () if i in by_id), None)
+        if a:
+            who = identity.display_name(a.get("by") or "") or "a person"
+            r["acknowledged"] = f"Acknowledged by {who}: {a.get('why') or 'no reason given'}"
+
+
 def _matches(row: dict, q: str, device: str) -> bool:
     if device and row["device"] != device:
         return False
@@ -249,6 +284,8 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
     device = str(device or "").strip()[:128]
     got = rows(network)
     on_tab = [r for r in got["rows"] if r["resolved"] == (tab == "closed")]
+    if tab == "open":
+        _acknowledged(on_tab)
     matched = [r for r in on_tab if _matches(r, q, device)]
     groups_of = OPEN_GROUPS if tab == "open" else CLOSED_GROUPS
     counts = {k: sum(1 for r in on_tab if r["group"] == k) for k, _w, _d in groups_of}

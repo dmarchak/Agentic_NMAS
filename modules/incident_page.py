@@ -323,6 +323,12 @@ def state_of(incident, entry: dict, decisions: list) -> str:
         return "fixed"
     if _declined(decisions):
         return "cancelled"
+    if last and last["outcome"] == "withdrawn":
+        # The heal's own pass withdrew a proposal nobody took: its device read back at its
+        # golden, or changed since (a change is a new incident). Nothing was sent and nothing
+        # is left to a person (C3700: hi-22823de626cc read "needs a person" for six days on
+        # Incidents, its record closed "withdrawn: … read back at its golden").
+        return "cleared"
     if last:
         return "needs_person"
     outcome = entry.get("outcome") or newest.get("outcome") or ""

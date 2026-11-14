@@ -222,10 +222,16 @@ class TestOneStateAndItsAction:
         """The same incident with Needs attention holding no row for it (its alert is not in
         the list's reading): it needs a person by its own records, so its level, which it
         would take from its item, is not drawn at all, never "No person needed"; and its one
-        button opens its device."""
+        button opens its device. Premise corrected (C3701): with the sources emptied, Needs
+        attention still gives an open incident that needs a person a row of its own
+        (`attention._incidents_agree`), so no item is reached the one way left, the incidents
+        not readable for the match, as a store that cannot be read is."""
         from modules import attention
+        from modules import incidents_list
 
         monkeypatch.setattr(attention, "SOURCES", [])
+        monkeypatch.setattr(incidents_list, "rows", lambda net: {
+            "rows": [], "folded": 0, "unreadable": [f"{net}'s heal incidents (planted)"]})
         iid = FX.plant()
         body = page(web, iid)
         assert carried(body) == ["needs_person"] * (len(SECTIONS) + 1), carried(body)

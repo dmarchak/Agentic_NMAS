@@ -128,6 +128,9 @@ class TestEveryKindSaysHowItClears:
                                      ("heal", "interrupted"),
                                      # One can't-fix incident, by its id (board H, H8).
                                      ("heal", "cant_fix"),
+                                     # One open incident no other row names, by its id
+                                     # (C3701, the operator, 2026-11-14).
+                                     ("heal", "incident"),
                                      # One hold a person resolves, by its decision (H9).
                                      ("heal", "held"),
                                      # One held or failed port bounce, by its decision (H20).

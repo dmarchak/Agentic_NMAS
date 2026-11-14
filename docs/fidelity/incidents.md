@@ -15,11 +15,18 @@ at 1440, 1280 and 390 is the operator's review's. The incident page's breadcrumb
 in `incident.md`.
 Compared 2026-11-13.
 Templates compared: templates/v2/incidents.html, templates/v2/_incidents_chip.html, templates/v2/base.html
-Templates sha256: `e29f14af964c1849d12616ab0e78bb32a878176ce016ea96c14d55f0145d4827`
+Templates sha256: `e607bf62cafeab0f322a9c0b1a180e85625a343847b4f76c772c4b9b9080289c`
 
 Compared again 2026-11-14 00:5x UTC: each group's disclosure gained its `data-keep` key (so a
 live redraw keeps an opened group open, C472) and a template comment's words; no region drawn
 differently, every verdict below unchanged (provisional, operator review pending).
+
+Compared again 2026-11-14 18:0x UTC (C3701, the operator's "acknowledged ones shown as
+acknowledged on both"): an Open row gains an **Acknowledged** badge beside its state when a
+person acknowledged its Needs attention row, who and why on its hover; compared by the
+template's diff and the page tests/test_incidents_and_needs_attention_agree.py draws, not by new
+shots. One region added (Incidents: an acknowledged Open row, a deviation); every other verdict
+unchanged. Templates sha256 before: `e29f14af964c1849d12616ab0e78bb32a878176ce016ea96c14d55f0145d4827`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -36,6 +43,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Incidents: the summary | "3 open · 1 needs a person · 1 Mercury working · 1 watching" | the same words, each group's count, the empty ones left out | **same** |
 | Incidents: the rows' arrangement | one flat list, a row per incident | one closed-or-open details per group, 50 rows each, the rest counted | **deviation** (log: Board T built: Incidents' rows grouped and collapsed) |
 | Incidents: an Open row | the state's dot and word, the title and its next step, since, Open incident | the state's badge (Drill beside it for a drill), the title as the link, the device and what it waits for, since | **deviation** (log: Board T built: a row's title opens the incident, and its next step is what it waits for) |
+| Incidents: an acknowledged Open row | not drawn | an **Acknowledged** badge beside the state, muted, who and why on hover | **deviation** (log: Board T built: an acknowledged incident says so) |
 | Incidents: a Closed row | how it closed, time to repair, by whom | the group says how it closed; the row its state, title, device, fixed by whom, time to repair and when it ended | **same** |
 | Incidents: filters | Closed: filter by device, kind, outcome | a search over title, device and id and a device filter, on both tabs; the outcome is the groups | **deviation** (log: Board T built: Closed filters by device and words, its outcome the groups) |
 | Incidents: Problems | the suggested third tab, recurring faults by fingerprint | not built | **later** the Problems tab, on the operator's decision (b) |

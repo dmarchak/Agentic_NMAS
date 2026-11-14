@@ -1,0 +1,4910 @@
+{
+ "alerts": {
+  "alertmanager_only": 0,
+  "bands": {},
+  "configured_rules": 32,
+  "counts": {
+   "condition": 2,
+   "error": 0,
+   "no_data": 0,
+   "normal": 128,
+   "normal_no_data": 8,
+   "pending": 0,
+   "rules": 32,
+   "silenced": 0,
+   "unknown_state": 0
+  },
+  "instances": [
+   {
+    "absence": "no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began",
+    "active_at": "2026-11-08T21:30:50Z",
+    "device": "r7",
+    "device_from": "label",
+    "fingerprint": "c6e7b8dcf292cfb2",
+    "for_seconds": 0,
+    "kind": "condition",
+    "labels": {
+     "alertname": "NMAS telemetry stream lost: r7 subscription 101",
+     "detect_seconds": "180",
+     "device": "r7",
+     "grafana_folder": "NMAS",
+     "nmas": "telemetry",
+     "subscription": "101"
+    },
+    "rule": "NMAS telemetry stream lost: r7 subscription 101",
+    "rule_uid": "nmas-tel-r7-101",
+    "silenced_by": [],
+    "silences": [],
+    "starts_at": "2026-11-08T21:30:50.000Z",
+    "state": "Alerting (NoData)",
+    "value": "-1e+00",
+    "window_basis": null,
+    "window_seconds": null
+   },
+   {
+    "absence": "no telemetry sample received on subscription 102 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began",
+    "active_at": "2026-11-08T21:30:50Z",
+    "device": "r7",
+    "device_from": "label",
+    "fingerprint": "571fbb47686a6a71",
+    "for_seconds": 0,
+    "kind": "condition",
+    "labels": {
+     "alertname": "NMAS telemetry stream lost: r7 subscription 102",
+     "detect_seconds": "180",
+     "device": "r7",
+     "grafana_folder": "NMAS",
+     "nmas": "telemetry",
+     "subscription": "102"
+    },
+    "rule": "NMAS telemetry stream lost: r7 subscription 102",
+    "rule_uid": "nmas-tel-r7-102",
+    "silenced_by": [],
+    "silences": [],
+    "starts_at": "2026-11-08T21:30:50.000Z",
+    "state": "Alerting (NoData)",
+    "value": "-1e+00",
+    "window_basis": null,
+    "window_seconds": null
+   }
+  ],
+  "recently_normal": [],
+  "rule_definitions": {
+   "nmas-tel-r7-101": {
+    "devices": [
+     "r7"
+    ],
+    "facets": {
+     "annotations": {
+      "description": "de8e54412ac7a3ac",
+      "summary": "725545596368d1a5"
+     },
+     "condition": "C",
+     "exec_err_state": "Alerting",
+     "expressions": {
+      "B": {
+       "all": "4caa77568bba5682",
+       "evaluators": [],
+       "of": "A",
+       "reducer": "last",
+       "type": "reduce"
+      },
+      "C": {
+       "all": "2fe60bb8bb45f79e",
+       "evaluators": [
+        [
+         "lt",
+         [
+          1
+         ]
+        ]
+       ],
+       "of": "B",
+       "reducer": "",
+       "type": "threshold"
+      }
+     },
+     "folder": "NMAS",
+     "for": "0s",
+     "group": "nmas-telemetry",
+     "interval": 60,
+     "keep_firing_for": "0s",
+     "labels": {
+      "detect_seconds": "180",
+      "device": "r7",
+      "nmas": "telemetry",
+      "severity": "warning",
+      "subscription": "101"
+     },
+     "no_data_state": "Alerting",
+     "notifications": "",
+     "paused": false,
+     "queries": {
+      "A": {
+       "all": "d34c627b35e7fc86",
+       "datasource": "efwpn8hr7sfeob",
+       "range": [
+        90,
+        0
+       ],
+       "text": "35a1cf77b1d9f275"
+      }
+     },
+     "title": "NMAS telemetry stream lost: r7 subscription 101"
+    },
+    "folder": "NMAS",
+    "group": "nmas-telemetry",
+    "hash": "a57b931529a5dc0c",
+    "title": "NMAS telemetry stream lost: r7 subscription 101",
+    "uid": "nmas-tel-r7-101",
+    "updated": "2026-11-12T02:33:45Z",
+    "version": 9,
+    "who": {
+     "name": "",
+     "provenance": "file",
+     "uid": "service",
+     "words": "Grafana's file provisioning (as service)"
+    }
+   },
+   "nmas-tel-r7-102": {
+    "devices": [
+     "r7"
+    ],
+    "facets": {
+     "annotations": {
+      "description": "85b5b9428ef490cb",
+      "summary": "c2f8b5306eed3376"
+     },
+     "condition": "C",
+     "exec_err_state": "Alerting",
+     "expressions": {
+      "B": {
+       "all": "4caa77568bba5682",
+       "evaluators": [],
+       "of": "A",
+       "reducer": "last",
+       "type": "reduce"
+      },
+      "C": {
+       "all": "2fe60bb8bb45f79e",
+       "evaluators": [
+        [
+         "lt",
+         [
+          1
+         ]
+        ]
+       ],
+       "of": "B",
+       "reducer": "",
+       "type": "threshold"
+      }
+     },
+     "folder": "NMAS",
+     "for": "0s",
+     "group": "nmas-telemetry",
+     "interval": 60,
+     "keep_firing_for": "0s",
+     "labels": {
+      "detect_seconds": "180",
+      "device": "r7",
+      "nmas": "telemetry",
+      "severity": "warning",
+      "subscription": "102"
+     },
+     "no_data_state": "Alerting",
+     "notifications": "",
+     "paused": false,
+     "queries": {
+      "A": {
+       "all": "73ae8238c83336e3",
+       "datasource": "efwpn8hr7sfeob",
+       "range": [
+        90,
+        0
+       ],
+       "text": "8881bc61f4e48c74"
+      }
+     },
+     "title": "NMAS telemetry stream lost: r7 subscription 102"
+    },
+    "folder": "NMAS",
+    "group": "nmas-telemetry",
+    "hash": "ecc0a08d224ad411",
+    "title": "NMAS telemetry stream lost: r7 subscription 102",
+    "uid": "nmas-tel-r7-102",
+    "updated": "2026-11-12T02:33:45Z",
+    "version": 9,
+    "who": {
+     "name": "",
+     "provenance": "file",
+     "uid": "service",
+     "words": "Grafana's file provisioning (as service)"
+    }
+   }
+  },
+  "rule_definitions_complete": true,
+  "rule_definitions_why": "",
+  "rules": [
+   {
+    "configured": true,
+    "device_source": {
+     "from": "label",
+     "why": "the rule is generated per device and carries a device label"
+    },
+    "exec_err_state": "Alerting",
+    "folder": "NMAS",
+    "for_seconds": 0,
+    "group": "nmas-telemetry",
+    "health": "ok",
+    "interval_seconds": 60,
+    "labels": {
+     "detect_seconds": "180",
+     "device": "r7",
+     "nmas": "telemetry",
+     "severity": "warning",
+     "subscription": "101"
+    },
+    "last_error": "",
+    "last_evaluation": "2026-11-14T17:24:50Z",
+    "no_data_state": "Alerting",
+    "query_window_seconds": 90,
+    "state": "firing",
+    "title": "NMAS telemetry stream lost: r7 subscription 101",
+    "uid": "nmas-tel-r7-101",
+    "value_expr": ""
+   },
+   {
+    "configured": true,
+    "device_source": {
+     "from": "label",
+     "why": "the rule is generated per device and carries a device label"
+    },
+    "exec_err_state": "Alerting",
+    "folder": "NMAS",
+    "for_seconds": 0,
+    "group": "nmas-telemetry",
+    "health": "ok",
+    "interval_seconds": 60,
+    "labels": {
+     "detect_seconds": "180",
+     "device": "r7",
+     "nmas": "telemetry",
+     "severity": "warning",
+     "subscription": "102"
+    },
+    "last_error": "",
+    "last_evaluation": "2026-11-14T17:24:50Z",
+    "no_data_state": "Alerting",
+    "query_window_seconds": 90,
+    "state": "firing",
+    "title": "NMAS telemetry stream lost: r7 subscription 102",
+    "uid": "nmas-tel-r7-102",
+    "value_expr": ""
+   }
+  ],
+  "silences": [],
+  "silences_read": true,
+  "stalled_groups": [],
+  "streams": {
+   "at": "2026-11-14T17:25:02Z",
+   "devices": {
+    "r7": {
+     "diagnosis": {
+      "at": "",
+      "by": "",
+      "cause": "",
+      "list": "Default",
+      "more": 0,
+      "next": "",
+      "record": "no \"a telemetry stream lost\" diagnosis of r7 is recorded since this loss began",
+      "state": "absent",
+      "why": "no \"a telemetry stream lost\" diagnosis of r7 is recorded since this loss began",
+      "words": ""
+     },
+     "seen": {
+      "cause": "",
+      "ended": {
+       "at": "2026-11-08T20:59:42Z",
+       "how": "console",
+       "list": "",
+       "tail": " (3 configuration changes were logged during it; this is the last).",
+       "words": "It cleared with no Mercury operation recorded. A configuration change was made on its console at"
+      },
+      "from": "2026-11-08T20:04:50Z",
+      "held": {
+       "at": "",
+       "tail": "",
+       "words": "It held 30 min, until this loss began."
+      },
+      "range": "7d",
+      "record": "matched on the device and the symptom (a telemetry stream lost), the nearest in time: its cause then is not recorded; 4 earlier incident(s) of this kind on r7 in the alert history kept: 18534 transition(s), the oldest at 2026-09-12T18:10:50Z; this one 2026-11-08T20:04:50Z to 2026-11-08T21:00:50Z (2 alert episode(s)); how it ended (console): 3 configuration-change line(s) not Mercury's own in r7's log during it; the last: made on the console, no account named; 2 loss(es) that began inside a planned window left out (held then, never raised)",
+      "state": "match",
+      "to": "2026-11-08T21:00:50Z",
+      "what": "Telemetry subscriptions 101 and 102 were lost for 56 min.",
+      "why": ""
+     }
+    }
+   },
+   "state": "read",
+   "why": ""
+  }
+ },
+ "captured_at": "2026-11-14T17:25:01Z",
+ "decisions": [
+  {
+   "at": "2026-11-07T18:08:15Z",
+   "device": "r3",
+   "epoch": 1794074895.1373217,
+   "guard": {
+    "guard": 5,
+    "name": "a recent change",
+    "operands": {
+     "changes": [
+      {
+       "at": "2026-11-07T18:03:12Z",
+       "epoch": 1794074592.0,
+       "what": "Mercury's deploy of r4 (receipt b240b97b15de4901)"
+      }
+     ],
+     "minutes": 240,
+     "unreadable": []
+    },
+    "words": "held until 2026-11-07T22:03:12Z: Mercury's deploy of r4 (receipt b240b97b15de4901) at 2026-11-07T18:03:12Z is within the 240-minute topology hold (default)"
+   },
+   "id": "hd-7d79870380a3",
+   "incident": "hi-c027626de88f",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 5, a recent change: held until 2026-11-07T22:03:12Z: Mercury's deploy of r4 (receipt b240b97b15de4901) at 2026-11-07T18:03:12Z is within the 240-minute topology hold (default)"
+  },
+  {
+   "at": "2026-11-07T22:03:29Z",
+   "device": "r3",
+   "epoch": 1794089009.1376374,
+   "id": "hd-fc6452d77276",
+   "incident": "hi-c027626de88f",
+   "kind": "physical",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a link down while administratively up, configuration at intent (Tier 3) is never automatic: configuration cannot fix a cable, an optic or a far end: r3 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T18:32:19Z",
+   "device": "r3",
+   "epoch": 1794162739.7583532,
+   "id": "hd-0fe385ebdd3f",
+   "incident": "hi-5fe54b4ba0dd",
+   "kind": "missing_line",
+   "mark": {
+    "at": "2026-11-08T18:34:31Z",
+    "by": "operator@example.net",
+    "right": true,
+    "why": ""
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "program_hash": "96d8ad372558d892",
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T18:36:44Z",
+   "device": "r3",
+   "epoch": 1794163004.837058,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-ed7062166933",
+   "incident": "hi-f0674708f67c",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T18:40:23Z",
+   "device": "r3",
+   "epoch": 1794163223.9239078,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-bd784f91bc68",
+   "incident": "hi-6217ae2df26b",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T18:53:46Z",
+   "device": "r8",
+   "epoch": 1794164026.7396219,
+   "id": "hd-ccaac4a1c27c",
+   "incident": "hi-d87d73d2d304",
+   "kind": "missing_line",
+   "mark": {
+    "at": "2026-11-11T23:12:46Z",
+    "by": "operator@example.net",
+    "right": true,
+    "why": ""
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "program_hash": "39a2856de5a176eb",
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names no account named on console from console)"
+  },
+  {
+   "at": "2026-11-08T18:58:43Z",
+   "device": "r8",
+   "epoch": 1794164323.1603622,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-c84bfd4b30aa",
+   "incident": "hi-685ab1bc46e7",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T19:15:21Z",
+   "device": "r4",
+   "epoch": 1794165321.6534758,
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "operands": {
+     "golden_commit": "a6efefe0b4ba5bea890404f533febe0988004fdb",
+     "intent_match": "departs"
+    },
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "id": "hd-91f9c1196f80",
+   "incident": "hi-fdbfe9a3fcc1",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:17:18Z",
+   "device": "r4",
+   "epoch": 1794165438.6587732,
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "operands": {
+     "golden_commit": "a6efefe0b4ba5bea890404f533febe0988004fdb",
+     "intent_match": "departs"
+    },
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "id": "hd-3f3a6542665b",
+   "incident": "hi-a67a4089c119",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:18:40Z",
+   "device": "r1",
+   "epoch": 1794165520.7675,
+   "id": "hd-bed77c6ba897",
+   "incident": "hi-23b4fd6dcdf1",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T19:18:40Z",
+   "device": "r4",
+   "epoch": 1794165520.7675,
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "operands": {
+     "golden_commit": "a6efefe0b4ba5bea890404f533febe0988004fdb",
+     "intent_match": "departs"
+    },
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "id": "hd-54f1acd92f97",
+   "incident": "hi-3f7aba6d3178",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:28:16Z",
+   "device": "r2",
+   "epoch": 1794166096.46354,
+   "id": "hd-e733c572a496",
+   "incident": "hi-678a5e96df35",
+   "kind": "missing_line",
+   "mark": {
+    "at": "2026-11-11T23:12:43Z",
+    "by": "operator@example.net",
+    "right": true,
+    "why": ""
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "program_hash": "fa227585419627b6",
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T19:37:49Z",
+   "device": "r2",
+   "epoch": 1794166669.426645,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-651a74388f4a",
+   "incident": "hi-0c21c17bc917",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T19:43:26Z",
+   "device": "r6",
+   "epoch": 1794167006.5969043,
+   "id": "hd-7d8b6de6cec1",
+   "incident": "hi-22823de626cc",
+   "kind": "process_reset",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "propose",
+   "program_hash": "09fe3863e76d6e7f",
+   "taken": {
+    "at": "2026-11-08T19:47:16Z",
+    "by": "heal to intent"
+   },
+   "tier": 2,
+   "withdrawn": {
+    "at": "2026-11-08T19:47:16Z",
+    "bound": {
+     "at": "2026-11-08T19:43:26Z",
+     "departure": "8bb9f64a25773887"
+    },
+    "by": "heal to intent",
+    "how": "at_intent",
+    "read": {
+     "at": "2026-11-08T19:47:24Z",
+     "departure": "",
+     "state": "clean"
+    },
+    "words": "withdrawn: r6 read back at its golden, which matches its intent, at 2026-11-08T19:47:24Z, so nothing is left to fix; it was bound to r6 as read at 2026-11-08T19:43:26Z (departure 8bb9f64a25773887)"
+   },
+   "words": "a fix that needs a person: process_reset (Tier 2); the change it heals was made outside Mercury (the line names no account named on console from console)"
+  },
+  {
+   "at": "2026-11-08T19:48:05Z",
+   "device": "r6",
+   "epoch": 1794167285.8884678,
+   "id": "hd-5b4c1ea0ba9d",
+   "incident": "hi-2be00d44ca90",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r6 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T19:53:43Z",
+   "device": "r3",
+   "epoch": 1794167623.3897676,
+   "id": "hd-608d31de040e",
+   "incident": "hi-012256ee8edf",
+   "kind": "added_line",
+   "mark": {
+    "at": "2026-11-08T19:58:06Z",
+    "by": "operator@example.net",
+    "right": true,
+    "why": ""
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "program_hash": "84579e829fb8333e",
+   "tier": 1,
+   "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T19:58:24Z",
+   "device": "r3",
+   "epoch": 1794167904.5629609,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-a28480735630",
+   "incident": "hi-56270fdefcb9",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T20:03:11Z",
+   "device": "r6",
+   "epoch": 1794168191.8362448,
+   "guard": {
+    "guard": 12,
+    "name": "the program's size",
+    "operands": {
+     "heal_max_removed_units": 1,
+     "removal_units": 2
+    },
+    "words": "the heal would remove 2 units (a unit is one feature on one section, N13), more than 1"
+   },
+   "id": "hd-71a408400d0e",
+   "incident": "hi-8aa7c67f6ccb",
+   "kind": "security_acl",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 4,
+   "words": "guard 12, the program's size: the heal would remove 2 units (a unit is one feature on one section, N13), more than 1"
+  },
+  {
+   "at": "2026-11-08T20:04:08Z",
+   "device": "r4",
+   "epoch": 1794168248.2099597,
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "operands": {
+     "golden_commit": "a6efefe0b4ba5bea890404f533febe0988004fdb",
+     "intent_match": "departs"
+    },
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "id": "hd-aadd77a96466",
+   "incident": "hi-177394c1271c",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T20:06:03Z",
+   "device": "r6",
+   "epoch": 1794168363.5357592,
+   "id": "hd-40fcac9a6ac1",
+   "incident": "hi-1da999748848",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "program_hash": "",
+   "tier": 0,
+   "words": "nothing to heal: r6 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:06:29Z",
+   "device": "r7",
+   "epoch": 1794168389.3021278,
+   "id": "hd-7bc383e40c72",
+   "incident": "hi-b08704d823af",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:33:41Z",
+   "device": "r4",
+   "epoch": 1794170021.809394,
+   "guard": {
+    "guard": 7,
+    "name": "a person working",
+    "operands": {
+     "changes": 8,
+     "heal_person_working_changes": 3,
+     "heal_person_working_minutes": 10
+    },
+    "words": "a person appears to be working on r4: 8 changes from outside Mercury in 10 minutes (at least 3 holds it); the line names the account lab on vty1 from 192.0.2.254"
+   },
+   "id": "hd-e5fc77f079c3",
+   "incident": "hi-a47428229981",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 7, a person working: a person appears to be working on r4: 8 changes from outside Mercury in 10 minutes (at least 3 holds it); the line names the account lab on vty1 from 192.0.2.254"
+  },
+  {
+   "at": "2026-11-08T20:41:51Z",
+   "device": "r4",
+   "epoch": 1794170511.3440573,
+   "id": "hd-c09724f87f17",
+   "incident": "hi-a47428229981",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "program_hash": "",
+   "tier": 0,
+   "words": "nothing to heal: r4 is at its golden, which matches its intent, and every symptom the incident named has cleared by itself (read again after it, and quiet 10 minutes since its last trigger)"
+  },
+  {
+   "at": "2026-11-08T20:51:53Z",
+   "device": "r4",
+   "epoch": 1794171113.781684,
+   "id": "hd-bec0274a20aa",
+   "incident": "hi-48a95b021e9a",
+   "kind": "added_line",
+   "mark": {
+    "at": "2026-11-08T20:56:23Z",
+    "by": "operator@example.net",
+    "right": true,
+    "why": ""
+   },
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "program_hash": "84d49e5a62163356",
+   "tier": 1,
+   "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T20:55:28Z",
+   "device": "r1",
+   "epoch": 1794171328.0036,
+   "id": "hd-08e590423364",
+   "incident": "hi-5d0010b6a4c9",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:56:25Z",
+   "device": "r4",
+   "epoch": 1794171385.444428,
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "operands": {
+     "heal_max_per_device_hour": 1,
+     "heals_last_hour": 1
+    },
+    "words": "r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "id": "hd-5f51d15b23c6",
+   "incident": "hi-2fbc9e92b2f5",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "program_hash": "",
+   "tier": 0,
+   "words": "guard 9, rate: per device: r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T20:58:00Z",
+   "device": "r7",
+   "epoch": 1794171480.3303034,
+   "id": "hd-2e598608999f",
+   "incident": "hi-306501cb3f63",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "program_hash": "",
+   "tier": 0,
+   "words": "nothing to heal: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T21:00:22Z",
+   "device": "r7",
+   "epoch": 1794171622.6871529,
+   "id": "hd-0f79da921075",
+   "incident": "hi-6a44d7f560fc",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "program_hash": "",
+   "tier": 0,
+   "words": "nothing to heal: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T21:31:43Z",
+   "device": "r7",
+   "epoch": 1794173503.7496674,
+   "id": "hd-56eb21a3173b",
+   "incident": "hi-126fa0771352",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "program_hash": "",
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-12T03:41:57Z",
+   "device": "r3",
+   "epoch": 1794454917.7108114,
+   "id": "hd-f97d66b518b8",
+   "incident": "hi-946d3213bfe8",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "heal",
+   "outcome_words": "Mercury is putting it back itself: put back \u201cevent manager applet NMAS-HEARTBEAT\u201d (3 lines); this kind of fix may run by itself here (Tier 1)",
+   "program_hash": "96d8ad372558d892",
+   "taken": {
+    "at": "2026-11-12T03:42:07Z",
+    "by": "heal to intent: the apply"
+   },
+   "tier": 1,
+   "words": "At 03:39 UTC, r3's configuration was changed outside Mercury (the line names the account lab on vty0 from 192.0.2.254): \u201cevent manager applet NMAS-HEARTBEAT\u201d was removed (3 lines). Mercury is putting it back itself: put back \u201cevent manager applet NMAS-HEARTBEAT\u201d (3 lines); this kind of fix may run by itself here (Tier 1)"
+  },
+  {
+   "at": "2026-11-14T03:43:43Z",
+   "device": "r4",
+   "epoch": 1794627823.8425915,
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "operands": {
+     "golden_commit": "f5c8256991b6ef199877fdc6d4fdea93c331e001",
+     "intent_match": "departs"
+    },
+    "words": "heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "id": "hd-9efee321a309",
+   "incident": "hi-431eaa1fa107",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)",
+   "program_hash": "",
+   "tier": 0,
+   "words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  }
+ ],
+ "incidents": [
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-07T18:08:07Z",
+     "device": "r4",
+     "triggers": [
+      {
+       "at": "2026-11-07T18:06:40Z",
+       "epoch": 1794074800.0,
+       "key": "adj:bd0d48636cb7f599",
+       "kind": "adjacency",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacencies",
+       "words": "the OSPFv3 adjacency r3 \u2013 r4 is down since 2026-11-07T18:06:40Z (2 reads)"
+      },
+      {
+       "at": "2026-11-07T18:06:18Z",
+       "epoch": 1794074778.5623019,
+       "key": "adjlog:b31aa4ce1f173ed5",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:06:18Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-07T18:06:18Z",
+       "epoch": 1794074778.5623124,
+       "key": "adjlog:fa87a9485d45801e",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:06:18Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-07T18:07:49Z",
+       "epoch": 1794074869.2991483,
+       "key": "adjlog:17790d6745f29b7e",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:07:49Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-07T18:07:49Z",
+       "epoch": 1794074869.299177,
+       "key": "adjlog:8653486e64915c3b",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:07:49Z: Neighbor Down: Interface down or detached"
+      }
+     ],
+     "why": "r3 is the far end of the link this a routing adjacency down names"
+    }
+   ],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-07T22:03:29Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-07T22:03:29Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a link down while administratively up, configuration at intent (Tier 3) is never automatic: configuration cannot fix a cable, an optic or a far end: r3 is at its golden, which matches its intent (decision hd-fc6452d77276)",
+   "device": "r3",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-c027626de88f",
+   "network": "Default",
+   "opened_at": "2026-11-07T18:08:07Z",
+   "opened_epoch": 1794074887.302697,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-07T22:03:24Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-07T18:06:40Z",
+     "epoch": 1794074800.0,
+     "key": "adj:907696a5c1ef9aec",
+     "kind": "adjacency",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacencies",
+     "words": "the OSPFv3 adjacency r3 \u2013 r4 is down since 2026-11-07T18:06:40Z (2 reads)"
+    },
+    {
+     "at": "2026-11-07T18:06:18Z",
+     "epoch": 1794074778.5623019,
+     "key": "adjlog:81e0caebb374cbeb",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:06:18Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-07T18:06:18Z",
+     "epoch": 1794074778.5623124,
+     "key": "adjlog:5908691c161728a7",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:06:18Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-07T18:07:49Z",
+     "epoch": 1794074869.2991483,
+     "key": "adjlog:6cf8f0c4334174fa",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:07:49Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-07T18:07:49Z",
+     "epoch": 1794074869.299177,
+     "key": "adjlog:13ad6b11548ea0e4",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-07T18:07:49Z: Neighbor Down: Interface down or detached"
+    }
+   ],
+   "triggers_seen": 5,
+   "updated_at": "2026-11-07T22:03:29Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T18:32:19Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T18:32:19Z",
+   "closed_why": "would_heal: would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254) (decision hd-0fe385ebdd3f)",
+   "device": "r3",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-5fe54b4ba0dd",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:30:14Z",
+   "opened_epoch": 1794162614.4658701,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T18:32:17Z",
+    "how": "persisted",
+    "words": "two reads 123 s apart (at least 120 s), the same departure (f16c0a6fb8829c2c), and no outside change between them (after the outside change at 2026-11-08T18:30:13Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:30:13Z",
+     "epoch": 1794162613.0219798,
+     "key": "cfg:1cc350ea489710ee",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-08T18:30:13Z: from outside Mercury: no Mercury operation held r3 at 2026-11-08T18:30:13Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T18:32:19Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T18:36:44Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T18:36:44Z",
+   "closed_why": "held: guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-ed7062166933)",
+   "device": "r3",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-f0674708f67c",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:36:39Z",
+   "opened_epoch": 1794162999.4447808,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T18:36:39Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:36:36Z",
+     "epoch": 1794162996.0797977,
+     "key": "cfg:16ebfda4b1f3c589",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-08T18:36:36Z: from outside Mercury: no Mercury operation held r3 at 2026-11-08T18:36:36Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T18:36:44Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T18:40:23Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T18:40:23Z",
+   "closed_why": "held: guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-bd784f91bc68)",
+   "device": "r3",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-6217ae2df26b",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:40:19Z",
+   "opened_epoch": 1794163219.194492,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T18:40:19Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:40:00Z",
+     "epoch": 1794163200.0,
+     "interface": "",
+     "key": "alert:8ffcea372bb950a15628",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS heartbeat missing: r3",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS heartbeat missing: r3 fired on r3: no heartbeat received for 767 s from r3"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T18:40:23Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T18:53:46Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T18:53:46Z",
+   "closed_why": "would_heal: would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names no account named on console from console) (decision hd-ccaac4a1c27c)",
+   "device": "r8",
+   "fold": {
+    "state": "judged",
+    "why": "1 device(s) Mercury loses reach to without r8, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-d87d73d2d304",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:51:41Z",
+   "opened_epoch": 1794163901.57715,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T18:53:44Z",
+    "how": "persisted",
+    "words": "two reads 122 s apart (at least 120 s), the same departure (dc14ea74c691cc1e), and no outside change between them (after the outside change at 2026-11-08T18:51:35Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:51:35Z",
+     "epoch": 1794163895.9647193,
+     "key": "cfg:e138672544e8b40c",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r8 at 2026-11-08T18:51:35Z: from outside Mercury: no Mercury operation held r8 at 2026-11-08T18:51:35Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T18:53:46Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "closed_at": "2026-11-08T18:56:41Z",
+   "closed_why": "folded into hi-685ab1bc46e7 (r8): s5 is inside r8's blast radius (1 device(s) Mercury loses reach to without r8, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged), and r8 changed",
+   "device": "s5",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "folded_into": "hi-685ab1bc46e7",
+   "id": "hi-9398f3f01834",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:55:11Z",
+   "opened_epoch": 1794164111.6674268,
+   "reads": [],
+   "related": [],
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:54:50Z",
+     "epoch": 1794164090.0,
+     "interface": "",
+     "key": "alert:8e2ef9a209ec31982b27",
+     "kind": "alert",
+     "related": [],
+     "rule": "Device unreachable (SNMP)",
+     "source": "grafana-alerts",
+     "words": "the alert Device unreachable (SNMP) fired on s5"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T18:56:41Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T18:56:41Z",
+     "device": "s5",
+     "triggers": [
+      {
+       "at": "2026-11-08T18:54:50Z",
+       "epoch": 1794164090.0,
+       "interface": "",
+       "key": "alert:8e2ef9a209ec31982b27",
+       "kind": "alert",
+       "related": [],
+       "rule": "Device unreachable (SNMP)",
+       "source": "grafana-alerts",
+       "words": "the alert Device unreachable (SNMP) fired on s5"
+      }
+     ],
+     "why": "s5 is inside r8's blast radius (1 device(s) Mercury loses reach to without r8, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged), and r8 changed"
+    }
+   ],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T18:58:43Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T18:58:43Z",
+   "closed_why": "held: guard 9, rate: per device: r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-c84bfd4b30aa)",
+   "device": "r8",
+   "fold": {
+    "state": "judged",
+    "why": "1 device(s) Mercury loses reach to without r8, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-685ab1bc46e7",
+   "network": "Default",
+   "opened_at": "2026-11-08T18:56:41Z",
+   "opened_epoch": 1794164201.749082,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T18:58:38Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T18:56:20Z",
+     "epoch": 1794164180.145475,
+     "key": "drift:r8@1794164180.145475",
+     "kind": "drift",
+     "source": "drift-check",
+     "words": "the drift check (scheduled) found r8 departed from its golden (1 line(s))"
+    },
+    {
+     "at": "2026-11-08T18:58:32Z",
+     "epoch": 1794164312.618401,
+     "key": "cfg:fa4e3d28026db6b5",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r8 at 2026-11-08T18:58:32Z: from outside Mercury: no Mercury operation held r8 at 2026-11-08T18:58:32Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T18:58:43Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:15:21Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:15:21Z",
+   "closed_why": "held: guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert) (decision hd-91f9c1196f80)",
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-fdbfe9a3fcc1",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:13:16Z",
+   "opened_epoch": 1794165196.4832633,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:15:19Z",
+    "how": "persisted",
+    "words": "two reads 123 s apart (at least 120 s), the same departure (5a1b39ddb8b186da), and no outside change between them (after the outside change at 2026-11-08T19:13:13Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:13:13Z",
+     "epoch": 1794165193.3067114,
+     "key": "cfg:cf7b1ad875711038",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T19:13:13Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T19:13:13Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:15:21Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:17:18Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:17:18Z",
+   "closed_why": "held: guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert) (decision hd-3f3a6542665b)",
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-a67a4089c119",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:17:15Z",
+   "opened_epoch": 1794165435.9059842,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:17:16Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:17:14Z",
+     "epoch": 1794165434.7195811,
+     "key": "cfg:53d7eef5b195d7c0",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T19:17:14Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T19:17:14Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:17:18Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T19:18:40Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:18:40Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent (decision hd-bed77c6ba897)",
+   "device": "r1",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-23b4fd6dcdf1",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:18:35Z",
+   "opened_epoch": 1794165515.7770426,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:18:36Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:16:50Z",
+     "epoch": 1794165410.0,
+     "interface": "",
+     "key": "alert:829e6fa1fe40b7a624f3",
+     "kind": "alert",
+     "related": [],
+     "rule": "IP SLA probe failing",
+     "source": "grafana-alerts",
+     "words": "the alert IP SLA probe failing fired on r1"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:18:40Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T19:18:40Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:18:40Z",
+   "closed_why": "held: guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert) (decision hd-54f1acd92f97)",
+   "device": "r4",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-3f7aba6d3178",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:18:35Z",
+   "opened_epoch": 1794165515.7770426,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:18:36Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:16:50Z",
+     "epoch": 1794165410.0,
+     "interface": "",
+     "key": "alert:45987a6c7a8237a2703c",
+     "kind": "alert",
+     "related": [],
+     "rule": "IP SLA probe failing",
+     "source": "grafana-alerts",
+     "words": "the alert IP SLA probe failing fired on r4"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:18:40Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:28:16Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:28:16Z",
+   "closed_why": "would_heal: would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254) (decision hd-e733c572a496)",
+   "device": "r2",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r2, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-678a5e96df35",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:26:09Z",
+   "opened_epoch": 1794165969.615899,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:28:14Z",
+    "how": "persisted",
+    "words": "two reads 124 s apart (at least 120 s), the same departure (4a0cddda15ac6f79), and no outside change between them (after the outside change at 2026-11-08T19:26:08Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:26:08Z",
+     "epoch": 1794165968.6701448,
+     "key": "cfg:c956d49019bf3a7a",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r2 at 2026-11-08T19:26:08Z: from outside Mercury: no Mercury operation held r2 at 2026-11-08T19:26:08Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T19:26:45Z",
+     "epoch": 1794166005.9400768,
+     "key": "drift:r2@1794166005.9400768",
+     "kind": "drift",
+     "source": "drift-check",
+     "words": "the drift check (scheduled) found r2 departed from its golden (1 line(s))"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T19:28:16Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T19:37:49Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:37:49Z",
+   "closed_why": "held: guard 9, rate: per device: r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-651a74388f4a)",
+   "device": "r2",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-0c21c17bc917",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:35:38Z",
+   "opened_epoch": 1794166538.037929,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:37:46Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:35:00Z",
+     "epoch": 1794166500.0,
+     "interface": "",
+     "key": "alert:bd0c10cb77fa1e1e5ef9",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS heartbeat missing: r2",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS heartbeat missing: r2 fired on r2: no heartbeat received for 750 s from r2"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:37:49Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:43:26Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:47:16Z",
+   "closed_why": "withdrawn: withdrawn: r6 read back at its golden, which matches its intent, at 2026-11-08T19:47:24Z, so nothing is left to fix; it was bound to r6 as read at 2026-11-08T19:43:26Z (departure 8bb9f64a25773887) (decision hd-7d8b6de6cec1)",
+   "device": "r6",
+   "fold": {
+    "state": "judged",
+    "why": "1 device(s) Mercury loses reach to without r6, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-22823de626cc",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:41:14Z",
+   "opened_epoch": 1794166874.2839787,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:43:20Z",
+    "how": "persisted",
+    "words": "two reads 127 s apart (at least 120 s), the same departure (8bb9f64a25773887), and no outside change between them (after the outside change at 2026-11-08T19:41:09Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:41:09Z",
+     "epoch": 1794166869.867038,
+     "key": "cfg:ed74786c793a8ed4",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r6 at 2026-11-08T19:41:09Z: from outside Mercury: no Mercury operation held r6 at 2026-11-08T19:41:09Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    },
+    {
+     "at": "2026-11-08T19:47:10Z",
+     "epoch": 1794167230.5920079,
+     "key": "cfg:deb1b329e324a355",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r6 at 2026-11-08T19:47:10Z: from outside Mercury: no Mercury operation held r6 at 2026-11-08T19:47:10Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T19:47:16Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T19:47:52Z",
+     "device": "r4",
+     "triggers": [
+      {
+       "at": "2026-11-08T19:47:18Z",
+       "epoch": 1794167238.6196463,
+       "key": "adjlog:666b0c5bb6dc03c6",
+       "kind": "adjacency_log",
+       "related": [
+        "r6"
+       ],
+       "source": "adjacency-log",
+       "words": "r6 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T19:47:18Z: Neighbor Down: Interface down or detached"
+      }
+     ],
+     "why": "r6 is the far end of the link this a logged routing adjacency drop names"
+    }
+   ],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T19:48:05Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:48:05Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r6 is at its golden, which matches its intent (decision hd-5b4c1ea0ba9d)",
+   "device": "r6",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-2be00d44ca90",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:47:52Z",
+   "opened_epoch": 1794167272.1120532,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:47:52Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:47:18Z",
+     "epoch": 1794167238.6196463,
+     "key": "adjlog:941b2431642a88b9",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r6 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T19:47:18Z: Neighbor Down: Interface down or detached"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T19:48:05Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T19:52:00Z",
+     "device": "r4",
+     "triggers": [
+      {
+       "at": "2026-11-08T19:51:46Z",
+       "epoch": 1794167506.3645978,
+       "key": "adjlog:d0551266e6e8c53e",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T19:51:46Z: Neighbor Down: Dead timer expired"
+      },
+      {
+       "at": "2026-11-08T19:51:49Z",
+       "epoch": 1794167509.096946,
+       "key": "adjlog:55612d2ea89be9ff",
+       "kind": "adjacency_log",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacency-log",
+       "words": "r3 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T19:51:49Z: Neighbor Down: Dead timer expired"
+      }
+     ],
+     "why": "r3 is the far end of the link this a logged routing adjacency drop names"
+    }
+   ],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:53:43Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:53:43Z",
+   "closed_why": "would_heal: would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254) (decision hd-608d31de040e)",
+   "device": "r3",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-012256ee8edf",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:51:15Z",
+   "opened_epoch": 1794167475.1675255,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:53:38Z",
+    "how": "persisted",
+    "words": "two reads 141 s apart (at least 120 s), the same departure (53f90a472a1125c9), and no outside change between them (after the outside change at 2026-11-08T19:51:14Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:51:14Z",
+     "epoch": 1794167474.008975,
+     "key": "cfg:bf0e938aa0848ba3",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-08T19:51:14Z: from outside Mercury: no Mercury operation held r3 at 2026-11-08T19:51:14Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T19:51:46Z",
+     "epoch": 1794167506.3645978,
+     "key": "adjlog:256412cd8d4aa896",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T19:51:46Z: Neighbor Down: Dead timer expired"
+    },
+    {
+     "at": "2026-11-08T19:51:49Z",
+     "epoch": 1794167509.096946,
+     "key": "adjlog:c1d894090b44b7ef",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r3 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T19:51:49Z: Neighbor Down: Dead timer expired"
+    }
+   ],
+   "triggers_seen": 3,
+   "updated_at": "2026-11-08T19:53:43Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T19:57:43Z",
+     "device": "r4",
+     "triggers": [
+      {
+       "at": "2026-11-08T19:56:39Z",
+       "epoch": 1794167799.0,
+       "key": "adj:cef935122be07600",
+       "kind": "adjacency",
+       "related": [
+        "r3"
+       ],
+       "source": "adjacencies",
+       "words": "the OSPF adjacency r3 \u2013 r4 is down since 2026-11-08T19:56:39Z (2 reads)"
+      }
+     ],
+     "why": "r3 is the far end of the link this a routing adjacency down names"
+    }
+   ],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T19:58:24Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T19:58:24Z",
+   "closed_why": "held: guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-a28480735630)",
+   "device": "r3",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-56270fdefcb9",
+   "network": "Default",
+   "opened_at": "2026-11-08T19:57:43Z",
+   "opened_epoch": 1794167863.6461449,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T19:58:23Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T19:56:39Z",
+     "epoch": 1794167799.0,
+     "key": "adj:53299493bc8a9c79",
+     "kind": "adjacency",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacencies",
+     "words": "the OSPF adjacency r3 \u2013 r4 is down since 2026-11-08T19:56:39Z (2 reads)"
+    },
+    {
+     "at": "2026-11-08T19:57:33Z",
+     "epoch": 1794167853.451889,
+     "key": "drift:r3@1794167853.451889",
+     "kind": "drift",
+     "source": "drift-check",
+     "words": "the drift check (scheduled) found r3 departed from its golden (2 line(s))"
+    },
+    {
+     "at": "2026-11-08T19:58:20Z",
+     "epoch": 1794167900.21768,
+     "key": "cfg:500673bcbf12b59f",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-08T19:58:20Z: from outside Mercury: no Mercury operation held r3 at 2026-11-08T19:58:20Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 3,
+   "updated_at": "2026-11-08T19:58:24Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T20:02:07Z",
+     "device": "r4",
+     "triggers": [
+      {
+       "at": "2026-11-08T20:01:29Z",
+       "epoch": 1794168089.7518294,
+       "key": "adjlog:59767a8abc80edcf",
+       "kind": "adjacency_log",
+       "related": [
+        "r6"
+       ],
+       "source": "adjacency-log",
+       "words": "r6 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T20:01:29Z: Neighbor Down: Dead timer expired"
+      }
+     ],
+     "why": "r6 is the far end of the link this a logged routing adjacency drop names"
+    }
+   ],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:03:11Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:03:11Z",
+   "closed_why": "cant_fix: guard 12, the program's size: the heal would remove 2 units (a unit is one feature on one section, N13), more than 1 (decision hd-71a408400d0e)",
+   "device": "r6",
+   "fold": {
+    "state": "judged",
+    "why": "1 device(s) Mercury loses reach to without r6, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-8aa7c67f6ccb",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:00:56Z",
+   "opened_epoch": 1794168056.230215,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:03:10Z",
+    "how": "persisted",
+    "words": "two reads 133 s apart (at least 120 s), the same departure (5b0d72dbbd9cd2ce), and no outside change between them (after the outside change at 2026-11-08T20:00:51Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:00:51Z",
+     "epoch": 1794168051.396291,
+     "key": "cfg:34012e6c364ef6d0",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r6 at 2026-11-08T20:00:51Z: from outside Mercury: no Mercury operation held r6 at 2026-11-08T20:00:51Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    },
+    {
+     "at": "2026-11-08T20:01:29Z",
+     "epoch": 1794168089.7518294,
+     "key": "adjlog:31432c267d9f45dd",
+     "kind": "adjacency_log",
+     "related": [
+      "r4"
+     ],
+     "source": "adjacency-log",
+     "words": "r6 logged its OSPF adjacency to 192.0.2.22 (r4) down at 2026-11-08T20:01:29Z: Neighbor Down: Dead timer expired"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T20:03:11Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T20:04:02Z",
+     "device": "r6",
+     "triggers": [
+      {
+       "at": "2026-11-08T20:02:57Z",
+       "epoch": 1794168177.0,
+       "key": "adj:c50ee6fc6bc385b4",
+       "kind": "adjacency",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacencies",
+       "words": "the OSPF adjacency r4 \u2013 r6 is down since 2026-11-08T20:02:57Z (2 reads)"
+      }
+     ],
+     "why": "r4 is the far end of the link this a routing adjacency down names"
+    }
+   ],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T20:04:08Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:04:08Z",
+   "closed_why": "held: guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert) (decision hd-aadd77a96466)",
+   "device": "r4",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-177394c1271c",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:04:02Z",
+   "opened_epoch": 1794168242.8724988,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:04:03Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:02:57Z",
+     "epoch": 1794168177.0,
+     "key": "adj:6562e977af6fe774",
+     "kind": "adjacency",
+     "related": [
+      "r6"
+     ],
+     "source": "adjacencies",
+     "words": "the OSPF adjacency r4 \u2013 r6 is down since 2026-11-08T20:02:57Z (2 reads)"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T20:04:08Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:06:03Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:06:03Z",
+   "closed_why": "nothing: nothing to heal: r6 is at its golden, which matches its intent (decision hd-40fcac9a6ac1)",
+   "device": "r6",
+   "fold": {
+    "state": "judged",
+    "why": "1 device(s) Mercury loses reach to without r6, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-1da999748848",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:06:00Z",
+   "opened_epoch": 1794168360.3649223,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:06:00Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:05:58Z",
+     "epoch": 1794168358.2334106,
+     "key": "cfg:ecd2516aa76caa08",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r6 at 2026-11-08T20:05:58Z: from outside Mercury: no Mercury operation held r6 at 2026-11-08T20:05:58Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T20:06:03Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T20:06:29Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:06:29Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent (decision hd-7bc383e40c72)",
+   "device": "r7",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-b08704d823af",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:06:26Z",
+   "opened_epoch": 1794168386.6238818,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:06:26Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:04:50Z",
+     "epoch": 1794168290.0,
+     "interface": "",
+     "key": "alert:9dddd2ff42def6cbdf1c",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS telemetry stream lost: r7 subscription 101",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began"
+    },
+    {
+     "at": "2026-11-08T20:04:50Z",
+     "epoch": 1794168290.0,
+     "interface": "",
+     "key": "alert:31e43ed5718fd9bf24f3",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS telemetry stream lost: r7 subscription 102",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS telemetry stream lost: r7 subscription 102 fired on r7: no telemetry sample received on subscription 102 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began"
+    },
+    {
+     "at": "2026-11-08T20:04:50Z",
+     "epoch": 1794168290.0,
+     "interface": "",
+     "key": "alert:06a384a51eaa1f873038",
+     "kind": "alert",
+     "related": [],
+     "rule": "Device unreachable (SNMP)",
+     "source": "grafana-alerts",
+     "words": "the alert Device unreachable (SNMP) fired on r7"
+    }
+   ],
+   "triggers_seen": 3,
+   "updated_at": "2026-11-08T20:06:29Z"
+  },
+  {
+   "attached": [
+    {
+     "attached_at": "2026-11-08T20:30:05Z",
+     "device": "r3",
+     "triggers": [
+      {
+       "at": "2026-11-08T20:29:58Z",
+       "epoch": 1794169798.1178937,
+       "key": "adjlog:1d4da06b50f42951",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:29:58Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:29:58Z",
+       "epoch": 1794169798.1179264,
+       "key": "adjlog:2befc8bbbb0b9a78",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:29:58Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:30:30Z",
+       "epoch": 1794169830.9552526,
+       "key": "adjlog:dffafaade7e2fce2",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:30:30Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:30:30Z",
+       "epoch": 1794169830.9552927,
+       "key": "adjlog:88dbb8b8eb20f3af",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:30:30Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:31:05Z",
+       "epoch": 1794169865.7982574,
+       "key": "adjlog:384122dbd556cef6",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:05Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:31:05Z",
+       "epoch": 1794169865.7983334,
+       "key": "adjlog:0b23a6898a40f3df",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:05Z: Neighbor Down: Interface down or detached"
+      },
+      {
+       "at": "2026-11-08T20:31:36Z",
+       "epoch": 1794169896.130177,
+       "key": "adjlog:d4005f77c858bc55",
+       "kind": "adjacency_log",
+       "related": [
+        "r4"
+       ],
+       "source": "adjacency-log",
+       "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:36Z: Neighbor Down: Interface down or detached"
+      }
+     ],
+     "why": "r4 is the far end of the link this a logged routing adjacency drop names"
+    }
+   ],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:41:51Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:41:51Z",
+   "closed_why": "nothing: nothing to heal: r4 is at its golden, which matches its intent, and every symptom the incident named has cleared by itself (read again after it, and quiet 10 minutes since its last trigger) (decision hd-c09724f87f17)",
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-a47428229981",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:30:02Z",
+   "opened_epoch": 1794169802.3269832,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:41:48Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:29:58Z",
+     "epoch": 1794169798.1179442,
+     "key": "cfg:18bf914bd56f5c09",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:29:58Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:29:58Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:29:58Z",
+     "epoch": 1794169798.1178937,
+     "key": "adjlog:be74b4a6d8d91a39",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:29:58Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:29:58Z",
+     "epoch": 1794169798.1179264,
+     "key": "adjlog:bb7bfcc076186d21",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:29:58Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:30:10Z",
+     "epoch": 1794169810.9008787,
+     "key": "cfg:4adb42c1f9c5e625",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:30:10Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:30:10Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:30:30Z",
+     "epoch": 1794169830.955309,
+     "key": "cfg:a7e0601a5897a58f",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:30:30Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:30:30Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:30:44Z",
+     "epoch": 1794169844.2392032,
+     "key": "cfg:781261f443eb7c71",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:30:44Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:30:44Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:31:05Z",
+     "epoch": 1794169865.7982903,
+     "key": "cfg:ea3f56834955c8c6",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:31:05Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:31:05Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:31:16Z",
+     "epoch": 1794169876.5751781,
+     "key": "cfg:ad6a8f4f84172da2",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:31:16Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:31:16Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:31:36Z",
+     "epoch": 1794169896.1301844,
+     "key": "cfg:dbcb787d19058e0d",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:31:36Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:31:36Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:31:46Z",
+     "epoch": 1794169906.658439,
+     "key": "cfg:8555601e299b14e6",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:31:46Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:31:46Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-08T20:30:30Z",
+     "epoch": 1794169830.9552526,
+     "key": "adjlog:152ea00aca266733",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:30:30Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:30:30Z",
+     "epoch": 1794169830.9552927,
+     "key": "adjlog:f0c7ecb13473a420",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:30:30Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:31:05Z",
+     "epoch": 1794169865.7982574,
+     "key": "adjlog:4e32fbe547003ed1",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:05Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:31:05Z",
+     "epoch": 1794169865.7983334,
+     "key": "adjlog:e11a5d304b69fdc7",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPF adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:05Z: Neighbor Down: Interface down or detached"
+    },
+    {
+     "at": "2026-11-08T20:31:36Z",
+     "epoch": 1794169896.130177,
+     "key": "adjlog:f97d2c30fbbc5b46",
+     "kind": "adjacency_log",
+     "related": [
+      "r3"
+     ],
+     "source": "adjacency-log",
+     "words": "r4 logged its OSPFv3 adjacency to 192.0.2.21 (r3) down at 2026-11-08T20:31:36Z: Neighbor Down: Interface down or detached"
+    }
+   ],
+   "triggers_seen": 15,
+   "updated_at": "2026-11-08T20:41:51Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:51:53Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:51:53Z",
+   "closed_why": "would_heal: would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254) (decision hd-bec0274a20aa)",
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-48a95b021e9a",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:49:49Z",
+   "opened_epoch": 1794170989.8442926,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:51:51Z",
+    "how": "persisted",
+    "words": "two reads 122 s apart (at least 120 s), the same departure (5a1b39ddb8b186da), and no outside change between them (after the outside change at 2026-11-08T20:49:46Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:49:46Z",
+     "epoch": 1794170986.6064153,
+     "key": "cfg:6658ab9672e47972",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:49:46Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:49:46Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T20:51:53Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:56:25Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:56:25Z",
+   "closed_why": "held: guard 9, rate: per device: r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate (decision hd-5f51d15b23c6)",
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-2fbc9e92b2f5",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:54:09Z",
+   "opened_epoch": 1794171249.3713431,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:56:07Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:52:50Z",
+     "epoch": 1794171170.0,
+     "interface": "",
+     "key": "alert:11c0b4a58582a98a581f",
+     "kind": "alert",
+     "related": [],
+     "rule": "IP SLA probe failing",
+     "source": "grafana-alerts",
+     "words": "the alert IP SLA probe failing fired on r4"
+    },
+    {
+     "at": "2026-11-08T20:56:04Z",
+     "epoch": 1794171364.3866405,
+     "key": "cfg:d86850aaf6545f16",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r4 at 2026-11-08T20:56:04Z: from outside Mercury: no Mercury operation held r4 at 2026-11-08T20:56:04Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T20:56:25Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T20:55:28Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:55:28Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent (decision hd-08e590423364)",
+   "device": "r1",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-5d0010b6a4c9",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:55:23Z",
+   "opened_epoch": 1794171323.511656,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:55:23Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:53:50Z",
+     "epoch": 1794171230.0,
+     "interface": "",
+     "key": "alert:f392922a88cbcc687ec1",
+     "kind": "alert",
+     "related": [],
+     "rule": "IP SLA probe failing",
+     "source": "grafana-alerts",
+     "words": "the alert IP SLA probe failing fired on r1"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T20:55:28Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T20:58:00Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T20:58:00Z",
+   "closed_why": "nothing: nothing to heal: r7 is at its golden, which matches its intent (decision hd-2e598608999f)",
+   "device": "r7",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r7, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-306501cb3f63",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:57:54Z",
+   "opened_epoch": 1794171474.755931,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T20:57:54Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:57:53Z",
+     "epoch": 1794171473.4333746,
+     "key": "cfg:a57e2b952a7c0434",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r7 at 2026-11-08T20:57:53Z: from outside Mercury: no Mercury operation held r7 at 2026-11-08T20:57:53Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-08T20:58:00Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-08T21:00:22Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T21:00:22Z",
+   "closed_why": "nothing: nothing to heal: r7 is at its golden, which matches its intent (decision hd-0f79da921075)",
+   "device": "r7",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r7, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-6a44d7f560fc",
+   "network": "Default",
+   "opened_at": "2026-11-08T20:59:32Z",
+   "opened_epoch": 1794171572.1342242,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T21:00:18Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T20:59:29Z",
+     "epoch": 1794171569.175339,
+     "key": "cfg:12cb6dff6dad04ff",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r7 at 2026-11-08T20:59:29Z: from outside Mercury: no Mercury operation held r7 at 2026-11-08T20:59:29Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    },
+    {
+     "at": "2026-11-08T20:59:42Z",
+     "epoch": 1794171582.7133527,
+     "key": "cfg:d5a269cf12879313",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r7 at 2026-11-08T20:59:42Z: from outside Mercury: no Mercury operation held r7 at 2026-11-08T20:59:42Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names no account named on console from console"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T21:00:22Z"
+  },
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": {
+    "at": "2026-11-08T21:31:43Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-08T21:31:43Z",
+   "closed_why": "cant_fix: self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent (decision hd-56eb21a3173b)",
+   "device": "r7",
+   "fold": {
+    "state": "not_folded",
+    "why": "no open incident's device changed, and none is the far end of its link"
+   },
+   "id": "hi-126fa0771352",
+   "network": "Default",
+   "opened_at": "2026-11-08T21:31:39Z",
+   "opened_epoch": 1794173499.085876,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-08T21:31:39Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-08T21:30:50Z",
+     "epoch": 1794173450.0,
+     "interface": "",
+     "key": "alert:3c9f88fb8cb36bb87da1",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS telemetry stream lost: r7 subscription 101",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began"
+    },
+    {
+     "at": "2026-11-08T21:30:50Z",
+     "epoch": 1794173450.0,
+     "interface": "",
+     "key": "alert:4381bd117735760e03cc",
+     "kind": "alert",
+     "related": [],
+     "rule": "NMAS telemetry stream lost: r7 subscription 102",
+     "source": "grafana-alerts",
+     "words": "the alert NMAS telemetry stream lost: r7 subscription 102 fired on r7: no telemetry sample received on subscription 102 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-08T21:31:43Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-12T03:41:57Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-12T03:42:07Z",
+   "closed_why": "healed: healed and verified, golden 259e76f6f8 committed, at its golden when read again; the incident named no symptom beyond the configuration (decision hd-f97d66b518b8)",
+   "device": "r3",
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-946d3213bfe8",
+   "network": "Default",
+   "opened_at": "2026-11-12T03:39:44Z",
+   "opened_epoch": 1794454784.068472,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-12T03:41:50Z",
+    "how": "persisted",
+    "words": "two reads 128 s apart (at least 120 s), the same departure (f16c0a6fb8829c2c), and no outside change between them (after the outside change at 2026-11-12T03:39:39Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-12T03:39:39Z",
+     "epoch": 1794454779.2036748,
+     "key": "cfg:ed0ee9d3ce775216",
+     "kind": "config_change",
+     "source": "logs-tail",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-12T03:39:39Z: from outside Mercury: no Mercury operation held r3 at 2026-11-12T03:39:39Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.254"
+    },
+    {
+     "at": "2026-11-12T03:42:29Z",
+     "epoch": 1794454949.9670506,
+     "key": "drift:r3@1794454949.9670506",
+     "kind": "drift",
+     "source": "drift-check",
+     "words": "the drift check (scheduled) found r3 departed from its golden (3 line(s))"
+    }
+   ],
+   "triggers_seen": 2,
+   "updated_at": "2026-11-12T03:42:07Z"
+  },
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": null,
+   "device": "r4",
+   "fold": {
+    "state": "judged",
+    "why": "2 device(s) Mercury loses reach to without r4, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "id": "hi-431eaa1fa107",
+   "network": "Default",
+   "opened_at": "2026-11-14T03:41:38Z",
+   "opened_epoch": 1794627698.9697533,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-14T03:43:39Z",
+    "how": "at_golden",
+    "words": "the read found the device at its golden: nothing departed"
+   },
+   "standing": {
+    "at": "2026-11-14T03:43:43Z",
+    "decision": "hd-9efee321a309",
+    "departure": "",
+    "epoch": 1794627823.8425915,
+    "guard": 4,
+    "on": "symptom",
+    "outcome": "held",
+    "words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "state": "standing",
+   "stood": null,
+   "triggers": [
+    {
+     "at": "2026-11-14T03:41:25Z",
+     "epoch": 1794627685.8632786,
+     "key": "drift:r4@1794627685.8632786",
+     "kind": "drift",
+     "source": "drift-check",
+     "words": "the drift check (scheduled) found r4 departed from its golden (5 line(s))"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-14T03:43:43Z"
+  }
+ ],
+ "network": "Default",
+ "steplog": [
+  {
+   "at": "2026-11-07T22:03:29Z",
+   "by": "",
+   "decisions": [
+    "hd-7d79870380a3",
+    "hd-fc6452d77276"
+   ],
+   "device": "r3",
+   "epoch": 1794089009.1376374,
+   "first_at": "2026-11-07T18:08:15Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-c027626de88f",
+   "kind": "physical",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-7d79870380a3",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-c027626de88f on r3 taken"
+    },
+    {
+     "decision": "hd-7d79870380a3",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-7d79870380a3",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-7d79870380a3",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 5, a recent change: held until 2026-11-07T22:03:12Z: Mercury's deploy of r4 (receipt b240b97b15de4901) at 2026-11-07T18:03:12Z is within the 240-minute topology hold (default)"
+    },
+    {
+     "decision": "hd-7d79870380a3",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-7d79870380a3 recorded"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-c027626de88f on r3 taken"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a link down while administratively up, configuration at intent (Tier 3) is never automatic: configuration cannot fix a cable, an optic or a far end: r3 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-fc6452d77276",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-fc6452d77276 recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a link down while administratively up, configuration at intent (Tier 3) is never automatic: configuration cannot fix a cable, an optic or a far end: r3 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T18:32:19Z",
+   "by": "",
+   "decisions": [
+    "hd-0fe385ebdd3f"
+   ],
+   "device": "r3",
+   "epoch": 1794162739.7583532,
+   "first_at": "2026-11-08T18:32:19Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-5fe54b4ba0dd",
+   "kind": "missing_line",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "96d8ad372558d892",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-5fe54b4ba0dd on r3 taken"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r3 read again: the departure the grace period settled on (f16c0a6fb8829c2c)"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), missing_line (Tier 1); the program 4 line(s), hash 96d8ad372558d892"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "would_heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+    },
+    {
+     "decision": "hd-0fe385ebdd3f",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-0fe385ebdd3f recorded"
+    }
+   ],
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T18:36:44Z",
+   "by": "",
+   "decisions": [
+    "hd-ed7062166933"
+   ],
+   "device": "r3",
+   "epoch": 1794163004.837058,
+   "first_at": "2026-11-08T18:36:44Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-f0674708f67c",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-ed7062166933",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-f0674708f67c on r3 taken"
+    },
+    {
+     "decision": "hd-ed7062166933",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-ed7062166933",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-ed7062166933",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-ed7062166933",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-ed7062166933 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T18:40:23Z",
+   "by": "",
+   "decisions": [
+    "hd-bd784f91bc68"
+   ],
+   "device": "r3",
+   "epoch": 1794163223.9239078,
+   "first_at": "2026-11-08T18:40:23Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-6217ae2df26b",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-bd784f91bc68",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-6217ae2df26b on r3 taken"
+    },
+    {
+     "decision": "hd-bd784f91bc68",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-bd784f91bc68",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-bd784f91bc68",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-bd784f91bc68",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-bd784f91bc68 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T18:53:46Z",
+   "by": "",
+   "decisions": [
+    "hd-ccaac4a1c27c"
+   ],
+   "device": "r8",
+   "epoch": 1794164026.7396219,
+   "first_at": "2026-11-08T18:53:46Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-d87d73d2d304",
+   "kind": "missing_line",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "39a2856de5a176eb",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-d87d73d2d304 on r8 taken"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 8a2adc4083 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r8 read again: the departure the grace period settled on (dc14ea74c691cc1e)"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), missing_line (Tier 1); the program 3 line(s), hash 39a2856de5a176eb"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "would_heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names no account named on console from console)"
+    },
+    {
+     "decision": "hd-ccaac4a1c27c",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-ccaac4a1c27c recorded"
+    }
+   ],
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names no account named on console from console)"
+  },
+  {
+   "at": "2026-11-08T18:58:43Z",
+   "by": "",
+   "decisions": [
+    "hd-c84bfd4b30aa"
+   ],
+   "device": "r8",
+   "epoch": 1794164323.1603622,
+   "first_at": "2026-11-08T18:58:43Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-685ab1bc46e7",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-c84bfd4b30aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-685ab1bc46e7 on r8 taken"
+    },
+    {
+     "decision": "hd-c84bfd4b30aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-c84bfd4b30aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 8a2adc4083 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-c84bfd4b30aa",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-c84bfd4b30aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-c84bfd4b30aa recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r8 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T19:15:21Z",
+   "by": "",
+   "decisions": [
+    "hd-91f9c1196f80"
+   ],
+   "device": "r4",
+   "epoch": 1794165321.6534758,
+   "first_at": "2026-11-08T19:15:21Z",
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "headline": "",
+   "incident": "hi-fdbfe9a3fcc1",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-91f9c1196f80",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-fdbfe9a3fcc1 on r4 taken"
+    },
+    {
+     "decision": "hd-91f9c1196f80",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-91f9c1196f80",
+     "result": "held",
+     "row": "decision",
+     "step": "approved",
+     "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+    },
+    {
+     "decision": "hd-91f9c1196f80",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-91f9c1196f80 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:17:18Z",
+   "by": "",
+   "decisions": [
+    "hd-3f3a6542665b"
+   ],
+   "device": "r4",
+   "epoch": 1794165438.6587732,
+   "first_at": "2026-11-08T19:17:18Z",
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "headline": "",
+   "incident": "hi-a67a4089c119",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-3f3a6542665b",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-a67a4089c119 on r4 taken"
+    },
+    {
+     "decision": "hd-3f3a6542665b",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-3f3a6542665b",
+     "result": "held",
+     "row": "decision",
+     "step": "approved",
+     "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+    },
+    {
+     "decision": "hd-3f3a6542665b",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-3f3a6542665b recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:18:40Z",
+   "by": "",
+   "decisions": [
+    "hd-bed77c6ba897"
+   ],
+   "device": "r1",
+   "epoch": 1794165520.7675,
+   "first_at": "2026-11-08T19:18:40Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-23b4fd6dcdf1",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-23b4fd6dcdf1 on r1 taken"
+    },
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 615d996930 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-bed77c6ba897",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-bed77c6ba897 recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T19:18:40Z",
+   "by": "",
+   "decisions": [
+    "hd-54f1acd92f97"
+   ],
+   "device": "r4",
+   "epoch": 1794165520.7675,
+   "first_at": "2026-11-08T19:18:40Z",
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "headline": "",
+   "incident": "hi-3f7aba6d3178",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-54f1acd92f97",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-3f7aba6d3178 on r4 taken"
+    },
+    {
+     "decision": "hd-54f1acd92f97",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-54f1acd92f97",
+     "result": "held",
+     "row": "decision",
+     "step": "approved",
+     "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+    },
+    {
+     "decision": "hd-54f1acd92f97",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-54f1acd92f97 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T19:28:16Z",
+   "by": "",
+   "decisions": [
+    "hd-e733c572a496"
+   ],
+   "device": "r2",
+   "epoch": 1794166096.46354,
+   "first_at": "2026-11-08T19:28:16Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-678a5e96df35",
+   "kind": "missing_line",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "fa227585419627b6",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-678a5e96df35 on r2 taken"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 7f2d3b7f84 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r2 read again: the departure the grace period settled on (4a0cddda15ac6f79)"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), missing_line (Tier 1); the program 1 line(s), hash fa227585419627b6"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "would_heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+    },
+    {
+     "decision": "hd-e733c572a496",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-e733c572a496 recorded"
+    }
+   ],
+   "tier": 1,
+   "words": "would heal: missing_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T19:37:49Z",
+   "by": "",
+   "decisions": [
+    "hd-651a74388f4a"
+   ],
+   "device": "r2",
+   "epoch": 1794166669.426645,
+   "first_at": "2026-11-08T19:37:49Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-0c21c17bc917",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-651a74388f4a",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-0c21c17bc917 on r2 taken"
+    },
+    {
+     "decision": "hd-651a74388f4a",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-651a74388f4a",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 7f2d3b7f84 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-651a74388f4a",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-651a74388f4a",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-651a74388f4a recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r2 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T19:47:16Z",
+   "by": "heal to intent",
+   "decisions": [
+    "hd-7d8b6de6cec1"
+   ],
+   "device": "r6",
+   "epoch": 1794167236.632316,
+   "first_at": "2026-11-08T19:43:26Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-22823de626cc",
+   "kind": "process_reset",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "withdrawn",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "09fe3863e76d6e7f",
+   "sent": false,
+   "state": "done",
+   "steps": [
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-22823de626cc on r6 taken"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 956e515736 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r6 read again: the departure the grace period settled on (8bb9f64a25773887)"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), process_reset (Tier 2); the program 3 line(s), hash 09fe3863e76d6e7f"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "propose",
+     "row": "decision",
+     "step": "decide",
+     "words": "a fix that needs a person: process_reset (Tier 2); the change it heals was made outside Mercury (the line names no account named on console from console)"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-7d8b6de6cec1 recorded"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "clean",
+     "row": "act",
+     "step": "read",
+     "words": "r6 read at 2026-11-08T19:47:24Z: departure none"
+    },
+    {
+     "decision": "hd-7d8b6de6cec1",
+     "result": "withdrawn",
+     "row": "act",
+     "step": "record",
+     "words": "withdrawn: r6 read back at its golden, which matches its intent, at 2026-11-08T19:47:24Z, so nothing is left to fix; it was bound to r6 as read at 2026-11-08T19:43:26Z (departure 8bb9f64a25773887). Nothing was sent"
+    }
+   ],
+   "tier": 2,
+   "words": "withdrawn: r6 read back at its golden, which matches its intent, at 2026-11-08T19:47:24Z, so nothing is left to fix; it was bound to r6 as read at 2026-11-08T19:43:26Z (departure 8bb9f64a25773887)"
+  },
+  {
+   "at": "2026-11-08T19:48:05Z",
+   "by": "",
+   "decisions": [
+    "hd-5b4c1ea0ba9d"
+   ],
+   "device": "r6",
+   "epoch": 1794167285.8884678,
+   "first_at": "2026-11-08T19:48:05Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-2be00d44ca90",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-2be00d44ca90 on r6 taken"
+    },
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 956e515736 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r6 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-5b4c1ea0ba9d",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-5b4c1ea0ba9d recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r6 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T19:53:43Z",
+   "by": "",
+   "decisions": [
+    "hd-608d31de040e"
+   ],
+   "device": "r3",
+   "epoch": 1794167623.3897676,
+   "first_at": "2026-11-08T19:53:43Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-012256ee8edf",
+   "kind": "added_line",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "84579e829fb8333e",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-012256ee8edf on r3 taken"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r3 read again: the departure the grace period settled on (53f90a472a1125c9)"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), added_line (Tier 1); the program 4 line(s), hash 84579e829fb8333e"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "would_heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+    },
+    {
+     "decision": "hd-608d31de040e",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-608d31de040e recorded"
+    }
+   ],
+   "tier": 1,
+   "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T19:58:24Z",
+   "by": "",
+   "decisions": [
+    "hd-a28480735630"
+   ],
+   "device": "r3",
+   "epoch": 1794167904.5629609,
+   "first_at": "2026-11-08T19:58:24Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-56270fdefcb9",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-a28480735630",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-56270fdefcb9 on r3 taken"
+    },
+    {
+     "decision": "hd-a28480735630",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-a28480735630",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-a28480735630",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-a28480735630",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-a28480735630 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r3 was healed 1 time(s) in the last hour, the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T20:03:11Z",
+   "by": "",
+   "decisions": [
+    "hd-71a408400d0e"
+   ],
+   "device": "r6",
+   "epoch": 1794168191.8362448,
+   "first_at": "2026-11-08T20:03:11Z",
+   "guard": {
+    "guard": 12,
+    "name": "the program's size",
+    "words": "the heal would remove 2 units (a unit is one feature on one section, N13), more than 1"
+   },
+   "headline": "",
+   "incident": "hi-8aa7c67f6ccb",
+   "kind": "security_acl",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-8aa7c67f6ccb on r6 taken"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 956e515736 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r6 read again: the departure the grace period settled on (5b0d72dbbd9cd2ce)"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "classify",
+     "words": "guard 12, the program's size: the heal would remove 2 units (a unit is one feature on one section, N13), more than 1"
+    },
+    {
+     "decision": "hd-71a408400d0e",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-71a408400d0e recorded"
+    }
+   ],
+   "tier": 4,
+   "words": "guard 12, the program's size: the heal would remove 2 units (a unit is one feature on one section, N13), more than 1"
+  },
+  {
+   "at": "2026-11-08T20:04:08Z",
+   "by": "",
+   "decisions": [
+    "hd-aadd77a96466"
+   ],
+   "device": "r4",
+   "epoch": 1794168248.2099597,
+   "first_at": "2026-11-08T20:04:08Z",
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "words": "heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "headline": "",
+   "incident": "hi-177394c1271c",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-aadd77a96466",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-177394c1271c on r4 taken"
+    },
+    {
+     "decision": "hd-aadd77a96466",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-aadd77a96466",
+     "result": "held",
+     "row": "decision",
+     "step": "approved",
+     "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+    },
+    {
+     "decision": "hd-aadd77a96466",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-aadd77a96466 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 4, the device's golden departs from its intent: heal off for this device: its golden departs from its intent (departs (+2 -2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  },
+  {
+   "at": "2026-11-08T20:06:03Z",
+   "by": "",
+   "decisions": [
+    "hd-40fcac9a6ac1"
+   ],
+   "device": "r6",
+   "epoch": 1794168363.5357592,
+   "first_at": "2026-11-08T20:06:03Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-1da999748848",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-1da999748848 on r6 taken"
+    },
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 956e515736 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "nothing",
+     "row": "decision",
+     "step": "decide",
+     "words": "nothing to heal: r6 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-40fcac9a6ac1",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-40fcac9a6ac1 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "nothing to heal: r6 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:06:29Z",
+   "by": "",
+   "decisions": [
+    "hd-7bc383e40c72"
+   ],
+   "device": "r7",
+   "epoch": 1794168389.3021278,
+   "first_at": "2026-11-08T20:06:29Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-b08704d823af",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-b08704d823af on r7 taken"
+    },
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 6b1ae140cb is the approved state: at intent"
+    },
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-7bc383e40c72",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-7bc383e40c72 recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:41:51Z",
+   "by": "",
+   "decisions": [
+    "hd-e5fc77f079c3",
+    "hd-c09724f87f17"
+   ],
+   "device": "r4",
+   "epoch": 1794170511.3440573,
+   "first_at": "2026-11-08T20:33:41Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-a47428229981",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty1 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-e5fc77f079c3",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-a47428229981 on r4 taken"
+    },
+    {
+     "decision": "hd-e5fc77f079c3",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-e5fc77f079c3",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a6efefe0b4 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-e5fc77f079c3",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 7, a person working: a person appears to be working on r4: 8 changes from outside Mercury in 10 minutes (at least 3 holds it); the line names the account lab on vty1 from 192.0.2.254"
+    },
+    {
+     "decision": "hd-e5fc77f079c3",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-e5fc77f079c3 recorded"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-a47428229981 on r4 taken"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a6efefe0b4 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "nothing",
+     "row": "decision",
+     "step": "decide",
+     "words": "nothing to heal: r4 is at its golden, which matches its intent, and every symptom the incident named has cleared by itself (read again after it, and quiet 10 minutes since its last trigger)"
+    },
+    {
+     "decision": "hd-c09724f87f17",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-c09724f87f17 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "nothing to heal: r4 is at its golden, which matches its intent, and every symptom the incident named has cleared by itself (read again after it, and quiet 10 minutes since its last trigger)"
+  },
+  {
+   "at": "2026-11-08T20:51:53Z",
+   "by": "",
+   "decisions": [
+    "hd-bec0274a20aa"
+   ],
+   "device": "r4",
+   "epoch": 1794171113.781684,
+   "first_at": "2026-11-08T20:51:53Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-48a95b021e9a",
+   "kind": "added_line",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "would_heal",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "84d49e5a62163356",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-48a95b021e9a on r4 taken"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a6efefe0b4 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r4 read again: the departure the grace period settled on (5a1b39ddb8b186da)"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 unit(s), added_line (Tier 1); the program 1 line(s), hash 84d49e5a62163356"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "would_heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+    },
+    {
+     "decision": "hd-bec0274a20aa",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-bec0274a20aa recorded"
+    }
+   ],
+   "tier": 1,
+   "words": "would heal: added_line (Tier 1); the mode is dry run; the change it heals was made outside Mercury (the line names the account lab on vty0 from 192.0.2.254)"
+  },
+  {
+   "at": "2026-11-08T20:55:28Z",
+   "by": "",
+   "decisions": [
+    "hd-08e590423364"
+   ],
+   "device": "r1",
+   "epoch": 1794171328.0036,
+   "first_at": "2026-11-08T20:55:28Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-5d0010b6a4c9",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-08e590423364",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-5d0010b6a4c9 on r1 taken"
+    },
+    {
+     "decision": "hd-08e590423364",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-08e590423364",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 615d996930 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-08e590423364",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-08e590423364",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-08e590423364",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-08e590423364 recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r1 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T20:56:25Z",
+   "by": "",
+   "decisions": [
+    "hd-5f51d15b23c6"
+   ],
+   "device": "r4",
+   "epoch": 1794171385.444428,
+   "first_at": "2026-11-08T20:56:25Z",
+   "guard": {
+    "guard": 9,
+    "name": "rate: per device",
+    "words": "r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate"
+   },
+   "headline": "",
+   "incident": "hi-2fbc9e92b2f5",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-5f51d15b23c6",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-2fbc9e92b2f5 on r4 taken"
+    },
+    {
+     "decision": "hd-5f51d15b23c6",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-5f51d15b23c6",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a6efefe0b4 is the approved state: at intent"
+    },
+    {
+     "decision": "hd-5f51d15b23c6",
+     "result": "held",
+     "row": "decision",
+     "step": "guards",
+     "words": "guard 9, rate: per device: r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate"
+    },
+    {
+     "decision": "hd-5f51d15b23c6",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-5f51d15b23c6 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "guard 9, rate: per device: r4 would have been healed 1 time(s) in the last hour (dry run's would-heal decisions, counted as Auto counts heals), the most a device is (1): flapping beyond the rate limit; stop and escalate"
+  },
+  {
+   "at": "2026-11-08T20:58:00Z",
+   "by": "",
+   "decisions": [
+    "hd-2e598608999f"
+   ],
+   "device": "r7",
+   "epoch": 1794171480.3303034,
+   "first_at": "2026-11-08T20:58:00Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-306501cb3f63",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-2e598608999f",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-306501cb3f63 on r7 taken"
+    },
+    {
+     "decision": "hd-2e598608999f",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-2e598608999f",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 6b1ae140cb is the approved state: at intent"
+    },
+    {
+     "decision": "hd-2e598608999f",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-2e598608999f",
+     "result": "nothing",
+     "row": "decision",
+     "step": "decide",
+     "words": "nothing to heal: r7 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-2e598608999f",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-2e598608999f recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "nothing to heal: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T21:00:22Z",
+   "by": "",
+   "decisions": [
+    "hd-0f79da921075"
+   ],
+   "device": "r7",
+   "epoch": 1794171622.6871529,
+   "first_at": "2026-11-08T21:00:22Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-6a44d7f560fc",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "nothing",
+   "outcome_words": "",
+   "person": "the line names no account named on console from console",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-0f79da921075",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-6a44d7f560fc on r7 taken"
+    },
+    {
+     "decision": "hd-0f79da921075",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-0f79da921075",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 6b1ae140cb is the approved state: at intent"
+    },
+    {
+     "decision": "hd-0f79da921075",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-0f79da921075",
+     "result": "nothing",
+     "row": "decision",
+     "step": "decide",
+     "words": "nothing to heal: r7 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-0f79da921075",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-0f79da921075 recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "nothing to heal: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-08T21:31:43Z",
+   "by": "",
+   "decisions": [
+    "hd-56eb21a3173b"
+   ],
+   "device": "r7",
+   "epoch": 1794173503.7496674,
+   "first_at": "2026-11-08T21:31:43Z",
+   "guard": {},
+   "headline": "",
+   "incident": "hi-126fa0771352",
+   "kind": "unknown_cause",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "incident hi-126fa0771352 on r7 taken"
+    },
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, the mode dry_run, no halt, no planned work"
+    },
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden 6b1ae140cb is the approved state: at intent"
+    },
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+    },
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "cant_fix",
+     "row": "decision",
+     "step": "decide",
+     "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+    },
+    {
+     "decision": "hd-56eb21a3173b",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "decision hd-56eb21a3173b recorded"
+    }
+   ],
+   "tier": 3,
+   "words": "self-healing will not fix it: a symptom with the configuration at intent (Tier 3) is never automatic: there is no departure to heal, and guessing is not a fix: r7 is at its golden, which matches its intent"
+  },
+  {
+   "at": "2026-11-12T03:42:07Z",
+   "by": "heal to intent (policy set by operator@example.net)",
+   "decisions": [
+    "hd-f97d66b518b8"
+   ],
+   "device": "r3",
+   "epoch": 1794454927.0443518,
+   "first_at": "2026-11-12T03:41:57Z",
+   "guard": {},
+   "headline": "r3: \u201cevent manager applet NMAS-HEARTBEAT\u201d was removed (3 lines). Mercury is putting it back itself",
+   "incident": "hi-946d3213bfe8",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "healed",
+   "outcome_words": "Mercury is putting it back itself: put back \u201cevent manager applet NMAS-HEARTBEAT\u201d (3 lines); this kind of fix may run by itself here (Tier 1)",
+   "person": "the line names the account lab on vty0 from 192.0.2.254",
+   "program_hash": "96d8ad372558d892",
+   "sent": true,
+   "state": "done",
+   "steps": [
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "the incident on r3 taken"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, fixing by itself (Auto), no halt, no planned work"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "approved",
+     "words": "the golden a43ba58afc is the approved state: at intent"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "guards",
+     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under the network's rate; a declared fault drill, so the per-device rate and the same-deviation guard do not apply"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "read",
+     "words": "r3 read again: it holds the change the grace period settled on"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "classify",
+     "words": "1 part(s) changed, a missing line (Tier 1); the fix 4 line(s)"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "heal",
+     "row": "decision",
+     "step": "decide",
+     "words": "Mercury is putting it back itself: put back \u201cevent manager applet NMAS-HEARTBEAT\u201d (3 lines); this kind of fix may run by itself here (Tier 1)"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "the decision recorded"
+    },
+    {
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "take",
+     "words": "taken by heal to intent (policy set by operator@example.net)"
+    },
+    {
+     "at": "2026-11-12T03:42:07Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "stops",
+     "words": "AUTO on a network marked lab, the policy decided under, nothing held"
+    },
+    {
+     "at": "2026-11-12T03:42:11Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "read",
+     "words": "r3 read again"
+    },
+    {
+     "at": "2026-11-12T03:42:12Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "plan",
+     "words": "the program recomputed from the read: 4 line(s), hash 96d8ad372558d892, the decision's"
+    },
+    {
+     "at": "2026-11-12T03:42:12Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "authorise",
+     "words": "nothing that needs a reason"
+    },
+    {
+     "at": "2026-11-12T03:42:18Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "running",
+     "row": "act",
+     "step": "apply",
+     "words": "as the policy set by operator@example.net, holding r3"
+    },
+    {
+     "at": "2026-11-12T03:45:48Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "intent",
+     "words": "each healed unit at intent; intent: matches"
+    },
+    {
+     "at": "2026-11-12T03:46:13Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "saved",
+     "words": "sent, verified by the pipeline, and saved to startup"
+    },
+    {
+     "at": "2026-11-12T03:46:18Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "ok",
+     "row": "act",
+     "step": "golden",
+     "words": "documentation updated and tested: golden 259e76f6f8 committed after Mercury's config check passed (the configuration repository's CI runs the same check on its push); the device read again matches it"
+    },
+    {
+     "at": "2026-11-12T03:46:18Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "none",
+     "row": "act",
+     "step": "symptom",
+     "words": "the incident named no symptom beyond the configuration"
+    },
+    {
+     "at": "2026-11-12T03:46:18Z",
+     "decision": "hd-f97d66b518b8",
+     "result": "healed",
+     "row": "act",
+     "step": "record",
+     "words": "healed and verified: healed and verified, golden 259e76f6f8 committed, at its golden when read again; the incident named no symptom beyond the configuration"
+    }
+   ],
+   "tier": 1,
+   "words": "healed and verified, golden 259e76f6f8 committed, at its golden when read again; the incident named no symptom beyond the configuration"
+  },
+  {
+   "at": "2026-11-14T03:43:43Z",
+   "by": "",
+   "decisions": [
+    "hd-9efee321a309"
+   ],
+   "device": "r4",
+   "epoch": 1794627823.8425915,
+   "first_at": "2026-11-14T03:43:43Z",
+   "guard": {
+    "guard": 4,
+    "name": "the device's golden departs from its intent",
+    "words": "heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+   },
+   "headline": "",
+   "incident": "hi-431eaa1fa107",
+   "kind": "",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "held",
+   "outcome_words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)",
+   "person": "",
+   "program_hash": "",
+   "state": "decided",
+   "steps": [
+    {
+     "decision": "hd-9efee321a309",
+     "result": "ok",
+     "row": "decision",
+     "step": "claim",
+     "words": "the incident on r4 taken"
+    },
+    {
+     "decision": "hd-9efee321a309",
+     "result": "ok",
+     "row": "decision",
+     "step": "stops",
+     "words": "no kill switch, watching only (dry run), no halt, no planned work"
+    },
+    {
+     "decision": "hd-9efee321a309",
+     "result": "held",
+     "row": "decision",
+     "step": "approved",
+     "words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+    },
+    {
+     "decision": "hd-9efee321a309",
+     "result": "ok",
+     "row": "decision",
+     "step": "record",
+     "words": "the decision recorded"
+    }
+   ],
+   "tier": 0,
+   "words": "Self-healing holds r4: heal off for this device: its golden departs from its intent (departs (-2)), so there is no approved state to heal to; a person resolves it first (adopt the change into intent, or capture after a revert)"
+  }
+ ]
+}
