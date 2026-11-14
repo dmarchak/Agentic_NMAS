@@ -52,7 +52,10 @@ FEATURE = "assistant"
 #: masked secret answered around; covered unless the passages say nothing about it; only
 #: sidebar screens in "screens". Its plan rules are v2's, and its schema is v2's
 #: (`AssistantAnswerV2`).
-PROMPT = ("assistant", 3)
+#: v4 (2026-11-14, C3666): v3 measured 29 of 39 over ten runs; "covered" follows from the
+#: answer (any step from the passages makes it true), and a not-covered answer names the
+#: screens the passages are about, never a command, control or tool. Otherwise v3's.
+PROMPT = ("assistant", 4)
 #: The kind of subject a call is about (`history_sources.SUBJECT_WORDS`).
 SUBJECT_KIND = "manual_question"
 #: The longest answer drawn, characters; longer is refused at check.
