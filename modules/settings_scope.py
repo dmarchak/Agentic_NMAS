@@ -171,7 +171,10 @@ SCOPES: dict = {
            "ai_background"),
     # AI troubleshooting's mode and its per-incident cap (`modules/fixit/policy.py`): the
     # installation's, as the day cap is (a per-network cap is C3114's row).
-    **_group(HOST, "ai_troubleshoot", "ai_troubleshoot_mode", "ai_cap_usd_per_incident"),
+    **_group(HOST, "ai_troubleshoot", "ai_troubleshoot_mode", "ai_cap_usd_per_incident",
+             # "AI device reads sign in as" (C3661): one choice for the installation, drawn
+             # on the same card.
+             "ai_device_reads_as"),
     # "Let the read-only account ping and traceroute" (the operator, 2026-11-13;
     # `router_reads.PING_CHOICE`): one choice for the installation, since the AI read set's
     # forms are one set.

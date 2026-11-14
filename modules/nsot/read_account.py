@@ -276,6 +276,55 @@ def read_coverage(previous: dict = None) -> dict:
     return {"devices": devices, "networks": networks, "level": level(), "goldens": goldens}
 
 
+def reads_as_unready(value: dict) -> list:
+    """Why the read-only account cannot be what the AI's device reads sign in as
+    ("AI device reads sign in as", C3661), from a coverage *value* (`read_coverage`'s):
+    ``["<network> <device>: <why>", ...]``, one per device that does not hold the account at its
+    level or whose newest probe did not PASS, and one per network that could not be read; ``[]``
+    when every device in scope holds it and passed. A coverage that names no device is not
+    ready either (nothing shows the account is held)."""
+    out = []
+    for nid, net in sorted(((value or {}).get("networks") or {}).items()):
+        if (net or {}).get("error"):
+            out.append(f"{net.get('name') or nid}: its devices could not be read "
+                       f"({net['error']})")
+    rows = (value or {}).get("devices") or []
+    for row in rows:
+        name = f"{row.get('network') or '?'} {row.get('device') or '?'}"
+        if row.get("state") != "holds":
+            out.append(f"{name}: {STATE_WORDS.get(row.get('state'), row.get('state') or '?')}")
+            continue
+        result = ((row.get("probe") or {}).get("result") or "")
+        if result != "PASS":
+            out.append(f"{name}: its newest probe " + (f"was {result}" if result
+                                                       else "has not run"))
+    if not rows and not out:
+        out.append("no device is known to hold it: the coverage names none")
+    return out
+
+
+def reads_as_refusal(value: dict = None) -> str:
+    """``""`` when "the read-only account" may be saved as whom the AI's device reads sign in
+    as, else why, naming the devices that do not hold it with a passed probe (at most eight,
+    then how many more). *value* is a coverage value; by default the coverage is read now
+    (`read_coverage`, a decision reads live: CLAUDE.md, "Display only"), its golden summaries
+    kept from the reader's last value by blob."""
+    if value is None:
+        prev = held().get("value") or {}
+        try:
+            value = read_coverage(prev)
+        except Exception as exc:                      # noqa: BLE001 (closed, and said)
+            return (f"the read-only account's coverage could not be read "
+                    f"({type(exc).__name__}: {exc}), so it is not known that every device "
+                    "holds it")
+    missing = reads_as_unready(value)
+    if not missing:
+        return ""
+    shown = missing[:8] + ([f"{len(missing) - 8} more"] if len(missing) > 8 else [])
+    return ("the read-only account is offered only when every device holds it and its probe "
+            f"passed, and {len(missing)} do not: " + "; ".join(shown))
+
+
 def held() -> dict:
     """The reader's last good value and when it was read: ``{"value", "at", "why"}``; *value*
     None with *why* when nothing is held yet or the store cannot be read."""

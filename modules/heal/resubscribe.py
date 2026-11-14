@@ -94,6 +94,32 @@ outcome is its worst subscription's, never green over a partial (`_overall`).
 **Self-healing sees its own change as Mercury's** (`attribution`, rule 4): the record is written
 with ``config_change`` once the device is held and before the first session is sent, so the
 device's configuration lines during it are Mercury's own, never an outside change.
+
+**The collector step** (C3078, C3111; the operator, 2026-11-14: "Close the collector's stale
+session for <device>, then re-subscribe"). A half-open stream can stay lost through a
+re-subscribe: the collector on Mercury's host still holds the device's TCP session established
+and idle while the device's own connection reads Disconnecting (a lab router, measured 2026-11-14:
+connection 496 "Disconnecting", the collector's session from it idle 2,130 s), and the device
+cannot dial again until that socket is closed. The same operation with the step on
+(`COLLECTOR_KEY`, ``collector`` in `plan`, `apply` and `start`; one home for the receivers'
+writes) first closes that one session:
+- **its preview** (`plan`) reads the collector's sessions on the receiver's port from the
+  device's addresses (`diagnose_stream.read_collector`, Mercury's own host, no device) and
+  asks the root-owned close helper's DRY RUN (`collector_close.request` with ``dry_run``) to
+  name the one session it would close, both ends and ports; refused, with nothing sent, unless
+  exactly one established session stands and is idle (nothing received inside the stream's
+  window) and the dry run answers ``would_close``;
+- **its hash** binds that session's two ends with the program (`close_id`, in the selection's
+  hash): a session that moved before the confirm (the device dialled again on another port)
+  is another hash, refused, naming both sessions;
+- **its apply**, holding the device and before any receiver is touched: the close through the
+  helper (`collector_close.request`, its code, exit code and words kept as the run's receipt,
+  ``collector_close``), the helper reading it back gone; then the device's connection to the
+  collector read until the one that read Disconnecting is gone (`show telemetry internal
+  connection`, C3640, within `GONE_BOUND_S`); then the re-subscribe as above. A close the
+  helper does not answer ``closed`` stops the run there, nothing sent to the device
+  (``not_closed``). The closed socket cannot be put back, and needs no undo: the device dials
+  a new session, which the verify reads.
 """
 
 import logging
@@ -102,8 +128,25 @@ import time
 log = logging.getLogger(__name__)
 
 KEY, READD_KEY = "telemetry-resubscribe", "telemetry-readd"
+#: The re-subscribe with the collector step (C3078): its catalog key and its runs' record key.
+COLLECTOR_KEY = "telemetry-collector-resubscribe"
+#: Every key this module records a run under (History, the run card, the fix-it attempts).
+RUN_KEYS = (KEY, READD_KEY, COLLECTOR_KEY)
 #: The hold's operation words (`device_ops.hold`), each a device-changing operation.
 OPERATION, READD_OPERATION = "telemetry re-subscribe", "telemetry receiver re-add"
+COLLECTOR_OPERATION = "telemetry collector close and re-subscribe"
+#: The collector step's title, in the operator's words (2026-11-14).
+COLLECTOR_TITLE = "Close the collector's stale session for {device}, then re-subscribe"
+#: After the close, the device's connection to the collector is read until the one that read
+#: Disconnecting is gone, every `GONE_POLL_S`, for at most `GONE_BOUND_S`. UNMEASURED: no close
+#: has been run on a device, so the bound is reasoned (the device's own TCP stack sees the
+#: collector's reset at once; 60 s is six of its polls); the measurement that sets it is the
+#: first run's time from the close to the connection gone, kept in its record (the ``gone``
+#: step's ``took_s``), then 2.5 times that (C3643).
+GONE_BOUND_S = 60
+GONE_POLL_S = 5
+GONE_WHY = ("reasoned, not measured: no close has been run on a device yet; the first run's "
+            "time to the connection gone sets it (C3643)")
 #: Mode B's measured shape for the receiver's removal (`removal.SHAPES`).
 SHAPE = "telemetry.receiver"
 #: Between the removal and the re-add: the operator's sequence (C2838's amendment: 13 s on the
@@ -151,7 +194,38 @@ STEPS = (("plan", "Read each subscription's receiver from committed intent; refu
 STEP_LABELS = {"plan": "Read intent", "hash": "Check hashes", "hold": "Hold {device}",
                "started": "Record start", "before": "Read before", "remove": "Remove {subs}",
                "wait": f"Wait {WAIT_S} s", "re-add": "Re-add", "verify": "Verify {subs}",
-               "rollback": "Roll back", "record": "Record"}
+               "rollback": "Roll back", "record": "Record", "close": "Close session",
+               "gone": "Await device"}
+#: The re-subscribe with the collector step (C3078): the close and the wait for the device's
+#: connection, between the reads before and the first removal.
+COLLECTOR_STEPS = (
+    ("plan", "Read each subscription's receiver from committed intent, the collector's one "
+             "stale session from the device, and the close helper's dry run naming it"),
+    ("hash", "Recompute each subscription's program and the session to close, and compare "
+             "the hashes"),
+    ("hold", "Hold the device for the whole operation"),
+    ("started", "Record the run before anything is sent"),
+    ("before", "Read before: the receiver's state and connection, the device's telemetry "
+               "connections, the collector's sessions, the running configuration"),
+    ("close", "Close the collector's one stale session through the root-owned close helper, "
+              "which reads it back gone"),
+    ("gone", f"Read the device's telemetry connections until the one that read Disconnecting "
+             f"is gone, for at most {GONE_BOUND_S} s"),
+    ("remove", "Remove every chosen receiver, one held send each; read back after each that "
+               "exactly the lines removed so far left"),
+    ("wait", f"Wait {WAIT_S} s, once, after the last removal"),
+    ("re-add", "Add every receiver back, one held send each, once more if it did not land; "
+               "read back the configuration as before"),
+    ("verify", "Verify each within 290 s: the device's state, the stream's series, the "
+               "collector's session"),
+    ("rollback", "A removal that fails stops the removals and those removed are added back; a "
+                 "receiver that did not come back is said, with Re-add the receiver"),
+    ("record", "Record the outcome, each subscription's own, and the close helper's receipt"))
+
+
+def steps_for(key: str) -> tuple:
+    """The steps a run of *key* declares (`RUN_KEYS`)."""
+    return {READD_KEY: READD_STEPS, COLLECTOR_KEY: COLLECTOR_STEPS}.get(key, STEPS)
 #: The one-step Re-add the receiver.
 READD_STEPS = (("plan", "Read the receiver from committed intent"),
                ("hash", "Recompute the program and compare its hash"),
@@ -163,7 +237,7 @@ READD_STEPS = (("plan", "Read the receiver from committed intent"),
                ("record", "Record the outcome"))
 
 OUTCOMES = ("resubscribed", "unverified", "not_back", "removed", "not_removed", "not_sent",
-            "partial", "moved", "readded", "failed", "refused")
+            "partial", "moved", "readded", "failed", "refused", "not_closed")
 OUTCOME_WORDS = {"resubscribed": "re-subscribed; the stream is back",
                  "readded": "the receiver added back; the stream is back",
                  "unverified": "re-subscribed; whether the stream is back could not be told",
@@ -174,12 +248,15 @@ OUTCOME_WORDS = {"resubscribed": "re-subscribed; the stream is back",
                  "partial": "stopped part-way; not every chosen subscription was re-subscribed",
                  "moved": "the configuration is not as before",
                  "failed": "failed during the run: read the device",
-                 "refused": "nothing was sent"}
+                 "refused": "nothing was sent",
+                 "not_closed": "the collector's session was not closed; nothing was sent to "
+                               "the device"}
 #: A run's record state, as History's operations source names it (`privileged.runs`).
 RECORD_STATE = {"resubscribed": "done", "readded": "done", "unverified": "unverified",
                 "not_back": "failed", "removed": "failed", "not_removed": "failed",
                 "not_sent": "failed", "partial": "failed",
-                "moved": "failed", "failed": "failed", "refused": "refused"}
+                "moved": "failed", "failed": "failed", "refused": "refused",
+                "not_closed": "failed"}
 #: A subscription's outcomes, worst first: the run's outcome is its worst subscription's, and
 #: its words lead with it (`_overall`).
 WORST_FIRST = ("removed", "moved", "not_removed", "not_sent", "not_back", "unverified")
@@ -256,21 +333,32 @@ def program_of(units: list, readd: bool = False) -> list:
     return [ln for u in units for ln in u["remove"]] + [ln for u in units for ln in u["readd"]]
 
 
-def program_hash(units: list, readd: bool = False) -> str:
+def close_id(close: dict) -> str:
+    """The collector step's selection, as its hash names it: the one session to close, both
+    ends and ports, as the close helper's dry run named them (`plan`'s ``close``)."""
+    return f"collector-close:{close['local']}<-{close['remote']}"
+
+
+def _selected(units: list, readd: bool, close: dict = None) -> list:
+    return [unit_id(u["sub"], readd) for u in units] + ([close_id(close)] if close else [])
+
+
+def program_hash(units: list, readd: bool = False, close: dict = None) -> str:
     """The SELECTION's hash, as the card carries it: the whole program in its order and the ids
-    chosen. One subscription more, one fewer, or another order is another hash."""
+    chosen, and with the collector step the one session it closes (`close_id`). One
+    subscription more, one fewer, another order, or another session is another hash."""
     from modules.nsot.deploy import command_fingerprint
 
-    return command_fingerprint(program_of(units, readd), [],
-                               [unit_id(u["sub"], readd) for u in units])
+    return command_fingerprint(program_of(units, readd), [], _selected(units, readd, close))
 
 
-def run_hash(units: list, reason: str, readd: bool = False) -> str:
-    """The run's hash: the whole program, in order, each removal authorised with the reason."""
+def run_hash(units: list, reason: str, readd: bool = False, close: dict = None) -> str:
+    """The run's hash: the whole program, in order, each removal authorised with the reason,
+    and the session the collector step closes."""
     from modules.nsot.deploy import command_fingerprint
 
     return command_fingerprint(program_of(units, readd), authorised(units, reason, readd),
-                               [unit_id(u["sub"], readd) for u in units])
+                               _selected(units, readd, close))
 
 
 def receiver_line(settings) -> str:
@@ -282,9 +370,12 @@ def receiver_line(settings) -> str:
     return found[-1] if found else ""
 
 
-def plan(network: str, device: str, subs, *, readd: bool = False, sources=None) -> dict:
+def plan(network: str, device: str, subs, *, readd: bool = False, collector: bool = False,
+         sources=None) -> dict:
     """What the operation would send on *device* for *subs*, and why it would refuse, read from
-    Mercury's records alone (the inventory and committed intent), never the device:
+    Mercury's records alone (the inventory and committed intent), never the device; with
+    *collector* (the collector step, C3078), also the collector's sessions on Mercury's host and
+    the close helper's dry run, which closes nothing (``close``, `_close_plan`):
     ``{"ok", "refusals", "device", "ip", "dialect", "units", "program", "hash", "sharing",
     "words"}``; each unit ``{"sub", "line", "address", "port", "protocol", "remove", "readd",
     "hash"}``. *program* is `program_of`'s (the batch's order) and *hash* the selection's
@@ -299,7 +390,7 @@ def plan(network: str, device: str, subs, *, readd: bool = False, sources=None) 
     src = sources or Sources(network)
     out = {"ok": False, "network": network, "device": device, "refusals": [], "units": [],
            "program": [], "hash": "", "sharing": [], "ip": "", "dialect": "", "readd": readd,
-           "words": "", "dev": {}, "hv": {}}
+           "words": "", "dev": {}, "hv": {}, "collector": collector is True, "close": {}}
 
     def refuse(words):
         out["refusals"].append(words + ". Nothing was sent")
@@ -308,6 +399,8 @@ def plan(network: str, device: str, subs, *, readd: bool = False, sources=None) 
     asked = list(dict.fromkeys(str(s).strip() for s in subs or [] if str(s).strip()))
     if not asked:
         return refuse("no subscription was chosen")
+    if readd and collector:
+        return refuse("Re-add the receiver adds one receiver back, and takes no collector step")
     if readd and len(asked) != 1:
         return refuse(f"Re-add the receiver adds one subscription's receiver, and "
                       f"{len(asked)} were given")
@@ -364,7 +457,12 @@ def plan(network: str, device: str, subs, *, readd: bool = False, sources=None) 
         assert_sendable(out["program"])
     except UnsendableCommand as exc:
         return refuse(str(exc))
-    out["hash"] = program_hash(out["units"], readd)
+    if collector:
+        close, why = _close_plan(network, device, out["units"], hv, src)
+        if why:
+            return refuse(why)
+        out["close"] = close
+    out["hash"] = program_hash(out["units"], readd, out["close"] or None)
     # The subscriptions NOT chosen that send to a chosen one's receiver (intent's own lines:
     # `receiver_of` gives the address in one spelling, IPv4 or IPv6).
     chosen = {}
@@ -382,8 +480,76 @@ def plan(network: str, device: str, subs, *, readd: bool = False, sources=None) 
     noun = "subscription" if len(out["units"]) == 1 else "subscriptions"
     out.update(ok=True, words=(f"add back {device}'s receiver for telemetry {noun} {subs_w}"
                                if readd else
+                               f"close the collector's stale session for {device}, then "
+                               f"re-subscribe its telemetry {noun} {subs_w}" if collector else
                                f"re-subscribe {device}'s telemetry {noun} {subs_w}"))
     return out
+
+
+def _close_plan(network: str, device: str, units: list, hv: dict, src) -> tuple:
+    """``(close, refusal)``: the one session the collector step would close, or why there is
+    none to close, read on Mercury's host alone (no device): the collector's sessions on the
+    chosen receivers' one address and port, from the device's addresses
+    (`diagnose_stream.read_collector`), exactly one ESTABLISHED and idle (nothing received
+    inside the stream's window, `receiving_now`), and the close helper's DRY RUN naming it
+    (`collector_close.request` with ``dry_run``: it closes nothing). *close* is ``{"peer",
+    "port", "local", "remote", "collector", "quiet_s", "dry_run"}``: the device's address and
+    port, the two ends as the helper named them, and the dry run's own answer."""
+    import ipaddress
+
+    from modules.heal.diagnose_stream import ESTABLISHED, receiving_now
+    from modules.nsot import reads
+
+    ends = sorted({(u["address"], u["port"]) for u in units})
+    if len(ends) != 1:
+        return {}, (f"the collector step closes one session, to one receiver, and the chosen "
+                    f"subscriptions send to {len(ends)} receivers "
+                    f"({_and(f'{a} port {p}' for a, p in ends)}): choose those of one")
+    address, port = ends[0]
+    where = f"{address} port {port}"
+    if ipaddress.ip_address(address).version != 4:
+        return {}, (f"the collector at {where} is an IPv6 address, and the close helper serves "
+                    "IPv4 only (C3118), so the collector step is not offered for it")
+    got = src.collector(address, port, src.addresses(hv)) or {}
+    if got.get("state") != "read":
+        return {}, (f"the collector's sessions on {where} could not be read "
+                    f"({got.get('why') or 'not read'}), and the step closes one it read")
+    if not got.get("listening"):
+        return {}, f"nothing on Mercury's host listens on {where}, so no session stands there"
+    est = [s for s in got.get("sessions") or [] if s.get("state") == ESTABLISHED]
+    if not est:
+        return {}, (f"the collector holds no established session from {device} on {where}: "
+                    "there is nothing to close, and Re-subscribe alone is the fix")
+    live = [s for s in est if receiving_now(s) is True]
+    unread = [s for s in est if receiving_now(s) is None]
+    idle = [s for s in est if receiving_now(s) is False]
+    if live:
+        s = live[0]
+        return {}, (f"the collector's session from {s['remote']} port {s['rport']} on {where} "
+                    f"received data {int(s['lastrcv_ms']) // 1000} s ago: it carries data, so "
+                    "it is not stale and is never closed")
+    if unread:
+        s = unread[0]
+        return {}, (f"the collector's session from {s['remote']} port {s['rport']} on {where} "
+                    "has no last receive read (the kernel's socket diagnostics were not read), "
+                    "so whether it is stale cannot be told")
+    if len(idle) > 1:
+        each = _and(f"{x['remote']} port {x['rport']}" for x in idle)
+        return {}, (f"the collector holds {len(idle)} idle sessions from {device} on {where} "
+                    f"({each}), and the step closes exactly one")
+    s = idle[0]
+    dry = src.close(s["remote"], s["rport"], dry_run=True, run_id=reads.new_id())
+    pair = dry.get("tuple") if isinstance(dry.get("tuple"), dict) else {}
+    if dry.get("code") != "would_close" or dry.get("ok") is not True or not (
+            pair.get("local") and pair.get("peer")):
+        return {}, (f"the close helper's dry run for the session from {s['remote']} port "
+                    f"{s['rport']} answered {dry.get('code') or 'nothing'} (exit "
+                    f"{dry.get('exit')}): {dry.get('words') or 'no words'}")
+    return {"peer": s["remote"], "port": int(s["rport"]), "local": pair["local"],
+            "remote": pair["peer"], "collector": where, "address": address,
+            "collector_port": int(port),
+            "quiet_s": int(s["lastrcv_ms"]) // 1000,
+            "dry_run": {k: dry.get(k) for k in ("code", "exit", "words", "at")}}, ""
 
 
 def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
@@ -407,7 +573,7 @@ def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
 
 
 def refusal(p: dict, confirmed: dict, reason: str, readd: bool = False, *, program: str = "",
-            previewed: str = "") -> str:
+            previewed: str = "", previewed_close: str = "") -> str:
     """Why the confirm is refused with nothing sent, or ``""``: the plan's refusals; each
     subscription's hash against the one previewed (both named); for a re-subscribe, the
     SELECTION's hash (*program*, the one the card carried for the subscriptions it drew,
@@ -426,6 +592,18 @@ def refusal(p: dict, confirmed: dict, reason: str, readd: bool = False, *, progr
             return (f"subscription {u['sub']}'s program changed since the preview you confirmed "
                     f"(confirmed {was or 'no hash'}, now {u['hash']}): its receiver in "
                     f"{p['device']}'s intent moved. Nothing was sent; preview again")
+    close = p.get("close") or {}
+    if close:
+        # The collector step: the session the person confirmed closing (*previewed_close*, the
+        # device's end as the card drew it) against the one the collector holds now, and the
+        # selection's hash, which holds the session's two ends, against the one confirmed.
+        was = str(previewed_close or "").strip()[:60]
+        was = was if was and all(ch in "0123456789abcdefABCDEF.:[]" for ch in was) else ""
+        if was != close["remote"] or str(program or "") != p["hash"]:
+            return (f"the collector's session is not the one previewed: you confirmed closing "
+                    f"the session from {was or 'no session named'} (program {program or 'no '
+                    'hash'}), and the one the collector holds now is from {close['remote']} to "
+                    f"{close['local']} (program {p['hash']}). Nothing was sent; preview again")
     if not readd and str(program or "") != p["hash"]:
         now = _and(u["sub"] for u in p["units"])
         # The selection the form said it previewed, said back only as subscription ids.
@@ -524,6 +702,40 @@ class Sources:
 
         return _addresses(hv)
 
+    def close(self, peer: str, port: int, *, dry_run: bool, run_id: str) -> dict:
+        """The collector step's one request to the root-owned close helper
+        (`collector_close.request`: ``sudo -n`` and its request file), a dry run or the close."""
+        from modules.heal import collector_close
+
+        return collector_close.request(peer, port, dry_run=dry_run, run_id=run_id)
+
+    def connections(self, host: str, actor: str, dialect: str) -> dict:
+        """The device's telemetry connections (C3640's read, `show telemetry internal
+        connection`), through THE reads engine as the operation's, in this thread so its hold
+        covers it: ``{"state": "read"|"unread", "rows", "why", "run"}``."""
+        from modules.heal import diagnose as D
+        from modules.heal import diagnose_parse as P
+        from modules.nsot import reads
+
+        cmd = D.render("telemetry_connection", dialect)
+        try:
+            rec = reads.run(self.network, [host], [cmd], actor, by=READS_BY, inline=True,
+                            session=self.session,
+                            purpose="the collector step: the device's telemetry connections")
+        except reads.Refused as exc:
+            return {"state": "unread", "rows": None, "why": str(exc), "run": ""}
+        r = (rec.get("results") or {}).get(host) or {}
+        ans = next((a for a in r.get("answers") or [] if a.get("command") == cmd), None)
+        if not ans or ans.get("state") != reads.ANSWERED:
+            return {"state": "unread", "rows": None, "run": rec.get("id", ""),
+                    "why": (ans or {}).get("why") or r.get("why") or r.get("state") or
+                    "not answered"}
+        got = P.parse("telemetry_connection", ans.get("answer") or "")
+        if got["state"] != P.PARSED:
+            return {"state": "unread", "rows": None, "why": got["why"], "run": rec.get("id", "")}
+        return {"state": "read", "rows": got["facts"]["connections"], "why": "",
+                "run": rec.get("id", "")}
+
     def values(self) -> dict:
         from modules.redact import known_secret_values
 
@@ -581,7 +793,7 @@ def _in_flight(network: str, device: str) -> bool:
         h = device_ops.holder(network, device)
     except Exception:                                 # noqa: BLE001 (unread: not said to be)
         return False
-    return bool(h) and h.get("operation") in (OPERATION, READD_OPERATION)
+    return bool(h) and h.get("operation") in (OPERATION, READD_OPERATION, COLLECTOR_OPERATION)
 
 
 def removed_now(network: str, device: str) -> list:
@@ -600,7 +812,7 @@ def removed_now(network: str, device: str) -> list:
     going = None
     seen, out = set(), []
     for r in got["runs"]:                             # newest first
-        if r.get("key") not in (KEY, READD_KEY) or not r.get("config_change"):
+        if r.get("key") not in RUN_KEYS or not r.get("config_change"):
             continue
         unfinished = r.get("state") == "running"
         if unfinished:
@@ -717,22 +929,27 @@ class _Run:
 
 def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, person: bool,
           confirmed: dict, program: str = "", previewed: str = "", reason: str = "",
-          readd: bool = False, run_id: str = "", sources=None, fixit=None) -> dict:
-    """Run the confirmed re-subscribe (or, with *readd*, the one-step Re-add the receiver) on
-    *device*, holding it, as *actor*, a person verified as *actor_verified* (`person_refusal`:
-    neither has a default): the run's record, written. *confirmed* is each subscription's hash
-    and *program* the selection's, both as previewed (`refusal`). *fixit* is the incident, the
-    attempt and the proposal its confirm was pressed for on an incident's page, kept in the
-    record (`fixit_field`, C3106). Never raises; a refusal is a record too, with nothing
-    sent."""
+          readd: bool = False, collector: bool = False, previewed_close: str = "",
+          run_id: str = "", sources=None, fixit=None) -> dict:
+    """Run the confirmed re-subscribe (or, with *readd*, the one-step Re-add the receiver; with
+    *collector*, the re-subscribe with the collector step, C3078) on *device*, holding it, as
+    *actor*, a person verified as *actor_verified* (`person_refusal`: neither has a default):
+    the run's record, written. *confirmed* is each subscription's hash and *program* the
+    selection's, both as previewed (`refusal`); *previewed_close* the device's end of the
+    session the card drew for the collector step. *fixit* is the incident, the attempt and the
+    proposal its confirm was pressed for on an incident's page, kept in the record
+    (`fixit_field`, C3106). Never raises; a refusal is a record too, with nothing sent."""
     from modules.nsot import device_ops, reads
 
     src = sources or Sources(network)
     now = src.clock()
     not_a_person = person_refusal(actor, actor_verified, person)
-    p = plan(network, device, subs, readd=readd, sources=src)
-    rec = {"id": run_id or reads.new_id(), "list": network, "device": device,
-           "key": READD_KEY if readd else KEY,
+    collector = collector is True and not readd
+    p = (plan(network, device, subs, readd=readd, collector=collector, sources=src)
+         if not not_a_person else plan(network, device, subs, readd=readd, sources=src))
+    key = READD_KEY if readd else COLLECTOR_KEY if collector else KEY
+    rec = {"id": run_id or reads.new_id(), "list": network, "device": device, "key": key,
+           "collector_step": collector,
            "command": p["words"] or f"{'re-add' if readd else 're-subscribe'} telemetry on "
                                      f"{device}",
            # How the person was verified, as the request's identity stated it; one that
@@ -750,26 +967,36 @@ def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, p
     # The run's own steps, live: inside its job this list is what its card and the In
     # progress list read while it runs (`op_progress.attach`), and what its record keeps.
     from modules import op_progress
-    op_progress.attach(READD_STEPS if readd else STEPS, rec["steps"], run=rec["id"],
+    op_progress.attach(steps_for(key), rec["steps"], run=rec["id"],
                        labels=step_labels(device, [u["sub"] for u in p["units"]] or subs))
     if not_a_person:
         # Before the plan's refusals or the hash are said: a request that is not a verified
         # person's learns nothing about what a valid confirm would have been.
         run.step("hash", "refused", not_a_person)
         return run.finish("refused", not_a_person)
-    why = refusal(p, confirmed, reason, readd, program=program, previewed=previewed)
+    why = refusal(p, confirmed, reason, readd, program=program, previewed=previewed,
+                  previewed_close=previewed_close)
     if why:
         run.step("hash" if p["ok"] else "plan", "refused", why)
         return run.finish("refused", why)
+    close = p.get("close") or None
     run.step("plan", "ok", f"{p['words']}: each receiver from {device}'s committed intent"
-                           + ("" if readd else f"; the removal measured on {p['dialect']}"))
-    rec["hash"] = run_hash(p["units"], reason, readd)
+                           + ("" if readd else f"; the removal measured on {p['dialect']}")
+                           + (f"; the collector's one idle session from {close['remote']} to "
+                              f"{close['local']}, named by the close helper's dry run "
+                              f"({close['dry_run']['words']})" if close else ""))
+    rec["hash"] = run_hash(p["units"], reason, readd, close)
     rec["program"] = [run.mask(x) for x in p["program"]]
+    if close:
+        rec["collector_close"] = {"previewed": dict(close["dry_run"]),
+                                  "session": {"local": close["local"],
+                                              "remote": close["remote"]}}
     run.step("hash", "ok", "each subscription's program is the one previewed ("
              + ", ".join(f"{u['sub']}: {u['hash']}" for u in p["units"])
-             + ("" if readd else f"), and the selection's is too ({p['hash']}")
+             + ("" if readd else f"), and the selection's is too ({p['hash']}"
+                + (", the session to close in it" if close else ""))
              + f"); the run's hash, the reason in it: {rec['hash']}")
-    op = READD_OPERATION if readd else OPERATION
+    op = READD_OPERATION if readd else COLLECTOR_OPERATION if close else OPERATION
     try:
         # Every read the run makes in this thread is the run's own (`reads.within`): kept in
         # the reads store naming this run and its step, never a Show commands run of the
@@ -785,6 +1012,15 @@ def apply(network: str, device: str, subs, *, actor: str, actor_verified: str, p
         log.exception("resubscribe: %s on %s failed", network, device)
         if not rec["config_change"]:
             return run.finish("refused", f"{type(exc).__name__}: {exc}. Nothing was sent")
+        if not rec.get("device_sent"):
+            # Recorded as a change, but no session reached the device (the collector step's
+            # close or its wait failed first): said as that, never as a send begun.
+            closed = (rec.get("collector_close") or {}).get("code") == "closed"
+            return run.finish("failed", (
+                f"the run failed before anything was sent to {device} "
+                f"({type(exc).__name__}: {exc})"
+                + ("; the collector's session was closed, and the device dials a new one"
+                   if closed else "") + ". Nothing was sent to the device"))
         left = _unfinished(run, device)
         return run.finish("failed", (f"the run failed once it had begun sending "
                                      f"({type(exc).__name__}: {exc}); whether each receiver is "
@@ -829,8 +1065,10 @@ def _held(run: _Run, p: dict, actor: str, readd: bool) -> dict:
     run.step("started", "ok", "recorded before anything is sent, so the device's own "
                               "configuration lines during it are Mercury's")
     _record(run.network, rec)
+    close = p.get("close") or {}
     s = Session(run.network, p["dev"], "", actor, run.values,
-                operation=READD_OPERATION if readd else OPERATION, detail=p["words"],
+                operation=(READD_OPERATION if readd else COLLECTOR_OPERATION if close
+                           else OPERATION), detail=p["words"],
                 label="telemetry re-subscribe", opener=src.opener, clock=src.clock)
     addresses = src.addresses(p["hv"])
     before, asked = {}, {"reads": []}
@@ -839,6 +1077,13 @@ def _held(run: _Run, p: dict, actor: str, readd: bool) -> dict:
             "receiver": src.receiver(device, u["sub"], actor, p["dialect"]),
             "collector": src.collector(u["address"], u["port"], addresses)}
         _read_before(run, asked, device, u, b, p["dialect"])
+    conns_before = None
+    if close:
+        # The collector step: the device's own connections before the close (C3640), so the
+        # wait after it knows which connection is to go.
+        conns_before = src.connections(device, actor, p["dialect"])
+        run.read(asked, connection_command(p["dialect"]), conns_before,
+                 _connections_found(device, close, conns_before), check="device")
     running, why = _running(s)
     if running is None:
         run.step("before", "refused", f"{device}'s running configuration could not be read "
@@ -850,8 +1095,17 @@ def _held(run: _Run, p: dict, actor: str, readd: bool) -> dict:
     s.before = running
     run.step("before", "ok", "; ".join(_before_words(device, u, before[u["sub"]])
                                        for u in p["units"])
+             + (f"; {_connections_found(device, close, conns_before)['words']}" if close
+                else "")
              + f"; the running configuration, {len(running.splitlines())} lines",
              reads=asked["reads"])
+    if close and not _close_and_wait(run, p, actor, conns_before,
+                                     before[p["units"][0]["sub"]]["collector"]):
+        # The close did not happen: nothing was sent to the device, so its configuration lines
+        # from now on are not Mercury's.
+        rec["config_change"] = False
+        return run.finish("not_closed", rec["collector_close"].get("words_said") or
+                          OUTCOME_WORDS["not_closed"])
     # Each subscription's own record, kept from the first send on (`removal`: whether its
     # removal was sent; `landed`: whether its re-add was read back), so a run that fails
     # part-way still says which receivers it left removed (`_unfinished`).
@@ -915,6 +1169,7 @@ def _remove_each(run: _Run, s, p: dict, gots: dict) -> list:
                 f"subscription {sub}: nothing was sent for it (the removals stopped at "
                 f"subscription {halted})"))
             continue
+        run.rec["device_sent"] = True
         one = _send(s, u["remove"])
         g["sessions"].append({"session": 1, "lines": [run.mask(x) for x in u["remove"]],
                               **{k: one[k] for k in ("sent", "answer", "errors", "lost",
@@ -1075,6 +1330,140 @@ def _collector_asked(u: dict) -> str:
     return f"the collector's sessions on {u['address']} port {u['port']}"
 
 
+def connection_command(dialect: str) -> str:
+    """The device's telemetry connections (C3640), as the reads engine is asked it."""
+    from modules.heal import diagnose as D
+
+    return D.render("telemetry_connection", dialect)
+
+
+def _to_collector(close: dict, rows) -> list:
+    """The rows of *rows* (`diagnose_parse.telemetry_connection`'s) to the collector the step
+    closes a session of: its address and port."""
+    import ipaddress
+
+    address = ipaddress.ip_address(close["address"]).compressed
+    return [r for r in rows or [] if r.get("peer") == address
+            and r.get("port") == close["collector_port"]]
+
+
+def _leaving(close: dict, got: dict) -> list:
+    """The indexes of the device's connections to the collector that read Disconnecting."""
+    return sorted({r["index"] for r in _to_collector(close, (got or {}).get("rows"))
+                   if str(r.get("state") or "").lower() == "disconnecting"})
+
+
+def _connections_found(device: str, close: dict, got: dict) -> dict:
+    """The device's connections to the collector, as a read's found words."""
+    where = close["collector"]
+    if (got or {}).get("state") != "read":
+        return {"state": "cant_tell", "words": (f"{device}'s telemetry connections were not "
+                                                f"read ({(got or {}).get('why')})")}
+    rows = _to_collector(close, got.get("rows"))
+    if not rows:
+        return {"state": "pass", "words": f"{device} holds no telemetry connection to {where}"}
+    return {"state": "pass", "words": "; ".join(
+        f"{device}'s connection {r['index']} to {where} from {r['source']} reads {r['state']}"
+        for r in rows)}
+
+
+def _close_and_wait(run: _Run, p: dict, actor: str, before: dict, sessions: dict) -> bool:
+    """The collector step, holding the device and before any receiver is touched: the close
+    through the helper (`Sources.close`, not a dry run), its receipt kept in the record
+    (``collector_close``: the helper's code, exit code and words, the two ends it closed, when);
+    then the device's connections read until the one that read Disconnecting is gone. False
+    when the helper did not close it (the run stops, nothing sent to the device); True
+    otherwise, a connection still there at the bound said, and the re-subscribe follows (its
+    removals are what released the connection by hand, C2838). *sessions* is the collector's
+    read in the reads before: the close is asked only while it still shows exactly the session
+    the plan named, established and idle; anything else is ``not_closed``, nothing asked."""
+    from modules.heal import collector_close as CC
+    from modules.heal.diagnose_stream import ESTABLISHED, receiving_now
+
+    src, rec, device, close = run.src, run.rec, p["device"], p["close"]
+    pair = f"the session from {close['remote']} to {close['local']}"
+    run.begin("close", f"closing {pair} through the close helper", wait_s=CC.BOUND_S,
+              bound=True)
+    # Idle still, just before the close: the reads before, taken holding the device.
+    same = [s for s in (sessions or {}).get("sessions") or []
+            if s.get("remote") == close["peer"] and int(s.get("rport") or 0) == close["port"]
+            and s.get("state") == ESTABLISHED]
+    if (sessions or {}).get("state") != "read" or len(same) != 1 or \
+            receiving_now(same[0]) is not False:
+        why = ("the collector's sessions were not read before the close"
+               if (sessions or {}).get("state") != "read" else
+               f"the collector no longer holds {pair} established" if not same else
+               f"{pair} received data {int(same[0]['lastrcv_ms']) // 1000} s ago, so it is not "
+               "stale" if receiving_now(same[0]) else
+               f"{pair}'s last receive was not read, so whether it is still stale cannot be told")
+        rec["collector_close"].update(code="not_asked", exit=None, words=why)
+        rec["collector_close"]["words_said"] = run.mask(
+            f"{pair} was not closed: {why}. Nothing was sent to {device}")
+        run.step("close", "refused", f"{pair} was not closed: {why}; the close helper was not "
+                                     f"asked, and nothing is sent to {device}")
+        _record(run.network, rec)
+        return False
+    got = src.close(close["peer"], close["port"], dry_run=False, run_id=rec["id"]) or {}
+    receipt = {k: got.get(k) for k in ("ok", "code", "exit", "words", "tuple", "at")}
+    rec["collector_close"].update(receipt)
+    closed = got.get("ok") is True and got.get("code") == "closed"
+    said = (f"the close helper answered {got.get('code') or 'nothing'} (exit "
+            f"{got.get('exit')}): {got.get('words') or 'no words'}")
+    if not closed:
+        rec["collector_close"]["words_said"] = run.mask(
+            f"{pair} was not closed: {said}. Nothing was sent to {device}")
+        run.step("close", "refused" if got.get("exit") in (None, 0) else "failed",
+                 f"{pair} was not closed: {said}; nothing is sent to {device}")
+        _record(run.network, rec)
+        return False
+    moved = (got.get("tuple") or {}) != {"local": close["local"], "peer": close["remote"]}
+    run.step("close", "ok", f"closed {pair}, read back gone by the helper ({said})"
+             + (f"; the helper names the session {got.get('tuple')}" if moved else ""))
+    _record(run.network, rec)
+    leaving = _leaving(close, before)
+    if (before or {}).get("state") != "read":
+        run.step("gone", "unknown", (f"{device}'s connections were not read before "
+                                     f"({(before or {}).get('why')}), so its connection going "
+                                     "cannot be told; the re-subscribe follows"))
+        return True
+    if not leaving:
+        run.step("gone", "ok", (f"{device} held no Disconnecting connection to "
+                                f"{close['collector']} before the close: nothing to wait for"))
+        return True
+    run.part["step"] = "gone"
+    start = src.clock()
+    deadline = start + GONE_BOUND_S
+    step = run.begin("gone", (f"reading {device}'s telemetry connections every {GONE_POLL_S} s "
+                              f"until connection {_and(map(str, leaving))} is gone, for at "
+                              f"most {GONE_BOUND_S} s ({GONE_WHY})"),
+                     wait_s=GONE_BOUND_S, bound=True, reads=[])
+    while True:
+        now = src.connections(device, actor, p["dialect"])
+        found = _connections_found(device, close, now)
+        still = ([r["index"] for r in _to_collector(close, now.get("rows")) if r["index"] in
+                  leaving] if now.get("state") == "read" else None)
+        run.read(step, connection_command(p["dialect"]), now,
+                 dict(found, state=("pass" if still == [] else "cant_tell" if still is None
+                                    else "waiting")), check="device")
+        if still == [] or src.clock() >= deadline:
+            break
+        _record(run.network, rec)
+        _moved()
+        src.sleep(min(GONE_POLL_S, max(0.0, deadline - src.clock())))
+    took = round(src.clock() - start)
+    if still == []:
+        run.step("gone", "ok", f"{device}'s connection {_and(map(str, leaving))} to "
+                               f"{close['collector']} is gone ({took} s); {found['words']}",
+                 took_s=took)
+    else:
+        run.step("gone", "unknown" if still is None else "failed", (
+            f"{device}'s connection {_and(map(str, leaving))} to {close['collector']} "
+            + ("could not be read" if still is None else "is still there")
+            + f" after {took} s ({found['words']}); the re-subscribe follows, whose removals "
+              "release it"), took_s=took)
+    return True
+
+
 def _stream_asked(sub: str) -> str:
     """What (b)'s read asks, as the run's record names it: Prometheus, no device."""
     return f"Prometheus: subscription {sub}'s series"
@@ -1138,6 +1527,7 @@ def put_back(run: _Run, s, p: dict, u: dict, got: dict) -> tuple:
     device, sub = p["device"], u["sub"]
     landed, after, why = False, None, ""
     for attempt in (1, 2):
+        run.rec["device_sent"] = True
         two = _send(s, u["readd"])
         got["sessions"].append({"session": 2, "attempt": attempt,
                                 "lines": [run.mask(x) for x in u["readd"]],
@@ -1313,10 +1703,12 @@ def _collector_check(device: str, u: dict, was: dict, now: dict) -> tuple:
 
 def start(network: str, device: str, subs, *, actor: str, actor_verified: str, person: bool,
           confirmed: dict, program: str = "", previewed: str = "", reason: str = "",
-          readd: bool = False, fixit=None) -> dict:
+          readd: bool = False, collector: bool = False, previewed_close: str = "",
+          fixit=None) -> dict:
     """Refuse now (``{"refused": why}``, nothing sent) or start the run as a job: ``{"job",
     "run"}``. *confirmed* and *program* are the hashes the card carried (each subscription's,
-    and the selection's; `refusal`); *fixit* the incident its confirm was pressed for, kept in
+    and the selection's; `refusal`), *collector* the collector step and *previewed_close* the
+    session the card drew for it; *fixit* the incident its confirm was pressed for, kept in
     the run's record (`apply`). *actor_verified* and *person* are the request's own
     (`person_refusal`), read there once; the job is started by the one job starter (`capture_job.start`), which carries
     the request's verified identity into its thread (`identity.carried`), so the reads the run
@@ -1326,8 +1718,10 @@ def start(network: str, device: str, subs, *, actor: str, actor_verified: str, p
     why = person_refusal(actor, actor_verified, person)
     if why:
         return {"refused": why, "not_a_person": True}
-    p = plan(network, device, subs, readd=readd)
-    why = refusal(p, confirmed, reason, readd, program=program, previewed=previewed)
+    collector = collector is True and not readd
+    p = plan(network, device, subs, readd=readd, collector=collector)
+    why = refusal(p, confirmed, reason, readd, program=program, previewed=previewed,
+                  previewed_close=previewed_close)
     if why:
         return {"refused": why}
     run_id = reads.new_id()
@@ -1338,6 +1732,8 @@ def start(network: str, device: str, subs, *, actor: str, actor_verified: str, p
                                                          person=person, confirmed=confirmed,
                                                          program=program, previewed=previewed,
                                                          reason=reason, readd=readd,
+                                                         collector=collector,
+                                                         previewed_close=previewed_close,
                                                          run_id=run_id, fixit=fixit)["id"]},
                             kind="telemetry re-subscribe", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER,

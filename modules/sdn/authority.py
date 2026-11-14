@@ -39,6 +39,8 @@ DIRECT = {
     # to the device their address names (from its Needs attention row).
     "resubscribe_v2.confirm": ("view", "name"),
     "resubscribe_v2.readd": ("view", "name"),
+    # C3078: the re-subscribe with the collector step, the same device sends.
+    "resubscribe_v2.close_confirm": ("view", "name"),
     "onboard_v2.verify": ("view", "name"),
     # Records what the device holds, or what Mercury will send it (its golden and intent).
     "device_v2.capture_confirm": ("view", "name"),

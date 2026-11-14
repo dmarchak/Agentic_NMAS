@@ -294,6 +294,10 @@ TEMPLATES = {
     # IOS device intent declares no subscription, so the plan never sends them there.
     "telemetry_brief": {"*": "show telemetry ietf subscription all"},
     "telemetry_receiver": {"*": "show telemetry ietf subscription {sub} receiver"},
+    # The device's telemetry connections (C3640): IOS-XE 17's form, the operator's of
+    # 2026-11-14 ("show telemetry connection all" is invalid there). The stream runbook asks it
+    # only of an IOS-XE device (`diagnose_stream.CONNECTION_DIALECTS`); the form is IOS-XE's.
+    "telemetry_connection": {"*": "show telemetry internal connection"},
 }
 #: The kind a template's answer is parsed as (an IPv6 form is its IPv4 kind's twin).
 PARSE_KIND = {"link_ping6": "link_ping", "bgp_summary6": "bgp_summary",
@@ -328,7 +332,8 @@ READ_WORDS = {
     "nd": "the next hop resolved (IPv6 neighbours)",
     "mac": "where the next hop's MAC is learned", "stp": "that port's spanning-tree state",
     "telemetry_brief": "the device's telemetry subscriptions and their states",
-    "telemetry_receiver": "a subscription's receiver as the device holds it"}
+    "telemetry_receiver": "a subscription's receiver as the device holds it",
+    "telemetry_connection": "the device's telemetry connections and their states"}
 _DIALECT = {"cisco_iosxe": "cisco_iosxe", "cisco_xe": "cisco_iosxe", "cisco_ios": "cisco_ios"}
 
 

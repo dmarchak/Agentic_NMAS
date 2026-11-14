@@ -1332,12 +1332,14 @@ class TestTheDeclarations:
         from modules.invalidation import DECLARED
         from modules.operation_stages import HISTORY, STAGES
         from modules.route_gates import GATES
-        for e in ("resubscribe_v2.confirm", "resubscribe_v2.readd"):
+        for e in ("resubscribe_v2.confirm", "resubscribe_v2.readd",
+                  "resubscribe_v2.close_confirm"):
             assert GATES[e].kind == "confirm", e
             st = STAGES[e]
             assert st.preview == "resubscribe_v2.preview"
             # The field its button carries: the selection's hash, or the re-add's own.
             assert st.hash == {"resubscribe_v2.confirm": "program",
+                               "resubscribe_v2.close_confirm": "program",
                                "resubscribe_v2.readd": "hash"}[e]
             assert st.verify == "modules.heal.resubscribe.verify"
             assert st.rollback == "modules.heal.resubscribe.put_back"
@@ -1346,12 +1348,327 @@ class TestTheDeclarations:
             assert DECLARED[e] == ("privileged",)
         from routes import resubscribe_v2 as RV
         assert set(RV.gates()) == set(RV.stages()) == set(RV.history()) == {
-            "resubscribe_v2.confirm", "resubscribe_v2.readd"}
+            "resubscribe_v2.confirm", "resubscribe_v2.readd", "resubscribe_v2.close_confirm"}
 
     def test_the_manual_names_each_step(self):
         from modules import manual
         assert manual.declared_steps("telemetry-resubscribe")[0] == "plan"
         text = manual.source("telemetry-resubscribe")
         for step in manual.declared_steps("telemetry-resubscribe") + manual.declared_steps(
+                "telemetry-collector-resubscribe") + manual.declared_steps(
                 "telemetry-readd"):
             assert f"`{step}`" in text, step
+
+
+# ── The collector step (C3078): close the collector's stale session, then re-subscribe ─────
+#
+# On real captures: the close helper is the REAL helper (deploy/collector/mercury-collector-
+# close, loaded as tests/test_collector_close.py loads it), run in this process where `sudo -n
+# <helper>` would run it, its `ss` the stand-in over the real `ss` listings
+# (tests/fixtures/collector_close/: the one established session from 192.0.2.6:56221 to
+# 192.0.2.10:57000). The collector's sessions as the operation reads them are that session,
+# idle for 2,130 s (r7's measured idle on the NMAS host, 2026-11-14), then, after the close, the
+# device's new one (`NEW`). The device's connections are r7's TYPED line (the operator's read,
+# 2026-11-14; tests/fixtures/diagnose/README.md), and after the close the same line with its
+# index written 497 and its state Connecting (the operator's receiver read's word): 496 gone.
+
+IDLE = ("192.0.2.6", 56221, "ESTABLISHED", 2_130_000)
+CONNECTIONS = capture("r7__show_telemetry_internal_connection.typed.txt")
+GONE = CONNECTIONS.replace("496 ", "497 ").replace("Disconnecting", "Connecting")
+
+
+def connections_read(text):
+    from modules.heal import diagnose_parse as P
+    got = P.parse("telemetry_connection", text)
+    assert got["state"] == "parsed", got
+    return {"state": "read", "rows": got["facts"]["connections"], "why": "", "run": ""}
+
+
+def helper_world(tmp_path, *, closes=True, peers=None):
+    """``(m, close)``: the real helper installed in *tmp_path* and the operation's one request
+    to it, `collector_close.request` with the helper where sudo would run it."""
+    import contextlib
+    import io
+    import time
+    from unittest import mock
+
+    from modules.heal import collector_close as C
+    from tests import test_collector_close as H
+
+    m = H.load(tmp_path, **({"peers": peers} if peers is not None else {}))
+    m.now = time.time
+    m.run.closes = closes
+
+    def run(argv, timeout):
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            code = m.main([])
+        return code, printed.getvalue(), ""
+
+    def close(peer, port, *, dry_run, run_id):
+        with mock.patch.object(C, "HELPER", H.SCRIPT), \
+                mock.patch.object(C, "CONFIG", m.CONFIG_PATH):
+            return C.request(peer, port, dry_run=dry_run, run_id=run_id, run=run)
+    return m, close
+
+
+class CloseSrc(Src):
+    """Src with the collector step's two seams: the helper's request, and the device's
+    connections. Before a close the collector holds *before* and the device reads *conns*;
+    after it, *after* and *gone*."""
+
+    def __init__(self, close, before=IDLE, after=NEW, conns=CONNECTIONS, gone=GONE, **kw):
+        super().__init__(**kw)
+        self._close, self.closed, self.asked = close, 0, []
+        self.collector = (lambda a, p, s: coll(after) if self.closed else coll(*(
+            [before] if before else [])))
+        self._conns, self._gone = conns, gone
+
+    def close(self, peer, port, *, dry_run, run_id):
+        self.asked.append({"peer": peer, "port": port, "dry_run": dry_run,
+                           "batches": len(self.box.batches)})
+        got = self._close(peer, port, dry_run=dry_run, run_id=run_id)
+        if not dry_run and got.get("code") == "closed":
+            self.closed += 1
+        return got
+
+    def connections(self, host, actor, dialect):
+        return connections_read(self._gone if self.closed else self._conns)
+
+
+def closing(src, subs=("101", "102"), **over):
+    """The re-subscribe with the collector step, confirmed by the hashes its card carries."""
+    from modules.heal import resubscribe as R
+    p = R.plan(NET, "r2", list(subs), collector=True, sources=src)
+    assert p["ok"], p["refusals"]
+    kw = dict(actor=ACTOR, actor_verified="access", person=True,
+              confirmed={u["sub"]: u["hash"] for u in p["units"]}, program=p["hash"],
+              previewed=",".join(subs), reason=REASON, collector=True,
+              previewed_close=p["close"]["remote"], sources=src)
+    kw.update(over)
+    return R.apply(NET, "r2", list(subs), **kw)
+
+
+class TestTheCollectorStep:
+    def test_its_preview_names_the_one_session_by_the_helpers_dry_run_and_closes_nothing(
+            self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        p = R.plan(NET, "r2", ["101", "102"], collector=True, sources=src)
+        assert p["ok"], p["refusals"]
+        c = p["close"]
+        assert (c["peer"], c["port"], c["local"], c["remote"], c["quiet_s"]) == (
+            "192.0.2.6", 56221, "192.0.2.10:57000", "192.0.2.6:56221", 2130)
+        assert c["dry_run"]["code"] == "would_close" and c["dry_run"]["exit"] == 0
+        assert c["dry_run"]["words"].startswith("dry run: would close the one established "
+                                                "session from 192.0.2.6:56221 to "
+                                                "192.0.2.10:57000")
+        assert not m.run.closes_sent(), "a dry run closes nothing"
+        assert src.box.batches == [] and src.box.opened == 0, "nothing reaches the device"
+        assert p["words"] == ("close the collector's stale session for r2, then re-subscribe "
+                              "its telemetry subscriptions 101 and 102")
+        # The session is in the selection's hash: the same program without it is another.
+        plain = R.plan(NET, "r2", ["101", "102"], sources=src)
+        assert plain["program"] == p["program"] and plain["hash"] != p["hash"]
+        assert p["hash"] == R.program_hash(p["units"], close=c)
+
+    @pytest.mark.parametrize("before, words", [
+        (None, "holds no established session from r2 on 10.255.1.10 port 57000: there is "
+               "nothing to close"),
+        (("192.0.2.6", 56221, "ESTABLISHED", 287), "received data 0 s ago: it carries data"),
+        (("192.0.2.6", 56221, "ESTABLISHED", None), "has no last receive read"),
+    ], ids=["no session", "receiving", "last receive unread"])
+    def test_a_session_it_cannot_call_stale_is_never_closed(self, lab, tmp_path, before,
+                                                            words):
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close, before=before)
+        p = R.plan(NET, "r2", ["101", "102"], collector=True, sources=src)
+        assert not p["ok"] and words in p["refusals"][0], p["refusals"]
+        assert src.asked == [] and not m.run.closes_sent()
+
+    def test_two_idle_sessions_are_refused_naming_both(self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        _m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        src.collector = lambda a, p, s: coll(IDLE, ("192.0.2.6", 56300, "ESTABLISHED", 9000000))
+        p = R.plan(NET, "r2", ["101"], collector=True, sources=src)
+        assert not p["ok"] and ("2 idle sessions from r2 on 10.255.1.10 port 57000 "
+                                "(192.0.2.6 port 56221 and 192.0.2.6 port 56300)") in \
+            p["refusals"][0]
+
+    def test_the_helpers_own_refusal_refuses_the_preview_with_its_code_and_exit(
+            self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        _m, close = helper_world(tmp_path, peers=("192.0.2.7",))
+        p = R.plan(NET, "r2", ["101"], collector=True, sources=CloseSrc(close))
+        assert not p["ok"]
+        assert "the close helper's dry run for the session from 192.0.2.6 port 56221 " \
+               "answered refused_peer (exit 32)" in p["refusals"][0], p["refusals"]
+
+    @pytest.mark.parametrize("receiver, family", [
+        ("receiver ip address 2001:db8::10 57000 protocol grpc-tcp", 6),
+        ("receiver ip address 192.0.2.10 57000 protocol grpc-tcp", 4)])
+    def test_an_ipv6_collector_is_refused_by_name_beside_ipv4(self, lab, tmp_path, receiver,
+                                                             family):
+        """C3118: the helper serves IPv4 only, said by name; the IPv4 control is offered."""
+        from modules.heal import resubscribe as R
+
+        def edit(intents):
+            for s in intents["r2"]["telemetry"]:
+                s["settings"] = [receiver if ln.startswith("receiver ") else ln
+                                 for ln in s["settings"]]
+        _m, close = helper_world(tmp_path)
+        p = R.plan(NET, "r2", ["101"], collector=True,
+                   sources=CloseSrc(close, intent_edit=edit))
+        if family == 6:
+            assert not p["ok"] and "is an IPv6 address, and the close helper serves IPv4 " \
+                                   "only (C3118)" in p["refusals"][0], p["refusals"]
+        else:
+            assert p["ok"], p["refusals"]
+
+    def test_it_closes_first_then_waits_for_the_connection_then_re_subscribes(self, lab,
+                                                                              tmp_path):
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        rec = closing(src)
+        assert rec["outcome"] == "resubscribed", (rec["why"], rec["steps"])
+        assert (rec["key"], rec["collector_step"]) == (R.COLLECTOR_KEY, True)
+        # The close, the one real request, before anything reached the device.
+        real = [a for a in src.asked if not a["dry_run"]]
+        assert real == [{"peer": "192.0.2.6", "port": 56221, "dry_run": False, "batches": 0}]
+        assert len(m.run.closes_sent()) == 1
+        receipt = stored(rec)["collector_close"]
+        assert (receipt["code"], receipt["exit"], receipt["ok"]) == ("closed", 0, True)
+        assert receipt["words"] == m.journalled[-1]["words"]
+        assert receipt["tuple"] == {"local": "192.0.2.10:57000", "peer": "192.0.2.6:56221"}
+        assert receipt["session"] == {"local": "192.0.2.10:57000", "remote": "192.0.2.6:56221"}
+        assert receipt["previewed"]["code"] == "would_close"
+        steps = [s["step"] for s in rec["steps"]]
+        assert steps.index("before") < steps.index("close") < steps.index("gone") < \
+            steps.index("remove")
+        gone = next(s for s in rec["steps"] if s["step"] == "gone")
+        assert gone["result"] == "ok" and "connection 496" in gone["words"] and \
+            gone["took_s"] == 0
+        assert any(r["command"] == "show telemetry internal connection"
+                   for r in gone.get("reads") or []), gone
+        # Then the re-subscribe, as without the step: every removal, then every re-add.
+        assert [b[2].strip() for b in src.box.batches] == [
+            "no " + LINE, "no " + LINE, LINE, LINE]
+        assert rec["hash"] == R.run_hash(R.plan(NET, "r2", ["101", "102"], sources=src)[
+            "units"], REASON, close=R.plan(NET, "r2", ["101", "102"], collector=True,
+                                            sources=CloseSrc(helper_world(tmp_path / "2")[1]))
+            ["close"])
+
+    def test_a_close_the_helper_did_not_make_stops_the_run_with_nothing_sent(self, lab,
+                                                                             tmp_path):
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path, closes=False)
+        src = CloseSrc(close)
+        rec = closing(src)
+        assert rec["outcome"] == "not_closed" and rec["state"] == "failed", rec["why"]
+        assert src.box.batches == [], "nothing is sent to the device"
+        kept = stored(rec)
+        assert kept["config_change"] is False
+        assert kept["collector_close"]["code"] != "closed" and kept["collector_close"]["words"]
+        assert "was not closed: the close helper answered" in rec["why"]
+        assert "Nothing was sent to r2" in rec["why"]
+        step = next(s for s in rec["steps"] if s["step"] == "close")
+        assert step["result"] in ("failed", "refused") and kept["collector_close"]["exit"] != 0
+        assert R.OUTCOME_WORDS["not_closed"] in [s["words"] for s in rec["steps"]
+                                                 if s["step"] == "record"]
+
+    def test_a_connection_still_there_at_the_bound_is_said_and_the_re_subscribe_follows(
+            self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        _m, close = helper_world(tmp_path)
+        src = CloseSrc(close, gone=CONNECTIONS)
+        rec = closing(src)
+        gone = next(s for s in rec["steps"] if s["step"] == "gone")
+        assert gone["result"] == "failed" and "is still there after 60 s" in gone["words"]
+        assert gone["took_s"] == R.GONE_BOUND_S
+        assert R.GONE_POLL_S in src.clock.slept
+        assert len(src.box.batches) == 4 and rec["outcome"] == "resubscribed"
+
+    def test_a_session_moved_since_the_preview_is_refused_naming_both(self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        _m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        p = R.plan(NET, "r2", ["101"], collector=True, sources=src)
+        why = R.refusal(p, {u["sub"]: u["hash"] for u in p["units"]}, REASON,
+                        program="0" * 16, previewed_close="192.0.2.6:56000")
+        assert why == ("the collector's session is not the one previewed: you confirmed "
+                       "closing the session from 192.0.2.6:56000 (program 0000000000000000), "
+                       "and the one the collector holds now is from 192.0.2.6:56221 to "
+                       f"192.0.2.10:57000 (program {p['hash']}). Nothing was sent; preview "
+                       "again")
+        rec = closing(src, ("101",), program="0" * 16, previewed_close="192.0.2.6:56000")
+        assert rec["outcome"] == "refused" and src.box.batches == [] and not [
+            a for a in src.asked if not a["dry_run"]]
+
+    def test_a_readd_takes_no_collector_step(self, lab, tmp_path):
+        from modules.heal import resubscribe as R
+        _m, close = helper_world(tmp_path)
+        p = R.plan(NET, "r2", ["101"], readd=True, collector=True, sources=CloseSrc(close))
+        assert not p["ok"] and "takes no collector step" in p["refusals"][0]
+
+    @pytest.mark.parametrize("confirm", ["the preview's own", "the new session named"])
+    def test_a_session_that_really_moved_is_refused_by_the_hash_naming_both(
+            self, lab, tmp_path, confirm):
+        """The device dialled again on another port between the preview and the confirm: the
+        collector's sessions and the helper's `ss` both hold 192.0.2.6:56300 (the captured row
+        with its port written 56300). Confirmed with the preview's REAL hash, and either the
+        previewed session or (a forged form) the new one: refused by the hash, both sessions
+        named, no close asked."""
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        p = R.plan(NET, "r2", ["101"], collector=True, sources=src)
+        assert p["ok"] and p["close"]["remote"] == "192.0.2.6:56221"
+        m.run.table4 = [ln.replace("192.0.2.6:56221", "192.0.2.6:56300") for ln in m.run.table4]
+        m.run.table = [ln.replace("192.0.2.6:56221", "192.0.2.6:56300") for ln in m.run.table]
+        src.collector = lambda a, port, s: coll(("192.0.2.6", 56300, "ESTABLISHED", 2_130_000))
+        named = "192.0.2.6:56221" if confirm == "the preview's own" else "192.0.2.6:56300"
+        rec = closing(src, ("101",), confirmed={u["sub"]: u["hash"] for u in p["units"]},
+                      program=p["hash"], previewed_close=named)
+        assert rec["outcome"] == "refused", rec["why"]
+        assert "the collector's session is not the one previewed" in rec["why"]
+        assert f"(program {p['hash']})" in rec["why"] and "192.0.2.6:56300" in rec["why"]
+        assert not [a for a in src.asked if not a["dry_run"]] and not m.run.closes_sent()
+        assert src.box.batches == []
+
+    def test_a_session_receiving_again_before_the_close_is_never_closed(self, lab, tmp_path):
+        """Idle at the preview, receiving by the reads before (taken holding the device): the
+        close helper is not asked, the run is `not_closed`, nothing sent."""
+        from modules.heal import resubscribe as R
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        live = ("192.0.2.6", 56221, "ESTABLISHED", 287)
+        src.collector = seq([coll(IDLE), coll(IDLE), coll(live)])
+        rec = closing(src, ("101",))
+        assert rec["outcome"] == "not_closed", (rec["why"], rec["steps"])
+        assert "received data 0 s ago, so it is not stale" in rec["why"]
+        assert not [a for a in src.asked if not a["dry_run"]] and not m.run.closes_sent()
+        assert src.box.batches == [] and stored(rec)["collector_close"]["code"] == "not_asked"
+        assert R.OUTCOME_WORDS["not_closed"]
+
+    def test_a_failure_before_any_send_says_nothing_was_sent(self, lab, tmp_path):
+        """The wait after the close raises: the run failed, its words keyed on what was sent:
+        nothing was sent to the device, never "it had begun sending"."""
+        _m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        asked = {"n": 0}
+
+        def connections(host, actor, dialect):
+            asked["n"] += 1
+            if asked["n"] > 1:
+                raise RuntimeError("the reads engine broke (a test's own words)")
+            return connections_read(CONNECTIONS)
+        src.connections = connections
+        rec = closing(src, ("101",))
+        assert rec["outcome"] == "failed" and src.box.batches == []
+        assert "failed before anything was sent to r2" in rec["why"]
+        assert "the collector's session was closed" in rec["why"]
+        assert "had begun sending" not in rec["why"]

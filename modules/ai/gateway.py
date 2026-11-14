@@ -172,6 +172,10 @@ MASK_WORDS = {
     "egress_snmp_auth": "an SNMPv3 authentication key",
     "egress_snmp_priv": "an SNMPv3 privacy key",
     "egress_hash": "a password hash",
+    # Show output's own forms (Tier 1's review of the AI's reads, 2026-11-14).
+    "egress_labelled": "a labelled password or key in a device's answer",
+    "egress_fhrp_auth": "a first-hop redundancy authentication string",
+    "egress_isakmp_key": "an ISAKMP pre-shared key",
     "typed_secret": "a word written as a password or secret",
 }
 #: A value masked because Mercury holds it (`redact.known_secret_values`).

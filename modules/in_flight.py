@@ -166,6 +166,8 @@ OPERATION_NAMES = {
     # board H's bounce and clear), named as a person reads them.
     "telemetry re-subscribe": "Re-subscribe telemetry",
     "telemetry receiver re-add": "Re-add the receiver",
+    "telemetry collector close and re-subscribe": "Close the collector's session, then "
+                                                  "re-subscribe",
     "port bounce": "Port bounce", "session clear": "BGP session clear",
 }
 #: The cards whose row is named by the card, never by the hold's operation (`heal.run_card`).

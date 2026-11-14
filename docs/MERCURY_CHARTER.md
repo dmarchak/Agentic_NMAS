@@ -285,11 +285,12 @@ scan of the v2 forms against the lists Mercury holds, with a backlog that only s
 amended them on 2026-11-11).** It is the yardstick for recurring issues and saved fixes now, and
 for the ease-of-use review after the labs.
 
-**The rule the steps rest on** (docs/HEAL_TO_INTENT.md, section 12): No fix runs from AI text.
-The AI may propose one operation from Mercury's catalog, with its parameters; code validates it
-against intent and the guards, and a person approves it by its preview's hash before it runs.
-The AI never composes commands, never runs anything itself, and never retries on its own. A
-saved fix is the operation a person saved from a verified run, never the AI's words.
+**The rule the steps rest on** (docs/HEAL_TO_INTENT.md, section 12; the operator's words,
+2026-11-14): No fix runs from AI text. The AI may propose a plan of catalog operations,
+approved once by a person by hash, executed in order, stopping on the first failure; it never
+composes commands, runs anything itself, or retries on its own; a saved fix is the operation a
+person saved from a verified run. Until the plan engine lands, a proposal is one operation of
+the catalog, a plan of one.
 1. **The notification:** the person sees it in plain words: what, where, and whether it needs
    them.
 2. **The user asks the AI to troubleshoot (Explain).**
@@ -362,6 +363,26 @@ neighbour's static route, for example).
   edits. Nothing is possible ONLY with AI.
 
 This is Stage 8's recorded authority: the agent proposes, never confirms.
+
+**The AI is a senior network engineer using Mercury, not Mercury's admin** (the operator's
+change of approach, 2026-11-14):
+- **It MAY** read anything Mercury can read, investigate with Mercury's read tools, propose
+  catalog operations or a plan of them, draft text for a person to review, and record a
+  missing capability (what it wanted, why, for which incident or question), listed for review.
+- **It may NEVER** change Mercury's settings (self-healing mode, AI on/off, caps, credentials,
+  notifications, roles, templates' approval), approve anything (its own proposals included),
+  run a change or start a job itself, compose a device command, see or type a secret, or
+  exceed the caps.
+- **Its device reads** go through Mercury's reads engine with Mercury's own account, through
+  the same protections as Show commands and more (a read of one of the AI's command families,
+  a positive list, held whole by the allowlist, its arguments
+  checked against golden and intent, the read loop's re-check, every read on History); the
+  read-only account is a hardened choice, offered only when every device in scope holds it and
+  its probe passed.
+- **Its changes:** the AI may propose a plan of catalog operations, approved once by a person
+  by hash, executed in order, stopping on the first failure; it never composes commands, runs
+  anything itself, or retries on its own; a saved fix is the operation a person saved from a
+  verified run (the operator's words, 2026-11-14). Closed loop stays a later phase.
 
 ## New findings
 

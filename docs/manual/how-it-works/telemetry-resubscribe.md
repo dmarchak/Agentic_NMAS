@@ -264,7 +264,7 @@ that was refused, does not hide it.
 7. `verify`: the three checks, as above.
 8. `record`: the outcome, on History.
 
-## Closing the collector's session (not built into the operation yet) {#collector-close}
+## Closing the collector's session {#collector-close}
 
 A stream can stay lost because the collector on Mercury's host still holds the old session:
 established, receiving nothing, while the device's own side reads "Disconnecting". The device
@@ -274,10 +274,51 @@ So the close is one small root-owned helper, `mercury-collector-close`, which Me
 through one sudoers line, with no argument, and which closes nothing but one session from a
 listed device to the collector's own listener.
 
-**What is built, and what is not.** The helper, its install step and a dry run exist. The
-operation above does not use them yet: no screen and no job closes a session, and a stale
-half-open session is still only flagged. Until that is built, the dry run below is the only
-thing that runs the helper, and a dry run closes nothing.
+**What uses it.** One operation, the re-subscribe above with the collector step on (below), its
+button **Close the collector's stale session for <device>, then re-subscribe (<ids>)**. Nothing
+else closes a session, and a stale half-open session found by the plain re-subscribe's verify
+is still only flagged.
+
+### The collector step {#the-collector-step}
+
+![Close the collector's stale session, then re-subscribe: the plan reads the collector's sessions on Mercury's host and the close helper's dry run names the one session it would close, closing nothing; you confirm by the selection's hash, which holds that session's two ends; holding the device, the run reads before, the helper closes the session and reads it back gone, its answer kept as the receipt; a close that did not happen stops the run with nothing sent to the device; the device's connections are read until the one that read Disconnecting is gone; then each receiver is removed and added back and the stream verified, and the run is recorded.](diagrams/telemetry-collector-close.svg)
+
+**When it is the fix.** Mercury's diagnosis of a lost stream names it when it has measured both
+ends of a half-open session: the device's own telemetry connection to the collector reads
+**Disconnecting** (`show telemetry internal connection`, IOS-XE's form), while the collector on
+Mercury's host still holds an established session from that device with nothing received inside
+the stream's 90 s window. Either end not read decides nothing, and says why. AI troubleshooting
+may propose it too, from the same catalog entry; either way you approve it.
+
+**Opening it.** The lost stream's card opens with the step from the incident's proposal, or by
+**Close the collector's stale session first…** on the card, a read that closes nothing. The
+card draws the session the step would close, both ends and ports, as the close helper's dry run
+names it, and how long it has received nothing, above the exact program. It is not offered, and
+says why, when the collector holds no established session from the device (Re-subscribe alone
+is the fix), a session that is receiving data (never closed), a session whose last receive was
+not read, more than one idle session, or an IPv6 collector (the helper serves IPv4 only).
+
+**The confirm** is bound to the selection's hash, which holds the session's two ends with the
+program. If the device dialled again on another port before you confirm, the session is
+another, and the confirm is refused, naming the session you confirmed and the one standing now;
+nothing is closed or sent.
+
+**The steps it adds**, between `before` and `remove` (the others are the re-subscribe's, above):
+
+- `before` also reads the device's telemetry connections, so the run knows which one is to go.
+- `close`: holding the device, Mercury asks the close helper to close that one session. The
+  helper finds it again, closes it and reads it back gone (its answers are below). Its code,
+  exit code and words are the run's receipt, on the step and in the record. Anything but
+  `closed` stops the run there: nothing is sent to the device, and the outcome says "the
+  collector's session was not closed".
+- `gone`: the device's connections are read every 5 s until the one that read Disconnecting is
+  gone, for at most 60 s. That bound is reasoned, not measured yet: the first run's time is kept
+  in its record, and the bound becomes 2.5 times it. Still there at the end, it is said, and the
+  re-subscribe follows: removing the receivers is what released it by hand.
+
+**Undo.** The closed session cannot be put back, and needs no putting back: the device dials a
+new one, which the verify reads as the collector's new session. The receivers are put back as
+the re-subscribe puts them back.
 
 ### Who installs it
 

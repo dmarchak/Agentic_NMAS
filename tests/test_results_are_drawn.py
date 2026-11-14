@@ -203,6 +203,11 @@ PAGE_RECORD = {
     "resubscribe_v2.readd": ("templates/v2/_resubscribe.html",
                              ('data-holds-live="review"', "c.record", "s.verify", "r.why"),
                              "device_v2.history"),
+    # C3078: the re-subscribe with the collector step, answered on the same card, its close
+    # helper's receipt beside the outcome.
+    "resubscribe_v2.close_confirm": ("templates/v2/_resubscribe.html",
+                                     ('data-holds-live="review"', "c.record", "s.verify",
+                                      "r.why", "r.collector_close"), "device_v2.history"),
     # Board H, artboard E (H9): a self-healing proposal approved on its Needs attention card,
     # its answer in place (the job it started, the hash it was bound to); the heal's steps and
     # outcome read on the device's History (`history_sources.heal`).

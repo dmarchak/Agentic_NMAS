@@ -229,7 +229,7 @@ It holds every record the tool keeps about the device:
 | self-healing | a decision, heal or action on it, with Open the card and Open the incident |
 | diagnosis | a diagnosis that read it |
 | fault drill | a fault drill declared or ended on it |
-| AI read | a read an AI analysis or troubleshoot asked of it, signed in as the read-only account |
+| AI read | a read an AI analysis or troubleshoot asked of it, with whom it signed in as: Mercury's account by default, or the read-only account under Settings › AI's hardened choice |
 
 A record that could not be read is said above the timeline: the timeline lacks it, which is
 not the same as nothing having happened. On a network with no repository yet, the tab says so

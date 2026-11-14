@@ -18,8 +18,8 @@ by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-
 
 ## AI troubleshooting {#ai-troubleshooting}
 
-The second card, **AI troubleshooting**, holds the two settings an incident's AI
-troubleshooting section is held to, for every network:
+The second card, **AI troubleshooting**, holds the three settings the AI's investigations are
+held to, for every network:
 
 - **AI mode**: **Manual** (the default), in which an AI troubleshoot runs only when a person
   presses it on an incident's page and never on its own, or **Off**, in which none is offered and
@@ -28,6 +28,16 @@ troubleshooting section is held to, for every network:
 - **AI spend per incident**: $1.00 by default. What one incident's AI calls have cost plus the
   next attempt's worst case is compared with it, and past it Retry is refused, naming both. It
   is a positive amount; there is no "no cap", and Mercury never raises it.
+- **AI device reads sign in as**: **Mercury's account** (the default), in which the reads the AI
+  asks of a device sign in exactly as Show commands does, through the same protections (a read
+  of one of the AI's command families, held whole by Mercury's allowlist, its addresses and
+  interfaces checked against the device's
+  golden and intent, each read on History › Reads with whom it signed in as); or **The read-only
+  account (hardened)**, in which they sign in as the device's read-only account
+  ([Credentials](credentials#read-account)) and a device without one is refused by name. The
+  read-only account is offered only while every device holds it and its newest probe passed:
+  otherwise it is left out of the choices and the note names the devices that do not, and a
+  Save that sends it anyway is refused, naming them, with nothing changed.
 
 **Save** writes what you changed, recorded with who, when, and each value's old and new, and
 drawn on History. How the section uses them: [AI troubleshooting](fixit-troubleshoot#the-cap).

@@ -249,8 +249,12 @@ def save(kind: str, value: str, username: str, password: str, secret: str, *, ac
 READ_RUNS = ("the AI read set's show commands and bounded ping and traceroute, at a low "
              "privilege level; its device-side shape (a privilege level or a CLI view) is "
              "measured on an IOS and an IOS-XE device before any device holds it")
-READ_USED_BY = ("the AI analysis's reads (required: a device without one is refused by name); "
-                "diagnosis, collection and drift reads may move to it later")
+#: Used by (the operator's change of approach, 2026-11-14, C3661: "Remove the requirement that
+#: AI device reads use the read-only account"): the AI's reads only under the hardened choice.
+READ_USED_BY = ("the AI's device reads, only when Settings › Installation › AI's \"AI device "
+                "reads sign in as\" is the read-only account (hardened; offered once every "
+                "device holds it and its probe passed): by default they sign in as Mercury's "
+                "account, as Show commands does; and the read-only account probe")
 
 
 def _read_rows(name: str) -> list:

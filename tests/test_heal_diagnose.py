@@ -277,8 +277,9 @@ class TestThePipeRule:
             assert _cli_rule(kind, command) == "", command
             assert "|" not in command and not command.startswith("clear"), command
             seen += 1
-        # The floor: every template, both dialects (C2828 added the stream runbook's two).
-        assert seen == 2 * 37
+        # The floor: every template, both dialects (C2828 added the stream runbook's two, C3640
+        # the device's connections).
+        assert seen == 2 * 38
 
     def test_a_diagnosis_has_no_extras_and_never_clears_counters(self):
         from modules.nsot import reads

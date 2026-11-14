@@ -30,7 +30,8 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
 5. `analyse`: when the network's AI analysis of a can't-fix is on (a background AI feature,
    off by default, turned on in Settings › AI), it starts it. Where the network's device state
    class is also on, the analysis may ask Mercury for up to 3 read-only reads: Mercury checks
-   each against the AI read set, runs the ones it allows as the device's read-only account,
+   each against the AI read set, runs the ones it allows through its reads engine (as
+   Mercury's account, or the read-only account under Settings › AI's hardened choice),
    logs each answer's size and hash before anything is sent, and asks a second call with the
    answers, masked. Each read is a row on History beside the two calls, and the incident's step
    log says what was asked, refused and run. With the class off, the analysis is one call and

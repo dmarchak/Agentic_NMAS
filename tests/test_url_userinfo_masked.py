@@ -223,6 +223,8 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/ai/router_reads.py:_is_netmask": "tells an IPv4 netmask (or wildcard) from an "
+        "address in an AI read's argument slot; it returns a bool and masks nothing (C3661)",
     "modules/ai/change_record.py:_masked": "asks whether `redact.redact_egress` would change a "
         "program line, to leave that line out of the shape sent whole; it returns a bool and "
         "masks nothing itself (16.11 item 3)",

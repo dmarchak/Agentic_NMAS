@@ -119,15 +119,24 @@ offered inside a no-change window. See
 ## The read-only account {#read-account}
 
 The **Read-only account** card, below the profiles, holds a second account per device, for
-reads only. **Every AI read signs in with it**, never with the deploy account, and never
-escalates (no `enable`): the AI analysis's reads run at the account's own low privilege, so the
-device limits what it may run as well as Mercury. A device's read-only account is looked for
+reads only. **The AI's device reads sign in with it only under the hardened choice**: Settings ›
+Installation › AI, the AI troubleshooting card's **AI device reads sign in as**, set to the
+read-only account. By default they sign in as **Mercury's account**, exactly as Show commands
+does, through the same protections and more (a read of one of the AI's command families,
+held whole by the allowlist, its addresses and
+interfaces checked against the device's golden and intent, the read loop's re-check, each read
+on History › Reads with whom it signed in as). The read-only choice is offered only while every
+device holds the account and its newest probe passed, and its Save names the devices that do
+not. Under it, the AI's reads never escalate (no `enable`): they run at the account's own low
+privilege, so the device limits what they may run as well as Mercury. A device's read-only
+account is looked for
 in the profiles' order (platform, kind, site, then default): the first profile that carries
 one gives it. A device's own login and its network's credential list carry no read-only
 account, and neither does a local inventory's devices file: a local inventory's device takes
 its read-only account from the profiles by its kind, then default, as a NetBox one does (a
-local inventory names no NetBox platform or site). **A device none covers is refused by name**, "no read-only account for <device>",
-and nothing is read from it; the deploy account is never used instead.
+local inventory names no NetBox platform or site). **Under the read-only choice, a device none
+covers is refused by name**, "no read-only account for <device>", and nothing is read from it;
+the deploy account is never used instead.
 
 Each profile's row names its **deploy account** (used by device-changing operations) and its
 **read-only account**: the account's name, when its password was set and by whom, never the

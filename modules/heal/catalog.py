@@ -23,7 +23,10 @@ before it runs).
 
 **Nothing here sends.** `preview` validates a named operation and its parameters and asks the
 operation's plan, which reads Mercury's records alone (the inventory, committed intent): it
-opens no session, holds no device, starts no job and writes nothing. From its answer to a run
+opens no session, holds no device, starts no job and writes nothing to a store. The collector
+step's preview here names the step and never runs the close helper, not even its dry run: a
+proposal causes nothing on Mercury's host (the operator, 2026-11-14); the dry run runs only on
+the person's own card preview, whose hash the confirm is bound to. From its answer to a run
 is the confirm route's work: the previewed hash, sent back by a verified person.
 
 **Who calls it:** the one door an AI answer comes through (`modules/ai/fix_proposal.py`), which
@@ -33,10 +36,13 @@ incident names and to the heal guards before this module's preview). This module
 of where a proposal came from, and holds no reference to the AI modules or to the fix-it path's
 records (section 12's scan of `modules/heal/`, tests/test_heal_analysis_never_read.py).
 
-Today the catalog holds two operations, each Re-subscribe's (C2838): the telemetry
-Re-subscribe, and its one-step Re-add the receiver, which adds back a receiver a run left
-removed (`resubscribe.apply` with ``readd``; its card's own button posts it). Both run the same
-function, and each is previewed by the same card, bound to its own hash.
+Today the catalog holds three operations, each Re-subscribe's (C2838): the telemetry
+Re-subscribe; its one-step Re-add the receiver, which adds back a receiver a run left
+removed (`resubscribe.apply` with ``readd``; its card's own button posts it); and the
+re-subscribe with the collector step (C3078, `resubscribe.apply` with ``collector``: "Close
+the collector's stale session for <device>, then re-subscribe"), whose proposal never runs the close
+helper (its dry run runs on the person's own card preview). All run the same function, and each is previewed by the
+same card, bound to its own hash.
 """
 
 import logging
@@ -160,13 +166,32 @@ def _readd_plan(network: str, params: dict, sources=None) -> dict:
                             sources=sources)
 
 
+def _collector_plan(network: str, params: dict, sources=None) -> dict:
+    """The re-subscribe with the collector step, as a PROPOSAL previews it: the receivers from
+    committed intent (`resubscribe.plan`), and the step named, never its session. **A proposal
+    causes nothing on Mercury's host** (the operator, 2026-11-14): the close helper's dry run,
+    which names the session the step would close, runs only on the person's own card preview
+    (their click), and the confirm is bound to that preview's hash, never to this one."""
+    p = resubscribe.plan(network, params["device"], list(params["subscriptions"]),
+                         sources=sources)
+    return dict(p, collector_step="named on the card's own preview: the close helper's dry "
+                                  "run runs when you open it, never on a proposal")
+
+
 def _resubscribe_drawn(p: dict) -> dict:
     """What Re-subscribe's card draws of a plan (`routes/resubscribe_v2.py`, `_masked`: no
-    inventory row, no intent, every line masked; ``hash`` the selection's)."""
+    inventory row, no intent, every line masked; ``hash`` the selection's; ``close`` the
+    collector step's session and its dry run, when it has one)."""
     from modules.redact import redact_text
 
+    close = p.get("close") or {}
     return {"ok": p["ok"], "refusals": [redact_text(x) for x in p["refusals"]],
             "dialect": p["dialect"], "hash": p.get("hash", ""),
+            **({"collector_step": p["collector_step"]} if p.get("collector_step") else {}),
+            "close": ({"local": close["local"], "remote": close["remote"],
+                       "quiet_s": close["quiet_s"],
+                       "dry_run": redact_text(str((close.get("dry_run") or {}).get("words")
+                                                  or ""))} if close else {}),
             "units": [{"sub": u["sub"], "line": redact_text(u["line"]), "hash": u["hash"],
                        "remove": [redact_text(x) for x in u["remove"]],
                        "readd": [redact_text(x) for x in u["readd"]]} for u in p["units"]]}
@@ -205,6 +230,34 @@ CATALOG = {op.key: op for op in (
         drawn=_resubscribe_drawn,
         preview_endpoint="resubscribe_v2.preview",
         confirm_endpoint="resubscribe_v2.readd",
+        runs="modules.heal.resubscribe.apply",
+    ),
+    # C3078: Re-subscribe with the collector step on (one home for the receivers' writes), in
+    # the operator's words. Its words say when it applies, the evidence the diagnosis's
+    # stale-session rule reads (C3111), so a proposer reading them names it there and nowhere
+    # else.
+    Operation(
+        key=resubscribe.COLLECTOR_KEY,
+        words=(resubscribe.COLLECTOR_TITLE.format(device="a device") + ": for a lost stream "
+               "whose device's telemetry connection to the collector reads Disconnecting while "
+               "the collector still holds an established, idle session from it (`show "
+               "telemetry internal connection` on the device; the collector's sessions on "
+               "Mercury's host). Mercury closes that one session through its close helper, "
+               "then removes and re-adds each subscription's receiver and verifies the "
+               "stream"),
+        params=(
+            Param("device", "one name the network's inventory holds (1 to "
+                            f"{NAME_CHARS} printable ASCII characters, no space)",
+                  _device_refusal),
+            Param("subscriptions", f"a list of 1 to {IDS_AT_MOST} subscription ids, each text "
+                                   f"of 1 to {ID_DIGITS} digits, each once, that the device's "
+                                   "committed intent declares, all to one receiver",
+                  _ids_refusal),
+        ),
+        plan=_collector_plan,
+        drawn=_resubscribe_drawn,
+        preview_endpoint="resubscribe_v2.preview",
+        confirm_endpoint="resubscribe_v2.close_confirm",
         runs="modules.heal.resubscribe.apply",
     ),
 )}

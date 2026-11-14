@@ -662,6 +662,25 @@ _EGRESS = (
     # (PBKDF2), $9$ (scrypt), $14$ (the type 5 successor).
     ("egress_hash", re.compile(
         r"()(?<![A-Za-z0-9_$])(\$(?:1|5|8|9|14)\$[^\s'\"<>]+)()")),
+    # Show output's own label forms (the AI's reads' review, 2026-11-14; defence in depth under
+    # the AI's positive allowlist): `Password: x`, `VTP Password: x`, `Preshared key = x`,
+    # `Key-string: x`, a `Username: u  Password: x` pair's password.
+    ("egress_labelled", re.compile(
+        r"(?i)\b((?:password|passwd|secret|pre-?shared[ -]key|key-string|auth(?:entication)?"
+        r"[ -]key)\s*[:=]\s*)" + _VALUE + r"()")),
+    # HSRP's, VRRP's and GLBP's authentication text: `Authentication text, string "x"`,
+    # `Authentication MD5, key-string "x"`, `Authentication text "x"`.
+    # Its value is quoted, or the line's last word (a configuration line's `key-string 7 <x>`
+    # is left to the positional mask, which knows its type number).
+    ("egress_fhrp_auth", re.compile(
+        r"(?im)\b(authentication\b[^\r\n\"]{0,40}\b(?:string|text|key-string)\s*,?\s*)"
+        r"(\"[^\"\r\n]*\"|" + _VALUE[1:-1] + r"(?=[ \t]*$))()")),
+    # `show crypto isakmp key`'s table row: a keyring's name, an address (or prefix), then the
+    # key, the line's last and only token, each column set apart by two spaces or more (a table,
+    # never a YAML list item or a sentence).
+    ("egress_isakmp_key", re.compile(
+        r"(?im)^(\s*[A-Za-z][\w.-]*[ \t]{2,}(?:\d{1,3}(?:\.\d{1,3}){3}|"
+        r"[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7})(?:/\d{1,3})?[ \t]{2,})" + _VALUE + r"([ \t]*)$")),
 )
 
 

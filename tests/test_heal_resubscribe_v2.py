@@ -422,6 +422,117 @@ class TestRemoved:
         assert "r2's receiver for 102 is removed." in html, "102 is still out, and still said"
 
 
+# ── The collector step (C3078): the same card, the step on ──────────────────────────────────
+
+def closing_card(client, tmp_path, **src):
+    """The card asked for with the collector step, its sources the lab's with the REAL close
+    helper where sudo would run it (tests/test_heal_resubscribe.py's `helper_world`)."""
+    from tests.test_heal_resubscribe import CloseSrc, helper_world
+    m, close = helper_world(tmp_path)
+    client.state["src"] = CloseSrc(close, **src)
+    r = client.get(f"{BASE}?list={NET}&subs=101,102&collector=1", headers=HX)
+    return m, r, r.get_data(as_text=True)
+
+
+def close_selection_of(html):
+    m = re.search(r'hx-post="/v2/device/r2/resubscribe/close[^"]*" '
+                  r'hx-vals=\'\{"program": "([0-9a-f]*)"\}\'', html)
+    assert m, "the collector step's confirm button carries no selection hash"
+    return m.group(1)
+
+
+def press_close(client, html, **override):
+    data = {"sub": ["101", "102"], "reason": REASON, "subs": hidden(html, "subs"),
+            "picked": "1", "collector": "1",
+            "program": override.get("program", close_selection_of(html)),
+            "previewed": hidden(html, "previewed"),
+            "close": override.get("close", hidden(html, "close"))}
+    for s in ("101", "102"):
+        data[f"hash::{s}"] = hidden(html, f"hash::{s}")
+    return client.post(f"{BASE}/close?list={NET}", data=data, headers=HX)
+
+
+class TestTheCollectorStep:
+    def test_the_plain_cards_step_button_draws_the_card_with_the_session(self, client,
+                                                                         tmp_path):
+        """Pressed (its hx-get, with the form it includes), the plain card's Close the
+        collector's stale session first… draws the card with the step: the session and its
+        confirm; nothing is closed."""
+        import html as H
+        from tests.test_heal_resubscribe import CloseSrc, helper_world
+        m, close = helper_world(tmp_path)
+        client.state["src"] = CloseSrc(close)
+        _r, html = card(client)
+        got = re.search(r'<button[^>]*hx-get="(/v2/device/r2/resubscribe\?[^"]*collector=1'
+                        r'[^"]*)"[^>]*hx-disabled-elt="this"[^>]*><span class="op-idle">Close '
+                        r"the collector's stale session first…</span><span class=\"op-busy\">"
+                        r"Reading…</span>", html)
+        assert got, "the step is offered, busy on itself"
+        assert 'href="/v2/help/telemetry-resubscribe#the-collector-step"' in html
+        r = client.get(H.unescape(got.group(1)) + "&sub=101&sub=102&subs=101,102&picked=1",
+                       headers=HX)
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200 and hidden(out, "close") == "192.0.2.6:56221"
+        assert close_selection_of(out) != selection_of(html)
+        assert not m.run.closes_sent() and client.state["src"].box.batches == []
+
+    def test_with_the_step_the_card_draws_the_session_the_dry_run_names(self, client,
+                                                                       tmp_path):
+        m, r, html = closing_card(client, tmp_path)
+        assert r.status_code == 200, html
+        assert ("the collector's session from 192.0.2.6:56221 to 192.0.2.10:57000, which "
+                "has received nothing for 2130 s, is closed") in html
+        assert "dry run: would close the one established session from 192.0.2.6:56221" in html
+        assert hidden(html, "close") == "192.0.2.6:56221" and hidden(html, "collector") == "1"
+        assert ("Close the collector's stale session for r2, then re-subscribe (101, 102)"
+                in html)
+        assert not m.run.closes_sent() and client.state["src"].box.batches == []
+
+    def test_pressed_it_closes_then_re_subscribes_and_draws_the_receipt(self, client,
+                                                                        tmp_path):
+        from modules.heal import resubscribe as R
+        from modules.nsot import privileged
+        m, _r, html = closing_card(client, tmp_path)
+        r = press_close(client, html)
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200, out
+        assert "Re-subscribed; the stream is back:" in out
+        assert ('data-close-receipt="closed"' in out
+                and "the close helper answered closed (exit 0)" in out)
+        assert len(m.run.closes_sent()) == 1
+        assert sent(client) == [("101", "remove"), ("102", "remove"), ("101", "add"),
+                                ("102", "add")]
+        run = privileged.runs(NET)["runs"][0]
+        assert run["key"] == R.COLLECTOR_KEY and run["collector_close"]["code"] == "closed"
+
+    def test_a_session_other_than_the_one_drawn_is_refused_in_place(self, client, tmp_path):
+        m, _r, html = closing_card(client, tmp_path)
+        r = press_close(client, html, program="0" * 16, close="192.0.2.6:56000")
+        out = r.get_data(as_text=True)
+        assert r.status_code == 409
+        assert "Not sent:" in out and "the collector&#39;s session is not the one previewed" \
+            in out and "192.0.2.6:56000" in out and "192.0.2.6:56221" in out
+        assert not m.run.closes_sent() and client.state["src"].box.batches == []
+
+    def test_a_step_it_cannot_take_is_said_and_the_plain_re_subscribe_stays(self, client,
+                                                                           tmp_path):
+        from tests.test_heal_resubscribe import NEW, coll
+        m, r, html = closing_card(client, tmp_path, before=None)
+        src = client.state["src"]
+        # No session before; the device's new one once the re-subscribe has sent.
+        src.collector = lambda a, p, s: coll(NEW) if src.box.batches else coll()
+        assert r.status_code == 200
+        assert "The collector step is not offered:" in html and "nothing to close" in html
+        assert "/resubscribe/close" not in html
+        # Re-subscribe alone, pressed: it runs, and closes nothing.
+        r = press(client, html)
+        assert r.status_code == 200 and "Re-subscribed; the stream is back:" in \
+            r.get_data(as_text=True)
+        assert not m.run.closes_sent() and client.state["src"].asked == []
+        assert sent(client) == [("101", "remove"), ("102", "remove"), ("101", "add"),
+                                ("102", "add")]
+
+
 # ── In a real browser: a tick changed draws the card again, and the button sends it ─────────
 
 def test_a_tick_changed_draws_the_card_again_and_the_button_sends_it_in_a_real_browser(client):

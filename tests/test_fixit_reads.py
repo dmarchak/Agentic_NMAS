@@ -74,9 +74,12 @@ def on(monkeypatch):
     monkeypatch.setattr(egress_classes, "classification_marking", lambda network: "")
 
 
-def judged(requests, sc):
+def judged(requests, sc, family=None):
+    """*requests* checked by the fixed shapes' family (`fixit_reads.SHAPES_FAMILY`: the shapes
+    AI troubleshooting asked by until C3661 moved its reads to Mercury's allowlist, kept for the
+    read-only account probe and the diagnosis), or by *family*."""
     from modules.ai import fixit_reads as FR
-    return RL.check(FR.FAMILY, requests, network="Default", scope=sc)
+    return RL.check(family or FR.SHAPES_FAMILY, requests, network="Default", scope=sc)
 
 
 # ── The shapes ──────────────────────────────────────────────────────────────────────────────
@@ -93,10 +96,14 @@ class TestTheShapes:
         assert D.render("telemetry_brief", "cisco_iosxe") == "show telemetry ietf subscription all"
         assert D.render("telemetry_receiver", "cisco_iosxe", sub="101") == \
             "show telemetry ietf subscription 101 receiver"
+        # C3640: the device's connections, IOS-XE 17's form (the operator, 2026-11-14).
+        assert ops["telemetry_connection"].sends == ("show telemetry internal connection",)
+        assert D.render("telemetry_connection", "cisco_iosxe") == \
+            "show telemetry internal connection"
         for name in R.TELEMETRY:
-            op = FR.FAMILY.operation(name)
-            assert FR.FAMILY.transport_of(op) == "cli" and FR.FAMILY.class_of(op) == \
-                "device_state"
+            op = FR.SHAPES_FAMILY.operation(name)
+            assert FR.SHAPES_FAMILY.transport_of(op) == "cli" and \
+                FR.SHAPES_FAMILY.class_of(op) == "device_state"
         assert not {o.name for o in R.AI_READS.operations} & set(R.TELEMETRY), \
             "the heal analysis's read set (its released schema) does not gain them"
 
@@ -115,6 +122,22 @@ class TestTheShapes:
         assert [g["verdict"] for g in got] == ["allowed", "allowed"], got
         assert got[0]["requests"] == ["show telemetry ietf subscription all"]
         assert got[1]["requests"] == ["show telemetry ietf subscription 101 receiver"]
+
+    def test_the_connections_are_ios_xe_s_and_another_platform_s_form_on_ios(self, on):
+        """C3640: asked whole on IOS-XE; on IOS refused as another platform's form, by the
+        comparison the probe leaves it out by (`router_reads.other_platform`)."""
+        from modules.ai import router_reads as R
+        got = judged([ask("telemetry_connection")], scope())
+        assert got[0]["verdict"] == "allowed", got
+        assert got[0]["requests"] == ["show telemetry internal connection"]
+        ios = scope()
+        ios["devices"]["edge1"]["dialect"] = "cisco_ios"
+        got = judged([ask("telemetry_connection")], ios)
+        assert got[0]["verdict"] == "refused" and "this form is cisco_iosxe's" in \
+            got[0]["reason"], got
+        assert R.other_platform("telemetry_connection", "edge1", ios) == (
+            "edge1's platform is cisco_ios, and this form is cisco_iosxe's")
+        assert R.other_platform("telemetry_connection", "edge1", scope()) == ""
 
     @pytest.mark.parametrize("request_, why", [
         (ask("telemetry_receiver", subscription="103"), "not one edge1's intent declares"),
@@ -234,6 +257,27 @@ class TestTheCollectorRead:
         assert asked == [("edge1", "102")] and json.loads(rec["answer"])["state"] == "absent"
 
 
+# ── The stream's reads by Mercury's allowlist (C3661) ───────────────────────────────────────
+
+def test_the_stream_s_device_reads_by_the_allowlist_are_held_to_intent_and_the_incident(on):
+    """AI troubleshooting's family (v5) asks the stream's device reads as an engineer types
+    them: the brief, the connections and a receiver, the subscription one the device's intent
+    declares and the incident names."""
+    from modules.ai import fixit_reads as FR
+    got = judged([ask("show", words="telemetry ietf subscription all"),
+                  ask("show", words="telemetry internal connection"),
+                  ask("show", words="telemetry ietf subscription 101 receiver")],
+                 scope(), family=FR.FAMILY)
+    assert [g["verdict"] for g in got] == ["allowed"] * 3, got
+    assert got[2]["requests"] == ["show telemetry ietf subscription 101 receiver"]
+    (got,) = judged([ask("show", words="telemetry ietf subscription 103 receiver")], scope(),
+                    family=FR.FAMILY)
+    assert got["verdict"] == "refused" and "not one edge1's intent declares" in got["reason"]
+    (got,) = judged([ask("show", words="telemetry ietf subscription 101 receiver")],
+                    scope(subs=("102",)), family=FR.FAMILY)
+    assert got["verdict"] == "refused" and "not one the incident names" in got["reason"]
+
+
 # ── The class off ───────────────────────────────────────────────────────────────────────────
 
 def test_the_class_off_refuses_each_read_by_name(monkeypatch):
@@ -250,14 +294,19 @@ def test_the_class_off_refuses_each_read_by_name(monkeypatch):
 # ── S5's v2 stays readable: expand, then contract ───────────────────────────────────────────
 
 def test_s5_s_v2_stays_registered_and_reads_an_answer_recorded_under_it():
-    """Pass 1 asks v4 now (prompt and schema, over this family); S5's v2 (the router read set
-    alone) stays registered as it shipped, so an answer a call recorded under it is read by its
-    own schema, and v2's prompt file is still there to name."""
+    """Pass 1 asks v5 now (prompt and schema, over Mercury's allowlist and its own reads,
+    C3661); S5's v2 (the router read set alone) and S6's v4 (the fixed shapes) stay registered
+    as they shipped, so an answer a call recorded under either is read by its own schema, and
+    their prompt files are still there to name."""
     from modules.ai import fixit_troubleshoot as T
     from modules.ai import prompts, schemas
-    assert T.PROMPT_READS == ("fixit_troubleshoot", 4) and T.PROMPT_READS_V2[1] == 2
+    assert T.PROMPT_READS == ("fixit_troubleshoot", 5) and T.PROMPT_READS_V2[1] == 2
+    assert T.PROMPT_READS_V4 == ("fixit_troubleshoot", 4)
     assert schemas.REGISTRY[("fixit_troubleshoot", 2)] is T.TroubleshootReads
     assert schemas.REGISTRY[("fixit_troubleshoot", 4)] is T.TroubleshootFixitReads
+    assert schemas.REGISTRY[("fixit_troubleshoot", 5)] is T.TroubleshootEngineerReads
+    assert prompts.load("fixit_troubleshoot", 5)["text"] != prompts.load(
+        "fixit_troubleshoot", 4)["text"]
     assert prompts.load("fixit_troubleshoot", 2)["text"] and prompts.load(
         "fixit_troubleshoot", 4)["text"] != prompts.load("fixit_troubleshoot", 2)["text"]
     recorded = {"outcome": "answer", "rationale": "r", "hypotheses": [], "fix": None,
@@ -288,12 +337,29 @@ from tests.test_sdn_connections import networks  # noqa: E402,F401 (the fixture 
 def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):  # noqa: F811
     """With the class on for the network, pass 1 asks for the collector's sessions and the
     receiver: the collector read runs (its answer masked and logged before pass 2), the device
-    read is refused by name (no read-only account for the lab's r2), and the send log and
-    History hold each request, linked to the incident's two calls."""
+    read runs by Mercury's allowlist through the reads engine as Mercury's account, Show
+    commands' own session (C3661: no read-only account needed for the lab's r2), and the send
+    log and History hold each request, linked to the incident's two calls."""
     from modules.ai import egress_classes, read_log
     from modules.heal import diagnose_stream as DS
     monkeypatch.setattr(egress_classes, "device_state_allowed",
                         lambda network: {"allowed": True, "why": ""})
+    opened = []
+    receiver = "show telemetry ietf subscription 101 receiver"
+
+    class Conn:
+        """Show commands' session to r2: the AI's receiver read is answered from r2's capture;
+        anything else this world's device never answers (no device here)."""
+
+        def answer(self, command):
+            if command != receiver:
+                raise ConnectionRefusedError("no device in this test")
+            opened.append("r2")
+            return _fixture("r2__show_telemetry_ietf_subscription_101_receiver.txt")
+
+    monkeypatch.setattr("modules.connection.with_temp_connection", lambda dev, fn: fn(Conn()))
+    monkeypatch.setattr("modules.connection.with_plain_connection",
+                        lambda dev, fn: pytest.fail("the read-only session opened"))
     real, root = DS.read_collector, proc(tmp_path)
     monkeypatch.setattr(DS, "read_collector", lambda a, p, s: real(
         "192.0.2.10", 57000, ["192.0.2.6"], proc=root, ss=_ss(4)))
@@ -307,7 +373,8 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     first = answer(fix())
     first["reads"] = [{"op": "collector_sessions", "args": {"device": "r2", "subscription": "101"},
                        "why": "the collector's side", "hypothesis": "a dead session"},
-                      {"op": "telemetry_receiver", "args": {"device": "r2", "subscription": "101"},
+                      {"op": "show", "args": {"device": "r2", "words":
+                                              "telemetry ietf subscription 101 receiver"},
                        "why": "the device's side", "hypothesis": "a dead session"}]
     second = answer(fix(), cites=("attempt:1", "read:1"))
     script = [first, second]
@@ -330,18 +397,22 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     assert len(ai.sent) == 2, "pass 1 and, a read having run, pass 2"
     assert "collector_sessions" in json.dumps(ai.sent[0]["system"]), "the read set is sent"
     assert "mercury_reads" in ai.sent[1]["messages"][0]["content"]
-    # Pass 1 is the new version (prompt and schema v4, S6), never S5's v2.
+    # Pass 1 is the new version (prompt and schema v5, C3661), never v4 or S5's v2.
     from modules.ai import calls
     rows = {r["id"]: r for r in calls.read()["rows"]}
     first_row = [r for r in rows.values() if r.get("feature") == "fixit_troubleshoot"
-                 and r.get("prompt") == "fixit_troubleshoot.v4"]
-    assert len(first_row) == 1 and first_row[0]["schema"] == "fixit_troubleshoot.v4"
+                 and r.get("prompt") == "fixit_troubleshoot.v5"]
+    assert len(first_row) == 1 and first_row[0]["schema"] == "fixit_troubleshoot.v5"
     assert "FixitReadAsk" in json.dumps(ai.sent[0]["output_config"])
     (loop,) = read_log.loops()["loops"]
     text = json.dumps(loop)
-    assert "collector_sessions" in text and "telemetry_receiver" in text
+    assert "collector_sessions" in text and "show telemetry ietf subscription 101 receiver" \
+        in text
     assert "local collector_sessions r2 101" in text
-    assert "no read-only account for r2" in text
+    assert opened == ["r2"], "the device read ran through Show commands' own session"
+    (dev_read,) = [e for e in loop["reads"] if e.get("op") == "show"]
+    assert dev_read["verdict"] == "run"
+    assert dev_read["signed_in_as"]["source"].startswith("mercury-account:")
     from modules.fixit import incident as F
     from tests.test_fixit_section_v2 import incident
     call1, call2 = loop.get("first_call"), loop["sent"].get("second_call")
@@ -355,5 +426,33 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
                           "members": None, "limit": 50, "since": None, "until": None,
                           "call": ""})["events"]
     drawn = json.dumps(events)
-    assert len(events) == 2 and "collector_sessions" in drawn and "telemetry_receiver" in drawn
+    assert len(events) == 2 and "collector_sessions" in drawn and \
+        "show telemetry ietf subscription 101 receiver" in drawn
     assert call1 in drawn and call2 in drawn, "each row links both calls"
+
+
+def test_a_press_whose_answer_names_a_gap_records_it_for_review(ai, monkeypatch):  # noqa: F811
+    """C3663 end to end (Tier 1's review, NOTE 10): through the real route and gateway, an answer
+    naming a gap is kept as the incident's proposal line AND recorded as a missing capability
+    for the incident; with the store unable to be written, the answer still stands."""
+    from modules.ai import missing
+    from tests.test_fixit_troubleshoot import sec_of
+    gap = {"what": "close the collector's half-open session from r2 on its host",
+           "evidence_refs": ["attempt:1"]}
+    iid = stopped(ai)
+    ai.answer = answer(gap=gap)
+    r, html = press(ai, iid)
+    assert r.status_code == 200 and "a gap" in sec_of(html)
+    (row,) = missing.rows()["rows"]
+    assert (row["kind"], row["what"], row["about"]) == (
+        "operation", gap["what"], {"kind": "incident", "id": iid})
+    assert row["feature"] == "fixit_troubleshoot"
+
+    def broken(rows, now=None):
+        raise OSError("the store's disk is full")
+
+    monkeypatch.setattr(missing, "record", broken)
+    iid2 = stopped(ai)
+    ai.answer = answer(gap=gap)
+    r, html = press(ai, iid2)
+    assert r.status_code == 200 and "a gap" in sec_of(html), "the answer stands"

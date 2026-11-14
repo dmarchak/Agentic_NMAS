@@ -14,7 +14,8 @@ intent, at the privilege its ``users`` entry names (1, or a custom level whose r
 this probe signs in AS that account, holding the device for the whole run, and asks:
 
   a. every AI read shape (`router_reads.SHAPES` of the device state class, the set the AI
-     analysis and AI troubleshooting ask for, `fixit_reads.FAMILY`'s CLI reads), each argument
+     analysis asks for and AI troubleshooting asked by shape, `fixit_reads.SHAPES_FAMILY`'s
+     CLI reads; C3661 moved AI troubleshooting's reads to Mercury's allowlist), each argument
      filled from what Mercury holds and each request judged by the AI's own check
      (`read_loop.check`), so what is sent is what the AI would send: expected ANSWERED. A
      form that is another platform's on this device (`router_reads.other_platform`: a
@@ -199,7 +200,7 @@ def _cli_operations() -> list:
     """The AI's device reads, in `router_reads.SHAPES`' order: `fixit_reads.FAMILY`'s CLI
     operations (the AI analysis's `AI_READS` and AI troubleshooting's telemetry reads), those
     of the configuration class left out (step b asks for the running configuration)."""
-    from modules.ai.fixit_reads import FAMILY
+    from modules.ai.fixit_reads import SHAPES_FAMILY as FAMILY
     return [op for op in FAMILY.operations
             if FAMILY.transport_of(op) == "cli" and FAMILY.class_of(op) != "configuration"]
 
@@ -301,7 +302,7 @@ def plan(network: str, host: str, given: dict = None) -> dict:
     nothing to probe."""
     from modules.ai import read_loop as RL
     from modules.ai import router_reads as RR
-    from modules.ai.fixit_reads import FAMILY
+    from modules.ai.fixit_reads import SHAPES_FAMILY as FAMILY
     from modules.nsot import reads
     from modules.nsot.deploy import command_fingerprint
     from modules.nsot.platform import platform_for_device
@@ -315,7 +316,9 @@ def plan(network: str, host: str, given: dict = None) -> dict:
         return {"refused": (f"REFUSED: no read-only account for {host}: {account.get('error')}; "
                             "nothing to probe")}
     intents, goldens = _committed(network, host)
-    scope = RR.scope_for(network, [host], intents=intents, goldens=goldens)
+    # The probe measures the read-only account, whatever the AI's reads sign in as (C3661).
+    scope = RR.scope_for(network, [host], intents=intents, goldens=goldens,
+                         reads_as="read_only")
     values = _defaults(host, scope, intents, given)
     rows = []
     for op in _cli_operations():

@@ -53,7 +53,7 @@ def check(incident=None, operation=RESUB, params=None, **kw):
 
 class TestTheCatalogue:
     def test_the_incidents_attempts_are_the_catalogues_operations(self):
-        assert F.CATALOGUE_KEYS == tuple(catalog.CATALOG) == (RESUB, READD)
+        assert F.CATALOGUE_KEYS == tuple(catalog.CATALOG) == (RESUB, READD, R.COLLECTOR_KEY)
         assert set(F.PARAMETERS) == set(catalog.CATALOG) == set(V.AS_ATTEMPT)
 
     @pytest.mark.parametrize("key", sorted(catalog.CATALOG))
@@ -120,8 +120,8 @@ class TestACheckedProposal:
         ("an unknown key", RESUB, {"commands": ["reload"]}, "unknown_parameter", "schema",
          ["takes exactly the parameters device and subscriptions", "also gives 'commands'"]),
         ("an operation the catalog does not hold", "reload-device", {}, "not_in_catalog",
-         "schema", ["an operation of the catalog (telemetry-readd and telemetry-resubscribe)",
-                    "names 'reload-device'"]),
+         "schema", ["an operation of the catalog (telemetry-collector-resubscribe, "
+                    "telemetry-readd and telemetry-resubscribe)", "names 'reload-device'"]),
         ("a re-add of a receiver no run left removed", READD,
          {"device": "r2", "subscription": "101"}, "not_removed", "scope",
          ["a re-add adds back a receiver a run left removed, and the proposal names "
@@ -243,21 +243,36 @@ class TestPropose:
 
 # ── Mercury's own proposer ──────────────────────────────────────────────────────────────────
 
-def recovery_rules() -> set:
-    """The lost-stream rules whose finding's next step is Re-subscribe, read from the rules'
-    own source (`diagnose_stream.RECOVERY` referenced in their function), independently of the
-    proposer's table."""
+#: Each next step a lost-stream rule may name, by its constant in `diagnose_stream`, and the
+#: catalog operation that is that step. The collector step's key is read without raising, so
+#: this file (and the files importing from it) collects on a parent without the collector step
+#: and each test fails in its own body, never at collection (C2633).
+NEXT_STEPS = {"RECOVERY": RESUB,
+              "COLLECTOR_RECOVERY": getattr(R, "COLLECTOR_KEY", "telemetry-collector-resubscribe")}
+
+
+def recovery_operations() -> dict:
+    """``{rule: operation}``: the lost-stream rules whose finding's next step is a catalog
+    operation, read from the rules' own source (a `NEXT_STEPS` constant referenced in their
+    function), independently of the proposer's table."""
     from modules.heal import diagnose_stream as S
-    out = set()
+    out = {}
     for rule in S.STREAM_RULES:
         fn = rule.fn
         fn = getattr(fn, "__wrapped__", None) or next(
             (c.cell_contents for c in (fn.__closure__ or ()) if callable(c.cell_contents)), fn)
         names = {n.id for n in ast.walk(ast.parse(inspect.getsource(fn)))
                  if isinstance(n, ast.Name)}
-        if "RECOVERY" in names:
-            out.add(rule.name)
+        named = [op for const, op in NEXT_STEPS.items() if const in names]
+        assert len(named) <= 1, (rule.name, named)
+        if named:
+            out[rule.name] = named[0]
     return out
+
+
+def recovery_rules() -> set:
+    """The lost-stream rules whose finding's next step is a catalog operation."""
+    return set(recovery_operations())
 
 
 def a_diagnosis(rule: str, incomplete=()) -> dict:
@@ -273,18 +288,21 @@ def a_diagnosis(rule: str, incomplete=()) -> dict:
 
 class TestMercurysProposer:
     def test_its_table_is_every_rule_whose_next_step_is_re_subscribe(self):
-        found = recovery_rules()
-        assert found == set(PR.STREAM_PROPOSALS) == {"half_open", "no_session",
-                                                     "outlived_cause"}
+        found = recovery_operations()
+        assert found == PR.STREAM_PROPOSALS == {
+            "half_open": RESUB, "no_session": RESUB, "outlived_cause": RESUB,
+            # C3111: the collector step's own rule names the collector step.
+            "stale_session": R.COLLECTOR_KEY}
         assert set(PR.STREAM_PROPOSALS.values()) <= set(catalog.CATALOG)
-        assert len(DS.STREAM_RULES) >= 12
+        assert len(DS.STREAM_RULES) >= 13
 
     @pytest.mark.parametrize("rule", sorted(r.name for r in DS.STREAM_RULES))
     def test_each_stream_rule_maps_to_its_operation_or_says_none(self, lab, rule):  # noqa
         got = PR.mercury(inc(), a_diagnosis(rule))
         if rule in recovery_rules():
             assert (got["state"], got["operation"], got["params"], got["rule"]) == (
-                "proposed", RESUB, {"device": "r2", "subscriptions": ["101", "102"]}, rule)
+                "proposed", recovery_operations()[rule],
+                {"device": "r2", "subscriptions": ["101", "102"]}, rule)
         else:
             assert (got["state"], got["operation"], got["rule"]) == ("none", "", rule)
             assert got["words"].endswith("names a next step no operation of the catalog is: "
@@ -313,6 +331,51 @@ class TestMercurysProposer:
         p = PR.mercury(inc(), got)
         assert (p["state"], p["operation"], p["params"], p["rule"]) == (
             "proposed", RESUB, {"device": "r2", "subscriptions": ["101", "102"]}, "half_open")
+
+    @pytest.mark.parametrize("cause", ["none found", "put back 40 minutes before"])
+    def test_r7s_two_measured_readings_propose_the_collector_step_and_nothing_else(
+            self, world, tmp_path, cause):  # noqa: F811
+        """C3111, the operator's proof (2026-11-14): r7's two measured readings, its own
+        connection 496 Disconnecting (its typed line) and the collector's session from it
+        established and idle for 2,130 s (the kernel's real capture, its idle written as r7's
+        measured one), whatever the cause rules say, propose exactly one operation: the
+        re-subscribe with the collector step, for the incident's subscriptions."""
+        from tests.test_heal_diagnose_stream import cleared, no_cause, stale_run, target
+        got = stale_run(tmp_path, tgt=target(no_cause() if cause == "none found"
+                                             else cleared()))
+        p = PR.mercury(inc(), got)
+        assert {k: p[k] for k in ("state", "source", "operation", "params", "rule")} == {
+            "state": "proposed", "source": "mercury", "operation": R.COLLECTOR_KEY,
+            "params": {"device": "r2", "subscriptions": ["101", "102"]},
+            "rule": "stale_session"}
+        assert sorted(p) == ["operation", "params", "rule", "source", "state", "words"]
+        assert p["words"].startswith("the first hypothesis (stale_session, decisive): r2's "
+                                     "telemetry connection 496 to 192.0.2.10 port 57000 reads "
+                                     "Disconnecting")
+
+    def test_either_reading_alone_does_not_propose_the_collector_step(self, world,  # noqa
+                                                                      tmp_path):
+        from tests.test_heal_diagnose_stream import (R7_CONNECTION, stale_run,
+                                                     with_receivers)
+        connected = stale_run(tmp_path, with_receivers(
+            connection=R7_CONNECTION.replace("Disconnecting", "Connecting")))
+        unread_ss = stale_run(tmp_path / "2", ss=lambda port: ("", "ss: not read here"))
+        for got in (connected, unread_ss):
+            p = PR.mercury(inc(), got)
+            assert p["operation"] != R.COLLECTOR_KEY, p
+            assert "stale_session" not in [h["rule"] for h in got["hypotheses"]]
+
+    def test_the_collector_steps_proposal_passes_the_check_and_runs_no_helper(
+            self, lab, tmp_path):  # noqa: F811
+        """The check of a proposal (Mercury's, an AI's, a Retry's) runs nothing on the host:
+        the close helper is not asked, not even its dry run (the operator, 2026-11-14)."""
+        from tests.test_heal_resubscribe import CloseSrc, helper_world
+        m, close = helper_world(tmp_path)
+        src = CloseSrc(close)
+        got = check(operation=R.COLLECTOR_KEY, sources=src)
+        assert got["ok"], got
+        assert got["preview"]["close"] == {} and src.asked == [] and m.journalled == []
+        assert got["repeat"]["kind"] == "new" and not m.run.closes_sent()
 
     def test_a_real_half_open_lacking_its_receivers_proposes_nothing(self, world,  # noqa
                                                                      tmp_path):

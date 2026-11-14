@@ -707,6 +707,7 @@ class TestTheSetting:
         loaded = re.search(r"name=\"loaded\" value='([^']*)'", card).group(1)
         s = web.post("/v2/settings/installation/card/fixit/save", headers=HX,
                      data={"ai_troubleshoot_mode": "off", "ai_cap_usd_per_incident": "1.00",
+                           "ai_device_reads_as": "mercury",
                            "loaded": loaded.replace("&#34;", '"')})
         assert s.status_code == 200, s.get_data(as_text=True)
         assert P.mode()["mode"] == "off" and P.cap_usd()["usd"] == 1.0
@@ -729,6 +730,7 @@ class TestTheSetting:
         assert not re.search(r"\bmanual\b", words), words
         r = web.post("/v2/settings/installation/card/fixit/save", headers=HX,
                      data={"ai_troubleshoot_mode": "off", "ai_cap_usd_per_incident": "1.00",
+                           "ai_device_reads_as": "mercury",
                            "loaded": json.dumps(I.card("fixit")["loaded"])})
         out = r.get_data(as_text=True)
         assert r.status_code == 200 and "AI mode Manual → Off" in out, out
@@ -744,6 +746,7 @@ class TestTheSetting:
         loaded = json.dumps(I.card("fixit")["loaded"])
         r = web.post("/v2/settings/installation/card/fixit/save",
                      data={"ai_troubleshoot_mode": "off", "ai_cap_usd_per_incident": "0.50",
+                           "ai_device_reads_as": "mercury",
                            "loaded": loaded}, headers=HX)
         out = r.get_data(as_text=True)
         assert r.status_code == 200, out
@@ -762,6 +765,7 @@ class TestTheSetting:
         loaded = json.dumps(I.card("fixit")["loaded"])
         r = web.post("/v2/settings/installation/card/fixit/save",
                      data={"ai_troubleshoot_mode": "manual", "ai_cap_usd_per_incident": cap,
+                           "ai_device_reads_as": "mercury",
                            "loaded": loaded}, headers=HX)
         assert r.status_code == 409 and "Not saved" in r.get_data(as_text=True)
         assert P.cap_usd()["usd"] == 1.0

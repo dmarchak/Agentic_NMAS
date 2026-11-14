@@ -1377,6 +1377,43 @@ def ai_calls(ctx):
                 cut=[f"the AI calls' newest {ctx['limit']}"] if len(rows) > ctx["limit"] else [])
 
 
+def ai_missing(ctx):
+    """What the AI wanted that Mercury lacks (C3663, `modules/ai/missing.py`), kind
+    ``ai_missing``, listed for review beside the AI calls: a read the allowlist refused or the
+    read family does not hold, or a gap no catalog operation fills; what was wanted, why,
+    Mercury's reason and the incident or question it was for. Never acted on. The network's own
+    rows; a device's tab shows those naming it."""
+    from modules.ai import missing
+    from modules.redact import redact_text
+
+    got = missing.rows()
+    if got["state"] == "unreadable":
+        return _out(errors=[got["error"]])
+    events = []
+    for r in got["rows"]:
+        if r.get("network") != ctx["ref"].name or not _recent(ctx, r.get("at")):
+            continue
+        dev = r.get("device") or ""
+        if (ctx["device"] and dev != ctx["device"]) or (dev and not _mine(ctx, dev)):
+            continue
+        about = r.get("about") or {}
+        kind_words = missing.KIND_WORDS.get(r.get("kind"), r.get("kind") or "?")
+        what = (f"AI wanted {kind_words}: {redact_text(str(r.get('what') or ''))}, for "
+                f"{about.get('kind') or '?'} {about.get('id') or '?'}")
+        events.append(_event(
+            r.get("at"), "ai_missing", what, [dev] if dev else [],
+            who=f"the AI, for {r.get('feature') or '?'}",
+            detail=redact_text(str(r.get("reason") or "")), outcome="for review",
+            record=[("Kind", kind_words), ("Wanted", redact_text(str(r.get("what") or ""))),
+                    ("Why", redact_text(str(r.get("why") or ""))),
+                    ("Mercury's reason", redact_text(str(r.get("reason") or ""))),
+                    ("For", f"{about.get('kind') or '?'} {about.get('id') or '?'}"),
+                    ("Feature", r.get("feature")), ("Device", dev)]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events)
+
+
 def ai_reads(ctx):
     """Each read an AI call asked Mercury for (docs/HEAL_TO_INTENT.md 19.5, "Between the two
     passes, each read request is a row, linked to both"; board H artboard M; the send log,
@@ -2170,7 +2207,7 @@ def privileged(ctx):
         # device's page (`run_card.named_record`). A Tier 2 run's card is drawn only from its
         # job, so its row has none yet (C3177).
         from modules.heal import resubscribe as RS
-        if r.get("key") in (RS.KEY, RS.READD_KEY) and r.get("id") and host:
+        if r.get("key") in RS.RUN_KEYS and r.get("id") and host:
             events[-1]["card"] = {"device": host, "list": ctx["ref"].name, "run": r["id"]}
     return _out(events, errors)
 
@@ -3139,7 +3176,8 @@ SOURCES = {
     "controller_deploys": controller_deploys,
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
-    "diagnoses": diagnoses, "ai_reads": ai_reads, "reader_restarts": reader_restarts,
+    "diagnoses": diagnoses, "ai_reads": ai_reads, "ai_missing": ai_missing,
+    "reader_restarts": reader_restarts,
     "read_account_probes": read_account_probes,
 }
 
@@ -3180,6 +3218,7 @@ KIND_GROUPS = (
                                ("updates", "App updates", ("update",)),
                                ("host_steps", "Host steps done or declined", ("host_step",)),
                                ("ai_calls", "AI calls", ("ai_call", "ai_read")),
+                               ("ai_missing", "AI missing capabilities", ("ai_missing",)),
                                ("sdn", "SDN flow operations", ("sdn",)),
                                ("controller_deploy", "Controller app deploys",
                                 ("controller_deploy",)),
@@ -3349,7 +3388,7 @@ SOURCE_KINDS = {
     "controller_deploys": ("controller_deploy",),
     "alert_rule_changes": ("alert_rule",), "secret_values": ("secret_value",),
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
-    "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",),
+    "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",), "ai_missing": ("ai_missing",),
     "reader_restarts": ("reader_restart",),
     "read_account_probes": ("read_account_probe",),
 }

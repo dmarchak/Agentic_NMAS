@@ -257,6 +257,9 @@ def short_words(operation: str, device: str, params: dict) -> str:
                 + (" with the collector step" if params.get("collector_step") else ""))
     if operation == R.READD_KEY:
         return f"Re-add {device}'s receiver for {params.get('sub') or 'no subscription'}"
+    if operation == R.COLLECTOR_KEY:
+        subs = ", ".join(map(str, params.get("subs") or [])) or "no subscription"
+        return R.COLLECTOR_TITLE.format(device=device) + f" ({subs})"
     return operation
 
 
@@ -302,7 +305,7 @@ def _proposal(incident, line: dict, resolved, now, usd: dict = None) -> dict:
     from modules.heal import resubscribe as R
 
     params = line.get("params") if isinstance(line.get("params"), dict) else {}
-    subs = (list(params.get("subs") or []) if line.get("operation") == R.KEY
+    subs = (list(params.get("subs") or []) if line.get("operation") in (R.KEY, R.COLLECTOR_KEY)
             else [params["sub"]] if params.get("sub") else [])
     return {"id": line["proposal"], "source": SOURCE_WORDS.get(line.get("source"), ""),
             "operation": line.get("operation") or "",
@@ -543,7 +546,9 @@ def retry(network: str, found: dict, *, actor: str, actor_verified: str, person:
     *note*. ``{"line", "checked", "proposed"}``, or raises `Refused` with nothing recorded and
     the proposer not asked. *drawn_spent* and *drawn_cap* are the figures the panel was drawn
     with, so a refusal can say what moved since. *sources* and *planned* are the check's seams
-    (tests). Asks no model, holds no device, starts no job and sends nothing."""
+    (tests). Asks no model, holds no device, starts no job and sends nothing, and runs nothing
+    on Mercury's host: a collector-step proposal is checked without the close helper's dry run
+    (`catalog._collector_plan`), which runs only on the person's own card preview."""
     from modules.fixit import incident as F
     from modules.fixit import policy as P
     from modules.fixit import proposers
@@ -585,8 +590,11 @@ def retry(network: str, found: dict, *, actor: str, actor_verified: str, person:
 
 # ── The operation's card, opened from the section ───────────────────────────────────────────
 
-def _card(network: str, incident_id: str, proposal: str, device: str, subs, readd: bool):
-    """``(incident, link)`` for `card_link`; *incident* None when *link* is a refusal."""
+def _card(network: str, incident_id: str, proposal: str, device: str, subs, readd: bool,
+          collector: bool = False):
+    """``(incident, link)`` for `card_link`; *incident* None when *link* is a refusal. The
+    link names the proposal's operation (``operation``: the card draws the collector step for
+    one that names it, C3078)."""
     from modules import incident_page
     from modules.fixit import incident as F
     from modules.heal import resubscribe as R
@@ -606,27 +614,36 @@ def _card(network: str, incident_id: str, proposal: str, device: str, subs, read
         return None, {"refused": rec["error"]}
     if proposal and proposal not in [ln.get("proposal") for ln in rec["lines"]]:
         return None, {"refused": f"{incident_id}'s record holds no proposal {proposal!r}"}
+    operation = next((ln.get("operation") or "" for ln in rec["lines"]
+                      if proposal and ln.get("proposal") == proposal), "")
+    # The repeat is read under the operation that RUNS (*collector*: the card drew the step), never
+    # the proposal's own: a collector proposal whose step the card could not take runs, and is
+    # recorded as, the plain re-subscribe.
     subs = [str(s) for s in subs or ()]
     if not subs:
         flag = {"kind": "new"}
     elif readd:
         flag = F.repeat_of(inc, R.READD_KEY, {"sub": subs[0]})
+    elif collector:
+        flag = F.repeat_of(inc, R.COLLECTOR_KEY, {"subs": subs})
     else:
         flag = F.repeat_of(inc, R.KEY, {"subs": subs})
     flag = dict(flag, changed=[{"name": c["name"], "before": _said(c["before"]),
                                 "after": _said(c["after"])} for c in flag.get("changed") or []])
     if flag.get("kind") != "new":
         flag["words"] = outcome_words(flag.get("outcome") or "", flag.get("words") or "")
-    return inc, {"incident": incident_id, "proposal": proposal or "", "repeat": flag}
+    return inc, {"incident": incident_id, "proposal": proposal or "", "repeat": flag,
+                 "operation": operation}
 
 
 def card_link(network: str, incident_id: str, proposal: str, device: str, subs,
-              readd: bool = False) -> dict:
+              readd: bool = False, collector: bool = False) -> dict:
     """What the operation's card carries when it is opened from the section's proposal, read
-    for its form: ``{"incident", "proposal", "repeat"}`` (*repeat* `incident.repeat_of` for the
-    subscriptions ticked, or the one a re-add names), or ``{"incident", "proposal",
-    "refused": why}``, which the confirm refuses again. A read."""
-    got = _card(network, incident_id, proposal, device, subs, readd)[1]
+    for its form: ``{"incident", "proposal", "repeat", "operation"}`` (*repeat*
+    `incident.repeat_of` for the subscriptions ticked, or the one a re-add names; *operation*
+    the proposal's), or ``{"incident", "proposal", "refused": why}``, which the confirm refuses
+    again. A read."""
+    got = _card(network, incident_id, proposal, device, subs, readd, collector)[1]
     return dict({"incident": incident_id, "proposal": proposal or ""}, **got)
 
 
@@ -635,7 +652,7 @@ DIFFERENT_WORDS = 3
 
 
 def confirm_link(network: str, incident_id: str, proposal: str, device: str, subs,
-                 different: str = "", readd: bool = False) -> dict:
+                 different: str = "", readd: bool = False, collector: bool = False) -> dict:
     """What the operation's confirm writes into its run record (`incident.RUN_FIELD`) when it
     was opened from the section: the incident, the attempt's number and the proposal
     (`incident.run_link`), and, for a proposal that repeats a failed attempt, the person's
@@ -643,7 +660,7 @@ def confirm_link(network: str, incident_id: str, proposal: str, device: str, sub
     with nothing sent. A read."""
     from modules.fixit import incident as F
 
-    inc, got = _card(network, incident_id, proposal, device, subs, readd)
+    inc, got = _card(network, incident_id, proposal, device, subs, readd, collector)
     if inc is None:
         raise Refused(f"Not run: {got['refused']}. Nothing was sent")
     try:

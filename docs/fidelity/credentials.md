@@ -27,7 +27,18 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
-Templates sha256: `1a30ec45c0c366fc53459654827708e82a988496bc3fa2c26fbd0ae3f306c5b6`
+Templates sha256: `e6cd87d9a4d141d685bc342a3a9a8533d719929f75b4c78650239a87a62f774a`
+
+**Compared again 2026-11-14 (the operator's change of approach, C3661: the AI's device reads
+sign in as Mercury's account by default):** by the template's diff against the regions below,
+not from new shots. In `_credential_read_account.html` four sentences change their words in the
+same elements and positions: the card's lead says the AI's reads sign in with the read-only
+account only under Settings › AI's "AI device reads sign in as" (by default Mercury's account,
+as Show commands does), and a device none covers is refused under that choice; the unreadable
+notice, the no-profile line and the closing note say the same. **Used by** (`READ_USED_BY`,
+drawn by the same element) names the hardened choice and the probe. No element is added,
+removed or moved; every verdict stands.
+Templates sha256 before: `1a30ec45c0c366fc53459654827708e82a988496bc3fa2c26fbd0ae3f306c5b6`.
 
 **Compared again 2026-11-13 (board R; provisional, operator review pending):** by the templates'
 diff against the regions below, not from new shots. `credentials.html` includes, on the Profiles

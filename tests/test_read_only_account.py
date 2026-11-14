@@ -208,7 +208,15 @@ def _read(hosts, by, session):
     return reads.run("Lab", hosts, ["show version"], "admin@x", by=by, session=session)
 
 
-def test_an_ai_read_signs_in_as_the_read_only_account_ipv4_and_ipv6(lab):
+def _read_only_choice(monkeypatch):
+    """The installation's "AI device reads sign in as" at the read-only account (C3661; by
+    default the AI's reads sign in as Mercury's account, tests/test_ai_engineer_reads.py), in
+    the test's own body."""
+    monkeypatch.setattr("modules.nsot.reads.ai_reads_as", lambda: "read_only")
+
+
+def test_an_ai_read_signs_in_as_the_read_only_account_ipv4_and_ipv6(lab, monkeypatch):
+    _read_only_choice(monkeypatch)
     _routers_read_account()
     s = Session()
     rec = _read(["r1", "r6"], "ai_analysis", s)
@@ -229,8 +237,9 @@ def test_an_ai_read_signs_in_as_the_read_only_account_ipv4_and_ipv6(lab):
         assert RO_PW not in fh.read()
 
 
-def test_a_device_without_one_is_refused_by_name_and_no_session_opens(lab):
+def test_a_device_without_one_is_refused_by_name_and_no_session_opens(lab, monkeypatch):
     """s1 is a switch: no profile on its chain carries a read-only account."""
+    _read_only_choice(monkeypatch)
     _routers_read_account()
     C.delete_profile("default")
     s = Session()
@@ -313,11 +322,13 @@ def local(store, monkeypatch, tmp_path):
     return tmp_path
 
 
-def test_a_local_inventorys_device_reads_as_the_default_profiles_read_only_account(local):
+def test_a_local_inventorys_device_reads_as_the_default_profiles_read_only_account(local,
+                                                                                   monkeypatch):
     """Its deploy login is its file's; its read-only account is the profiles', by its kind and
     then default, IPv4 and IPv6, and never the file's login."""
     from modules.ai import router_reads
     from modules.nsot import reads
+    _read_only_choice(monkeypatch)
     _set()
     assert router_reads.read_accounts("Default", ["r2", "s1"]) == {"r2": (True, ""),
                                                                     "s1": (True, "")}
@@ -332,8 +343,10 @@ def test_a_local_inventorys_device_reads_as_the_default_profiles_read_only_accou
     assert RO_PW not in json.dumps(rec)
 
 
-def test_a_local_inventorys_device_without_one_is_refused_never_read_as_its_file_login(local):
+def test_a_local_inventorys_device_without_one_is_refused_never_read_as_its_file_login(
+        local, monkeypatch):
     from modules.nsot import reads
+    _read_only_choice(monkeypatch)
     s = Session()
     rec = reads.run("Default", ["r2"], ["show version"], "admin@x", by="ai_analysis", session=s)
     assert s.signed == [], "no session opens with the file's deploy login"

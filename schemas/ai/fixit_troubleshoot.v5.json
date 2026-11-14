@@ -1,0 +1,316 @@
+{
+  "$defs": {
+    "Fix": {
+      "additionalProperties": false,
+      "description": "ONE catalog operation with its parameters, why and what it rests on.",
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/FixParams"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "params",
+        "why",
+        "evidence_refs"
+      ],
+      "title": "Fix",
+      "type": "object"
+    },
+    "FixParams": {
+      "additionalProperties": false,
+      "description": "A fix's parameters: every parameter some catalog operation takes, the ones the named\noperation does not take null (`catalog.CATALOG`; `as_door` keeps only those given).",
+      "properties": {
+        "device": {
+          "title": "Device",
+          "type": "string"
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subscription"
+        },
+        "subscriptions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subscriptions"
+        }
+      },
+      "required": [
+        "device",
+        "subscriptions",
+        "subscription"
+      ],
+      "title": "FixParams",
+      "type": "object"
+    },
+    "FixitReadArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device"
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription"
+        },
+        "words": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Words"
+        }
+      },
+      "title": "FixitReadArgs",
+      "type": "object"
+    },
+    "FixitReadAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/FixitReadArgs"
+        },
+        "hypothesis": {
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FixitReadOp"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "args",
+        "why",
+        "hypothesis"
+      ],
+      "title": "FixitReadAsk",
+      "type": "object"
+    },
+    "FixitReadOp": {
+      "enum": [
+        "show",
+        "show_config",
+        "ping",
+        "traceroute",
+        "intent",
+        "golden",
+        "neighbours",
+        "history",
+        "logs",
+        "metrics",
+        "collector_sessions",
+        "stream_series"
+      ],
+      "title": "FixitReadOp",
+      "type": "string"
+    },
+    "Gap": {
+      "additionalProperties": false,
+      "description": "What the fix the evidence points to would have to do, which no catalog operation does.",
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "what": {
+          "title": "What",
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "evidence_refs"
+      ],
+      "title": "Gap",
+      "type": "object"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Pass 1 of the read loop: `Troubleshoot`, plus at most 3 reads Mercury runs: a device's\nread by Mercury's allowlist, or Mercury's own read of what it holds.",
+  "properties": {
+    "fix": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Fix"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "gap": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Gap"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FixitReadAsk"
+      },
+      "title": "Reads",
+      "type": "array"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "fix",
+    "gap",
+    "needs_human",
+    "why_not"
+  ],
+  "title": "TroubleshootEngineerReads",
+  "type": "object"
+}

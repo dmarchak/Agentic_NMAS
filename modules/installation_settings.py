@@ -318,6 +318,11 @@ def _f(key, label, kind, note="", choices=(), words=None):
             "words": dict(words or {})}
 
 
+#: "AI device reads sign in as" (`reads.AI_READS_AS_KEY`, C3661): its read-only choice is
+#: offered and saved only while every device holds the account and its probe passed.
+READS_AS_KEY = "ai_device_reads_as"
+
+
 #: The cards, in the page's order. ``secret``: the secret Replace… changes (with ``with_id``,
 #: a plain key replaced together with it: a Proxmox token is its id and secret), drawn before
 #: field ``secret_at`` as board F3 orders it; ``integration``:
@@ -394,7 +399,17 @@ CARDS = {
                    _f("ai_cap_usd_per_incident", "AI spend per incident", "usd",
                       "what one incident's AI calls may cost: spent plus the next attempt's "
                       "worst case, refused past it, naming both; there is no \"no cap\", and "
-                      "Mercury never raises it")),
+                      "Mercury never raises it"),
+                   # "AI device reads sign in as" (the operator, 2026-11-14, C3661): Mercury's
+                   # account by default; the read-only account offered only while every device
+                   # holds it and its probe passed (`card` leaves it out otherwise, saying
+                   # why), and refused at the Save then, naming the devices.
+                   _f(READS_AS_KEY, "AI device reads sign in as", "choice",
+                      "Mercury's account: the AI's device reads sign in as Show commands does; "
+                      "the read-only account (hardened): offered only when every device holds "
+                      "it and its probe passed", ("mercury", "read_only"),
+                      {"mercury": "Mercury's account",
+                       "read_only": "The read-only account (hardened)"})),
         "secret": None, "with_id": None, "integration": None,
         "note": "Per installation, every network. An incident's page draws its spend against "
                 "this cap; the day cap above still holds every call.",
@@ -551,6 +566,8 @@ def card(name: str, ai_state: bool = True, typed: dict = None) -> dict:
     for f in fields:
         if f["kind"] == "usd":
             f["amount"] = amount_text(f["value"])
+        if f["key"] == READS_AS_KEY:
+            f.update(reads_as_offer(f))
     if spec["integration"]:
         out["health"] = _health(spec["integration"])
     if name == "netbox":
@@ -568,6 +585,29 @@ def card(name: str, ai_state: bool = True, typed: dict = None) -> dict:
         out["no_cap"] = {"key": NO_CAP_KEY, "set": unset, "words": NO_CAP_WORDS,
                          "typed": NO_CAP_TYPED, "by": no_cap_record() if unset else None}
     return out
+
+
+def reads_as_offer(f: dict) -> dict:
+    """"AI device reads sign in as" as the card draws it (C3661): the read-only choice offered
+    only while the coverage the reader holds (`read_account.held`, display only: never read live
+    for a page) says every device holds the account and its probe passed; otherwise left out of
+    the choices (unless it is the value saved, which stays drawn), its note naming why. The
+    Save asks again, live (`save_card`)."""
+    from modules.nsot import read_account
+
+    got = read_account.held()
+    if got["value"] is None:
+        missing = [f"the read-only account's coverage is not read yet ({got['why']})"]
+    else:
+        missing = read_account.reads_as_unready(got["value"])
+    if not missing:
+        return {}
+    shown = "; ".join(missing[:4]) + (f"; and {len(missing) - 4} more" if len(missing) > 4
+                                      else "")
+    choices = tuple(c for c in f["choices"] if c != "read_only" or f["value"] == "read_only")
+    return {"choices": choices,
+            "note": (f"{f['note']}. Not offered now: {shown} (Credentials › Profiles, the "
+                     "read-only account's coverage)")}
 
 
 def form_keys(name: str) -> tuple:
@@ -839,6 +879,15 @@ def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> 
         if not changed:
             return {"ok": True, "nothing": True, "written": [], "recorded": True,
                     "restart": False}
+        if changed.get(READS_AS_KEY) == "read_only":
+            # Offered only when every device holds it and its probe passed (C3661): asked now,
+            # live, never from what the card drew.
+            from modules.nsot import read_account
+            why = read_account.reads_as_refusal()
+            if why:
+                raise Refused(f"AI device reads sign in as stays "
+                              f"{_words_of(READS_AS_KEY).get(now[READS_AS_KEY], now[READS_AS_KEY])}"
+                              f": {why}")
         if NO_CAP_KEY in changed:
             ask = _confirmation(by_key[NO_CAP_KEY], now[NO_CAP_KEY], changed[NO_CAP_KEY],
                                 form, values, loaded, by_key)

@@ -2389,6 +2389,15 @@ class TestResubscribeCards(_Cards):
         "readd": ("_resubscribe.html", "Re-add the receiver for {{ x.sub }}",
                   r"Re-add the receiver for 101",
                   "data: intent no longer holds the receiver, so the re-add's plan refuses"),
+        # C3078: the collector step's confirm, from the real plan with the REAL close helper's
+        # dry run over its real `ss` captures; blocked: the collector holds no session.
+        "collector": ("_resubscribe.html",
+                      "Close the collector's stale session for {{ c.host }}, then re-subscribe "
+                      "({{ names }})",
+                      r"Close the collector's stale session for r2, then re-subscribe "
+                      r"\(101, 102\)",
+                      "data: the collector holds no session from r2, so the step's plan "
+                      "refuses"),
     }
     BASE = "/v2/device/r2/resubscribe"
     HX = {"HX-Request": "true"}
@@ -2436,6 +2445,25 @@ class TestResubscribeCards(_Cards):
         client, _state = self._world(request, Src())
         html = self._card(client, "103")
         assert "Re-subscribe is not offered:" in html, "floor: the refused plan is drawn"
+        return html
+
+    def _collector_card(self, request, **src):
+        from tests.test_heal_resubscribe import CloseSrc, helper_world
+        _m, close = helper_world(request.getfixturevalue("tmp_path"))
+        client, _state = self._world(request, CloseSrc(close, **src))
+        return _text(client.get(f"{self.BASE}?list=Default&subs=101,102&collector=1",
+                                headers=self.HX))
+
+    def drawn_collector(self, request):
+        html = self._collector_card(request)
+        assert "First:" in html and "dry run: would close" in html, (
+            "floor: the step's plan is drawn with the session its dry run named")
+        return html
+
+    def blocked_collector(self, request, monkeypatch):
+        html = self._collector_card(request, before=None)
+        assert "The collector step is not offered:" in html, (
+            "floor: the step's refused plan is drawn")
         return html
 
     def drawn_readd(self, request):
@@ -2532,9 +2560,11 @@ class TestThePopulation:
         an owed host step, the operator, 2026-11-11; 87 until board R's four, 2026-11-13: Add to
         N devices' intent, Deploy the canary, the rollout's Continue the rollout (its Go on and
         a carrier's own confirm until the rollout engine, 2026-11-14) and Probe <device>; 91
-        until board R's Update N devices' intent, C3583, 2026-11-14)."""
+        until board R's Update N devices' intent, C3583, 2026-11-14; 92 until the collector
+        step's Close the collector's stale session for <device>, then re-subscribe (<ids>), C3078,
+        2026-11-14)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 92, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 93, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

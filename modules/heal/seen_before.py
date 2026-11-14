@@ -91,6 +91,9 @@ HELD_MAX = 200
 #: held equal by tests/test_seen_before.py).
 CAUSE_WORDS = {
     "half_open": "a session that carries nothing (half-open)",
+    # C3111: both ends measured.
+    "stale_session": "{host}'s connection Disconnecting while the collector holds its idle "
+                     "session",
     "no_session": "no session from {host} on its collector",
     "outlived_cause": "the stream outlived its cause",
     "cause_just_cleared": "its cause was put back too recently to tell",
@@ -416,7 +419,7 @@ def _operations_during(network: str, device: str, inc: dict, src) -> tuple:
             continue
         if r.get("state") == "refused" or not start <= at <= end:
             continue                                   # a refused run sent nothing
-        telemetry = r.get("key") in (R.KEY, R.READD_KEY)
+        telemetry = r.get("key") in R.RUN_KEYS
         outcome = r.get("outcome") or r.get("state") or ""
         ops.append({"at": at, "what": r.get("command") or "an operation",
                     "actor": r.get("actor") or "", "ref": f"run {r.get('id')}",

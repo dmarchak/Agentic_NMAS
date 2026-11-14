@@ -332,6 +332,7 @@ DECLARED = {
     # announces `privileged` (and its verify's reads, `reads`, as each run lands).
     "resubscribe_v2.confirm": ("privileged",),
     "resubscribe_v2.readd": ("privileged",),
+    "resubscribe_v2.close_confirm": ("privileged",),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),

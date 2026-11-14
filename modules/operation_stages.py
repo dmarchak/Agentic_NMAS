@@ -113,6 +113,16 @@ STAGES = {
         "resubscribe_v2.preview", "hash",
         "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
         "modules.heal.resubscribe._record"),
+    # C3078: the re-subscribe with the collector step. The preview is the same card drawn with
+    # the step on: the close helper's dry run names the one session it would close, beside the
+    # program; the confirm is bound to ``program``, the selection's hash with that session's
+    # two ends in it (`resubscribe.close_id`). Apply holds the device: the close (read back
+    # gone by the helper), the device's connection read until it goes, then the re-subscribe;
+    # verify, rollback and record as Re-subscribe's, the helper's receipt in the record.
+    "resubscribe_v2.close_confirm": Stages(
+        "resubscribe_v2.preview", "program",
+        "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
+        "modules.heal.resubscribe._record"),
     # Heal to intent's Tier 2 (board H, parts H5 and H9, artboard E; routes/heal_proposal_v2):
     # a self-healing proposal approved by its hash on its Needs attention card. The preview is
     # the card's read of the proposal; verify the pipeline's, then the reset's measured rule;
@@ -560,6 +570,7 @@ HISTORY = {
     # source, `history_sources.privileged`).
     "resubscribe_v2.confirm": ("privileged",),
     "resubscribe_v2.readd": ("privileged",),
+    "resubscribe_v2.close_confirm": ("privileged",),
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
@@ -811,6 +822,9 @@ WRITTEN_ELSEWHERE = {
     "ai_reads": "each read the heal analysis's loop sent, written by the send log "
                 "(modules/ai/read_log.py) before pass 2 is asked, whoever's analysis it was; no "
                 "route writes it (board H, H26)",
+    "ai_missing": "each read or operation an AI investigation wanted that Mercury lacks, "
+                  "written by the investigation's job after its check "
+                  "(modules/ai/missing.py, C3663); no route writes it, and nothing acts on it",
     "diagnoses": "each diagnosis Diagnose… ran, written to the self-healing step log "
                  "(modules/heal/steplog.py) by its job, which a reveal route starts "
                  "(device_v2.diagnose_run; board H, H16), never a confirm",

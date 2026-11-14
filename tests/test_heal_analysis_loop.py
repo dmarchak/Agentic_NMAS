@@ -169,6 +169,9 @@ class TestTheLoop:
 
     def test_both_on_two_passes_the_allowed_read_run_as_the_read_only_account(
             self, ai, device, monkeypatch):
+        # Under the installation's read-only choice (C3661: by default the AI's reads sign in
+        # as Mercury's account, tests/test_ai_engineer_reads.py).
+        monkeypatch.setattr("modules.nsot.reads.ai_reads_as", lambda: "read_only")
         inc, before, got = self._run(ai, monkeypatch, _second())
         assert got["state"] == "answered" and got["passes"] == 2, got.get("words")
         assert got["answer"]["hypotheses"][0]["cites"] == ["tried:7", "read:1"]

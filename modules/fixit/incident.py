@@ -87,7 +87,7 @@ from dataclasses import dataclass
 
 from modules.heal import catalog as _catalog
 from modules.heal.resubscribe import KEY as RESUBSCRIBE_KEY
-from modules.heal.resubscribe import READD_KEY, header
+from modules.heal.resubscribe import COLLECTOR_KEY, READD_KEY, header
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +107,10 @@ CATALOGUE_KEYS = tuple(_catalog.CATALOG)
 #: proposal's parameters reach this form by `modules/fixit/validate.py`'s `as_attempt`;
 #: tests/test_fixit_catalogue.py holds the two tables to the same operations.
 PARAMETERS = {RESUBSCRIBE_KEY: (("subs", "set"), ("collector_step", "flag")),
-              READD_KEY: (("sub", "one"),)}
+              READD_KEY: (("sub", "one"),),
+              # C3078: the re-subscribe with the collector step, its runs recorded under its
+              # own key (`resubscribe.COLLECTOR_KEY`, each record's ``collector_step`` true).
+              COLLECTOR_KEY: (("subs", "set"),)}
 #: Given with a proposal and no parameter of it: the incident names the device, and the reason
 #: is the person's words, so a changed reason is the same fix proposed again.
 NOT_PARAMETERS = ("device", "reason")
@@ -362,6 +365,8 @@ def _run_params(run: dict) -> dict:
                     subs.append(sub)
     if run.get("key") == READD_KEY:
         return canonical(READD_KEY, {"sub": subs[0] if subs else ""})
+    if run.get("key") == COLLECTOR_KEY:
+        return canonical(COLLECTOR_KEY, {"subs": subs})
     return canonical(RESUBSCRIBE_KEY, {"subs": subs,
                                        "collector_step": run.get("collector_step") is True})
 

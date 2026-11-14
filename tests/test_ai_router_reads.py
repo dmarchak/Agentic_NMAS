@@ -134,6 +134,14 @@ def _ready():
     _state_on()
 
 
+def _reads_as_read_only():
+    """The installation's "AI device reads sign in as" set to the read-only account (C3661),
+    in the test's own body: the hardened choice, under which a device without the account is
+    refused by name."""
+    from modules.settings_schema import write_settings
+    assert write_settings({"ai_device_reads_as": "read_only"})["ok"]
+
+
 def scope(**over):
     spec = dict(intents=INTENTS, goldens=GOLDENS, incident="inc-1",
                 turned_on_by="admin@example.invalid")
@@ -328,8 +336,10 @@ def test_a_device_the_incident_does_not_name_is_refused(lab):
 
 def test_a_device_with_no_read_only_account_is_refused_by_name(lab):
     """Only the switches' profile carries one: r3, a router whose profiles carry the deploy
-    login, is refused naming every profile looked under; s1 is allowed."""
+    login, is refused naming every profile looked under; s1 is allowed. Under the read-only
+    choice (C3661: by default the reads sign in as Mercury's account, below)."""
     _state_on()
+    _reads_as_read_only()
     _account("role:switch")
     got = match("show interfaces GigabitEthernet4")
     assert got["verdict"] == "refused"
@@ -407,11 +417,12 @@ def test_the_loops_form_is_judged_by_the_same_family(lab):
 
 def test_the_family_is_declared_over_the_cli_rule_with_its_verbs_and_bounds():
     assert R.AI_READS.transport == "cli" and R.AI_READS.egress_class == "device_state"
-    # The floor: 19.5's set, 30; SHAPES also holds AI troubleshooting's two (S6), which only
-    # its own family asks for (`R.TELEMETRY`, `modules/ai/fixit_reads.py`).
-    assert len(R.AI_READS.operations) == 30 and len(R.SHAPES) == 32
+    # The floor: 19.5's set, 30; SHAPES also holds AI troubleshooting's three (S6, and C3640's
+    # connections), which only its own family asks for (`R.TELEMETRY`,
+    # `modules/ai/fixit_reads.py`).
+    assert len(R.AI_READS.operations) == 30 and len(R.SHAPES) == 33
     assert {o.name for o in R.TELEMETRY_OPS} == set(R.TELEMETRY) == {
-        "telemetry_brief", "telemetry_receiver"}
+        "telemetry_brief", "telemetry_receiver", "telemetry_connection"}
     assert not set(R.TELEMETRY) & {o.name for o in R.AI_READS.operations}
     for op in R.AI_READS.operations:
         (send,) = op.sends
@@ -449,7 +460,8 @@ def test_each_ipv4_shape_has_its_ipv6_twin():
 
 def test_a_device_without_a_read_only_account_is_refused_by_the_engine_with_no_session(lab):
     """The executor holds no session of its own: the reads engine refuses r3 by name before
-    any session opens, read-only or deploy."""
+    any session opens, read-only or deploy, under the read-only choice (C3661)."""
+    _reads_as_read_only()
     _account("role:switch")
     with pytest.raises(RuntimeError) as e:
         R.run("interfaces", {"device": "r3"}, ["show interfaces GigabitEthernet4"], scope())
@@ -459,6 +471,7 @@ def test_a_device_without_a_read_only_account_is_refused_by_the_engine_with_no_s
 
 def test_the_executor_signs_in_as_the_read_only_account_through_the_engine(lab):
     from modules.nsot import reads
+    _reads_as_read_only()
     _account()
     got = R.run("interfaces", {"device": "r3"}, ["show interfaces GigabitEthernet4"], scope())
     assert isinstance(got, RL.Answered)
@@ -538,6 +551,8 @@ RUNBOOK_ONLY = {
     # collector's address and port, data the AI set has not been decided to carry off the host.
     "telemetry_brief": "is not one of the AI read set's commands",
     "telemetry_receiver": "is not one of the AI read set's commands",
+    # C3640: the device's connections, AI troubleshooting's family's alone, as the two above.
+    "telemetry_connection": "is not one of the AI read set's commands",
 }
 
 
@@ -592,8 +607,8 @@ def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(
         matched += 1
     assert excepted == set(RUNBOOK_ONLY)
     assert plain == RUNBOOK_SPELLS_THE_DEFAULTS
-    # the floor: every other template (37 since C2828's two telemetry reads)
-    assert matched == 2 * 37 - 2 * len(RUNBOOK_ONLY)
+    # the floor: every other template (38 since C3640's connections read)
+    assert matched == 2 * 38 - 2 * len(RUNBOOK_ONLY)
 
 
 # ── The forms a device refuses for every account (the operator, 2026-11-13) ───────────────────

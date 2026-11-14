@@ -180,6 +180,14 @@ DEFAULTS: dict = {
     # form and its sourced ping and its traceroute are refused by name. Not drawn on a
     # Settings card yet (a new control needs its board): set in the settings file.
     "ai_read_account_ping_traceroute": False,
+    # "AI device reads sign in as" (the operator's change of approach, 2026-11-14, C3661;
+    # `reads.AI_READS_AS_KEY`): ``mercury``, the default, signs the AI's device reads in as
+    # Show commands does (the inventory's login); ``read_only`` (hardened) as the device's
+    # read-only account, saved only while every device holds it and its probe passed
+    # (`read_account.reads_as_refusal`). A person's decision about the AI's privilege on the
+    # devices, which no measurement makes. Settings › Installation › AI, the AI
+    # troubleshooting card.
+    "ai_device_reads_as":       "mercury",
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -985,6 +993,7 @@ SCHEMA: dict = {
         "ai_troubleshoot_mode": {"enum": ["manual", "off"]},
         "ai_cap_usd_per_incident": {"type": "number", "exclusiveMinimum": 0},
         "ai_read_account_ping_traceroute": _BOOL,
+        "ai_device_reads_as": {"enum": ["mercury", "read_only"]},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

@@ -56,9 +56,15 @@ session, holds no device, starts no job and sends to no device; the proposal's A
 operation's own card and confirm (tests/test_ai_fix_rule.py). A failed attempt STOPs the section;
 the AI is asked again only by a person's Retry with more information.
 
-**The reads** go only through Mercury's read families, `fixit_reads.FAMILY` (S6): the router
+**The reads** go only through Mercury's read families, `fixit_reads.FAMILY` (v5 since C3661:
+a show of one of the AI's command families (`router_reads.SHOW_FAMILIES`), or a bounded ping
+or traceroute, named by its verb and words, held whole by Mercury's allowlist too, on a
+device in scope, through the reads engine as Mercury's account by default and on History ›
+Reads with whom it signed in as; Mercury's own reads of intent, golden, neighbours, history,
+logs and metrics; a read Mercury lacks recorded as a missing capability, `record_missing`; what
+follows is S6's, kept as v4): the router
 read set's (each command whole on its allowlist, on the incident's device, as the read-only
-account, through the reads engine and on History › Reads), the lost stream's two among them,
+account, through the reads engine and on History › Reads), the lost stream's three among them,
 and Mercury's own (the collector's sessions on its host and the stream's series, held to the
 incident's device and subscriptions), while the network's device state class is on (off by
 default: then pass 1 is the plain pass, "reads not asked"). Each read is in the send log
@@ -86,7 +92,11 @@ log = logging.getLogger(__name__)
 FEATURE = "fixit_troubleshoot"
 PROMPT = (FEATURE, 1)
 PROMPT_READS_V2 = (FEATURE, 2)
-PROMPT_READS = (FEATURE, 4)
+PROMPT_READS_V4 = (FEATURE, 4)
+#: v5 (the operator, 2026-11-14, C3661): the reads pass over Mercury's own allowlist and its
+#: own reads (`fixit_reads.FAMILY`), as Mercury's account by default. v4, the fixed shapes, is
+#: no longer asked and is kept with its schema (expand, then contract).
+PROMPT_READS = (FEATURE, 5)
 PROMPT_SECOND = (FEATURE, 3)
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
@@ -171,10 +181,11 @@ class TroubleshootSecond(Troubleshoot):
 
 
 #: One entry of S6's pass 1 ``reads`` field, over AI troubleshooting's read family
-#: (`fixit_reads.FAMILY`: the router read set, the stream's two shapes, Mercury's own reads).
-FixitReadAsk = RL.request_model(FR.FAMILY)
+#: (`fixit_reads.FAMILY`: the router read set, the stream's three shapes, Mercury's own reads).
+FixitReadAsk = RL.request_model(FR.FAMILY_V4)
 
 
+#: S6's pass 1 (v4), no longer asked (v5 is): kept, its docstring and fields as it shipped.
 @register(FEATURE, 4)
 class TroubleshootFixitReads(Troubleshoot):
     """Pass 1 of the read loop (S6): `Troubleshoot`, plus at most 3 reads of AI
@@ -182,8 +193,20 @@ class TroubleshootFixitReads(Troubleshoot):
     reads: list[FixitReadAsk] = []
 
 
+#: One entry of v5's pass 1 ``reads`` field, over AI troubleshooting's read family as C3661
+#: made it (`fixit_reads.FAMILY`: Mercury's allowlist, Mercury's own reads, the stream reads).
+EngineerReadAsk = RL.request_model(FR.FAMILY)
+
+
+@register(FEATURE, 5)
+class TroubleshootEngineerReads(Troubleshoot):
+    """Pass 1 of the read loop: `Troubleshoot`, plus at most 3 reads Mercury runs: a device's
+    read by Mercury's allowlist, or Mercury's own read of what it holds."""
+    reads: list[EngineerReadAsk] = []
+
+
 SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
-             4: TroubleshootFixitReads}
+             4: TroubleshootFixitReads, 5: TroubleshootEngineerReads}
 
 
 class Refused(ValueError):
@@ -309,19 +332,33 @@ def read_set() -> str:
     read family's operations and their arguments, `fixit_reads.FAMILY`), the same bytes on
     every call."""
     lines = [
-        "read_set is the read-only reads Mercury may run for this investigation: the device's "
-        "own (each on the incident's device, as its read-only account), and Mercury's own of "
-        "what it holds (collector_sessions: the collector's side of a subscription's stream on "
-        "Mercury's host; stream_series: whether the stream has data now). To ask for one, add it to "
-        "reads: op is one of the operations below, args its arguments by name (device always, "
-        "and null for an argument the operation does not take), why one line on what it would "
-        "show, and hypothesis the hypothesis it tests. Ask for at most 3; ask for none when the "
-        "evidence says enough. Mercury checks each request against what it holds and runs only "
-        "those it allows; the next message carries the answers, or why a request was refused.",
+        "read_set is the read-only reads Mercury may run for this investigation, as an engineer "
+        "would ask them through Mercury: the device's own (show, show_config, ping, "
+        "traceroute: give the command's words after its verb in words, for example "
+        "\"interfaces GigabitEthernet1\" for show; Mercury runs a show of one of its command "
+        "families, listed below, on a device in scope, through its own reads engine), and "
+        "Mercury's own of what it holds about a device in scope (intent, golden, neighbours, "
+        "history, logs, metrics; collector_sessions: the collector's side of a subscription's "
+        "stream on Mercury's host; stream_series: whether the stream has data now). To ask for "
+        "one, add it to reads: op is one of the operations below, args its arguments by name "
+        "(device always, and null for an argument the operation does not take), why one line "
+        "on what it would show, and hypothesis the hypothesis it tests. Ask for at most 3; ask "
+        "for none when the evidence says enough. Mercury checks each request (the allowlist, "
+        "each address and interface against the device's golden and intent, the egress "
+        "classes) and runs only those it allows; the next message carries the answers, or why "
+        "a request was refused. A read Mercury refuses, or one it lacks, is recorded as a "
+        "missing capability for people to review: never try to word around a refusal.",
         "The operations:"]
     for op in FR.FAMILY.operations:
         args = ", ".join(f"{a} ({spec.shape.words})" for a, spec in op.args.items())
         lines.append(f"- {op.name}: {op.words}; args: {args}")
+    lines.append("show's command families, each with the forms it takes after `show` ({if} an "
+                 "interface the device's golden holds, written as one word; {a4} {a6} an "
+                 "address of the network; {p4} {p6} a prefix of it; {mask} a netmask after an "
+                 "address; {vlan} {n} numbers; {sub} a subscription the incident names; {mac} a "
+                 "MAC; {name} a VRF):")
+    for family, tails in RR.SHOW_FAMILIES:
+        lines.append(f"- {family}: " + "; ".join(f"{family} {t}".strip() for t in tails))
     return "\n".join(lines)
 
 
@@ -486,6 +523,22 @@ def _scope(network: str, incident, actor: str, collector=None, series=None) -> d
     return FR.scope_for(network, incident, actor=actor, collector=collector, series=series)
 
 
+def record_missing(got: dict, incident, network: str) -> dict:
+    """What the investigation wanted that Mercury lacks, recorded for review (C3663,
+    `modules/ai/missing.py`): each read it asked for that Mercury lacks, and its gap. Never
+    acted on; a store that cannot be written is logged and the answer stands."""
+    from modules.ai import missing
+
+    try:
+        rows = missing.wanted(got.get("answer"), got.get("reads") or [], feature=FEATURE,
+                              network=network, about=("incident", incident.id))
+        return missing.record(rows)
+    except Exception as exc:                          # noqa: BLE001 (the answer stands)
+        log.error("fixit troubleshoot: %s's missing capabilities were not recorded: %s",
+                  getattr(incident, "id", "?"), exc)
+        return {"ok": False, "recorded": 0, "error": f"not recorded ({type(exc).__name__})"}
+
+
 def reads_said(got: dict) -> dict:
     """What the loop did with reads, in Mercury's words: how many were asked for, run,
     refused and failed, each refused or failed one's reason, and the send log's id."""
@@ -534,7 +587,7 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
                              "pieces": [{"ref": r} for r in read_ids]})
         return check(answer, prep["pack"], sections, prep["topo"])
 
-    return RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootFixitReads),
+    return RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootEngineerReads),
                           second=(PROMPT_SECOND, TroubleshootSecond),
                           plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
                           acts_on=acts_on)
@@ -609,6 +662,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                  actable=prep["actable"], send=send, today=today,
                  reads_context=reads_context())
     said = reads_said(got)
+    record_missing(got, incident, network)
     ids = [c for c in got.get("call_ids") or [] if c]
     first = got.get("first") or {}
     out = {"state": "failed", "words": "", "proposal": {}, "checked": None, "call_ids": ids,
@@ -690,8 +744,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
 #: operator, 2026-11-13: "it runs the reads as if the device-state class were on (read-only,
 #: nothing sent, no record), so I review before I enable it").
 PREVIEW_CLASS = "device_state"
-#: The device's reads a preview runs (the lost stream's two shapes, through the reads engine).
-PREVIEW_DEVICE_READS = ("telemetry_brief", "telemetry_receiver")
+#: The device's reads a preview runs (the lost stream's three reads, by Mercury's allowlist,
+#: through the reads engine; C3661).
+PREVIEW_DEVICE_READS = ("show",)
 #: What each read a preview asks for says as its why and its hypothesis (sent in pass 2, as a
 #: model's own words would be).
 PREVIEW_WHY = "the preview runs every read of the lost stream the incident's scope allows"
@@ -708,9 +763,12 @@ def preview_requests(incident, *, device_reads: bool = True) -> list:
         return {"op": op, "args": dict({"device": incident.device}, **args),
                 "why": PREVIEW_WHY, "hypothesis": PREVIEW_HYPOTHESIS}
 
-    out = [ask("telemetry_brief")]
+    # The device's connections (C3640) follow its brief: one read for every subscription. Each
+    # is a read by Mercury's allowlist (C3661), the command's words after its verb.
+    out = [ask("show", words="telemetry ietf subscription all"),
+           ask("show", words="telemetry internal connection")]
     for sub in incident.subscriptions:
-        out += [ask("telemetry_receiver", subscription=sub),
+        out += [ask("show", words=f"telemetry ietf subscription {sub} receiver"),
                 ask("collector_sessions", subscription=sub),
                 ask("stream_series", subscription=sub)]
     return [r for r in out if device_reads or r["op"] not in PREVIEW_DEVICE_READS]

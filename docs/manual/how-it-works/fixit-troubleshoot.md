@@ -97,14 +97,24 @@ Pressing it runs these steps, as you, one investigation:
 5. `ask`: one call through the AI gateway, under the day cap and the per-call cap. With the
    network's device state class on (its Network tab, What AI may send), the AI may ask Mercury for up to three
    read-only reads, and a second call carries them; it cannot ask again. A read is either of
-   the incident's device (each command whole on the read-only allowlist, among them its
-   telemetry subscriptions' states and one subscription's receiver, run through Mercury's reads
-   engine as the device's read-only account and kept on History › Reads), or Mercury's own:
-   the collector's side of one of the incident's streams on Mercury's host (its listener and the
-   device's sessions on the port intent gives its receiver, IPv4 or IPv6), or whether the
-   stream has data in Prometheus now. Each is held to the incident's device and subscriptions,
-   and each is a row in the send log and on History beside the two calls. With the class off,
-   no read is asked for.
+   the incident's device, asked as an engineer types it in Show commands (show, ping or
+   traceroute and the rest of the command: a show of one of the AI's command families, an
+   engineer's troubleshooting reads, each in one of its forms, held whole by Mercury's
+   allowlist too; standby and VRRP only in their brief forms; each address in it one of the
+   network's and each interface, written as one word, one the device's golden holds; a
+   configuration form only under the configuration class, off on every network), run
+   through Mercury's own reads engine as Mercury's account (or the read-only account, under
+   Settings › AI's hardened choice) and kept on History › Reads with whom it signed in as; or
+   Mercury's own of what it holds about a device in scope: its intent, its golden (the
+   configuration class's), its neighbours, its History, its log lines from Loki, its health
+   figures, the collector's side of one of the incident's streams on Mercury's host (its
+   listener and the device's sessions on the port intent gives its receiver, IPv4 or IPv6), or
+   whether the stream has data in Prometheus now. Each is held to the incident's scope, and
+   each is a row in the send log and on History beside the two calls. A read Mercury refuses
+   because it lacks it (off the allowlist, left out on purpose, no such read), and a gap no
+   catalogue operation fills, is recorded as a **missing capability** for people to review
+   (History, kind AI missing capabilities); Mercury never acts on one. With the class off, no
+   read is asked for.
 6. `check`: the answer is checked against what was sent: every reference it cites must be
    there (a past incident Seen before does not hold is refused), every confirming step must be
    a read-only read, a device it names must be cited, and its fix must be exactly one catalogue

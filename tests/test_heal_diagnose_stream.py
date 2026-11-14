@@ -96,6 +96,7 @@ def proc(tmp_path, *, tcp=True, tcp6=True, tables=None, v6only=None) -> str:
 
 def answers(brief=BRIEF, ping=PING_OK, ping6=None) -> dict:
     out = {("r2", "show telemetry ietf subscription all"): brief,
+           ("r2", "show telemetry internal connection"): "",
            ("r2", "show telemetry ietf subscription 101 receiver"): "",
            ("r2", "show telemetry ietf subscription 102 receiver"): ""}
     if ping is not None:
@@ -137,6 +138,11 @@ def stream(tmp_path, got_answers=None, tgt=None, edit=None, receiver=V4_RECEIVER
     return got, f
 
 
+def _S():
+    from modules.heal import diagnose_stream as S
+    return S
+
+
 def rules(got) -> list:
     return [h["rule"] for h in got["hypotheses"]]
 
@@ -159,6 +165,52 @@ class TestTheCaptures:
         assert got["state"] == "unreadable" and "no subscription table" in got["why"]
         assert parse("telemetry_brief", "% Invalid input detected at '^' marker.\n")[
             "state"] == "unsupported"
+
+    def test_the_connections_read_the_operators_typed_line(self):
+        """C3640: held to the one TYPED line of the operator's read (the fixture's README), not
+        a capture: its index, peer, port, source and state."""
+        from modules.heal.diagnose_parse import parse
+        typed = text("r7__show_telemetry_internal_connection.typed.txt")
+        got = parse("telemetry_connection", typed)
+        assert got["state"] == "parsed", got
+        assert got["facts"] == {"connections": [
+            {"index": 496, "peer": "10.255.1.10", "port": 57000, "source": "10.255.4.6",
+             "state": "Disconnecting"}]}
+
+    def test_the_connections_over_ipv6_beside_ipv4(self):
+        """The same typed form with the two addresses IPv6 (the device's IPv6 form is not
+        captured: bracketed, and the port as its own word, are both read)."""
+        from modules.heal.diagnose_parse import parse
+        typed = text("r7__show_telemetry_internal_connection.typed.txt")
+        for line in (typed.replace("10.255.1.10:57000", "[2001:DB8::10]:57000"),
+                     typed.replace("10.255.1.10:57000", "2001:DB8::10 57000")):
+            got = parse("telemetry_connection", line.replace("10.255.4.6", "2001:DB8:4::6"))
+            assert got["facts"] == {"connections": [
+                {"index": 496, "peer": "2001:db8::10", "port": 57000,
+                 "source": "2001:db8:4::6", "state": "Disconnecting"}]}, line
+
+    @pytest.mark.parametrize("answer, why", [
+        ("", "an empty answer"),
+        ("% Bad command\n", "the device printed an error"),
+        ("496 10.255.1.10 source 10.255.4.6 Disconnecting\n", "is not a connection row"),
+        ("Peer 10.255.1.10:57000 Disconnecting\n", "is not a connection row"),
+    ])
+    def test_connections_it_cannot_read_are_unreadable_never_none_held(self, answer, why):
+        from modules.heal.diagnose_parse import parse
+        got = parse("telemetry_connection", answer)
+        assert got["state"] == "unreadable" and why in got["why"], got
+        assert parse("telemetry_connection", "% Invalid input detected at '^' marker.\n")[
+            "state"] == "unsupported"
+
+    @pytest.mark.parametrize("answer", ["Command authorization failed.\n",
+                                        "Telemetry connections\n\n"])
+    def test_an_answer_with_no_row_is_unread_never_none_until_its_heading_is_known(self,
+                                                                                  answer):
+        """No heading is recognised until the device's whole answer is captured (C3641): an
+        authorization refusal, or a heading alone, is unread, never "no connection"."""
+        from modules.heal.diagnose_parse import parse
+        got = parse("telemetry_connection", answer)
+        assert got["state"] == "unreadable" and "no heading this parser knows" in got["why"]
 
     def test_this_hosts_addresses_from_the_trie_and_if_inet6(self, tmp_path):
         import ipaddress
@@ -230,10 +282,22 @@ class TestThePlan:
         assert p["words"] == "r2's subscriptions 101 and 102 to 192.0.2.10 port 57000"
         assert [c["command"] for c in p["reads"]["r2"]] == [
             "show telemetry ietf subscription all",
+            "show telemetry internal connection",
             "show telemetry ietf subscription 101 receiver",
             "show telemetry ietf subscription 102 receiver",
             "ping 192.0.2.10 repeat 5 timeout 2"]
         assert "192.0.2.6" in p["addresses"] and "2001:db8:4::6" in p["addresses"]
+
+    def test_the_connections_are_asked_of_ios_xe_alone_and_said_elsewhere(self):
+        """C3640: IOS-XE's form, never sent to IOS (said in the plan's notes)."""
+        def ios(intents):
+            at_collector()(intents)
+            intents["r2"]["platform"] = "cisco_ios"
+        p = self.plan(target(), ios)
+        assert "show telemetry internal connection" not in [
+            c["command"] for c in p["reads"]["r2"]]
+        assert ("r2's telemetry connections are not read: `show telemetry internal "
+                "connection` is IOS-XE's form, and r2 is cisco_ios") in p["outside"]
 
     def test_an_ipv6_receiver_is_pinged_with_ping_ipv6(self):
         p = self.plan(target(), at_collector(V6_RECEIVER))
@@ -265,7 +329,7 @@ class TestThePlan:
             for s in intents["r2"]["telemetry"]:
                 s["settings"] = [l for l in s["settings"] if not l.startswith("receiver ")]
         p = self.plan(target(), edit)
-        assert p["collectors"] == [] and len(p["reads"]["r2"]) == 3
+        assert p["collectors"] == [] and len(p["reads"]["r2"]) == 4
         assert ("subscription 101's collector is not read: intent gives it no receiver "
                 "address and port") in p["outside"]
 
@@ -430,7 +494,9 @@ class TestTheRuns:
             "collector_down", "half_open", "no_session", "outlived_cause",
             "cause_just_cleared", "cause_stands", "stream_config_changed",
             # C2892: its planted cases are in TestTheStreamItself below.
-            "stream_flowing"}
+            "stream_flowing",
+            # C3111: its planted cases are in TestTheStaleSession below.
+            "stale_session"}
 
 
 # ── Which incidents run it, and the cause from the heal records ─────────────────────────────
@@ -527,10 +593,18 @@ R7_101 = text("r7__show_telemetry_ietf_subscription_101_receiver.txt")
 R7_102 = text("r7__show_telemetry_ietf_subscription_102_receiver.txt")
 
 
-def with_receivers(a101=R7_101, a102=R7_102) -> dict:
+#: r7's connections (C3640), TYPED from the operator's read, not a capture
+#: (tests/fixtures/diagnose/README.md), its two addresses written as this test's collector and
+#: r2's Gi2 (`at_collector`'s documentation-range edit, the far end the socket capture holds).
+R7_CONNECTION = text("r7__show_telemetry_internal_connection.typed.txt").replace(
+    "10.255.1.10", "192.0.2.10").replace("10.255.4.6", "192.0.2.6")
+
+
+def with_receivers(a101=R7_101, a102=R7_102, connection=R7_CONNECTION) -> dict:
     out = answers()
     out[("r2", "show telemetry ietf subscription 101 receiver")] = a101
     out[("r2", "show telemetry ietf subscription 102 receiver")] = a102
+    out[("r2", "show telemetry internal connection")] = connection
     return out
 
 
@@ -560,6 +634,36 @@ class TestTheStreamItself:
         assert half["incomplete"] == [], half["incomplete"]
         assert any(e.get("line") == "State Connected, connection 496"
                    for e in half["evidence"]), half["evidence"]
+        # C3640: the device's own connection to the collector, Disconnecting, beside it.
+        assert ("r2's connection 496 to 192.0.2.10 port 57000 from 192.0.2.6 reads "
+                "Disconnecting") in half["claim"]
+        assert any(e.get("line") == "496 192.0.2.10:57000 source 192.0.2.6 Disconnecting"
+                   and e["read"].endswith(":show telemetry internal connection")
+                   for e in half["evidence"]), half["evidence"]
+        assert half["facts"]["device_connections"] == [
+            {"index": 496, "peer": "192.0.2.10", "port": 57000, "source": "192.0.2.6",
+             "state": "Disconnecting"}]
+
+    def test_the_connections_unread_is_said_incomplete_never_none_held(self, world, tmp_path):
+        """C3640: an answer the parser cannot read is the evidence incomplete, naming the read,
+        never the device holding no connection."""
+        got = flowing_run(tmp_path, lambda d, s: ABSENT,
+                          with_receivers(connection="% Invalid command at '^' marker.\n"),
+                          tcp6=False)
+        half = next(h for h in got["hypotheses"] if h["rule"] == "half_open")
+        assert half["incomplete"] == [
+            "r2's telemetry connections (`show telemetry internal connection`): the device "
+            "printed an error: % Invalid command at '^' marker.; " + _S().CONNECTION_UNREAD]
+        assert half["facts"]["device_connections"] is None
+        assert "holds no telemetry connection" not in half["claim"]
+
+    def test_a_connection_to_another_collector_is_not_this_one(self, world, tmp_path):
+        got = flowing_run(tmp_path, lambda d, s: ABSENT, with_receivers(
+            connection=R7_CONNECTION.replace("192.0.2.10:57000", "192.0.2.99:57000")),
+            tcp6=False)
+        half = next(h for h in got["hypotheses"] if h["rule"] == "half_open")
+        assert "r2 holds no telemetry connection to 192.0.2.10 port 57000" in half["claim"]
+        assert half["facts"]["device_connections"] == []
 
     def test_one_receiver_unreadable_is_the_only_one_incomplete(self, world, tmp_path):
         got = flowing_run(tmp_path, lambda d, s: ABSENT, with_receivers(a102=""), tcp6=False)
@@ -609,6 +713,82 @@ class TestTheStreamItself:
                             tcp6=False)
         half = next(h for h in stale["hypotheses"] if h["rule"] == "half_open")
         assert "nothing received on it for 99 minutes" in half["claim"]
+
+
+# ── The stale session, both ends measured (C3111) ───────────────────────────────────────────
+
+#: The kernel's socket diagnostics (ss_tni_4's real capture), the device's row's lastrcv
+#: written as r7's measured idle on the NMAS host (2,130 s, 2026-11-14).
+def r7_idle_ss() -> str:
+    ss4 = open(os.path.join(COLLECTOR, "ss_tni_4.txt"), encoding="utf-8").read()
+    assert "lastrcv:5966281" in ss4
+    return ss4.replace("lastrcv:5966281", "lastrcv:2130000")
+
+
+def no_cause() -> dict:
+    return {"state": "none", "why": "no change on another device is in the heal records for "
+                                    "the 10 minutes before the stream was lost"}
+
+
+def stale_run(tmp_path, got_answers=None, ss=None, tgt=None):
+    from modules.heal import diagnose as D
+    from modules.heal import diagnose_stream as S
+    model, intents = fleet(at_collector())
+    root = proc(tmp_path, tcp6=False)
+    sessions = ss or (lambda p: (r7_idle_ss(), ""))
+    return D.run("Default", "stream_lost", tgt or target(no_cause()), ACTOR,
+                 session=Fleet(got_answers or with_receivers()), logs=quiet, model=model,
+                 intents=intents, now=NOW, series=lambda d, s: ABSENT,
+                 collector=lambda a, p, s: S.read_collector(a, p, s, proc=root, ss=sessions))
+
+
+class TestTheStaleSession:
+    def test_both_ends_measured_lead_and_name_the_collector_step(self, world, tmp_path):
+        from modules.heal import diagnose_stream as S
+        got = stale_run(tmp_path)
+        first = got["hypotheses"][0]
+        assert (first["rule"], first["strength"], first["incomplete"]) == (
+            "stale_session", "decisive", []), got["hypotheses"]
+        assert first["claim"] == (
+            "r2's telemetry connection 496 to 192.0.2.10 port 57000 reads Disconnecting while "
+            "the collector still holds an established session from r2 (192.0.2.6 port 60235) "
+            "with nothing received on it for 35 minutes: the collector's stale session keeps "
+            "r2 from dialling again")
+        assert first["todo"] == S.COLLECTOR_RECOVERY.format(host="r2")
+        lines = [e["line"] for e in first["evidence"]]
+        assert "192.0.2.6:60235 ESTABLISHED, lastrcv 2130000 ms" in lines
+        assert "496 192.0.2.10:57000 source 192.0.2.6 Disconnecting" in lines
+        assert first["facts"]["session"] == {"remote": "192.0.2.6", "rport": 60235,
+                                             "collector": "192.0.2.10 port 57000",
+                                             "quiet_s": 2130}
+        # The plain half-open stands behind it, its next step the re-subscribe alone.
+        assert "half_open" in rules(got)[1:]
+
+    def test_the_device_not_disconnecting_is_not_it(self, world, tmp_path):
+        got = stale_run(tmp_path, with_receivers(
+            connection=R7_CONNECTION.replace("Disconnecting", "Connecting")))
+        assert "stale_session" not in rules(got)
+        assert any(r["rule"] == "stale_session" and "496 Connecting" in r["check"]
+                   for r in got["ruled_out"]), got["ruled_out"]
+
+    @pytest.mark.parametrize("which, words", [
+        ("connections", "r2's telemetry connections were not read"),
+        ("sessions", "last receive was not read (the kernel's socket diagnostics), so "
+                     "whether it is idle cannot be told")])
+    def test_either_end_unread_decides_nothing_and_says_why(self, world, tmp_path, which,
+                                                            words):
+        if which == "connections":
+            got = stale_run(tmp_path, with_receivers(connection="% Bad command\n"))
+        else:
+            got = stale_run(tmp_path, ss=lambda p: ("", "ss: not read here"))
+        assert "stale_session" not in rules(got)
+        said = [n["why"] for n in got["not_checked"] if n.get("rule") == "stale_session"]
+        assert said and words in said[0], got["not_checked"]
+
+    def test_a_session_receiving_now_is_not_stale(self, world, tmp_path):
+        live = r7_idle_ss().replace("lastrcv:2130000", "lastrcv:287")
+        got = stale_run(tmp_path, ss=lambda p: (live, ""))
+        assert "stale_session" not in rules(got)
 
 
 # ── Its times (the operator, 2026-11-13: raw UTC anywhere left; C3290) ──────────────────────

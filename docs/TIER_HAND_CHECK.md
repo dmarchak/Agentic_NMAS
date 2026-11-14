@@ -4631,3 +4631,87 @@ interpreter, confined, two workers. Baseline: 150 passed. **Runs:** 2026-11-13 2
 **The result: 6 mutants and the canary, all killed in the first run, none equivalent.** Not
 mutated: the store's sealing and `credentials.set_read_account` (unchanged), the probe's masking
 in `run` (moved unchanged; tests/test_read_account_probe.py's masking tests pass on the module).
+
+## 2026-11-14: the AI's device reads through Mercury's allowlist as Mercury's account (C3661), by hand
+
+**What changed in the tier:** data off the host. The AI's device reads (AI troubleshooting's v5
+pass 1) are any read Mercury's Show commands allowlist holds whole, named by verb and words
+(`router_reads.COMMAND_OPS`, `command_refusal`), in place of fixed shapes; they sign in as the
+installation choice "AI device reads sign in as" says (`reads.ai_reads_as`, `signs_in_as`):
+Mercury's account by default, through Show commands' own session, or the read-only account; and
+Mercury's own reads of a device in scope (`fixit_reads.OWN_READS`) leave the host under their
+classes, the golden under the configuration class. The masking of every answer
+(`read_loop._answered`) and the egress classes' switches are unchanged.
+
+The danger the hand check guards: a write or a secret's position reaching the model as a
+"read"; a configuration form sent under the device state class; a read of something outside the
+network; a long ping holding a device; the hardened choice silently not applied; a hand-edited
+or unreadable setting widening the account.
+
+**The method:** `scratchpad/senior/hand_check.py` in a throwaway worktree
+(`scripts/nmas-control`), each mutant one exact replacement in the worktree's copy, then
+tests/test_ai_engineer_reads.py, test_ai_router_reads.py, test_read_only_account.py and
+test_fixit_reads.py, no `-x`, CI's interpreter, confined, two workers. **Run 1** 2026-11-14
+07:47:52 to 07:49:22 UTC, baseline 182 passed: M12 survived, and its test was written
+(`test_a_scope_built_without_the_answer_asks_the_read_only_account`); the review's dialect hold
+on the connections read added beside it (M14). **Run 2** 07:50:12 to 07:51:53 UTC, baseline 184
+passed, every mutant below killed. Run 2 ended with nmas-control's exit 3: other agents' files
+(modules/heal/catalog.py, diagnose_parse.py, resubscribe.py, tests/test_heal_diagnose_stream.py)
+changed in the checkout during the run; none is under test here, and the worktree was the
+snapshot.
+
+| mutant | result (run 2) | killed by |
+|---|---|---|
+| C0 canary: `command_refusal` refuses every read | killed (35 failed) | the allowed forms, the family's own reads, the missing capability's |
+| M1 the read-only choice ignored | killed (7) | `test_under_the_read_only_choice_…`, the read-only account tests of test_ai_router_reads.py and test_read_only_account.py |
+| M2 a hand-edited value read as Mercury's account | killed (1) | `test_a_hand_edited_value_reads_as_the_read_only_account_the_narrower` |
+| M3 the allowlist not asked by `command_refusal` | killed (3) | the writing modifier's planted case, both missing-capability tests (the transport rule still refuses it, in other words) |
+| M4 a configuration form taken by show | killed (3) | `show running-config`, `sh run`, `test_show_config_takes_only_a_configuration_form` |
+| M5 the left-out reads allowed | killed (4) | a secret's position, the log, tech-support, the missing capability's |
+| M6 an address outside the network | killed (2) | the IPv4 and IPv6 planted cases |
+| M7 an interface the golden does not hold | killed (1) | `GigabitEthernet9` |
+| M8 a `;` allowed | killed (1) | `clock ; reload` |
+| M9 show_config under the device state class | killed (2) | the class-off case, the family test |
+| M10 the golden under the device state class | killed (2) | Mercury's own reads' class test, the family test |
+| M11 no account asked under the read-only choice | killed (2) | `test_a_device_with_no_read_only_account_is_refused_by_name`, the closed-side test |
+| M12 a scope without the answer read as Mercury's account | killed (1) | `test_a_scope_built_without_the_answer_asks_the_read_only_account` |
+| M13 a ping or traceroute past 19.5's bounds | killed (2) | the 270 s traceroute, the 50 s ping |
+| M14 the connections read asked of any platform | killed (1) | `test_the_telemetry_connections_read_is_ios_xe_s_alone` |
+
+**The result: 14 mutants and the canary, all killed in run 2, none equivalent.** Not mutated:
+`readonly_commands` (unchanged), the egress mask and `read_loop` (unchanged), the evidence
+pack's builders behind Mercury's own reads (unchanged; their answers pass the same mask).
+
+**Run 3, after Tier 1's independent review** (2026-11-14 08:20:48 to 08:24:37 UTC; its BLOCKER:
+with Mercury's account a show may print a secret's position the left-out list never named,
+`show crypto isakmp key`, `show vtp password`, HSRP's, VRRP's and GLBP's authentication text).
+What changed: the AI's show is a positive list of command families (`SHOW_FAMILIES`), each
+naming its argument shapes; an interface resolves by a unique canonical type to one the golden
+holds; a netmask is one only right after an address; a ping's source is checked; `crypto` and
+`vtp password` joined the left-out list; and the egress mask (`redact._EGRESS`) gained show
+output's label forms, the first-hop redundancy authentication text and the ISAKMP key row. The
+same method, tests/test_redact_typed.py and test_redact_ios_shapes.py added; baseline 1235
+passed. Run 3 ended with nmas-control's exit 3: this work's own documentation files changed in
+the checkout during it; the worktree was the snapshot.
+
+| mutant | result (run 3) | killed by |
+|---|---|---|
+| C0 and M1 to M14 (as run 2, M6 and M7 now B6 and B5) | killed | as run 2, M5 by 5 tests (crypto, vtp password) |
+| B1 the families bypassed: any show allowed | killed (29) | every planted secret, fragment and interface case |
+| B2 standby's detail forms allowed | killed (2) | `show standby`, `show standby GigabitEthernet4` |
+| B3 crypto not left out | killed (1) | `crypto isakmp key`'s reason |
+| B4 an interface type by any prefix, not a unique one | killed (1) | `T1` |
+| B5 an interface not compared with the golden | killed (6) | Gig9, G9, Gigabit9, Loop9, a ping's source, GigabitEthernet9 |
+| B6 an address slot not compared with the network | killed (4) | the IPv4 and IPv6 addresses outside it, `128.0.0.0`, `255.255.255.0` |
+| B7 a ping's source not checked | killed (2) | the source interface and the source address |
+| B8 a netmask anywhere taken as a mask | killed (2) | `128.0.0.0`, `255.255.255.0` |
+| X1 the egress label form removed | killed (2) | the planted outputs' test, test_redact_typed's measured shapes |
+| X2 the first-hop redundancy form removed | killed (1) | the planted outputs' test |
+| X3 the ISAKMP key row removed | killed (1) | the planted outputs' test |
+
+**The result of run 3: 25 mutants and the canary, all killed, none equivalent.**
+
+**Run 3b** (08:33:37 to 08:40:25 UTC): the ISAKMP row's shape was made stricter after run 3 (a
+keyring's name, columns two spaces or more apart: run 3's wider shape masked a YAML list line in
+the topology tests) and the gateway gained the three labels' words; X1 to X3 were applied again,
+with tests/test_ai_explain_topology.py added, baseline 1148 passed: all three killed.

@@ -54,7 +54,8 @@ log = logging.getLogger(__name__)
 #: operation: the catalog's parameter name, and the attempt's. The device is the incident's,
 #: never compared (`incident.NOT_PARAMETERS`).
 AS_ATTEMPT = {"telemetry-resubscribe": {"subscriptions": "subs"},
-              "telemetry-readd": {"subscription": "sub"}}
+              "telemetry-readd": {"subscription": "sub"},
+              "telemetry-collector-resubscribe": {"subscriptions": "subs"}}
 #: The checks, in the order they are made, each one's name as a refusal's code says it.
 CHECKS = ("schema", "scope", "guards", "intent")
 DONE = ". Nothing was previewed, and nothing runs"

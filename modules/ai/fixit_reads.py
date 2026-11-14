@@ -7,11 +7,19 @@ the send log and on History, and composes no command").
 `FAMILY` is one `read_loop.ReadFamily` holding two kinds of read, each held to its own
 transport's read rule when it is declared and again on every rendered request:
 
+- **Since C3661 (the operator, 2026-11-14), `FAMILY` is v5's:** the device's reads by Mercury's
+  command families (`router_reads.COMMAND_OPS`: the model names a read's verb and its words; a
+  show is one of `SHOW_FAMILIES`' forms, and Mercury's allowlist decides the whole command
+  too), signed in by "AI device reads sign in
+  as" (Mercury's account by default), and Mercury's own reads of a device in scope (`OWN_READS`:
+  intent, golden, neighbours, history, logs, metrics) beside the stream's two. What follows
+  describes the fixed shapes, kept as `SHAPES_FAMILY` (the probe's) and `FAMILY_V4` (v4's).
 - **The device's reads** are the router read set's operations (`router_reads.AI_READS`, over
   ``cli``: the whole command on the read-only allowlist, its shape matched token by token, each
-  argument compared with what Mercury holds) and the lost stream's two shapes of
+  argument compared with what Mercury holds) and the lost stream's three shapes of
   `router_reads.SHAPES` that only this family asks for (`router_reads.TELEMETRY`:
-  ``telemetry_brief``, ``telemetry_receiver``). They run through Mercury's reads engine as kind
+  ``telemetry_brief``, ``telemetry_receiver``, and ``telemetry_connection``, the device's
+  connections, IOS-XE's form, C3640). They run through Mercury's reads engine as kind
   ``ai_analysis``, signed in as the device's read-only account, each recorded on History ›
   Reads as an AI-requested read (`router_reads.run`).
 - **Mercury's own reads** (``local``: one line naming the read, never a command):
@@ -113,10 +121,90 @@ def _series(fx: dict, device: str, sub: str) -> dict:
     return {k: got.get(k) for k in ("state", "count", "why")}
 
 
+# ── Mercury's own reads of what it holds about a device in scope (C3661) ─────────────────────
+#
+# The operator, 2026-11-14: "plus topology, neighbours, the evidence pack, logs, history,
+# metrics, intent and golden". Each is the evidence pack's own builder for that section, read
+# now for a device in the investigation's scope (`evidence_pack`: one home for each), never a
+# device session; the golden is the configuration class's, so it is refused wherever that class
+# is off (every network until C1720).
+
+#: The operation, what it reads, and its class (None: the family's, the device state class).
+OWN = (
+    ("intent", "the device's committed intent (its host vars, secrets as references) and the "
+               "Intent check of its committed golden against it", None),
+    ("golden", "the device's committed golden configuration (the configuration class's)",
+     "configuration"),
+    ("neighbours", "the device's expected and reported neighbours (the Neighbours tab's view: "
+                   "committed intent against Prometheus's routing tables)", None),
+    ("history", "the device's recent History: deploys, restores, goldens, intent, restarts and "
+                "reloads", None),
+    ("logs", "the device's log lines from Loki around the incident's onset, masked", None),
+    ("metrics", "the device's health figures from Prometheus and Loki over the incident's "
+                "window (CPU, scrapes, interface discards, the syslog heartbeat)", None),
+)
+OWN_OPS = tuple(name for name, _w, _c in OWN)
+#: A Mercury read of the log or the metrics without an onset reads this far back.
+OWN_WINDOW_SECONDS = 15 * 60
+
+
+def _scope_device(value, scope) -> str:
+    devices = (scope or {}).get("devices") or {}
+    if value not in devices:
+        return (f"{value} is not a device in this investigation's scope (it holds "
+                f"{RR._listed(sorted(devices))})")
+    return ""
+
+
+def _own(name: str, words: str, cls) -> RL.Operation:
+    return RL.Operation(
+        name, args={"device": RL.Arg(RL.Text(RR.DEVICE, "a device name"),
+                                     against=_scope_device)},
+        sends=(f"local {name} {{device}}",), egress_class=cls, words=words,
+        transport="local")
+
+
+OWN_READS = tuple(_own(*o) for o in OWN)
+
+
+def _own_read(op: str, host: str, scope: dict):
+    """Mercury's own read *op* of *host*, through the evidence pack's builder for it."""
+    import time
+
+    from modules import evidence_pack as EP
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+
+    network = (scope or {}).get("network") or ""
+    ref = listref.resolve(network)
+    if op in ("intent", "golden"):
+        intents, goldens = RR._committed(network, [host])
+        if op == "golden":
+            return {"device": host, "golden": goldens.get(host) or "",
+                    "why": "" if goldens.get(host) else f"{host} has no committed golden"}
+        dev = next((d for d in load_saved_devices(ref.csv_path)
+                    if d.get("hostname") == host), {"hostname": host})
+        return {"device": host, "intent": intents.get(host) or {},
+                "check": EP.intent_section(ref, dev)}
+    now = time.time()
+    onset = ((scope or {}).get("fixit") or {}).get("onset") or (now - OWN_WINDOW_SECONDS)
+    if op == "neighbours":
+        dev = next((d for d in load_saved_devices(ref.csv_path)
+                    if d.get("hostname") == host), {"hostname": host})
+        return EP.neighbours_section(ref, dev)
+    if op == "history":
+        return EP.history_section(ref, host)
+    if op == "logs":
+        return EP.logs_section(ref, host, onset, now)
+    return EP.health_section(ref, host, {"ok": False}, onset, now, now)
+
+
 def run(op: str, args: dict, requests: list, scope: dict):
     """The family's executor: a device's read through the router read set's own executor (the
     reads engine, `router_reads.run`), a local one through Mercury's own read of it, handed
     exactly the request the check allowed."""
+    if op in OWN_OPS:
+        return _own_read(op, args["device"], scope)
     if op not in LOCAL_OPS:
         return RR.run(op, args, requests, scope)
     fx = (scope or {}).get("fixit") or {}
@@ -125,13 +213,35 @@ def run(op: str, args: dict, requests: list, scope: dict):
     return _series(fx, args["device"], args["subscription"])
 
 
-#: AI troubleshooting's read family: the router read set (``cli``) and Mercury's own reads
-#: (``local``), each under the device state class.
-FAMILY = RL.ReadFamily(
+#: The fixed shapes' family (S6, as AI troubleshooting's v4 asked): the router read set
+#: (``cli``), the lost stream's shapes and Mercury's two stream reads, each under the device
+#: state class. Kept for the read-only account probe, which measures the account against these
+#: shapes (`read_account_probe._cli_operations`; post-lab hardening, C3665), and for the
+#: diagnosis's own forms.
+SHAPES_FAMILY = RL.ReadFamily(
     name=NAME, transport="local", egress_class="device_state",
     operations=tuple(dataclasses.replace(op, transport="cli")
                      for op in RR.AI_READS.operations + RR.TELEMETRY_OPS) + LOCAL,
-    run=run, words="AI troubleshooting's reads: the device's, and Mercury's own")
+    run=run, words="AI troubleshooting's reads by fixed shapes: the device's, and Mercury's own")
+
+#: v4's family exactly as its committed schema declares it (schemas/ai/fixit_troubleshoot.v4.json:
+#: the two telemetry shapes it shipped with), kept so a call recorded under v4 stays readable.
+FAMILY_V4 = RL.ReadFamily(
+    name=NAME, transport="local", egress_class="device_state",
+    operations=tuple(op for op in SHAPES_FAMILY.operations
+                     if op.name != "telemetry_connection"),
+    run=run, words=SHAPES_FAMILY.words)
+
+#: AI troubleshooting's read family (v5; the operator, 2026-11-14, C3661): the device's reads by
+#: Mercury's own allowlist (`router_reads.COMMAND_OPS`: any read Show commands holds whole, as
+#: Show commands runs it), Mercury's own reads of what it holds about a device in scope
+#: (`OWN_READS`), and the two stream reads (`LOCAL`).
+FAMILY = RL.ReadFamily(
+    name=NAME, transport="local", egress_class="device_state",
+    operations=tuple(dataclasses.replace(op, transport="cli") for op in RR.COMMAND_OPS)
+    + OWN_READS + LOCAL,
+    run=run, words="AI troubleshooting's reads: the device's by Mercury's allowlist, and "
+                   "Mercury's own")
 
 
 def scope_for(network: str, incident, *, actor: str, collector=None, series=None) -> dict:

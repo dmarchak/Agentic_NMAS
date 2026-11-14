@@ -487,13 +487,105 @@ def telemetry_receiver(text: str, interface: str = "") -> dict:
     return _out(PARSED, {"receivers": rows})
 
 
+#: `show telemetry internal connection` (IOS-XE 17; C3640): the device's telemetry connections,
+#: one row each. **Held to one TYPED line only, not a capture:** the operator's read of a lab
+#: router on 2026-11-14 through Show commands, ``<index> <collector>:<port> source <device's
+#: address> Disconnecting`` (tests/fixtures/diagnose/README.md, the typed file), the row's
+#: index the receiver read's
+#: ``Connection`` id. A row is a line whose first word is the index and which holds the peer
+#: (``<address>:<port>``, or the address and its port as the next word), the source address
+#: (after the word ``source``, or the next address) and the state (the first word of letters
+#: after the source). A line holding an address that is not such a row, an error line, or an
+#: empty answer is unreadable, never read as a device holding no connection. An answer with no
+#: row is the device holding none ONLY under a heading `_CONN_HEADINGS` recognises, and none is
+#: recognised until the device's whole answer is captured (C3641): until then every rowless
+#: answer ("Command authorization failed.", a heading alone) is unreadable, never "none".
+_CONN_WORD = re.compile(r"^[A-Za-z][A-Za-z-]*$")
+#: The heading lines of `show telemetry internal connection` with no connection under them, as
+#: the device prints them; empty until C3641's capture.
+_CONN_HEADINGS: tuple = ()
+
+
+def _conn_address(word: str):
+    """``(address, port)`` of *word*: an address alone (port None), ``<IPv4>:<port>`` or
+    ``[<IPv6>]:<port>``; None when it is neither."""
+    text = word.strip(",")
+    try:
+        return ipaddress.ip_address(text).compressed, None
+    except ValueError:
+        pass
+    host, sep, port = text.rpartition(":")
+    if not sep or not port.isdigit() or not 0 < int(port) < 65536:
+        return None
+    try:
+        return ipaddress.ip_address(host.strip("[]")).compressed, int(port)
+    except ValueError:
+        return None
+
+
+def _conn_row(words: list):
+    """One connection row of *words*, or None when the line is not one."""
+    if not words or not words[0].isdigit():
+        return None
+    rest, peer, port, source, state = words[1:], None, None, None, None
+    i = 0
+    while i < len(rest):
+        word = rest[i]
+        got = _conn_address(word)
+        if peer is None and got:
+            peer, port = got
+            if port is None and i + 1 < len(rest) and rest[i + 1].isdigit():
+                port, i = int(rest[i + 1]), i + 1
+        elif peer is not None and source is None and word.lower() == "source" and \
+                i + 1 < len(rest) and _conn_address(rest[i + 1]):
+            source, i = _conn_address(rest[i + 1])[0], i + 1
+        elif peer is not None and source is None and got:
+            source = got[0]
+        elif source is not None and state is None and _CONN_WORD.match(word):
+            state = word
+        i += 1
+    if peer is None or port is None or source is None or state is None:
+        return None
+    return {"index": int(words[0]), "peer": peer, "port": port, "source": source,
+            "state": state}
+
+
+def telemetry_connection(text: str, interface: str = "") -> dict:
+    """``{"connections": [{index, peer, port, source, state}]}``: each telemetry connection the
+    device holds, its addresses compressed, its state as the device printed it (C3640). An
+    empty answer, an error line, or a line holding an address that is not a row is unreadable;
+    an answer with no row is the device holding none only under a recognised heading
+    (`_CONN_HEADINGS`), and otherwise unreadable."""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return _out(UNREADABLE, why="an empty answer")
+    rows = []
+    for line in lines:
+        if line.startswith("%"):
+            return _out(UNREADABLE, why=f"the device printed an error: {line[:80]}")
+        words = line.split()
+        row = _conn_row(words)
+        if row is not None:
+            rows.append(row)
+        elif any(_conn_address(w) for w in words):
+            return _out(UNREADABLE, why=f"a line holding an address is not a connection row "
+                                        f"this parser reads: {line[:80]!r}")
+    if not rows and not any(h.fullmatch(line) for h in _CONN_HEADINGS for line in lines):
+        return _out(UNREADABLE, why=(f"no connection row, and no heading this parser knows "
+                                     f"(the answer begins {lines[0][:60]!r}): read as unread, "
+                                     "never as no connection, until the answer is captured "
+                                     "(C3641)"))
+    return _out(PARSED, {"connections": rows})
+
+
 #: Each read kind's parser (`diagnose.READS` names the kinds).
 PARSERS = {"interfaces": interfaces, "ip_interface": ip_interface, "cdp": cdp, "lldp": lldp,
            "ospf_neighbor": ospf_neighbor, "ospfv3_neighbor": ospfv3_neighbor,
            "bgp_summary": peers_from_summary, "arp": arp, "ipv6_interface": ipv6_interface,
            "reach_ping": ping, "route": route, "traceroute": traceroute, "acl_counters": access_list,
            "nd": nd, "mac": mac_table, "stp": stp, "telemetry_brief": telemetry_brief,
-           "telemetry_receiver": telemetry_receiver}
+           "telemetry_receiver": telemetry_receiver,
+           "telemetry_connection": telemetry_connection}
 #: The parsers that read by the device's dialect (the platform pack's entries are per dialect).
 BY_DIALECT = frozenset({"arp"})
 

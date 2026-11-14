@@ -723,13 +723,35 @@ analysis: a hypothesis and a recommended next step, cited from the evidence. **I
 only.**
 - **Nothing in the heal loop reads its output.** Detect, decide, act, verify and record never
   import or read the analysis.
-- **No fix runs from AI text.** The AI may propose one operation from Mercury's catalog, with
-  its parameters; code validates it against intent and the guards, and a person approves it by
-  its preview's hash before it runs. The AI never composes commands, never runs anything itself,
-  and never retries on its own. (The operator's words, 2026-11-11, replacing "No fix is ever
-  chosen or run from AI text"; "by hash" the operator's, 2026-11-12.)
-- **A saved fix is the operation a person saved from a verified run, never the AI's words.**
-  (The operator, 2026-11-11.)
+- **No fix runs from AI text.** The AI may propose a plan of catalog operations, approved once
+  by a person by hash, executed in order, stopping on the first failure; it never composes
+  commands, runs anything itself, or retries on its own; a saved fix is the operation a person
+  saved from a verified run. Code holds a fix-it proposal, one catalog operation, to intent,
+  the incident's scope and the heal guards (modules/fixit/validate.py). (The operator's words,
+  2026-11-14, granted overnight, replacing 2026-11-11's "The AI may propose one operation from
+  Mercury's catalog, with its parameters", itself replacing "No fix is ever chosen or run from
+  AI text"; "by hash" the operator's, 2026-11-12. Until the plan engine lands, a proposal is
+  one operation of the catalog, a plan of one.)
+- **The AI is a senior network engineer using Mercury, not Mercury's admin** (the operator's
+  change of approach, 2026-11-14). It MAY read anything Mercury can read, investigate with
+  Mercury's read tools, propose catalog operations (or a plan of them), draft text for a
+  person to review, and record a missing capability. It may NEVER change Mercury's settings
+  (self-healing mode, AI on/off, caps, credentials, notifications, roles, templates' approval),
+  approve anything (its own proposals included), run a change or start a job itself, compose
+  a device command, see or type a secret, or exceed the caps. Closed loop stays a later phase.
+- **Its device reads go through Mercury's reads engine with Mercury's own account**, through
+  the same protections as Show commands: the model names a read command (its verb and the rest
+  of it), never a session; a show is one of the AI's command families, a positive list each
+  naming its argument shapes (`router_reads.SHOW_FAMILIES`), never "anything Show commands
+  allows"; Mercury's one allowlist decides it whole too (`readonly_commands`, as for Show
+  commands); every address and interface in it is checked against the device's
+  committed golden and intent; the read loop re-checks it; the egress classes hold (a
+  configuration form only under the configuration class); and each read is recorded on
+  History with whom it signed in as. The installation choice "AI device reads sign in as"
+  (`ai_device_reads_as`) is Mercury's account by default, or the read-only account (hardened),
+  offered only when every device holds it and its probe passed (C3661). A read Mercury lacks,
+  and a fix no catalog operation does, is recorded as a missing capability for review, never
+  acted on (C3663).
 - **Mechanised:** a test (tests/test_heal_analysis_never_read.py) parses `modules/heal/` and
   refuses any reference from the loop's modules to `modules.ai` or to the incident's
   `analysis` field. Only the notifier and the pages draw it. The fix rule is held by
@@ -766,9 +788,14 @@ names; anything else is refused and recorded. That proposal passes the same chec
 Mercury's own (scope, guards, committed intent) and opens the operation's own preview; it runs
 only on a person's approval by that preview's hash. A failed attempt STOPs: the AI is never
 asked again but by a person's Retry with more information. The model reads only through
-Mercury's read families (`modules/ai/router_reads.py` for a device, each command whole on its
-allowlist; `modules/ai/fixit_reads.py` for what Mercury and its host already hold), each read
-recorded in the send log and on History, and composes no command.
+Mercury's read families (`modules/ai/router_reads.py` for a device: since C3661 a show of one
+of the AI's command families, `SHOW_FAMILIES`, held whole by Mercury's allowlist too, or a
+bounded ping or traceroute, `COMMAND_OPS`, run through the reads engine as
+Mercury's account unless the read-only choice is set; `modules/ai/fixit_reads.py` for what
+Mercury and its host already hold: intent, golden, neighbours, History, logs, metrics and the
+stream's two reads), at most three a pass (the read budget), each read recorded in the send log
+and on History, and composes no command: what it names is a read of one of its families, and
+nothing else reaches a device.
 
 **A background AI call under CLAUDE.md's "AI cost safety" rules** (PHASE8_PLAN 18.3):
 - **Its trigger is named:** `triggers.background("heal_analysis", job, network,

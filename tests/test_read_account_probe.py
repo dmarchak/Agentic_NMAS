@@ -310,6 +310,9 @@ class TestThePreview:
         assert sent["bgp_neighbor"] == "show ip bgp neighbors 192.0.2.22"
         assert sent["bgp_neighbor6"] == "show bgp ipv6 unicast neighbors 2001:db8::22"
         assert sent["telemetry_receiver"] == "show telemetry ietf subscription 101 receiver"
+        # C3640: the device's connections, asked of the read-only account as the AI would ask
+        # them; whether its level may run it is this probe's measurement (no line assumes it).
+        assert sent["telemetry_connection"] == "show telemetry internal connection"
         assert sent["mac"] == f"show mac address-table address {MAC}"
         assert sent["ospfv3_neighbor"] == "show ospfv3 neighbor"
         # The lab's router is of no known VLAN database, so spanning tree, a switch's read, is
@@ -633,6 +636,17 @@ class TestTheProbesChoices:
         assert "has no VLAN database" in other["stp"]["why"]
         assert "this form is a switch's" in other["stp"]["why"]
         assert not [c for c in p["program"] if "spanning-tree" in c]
+
+    def test_the_connections_are_another_platforms_form_on_ios(self, lab):
+        """C3640: `show telemetry internal connection` is IOS-XE's, never asked of IOS, as the
+        AI's check refuses it there (`router_reads.other_platform`, one comparison)."""
+        lab["intent"] = dict(INTENT, platform="cisco_ios")
+        p = _plan()
+        other = {r["op"]: r for r in p["reads"] if r.get("result") == "other platform"}
+        assert "telemetry_connection" in other and "ospfv3_neighbor" in other, other
+        assert other["telemetry_connection"]["why"] == (
+            f"{HOST}'s platform is cisco_ios, and this form is cisco_iosxe's")
+        assert "show telemetry internal connection" not in p["program"]
 
     def test_spanning_tree_is_not_asked_where_nothing_says_the_device_is_a_switch(self, lab):
         """Not declared and not measured is unknown, and spanning tree is asked only of a

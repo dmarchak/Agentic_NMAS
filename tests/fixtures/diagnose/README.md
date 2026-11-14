@@ -166,5 +166,13 @@ UPDOWN line at all: its lines there are the configuration and rollback timer's o
   device's "Connected" is not a stream, and a re-subscribe that worked shows a new connection
   id. No capture of the Disconnected state exists yet: the operator read r7's on 2026-11-08 and
   kept no copy.
+- `r7__show_telemetry_internal_connection.typed.txt` (C3640): **TYPED FROM A READ, NOT A
+  CAPTURE.** One line, as the operator gave it from r7's `show telemetry internal connection`
+  (IOS-XE 17) through Mercury's Show commands on 2026-11-14: "496 10.255.1.10:57000 source
+  10.255.4.6 Disconnecting" (the index is the connection id r7's receiver reads give, 496 in
+  the captures above). The device's heading, columns and spacing are not known from it, so
+  `diagnose_parse.telemetry_connection` is held to this line's words only, and says so. It is
+  replaced by the device's whole answer, read through the reads engine, before the parser is
+  called measured.
 - `collector/`: the collector's side, the kernel's socket tables on Mercury's host
   (`collector/README.md`).

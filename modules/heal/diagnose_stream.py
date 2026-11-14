@@ -11,8 +11,10 @@ runs from the device to its collector, on the port its receiver names, so that i
 read here, from both of its ends:
 
 1. **the device** (one batch, held): its subscriptions' brief (`show telemetry ietf
-   subscription all`: each one's state), each lost subscription's receiver (`show telemetry
-   ietf subscription <id> receiver`), and a ping to each collector address its receivers name;
+   subscription all`: each one's state), on IOS-XE its telemetry connections (`show telemetry
+   internal connection`, C3640: each one's peer, source and state, "Disconnecting" the device's
+   side of a half-open session), each lost subscription's receiver (`show telemetry ietf
+   subscription <id> receiver`), and a ping to each collector address its receivers name;
 2. **the collector**, when it is Mercury's own host (Mercury runs beside Telegraf): its
    listener on the stream's port, and its sessions on that port from the device's addresses,
    read from the kernel's socket tables (`/proc/net/tcp` and `/proc/net/tcp6`, both families;
@@ -85,6 +87,13 @@ _SOURCE_VRF = re.compile(r"^source-vrf (?P<vrf>\S+)\s*$")
 _SOURCE_ADDRESS = re.compile(r"^source-address (?P<address>\S+)\s*$")
 #: A subscription id, one token (`diagnose.render`'s own shape for it).
 SUBSCRIPTION = D._SUBSCRIPTION
+#: The dialects asked for the device's telemetry connections (C3640: `show telemetry internal
+#: connection`, IOS-XE 17's form; the operator, 2026-11-14).
+CONNECTION_DIALECTS = ("cisco_iosxe",)
+#: A connection read the parser could not read, as a hypothesis's incomplete evidence says it.
+CONNECTION_UNREAD = ("not read as the device's connections; the parser is held to one typed "
+                     "line of the operator's read, not a capture yet (C3640), and the masked "
+                     "answer is on History › Reads")
 #: Each family's ping to a collector (`diagnose.TEMPLATES`'s reach pings, unsourced: the
 #: stream leaves by the device's routing, as the ping does).
 PING = {4: "reach_ping", 6: "reach_ping6"}
@@ -98,6 +107,13 @@ LISTEN, ESTABLISHED = "LISTEN", "ESTABLISHED"
 RECOVERY = ("Re-subscribe {host}'s streams from the lost stream's row on Needs attention: for "
             "each lost subscription Mercury will remove its receiver, wait about 10 s, add it "
             "back and check its state")
+#: What to do next when the collector holds a stale session the device has given up (C3111):
+#: the re-subscribe with the collector step (`resubscribe.COLLECTOR_TITLE`, the operator's
+#: words of 2026-11-14), the operation `modules/heal/resubscribe.py` runs with ``collector``.
+COLLECTOR_RECOVERY = ("Close the collector's stale session for {host}, then re-subscribe: "
+                      "Mercury closes the one session the collector still holds from {host}, "
+                      "waits for {host}'s connection to go, then removes and re-adds each "
+                      "lost subscription's receiver and checks its stream")
 #: A receiver answer the parser could not read, as a hypothesis's incomplete evidence says it.
 RECEIVER_UNREAD = ("not read as a receiver's detail; the parser is built on captures of the "
                    "Connected form only (C2890), and the masked answer is on History › Reads")
@@ -322,6 +338,14 @@ def plan(network: str, target: dict, lines: dict) -> dict:
         c = collectors.setdefault(key, dict(r, key=key, subscriptions=[]))
         c["subscriptions"].append(s)
     reads = [{"kind": "telemetry_brief", "command": D.render("telemetry_brief", dialect)}]
+    # The device's side of a half-open session (C3640): its connections, IOS-XE's form, asked
+    # of no other platform (said).
+    if dialect in CONNECTION_DIALECTS:
+        reads.append({"kind": "telemetry_connection",
+                      "command": D.render("telemetry_connection", dialect)})
+    else:
+        notes.append(f"{a}'s telemetry connections are not read: `show telemetry internal "
+                     f"connection` is IOS-XE's form, and {a} is {dialect}")
     reads += [{"kind": "telemetry_receiver", "sub": s,
                "command": D.render("telemetry_receiver", dialect, sub=s)} for s in subs]
     pinged = set()
@@ -624,6 +648,8 @@ def _step(p: dict, ans: dict) -> dict:
             parts.append(f"subscription {c['sub']}'s receiver as {a} holds it")
         elif c["kind"] == "telemetry_brief":
             parts.append(f"{a}'s subscriptions and their states")
+        elif c["kind"] == "telemetry_connection":
+            parts.append(f"{a}'s telemetry connections and their states")
         else:
             parts.append(f"{a} reaching its collector {c['collector']}")
     return {"step": "read", "device": a, "result": "ok",
@@ -731,8 +757,24 @@ class StreamContext:
         self.brief, self.brief_ref, self.brief_why = None, "", ""
         self.receivers, self.pings, self.series = {}, {}, {}
         self.collectors, self.cause, self.logs, self.why_not = {}, {}, {}, {}
+        # The device's connections (C3640): ``{"ref", "rows", "why", "asked"}``, *rows* None
+        # when unread; *asked* False on a platform the read is not asked of.
+        self.connection = {"ref": "", "rows": None, "why": "not asked of this platform",
+                           "asked": False}
         for c in p["reads"][self.host]:
             text, ref, why = _answer(ans, self.host, c["command"])
+            if c["kind"] == "telemetry_connection":
+                rows = None
+                if text is not None:
+                    got = P.parse("telemetry_connection", text)
+                    if got["state"] == P.PARSED:
+                        rows = got["facts"]["connections"]
+                    else:
+                        why = f"{got['why']}; {CONNECTION_UNREAD}"
+                self.connection = {"ref": ref, "rows": rows, "asked": True,
+                                   "why": "" if rows is not None else (why or CONNECTION_UNREAD),
+                                   "command": c["command"]}
+                continue
             if c["kind"] == "telemetry_receiver":
                 # The device's own side of the stream's session (C2890): its receivers for
                 # this subscription, each State and Connection as the device printed them.
@@ -796,6 +838,41 @@ class StreamContext:
     def flowing(self, subs) -> list:
         """The subscriptions of *subs* whose series is in Prometheus now (C2892)."""
         return [s for s in subs if (self.series.get(s) or {}).get("state") == "present"]
+
+    def connections_to(self, c: dict):
+        """The device's connections to the collector *c* (its address and port), as the device
+        printed them (C3640); None when the read was not asked or not read."""
+        rows = self.connection.get("rows")
+        if rows is None:
+            return None
+        address = ipaddress.ip_address(c["address"]).compressed
+        return [r for r in rows if r["peer"] == address and r["port"] == int(c["port"])]
+
+    def connection_words(self, c: dict) -> str:
+        """What the device says of its connections to *c*, as a clause; ``""`` unread."""
+        rows = self.connections_to(c)
+        if rows is None:
+            return ""
+        if not rows:
+            return f"; {self.host} holds no telemetry connection to {c['key']}"
+        return "; " + "; ".join(f"{self.host}'s connection {r['index']} to {c['key']} from "
+                                f"{r['source']} reads {r['state']}" for r in rows)
+
+    def connection_ev(self, c: dict) -> list:
+        """The device's connections to *c* as evidence, each as the device printed it."""
+        rows = self.connections_to(c)
+        if rows is None:
+            return []
+        return [D.ev(self.connection["ref"], "; ".join(
+            f"{r['index']} {r['peer']}:{r['port']} source {r['source']} {r['state']}"
+            for r in rows) or f"no connection to {c['key']}")]
+
+    def connection_incomplete(self) -> list:
+        """Why the device's connections are not read, when the read was asked; else none."""
+        if not self.connection.get("asked") or self.connection.get("rows") is not None:
+            return []
+        return [f"{self.host}'s telemetry connections (`{self.connection.get('command')}`): "
+                f"{self.connection.get('why') or CONNECTION_UNREAD}"]
 
 
 def _sockets_ref(c: dict) -> str:
@@ -932,6 +1009,13 @@ def _half_open_facts(ctx, subs, session: dict) -> dict:
                           all(r.get("state") == "Connected" for r in rows))}
 
 
+def _with_device_connections(facts: dict, ctx, c: dict) -> dict:
+    """*facts* with ``device_connections``: the device's own connections to the collector *c*
+    (C3640), each ``{index, peer, port, source, state}``; None when not read."""
+    rows = ctx.connections_to(c)
+    return dict(facts, device_connections=None if rows is None else [dict(r) for r in rows])
+
+
 def _r_half_open(rule, ctx):
     hits, none, live = [], [], []
     for c, g in _collectors_read(ctx, rule):
@@ -959,23 +1043,81 @@ def _r_half_open(rule, ctx):
         s = est[0]
         quiet = (f", nothing received on it for {_ago(s['lastrcv_ms'] / 1000)}"
                  if s.get("lastrcv_ms") is not None else "")
-        facts = _half_open_facts(ctx, subs, s)
+        facts = _with_device_connections(_half_open_facts(ctx, subs, s), ctx, c)
         hits.append(dict(facts=facts, **D.finding(
             rule, (f"the collector still holds an established session from {ctx.host} "
                    f"({s['remote']} port {s['rport']}) on {c['key']}{quiet}, yet {ctx.host}'s "
                    "stream is lost: half-open, the collector holding it up while "
-                   f"{ctx.host} has given it up" + _device_side(ctx, subs)),
+                   f"{ctx.host} has given it up" + _device_side(ctx, subs)
+                   + ctx.connection_words(c)),
             [D.ev(_sockets_ref(c), f"{s['remote']}:{s['rport']} {s['state']}"
                   + (f", lastrcv {s['lastrcv_ms']} ms, {s.get('bytes_received')} bytes "
                      "received" if s.get("lastrcv_ms") is not None else ""))]
-            + ctx.receiver_ev(subs),
-            incomplete=ctx.receiver_incomplete(subs), agree=len(est),
+            + ctx.receiver_ev(subs) + ctx.connection_ev(c),
+            incomplete=ctx.receiver_incomplete(subs) + ctx.connection_incomplete(),
+            agree=len(est),
             rule_out=f"no established session from {ctx.host} on the collector",
             todo=RECOVERY.format(host=ctx.host))))
     if hits:
         return hits, ""
     return [], "; ".join(live + ([f"no session from {ctx.host} stands on the collector at "
                                   f"{_and(none)}"] if none else []))
+
+
+def _r_stale_session(rule, ctx):
+    """C3111: BOTH ends measured: the device's own connection to the collector reads
+    Disconnecting (C3640's read), and the collector still holds an established session from
+    the device with nothing received inside the stream's window (the kernel's socket
+    diagnostics). The device cannot dial again until that socket is closed, so the next step is
+    the re-subscribe with the collector step (`COLLECTOR_RECOVERY`). Either end unread decides
+    nothing, said; a session whose last receive was not read is never called idle."""
+    hits, why, seen = [], [], []
+    for c, g in _collectors_read(ctx, rule):
+        if not g["listening"]:
+            continue
+        conns = ctx.connections_to(c)
+        if conns is None:
+            why.append(f"{ctx.host}'s telemetry connections were not read "
+                       f"({ctx.connection.get('why') or 'not asked'})")
+            continue
+        leaving = [r for r in conns if str(r["state"]).lower() == "disconnecting"]
+        if not leaving:
+            seen.append(f"{ctx.host}'s connections to {c['key']}: " + (
+                "; ".join(f"{r['index']} {r['state']}" for r in conns) or "none"))
+            continue
+        est = [s for s in g["sessions"] if s["state"] == ESTABLISHED]
+        idle = [s for s in est if receiving_now(s) is False]
+        if not idle:
+            unread = [s for s in est if receiving_now(s) is None]
+            why.append(f"{ctx.host}'s connection {leaving[0]['index']} reads Disconnecting, and "
+                       + (f"the collector's session from {ctx.host}'s last receive was not "
+                          "read (the kernel's socket diagnostics), so whether it is idle "
+                          "cannot be told" if unread else
+                          f"the collector holds no idle established session from {ctx.host} "
+                          f"on {c['key']}"))
+            continue
+        s, r = idle[0], leaving[0]
+        quiet = int(s["lastrcv_ms"]) // 1000
+        hits.append(dict(facts={"session": {"remote": s["remote"], "rport": s["rport"],
+                                            "collector": c["key"], "quiet_s": quiet},
+                                "device_connection": dict(r)}, **D.finding(
+            rule, (f"{ctx.host}'s telemetry connection {r['index']} to {c['key']} reads "
+                   f"{r['state']} while the collector still holds an established session from "
+                   f"{ctx.host} ({s['remote']} port {s['rport']}) with nothing received on it "
+                   f"for {_ago(quiet)}: the collector's stale session keeps {ctx.host} from "
+                   "dialling again"),
+            [D.ev(_sockets_ref(c), f"{s['remote']}:{s['rport']} {s['state']}, lastrcv "
+                                   f"{s['lastrcv_ms']} ms")]
+            + ctx.connection_ev(c) + ctx.receiver_ev(c["subscriptions"]),
+            incomplete=ctx.receiver_incomplete(c["subscriptions"]),
+            rule_out=(f"{ctx.host}'s connection to {c['key']} not Disconnecting, or the "
+                      "collector's session from it receiving"),
+            todo=COLLECTOR_RECOVERY.format(host=ctx.host))))
+    if hits:
+        return hits, ""
+    if why:
+        ctx.why_not[rule.name] = "; ".join(why)
+    return [], "; ".join(seen)
 
 
 def _r_no_session(rule, ctx):
@@ -1135,6 +1277,9 @@ STREAM_RULES = (
            "collector", _unless_back(_r_collector_unreached)),
     D.Rule("collector_down", "protocol", "decisive", "nothing listening on the stream's port "
            "on the collector", _unless_back(_r_collector_down)),
+    D.Rule("stale_session", "protocol", "decisive", "the device's connection Disconnecting "
+           "while the collector's session from it is established and idle",
+           _unless_back(_r_stale_session)),
     D.Rule("half_open", "protocol", "strong", "a half-open session: the collector holding a "
            "session from the device while its stream is lost", _r_half_open),
     D.Rule("no_session", "protocol", "strong", "no session from the device on the collector, "

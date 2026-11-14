@@ -14,7 +14,10 @@ Background processes, AI mode Manual by default. Section 12's rule stays in forc
 only when its evidence is complete, and only when its rule is a row of the table. The rows are
 the lost-stream runbook's rules whose next step is Re-subscribe (`diagnose_stream.RECOVERY`):
 the stream stuck at its ends, as a half-open session, as no session on a collector that
-listens, or as a stream that outlived its cause. Every other rule names a next step no catalog
+listens, or as a stream that outlived its cause; and the one whose next step is the
+re-subscribe with the collector step (`diagnose_stream.COLLECTOR_RECOVERY`, C3111): the
+device's connection Disconnecting while the collector's session from it is established and
+idle, both ends measured. Every other rule names a next step no catalog
 operation is (put a neighbour back, start the collector, check drift, diagnose again later):
 no proposal, its words naming the rule. Never a guess: no hypothesis, an incomplete first one,
 or a diagnosis of another runbook proposes nothing.
@@ -37,7 +40,11 @@ RUNBOOK = "stream_lost"
 #: the set from the rules' own source, independently of this table.
 STREAM_PROPOSALS = {"half_open": "telemetry-resubscribe",
                     "no_session": "telemetry-resubscribe",
-                    "outlived_cause": "telemetry-resubscribe"}
+                    "outlived_cause": "telemetry-resubscribe",
+                    # C3111: the device's connection Disconnecting while the collector's session
+                    # from it is established and idle: the re-subscribe with the collector step
+                    # (`diagnose_stream.COLLECTOR_RECOVERY`, `resubscribe.COLLECTOR_KEY`).
+                    "stale_session": "telemetry-collector-resubscribe"}
 
 
 def _none(words: str, rule: str = "") -> dict:

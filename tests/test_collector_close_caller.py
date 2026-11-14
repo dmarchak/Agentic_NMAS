@@ -286,17 +286,37 @@ def test_it_never_raises_into_its_caller(world):
     assert got["words"] == "the close was not asked for: RuntimeError: the stand-in broke"
 
 
-def test_nothing_calls_it_yet_but_the_dry_run_script():
-    """Said in the module's header: no operation closes a session until the later slice."""
+def test_one_operation_and_the_two_scripts_reach_it():
+    """Said in the module's header (C3078): the re-subscribe with the collector step is the one
+    operation that calls it, by one function (`resubscribe.Sources.close`); beside it only the
+    two scripts import it. The run card and its template name the run's receipt
+    (``collector_close``, a record field), which call nothing. Parsed, never matched as text."""
+    import ast
     import subprocess
 
     found = subprocess.run(["git", "grep", "--untracked", "-l", "-w", "-e", "collector_close",
                             "--", "modules", "routes", "app.py", "scripts", "templates"],
                            cwd=ROOT, capture_output=True, text=True).stdout.split()
-    assert sorted(found) == ["modules/heal/collector_close.py",
-                             "scripts/nmas-collector-close-dry-run",
-                             "scripts/nmas-collector-peers"]
-    assert "NOT CALLED BY ANY OPERATION YET" in C.__doc__
+    assert sorted(found) == ["modules/heal/collector_close.py", "modules/heal/resubscribe.py",
+                             "modules/heal/run_card.py", "scripts/nmas-collector-close-dry-run",
+                             "scripts/nmas-collector-peers", "templates/v2/_resubscribe.html"]
+    importers = {}
+    for path in found:
+        if path.endswith(".html") or path == "modules/heal/collector_close.py":
+            continue
+        tree = ast.parse(open(os.path.join(ROOT, path), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for inner in ast.walk(node):
+                    if isinstance(inner, ast.ImportFrom) and any(
+                            a.name == "collector_close" for a in inner.names) or (
+                            isinstance(inner, ast.ImportFrom)
+                            and inner.module == "modules.heal.collector_close"):
+                        importers.setdefault(path, set()).add(node.name)
+    assert importers == {"modules/heal/resubscribe.py": {"close", "_close_and_wait"},
+                         "scripts/nmas-collector-close-dry-run": {"main"},
+                         "scripts/nmas-collector-peers": {"main"}}, importers
+    assert "ONE OPERATION CALLS IT" in C.__doc__
 
 
 # ── the peers, from committed intent ─────────────────────────────────────────────────────────

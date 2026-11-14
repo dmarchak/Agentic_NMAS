@@ -47,6 +47,8 @@ KEYING = {
     "modules/settings_schema.py":           "both",   # platform_map: slug keys, driver values
     "modules/nsot/bootstrap_config.py":     "dialect",
     "modules/heal/diagnose.py":             "dialect",   # its reads' templates, by dialect
+    # C3640: the connections read asked of IOS-XE alone (`CONNECTION_DIALECTS`), by dialect.
+    "modules/heal/diagnose_stream.py":      "dialect",
     "modules/heal/bounce.py":               "dialect",   # the revert timer measured, by dialect
     "modules/ai/router_reads.py":           "dialect",   # AI_READS' shapes, by dialect (H24)
     # MEASURED: the config dialects the read-only account's level lines were measured on

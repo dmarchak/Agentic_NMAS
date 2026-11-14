@@ -58,6 +58,10 @@
       {%- for f in s.stale or [] %}<li class="warn-text">Flagged: {{ f }}</li>{% endfor %}
     </ul></details>
   {%- endfor %}
+  {%- if r.collector_close and r.collector_close.code %}
+  {#- The collector step's receipt (C3078): the close helper's own code, exit code and words. -#}
+  <p class="small" data-close-receipt="{{ r.collector_close.code }}"><strong>The collector's session:</strong> the close helper answered {{ r.collector_close.code }} (exit {{ r.collector_close.exit }}): {{ r.collector_close.words }}</p>
+  {%- endif %}
   {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
   <p class="small">Recorded by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
   {%- if not ok %}
@@ -98,6 +102,14 @@
   {%- set names = p.units | map(attribute='sub') | join(', ') %}
   {%- set order = p.units | map(attribute='sub') | join(', then ') %}
   {%- set many = p.units|length > 1 %}
+  {%- if c.collector_refused %}
+  <div class="notice notice-warning" role="status" data-collector-refused>{{ icon('warn', 16) }}<p><strong>The collector step is not offered:</strong> {{ c.collector_refused | join('; ') }}. Re-subscribe alone is offered below.</p></div>
+  {%- endif %}
+  {%- if p.ok and p.close %}
+  {#- The collector step (C3078): the one session the close helper's dry run named, both ends,
+      before anything else; its undo said. -#}
+  <p class="resub-close" data-close="{{ p.close.remote }}"><strong>First:</strong> the collector's session from {{ p.close.remote }} to {{ p.close.local }}, which has received nothing for {{ p.close.quiet_s }} s, is closed by Mercury's close helper and read back gone; then {{ c.host }}'s connection to the collector is read until it goes. The closed session is not put back: {{ c.host }} dials a new one.</p>
+  {%- endif %}
   {%- if p.ok %}
   <p><strong>Afterwards:</strong> {{ c.host }} dials out to its collector again, on a new connection, for {{ 'subscriptions' if many else 'subscription' }} {{ names }}{% if many %}, their receivers removed together and then added back{% endif %}; its configuration ends exactly as it is now, and nothing is saved to startup.</p>
   <p class="small">Touches {{ c.host }} only, holding it while it runs. {% if many %}Every ticked receiver is removed first, in the order listed ({{ order }}), each read back as gone; then {{ c.wait_s }} s pass; then each is added back from committed intent, in the same order. No ticked subscription sends anything from its removal until its re-add. They are removed together because a device's subscriptions to one receiver share one connection, and one left in place can keep the old connection open.{% else %}Its receiver is removed for about {{ c.wait_s }} s, so subscription {{ names }} sends nothing meanwhile, then added back from committed intent.{% endif %} Undo: none is needed, as the configuration ends as it began; a receiver that does not come back is said, with Re-add the receiver. Checked for up to {{ c.bound_s }} s each: {{ c.host }}'s receiver on a new connection, the stream's data in Prometheus, and a new session on the collector.</p>
@@ -111,6 +123,7 @@
     {%- endfor %}
   </fieldset>
   <input type="hidden" name="subs" value="{{ c.subs | join(',') }}"><input type="hidden" name="picked" value="1"><input type="hidden" name="previewed" value="{{ names | replace(' ', '') }}">
+  {%- if c.collector %}<input type="hidden" name="collector" value="1">{% if p.close %}<input type="hidden" name="close" value="{{ p.close.remote }}">{% endif %}{% endif %}
   {%- if c.fixit %}
   {#- Opened from an incident's page (its AI troubleshooting section's proposal; C3106): the
       confirm carries the incident and the proposal into the run's record, and a fix that
@@ -136,6 +149,9 @@
   {%- endfor %}
   {%- if p.ok %}
   <details class="small" data-keep="{{ cid }}-program"><summary>The exact program</summary>
+    {%- if p.close %}
+    <p class="faint small">Before the program: close the collector's session from {{ p.close.remote }} to {{ p.close.local }}, through the close helper. Its dry run said: <span class="mono">{{ p.close.dry_run }}</span></p>
+    {%- endif %}
     <pre class="ask-pre">{% for u in p.units %}{{ u.remove | join('\n') }}
 {% endfor %}(wait {{ c.wait_s }} s){% for u in p.units %}
 {{ u.readd | join('\n') }}{% endfor %}</pre>
@@ -156,12 +172,21 @@
   {#- Another run holds the device (the operator, 2026-11-11): the confirm is not offered, and
       says which run, since when and by whom, with a link to it. -#}
   <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ run_href(c.host, c.list) }}">Open the run</a></div>
+  {%- elif p.ok and p.close %}
+  {#- The collector step's confirm (C3078): bound to the selection's hash, which holds the
+      session the dry run named; the session's device end goes with it from the form. -#}
+  <div class="att-action">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-post="{{ url_for('resubscribe_v2.close_confirm', name=c.host, list=c.list) }}" hx-vals='{"program": "{{ p.hash }}"}' hx-include="#{{ cid }}-form" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Closes the collector's session from {{ p.close.remote }}, then removes and re-adds each ticked receiver on {{ c.host }}, holding it, as you, with your reason; bound to {{ p.hash }}; nothing is saved"{{ gate('confirm') }}><span class="op-idle">Close the collector's stale session for {{ c.host }}, then re-subscribe ({{ names }})</span><span class="op-busy">Starting…</span></button>{{ how('telemetry-resubscribe', 'the-collector-step', compact=True, op='the collector step') }}</span>
+  </div>
   {%- elif p.ok %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to, the
       selection's (the whole program drawn above, in its order); each ticked subscription's own
       hash goes with it from the form. -#}
   <div class="att-action">
     <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="telemetry-resubscribe" hx-post="{{ url_for('resubscribe_v2.confirm', name=c.host, list=c.list) }}" hx-vals='{"program": "{{ p.hash }}"}' hx-include="#{{ cid }}-form" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Removes and re-adds each ticked receiver on {{ c.host }}, holding it, as you, with your reason; nothing is saved"{{ gate('confirm') }}><span class="op-idle">Re-subscribe {{ c.host }}'s telemetry ({{ names }})</span><span class="op-busy">Starting…</span></button>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}</span>
+    {#- The collector step, asked for: the card drawn again with it, a read (the close helper's
+        dry run closes nothing). -#}
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, collector='1') }}" hx-include="#{{ cid }}-form" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Draws this card again with the collector step: the session Mercury's close helper would close, named by its dry run, which closes nothing"><span class="op-idle">Close the collector's stale session first…</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', 'the-collector-step', compact=True, op='the collector step') }}</span>
   </div>
   {%- endif %}
   {%- endif %}

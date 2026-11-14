@@ -118,12 +118,17 @@ path between two devices. Self-healing runs it when a lost-stream alert raised t
    with no address and port in intent has no collector to read, said.
 2. `hold`: the device is held for this diagnosis.
 3. `read`: on the device, through the reads engine: `show telemetry ietf subscription all`
-   (each subscription's state), `show telemetry ietf subscription <id> receiver` for each lost
-   subscription, and a ping to each collector address (`ping ipv6` for an IPv6 one). The
-   receiver's answer is read: its State and its connection, as the device prints them, are
-   evidence in the half-open and no-session hypotheses. An answer that cannot be read as a
-   receiver's says so, and a hypothesis that needed it says its evidence is incomplete. A
-   receiver reading Connected is not proof of a stream: a stuck device reads Connected too.
+   (each subscription's state), on IOS-XE `show telemetry internal connection` (the device's
+   telemetry connections: each one's collector, source address and state; IOS has no such
+   read, and the plan says it was not asked), `show telemetry ietf subscription <id> receiver`
+   for each lost subscription, and a ping to each collector address (`ping ipv6` for an IPv6
+   one). The receiver's answer is read: its State and its connection, as the device prints
+   them, are evidence in the half-open and no-session hypotheses, and so is the device's own
+   connection to the collector (Disconnecting while the collector still holds the session). An
+   answer that cannot be read says so, and a hypothesis that needed it says its evidence is
+   incomplete. A receiver reading Connected is not proof of a stream: a stuck device reads
+   Connected too. The connections' reader is held to one line the operator read on a device,
+   not yet to a whole captured answer.
 4. `collector`: when the collector is Mercury's own host, its TCP sockets on the stream's port,
    read from the kernel's tables on the host, IPv4 and IPv6: whether anything listens there,
    each session from one of the device's addresses and its state, and how many sessions stand

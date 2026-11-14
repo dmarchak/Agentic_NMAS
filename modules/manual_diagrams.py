@@ -1647,6 +1647,39 @@ def telemetry_resubscribe():
     ])
 
 
+def telemetry_collector_close():
+    """C3078: the re-subscribe with the collector step, the steps it adds before the removals."""
+    return svg(470, (
+        "Close the collector's stale session, then re-subscribe: Mercury's diagnosis has read "
+        "both ends, the device's telemetry connection Disconnecting and the collector's session "
+        "from it established and idle; the plan reads the collector's sessions on Mercury's "
+        "host and the close helper's dry run names the one session it would close, closing "
+        "nothing; you confirm by the selection's hash, which holds that session's two ends; "
+        "holding the device, the run reads before, then the helper closes the session and "
+        "reads it back gone, its code, exit code and words kept as the receipt; a close that "
+        "did not happen stops the run with nothing sent to the device; the device's "
+        "connections are read until the one that read Disconnecting is gone; then each "
+        "receiver is removed and added back and the stream verified, as Re-subscribe does, "
+        "and the run is recorded."), [
+        lanes(20, 454, right="THE COLLECTOR · THE DEVICE"),
+        doc("box", 14, 40, 186, 36, "The plan", "the dry run names one"), num(14, 40, 1),
+        t(14, 92, "closes nothing; refused: none sent", "sm"),
+        person(14, 104, 186, 30, "You confirm, by its hash"), num(14, 104, 2),
+        band(150, 230, "The run · a job, the device held"),
+        device(262, 170, 118, 200, "Collector, device", "the session closed", top=True),
+        *rows([
+            (182, "read", 3, "Read before", "connections, sessions"),
+            (222, "send", 4, "Close the one session", "the helper reads it gone"),
+            (262, "read", 5, "Until the connection goes", "every 5 s, at most 60 s"),
+            (302, "send", 6, "Re-subscribe", "remove, wait, re-add"),
+            (342, "read", 7, "Verify each, up to 290 s", "device, stream, collector"),
+        ]),
+        t(36, 396, "Not closed: the run stops,", "sm"),
+        t(36, 409, "nothing sent to the device.", "sm"),
+        store(14, 420, 186, 34, "The run's record", "the helper's receipt"), num(14, 420, 8),
+    ])
+
+
 def heal_proposal():
     return svg(540, (
         "Approve a self-healing proposal: self-healing found a fix that needs a person and "
@@ -2568,6 +2601,7 @@ DIAGRAMS = {
     "diagnose": diagnose,
     "privileged": privileged,
     "telemetry-resubscribe": telemetry_resubscribe,
+    "telemetry-collector-close": telemetry_collector_close,
     "heal-proposal": heal_proposal,
     "heal": heal,
     "notifications": notifications,

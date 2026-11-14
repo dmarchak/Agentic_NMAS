@@ -297,14 +297,19 @@ def test_with_the_class_off_it_builds_the_reads_pass_and_says_so(ai, reads,  # n
     iid = stopped(ai)
     got = _preview(iid)
     assert got["class"]["now"] == "off" and "an admin turns it on" in got["class"]["why_off"]
-    assert got["first"]["prompt"] == "fixit_troubleshoot.v4"
+    assert got["first"]["prompt"] == "fixit_troubleshoot.v5"
     assert "collector_sessions" in json.dumps(got["first"]["body"]["system"]), "the read set"
     said = " ".join(got["said"])
     assert "is off for" in said and "did not change it" in said and "at most 3" in said
-    # Every read the scope allows: the brief, then each subscription's three.
+    # Every read the scope allows: the brief and the device's connections (C3640), then each
+    # subscription's three; the device's by Mercury's allowlist (C3661).
     ops = [r["op"] for r in got["reads"]]
-    assert ops == ["telemetry_brief"] + ["telemetry_receiver", "collector_sessions",
-                                         "stream_series"] * 2
+    assert ops == ["show", "show"] + ["show", "collector_sessions", "stream_series"] * 2
+    sent = [r["requests"] for r in got["reads"] if r["op"] == "show"]
+    assert sent == [["show telemetry ietf subscription all"],
+                    ["show telemetry internal connection"],
+                    ["show telemetry ietf subscription 101 receiver"],
+                    ["show telemetry ietf subscription 102 receiver"]]
     assert all(r["verdict"] == "run" for r in got["reads"]), got["reads"]
     assert [r for r in reads.ran if r[0] == "collector" and r[2] == 57000], reads.ran
     # The local reads alone: no device read is run.
@@ -325,7 +330,8 @@ def test_a_device_read_s_secret_line_is_withheld_as_the_loop_withholds_it(ai, re
     sent = got["second"]["body"]["messages"][0]["content"]
     assert "mercury_reads" in sent and "line withheld: a secret" in sent
     brief = got["reads"][0]
-    assert brief["op"] == "telemetry_brief" and brief["withheld"] == 1, brief
+    assert brief["op"] == "show" and brief["requests"] == [
+        "show telemetry ietf subscription all"] and brief["withheld"] == 1, brief
 
 
 # ── What a press sends ──────────────────────────────────────────────────────────────────────
@@ -369,7 +375,8 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
     iid = stopped(ai)
     asked = [{"op": "collector_sessions", "args": {"device": "r2", "subscription": "101"},
               "why": "the collector's side", "hypothesis": "a dead session"},
-             {"op": "telemetry_receiver", "args": {"device": "r2", "subscription": "101"},
+             {"op": "show", "args": {"device": "r2",
+                                     "words": "telemetry ietf subscription 101 receiver"},
               "why": "the device's side", "hypothesis": "a dead session"},
              {"op": "stream_series", "args": {"device": "r2", "subscription": "101"},
               "why": "the series", "hypothesis": "a dead session"}]

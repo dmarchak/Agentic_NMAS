@@ -147,11 +147,46 @@ EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",),
 #: the person as its actor.
 OPERATION = "operation"
 
-#: The caller kinds whose reads sign in with the device's read-only account, never the deploy
-#: account, and never escalate (no `enable`): the AI analysis's reads (H28; HEAL_TO_INTENT
-#: 19.5, prerequisite 1). A device whose read-only account does not resolve is refused by name
-#: before any session opens.
+#: The caller kinds whose reads follow the installation choice "AI device reads sign in as"
+#: (`AI_READS_AS_KEY`; the operator's change of approach, 2026-11-14, C3661: "Its device reads
+#: go through Mercury's read engine with Mercury's own account, through the same protections
+#: as Show commands"): the AI's reads. Under ``mercury`` (the default) such a read signs in
+#: exactly as Show commands does (the inventory's login, `connection.with_temp_connection`,
+#: one session path); under ``read_only`` it signs in with the device's read-only account and
+#: never escalates (no `enable`; H28), and a device whose read-only account does not resolve is
+#: refused by name before any session opens. Either way it is recorded with whom it signed in
+#: as.
 READ_ACCOUNT_KINDS = ("ai_analysis",)
+
+#: "AI device reads sign in as" (C3661): the setting, its values and their words.
+AI_READS_AS_KEY = "ai_device_reads_as"
+AI_READS_AS = ("mercury", "read_only")
+AI_READS_AS_WORDS = {"mercury": "Mercury's account", "read_only": "the read-only account"}
+
+
+def ai_reads_as() -> str:
+    """Whom the AI's device reads sign in as, ``mercury`` or ``read_only``: the setting
+    `AI_READS_AS_KEY`, ``mercury`` by default. A stored value that is not ``mercury`` (a hand
+    edit), or a setting that cannot be read, is ``read_only``: the narrower account, which
+    refuses a device without it by name rather than widening what signs in. The check
+    (`router_reads.scope_for`, when the scope is built) and this engine (at the read) each
+    read the setting through this one function, and both fail closed."""
+    from modules.settings_schema import get_setting
+
+    try:
+        # The key written out (`AI_READS_AS_KEY`), so the settings scans read it as host-wide.
+        value = get_setting("ai_device_reads_as", "mercury")
+    except Exception as exc:                            # noqa: BLE001 (closed, and said)
+        log.warning("reads: %s could not be read (%s): read as read_only", AI_READS_AS_KEY,
+                    type(exc).__name__)
+        return "read_only"
+    return "mercury" if value == "mercury" else "read_only"
+
+
+def signs_in_as(by: str) -> str:
+    """Whom a read of kind *by* signs in as: ``read_only`` for a `READ_ACCOUNT_KINDS` read under
+    that setting, else ``mercury`` (every other kind, and the AI's reads by default)."""
+    return ai_reads_as() if by in READ_ACCOUNT_KINDS else "mercury"
 
 
 def read_account_for(dev: dict) -> dict:
@@ -343,8 +378,12 @@ def actor_words(record: dict) -> str:
     if record.get("by") == "heal":
         return f"self-healing's action reads, for {record.get('actor') or 'nobody named'}"
     if record.get("by") == "ai_analysis":
+        # A record from before C3661 carries no `signs_in_as`: every one was the read-only
+        # account's then.
+        whom = AI_READS_AS_WORDS.get(record.get("signs_in_as") or "read_only",
+                                     AI_READS_AS_WORDS["read_only"])
         return (f"the AI analysis, turned on by {record.get('actor') or 'nobody named'}, "
-                "as the read-only account")
+                f"as {whom}")
     return record.get("actor") or "unknown"
 
 
@@ -648,7 +687,12 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     inventory = {d.get("hostname"): d for d in load_saved_devices(listref.resolve(list_name).csv_path)}
     values = known_secret_values()
     cap = cap_bytes(list_name)
-    read_account = by in READ_ACCOUNT_KINDS
+    # Read once for the run (C3661): the AI's reads sign in as Mercury's account, exactly as
+    # Show commands does, unless the installation chose the read-only account (or the setting
+    # cannot be read: the closed side).
+    read_account = signs_in_as(by) == "read_only"
+    if by in READ_ACCOUNT_KINDS:
+        record["signs_in_as"] = "read_only" if read_account else "mercury"
     if session is None and read_account:
         # The read-only account signs in and never escalates: no `enable` (H28).
         from modules.connection import with_plain_connection as session
@@ -706,6 +750,12 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                     # never its password (History › Reads says "as the read-only account").
                     out["signed_in_as"] = {"username": account["username"],
                                            "source": account["source"]}
+                elif by in READ_ACCOUNT_KINDS:
+                    # An AI read as Mercury's account (C3661): the inventory's login name and
+                    # where it resolved from, never its password, as Show commands signs in.
+                    out["signed_in_as"] = {"username": dev.get("username") or "",
+                                           "source": "mercury-account:" + (
+                                               dev.get("_cred_source") or "the inventory")}
                 if discovery.is_driver(driver):
                     # Its answers are captures (`discovery.captures`): which driver read them.
                     out["driver"] = driver

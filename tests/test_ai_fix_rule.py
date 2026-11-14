@@ -31,7 +31,8 @@ person's approval; any other shape is refused and recorded.
   module; driven, a run whose verify fails ends as one record with exactly its program sent
   and nothing after it, and another run takes another call with a person and the hashes.
 - **E, the document says what the code does:** section 12 holds the operator's sentence
-  exactly, his sentence on a saved fix in the bullet directly after it, its Mechanised bullet
+  exactly (the plan wording of 2026-11-14, its saved-fix clause in the same bullet and in no
+  other), its Mechanised bullet
   names this file, and the charter's fix-it path holds the rule too.
 
 **What C assumes, and does not see.** Its population is `modules/ai/`: a caller of the
@@ -66,13 +67,14 @@ from tests.test_session_write_guard import _takes_the_hold
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The operator's words (2026-11-11), exactly, with "by its preview's hash" (the operator's W3,
 #: 2026-11-12: "Approved: W3, section 12 and the charter as in w3-section12-charter.diff").
-RULE = ("No fix runs from AI text. The AI may propose one operation from Mercury's catalog, "
-        "with its parameters; code validates it against intent and the guards, and a person "
-        "approves it by its preview's hash before it runs. The AI never composes commands, "
-        "never runs anything itself, and never retries on its own.")
-#: His one sentence more for section 12 (2026-11-11), exactly, capitalised as a sentence.
-SAVED = ("A saved fix is the operation a person saved from a verified run, never the AI's "
-         "words.")
+#: The operator's rule (2026-11-14, the plan wording, granted overnight; replacing 2026-11-11's
+#: one-operation sentence and its separate saved-fix sentence, which it now holds).
+RULE = ("No fix runs from AI text. The AI may propose a plan of catalog operations, approved "
+        "once by a person by hash, executed in order, stopping on the first failure; it never "
+        "composes commands, runs anything itself, or retries on its own; a saved fix is the "
+        "operation a person saved from a verified run.")
+#: The rule's saved-fix clause, exactly: stated once, in the rule's own bullet.
+SAVED = "a saved fix is the operation a person saved from a verified run."
 DOOR = "modules/ai/fix_proposal.py"
 CATALOG_FILE = "modules/heal/catalog.py"
 #: 38 modules under modules/ai/ on 2026-11-11 (37, and the door).
@@ -174,6 +176,32 @@ class TestTheDoor:
         assert folder() == before
         assert calls.find(cid)["uses"] == []
 
+    def test_the_collector_step_comes_through_the_door_and_runs_nothing_on_the_host(
+            self, lab, tmp_path):  # noqa: F811
+        """C3078, the operator's decision (2026-11-14): an AI answer naming the re-subscribe
+        with the collector step is the door's preview of the operation and its device, and
+        causes nothing on Mercury's host: the close helper is never asked, not even its dry
+        run. The proposal's hash cannot run the step: the confirm is bound to the person's own
+        card preview, which names the session."""
+        from modules.heal import resubscribe as R
+        from tests.test_heal_resubscribe import CloseSrc, helper_world
+
+        m, close = helper_world(tmp_path)
+        src, cid = CloseSrc(close), recorded_call()
+        got = ask(answer(operation=R.COLLECTOR_KEY), src, cid)
+        assert (got["ok"], got["operation"], got["params"]) == (True, R.COLLECTOR_KEY, PARAMS)
+        assert src.asked == [] and m.journalled == [], "no helper request, not even a dry run"
+        assert got["preview"]["close"] == {} and "named on the card's own preview" in \
+            got["preview"]["collector_step"]
+        assert src.box.batches == [] and src.box.opened == 0
+        assert calls.find(cid)["uses"] == []
+        rec = R.apply(NET, "r2", got["params"]["subscriptions"], actor=ACTOR,
+                      actor_verified="access", person=True,
+                      confirmed={u["sub"]: u["hash"] for u in got["preview"]["units"]},
+                      program=got["hash"], previewed="101,102", reason=REASON, collector=True,
+                      previewed_close="", sources=src)
+        assert rec["outcome"] == "refused" and not m.run.closes_sent(), rec["why"]
+
     def test_what_it_returns_is_what_the_confirm_takes(self, lab):  # noqa: F811
         """The preview's hashes are the ones the operation's run is bound to: confirmed with
         them by a verified person it runs, and what is sent is the program previewed."""
@@ -193,8 +221,9 @@ class TestTheDoor:
     CASES = {
         # ── an operation not in the catalog
         "another operation": (answer(operation="reload-device"), "not_in_catalog",
-                              ["an operation of the catalog (telemetry-readd and "
-                               "telemetry-resubscribe)", "this one names 'reload-device'"]),
+                              ["an operation of the catalog (telemetry-collector-resubscribe, "
+                               "telemetry-readd and telemetry-resubscribe)",
+                               "this one names 'reload-device'"]),
         "the re-add, given the re-subscribe's parameters": (
             answer(operation="telemetry-readd"), "unknown_parameter",
             ["telemetry-readd takes exactly the parameters device and subscription",
@@ -407,8 +436,10 @@ class TestTheCatalog:
     def test_it_holds_re_subscribe_and_each_entry_is_whole(self, app):
         from modules.heal import resubscribe as R
 
-        # Re-subscribe and its one-step Re-add the receiver, by their own module's keys.
-        assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY} == {KEY, "telemetry-readd"}
+        # Re-subscribe, its one-step Re-add the receiver, and Re-subscribe with the collector
+        # step (C3078), by their own module's keys.
+        assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY, R.COLLECTOR_KEY} == {
+            KEY, "telemetry-readd", "telemetry-collector-resubscribe"}
         endpoints = {r.endpoint for r in app.url_map.iter_rules()}
         for key, op in catalog.CATALOG.items():
             assert op.key == key
@@ -510,8 +541,48 @@ class ReaddDrive(ResubscribeDrive):
         return super().run(fn, **dict({"readd": True}, **over))
 
 
+class CollectorDrive(ResubscribeDrive):
+    """Re-subscribe with the collector step (C3078) on the same lab: its plan asks the REAL close
+    helper's dry run (tests/test_heal_resubscribe.py's `helper_world`, in a folder of the run's
+    own data directory), and its confirm is bound to the selection's hash, which holds the one
+    session the dry run named."""
+
+    def __init__(self, again=False, **sources):
+        import tempfile
+        from pathlib import Path
+
+        from tests.test_heal_resubscribe import CloseSrc, helper_world
+        self.helper, close = helper_world(Path(tempfile.mkdtemp(
+            dir=os.environ.get("NMAS_DATA_DIR") or None)))
+        if again:
+            # A stream that did not come back: the device's session is stale again by the next
+            # run (the helper's `ss` lists the captured session once more after each close).
+            m, first = self.helper, close
+            tables = (list(m.run.table4), list(m.run.table))
+
+            def close(peer, port, **kw):
+                got = first(peer, port, **kw)
+                m.run.table4, m.run.table = list(tables[0]), list(tables[1])
+                return got
+        self.src = CloseSrc(close, **sources)
+
+    def plan(self):
+        from modules.heal import resubscribe as R
+        return R.plan(NET, "r2", ["101"], collector=True, sources=self.src)
+
+    def run(self, fn, **over):
+        p = self.plan()
+        return super().run(fn, **dict({"collector": True, "previewed_close": (
+            p.get("close") or {}).get("remote", "")}, **over))
+
+    def failing(self):
+        from tests.test_heal_resubscribe import IDLE
+        return type(self)(again=True, series=seq([ABSENT]), after=IDLE)
+
+
 #: How each catalog entry's run is driven; an entry with no drive fails (`TestToARun`).
-DRIVES = {KEY: ResubscribeDrive, "telemetry-readd": ReaddDrive}
+DRIVES = {KEY: ResubscribeDrive, "telemetry-readd": ReaddDrive,
+          "telemetry-collector-resubscribe": CollectorDrive}
 
 
 def _not_a_person() -> list:
@@ -1097,10 +1168,10 @@ class TestTheDocumentSaysIt:
         bullets = _bullets(section)
         (rule,) = [b for b in bullets if b.startswith("No fix runs from AI text.")]
         assert rule.startswith(RULE + " "), rule
-        # His one sentence more, the bullet directly after the rule's.
-        after = bullets[bullets.index(rule) + 1]
-        assert after.startswith(SAVED + " "), after
-        assert [b for b in bullets if "saved fix" in b.lower()] == [after]
+        # The saved-fix clause, in the rule's own bullet and stated in no other (2026-11-14:
+        # the plan wording holds it).
+        assert SAVED in rule
+        assert [b for b in bullets if "saved fix" in b.lower()] == [rule]
         (mechanised,) = [b for b in bullets if b.startswith("Mechanised:")]
         assert "tests/test_ai_fix_rule.py" in mechanised
         assert "tests/test_heal_analysis_never_read.py" in mechanised
@@ -1124,10 +1195,10 @@ class TestTheDocumentSaysIt:
     def test_a_reworded_rule_or_an_unnamed_test_is_found(self):
         text = _source("docs/HEAL_TO_INTENT.md")
         section = _section(text, "## 12. ")
-        reworded = _bullets(section.replace("never retries", "rarely retries"))
+        reworded = _bullets(section.replace("or retries on its own", "or rarely retries"))
         assert not [b for b in reworded if b.startswith(RULE + " ")]
-        resaid = _bullets(section.replace("never the AI's words", "or the AI's words"))
-        assert not [b for b in resaid if b.startswith(SAVED + " ")]
+        resaid = _bullets(section.replace("saved from a verified run", "saved from any run"))
+        assert not [b for b in resaid if SAVED in b]
         unnamed = _bullets(section.replace("tests/test_ai_fix_rule.py", "a test"))
         assert not [b for b in unnamed if b.startswith("Mechanised:")
                     and "tests/test_ai_fix_rule.py" in b]

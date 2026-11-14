@@ -335,6 +335,8 @@ OPERATIONS = {
     # C2838: re-subscribe a lost telemetry stream, and its one-step Re-add the receiver.
     "telemetry-resubscribe": ("modules.heal.resubscribe", "STEPS"),
     "telemetry-readd": ("modules.heal.resubscribe", "READD_STEPS"),
+    # C3078: the re-subscribe with the collector step, on the same page.
+    "telemetry-collector-resubscribe": ("modules.heal.resubscribe", "COLLECTOR_STEPS"),
     # Board H, H10: the heal loop (its pass, its decision and its act) and its notices.
     "heal": ("modules.heal.decide", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),
@@ -379,6 +381,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "console-server-rekey": "rekey",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
                   "diagnose-stream": "diagnose", "telemetry-readd": "telemetry-resubscribe",
+                  "telemetry-collector-resubscribe": "telemetry-resubscribe",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",

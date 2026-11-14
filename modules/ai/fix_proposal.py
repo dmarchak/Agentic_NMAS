@@ -1,9 +1,10 @@
 """The one door from an AI answer to anything runnable (docs/HEAL_TO_INTENT.md section 12, the
-operator's rule of 2026-11-11, "by its preview's hash" the operator's of 2026-11-12;
-docs/MERCURY_CHARTER.md, "The fix-it path", step 3): "No fix runs from AI text. The AI may
-propose one operation from Mercury's catalog, with its parameters; code validates it against
-intent and the guards, and a person approves it by its preview's hash before it runs. The AI
-never composes commands, never runs anything itself, and never retries on its own."
+operator's rule of 2026-11-14, replacing 2026-11-11's; docs/MERCURY_CHARTER.md, "The fix-it
+path", step 3): "No fix runs from AI text. The AI may propose a plan of catalog operations,
+approved once by a person by hash, executed in order, stopping on the first failure; it never
+composes commands, runs anything itself, or retries on its own; a saved fix is the operation a
+person saved from a verified run." Until the plan engine lands this door takes a plan of one:
+ONE operation of the catalog, refusing any other shape.
 
 `proposal` takes what a recorded AI call answered and returns one of two things:
 - the proposed operation's PREVIEW and its hash (`modules/heal/catalog.py`, `preview`: the
@@ -116,7 +117,10 @@ def proposal(answer, *, network: str, call_id: str, actor: str, actor_verified: 
     they were verified, kept with a refusal's record. Neither approves anything: the approval
     is the confirm route's, a verified person's, with the hash. *sources* is the operation's
     plan's own seam (tests). Never raises on an answer's content; never runs, holds, opens or
-    starts anything."""
+    starts anything, and causes nothing on Mercury's host: the collector step's proposal names
+    the operation and its device and never runs the close helper, not even its dry run, which
+    runs only on the person's own card preview, the hash its confirm is bound to (the
+    operator, 2026-11-14; `catalog._collector_plan`)."""
     from modules.heal import catalog
 
     code, words = _call_refusal(call_id)

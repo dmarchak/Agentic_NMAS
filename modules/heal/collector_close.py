@@ -16,10 +16,11 @@ operation `modules/heal/resubscribe.py`, and reads intent as that operation and 
 diagnosis do (`diagnose_stream.receiver_of`, `resubscribe.Sources.addresses`). `modules/apps/`
 is the controller's apps.
 
-**NOT CALLED BY ANY OPERATION YET.** `request` is reached only by its tests and by the dry-run
-script (`scripts/nmas-collector-close-dry-run`, which never closes). The Re-subscribe
-operation's collector step is a later slice: until it is built, no screen and no job closes a
-session.
+**ONE OPERATION CALLS IT** (C3078): the re-subscribe with the collector step
+(`resubscribe.Sources.close`): its preview asks a dry run, which closes nothing, and its apply,
+holding the device and confirmed by a verified person's hash, the one close. Beside it only
+the dry-run script (`scripts/nmas-collector-close-dry-run`, which never closes) and the peers
+script reach this module; no other screen or job closes a session.
 
 - `request(peer, port, dry_run=, run_id=)`: one request and its outcome,
   ``{"ok", "code", "exit", "words", "tuple", "at"}``, for an operation's record and stepper.

@@ -11,7 +11,9 @@ Every read here goes through the real executor of AI troubleshooting's family
 (`fixit_reads.FAMILY`: the router read set's `router_reads.run`, then THE reads engine,
 `reads.run`, which takes the real `device_ops` hold) on an inventory and a credential store in
 this test's own folder; only the session is faked at the engine's seam
-(`connection.with_plain_connection`), and it stays inside the device for `DWELL` seconds,
+(`connection.with_temp_connection`, Show commands' own, which the AI's reads sign in through as
+Mercury's account by default since C3661; `with_plain_connection` the read-only account's), and
+it stays inside the device for `DWELL` seconds,
 stamping when it went in and came out, so two reads of one device at once would collide on the
 hold exactly as they did on the host. No device, no network, no provider.
 
@@ -54,17 +56,21 @@ class Session:
         self.sessions, self.deploy = [], []
 
     def plain(self, dev, fn):
+        return self._timed(dev, fn, "read-only")
+
+    def temp(self, dev, fn):
+        # Show commands' own session, the AI's reads' by default (Mercury's account, C3661).
+        self.deploy.append(dev["hostname"])
+        return self._timed(dev, fn, "mercury")
+
+    def _timed(self, dev, fn, path):
         start = time.monotonic()
         time.sleep(DWELL)
         got = fn(self)
         with self.mu:
             self.sessions.append({"host": dev["hostname"], "username": dev.get("username"),
-                                  "start": start, "end": time.monotonic()})
+                                  "path": path, "start": start, "end": time.monotonic()})
         return got
-
-    def temp(self, dev, fn):
-        self.deploy.append(dev["hostname"])
-        return fn(self)
 
     def answer(self, command):
         return f"{command}: answered"
@@ -136,6 +142,10 @@ def ask(op, device="edge1", **args):
             "hypothesis": "the stream stopped"}
 
 
+#: The BGP reads as AI troubleshooting asks them since C3661: by Mercury's allowlist.
+BGP, BGP6 = ask("show", words="ip bgp summary"), ask("show", words="bgp ipv6 unicast summary")
+
+
 def passed(requests, sc):
     """The pass's requests judged by the real check, then run by the real runner."""
     from modules.ai import fixit_reads as FR
@@ -152,24 +162,25 @@ def test_a_passs_three_reads_of_one_device_all_run_in_order(engine):
     """(a) The host's case: three device reads of the incident's device. Each runs, in the
     pass's order, each session after the last one's end, and none is refused by the pass's own
     hold."""
-    recs = passed([ask("telemetry_brief"), ask("bgp_summary"), ask("bgp_summary6")], scope())
+    recs = passed([ask("show", words="telemetry ietf subscription all"), BGP, BGP6], scope())
     assert [r["verdict"] for r in recs] == ["run"] * 3, [r.get("reason") for r in recs]
     assert [r["id"] for r in recs] == ["read:1", "read:2", "read:3"]
     assert [r["answer"] for r in recs] == [
         "show telemetry ietf subscription all: answered", "show ip bgp summary: answered",
         "show bgp ipv6 unicast summary: answered"]
     edge1 = engine.of("edge1")
-    assert len(edge1) == 3 and all(s["username"] == "mercury-ro" for s in edge1)
+    # As Mercury's account, Show commands' own session (C3661, the default).
+    assert len(edge1) == 3 and all(s["path"] == "mercury" for s in edge1)
     for before, after in zip(edge1, edge1[1:]):
         assert after["start"] >= before["end"], "one device's reads one after another"
-    assert engine.deploy == [], "never the deploy account's session"
     assert device_ops.holder(NETWORK, "edge1") is None, "no hold left behind"
 
 
 def test_reads_of_two_devices_still_run_at_once(engine):
     """(b) edge1's read and edge2's overlap in time: the grouping is per device, never every
     read one after another."""
-    recs = passed([ask("bgp_summary"), ask("bgp_summary", device="edge2")], scope())
+    recs = passed([BGP, dict(BGP, args={"device": "edge2", "words": "ip bgp summary"})],
+                  scope())
     assert [r["verdict"] for r in recs] == ["run", "run"], [r.get("reason") for r in recs]
     (one,), (two,) = engine.of("edge1"), engine.of("edge2")
     assert overlap(one, two), (one, two)
@@ -190,8 +201,8 @@ def test_a_device_another_operation_holds_is_refused_by_name_and_the_rest_run(en
     other.start()
     try:
         assert held.wait(30)
-        recs = passed([ask("bgp_summary"), ask("bgp_summary", device="edge2"),
-                       ask("bgp_summary6")], scope())
+        recs = passed([BGP, dict(BGP, args={"device": "edge2", "words": "ip bgp summary"}),
+                       BGP6], scope())
         still = device_ops.holder(NETWORK, "edge2")
     finally:
         done.set()
@@ -209,8 +220,8 @@ def test_a_read_reaching_no_device_runs_beside_a_devices_reads(engine):
     """(d) The stream's series (a ``local`` read) overlaps edge1's first read, while edge1's
     two reads run one after another."""
     series = Series()
-    recs = passed([ask("bgp_summary"), ask("stream_series", subscription="101"),
-                   ask("bgp_summary6")], scope(series=series))
+    recs = passed([BGP, ask("stream_series", subscription="101"),
+                   BGP6], scope(series=series))
     assert [r["verdict"] for r in recs] == ["run"] * 3, [r.get("reason") for r in recs]
     first, second = engine.of("edge1")
     assert second["start"] >= first["end"]
@@ -222,7 +233,10 @@ def test_the_device_a_read_reaches_is_its_cli_operations_device_argument():
     """`device_of`, the one place a read names its device: a ``cli`` operation's ``device``
     argument; a ``local`` read of the same device reaches none."""
     from modules.ai import fixit_reads as FR
-    assert RL.device_of(FR.FAMILY, {"op": "bgp_summary", "args": {"device": "edge1"}}) == \
+    assert RL.device_of(FR.FAMILY, {"op": "show", "args": {"device": "edge1",
+                                                            "words": "ip bgp summary"}}) == \
         "edge1"
+    # Mercury's own read of a device (C3661) reaches none either.
+    assert RL.device_of(FR.FAMILY, {"op": "history", "args": {"device": "edge1"}}) is None
     assert RL.device_of(FR.FAMILY, {"op": "stream_series",
                                     "args": {"device": "edge1", "subscription": "101"}}) is None

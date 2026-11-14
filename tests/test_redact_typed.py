@@ -49,11 +49,14 @@ def test_a_secret_written_in_prose_never_leaves(typed):
 
 def test_the_shapes_the_egress_mask_alone_let_through_are_measured():
     """The premise, kept: these prose shapes leave `redact_egress` with their value; it is
-    the reason `redact_typed` exists (if the egress mask learns them, this says so)."""
-    leaked = [s for s in (f"the password is {V}", f"password: {V}", f"passwd {V}",
+    the reason `redact_typed` exists (if the egress mask learns them, this says so). It learned
+    `password: <x>` on 2026-11-14 (`egress_labelled`, show output's own label form: Tier 1's
+    review of the AI's reads), so that one is masked now and the other four still leave."""
+    leaked = [s for s in (f"the password is {V}", f"passwd {V}",
                           f"api key {V}", f"the password for r2 is {V}")
               if V in redact.redact_egress(s, values={})]
-    assert len(leaked) == 5, leaked
+    assert len(leaked) == 4, leaked
+    assert V not in redact.redact_egress(f"password: {V}", values={})
 
 
 @pytest.mark.parametrize("line,kept", [

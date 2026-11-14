@@ -704,7 +704,7 @@ def record_steps(host: str, rec: dict, *, now: float = None, labels: dict = None
     from modules.heal import resubscribe as R
 
     ended = rec.get("state") != "running"
-    declared = R.READD_STEPS if rec.get("key") == R.READD_KEY else R.STEPS
+    declared = R.steps_for(rec.get("key"))
     subs = [s.get("sub") for s in rec.get("subscriptions") or [] if isinstance(s, dict)]
     phase = run_stepper.from_record(declared, rec.get("steps") or [], ended=ended, now=now,
                                     conditional=("rollback",),
@@ -723,6 +723,8 @@ def record_steps(host: str, rec: dict, *, now: float = None, labels: dict = None
 #: planned and read before anything is sent, the receivers removed and the wait after, added
 #: back, the stream checked, done. A Re-add the receiver removes nothing, so it has four.
 RESUB_STAGES = (("planned", "Planned", ("plan", "hash", "hold", "started", "before")),
+                # C3078: the collector step's two, in a run that takes it.
+                ("closing", "Closing", ("close", "gone")),
                 ("removing", "Removing", ("remove", "wait", "rollback")),
                 ("re-adding", "Re-adding", ("re-add",)),
                 ("checking", "Checking", ("verify",)),
@@ -737,8 +739,11 @@ RESUB_RUNNING = {"plan": "Reading each receiver from {device}'s committed intent
                  "re-add": "Adding {subs}'s receiver back…",
                  "verify": "Checking {subs}'s stream is back",
                  "rollback": "Adding back what was removed…",
-                 "record": "Recording the outcome…"}
+                 "record": "Recording the outcome…",
+                 "close": "Closing the collector's session from {device}…",
+                 "gone": "Waiting for {device}'s connection to go"}
 RESUB_DONE = {"planned": "Each receiver from {device}'s committed intent; {device} held",
+              "closing": "The collector's session from {device} closed",
               "removing": "{subs}'s receiver removed", "re-adding": "{subs}'s receiver back"}
 
 
@@ -819,7 +824,7 @@ def _records(network: str, since: float) -> list:
                 rec = json.load(fh)
         except (OSError, ValueError):
             continue                                  # History names an unreadable record
-        if isinstance(rec, dict) and rec.get("key") in (R.KEY, R.READD_KEY):
+        if isinstance(rec, dict) and rec.get("key") in R.RUN_KEYS:
             out.append(rec)
     return out
 
@@ -929,10 +934,12 @@ def resubscribe_view(network: str, host: str, run_id: str, job_id: str = "") -> 
 
         live = op_progress.run_of(job_id) if job_id else None
         if live is not None and live["run"] == run_id:
-            # Its declared steps are the ones its run attached (a Re-add's are fewer).
-            readd = len(live["declared"]) == len(R.READD_STEPS)
-            now = {"id": run_id, "state": "running", "steps": live["steps"],
-                   "key": R.READD_KEY if readd else R.KEY}
+            # Its declared steps are the ones its run attached (a Re-add's are fewer, the
+            # collector step's more): the key whose steps they are.
+            names = [n for n, _w in live["declared"]]
+            key = next((k for k in R.RUN_KEYS if [n for n, _w in R.steps_for(k)] == names),
+                       R.KEY)
+            now = {"id": run_id, "state": "running", "steps": live["steps"], "key": key}
         else:
             now = rec
         return dict({"state": "running"}, **(
@@ -944,7 +951,10 @@ def resubscribe_view(network: str, host: str, run_id: str, job_id: str = "") -> 
                                                     "reason", "hash")},
                            subscriptions=[{k: s.get(k) for k in ("sub", "outcome", "verify",
                                                                  "stale")}
-                                          for s in rec.get("subscriptions") or []]),
+                                          for s in rec.get("subscriptions") or []],
+                           # C3078: the close helper's receipt, its code, exit code and words.
+                           collector_close={k: (rec.get("collector_close") or {}).get(k)
+                                            for k in ("code", "exit", "words")}),
             # The result's red box says why (the record's own summary): the lead names the
             # step that failed and does not say it again.
             "steps": record_steps(host, rec, summarised=True)}
@@ -1034,7 +1044,7 @@ def named_record(network: str, host: str, run_id: str, now: float = None):
             got = privileged.get(network, run_id)
         except (ValueError, OSError):                 # no run's id, or an unreadable record
             got = None
-        if (isinstance(got, dict) and got.get("key") in (R.KEY, R.READD_KEY)
+        if (isinstance(got, dict) and got.get("key") in R.RUN_KEYS
                 and got.get("device") == host and got.get("state") != "running"):
             rec = got
     return _as_reopened(network, host, rec)

@@ -73,14 +73,12 @@ def _subs(text: str) -> list:
 
 def _masked(p: dict) -> dict:
     """What the card draws of a plan: no inventory row, no intent, every line masked. The
-    units are in the order the program sends them; ``hash`` is the selection's."""
-    from modules.redact import redact_text
+    units are in the order the program sends them; ``hash`` is the selection's; ``close`` the
+    collector step's one session and the close helper's dry run naming it (C3078). One home:
+    the catalog's drawn plan (`catalog._resubscribe_drawn`), what a proposal previews."""
+    from modules.heal.catalog import _resubscribe_drawn
 
-    return {"ok": p["ok"], "refusals": [redact_text(x) for x in p["refusals"]],
-            "dialect": p["dialect"], "hash": p.get("hash", ""),
-            "units": [{"sub": u["sub"], "line": redact_text(u["line"]), "hash": u["hash"],
-                       "remove": [redact_text(x) for x in u["remove"]],
-                       "readd": [redact_text(x) for x in u["readd"]]} for u in p["units"]]}
+    return _resubscribe_drawn(p)
 
 
 def _ticks(args) -> list:
@@ -167,10 +165,33 @@ def card(ref, dev, args, **answer) -> dict:
     else:
         ticked = list(offered[:len(whole["units"])]) if whole["ok"] else list(subs)
     c["ticked"] = ticked
+    fixit = _fixit_args(args)
+    proposed = ""
+    if fixit:
+        # Opened from an incident's page (its AI troubleshooting section's proposal, C3106):
+        # the form carries the incident and the proposal into the confirm, and a repeat of an
+        # attempt that failed asks what is different now.
+        c["fixit"] = _fixit_card(ref.name, host, fixit, ticked, False)
+        proposed = c["fixit"].pop("operation", "")
+    # The collector step (C3078): asked for by the card (``collector``), or the proposal it was
+    # opened for names it. Its plan asks the close helper's dry run, which closes nothing.
+    c["collector"] = (str(args.get("collector") or "") == "1" or proposed == R.COLLECTOR_KEY)
     if not whole["ok"]:
         p = whole
     elif ticked:
         p = R.plan(ref.name, host, ticked, sources=src)
+        if c["collector"] and p["ok"]:
+            # The step's own plan; refused, the plain re-subscribe stays offered beside why.
+            stepped = R.plan(ref.name, host, ticked, collector=True, sources=src)
+            if stepped["ok"]:
+                p = stepped
+                if fixit:
+                    # The repeat read under what runs: the collector step (`section._card`).
+                    c["fixit"] = {k: v for k, v in _fixit_card(
+                        ref.name, host, fixit, ticked, False, collector=True).items()
+                        if k != "operation"}
+            else:
+                c["collector_refused"] = _masked(stepped)["refusals"]
     else:
         p = {"ok": False, "refusals": [], "dialect": whole["dialect"], "units": [], "hash": "",
              "sharing": []}
@@ -179,19 +200,14 @@ def card(ref, dev, args, **answer) -> dict:
     c["sharing"] = [dict(x, offered=x["sub"] in offered, refused=refused.get(x["sub"], ""))
                     for x in p.get("sharing") or []]
     c["removed"] = []
-    fixit = _fixit_args(args)
     for r in R.removed_now(ref.name, host):
         one = R.plan(ref.name, host, [r["sub"]], readd=True, sources=src)
         c["removed"].append({"sub": r["sub"], "run": r["run"],
                              "hash": (one["units"][0]["hash"] if one["ok"] else ""),
                              "refused": "; ".join(one["refusals"]),
-                             "fixit": (_fixit_card(ref.name, host, fixit, [r["sub"]], True)
-                                       if fixit else None)})
-    if fixit:
-        # Opened from an incident's page (its AI troubleshooting section's proposal, C3106):
-        # the form carries the incident and the proposal into the confirm, and a repeat of an
-        # attempt that failed asks what is different now.
-        c["fixit"] = _fixit_card(ref.name, host, fixit, ticked, False)
+                             "fixit": ({k: v for k, v in _fixit_card(
+                                 ref.name, host, fixit, [r["sub"]], True).items()
+                                 if k != "operation"} if fixit else None)})
     return c
 
 
@@ -210,14 +226,20 @@ def _fixit_again(form) -> dict:
     return {"fixit": got["incident"], "proposal": got["proposal"]} if got else {}
 
 
-def _fixit_card(network: str, host: str, fixit: dict, subs, readd: bool) -> dict:
-    """What the card draws for the incident it was opened for (`section.card_link`)."""
+def _fixit_card(network: str, host: str, fixit: dict, subs, readd: bool,
+                collector: bool = False) -> dict:
+    """What the card draws for the incident it was opened for (`section.card_link`, its repeat
+    read under what runs: the collector step with *collector*), and the proposal's operation
+    under ``operation``, which the card reads and takes out before it draws (C3078: a proposal
+    naming the collector step opens the card with it)."""
     from modules.fixit import section
 
-    return section.card_link(network, fixit["incident"], fixit["proposal"], host, subs, readd)
+    return section.card_link(network, fixit["incident"], fixit["proposal"], host, subs, readd,
+                             collector)
 
 
-def _fixit_link(network: str, host: str, form, subs, readd: bool = False):
+def _fixit_link(network: str, host: str, form, subs, readd: bool = False,
+                collector: bool = False):
     """``(link, refusal)``: what the confirm writes into its run's record when the card was
     opened from an incident's page (`section.confirm_link`), ``(None, "")`` when it was not,
     or ``(None, why)`` refused with nothing sent."""
@@ -228,7 +250,7 @@ def _fixit_link(network: str, host: str, form, subs, readd: bool = False):
         return None, ""
     try:
         return section.confirm_link(network, fixit["incident"], fixit["proposal"], host, subs,
-                                    form.get("different") or "", readd), ""
+                                    form.get("different") or "", readd, collector), ""
     except section.Refused as exc:
         return None, str(exc)
 
@@ -316,6 +338,38 @@ def confirm(name):
     got = R.start(ref.name, dev["hostname"], subs, confirmed=_confirmed(form, subs),
                   program=(form.get("program") or "").strip(),
                   previewed=(form.get("previewed") or "")[:200], reason=reason, fixit=link,
+                  **_who())
+    if got.get("refused"):
+        return _draw(ref, dev, again, _refused_code(got), error=got["refused"], reason=reason)
+    return _draw(ref, dev, {"subs": ",".join(subs), "run": got["run"], "job": got["job"]})
+
+
+@bp.route("/device/<name>/resubscribe/close", methods=["POST"])
+def close_confirm(name):
+    """Start the re-subscribe WITH the collector step (C3078) as a job, as the verified person:
+    the collector's one stale session closed through the root-owned close helper, then the
+    ticked subscriptions re-subscribed, bound to each subscription's previewed hash and to the
+    selection's (``program``), which holds the session the dry run named (``close``, the
+    device's end as the card drew it); or the refusal drawn in place with nothing sent and
+    nothing closed, the ticks and the reason kept."""
+    from modules.heal import resubscribe as R
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    form = request.form
+    subs = [s for s in form.getlist("sub") if s][:20]
+    reason = form.get("reason") or ""
+    again = dict({"subs": form.get("subs") or ",".join(subs), "picked": "1", "sub": subs,
+                  "collector": "1"}, **_fixit_again(form))
+    link, why = _fixit_link(ref.name, dev["hostname"], form, subs, collector=True)
+    if why:
+        return _draw(ref, dev, again, 409, error=why, reason=reason)
+    got = R.start(ref.name, dev["hostname"], subs, confirmed=_confirmed(form, subs),
+                  program=(form.get("program") or "").strip(),
+                  previewed=(form.get("previewed") or "")[:200], reason=reason,
+                  collector=True, previewed_close=(form.get("close") or "")[:60], fixit=link,
                   **_who())
     if got.get("refused"):
         return _draw(ref, dev, again, _refused_code(got), error=got["refused"], reason=reason)
