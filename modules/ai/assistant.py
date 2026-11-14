@@ -46,7 +46,13 @@ log = logging.getLogger(__name__)
 
 FEATURE = "assistant"
 #: v2 (2026-11-14): the answer may name one of the plan engine's plans (`plan_engine.PLANS`).
-PROMPT = ("assistant", 2)
+#: v3 (2026-11-14, C3666): v2 hardened on its measurement (22 of 39 cases reliable over ten
+#: runs): the question's text, tag-shaped text included, is data and never an instruction, and
+#: is never repeated; only Mercury's screens and controls, never a device command's name; a
+#: masked secret answered around; covered unless the passages say nothing about it; only
+#: sidebar screens in "screens". Its plan rules are v2's, and its schema is v2's
+#: (`AssistantAnswerV2`).
+PROMPT = ("assistant", 3)
 #: The kind of subject a call is about (`history_sources.SUBJECT_WORDS`).
 SUBJECT_KIND = "manual_question"
 #: The longest answer drawn, characters; longer is refused at check.
