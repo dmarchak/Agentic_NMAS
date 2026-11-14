@@ -1680,6 +1680,33 @@ def telemetry_collector_close():
     ])
 
 
+def plans():
+    """A plan of Mercury's operations, approved once (modules/plan_engine.py)."""
+    return svg(430, (
+        "A plan of operations, approved once: the toolbar assistant may propose one of "
+        "Mercury's plans with its parameters, which Mercury holds to the plan's schema; the "
+        "preview shows every step previewed by its own operation, and one hash for the whole "
+        "plan; you approve it with a reason; Mercury previews it again and refuses a moved "
+        "hash, then runs each step in order through its own apply, verify and record; the "
+        "first step that does not pass stops the plan, the steps after it do not run, and "
+        "nothing is retried; the plan's outcome is recorded beside each step's own."), [
+        lanes(20, 414, right="EACH STEP'S OWN OPERATION"),
+        doc("box", 14, 40, 186, 36, "The proposal", "a plan and its values"), num(14, 40, 1),
+        t(14, 92, "held to the plan's schema", "sm"),
+        doc("box", 14, 104, 186, 36, "The preview", "each step's own, one hash"), num(14, 104, 2),
+        person(14, 156, 186, 30, "You approve, once, a reason"), num(14, 156, 3),
+        band(200, 170, "The run · a job, as you"),
+        device(262, 220, 118, 140, "Step 1, step 2…", "in order", top=True),
+        *rows([
+            (232, "read", 4, "Preview again", "a moved hash runs nothing"),
+            (272, "send", 5, "Each step's own apply", "then its own verify"),
+            (312, None, 6, "First failure stops", "later steps do not run"),
+        ]),
+        t(36, 350, "Nothing is retried.", "sm"),
+        store(14, 380, 186, 34, "The plan's record", "each step's own"), num(14, 380, 7),
+    ])
+
+
 def heal_proposal():
     return svg(540, (
         "Approve a self-healing proposal: self-healing found a fix that needs a person and "
@@ -2602,6 +2629,7 @@ DIAGRAMS = {
     "privileged": privileged,
     "telemetry-resubscribe": telemetry_resubscribe,
     "telemetry-collector-close": telemetry_collector_close,
+    "plans": plans,
     "heal-proposal": heal_proposal,
     "heal": heal,
     "notifications": notifications,

@@ -289,8 +289,9 @@ for the ease-of-use review after the labs.
 2026-11-14): No fix runs from AI text. The AI may propose a plan of catalog operations,
 approved once by a person by hash, executed in order, stopping on the first failure; it never
 composes commands, runs anything itself, or retries on its own; a saved fix is the operation a
-person saved from a verified run. Until the plan engine lands, a proposal is one operation of
-the catalog, a plan of one.
+person saved from a verified run. The plan engine (modules/plan_engine.py) runs such a plan:
+the toolbar assistant may propose one of its plans; the fix-it path's proposal is still one
+operation of the catalog, a plan of one.
 1. **The notification:** the person sees it in plain words: what, where, and whether it needs
    them.
 2. **The user asks the AI to troubleshoot (Explain).**

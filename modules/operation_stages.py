@@ -119,6 +119,19 @@ STAGES = {
     # two ends in it (`resubscribe.close_id`). Apply holds the device: the close (read back
     # gone by the helper), the device's connection read until it goes, then the re-subscribe;
     # verify, rollback and record as Re-subscribe's, the helper's receipt in the record.
+    # The plan engine (modules/plan_engine.py): previewed as one, every step by its own
+    # operation, approved once by the plan's hash (``hash``); each step's own verify (the
+    # reservation's read-back from Kea, intent read back holding the change, Add device's
+    # Create passing only when every one of its steps ran); the first step that does not pass
+    # stops the plan; the plan's record beside each step's own.
+    "plans_v2.approve": Stages(
+        "plans_v2.preview", "hash", "modules.plan_engine.run",
+        "n/a: a plan changes no device; the first step that does not pass stops it, each step "
+        "putting itself back as its own operation does (the reservation restored and Kea "
+        "reloaded; intent corrected by a forward commit; Add device's Create, which commits "
+        "the device's identity and intent and mints its stored one-time credential, has no "
+        "rollback: Abandon is its undo), and nothing is retried",
+        "modules.plan_engine._record"),
     "resubscribe_v2.close_confirm": Stages(
         "resubscribe_v2.preview", "program",
         "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
@@ -571,6 +584,7 @@ HISTORY = {
     "resubscribe_v2.confirm": ("privileged",),
     "resubscribe_v2.readd": ("privileged",),
     "resubscribe_v2.close_confirm": ("privileged",),
+    "plans_v2.approve": ("privileged",),
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),

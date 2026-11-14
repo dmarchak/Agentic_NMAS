@@ -203,6 +203,11 @@ PAGE_RECORD = {
     "resubscribe_v2.readd": ("templates/v2/_resubscribe.html",
                              ('data-holds-live="review"', "c.record", "s.verify", "r.why"),
                              "device_v2.history"),
+    # The plan engine: answered in place on the plan's card in the assistant's panel (its job,
+    # then its record's outcome and each step's own); the run read again on History.
+    "plans_v2.approve": ("templates/v2/_plan_card.html",
+                         ('data-holds-live="review"', "c.record", "r.plan_steps", "r.why"),
+                         "v2.history_page"),
     # C3078: the re-subscribe with the collector step, answered on the same card, its close
     # helper's receipt beside the outcome.
     "resubscribe_v2.close_confirm": ("templates/v2/_resubscribe.html",

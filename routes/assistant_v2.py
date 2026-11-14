@@ -46,4 +46,9 @@ def ask():
                              call_id=got.get("call_id") or "")
     # What the answer draws; whether it was a gap is the route's to record, said in the words.
     drawn = {k: v for k, v in got.items() if k not in ("ok", "gap", "error", "cost_usd")}
+    if drawn.get("plan"):
+        # The plan acts on the network the person asked from: its preview is that network's.
+        from modules.nsot import listref
+        from routes.list_param import named_list
+        drawn["plan"] = dict(drawn["plan"], list=named_list(request) or listref.active().name)
     return _strict(render_template("v2/_assistant_answer.html", got=drawn))

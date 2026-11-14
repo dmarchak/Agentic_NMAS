@@ -34,7 +34,14 @@ FIELDS = ("list_name", "hostname", "platform", "role", "address_source", "mgmt_i
 
 def _form() -> dict:
     """The fields as sent, each one the form has; the inventory source is the network's own."""
-    out = {k: (request.form.get(k) or "").strip() for k in FIELDS}
+    return form_of(request.form)
+
+
+def form_of(values) -> dict:
+    """Add device's fields from *values* (the form, or a plan's parameters as the plan engine
+    maps them), each one the form has, and the inventory source, the network's own: the one
+    home of the mapping the review and Create read (`routes.onboard._plan_args` after it)."""
+    out = {k: (values.get(k) or "").strip() for k in FIELDS}
     out["source_kind"] = _source_kind(out["list_name"])
     return out
 

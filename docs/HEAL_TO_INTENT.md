@@ -726,12 +726,14 @@ only.**
 - **No fix runs from AI text.** The AI may propose a plan of catalog operations, approved once
   by a person by hash, executed in order, stopping on the first failure; it never composes
   commands, runs anything itself, or retries on its own; a saved fix is the operation a person
-  saved from a verified run. Code holds a fix-it proposal, one catalog operation, to intent,
-  the incident's scope and the heal guards (modules/fixit/validate.py). (The operator's words,
-  2026-11-14, granted overnight, replacing 2026-11-11's "The AI may propose one operation from
-  Mercury's catalog, with its parameters", itself replacing "No fix is ever chosen or run from
-  AI text"; "by hash" the operator's, 2026-11-12. Until the plan engine lands, a proposal is
-  one operation of the catalog, a plan of one.)
+  saved from a verified run. Code holds each step of a plan to its kind's schema and to its
+  own operation's preview and checks before it is drawn (modules/plan_engine.py); a fix-it
+  proposal, one catalog operation, is also held to the incident's scope and the heal guards
+  (modules/fixit/validate.py). (The operator's words, 2026-11-14, granted overnight,
+  replacing 2026-11-11's "The AI may propose one operation from Mercury's catalog, with its
+  parameters", itself replacing "No fix is ever chosen or run from AI text"; "by hash" the
+  operator's, 2026-11-12. The toolbar assistant's proposals are the plan engine's plans; the
+  fix-it path's is one operation of the catalog, a plan of one.)
 - **The AI is a senior network engineer using Mercury, not Mercury's admin** (the operator's
   change of approach, 2026-11-14). It MAY read anything Mercury can read, investigate with
   Mercury's read tools, propose catalog operations (or a plan of them), draft text for a

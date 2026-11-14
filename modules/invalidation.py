@@ -192,6 +192,8 @@ ANNOUNCERS = {
     # modules/nsot/save_op.py (C593): the run's end, its commit and what each device boots.
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
+    # modules/plan_engine.py: a plan's end, its record and what its steps wrote.
+    "plan": ("privileged", "dhcp", "intent", "remote", "pending", "credentials", "in_progress"),
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     "diagnosis": ("diagnosis",),  # modules/heal/diagnose_page.py: a diagnosis run's end (H16)
     "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
@@ -333,6 +335,10 @@ DECLARED = {
     "resubscribe_v2.confirm": ("privileged",),
     "resubscribe_v2.readd": ("privileged",),
     "resubscribe_v2.close_confirm": ("privileged",),
+    # The plan engine: its record, and what each step's own operation changes (a reservation;
+    # intent and its remote).
+    "plans_v2.approve": ("privileged", "dhcp", "intent", "remote", "pending", "credentials",
+                         "in_progress"),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),

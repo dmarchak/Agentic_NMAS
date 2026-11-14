@@ -62,6 +62,10 @@ SIGNED_OFF = {
                                    "H, self-signed under the Phase 7 mode 2026-11-10 "
                                    "(docs/STANDING_APPROVAL_LOG.md, 'Board lab9-sdn H'); "
                                    "compared, docs/fidelity/history-export.md"),
+    "plan.html": ("2026-11-14", "the plan card's board (drafted for the review sitting, "
+                                "self-signed under the Phase 7 operating mode and logged in "
+                                "docs/STANDING_APPROVAL_LOG.md, C3648): the card whole in the "
+                                "frame, where In progress reopens a plan's run"),
     "credentials.html": ("2026-10-03", "board 7, the break-glass record on Source of truth > "
                                        "Credentials (its placement signed off 2026-10-03, the card "
                                        "the same night's revision): the record's state, the export "

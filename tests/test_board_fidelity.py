@@ -27,6 +27,8 @@ FIDELITY = os.path.join(ROOT, "docs", "fidelity")
 #: Screen -> its record.
 RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "logs.html": "logs-tail.md", "dhcp.html": "dhcp.md", "onboard.html": "onboard.md",
+           # The plan engine's page (2026-11-14): its card whole, where In progress reopens it.
+           "plan.html": "plan.md",
            "history_ask_logs.html": "history-ask-logs.md",
            "history_ask_metrics.html": "history-ask-metrics.md",
            # C650: the screens the operator walked in W1 (2026-10-16), compared with their

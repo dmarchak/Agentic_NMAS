@@ -3016,6 +3016,48 @@ def _assistant(client, _lab, mp):
             as_text=True), state
 
 
+def _plans(client, _lab, mp):
+    """The plan card (modules/plan_engine.py, routes/plans_v2.py) in each of its states: a plan
+    Mercury does not have (refused), a planted preview of two steps (as the engine's own
+    preview answers), a run still going, and its result with one step done and one not run;
+    and the assistant's answer naming a plan, which offers Preview the plan…."""
+    import json as _json
+
+    from modules import plan_engine
+    from modules.ai import assistant
+
+    r = client.get("/v2/plans/preview", query_string={"plan": "nope", "params": "{}"})
+    assert r.status_code == 200 and "This plan is not offered" in r.get_data(as_text=True)
+    steps = [{"n": n, "kind": "intent-description", "words": "Set an interface's description",
+              "params": {}, "ok": True, "hash": "ab" * 8, "refused": "",
+              "drawn": {"title": f"edge{n} Gi1", "change": "description set",
+                        "not_done": ["deploys nothing"]}} for n in (1, 2)]
+    mp.setattr(plan_engine, "preview", lambda *a, **k: {
+        "ok": True, "plan": "describe-link", "title": "Describe the link", "words": "both ends",
+        "params": {}, "steps": steps, "hash": "cd" * 8, "refused": "", "code": ""})
+    r = client.get("/v2/plans/preview", query_string={"plan": "describe-link", "params": "{}",
+                                                      "reason": "a reason kept"})
+    assert r.status_code == 200 and re.search(r"Approve the plan on [^:<]+: Describe the link",
+                                              r.get_data(as_text=True))
+    rec = {"state": "running", "title": "Describe the link"}
+    mp.setattr(plan_engine, "record_of", lambda *a: dict(rec))
+    r = client.get("/v2/plans/preview", query_string={"run": "run-1", "job": "j-1"})
+    assert "Running the plan" in r.get_data(as_text=True)
+    rec.update(state="failed", outcome="stopped", why="step 2 did not pass", actor="a.person",
+               at="2026-11-14T08:00:00Z", reason="a reason kept", hash="cd" * 8,
+               plan_steps=[{"n": 1, "words": "one", "state": "done", "words_said": "ok"},
+                           {"n": 2, "words": "two", "state": "not_run", "words_said": ""}])
+    r = client.get("/v2/plans/preview", query_string={"run": "run-1"})
+    assert 'data-state="not_run"' in r.get_data(as_text=True)
+    got = {"ok": True, "state": "answered", "error": "", "detail": "", "answer": "Yes.",
+           "cites": [], "passages": [], "call_id": "ai-0123456789abcdef", "gap": False,
+           "typed_masked": "", "plan": {"plan": "dhcp-reservation", "title": "Reserve it",
+                                        "params": {"mac": "aa:bb:cc:dd:ee:ff"}}}
+    mp.setattr(assistant, "answer", lambda *a, **k: dict(got))
+    r = client.post("/v2/assistant/ask", data={"question": "Reserve it", "screen": ""})
+    assert "Preview the plan…" in r.get_data(as_text=True) and _json
+
+
 def _ai_spend(client, _lab, _mp):
     """The top bar's AI chip and its spend panel (boards AI1 and AI2, C1843) with spend to draw:
     a key, hosted AI allowed, a planted background feature on for Lab (and one for a network
@@ -5153,7 +5195,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _display_names,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
-                   _ai_spend, _assistant, _oob_onboard, _sdn, _sdn_apps,
+                   _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
                    _incidents_list,

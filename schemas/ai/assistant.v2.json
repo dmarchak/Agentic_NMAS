@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "PlanAsk": {
+      "additionalProperties": false,
+      "description": "A plan the answer names (`plan_engine.PLANS`), with every parameter it takes.",
+      "properties": {
+        "params": {
+          "items": {
+            "$ref": "#/$defs/PlanParam"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "plan": {
+          "title": "Plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "params"
+      ],
+      "title": "PlanAsk",
+      "type": "object"
+    },
+    "PlanParam": {
+      "additionalProperties": false,
+      "description": "One parameter of a plan the answer names: its name and its value, as the person gave it.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "PlanParam",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "v2 (2026-11-14): v1's answer, and ``plan``: one of the plan engine's plans with its\nparameters, or null. Proposed only: Mercury previews it and a person approves it or not.",
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "cites": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cites",
+      "type": "array"
+    },
+    "covered": {
+      "title": "Covered",
+      "type": "boolean"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanAsk"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "screens": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Screens",
+      "type": "array"
+    }
+  },
+  "required": [
+    "answer",
+    "cites",
+    "covered",
+    "screens"
+  ],
+  "title": "AssistantAnswerV2",
+  "type": "object"
+}

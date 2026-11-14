@@ -364,7 +364,9 @@ def finished_row(job: dict, viewer: str) -> dict:
 
 
 #: A page job's payload state -> its level (never green over a stop, a refusal or a pause).
-PAGE_LEVELS = {"done": "ok", "paused": "warn", "stopped": "danger", "refused": "danger"}
+PAGE_LEVELS = {"done": "ok", "paused": "warn", "stopped": "danger", "refused": "danger",
+               # A plan whose steps all passed and one leaves its own approval (plan_engine).
+               "partial": "warn"}
 
 
 def page_finished_row(job: dict, viewer: str):
@@ -381,7 +383,7 @@ def page_finished_row(job: dict, viewer: str):
         level, words = "danger", "failed: " + (got.get("error") or "no reason was recorded")
     elif "state" in payload:
         level = PAGE_LEVELS.get(payload["state"], "danger")
-        words = {"done": "done, every device verified",
+        words = payload.get("words") or {"done": "done, every device verified",
                  "paused": "paused after the canary: waits for your Continue",
                  "stopped": "stopped: " + (payload.get("stopped") or "")[:120],
                  "refused": "not run: " + (payload.get("error") or "")[:120]}.get(

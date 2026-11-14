@@ -34,20 +34,11 @@ def _not_owner() -> str:
     """``""`` when the page's network owns the Kea a change here would write; otherwise the
     refusal, naming both networks (C1181, the operator's design 2026-10-17: a Kea has one
     owning network, where it is set; a network inheriting it changes nothing in it). Asked by
-    every preview and confirm, before Kea or any file is read."""
-    from modules import list_settings as L
+    every preview and confirm, before Kea or any file is read. One home: the comparison is
+    `dhcp_reservations.owner_refusal`'s, which the plan engine's reservation asks too."""
+    from modules import dhcp_reservations as D
 
-    page = _list_name()
-    try:
-        owner, why = L.kea_owner(page)
-    except L.ListSettingsUnreadable as exc:
-        return (f"whose Kea {page}'s DHCP page shows could not be read ({exc}), so the change "
-                "could not be recorded in its owner's repository. Nothing was written")
-    if L.same_network(owner, page):
-        return ""
-    return (f"{page} uses {owner}'s Kea ({why}): a change to it is made on {owner}'s DHCP "
-            f"page and recorded in {owner}'s repository, never from {page}'s. Nothing was "
-            "written")
+    return D.owner_refusal(_list_name())
 
 
 def _refused_plan(why: str) -> dict:

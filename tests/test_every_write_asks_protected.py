@@ -106,6 +106,9 @@ NOT_A_CONTROLLER = {
     ("modules/heal/act.py", "src.apply"): "self-healing's Cisco source (heal.act), a device op",
     ("modules/heal/propose.py", "src.apply"): "self-healing's Cisco source, a device op",
     ("modules/heal/dampening.py", "src.apply"): "the dampening proposal's Cisco source",
+    ("modules/plan_engine.py", "kind.apply"): "a plan step's own operation (a DHCP "
+                                              "reservation in Kea, an intent commit, Add "
+                                              "device's Create), never a controller",
 }
 
 #: The one place an HTTP write may be made in the SDN, app and job code.

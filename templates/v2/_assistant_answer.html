@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import badge -%}
+{%- from "v2/_macros.html" import badge, how -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- The toolbar assistant's answer (card P7, stage 1; board P7; routes/assistant_v2.ask): drawn in
     the panel in place of the last one. An answer drawn is one Mercury's check passed: every
@@ -11,6 +11,13 @@
   <p class="small faint">{{ badge('AI', 'info', title='Answered by AI from the manual; every citation checked in code') }} From the manual</p>
   <div class="asst-said">{{ got.answer }}</div>
   <p class="small"><strong>From:</strong> {% for c in got.cites %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}</p>
+  {%- if got.plan_dropped %}<p class="small warn-text" data-plan-dropped>{{ got.plan_dropped }}.</p>{% endif %}
+  {%- if got.plan %}
+  {#- A plan the answer named, held to the plan engine's schema: proposed only. Its preview is
+      the engine's own, drawn here in place; a person approves it there by its hash, or not. -#}
+  <div id="plan-card"><p class="small"><strong>Proposed:</strong> {{ got.plan.title }}, on {{ got.plan.list }}.</p>
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson) }}" hx-target="#plan-card" hx-swap="outerHTML" hx-disabled-elt="this" title="Previews each step by its own operation; nothing runs until you approve it"><span class="op-idle">Preview the plan…</span><span class="op-busy">Reading…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
+  {%- endif %}
   {%- elif got.state == 'not_covered' %}
   <p class="small"><strong>{{ got.detail }}</strong> It is recorded as a gap in the manual.{% if got.passages %} The nearest it holds: {% for c in got.passages[:3] %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
   {%- else %}

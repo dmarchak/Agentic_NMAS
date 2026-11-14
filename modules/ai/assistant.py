@@ -27,6 +27,12 @@ is what the ask route records (`record_gap`): a write of its own, never the read
 
 **One person's press, one recorded call** (PHASE8_PLAN 18.3: trigger person); never a
 background feature.
+
+**A plan (v2, 2026-11-14).** The answer may name one of the plan engine's plans with its
+parameters (`plan_engine.PLANS`, told to the model in the cached `context`). Mercury holds it
+to the plan's schema (`plan_of`) before it is drawn; the panel then offers Preview the plan…,
+the engine's own preview, and a person approves it by its hash or not. The assistant runs
+nothing.
 """
 import json
 import logging
@@ -39,7 +45,8 @@ from modules.ai.schemas import StrictModel, register
 log = logging.getLogger(__name__)
 
 FEATURE = "assistant"
-PROMPT = ("assistant", 1)
+#: v2 (2026-11-14): the answer may name one of the plan engine's plans (`plan_engine.PLANS`).
+PROMPT = ("assistant", 2)
 #: The kind of subject a call is about (`history_sources.SUBJECT_WORDS`).
 SUBJECT_KIND = "manual_question"
 #: The longest answer drawn, characters; longer is refused at check.
@@ -71,6 +78,58 @@ class AssistantAnswer(StrictModel):
     screens: list[str]
 
 
+class PlanParam(StrictModel):
+    """One parameter of a plan the answer names: its name and its value, as the person gave it."""
+    name: str
+    value: str
+
+
+class PlanAsk(StrictModel):
+    """A plan the answer names (`plan_engine.PLANS`), with every parameter it takes."""
+    plan: str
+    params: list[PlanParam]
+
+
+@register("assistant", 2)
+class AssistantAnswerV2(StrictModel):
+    """v2 (2026-11-14): v1's answer, and ``plan``: one of the plan engine's plans with its
+    parameters, or null. Proposed only: Mercury previews it and a person approves it or not."""
+    answer: str
+    cites: list[str]
+    covered: bool
+    screens: list[str]
+    plan: PlanAsk | None = None
+
+
+def plans_offered(plan_engine) -> list:
+    """What the model is told of each plan: its name, its words and each parameter's shape."""
+    return [{"plan": p.key, "words": p.words,
+             "params": [{"name": x.name, "takes": x.takes} for x in p.params]}
+            for _k, p in sorted(plan_engine.PLANS.items())]
+
+
+def plan_of(words) -> tuple:
+    """``(plan, why)``: the plan *words* names, held to the plan engine's schema
+    (`plan_engine.checked`: a plan Mercury has, exactly its parameters, each of its shape), as
+    ``{"plan", "params", "title"}``; ``(None, "")`` for none; ``(None, why)`` refused. Reads
+    nothing and runs nothing."""
+    from modules import plan_engine
+
+    ask = getattr(words, "plan", None)
+    if ask is None:
+        return None, ""
+    given = {}
+    for p in ask.params:
+        if p.name in given:
+            return None, f"its plan names the parameter {p.name!r} twice"
+        given[p.name] = p.value
+    try:
+        plan, held, _steps = plan_engine.checked(ask.plan, given)
+    except plan_engine.Refused as exc:
+        return None, f"its plan is refused: {exc}"
+    return {"plan": plan.key, "params": held, "title": plan.title(held)}, ""
+
+
 def passages_sent(chosen: list) -> list:
     """What the model is sent of each chosen passage: its link, its page, its heading, its
     text."""
@@ -81,7 +140,8 @@ def passages_sent(chosen: list) -> list:
 def context() -> dict:
     """The stable prefix every call shares, cached: the screens the manual names."""
     from modules import manual
-    return {"screens": sorted(manual.SCREENS)}
+    from modules import plan_engine
+    return {"screens": sorted(manual.SCREENS), "plans": plans_offered(plan_engine)}
 
 
 def parts(question: str, screen: str, chosen: list) -> dict:
@@ -138,7 +198,7 @@ def prepare(question: str, *, screen: str = "") -> dict:
         return {"done": {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
                          "passages": [], "gap": True}}
     return {"chosen": chosen, "drawn": drawn,
-            "request": {"feature": FEATURE, "prompt": PROMPT, "schema": AssistantAnswer,
+            "request": {"feature": FEATURE, "prompt": PROMPT, "schema": AssistantAnswerV2,
                         "parts": parts(question, screen, chosen), "context": context(),
                         "subject": subject(screen)}}
 
@@ -190,7 +250,12 @@ def judge(got: dict, prep: dict, *, actor: str) -> dict:
                 "typed_masked": got.get("typed_masked") or ""}
     calls.record_use(got["call_id"], "shown: answered", actor=actor)
     cited = [d for d in drawn if d["link"] in set(words.cites)]
-    return {"ok": True, "state": "answered", "error": "", "detail": "",
+    # A plan named (v2): proposed only, held to the plan engine's schema by `check`; the panel
+    # offers its preview, and a person approves it or not.
+    plan, dropped = plan_of(words)
+    return {"ok": True, "state": "answered", "error": "", "detail": "", "plan": plan,
+            "plan_dropped": (f"Mercury dropped the plan the answer named: {dropped}" if dropped
+                             else ""),
             "answer": words.answer, "cites": cited, "passages": drawn,
             "call_id": got["call_id"], "cost_usd": got.get("cost_usd") or 0.0, "gap": False,
             "typed_masked": got.get("typed_masked") or ""}

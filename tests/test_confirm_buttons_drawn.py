@@ -2487,6 +2487,46 @@ class TestResubscribeCards(_Cards):
         return html
 
 
+class TestPlanCards(_Cards):
+    """The plan engine's card (routes/plans_v2.py), on tests/test_plan_engine.py's Kea (the
+    lab's real Kea answers, tests/fixtures/kea/): the reservation plan's real preview, the
+    reservation's own, draws Approve the plan on Default: <title>; blocked: the network uses
+    another network's Kea, so the reservation's own owner check refuses the plan and the card
+    draws why and no button."""
+    from tests import test_dhcp_reservations as _dr, test_plan_engine as _pe
+    from tests import test_sdn_connections as _sc
+    networks, kea_dir, kea = hosted(_sc.networks), hosted(_dr.kea_dir), hosted(_pe.kea)
+
+    CASES = {
+        "plan": ("_plan_card.html", "Approve the plan on {{ c.list }}: {{ P.title }}",
+                 r"Approve the plan on Default: Reserve 10\.10\.20\.150 for h5 "
+                 r"\(aa:c1:ab:5d:20:9e\)",
+                 "data: the network uses another network's Kea, so the plan refuses"),
+    }
+
+    def _card(self, request):
+        import json as _json
+
+        import app as A
+        from tests.test_plan_engine import RES
+        request.getfixturevalue("kea")
+        return _text(A.app.test_client().get("/v2/plans/preview", query_string={
+            "list": "Default", "plan": "dhcp-reservation", "params": _json.dumps(RES)},
+            headers={"HX-Request": "true"}))
+
+    def drawn_plan(self, request):
+        html = self._card(request)
+        assert "The plan is bound to" in html, "floor: the plan's real preview is drawn"
+        return html
+
+    def blocked_plan(self, request, monkeypatch):
+        request.getfixturevalue("kea")
+        monkeypatch.setattr("modules.list_settings.kea_owner", lambda ln: ("Core", "set"))
+        html = self._card(request)
+        assert "This plan is not offered:" in html, "floor: the refused plan is drawn"
+        return html
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -2562,9 +2602,9 @@ class TestThePopulation:
         a carrier's own confirm until the rollout engine, 2026-11-14) and Probe <device>; 91
         until board R's Update N devices' intent, C3583, 2026-11-14; 92 until the collector
         step's Close the collector's stale session for <device>, then re-subscribe (<ids>), C3078,
-        2026-11-14)."""
+        2026-11-14; 93 until the plan engine's Approve the plan on <network>: <title>, 2026-11-14)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 93, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 94, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

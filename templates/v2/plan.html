@@ -1,0 +1,16 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- A plan's own page (modules/plan_engine.py): where In progress reopens a plan's run, and
+    where its card is drawn whole when it is not asked for in place (a link, a reload). The card
+    is the one the assistant's panel draws (`_plan_card.html`), so it redraws itself while the
+    run goes and draws the outcome in place. -#}
+{% block title %}A plan · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>A plan of operations {{ info('plans', '') }}</h1>
+    <p class="sub">On {{ c.list }}: each step through its own operation, in order, approved once.</p>
+  </div>
+</div>
+{% include "v2/_plan_card.html" %}
+{% endblock %}

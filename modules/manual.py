@@ -113,6 +113,7 @@ PAGES = (
      "how-it-works/notifications.md"),
     ("diagnose", "Diagnose: a runbook's reads, ranked into hypotheses", H,
      "how-it-works/diagnose.md"),
+    ("plans", "A plan of operations, approved once", H, "how-it-works/plans.md"),
     ("telemetry-resubscribe", "Re-subscribe a lost telemetry stream", H,
      "how-it-works/telemetry-resubscribe.md"),
     ("controller-app-deploy", "Deploy apps to an SDN controller", H,
@@ -337,6 +338,8 @@ OPERATIONS = {
     "telemetry-readd": ("modules.heal.resubscribe", "READD_STEPS"),
     # C3078: the re-subscribe with the collector step, on the same page.
     "telemetry-collector-resubscribe": ("modules.heal.resubscribe", "COLLECTOR_STEPS"),
+    # The plan engine: a plan approved once by its hash, each step its own operation.
+    "plans": ("modules.plan_engine", "STEPS"),
     # Board H, H10: the heal loop (its pass, its decision and its act) and its notices.
     "heal": ("modules.heal.decide", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),

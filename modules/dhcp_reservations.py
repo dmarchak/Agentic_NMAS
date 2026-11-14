@@ -271,6 +271,26 @@ def _lease_ends(lease: dict) -> str:
 ASKS = ("op", "family", "subnet", "key", "identity", "address", "hostname", "was")
 
 
+def owner_refusal(network: str) -> str:
+    """``""`` when *network* owns the Kea a reservation here would write; otherwise the refusal,
+    naming both networks (C1181, the operator's design 2026-10-17: a Kea has one owning
+    network, where it is set; a network inheriting it changes nothing in it). The one home of
+    the comparison: the DHCP page's preview and confirm (`routes.dhcp_v2._not_owner`) and the
+    plan engine's reservation ask it, before Kea or any file is read."""
+    from modules import list_settings as L
+
+    try:
+        owner, why = L.kea_owner(network)
+    except L.ListSettingsUnreadable as exc:
+        return (f"whose Kea {network}'s DHCP page shows could not be read ({exc}), so the "
+                "change could not be recorded in its owner's repository. Nothing was written")
+    if L.same_network(owner, network):
+        return ""
+    return (f"{network} uses {owner}'s Kea ({why}): a change to it is made on {owner}'s DHCP "
+            f"page and recorded in {owner}'s repository, never from {network}'s. Nothing was "
+            "written")
+
+
 def ask(values) -> dict:
     """The operation as the form sends it: op, family, subnet, how the client is named and its
     value, the address and hostname; ``was`` names the reservation an edit or a removal acts

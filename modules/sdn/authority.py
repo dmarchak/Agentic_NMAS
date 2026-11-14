@@ -110,6 +110,12 @@ NOT_DIRECT = {
     "dhcp_v2.exclusion_confirm": "changes Kea, not a device",
     "dhcp_v2.lease_confirm": "changes Kea, not a device",
     "dhcp_v2.reservation_confirm": "changes Kea, not a device",
+    # The plan engine: its steps change Kea, committed intent (never sent to a device: a deploy
+    # is its own approval) and a device being created with no inventory record yet.
+    "plans_v2.approve": "a plan changes Kea, committed intent and a device not yet in the "
+                        "inventory, never a device's configuration; its intent step refuses a "
+                        "controller-managed device itself (`refusal`, in "
+                        "plan_engine._description_preview), its devices named in its JSON",
     "dhcp_v2.subnet_confirm": "changes Kea, not a device",
     "update.apply": "updates the app, not a device",
     "update.step_done": "records a host step, not a device",

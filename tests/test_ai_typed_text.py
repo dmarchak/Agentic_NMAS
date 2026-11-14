@@ -376,7 +376,12 @@ FIELDS = {
     "assistant_v2.ask": {
         "form.question": TYPED("assistant", "question"),
         "form.screen": "the screen asked from (manual.SCREENS' name), boosting its page's "
-                       "passages, sent as the call's screen"},
+                       "passages, sent as the call's screen",
+        # The plan engine (2026-11-14): the page's own network, read after the call for a plan
+        # the answer named (its preview's `list`); never a part, never sent.
+        "request.<passed to named_list>": "the network the panel was asked from, which a "
+                                          "named plan's preview acts on; read after the call, "
+                                          "never sent"},
     "v2.history_ask_metrics_words": {
         "form.words": TYPED("nl_query", "question"),
         "form.tz": "the browser's timezone name (nl_query.zone), never sent",
