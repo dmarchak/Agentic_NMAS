@@ -559,6 +559,9 @@ class LoopFeature:
     cites: Callable
     plain: Optional[tuple] = None
     acts_on: Optional[Callable] = None
+    #: Context blocks pass 1 alone carries (a read set: pass 2 cannot ask again), left out of
+    #: pass 2's request (`second_request`); none by default.
+    first_only: tuple = ()
 
     def __post_init__(self):
         name = self.task if isinstance(self.task, str) and self.task else _shown(self.task)
@@ -1143,7 +1146,8 @@ def second_request(feature: LoopFeature, data: dict, context: dict, records: lis
     parts[READS_PART] = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
                                    separators=(",", ":"))
     prompt, schema = feature.second
-    return prompt, schema, parts, dict(context or {}, reads_format=READS_FORMAT)
+    ctx = {k: v for k, v in (context or {}).items() if k not in set(feature.first_only or ())}
+    return prompt, schema, parts, dict(ctx, reads_format=READS_FORMAT)
 
 
 def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str, data: dict,

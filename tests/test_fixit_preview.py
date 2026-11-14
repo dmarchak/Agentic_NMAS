@@ -546,3 +546,105 @@ def test_the_capture_moves_its_addresses_by_default(ai, capsys):  # noqa: F811
     assert _script().main(["--capture", "--network", NET, "--incident", iid,
                            "--raw-addresses"]) == 0
     assert "doc_addresses" not in json.loads(capsys.readouterr().out)
+
+
+# ── A pack the size of r4's (the host's preview, 2026-11-14) ────────────────────────────────
+
+#: The sizes measured on the host (`nmas-fixit-cases --preview` of r4's standing incident,
+#: 2026-11-14 10:3x UTC): the trimmable sections' 16,784 characters as sent (logs 4,390,
+#: neighbours 3,836, history 3,234, observer 2,701, health 2,623), planted here in the three
+#: whose pieces are free text (the observer's and health's are drawn by their own line
+#: builders from figures), and the topology's 13,931.
+R4_SECTIONS = {"logs": 6000, "neighbours": 5500, "history": 5284}
+R4_TOPOLOGY = 13931
+
+
+def _r4_sized(monkeypatch):
+    """The lab's incident with its pack's sections and its topology grown to r4's measured
+    sizes: each trimmable section given pieces of about 110 characters to its size, and the
+    topology sent with a subgraph of its size. Real builders underneath; only the sizes are
+    planted."""
+    from modules import evidence_pack as EP
+    from modules.ai import explain
+
+    real_pack, real_topo = EP.build_incident, explain.topology
+
+    def pack(*a, **kw):
+        got = real_pack(*a, **kw)
+        names = {s.get("name") for s in got["sections"]}
+        for name, size in R4_SECTIONS.items():
+            pieces = [{"ref": f"{name}:{n}", "what": f"line {n} " + "x" * 90}
+                      for n in range(1, size // 110 + 1)]
+            if name in names:
+                for s in got["sections"]:
+                    if s.get("name") == name:
+                        s.update(state="ok", pieces=pieces)
+            else:
+                got["sections"].append({"ref": name, "name": name, "state": "ok",
+                                        "source": "planted", "pieces": pieces})
+        return got
+
+    def topology(p):
+        got = real_topo(p)
+        return dict(got, sent=True, why="", summary="a summary " * 140,
+                    yaml="devices:\n" + "  - r: x\n" * (R4_TOPOLOGY // 10), ids=["dev:1"],
+                    reached={"r2": {"hop": 0}})
+
+    monkeypatch.setattr(EP, "build_incident", pack)
+    monkeypatch.setattr(explain, "topology", topology)
+
+
+def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch):  # noqa: F811
+    """The host's preview of r4's incident (2026-11-14) built pass 1 at 36,051 tokens and pass 2
+    at 35,688 by the fallback estimate, over the task's bound of 27,000: a press would be
+    refused (`prompt_too_long`) whenever the provider's count is not had. With a pack and a
+    topology of those sizes, both passes now fit by the fallback estimate itself, the topology
+    left out and the largest sections cut, each said; pass 2 carries no read set."""
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import profiles
+    _class(monkeypatch, True)
+    _r4_sized(monkeypatch)
+    iid = stopped(ai)
+    got = _preview(iid)
+    bound = profiles.TASKS[T.FEATURE]["max_prompt_tokens"]
+    assert got["first"]["prompt_tokens_estimated"] <= bound, got["first"]
+    assert got["second"] is not None
+    assert got["second"]["prompt_tokens_estimated"] <= bound, got["second"]
+    assert "read_set" not in json.dumps(got["second"]["body"]["system"])
+    assert "read_set" in json.dumps(got["first"]["body"]["system"])
+    sent = got["first"]["body"]["messages"][0]["content"]
+    assert T.TOPOLOGY_LEFT_OUT in sent and "pieces sent, to fit the request's bound" in sent
+    # The worst pass 2 (three reads at the cap) fits too: pass 1 with the reserve is in bound.
+    prep = T.request(NET, *_found(ai, iid))
+    chars = T.request_chars(prep)
+    worst = chars + max(0, T.READS_RESERVE_CHARS - len(T.read_set()))
+    assert gateway.tokens_of_chars(max(chars, worst)) <= bound
+    assert prep["said"]["fit"][0] == "the topology left out", prep["said"]["fit"]
+    assert any("cut to" in step for step in prep["said"]["fit"])
+
+
+def test_a_pack_that_fits_is_sent_whole(ai, reads, monkeypatch):  # noqa: F811
+    """The lab's own pack, with a small topology sent: nothing is left out or cut, and the fit
+    says so by saying nothing."""
+    from modules.ai import explain
+    from modules.ai import fixit_troubleshoot as T
+    _class(monkeypatch, True)
+    real = explain.topology
+    monkeypatch.setattr(explain, "topology", lambda p: dict(
+        real(p), sent=True, why="", summary="a small network", yaml="devices:\n  - r: x\n",
+        ids=["dev:1"], reached={"r2": {"hop": 0}}))
+    iid = stopped(ai)
+    prep = T.request(NET, *_found(ai, iid))
+    assert prep["said"]["fit"] == []
+    assert prep["topo"]["sent"] is True and prep["data"]["network_topology"].startswith(
+        "devices:")
+    assert T.TOPOLOGY_LEFT_OUT not in json.dumps(prep["data"])
+
+
+def _found(w, iid):
+    """``(found, incident)`` as the press and the preview resolve them
+    (`incident_page.resolve`, `fixit.section.incident_of`)."""
+    from modules import incident_page
+    from modules.fixit import section
+    found = incident_page.resolve(NET, iid)
+    return found, section.incident_of(NET, found)["incident"]

@@ -97,7 +97,12 @@ PROMPT_READS_V4 = (FEATURE, 4)
 #: own reads (`fixit_reads.FAMILY`), as Mercury's account by default. v4, the fixed shapes, is
 #: no longer asked and is kept with its schema (expand, then contract).
 PROMPT_READS = (FEATURE, 5)
-PROMPT_SECOND = (FEATURE, 3)
+#: v6 (2026-11-14): v3's second pass with no read set (pass 2 cannot ask again, and the read set
+#: is left out of its request: the host's preview of a router's standing incident measured it
+#: 7,632 characters of a request over its bound), a cut section said, and the reads as v5 names them. v3 stays
+#: as it shipped; both answer by v3's schema (`TroubleshootSecond`).
+PROMPT_SECOND_V3 = (FEATURE, 3)
+PROMPT_SECOND = (FEATURE, 6)
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
                  "observer", "logs", "tried", "diagnosis")
@@ -352,13 +357,13 @@ def read_set() -> str:
     for op in FR.FAMILY.operations:
         args = ", ".join(f"{a} ({spec.shape.words})" for a, spec in op.args.items())
         lines.append(f"- {op.name}: {op.words}; args: {args}")
-    lines.append("show's command families, each with the forms it takes after `show` ({if} an "
-                 "interface the device's golden holds, written as one word; {a4} {a6} an "
-                 "address of the network; {p4} {p6} a prefix of it; {mask} a netmask after an "
-                 "address; {vlan} {n} numbers; {sub} a subscription the incident names; {mac} a "
-                 "MAC; {name} a VRF):")
+    lines.append("show's command families: `show <family> <form>`, each family's forms after "
+                 "the colon, - for the family alone ({if} an interface the device's golden "
+                 "holds, as one word; {a4} {a6} an address of the network; {p4} {p6} a prefix "
+                 "of it; {mask} a netmask after an address; {vlan} {n} numbers; {sub} a "
+                 "subscription the incident names; {mac} a MAC; {name} a VRF):")
     for family, tails in RR.SHOW_FAMILIES:
-        lines.append(f"- {family}: " + "; ".join(f"{family} {t}".strip() for t in tails))
+        lines.append(f"- {family}: " + " | ".join(t or "-" for t in tails))
     return "\n".join(lines)
 
 
@@ -421,11 +426,122 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
         ctx["topology_format"] = NM.FORMAT
     said = {"sent": topo.get("sent"), "why": topo.get("why"), "devices": sorted(
         topo.get("reached") or ())}
-    return {"pack": pack, "topo": topo, "sections": sections, "checked_sections": checked,
+    prep = {"pack": pack, "topo": topo, "sections": sections, "checked_sections": checked,
             "data": data, "ctx": ctx, "said": said,
             "subject": {"kind": "heal_incident", "id": incident.id,
                         "devices": [incident.device] if incident.device else []},
-            "actable": [incident.device, *incident.subscriptions]}
+            "actable": [incident.device, *incident.subscriptions],
+            "own": own, "note_part": note_section(note)}
+    return fit(prep)
+
+
+# ── The request's size (the host's preview of a standing incident, 2026-11-14) ────────────────
+#
+# Measured on the host, 2026-11-14 10:3x UTC (`nmas-fixit-cases --preview` of a router's standing
+# incident, no provider request): pass 1's masked body was 64,847 characters and pass 2's 64,191,
+# 36,051 and 35,688 tokens by the fallback estimate (`gateway.CHARS_PER_TOKEN`, 1.8, an
+# over-estimate), against the task's bound of 27,000. The system text was 23.7K (the prompt
+# 6.2K; the contexts 17.5K, the read set 7.6K of it), the pack 19.9K (its logs 4.4K, neighbours
+# 3.8K, history 3.2K, observer 2.7K, health 2.6K), the topology 13.9K, the schema 4.0K; pass 2's
+# reads only 1.1K. A press asks the provider's count first (`gateway.Counter`) and is refused
+# (`prompt_too_long`, nothing sent) when it is over the bound, or when the count is not had and
+# the fallback is. So the request is fitted before it is asked (`fit`), never by raising the
+# bound on a guess: the read set is sent compactly and only to pass 1 (pass 2 cannot ask), and,
+# while pass 1 with room for pass 2's reads is over the bound by the fallback estimate, the
+# topology is left out (the investigation reads only the incident's device, C3685), then the
+# pack's largest trimmable sections are cut to half their pieces, each cut said in the section.
+
+#: What pass 2 may add to pass 1 at most: each read's answer cut at `read_loop.AI_READ_CAP`
+#: bytes and its record (operation, arguments, why, hypothesis, verdict: under 600 characters
+#: as sent), and the reads' format; pass 2 sends no read set (`loop_feature`'s ``first_only``).
+READS_RESERVE_CHARS = RL.MAX_READS * (RL.AI_READ_CAP + 600) + len(RL.READS_FORMAT)
+#: The pack's sections a fit may cut, in no order (the largest is cut first): never the
+#: incident, the device, what Mercury tried, the diagnosis, the attempts or Seen before.
+TRIMMABLE = ("logs", "neighbours", "history", "observer", "health")
+#: Each trimmable section is halved at most this many times.
+MOST_HALVINGS = 2
+#: The topology's words when a fit leaves it out (the prompt: "Its absence is not evidence").
+TOPOLOGY_LEFT_OUT = ("not sent: with it the request would be over its bound; this "
+                     "investigation reads only the incident's device")
+
+
+def request_chars(prep: dict) -> int:
+    """Pass 1's masked request body in characters, as the gateway builds it (`request_body`:
+    the press's own builder, no provider request), or 0 when it is refused before it is built
+    (a stored secret, no label key: the press is refused for that, never for its size)."""
+    from modules.ai import triggers
+
+    prompt, schema, parts, ctx = RL.first_request(
+        loop_feature(prep), prep["data"], prep["ctx"], reads_context(), plain=False)
+    got = gateway.request_body(FEATURE, prompt, schema, parts, context=ctx or None,
+                               kind=triggers.PERSON)
+    if "refused" in got:
+        return 0
+    return len(json.dumps(got["body"], ensure_ascii=False))
+
+
+def _over(prep: dict, bound: int) -> bool:
+    """Whether pass 1, or pass 2 at its worst (pass 1 less the read set it does not carry, plus
+    `READS_RESERVE_CHARS`), is over *bound* by the fallback over-estimate."""
+    chars = request_chars(prep)
+    worst = chars + max(0, READS_RESERVE_CHARS - len(read_set()))
+    return bool(chars) and gateway.tokens_of_chars(max(chars, worst)) > bound
+
+
+def _repack(prep: dict) -> None:
+    from modules.ai import explain
+
+    prep["data"]["pack"] = json.dumps([explain.as_sent(s) for s in prep["sections"]]
+                                      + prep["own"], sort_keys=True, ensure_ascii=False,
+                                      separators=(",", ":"))
+    prep["checked_sections"] = list(prep["sections"]) + prep["own"] + [prep["note_part"]]
+
+
+def fit(prep: dict, bound: int = None) -> dict:
+    """*prep* fitted to the task's bound (`profiles.TASKS`' ``max_prompt_tokens``) by the
+    fallback over-estimate, both passes (pass 2 at its worst, `_over`): unchanged when
+    it fits; else the topology left out (said in its part, and nothing of it citable), then the
+    largest trimmable section halved, again, each cut said in the section (``cut``), until it
+    fits or nothing is left to cut. What was done is ``said["fit"]``, in order; the request is
+    asked either way (the provider's count decides, `gateway.ask`)."""
+    from modules.ai import explain, profiles
+
+    bound = int(bound or (profiles.TASKS.get(FEATURE) or {}).get("max_prompt_tokens") or 0)
+    steps = []
+    prep["said"]["fit"] = steps
+    if not bound or not _over(prep, bound):
+        return prep
+    if prep["topo"].get("sent"):
+        prep["topo"] = dict(prep["topo"], sent=False, why=TOPOLOGY_LEFT_OUT, ids=[],
+                            reached={}, yaml="", names={})
+        prep["data"]["network_topology"] = TOPOLOGY_LEFT_OUT
+        for key in ("network", "topology_format"):
+            prep["ctx"].pop(key, None)
+        prep["sections"] = explain.sent_sections(prep["pack"], prep["topo"])
+        prep["said"].update(sent=False, why=TOPOLOGY_LEFT_OUT, devices=[])
+        _repack(prep)
+        steps.append("the topology left out")
+    halved = {}
+    while _over(prep, bound):
+        cuttable = [(len(json.dumps(s)), i) for i, s in enumerate(prep["sections"])
+                    if s.get("name") in TRIMMABLE and len(s.get("pieces") or []) > 1
+                    and halved.get(s.get("name"), 0) < MOST_HALVINGS]
+        if not cuttable:
+            steps.append("still over the bound by the fallback estimate: the provider's count "
+                         "decides")
+            break
+        _size, i = max(cuttable)
+        s = prep["sections"][i]
+        pieces = list(s.get("pieces") or [])
+        total = s.get("cut_of") or len(pieces)
+        kept = pieces[:max(1, len(pieces) // 2)]
+        prep["sections"][i] = dict(s, pieces=kept, cut_of=total,
+                                   cut=f"{len(kept)} of its {total} pieces sent, to fit the "
+                                       "request's bound")
+        halved[s.get("name")] = halved.get(s.get("name"), 0) + 1
+        _repack(prep)
+        steps.append(f"{s.get('name')} cut to {len(kept)} of {total} pieces")
+    return prep
 
 
 # ── The check ───────────────────────────────────────────────────────────────────────────────
@@ -590,7 +706,7 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
     return RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootEngineerReads),
                           second=(PROMPT_SECOND, TroubleshootSecond),
                           plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
-                          acts_on=acts_on)
+                          acts_on=acts_on, first_only=("read_set",))
 
 
 def reads_context() -> dict:

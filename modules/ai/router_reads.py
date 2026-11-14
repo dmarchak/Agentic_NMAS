@@ -558,8 +558,7 @@ AI_READS = RL.ReadFamily(name="router_cli", transport="cli", egress_class="devic
 
 #: The words after a read's verb: one line of printable text (the families judge it).
 COMMAND_WORDS = RL.Text(r"[!-~](?:[ -~]{0,238}[!-~])?",
-                        "the command's words after its verb, on one line: a read of one of "
-                        "the AI's command families", most=240)
+                        "the command's words after its verb, on one line", most=240)
 
 #: Refused whatever the families say (each by its whole words, any of them abbreviated): a
 #: second layer, what the answer would print being a secret's position, the device's log (read

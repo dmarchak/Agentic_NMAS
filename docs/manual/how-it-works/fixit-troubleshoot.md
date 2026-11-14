@@ -94,7 +94,12 @@ Pressing it runs these steps, as you, one investigation:
    when something in it was masked. Every person in any of it is a stable label
    ("person-3f9a1c"), never a name or an address, and any address left anywhere in the
    request is replaced by its label before it leaves.
-5. `ask`: one call through the AI gateway, under the day cap and the per-call cap. With the
+5. `ask`: one call through the AI gateway, under the day cap and the per-call cap, and under
+   the task's prompt bound: before it asks, Mercury fits the request to that bound, both calls
+   (the second with room for three reads at their cap), by its own over-estimate of a prompt's
+   size; when it is over, the topology is left out first, then the pack's largest sections
+   (logs, neighbours, history, observer, health) are cut to half their pieces, each cut said in
+   the section, and the preview says what was done. With the
    network's device state class on (its Network tab, What AI may send), the AI may ask Mercury for up to three
    read-only reads, and a second call carries them; it cannot ask again. A read is either of
    the incident's device, asked as an engineer types it in Show commands (show, ping or
