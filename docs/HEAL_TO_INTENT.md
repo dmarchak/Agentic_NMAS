@@ -2342,3 +2342,100 @@ PHASE8_PLAN 0.5, `sdn_classify`'s blind round of 2026-11-02):
 2. Item 3 for the routers, within board H (H24 to H28).
 3. Then the SDN read set (H29, H30).
 4. Then B4's evaluation (H31).
+
+---
+
+## 20. Amendment, 2026-11-14: the troubleshooting flow, the AI's feedback and its History (the operator's design notes, to plan next)
+
+**The operator's notes, verbatim (2026-11-14):**
+
+> FLOW: 1 incident → 2 Mercury's self-heal scripts (code, no AI) check for a match → 3 no match:
+> code gathers the evidence pack; a match that heals closes the incident; a match that fails adds
+> its failure to the evidence → 4 the AI reviews the evidence and uses Mercury's tools to diagnose
+> and propose a fix → 5 the person is notified to review and approve → 6 Mercury executes exactly
+> the approved plan (by hash); the AI reads to verify → 7 the AI reports success or failure → 8 on
+> success, the AI asks the person to save it as a self-heal script: it proposes the match
+> condition (symptom signature) and the operation; a saved fix starts in Dry run (would-heal
+> records) and is promoted to Auto after it matched correctly N times; each shows its track
+> record. Over time the library grows and AI use falls.
+>
+> FEEDBACK: every AI response carries a structured feedback field (had the tools it needed /
+> missing / slow or clumsy / suggestion), written as a real Mercury user would; duplicates merged
+> into one review list feeding the action registry and the usability audit (e.g. "a fleet change
+> took one deploy per device; a bulk deploy tool would be faster").
+>
+> HISTORY: the AI uses the same tools as a person, and its actions appear as the same record
+> kinds (Show commands runs, intent changes, deploys), attributed "AI, requested by <person>" and
+> "approved by <person>", not separate ai_read rows.
+
+This section folds them into section 12's rule, the plan engine and the charter's fix-it path
+(docs/MERCURY_CHARTER.md, "The fix-it path"). It plans; nothing here is built. Each new part is a
+register row (C3693 to C3698). Section 12's rule holds over all of it: the AI proposes and never
+approves, composes no command, and runs nothing itself; nothing in `modules/heal/` reads its
+output.
+
+### 20.1 Already covered, and new, step by step (read from the code, 2026-11-14)
+
+| Step | Already covered (where) | New (row) |
+|---|---|---|
+| 1. An incident | The heal loop's incidents (`modules/heal/incidents.py`), Troubleshooting › Incidents (`modules/incidents_list.py`) | Nothing |
+| 2. Self-heal checks for a match, code only | Detect and decide (`modules/heal/detect.py`, `decide.py`), the fix kinds (`kinds.py`, `catalog.py`); no AI module is read (tests/test_heal_analysis_never_read.py) | The saved fixes join the kinds (C3696) |
+| 3. No match: the evidence pack; a heal closes the incident; a failed match adds its failure | `evidence_pack.build_incident`, and its `tried` section (`tried_section`: each step Mercury tried and its result, cited as `tried:<n>`); a heal's "healed and verified" (`modules/heal/act.py` `OUTCOMES`) closes the incident (Closed › Self-healed) | Nothing |
+| 4. The AI reviews the evidence and diagnoses with Mercury's tools | The investigation (`modules/ai/fixit_troubleshoot.py`): reads through the reads engine as Mercury's account, the AI's command families, the read budget (section 12) | It runs only on a person's press of Troubleshoot with AI; the can't-fix analysis (`heal_analysis`) advises only (C3693) |
+| 4. ... and proposes a fix | One catalog operation through one door (`modules/ai/fix_proposal.py`), held to the incident's scope and the guards (`modules/fixit/validate.py`) | A plan of several catalog operations for an incident (C3694) |
+| 5. The person is notified to review and approve | The can't-fix notice and its "AI analysis" line (`modules/notify/message.py`), and its event "a fix waits for a person" | A notice that the AI's proposal waits, with its preview (C3693) |
+| 6. Mercury runs exactly the approved plan, by hash | Each catalog operation refuses without its previewed hash and a verified person (tests/test_ai_fix_rule.py); the plan engine runs a plan approved once by its hash, stopping on the first failure, never retrying (`modules/plan_engine.py`) | The catalog operations as plan steps (C3694) |
+| 6. ... the AI reads to verify | Each operation's own verify, and the charter's step 6 checks a to c | An AI read after the run, advisory only (C3695) |
+| 7. The AI reports success or failure | The attempt's outcome from its run record (`modules/fixit/incident.py`), with no AI call; a failure stops, and only Retry with more information, Cancel or Hand over follow | The AI's report, citing its after-run reads (C3695) |
+| 8. Save it as a self-heal rule, Dry run first, Auto after N correct matches, its track record | The person's save choice is recorded (`fixit.incident.record_save`, "changes no policy and saves no fix"); dry-run records and their Right and Wrong marks, counted per fix kind (`modules/heal/decisions.py`); section 7's enablement path per kind | The saved-fix library: a signature and an operation as a new kind, its track record, its promotion (C3696) |
+| FEEDBACK | What Mercury refused for lacking it, and the gaps an answer names (`modules/ai/missing.py`, History › AI missing capabilities); a person's "Was this right?" (`modules/ai/feedback.py`) | The model's own structured feedback in every answer, merged into one review list (C3697) |
+| HISTORY | Every AI read on History, with whom it signed in as; the plan's run recorded with the approving person as its actor | The AI's actions as the same record kinds a person's make, with "AI, requested by" and "approved by" (C3698) |
+
+**What r7's press (the Lab 10 checklist's section 3c) exercises today:** steps 1 to 3 as built;
+step 4 by the operator's press, not on its own; step 5 on the incident's page, with no separate
+notice that a proposal waits; step 6 by the operation's own verify; step 7 as the attempt's
+outcome from its run record; step 8 as the save choice recorded only. That is the flow as
+built, and the press stays as the checklist writes it; the new parts follow it.
+
+### 20.2 The decisions the build needs (recommended options; taken at the build under the Phase 7 mode unless the operator says otherwise)
+
+- **D1. Step 4 without a press** (C3693). A background feature of its own, `fixit_investigation`,
+  triggered only by the deterministic finding (the heal stopped at can't fix, or no kind
+  matched), once per incident, under CLAUDE.md's AI cost safety rules: off by default per
+  network, turned on in Settings › AI after its labelled estimate, its own daily and monthly
+  caps inside the installation's, the per-incident cap ($1.00) unchanged. Its caps are set from
+  the investigation's measured cost per incident, measured before the build (no recorded figure
+  is assumed), sized to about five investigations a day on Default. It replaces `heal_analysis`
+  (C3684 folds in): one background AI call per can't-fix, not two.
+- **D2. Promotion of a saved fix** (C3696). **Recommended: offered, not automatic.** Once a saved
+  fix has N correct matches (N = 3 Right marks and no Wrong mark among its dry-run records on
+  the lab network), its card offers Promote to Auto, and a person's press takes it. This
+  departs from the notes' "is promoted to Auto after it matched correctly N times" on purpose:
+  promotion changes what runs on devices without a person, which is a decision (CLAUDE.md,
+  "Mercury automates labour; people make decisions"), and section 7 makes allowing a kind on
+  Default the operator's decision (N8). Production still needs section 7's bar (1% false
+  positives or fewer over at least 30 days and 100 events). **The operator may choose
+  automatic promotion at N instead;** the track record and the Dry run start are the same
+  either way.
+- **D3. The AI's verify and report are advisory** (C3695). The operation's own verify and the
+  charter's step 6 checks decide pass or fail. The AI's after-run read can never turn a failed
+  verify into a pass, or a pass into a save; where the two disagree, the page says so and the
+  code's verdict stands (CLAUDE.md, "Never let a wrong thing look like a working thing").
+- **D4. History's change is expand, then contract** (C3698). The new records carry
+  `requested_by` and `approved_by` beside the existing kinds; the `ai_read` rows already written
+  stay readable, and History's filter maps them, until a later release removes the old kind.
+  A commit's `Actor:` stays the accountable person (the approver), and `Source:` names the AI's
+  request.
+- **D5. The feedback is data, never instructions** (C3697). It is masked at rest, listed for
+  review and never acted on or shown to a model, as the missing capabilities are. Each task's
+  answer schema gains it in a new prompt version, measured as its own before it ships.
+
+### 20.3 The order, by dependency
+
+1. C3694 (plans of catalog operations): steps 6 and 8 both need a fix to be a plan.
+2. C3698 (one History): every later step's records land in the new shape.
+3. C3695 (the AI's after-run read and report): step 8 starts from a verified run's report.
+4. C3696 (the saved-fix library): its signature comes from the verified run.
+5. C3693 (step 4 without a press): last, because it spends without a person's press, and its
+   caps are set from the investigations measured in 1 to 4.
+6. C3697 (the feedback) alongside any of them: a schema change per task, measured per prompt.

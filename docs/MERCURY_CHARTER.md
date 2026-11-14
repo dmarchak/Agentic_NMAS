@@ -292,6 +292,16 @@ composes commands, runs anything itself, or retries on its own; a saved fix is t
 person saved from a verified run. The plan engine (modules/plan_engine.py) runs such a plan:
 the toolbar assistant may propose one of its plans; the fix-it path's proposal is still one
 operation of the catalog, a plan of one.
+
+**The operator's design notes of 2026-11-14 extend these steps** (docs/HEAL_TO_INTENT.md,
+section 20, to plan next; rows C3693 to C3698): self-heal's code checks for a match before any
+AI; the AI investigates a can't-fix on its own, under the AI cost safety rules, and the person
+is notified to approve; an incident's fix may be a plan of catalog operations, approved once by
+hash; the AI reads to verify and reports, advisory to the operation's own verify; a verified fix
+may be saved as a self-heal rule (a symptom signature and an operation), starting in Dry run
+with its track record shown; every AI answer carries its own feedback on Mercury's tools; and
+the AI's actions are recorded as the same kinds a person's are, "AI, requested by <person>",
+"approved by <person>". Until they are built, the steps below are the flow as it runs.
 1. **The notification:** the person sees it in plain words: what, where, and whether it needs
    them.
 2. **The user asks the AI to troubleshoot (Explain).**
