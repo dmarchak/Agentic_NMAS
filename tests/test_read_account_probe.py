@@ -312,8 +312,10 @@ class TestThePreview:
         assert sent["telemetry_receiver"] == "show telemetry ietf subscription 101 receiver"
         assert sent["mac"] == f"show mac address-table address {MAC}"
         assert sent["ospfv3_neighbor"] == "show ospfv3 neighbor"
+        # The lab's router is of no known VLAN database, so spanning tree, a switch's read, is
+        # another platform's here (C3582).
         other = {r["op"]: r for r in p["reads"] if r.get("result") == "other platform"}
-        assert list(other) == ["ipv6_ospf_neighbor"], other
+        assert list(other) == ["ipv6_ospf_neighbor", "stp"], other
 
     def test_a_shape_with_nothing_to_fill_is_not_measured_never_dropped(self, lab):
         p = P.plan(NET, HOST, {})
@@ -632,9 +634,20 @@ class TestTheProbesChoices:
         assert "this form is a switch's" in other["stp"]["why"]
         assert not [c for c in p["program"] if "spanning-tree" in c]
 
-    def test_spanning_tree_is_asked_where_nothing_says_the_device_has_no_vlan_database(
-            self, lab):
-        """Not declared and not measured is unknown: asked, so the device's own answer says."""
+    def test_spanning_tree_is_not_asked_where_nothing_says_the_device_is_a_switch(self, lab):
+        """Not declared and not measured is unknown, and spanning tree is asked only of a
+        switch (the operator, 2026-11-14: "spanning-tree only on switches. Fix both, so they
+        agree"; C3582: every router on the host was unknown, so r7 was asked it again)."""
+        p = _plan()
+        other = {r["op"]: r for r in p["reads"] if r.get("result") == "other platform"}
+        assert "stp" in other, other
+        assert "is not known to have a VLAN database" in other["stp"]["why"]
+        assert "asked only of a device known to be one" in other["stp"]["why"]
+        assert not [c for c in p["program"] if "spanning-tree" in c]
+
+    def test_spanning_tree_is_asked_of_a_device_measured_a_switch(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.ai.router_reads.vlan_databases", lambda network, hosts: {
+            h: (True, "measured: a VLAN database (a test's own words)") for h in hosts})
         p = _plan()
         assert "show spanning-tree interface GigabitEthernet1" in p["program"]
 

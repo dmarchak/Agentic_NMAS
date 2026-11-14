@@ -561,8 +561,12 @@ def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(
     # The runbooks' sourced pings and traceroutes are the read set's forms under the
     # installation choice (the operator, 2026-11-13); the runbooks themselves sign in as the
     # deploy account and are not gated by it.
+    # The runbooks' spanning-tree forms (IOS and IOS-XE) are a switch's, asked only of a device
+    # known to be one (C3582): this test is of the forms, so both devices are measured switches.
     sc = R.scope_for(NETWORK, ["xe", "ios"], intents=intents,
-                     goldens={"xe": golden, "ios": golden}, ping_traceroute=True)
+                     goldens={"xe": golden, "ios": golden}, ping_traceroute=True,
+                     capabilities={h: (True, "measured (a test's own words)")
+                                   for h in ("xe", "ios")})
     matched, excepted, plain = 0, set(), set()
     for kind, dialect, command in every_command():
         got = R.match(command, devices[dialect], sc, network=NETWORK)
@@ -624,9 +628,14 @@ def test_spanning_tree_is_a_switchs_read_refused_where_no_vlan_database(lab):
     assert got["verdict"] == "refused" and got["command"] == "", got
     assert got["reason"].endswith("r3 has no VLAN database (declared: no VLAN database (a "
                                   "test's own words)), and this form is a switch's"), got
-    # A VLAN database, and an answer nobody holds, are both asked (a device's refusal says).
-    for capability in ((True, "measured"), (None, "not declared and not measured")):
-        assert match(command, capabilities={"r3": capability})["verdict"] == "allowed"
+    # A VLAN database is asked; an answer nobody holds is not (the operator, 2026-11-14:
+    # "spanning-tree only on switches"; C3582).
+    assert match(command, capabilities={"r3": (True, "measured")})["verdict"] == "allowed"
+    unknown = match(command, capabilities={"r3": (None, "not declared and not measured")})
+    assert unknown["verdict"] == "refused" and unknown["command"] == "", unknown
+    assert unknown["reason"].endswith(
+        "r3 is not known to have a VLAN database (not declared and not measured), and this "
+        "form is a switch's, asked only of a device known to be one"), unknown
     # Nothing else is a switch's read by this rule.
     assert match("show interfaces GigabitEthernet4",
                  capabilities={"r3": NO_VLANS})["verdict"] == "allowed"

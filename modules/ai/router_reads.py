@@ -214,17 +214,25 @@ def _dialect(want: str):
 
 
 def _switch_form(args, scope) -> str:
-    """Spanning tree is a switch's read (the operator, 2026-11-13: asked of a router it was a
-    refused read, never the account's doing). A device with no VLAN database, DECLARED or
-    MEASURED (`modules/nsot/vlan_capability.py`, never a name or a role), is no switch: the
-    form is another platform's there. One whose answer is unknown is asked: a device's own
-    refusal says it then."""
+    """Spanning tree is a switch's read, asked only of a switch (the operator, 2026-11-14:
+    "spanning-tree only on switches. Fix both, so they agree"; C3582). A switch is a device
+    with a VLAN database, DECLARED or MEASURED (`modules/nsot/vlan_capability.py`, never a name
+    or a role); anywhere else the form is another platform's. That includes a device whose
+    answer is unknown: on the host every router's was unknown (2026-11-14: the Default list's
+    inventory names no device type, and no router was measured), so asking the unknown asked
+    every router, and a router refused `show spanning-tree interface Loopback0`. Its words say how
+    Mercury comes to know (the capability's own words)."""
     host = args["device"]
     dev = ((scope or {}).get("devices") or {}).get(host) or {}
-    if dev.get("vlan_database") is False:
+    has = dev.get("vlan_database")
+    if has is True:
+        return ""
+    if has is False:
         return (f"{host} has no VLAN database ({dev.get('vlan_database_words') or 'declared'})"
                 ", and this form is a switch's")
-    return ""
+    return (f"{host} is not known to have a VLAN database "
+            f"({dev.get('vlan_database_words') or 'not declared and not measured'}), and this "
+            "form is a switch's, asked only of a device known to be one")
 
 
 _switch_form.other_platform = _switch_form

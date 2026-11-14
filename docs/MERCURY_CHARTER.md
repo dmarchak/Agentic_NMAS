@@ -4,6 +4,42 @@ The governing definition, written 2026-10-07 when the operator re-anchored the p
 approved the same day. Where another document disagrees with this page, this page governs, and
 the other is re-labelled.
 
+## The first principle: if a step can be automated, it is (the operator, 2026-11-14)
+
+Mercury exists to make network management easy and automatic. **If a step CAN be automated,
+it IS**, unless a strong reason, usually a security one, says otherwise, and that reason is
+written where the step is. "Not built yet" is not a reason. If people still do a lot by
+hand, they will not use Mercury: they will go back to the CLI.
+
+**The bar for the design:** Mercury is intuitive, easy to use and easy to navigate, and a
+network engineer who works in the CLI sees its value at once. Needing to ask where something
+is shows the design is too complex. Mercury is judged by the jobs an engineer does ("is my
+network OK?", "what broke, and why?", "what changed, and who?", "push this", "undo that", "add
+a device", "rotate the passwords", "show me this device", "prove it worked"), not by its
+features: every common job is faster or clearer in Mercury than on the command line, and one
+where the CLI wins is a finding (the human-perspective review, C3588).
+
+- **Every flow built or touched lists each step that still needs a person, and why.** A build's
+  report names the manual actions it adds or keeps, each one's reason, and what would automate
+  it.
+- **A manual step's reason comes from a fixed list:** approving a change plan; entering a
+  secret; a judgment or risk decision (credentials and AAA, an irreversible change, adopting a
+  device's state into intent); paid spend beyond the caps. Every person-facing action (a
+  button, a form, a command a row tells someone to run) is declared automated or manual, with
+  its reason, in one action registry, and a test fails on an undeclared action or a reason
+  outside the list (C3585). One approval covers a whole plan, its canary and every wave, never
+  one click per device or per wave.
+- **A person is told when automation stops,** never asked to watch it work: a failure rolls
+  back, stops the run and notifies the team, and the person then decides.
+- **Examples it settles:** a rollout advances wave to wave by itself after its one approval; a
+  deploy's verify includes the probe that shows the change works; onboarding adds and probes
+  the read-only account; every account rotates on a schedule; no Needs attention row tells a
+  person to run a shell command; host steps are API calls; a departure row shows its lines
+  (the automation pass, C3584).
+
+This sits beside "Mercury automates labour; people make decisions" (CLAUDE.md,
+docs/MANUAL_STEPS.md): the fixed list is what a decision is.
+
 ## What Mercury is
 
 - **NMAS** is the platform: the VM where the services run together.
