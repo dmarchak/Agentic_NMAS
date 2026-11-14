@@ -30,6 +30,7 @@ EXEMPT = {
     "scripts/hooks/claude-no-claude-md-edits": "a laptop hook",
     "scripts/hooks/claude-no-heredoc-interpreter": "a laptop hook",
     "scripts/hooks/claude-no-host-writes": "a laptop hook",
+    "scripts/hooks/claude-no-hook-bypass": "a laptop hook",
     "scripts/hooks/claude-no-raw-config-reads": "a laptop hook",
     "scripts/hooks/claude-no-shell-prose-edits": "a laptop hook",
     "scripts/hooks/claude-record-edits": "a laptop hook (C1800; reviewed at Stage 10)",

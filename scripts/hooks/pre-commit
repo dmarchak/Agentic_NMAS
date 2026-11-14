@@ -3,9 +3,11 @@
 # staged diff for definitions the edit removed but did not mean to.
 #
 # Install:  ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
-# Bypass:   git commit --no-verify   (for a deliberate removal) skips BOTH
-#           checks, the stage guard included: name a stray with
-#           NMAS_STAGE_ALLOW instead, and never bypass for a secret.
+# Refused:  answered by fixing what it named, never by `git commit
+#           --no-verify` or `-n` (CLAUDE.md, "No hook is bypassed"): name a
+#           stray with NMAS_STAGE_ALLOW, and remove a definition together with
+#           what still calls it (a mention in prose or a pin of its removal is
+#           not a call).
 #
 # Blocks only on BROKEN / GONE — a removed definition something still calls.
 # A clean rename or a deliberate deletion with no remaining references prints

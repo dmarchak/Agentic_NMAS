@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: refuse a Bash command that would get a commit or a push past
+the repository's git hooks.
+
+Wired in `.claude/settings.json` (matcher `Bash`). Claude Code passes the tool call as JSON on
+stdin; exit 2 refuses the call and the message on stderr goes back to the agent; exit 0 lets it
+run.
+
+**Why it exists** (the operator, 2026-11-13, approving it with C3421's pre-push hook). The
+pre-push hook refuses a ci/ branch whose tree has no passing pre-gate verdict, and nothing after
+the push asks for that verdict again; `git push --no-verify` skips it silently. The same goes
+for pre-commit's stage guard (`git commit --no-verify` or `-n`), and for every hook when
+`core.hooksPath` points elsewhere. CLAUDE.md's rule "No hook is bypassed" says a hook that
+refuses is answered by fixing what it named; this makes that rule mechanical for the agent.
+
+**What is refused**, in any git command of the call, including one inside `sh -c`, `bash -c`
+or `eval`:
+- `--no-verify`, on any git subcommand, or any abbreviation git accepts for it
+  (`--no-veri`, ...);
+- `-n` on `git commit`, alone or in a cluster of short options (`-an`, `-anm msg`); `-n` on
+  `git push` is `--dry-run` and is let through;
+- `core.hooksPath` set for one command (`git -c core.hooksPath=...`,
+  `--config-env=core.hooksPath=...`), set in a configuration (`git config [--global|--local|
+  --system|--worktree|--file F] core.hooksPath VALUE`, `--add`, `--replace-all`, `--unset`),
+  or set through the environment (`GIT_CONFIG_PARAMETERS=...`, `GIT_CONFIG_KEY_<n>=...`, an
+  assignment of any variable whose value names core.hooksPath). The key is matched as git does,
+  ignoring case.
+
+**What is not:** `git config --get core.hooksPath` and `git config core.hooksPath` with no
+value (reads); a commit message's words (a `-m`/`-F`/`-C`/`-c`/`-t` argument is never read
+as an option); a heredoc's body; a search for the words (`grep -n no-verify`, which is not a
+git command); `ln -sf ../../scripts/hooks/<hook> .git/hooks/<hook>` (installing a hook). Not
+covered: a git alias that carries the flag, and editing or removing a file under .git/hooks/;
+CLAUDE.md's rule covers them, this hook does not.
+
+An input the hook cannot read exits 1, which Claude Code shows as a hook error and lets the
+call run, because a broken hook must not stop every command.
+"""
+
+import json
+import re
+import shlex
+import sys
+
+SHELLS = re.compile(r"^(ba|z|da|k|fi)?sh$")
+#: git's global options that take a value as the next word.
+GIT_GLOBAL_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+                    "--super-prefix", "--config-env", "--list-cmds", "--attr-source"}
+#: `git commit`'s short options that take a value: in a cluster, the rest of it is that value.
+COMMIT_SHORT_VALUE = set("mFCctSu")
+#: `git commit`'s long options that take the next word as their value.
+COMMIT_LONG_VALUE = {"--message", "--file", "--reuse-message", "--reedit-message",
+                     "--template", "--author", "--date", "--cleanup", "--fixup", "--squash",
+                     "--trailer", "--pathspec-from-file", "--untracked-files", "--gpg-sign"}
+CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "-l", "--list",
+                "--show-origin", "--show-scope", "--name-only", "--null", "-z", "--type",
+                "--default", "--includes", "--no-includes"}
+CONFIG_PLACES = {"--global", "--system", "--local", "--worktree"}
+CONFIG_PLACE_VALUE = {"-f", "--file", "--blob"}
+HOOKS_PATH = "core.hookspath"
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-hook-bypass): {what}. "
+    "No hook is bypassed (CLAUDE.md): a hook that refuses is answered by fixing what it named, "
+    "or by the operator's words for that one bypass, quoted in its commit. Run the command "
+    "without it, read what the hook refuses, and fix that.")
+
+
+def strip_bodies(command):
+    """The command with every heredoc body removed: a body runs from the line after its
+    operator to the line equal to its delimiter (leading tabs allowed for `<<-`)."""
+    kept, pending = [], []
+    for line in command.split("\n"):
+        if pending:
+            if line.lstrip("\t") == pending[0]:
+                pending.pop(0)
+            continue
+        kept.append(line)
+        pending.extend(m.group(2) for m in HEREDOC.finditer(line))
+    return "\n".join(kept)
+
+
+def tokens(text):
+    """The shell words of *text*, each run of separators (`;`, `&`, `|`, parentheses, an
+    unquoted newline) its own word; a quoted newline stays inside its word, so a message
+    across lines is one word. An unclosed quote is split crudely, never let through unread."""
+    text = re.sub(r"\\\n", " ", text)
+    try:
+        lex = shlex.shlex(text, posix=True, punctuation_chars=";&|()\n")
+        lex.whitespace_split = True
+        lex.whitespace = " \t\r"
+        return list(lex)
+    except ValueError:
+        return re.findall(r"[;&|()\n]+|[^\s;&|()]+", text)
+
+
+def is_separator(word):
+    return bool(word) and set(word) <= set(";&|()\n")
+
+
+def commands(words):
+    """Each simple command's words, split at the separators."""
+    cur = []
+    for w in words:
+        if is_separator(w):
+            if cur:
+                yield cur
+            cur = []
+        else:
+            cur.append(w)
+    if cur:
+        yield cur
+
+
+def is_verify_off(word):
+    """`--no-verify`, or an abbreviation of it git accepts (at least `--no-veri`: `--no-ver`
+    is also `--no-verbose`'s)."""
+    return word.startswith("--no-veri") and "--no-verify".startswith(word.split("=", 1)[0])
+
+
+def names_hooks_path(text):
+    """Whether *text* names core.hooksPath, ignoring case as git does for a key."""
+    return HOOKS_PATH in text.lower()
+
+
+def judge_git(args):
+    """What a git command's arguments (the words after `git`) do to the hooks, or None."""
+    i, n = 0, len(args)
+    while i < n:
+        a = args[i]
+        if a in ("-c", "--config-env") and i + 1 < n:
+            if names_hooks_path(args[i + 1].split("=", 1)[0]):
+                return f"`git {a} {args[i + 1]}` sets core.hooksPath for this command"
+            i += 2
+            continue
+        if a.startswith("--config-env=") or (a.startswith("-c") and len(a) > 2):
+            if names_hooks_path(a.split("=", 2)[1] if a.startswith("--") else a[2:]):
+                return f"`git {a}` sets core.hooksPath for this command"
+            i += 1
+            continue
+        if a in GIT_GLOBAL_VALUE:
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        break
+    if i >= n:
+        return None
+    sub, rest = args[i], args[i + 1:]
+    if sub == "config":
+        return judge_config(rest)
+    skip = False
+    for w in rest:
+        if skip:
+            skip = False
+            continue
+        if w == "--":
+            break
+        if is_verify_off(w):
+            return f"`git {sub} {w}` skips the hooks"
+        if sub != "commit":
+            continue
+        if w in COMMIT_LONG_VALUE:
+            skip = True
+            continue
+        if w.startswith("-") and not w.startswith("--") and len(w) > 1:
+            for k, ch in enumerate(w[1:]):
+                if ch == "n":
+                    return f"`git commit {w}` (`-n`, --no-verify) skips the hooks"
+                if ch in COMMIT_SHORT_VALUE:
+                    skip = k == len(w) - 2      # the value is the next word only if last
+                    break
+    return None
+
+
+def judge_config(rest):
+    """`git config ...` setting core.hooksPath, or None (a read, or another key)."""
+    words, skip = [], False
+    for w in rest:
+        if skip:
+            skip = False
+            continue
+        if w in CONFIG_PLACE_VALUE:
+            skip = True
+            continue
+        if w in CONFIG_PLACES or (w.startswith("--file=") or w.startswith("--blob=")):
+            continue
+        words.append(w)
+    if not any(names_hooks_path(w) for w in words):
+        return None
+    if any(w in CONFIG_READS or w.startswith("--type=") for w in words):
+        return None
+    plain = [w for w in words if not w.startswith("-")]
+    flags = [w for w in words if w.startswith("-")]
+    if flags or len(plain) >= 2:
+        return f"`git config {' '.join(rest)}` changes core.hooksPath"
+    return None                              # `git config core.hooksPath`: a read
+
+
+def judge_words(words, depth=0):
+    """The first bypass among the commands of *words*, or None. Refusing by resemblance is
+    the safe side (CLAUDE.md): a simple command's git is its first word named `git`, wherever
+    it stands (`sudo -u x git`, `timeout 60 git`, `env -i A=1 git`), and an assignment naming
+    core.hooksPath is refused wherever it stands (`A=... git`, `env A=... git`, `export A=...`)."""
+    for cmd in commands(words):
+        for w in cmd:
+            if ASSIGNMENT.match(w) and names_hooks_path(w):
+                return f"`{w[:80]}` sets core.hooksPath through the environment"
+        bases = [w.rsplit("/", 1)[-1] for w in cmd]
+        if "git" in bases:
+            why = judge_git(cmd[bases.index("git") + 1:])
+            if why:
+                return why
+            continue
+        if depth >= 4:
+            continue
+        # A shell's `-c` script, or eval's words, judged as commands of their own.
+        for k, base in enumerate(bases):
+            if base == "eval":
+                inner = " ".join(cmd[k + 1:])
+            elif SHELLS.match(base) and "-c" in cmd[k + 1:]:
+                at = cmd.index("-c", k + 1)
+                inner = cmd[at + 1] if at + 1 < len(cmd) else ""
+            else:
+                continue
+            why = judge_words(tokens(strip_bodies(inner)), depth + 1)
+            if why:
+                return why
+            break
+    return None
+
+
+def refused(command):
+    """Why *command* is refused, or None."""
+    return judge_words(tokens(strip_bodies(command)))
+
+
+def main():
+    try:
+        call = json.load(sys.stdin)
+        tool = call.get("tool_name")
+        command = (call.get("tool_input") or {}).get("command", "")
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-no-hook-bypass: could not read the hook input ({exc}); the command was "
+              "NOT checked", file=sys.stderr)
+        return 1
+    if tool != "Bash" or not isinstance(command, str):
+        return 0
+    why = refused(command)
+    if why:
+        print(MESSAGE.format(what=why), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -39,6 +39,7 @@ RATCHETS = (
     #    declared, tests/test_test_weakening_check.py's hook-test scan) ────────────────────
     ("tests/test_claude_heredoc_hook.py", "REFUSED", "grows"),
     ("tests/test_claude_host_writes_hook.py", "REFUSED", "grows"),
+    ("tests/test_claude_no_hook_bypass.py", "REFUSED", "grows"),
     ("tests/test_claude_md_edit_hook.py", "REFUSED_BASH", "grows"),
     ("tests/test_claude_md_edit_hook.py", "REFUSED_FILE", "grows"),
     ("tests/test_claude_prose_edit_hook.py", "REFUSED", "grows"),
@@ -227,6 +228,7 @@ NOT_RATCHETS = {
     ("tests/test_checker_reads_database_receipts.py", "LEAK"): "a planted receipt holding a secret (fixture)",
     ("tests/test_claude_heredoc_hook.py", "ALLOWED"): "commands the test asserts the hook allows (cases)",
     ("tests/test_claude_host_writes_hook.py", "ALLOWED"): "commands the test asserts the hook allows (cases)",
+    ("tests/test_claude_no_hook_bypass.py", "ALLOWED"): "commands the test asserts the hook allows (cases)",
     ("tests/test_claude_md_edit_hook.py", "ALLOWED_FILE"): "edits the test asserts the hook allows (cases)",
     ("tests/test_claude_md_edit_hook.py", "ALLOWED_BASH"): "commands the test asserts the hook allows (cases)",
     ("tests/test_claude_md_edit_hook.py", "FLAG_ALLOWED"): "commands the test asserts the hook allows (cases)",
