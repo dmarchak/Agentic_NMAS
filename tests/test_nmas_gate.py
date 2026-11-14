@@ -663,7 +663,9 @@ class TestTheAdaptiveWaves:
         assert at(117)[0] == "waves" and at(116) == ("ci-path", ()) and at(0)[0] == "ci-path"
         # The two waves are the five shards, each once.
         assert sorted(s for w in gate.WAVES for s in w) == sorted(gate.SHARDS)
-        assert gate.WAVE_CAP == 107 * self.GIB // 10 and gate.WAVE_WORKERS == 2
+        # The cap measured again (the operator, 2026-11-13: "WAVE_CAP set from a fresh peak
+        # measurement (peak + 1 GiB)"): wave 1's peak 10.08 GiB on 41130b02, plus 1 GiB.
+        assert gate.WAVE_CAP == 111 * self.GIB // 10 and gate.WAVE_WORKERS == 2
 
     def test_each_wave_runs_at_once_and_the_next_only_after_it(self, repo, tmp_path):
         gate = _gate_module()

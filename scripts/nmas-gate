@@ -146,9 +146,13 @@ GIB = 1024 ** 3
 ALL_AT_ONCE_FROM = 185 * GIB // 10
 WAVES_FROM = 117 * GIB // 10
 WAVES = (("browser1", "browser2", "a"), ("browser3", "b"))
-#: Each wave's cap: wave 1's measured 9.7 GiB peak plus 1 GiB (the gate's cap rule, its
-#: worker count's measured peak + 1 GiB, scripts/nmas-workers CAP_OVER_PEAK).
-WAVE_CAP = 107 * GIB // 10
+#: Each wave's cap: the larger wave's measured peak plus 1 GiB (the gate's cap rule, its worker
+#: count's measured peak + 1 GiB, scripts/nmas-workers CAP_OVER_PEAK). Measured again
+#: 2026-11-14 on 41130b02 (the operator, 2026-11-13: "WAVE_CAP set from a fresh peak
+#: measurement (peak + 1 GiB)"), each shard alone at 2 workers in its own scope, memory.peak:
+#: browser1 4.09, browser2 3.26, a 2.73 GiB (wave 1: 10.08 GiB); browser3 3.99, b 4.47 GiB
+#: (wave 2: 8.46 GiB); all five 18.54 GiB. It was 10.7 GiB (wave 1's 9.7 GiB, 2026-11-12).
+WAVE_CAP = 111 * GIB // 10
 #: The waves' workers a shard: the count they were measured at.
 WAVE_WORKERS = 2
 
