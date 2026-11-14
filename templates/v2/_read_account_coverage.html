@@ -39,7 +39,7 @@
         <th scope="row"><a class="mono" href="{{ url_for('device_v2.device', name=r.device, list=r.network) }}">{{ r.device }}</a></th>
         <td>{{ r.network }}</td>
         <td title="{{ r.dialect or 'no dialect known' }}">{{ r.platform }}</td>
-        <td>{% if r.intent %}<span class="mono">{{ r.account or r.intent.profile }}</span>, level {{ r.intent.level }}{% else %}<span class="muted">not yet</span>{% endif %}</td>
+        <td>{% if r.intent %}<span class="mono">{{ r.account or r.intent.profile }}</span>, level {{ r.intent.level }}{% if r.other_form %} {{ badge(r.other_form | length ~ ' line' ~ ('' if r.other_form | length == 1 else 's') ~ ' in another form', 'warn', title=r.other_form | map(attribute='old') | join('; ') ~ ' → ' ~ r.other_form | map(attribute='new') | join('; ')) }}{% endif %}{% else %}<span class="muted">not yet</span>{% endif %}</td>
         <td>{% if r.holds %}<span class="mono">{{ r.account }}</span>, level {{ r.holds.level }}{% elif not r.golden %}<span class="muted">no golden recorded</span>{% else %}<span class="muted">not yet</span>{% endif %}</td>
         <td>{% if r.holds %}{{ r.holds.level }}{% elif r.intent %}{{ r.intent.level }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if r.probe %}{{ stamp(r.probe.at) }} by {{ (r.probe.actor or 'nobody recorded') | people }} {{ badge(r.probe.result, PROBE_KIND.get(r.probe.result, 'muted'), title=r.probe.why) }}{% else %}<span class="muted">never probed</span>{% endif %}

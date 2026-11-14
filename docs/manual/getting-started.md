@@ -70,7 +70,10 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   out-of-band onboarding, a console survey or kick-start) has **Open its stepper**, its own
   page, since a device being onboarded may have no page yet. Devices draws the same list above
   its device list while anything runs; an operation that holds
-  no device (a NetBox preview, a Save of many devices) is listed without one. A device being
+  no device (a NetBox preview, a Save of many devices) is listed without one; one a page started
+  that reopens its card there (the read-only account's rollout preview and run, a probe, on
+  Credentials) has **Open its card**, which opens that page with its card, and once it finishes
+  it waits under **Finished, not opened yet** like a device's. A device being
   onboarded is listed too, as **Onboarding: waiting for it**, from its Create until Verify or
   Abandon ends it, with where it has got to ("leased not fetched", "answering: ready to
   Verify"); **Open <device>** goes to its pending page.

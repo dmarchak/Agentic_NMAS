@@ -1195,10 +1195,38 @@ class TestReadAccountCards(_Cards):
                 "data: no ticked device takes it"),
         "canary": ("_read_account_op.html", "Deploy the canary", r"Deploy the canary",
                    "data: Mercury's management path could not be measured"),
-        "go_on": ("_read_account_op.html", "{% if r.waits == 'management' %}Deploy "
-                  "{{ r.upcoming[0] }} (the management path){% else %}Go on: the next "
-                  "waves{% endif %}", r"Go on: the next waves", "viewer"),
+        "go_on": ("_read_account_op.html", "Continue the rollout", r"Continue the rollout",
+                  "viewer"),
+        "update": ("_read_account_op.html", "Update {{ p.taking | length }} device{{ '' if "
+                   "p.taking | length == 1 else 's' }}' intent", r"Update 1 device' intent",
+                   "data: no ticked device's lines change"),
     }
+
+    def _update(self, request, six):
+        """Update the read-only account's lines' preview (C3583), r2's intent in the six
+        IOS-XE routers' shape when *six* (the telemetry line without ``all``)."""
+        from modules.nsot import hostvars
+        from modules.nsot.repo import save_host_vars
+        from tests import test_read_account_update as U
+        lab = request.getfixturevalue("lab")
+        if six:
+            doc = hostvars.read_committed(lab["repo"], "r2")
+            doc, _change = hostvars.with_read_account(doc, "default", 3)
+            doc["privilege_exec"] = [dict(e) for e in U.SIX]
+            hostvars.write_committed(lab["repo"], doc)
+            assert save_host_vars("Lab", ["r2"], actor="t", source="intent-edit")["ok"]
+        lab["held"].pop("value", None)
+        return _text(lab["client"].post("/v2/credentials/profiles/read-account/add/preview",
+                                        data={"device": ["Lab/r2"], "reason": "why",
+                                              "mode": "update"}))
+
+    def drawn_update(self, request):
+        return self._update(request, True)
+
+    def blocked_update(self, request, monkeypatch):
+        html = self._update(request, False)
+        assert "data-ra-update-summary" in html, "floor: the update's preview is drawn"
+        return html
 
     def _add(self, request, device):
         lab = request.getfixturevalue("lab")
@@ -1242,9 +1270,9 @@ class TestReadAccountCards(_Cards):
         from modules.nsot import read_account as RA
         request.getfixturevalue("planned")
         client = request.getfixturevalue("lab")["client"]
-        p = RA.rollout_plan("Lab", ["a", "b"], "", 4)
+        p = RA.rollout_plan("Lab", ["a", "b"], "", 4, options={"pause_after_canary": "1"})
         job = RA.rollout_start("Lab", ["a", "b"], "", 4, p["hash"], actor="op",
-                               actor_kind="person")
+                               actor_kind="person", options={"pause_after_canary": "1"})
         assert capture_job.wait(job, 10)
         return _text(client.get(
             f"/v2/credentials/profiles/read-account/rollout/run/{job}?network=Lab"))
@@ -2502,10 +2530,11 @@ class TestThePopulation:
         84 until a lost telemetry stream's Re-subscribe <device>'s telemetry (<ids>) and Re-add
         the receiver for <id>, C2838, 2026-11-10; 86 until the Update page's Decline the step on
         an owed host step, the operator, 2026-11-11; 87 until board R's four, 2026-11-13: Add to
-        N devices' intent, Deploy the canary, the rollout's Go on (or Deploy <device> (the
-        management path)) and Probe <device>)."""
+        N devices' intent, Deploy the canary, the rollout's Continue the rollout (its Go on and
+        a carrier's own confirm until the rollout engine, 2026-11-14) and Probe <device>; 91
+        until board R's Update N devices' intent, C3583, 2026-11-14)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 91, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 92, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

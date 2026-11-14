@@ -86,8 +86,6 @@ ASK_SHELL = ("the page shell's context (tabs, filters, the remote header, the fl
 STEPPER = ("the stepper's and the host steps' raw numbers and bookkeeping: their words (bar, "
            "tally, elapsed, each step's sha and id) are drawn; `install` and `target_gone` are "
            "drawn as the gates' details")
-SCOPE_ROW = ("a scope-picker row's internals: Python sorts and groups by them, and the picker "
-             "draws the groups' headings and the row's label")
 GROUP_STATE = ("a settings group's state record: the raw choice is drawn as the card's `on` "
                "segment, follows and explicit by the mode preview's 'what is kept', the URL as "
                "its own field")
@@ -273,9 +271,8 @@ UNDRAWN = {
     "GET /v2/netbox": [
         ("at_iso", "the age of the integrations reader's value: drawn on Settings › "
                    "Installation; the NetBox page's badge shows no age")],
-    "GET /v2/settings": [("bucket", SCOPE_ROW), ("choice explicit follows url", GROUP_STATE)],
+    "GET /v2/settings": [("choice explicit follows url", GROUP_STATE)],
     "GET /v2/settings/installation": [
-        ("bucket", SCOPE_ROW),
         ("built", "a list equal to every tab, left from when some tabs were unbuilt; nothing "
                   "reads it"),
         ("certs_url", "the identity provider's key endpoint, derived from the team domain "
@@ -311,7 +308,7 @@ UNDRAWN = {
         ("config loaded record_unreadable stale steps stores test test_unreadable version",
          RECORDS_CARD)],
     "GET /v2/settings/network/<list_name>": [
-        ("bucket", SCOPE_ROW), ("choice explicit follows url", GROUP_STATE)],
+        ("choice explicit follows url", GROUP_STATE)],
     "GET /v2/settings/network/<list_name>/group/<group>": [
         ("choice explicit follows url", GROUP_STATE)],
     "GET /v2/settings/network/<list_name>/group/<group>/switch": [
@@ -331,7 +328,6 @@ UNDRAWN = {
                                                        "banner, which reads four fields; the "
                                                        "settings page draws the rest")],
     # P7-05 (2026-10-16): the scope bar alone, read again on `lists`.
-    "GET /v2/settings/scope": [("bucket mode", SCOPE_ROW)],
     "GET /v2/show-commands/check": [
         ("list max_commands message platform platforms q role roles rows sets sets_unreadable "
          "site sites test_command test_wait workers", SC_PICK),
@@ -387,7 +383,7 @@ UNDRAWN = {
 #: -3 2026-11-12: C3166 slice 3, the Neighbours tab draws the adjacencies reader's stored view,
 #: which carries only what the tab draws (adjacencies `VIEW_*`): no protocol id `proto` (on
 #: the tab or the device page) and no RIP `source` marker.
-UNDRAWN_CEILING = 376
+UNDRAWN_CEILING = 371
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

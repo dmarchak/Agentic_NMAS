@@ -289,3 +289,19 @@ the preview's hash. If any device's intent moved since the preview, nothing is w
 says so, naming both hashes. **Back** returns to the ticks, **Cancel** closes the card. The
 result names each network's commit, says nothing was sent, and offers the rollout:
 [Roll out the read-only account](read-account-rollout).
+
+## Update the read-only account's lines {#update-read-account}
+
+When the account's set of lines changes (on IOS-XE, the telemetry line became
+`privilege exec all level 3 show telemetry ietf subscription`), a device whose committed intent
+holds one of them in another form (another level, or without `all`) cannot simply take the new
+one: Add never changes a held line in passing. Such a device can be ticked in **Add the
+read-only account…**, its row saying how many lines are in another form, and Add's preview lists
+it under **In another form** with **Update the read-only account's lines…**, which previews
+that edit and writes nothing. For each device the preview names each line old → new and the
+lines a deploy will then send, in order, masked; only the account's own lines change, and every
+other line of the intent stays as it is. A device whose lines are the account's already is
+named as current; one the intent editor's checks refuse is refused by name. **Update N
+devices' intent**, as a verified person, commits it as Add does: one commit per network,
+`Source: read-account-update`, with your reason and the preview's hash; a moved intent writes
+nothing and names both hashes. Nothing is sent to a device: the rollout deploys it.

@@ -99,6 +99,7 @@ answer it would not decide (the session closed).
 """
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -524,8 +525,12 @@ def _signin_failure(exc: BaseException, account: dict, values: dict) -> dict:
             "why": f"could not sign in as {account['username']} (no verdict): {name}: {first}"}
 
 
-def run(p: dict, dev: dict, actor: str, values: dict, cap: int) -> dict:
-    """The program *p*, holding the device, signed in as the read-only account. The record."""
+def run(p: dict, dev: dict, actor: str, values: dict, cap: int, *, held: bool = False) -> dict:
+    """The program *p*, holding the device, signed in as the read-only account. The record.
+
+    *held*: the caller holds the device already, for this run's whole length (the rollout's
+    check after verify, inside THE apply's hold, `read_account.probe_after_verify`): the run
+    takes no hold of its own, which would refuse it as another holder."""
     from modules.connection import stored_connection_params
     from modules.config_read import spent
     from modules.nsot import device_ops, reads
@@ -557,8 +562,10 @@ def run(p: dict, dev: dict, actor: str, values: dict, cap: int) -> dict:
         return conn.read_channel_timing(last_read=RAW_QUIET, read_timeout=RAW_WAIT) or ""
 
     stopped = ""
-    with device_ops.hold(network, host, "probe", actor, detail="read-only account",
-                         ip=dev.get("ip", "")):
+    holding = (contextlib.nullcontext() if held else
+               device_ops.hold(network, host, "probe", actor, detail="read-only account",
+                               ip=dev.get("ip", "")))
+    with holding:
         try:
             conn = OPEN(params)
         except Exception as exc:                      # noqa: BLE001 (the verdict)

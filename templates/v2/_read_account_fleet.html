@@ -8,5 +8,7 @@
 <section class="card ra-card" aria-labelledby="ra-h">
   <div class="card-head"><h2 id="ra-h">Read-only account on the devices</h2>{{ how('credentials', 'on-the-devices') }}</div>
   {% include "v2/_read_account_coverage.html" %}
-  <div id="ra-op"></div>
+  {#- Board R's 0(a): a job this card started, reopened from In progress (`ra_job`), drawn in
+      place as its own route draws it. -#}
+  <div id="ra-op"{% if ra_job %} hx-get="{{ url_for('credential_profiles_v2.read_account_job', job=ra_job) }}" hx-trigger="load" hx-swap="outerHTML" data-ra-reopen{% endif %}></div>
 </section>

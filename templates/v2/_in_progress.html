@@ -37,7 +37,9 @@
     <div class="ip-row">
       <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
         <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
-      {%- if r.run %}
+      {%- if r.href %}
+      <a class="btn btn-small" href="{{ r.href }}">Open its card</a>
+      {%- elif r.run %}
       <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=r.list, device=r.device) }}">Open its stepper</a>
       {%- elif r.page %}
       <a class="btn btn-small" href="{{ url_for('device_v2.device', name=r.device, list=r.list) }}">{{ 'Open its card' if r.card else 'Open ' ~ r.device }}</a>
@@ -67,7 +69,7 @@
         <button type="submit" class="btn btn-small btn-outline" name="how" value="dismissed" hx-disabled-elt="this" title="Remove it from your list without opening it; its record stays in History"{{ gate('configure') }}><span class="op-idle">Dismiss</span><span class="op-busy">Dismissing…</span></button>
       </form>
       {%- else %}
-      <a class="btn btn-small" href="{{ run_href(f.device, f.list, f.job or f.run) }}">Open the result</a>
+      <a class="btn btn-small" href="{{ run_href(f.device, f.list, f.job or f.run, page=f.href) }}">Open the result</a>
       {%- endif %}
     </div>
     {%- else %}

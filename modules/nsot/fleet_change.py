@@ -559,13 +559,16 @@ def batches_of(devices: list, canary: str, size: int) -> list:
 
 
 def run_batches(list_name: str, plan: dict, batches: list, *, actor: str, actor_kind: str,
-                on_device=None) -> dict:
+                on_device=None, after_verify=None) -> dict:
     """Run *batches* in order through THE apply (`routes.deploy.apply_batch`: each device's
     program recomputed and refused if it moved, held, sent, verified, rolled back on failure,
     recorded), the first failed device stopping the run (22.2 (4)). Before each batch, each
     device's program as committed must be the one the plan confirmed. ``{"results":
     [{"device", "outcome", ...}], "stopped": reason or "", "done": [batch index]}``; devices not
-    reached are ``unattempted``."""
+    reached are ``unattempted``. *after_verify* is THE apply's own check after verify
+    (`routes.deploy.apply_batch`): a device it gives a ``rollback`` reason is rolled back
+    before its save to startup, and fails, stopping the run (the read-only account's probe,
+    `read_account.probe_after_verify`)."""
     from modules.nsot.deploy import DEPLOYED, UNATTEMPTED
     from routes.deploy import apply_batch, plan_devices
 
@@ -586,7 +589,8 @@ def run_batches(list_name: str, plan: dict, batches: list, *, actor: str, actor_
             continue
         report = apply_batch(list_name, {d: entries[d]["capture_hash"] for d in batch},
                              {d: entries[d]["command_hash"] for d in batch}, actor=actor,
-                             actor_kind=actor_kind, on_device=on_device, stop_at_first=True)
+                             actor_kind=actor_kind, on_device=on_device, stop_at_first=True,
+                             after_verify=after_verify)
         results = report.get("results") or []
         out["results"] += results
         out["done"].append(n)
@@ -595,6 +599,145 @@ def run_batches(list_name: str, plan: dict, batches: list, *, actor: str, actor_
         if failed:
             out["stopped"] = f"{', '.join(failed)} did not deploy and verify"
     return out
+
+
+# ---------------------------------------------------------------------------
+# THE rollout engine (the operator, 2026-11-14: "Rollouts run themselves: one approval of the
+# whole plan by its hash, then canary and every wave proceed automatically, each device
+# verified; the first failure rolls that device back and stops the run, telling the team
+# (notification). No per-wave or per-carrier confirm. Options on the plan, chosen before
+# approval: a pause after the canary (off by default) and a settle time between waves. ...
+# The same engine for every batch deploy"). One loop, `run_waves`, over THE apply: a layer's
+# change and a selection's (`_run`), the read-only account's rollout
+# (`read_account.rollout_start`) and the v2 batch deploy (`deploy_job.start`) each hand it
+# their waves and how one wave is applied; none has a loop of its own.
+# ---------------------------------------------------------------------------
+
+#: The options a plan is approved with, and their defaults (the operator: the pause off).
+OPTIONS = {"pause_after_canary": False, "settle_s": 0}
+#: The longest settle between two waves a plan may name, in seconds.
+SETTLE_MAX = 3600
+#: The clock the settle is waited on: `time.sleep` unless a test counts it (never wall time).
+SLEEP = None
+#: What a stopped rollout tells the team, through Mercury's notifier (`modules/notify`).
+STOPPED_EVENT = "rollout_stopped"
+
+
+def options_of(values) -> dict:
+    """The engine's options from a form or a dict: the pause after the canary (on only when
+    said so) and the settle between waves, 0 to `SETTLE_MAX` seconds."""
+    values = values or {}
+    raw = values.get("pause_after_canary")
+    pause = raw is True or str(raw or "").strip().lower() in ("1", "on", "true", "yes")
+    try:
+        settle = int(str(values.get("settle_s") or 0).strip() or 0)
+    except ValueError:
+        settle = 0
+    return {"pause_after_canary": pause, "settle_s": max(0, min(SETTLE_MAX, settle))}
+
+
+def options_words(options: dict) -> str:
+    """The options in words, as the plan and the run say them."""
+    o = options_of(options)
+    return (("a pause after the canary for your Continue" if o["pause_after_canary"]
+             else "no pause after the canary")
+            + (f", {o['settle_s']} s between waves" if o["settle_s"] else ", no settle time"))
+
+
+def with_options(plan_hash: str, options: dict) -> str:
+    """The hash a plan is confirmed by: its own hash and its options together, so a changed
+    option is a changed plan and its confirm is refused (naming both hashes)."""
+    return hashlib.sha256(json.dumps({"plan": plan_hash, "options": options_of(options)},
+                                     sort_keys=True).encode()).hexdigest()
+
+
+def _tell_stopped(list_name: str, label: str, link: str, stopped: str, left: list,
+                  key: str, deliver=None, teams=None) -> dict:
+    """The team told once that a rollout stopped (`notify.delivery.deliver_event`, the one
+    home every notice goes through; the teams each network's Who is told names): what stopped
+    it, that the failed device was rolled back, and the devices not started."""
+    import time
+
+    event = {"incident": f"rollout-{key[:24]}", "event": STOPPED_EVENT, "network": list_name,
+             "happened": f"{label} stopped: {stopped}",
+             "outcome": ("the device that failed was rolled back"
+                         + (f"; not started: {', '.join(left[:20])}"
+                            + (f" and {len(left) - 20} more" if len(left) > 20 else "")
+                            if left else "; no device was left")),
+             "detected": "the rollout's verify",
+             "detected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+             "todo": "Read the run's result, fix the failed device, then preview it again",
+             "link": link if (link or "").startswith("/v2/") else ""}
+    try:
+        if deliver is None:
+            from modules.notify import delivery
+            deliver = delivery.deliver_event
+        if teams is None:
+            from modules.readers.ci_agreement import told_teams
+            teams = told_teams([list_name])
+        got = deliver(event, list(teams))
+    except Exception as exc:                          # noqa: BLE001 (said on the run)
+        log.warning("rollout: the team was not told that %s stopped: %s", label, exc)
+        return {"sent": 0, "failed": 0, "error": f"{type(exc).__name__}: {exc}"}
+    return {"sent": got.get("sent", 0), "failed": got.get("failed", 0),
+            "error": got.get("error", "")}
+
+
+def run_waves(list_name: str, waves: list, apply_wave, *, options: dict, start_at: int = 0,
+              before=(), label: str = "the rollout", link: str = "", key: str = "",
+              on_wave=None, sleep=None, deliver=None, teams=None) -> dict:
+    """THE engine's loop: *waves* (the canary first, then each wave, carriers last in their
+    order) from *start_at*, each through *apply_wave(index, devices)* (``{"results",
+    "stopped"}``: THE apply for that wave, each device held, sent, verified, saved only once
+    verified, rolled back if it failed), with no press between them. The settle
+    (``options["settle_s"]``) is waited before every wave but the first. The first failure
+    stops the run: every device after it is named ``not started``, and the team is told once
+    (`_tell_stopped`). With ``options["pause_after_canary"]`` the run returns ``paused`` after
+    the canary, and a person's Continue starts it again from wave 1 (``start_at``).
+    ``{"state": "done"|"stopped"|"paused", "next", "results", "stopped", "not_started",
+    "told"}``. *on_wave(index, state)* says where it is (``running``, ``settling``)."""
+    import time
+
+    options = options_of(options)
+    sleep = sleep or SLEEP or time.sleep
+    results = list(before or [])
+    for n in range(start_at, len(waves)):
+        if n > 0 and options["settle_s"]:
+            if on_wave:
+                on_wave(n, "settling")
+            sleep(options["settle_s"])
+        if on_wave:
+            on_wave(n, "running")
+        got = apply_wave(n, list(waves[n]))
+        results += got.get("results") or []
+        if got.get("stopped"):
+            later = [d for w in waves[n + 1:] for d in w]
+            results += [{"device": d, "outcome": "unattempted",
+                         "reason": f"not started: {got['stopped']}"} for d in later]
+            # A wave's own devices its apply did not reach after the failure are not started
+            # too (THE apply's stop at the first failure marks them unattempted).
+            left = [r["device"] for r in got.get("results") or []
+                    if r.get("outcome") == "unattempted"] + later
+            told = _tell_stopped(list_name, label, link, got["stopped"], left, key or label,
+                                 deliver=deliver, teams=teams)
+            return {"state": "stopped", "next": n + 1, "results": results,
+                    "stopped": got["stopped"], "not_started": left, "told": told}
+        if n == 0 and options["pause_after_canary"] and len(waves) > 1:
+            return {"state": "paused", "next": 1, "results": results, "stopped": "",
+                    "not_started": [], "told": {}}
+    return {"state": "done", "next": len(waves), "results": results, "stopped": "",
+            "not_started": [], "told": {}}
+
+
+def plan_waves(list_name: str, plan: dict, *, actor: str, actor_kind: str, on_device=None,
+               after_verify=None):
+    """How one wave of a plan of committed intent is applied (``apply_wave`` for
+    `run_waves`): `run_batches` over that wave alone, each device's program checked against
+    the plan's before it is sent, and *after_verify* (`run_batches`) part of its verify."""
+    def apply_wave(_n, devices):
+        return run_batches(list_name, plan, [devices], actor=actor, actor_kind=actor_kind,
+                           on_device=on_device, after_verify=after_verify)
+    return apply_wave
 
 
 def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: str, *,
@@ -630,20 +773,20 @@ def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: s
 
 def _run(list_name: str, plan: dict, commit: str, batches: list, *, after_canary: str,
          actor: str, actor_kind: str, start_at: int) -> dict:
-    """One job's part of the run, its masked payload: the canary alone when pausing after it,
-    else every batch from *start_at*."""
+    """One job's part of the run, its masked payload, through THE engine (`run_waves`): the
+    canary, then every batch, a pause after the canary when *after_canary* is ``pause`` (the
+    engine's option), the first failure stopping it and telling the team."""
     from modules.outbound import mask_payload
 
-    todo = batches[start_at:start_at + 1] if (start_at == 0 and after_canary == "pause") \
-        else batches[start_at:]
-    got = run_batches(list_name, plan, todo, actor=actor, actor_kind=actor_kind)
-    paused = (start_at == 0 and after_canary == "pause" and not got["stopped"]
-              and len(batches) > 1)
-    return mask_payload({"state": "paused" if paused else
-                         ("stopped" if got["stopped"] else "done"),
-                         "commit": commit, "plan": plan, "batches": batches,
-                         "next": start_at + len(todo), "results": got["results"],
-                         "stopped": got["stopped"], "actor": actor})
+    got = run_waves(list_name, batches, plan_waves(list_name, plan, actor=actor,
+                                                   actor_kind=actor_kind),
+                    options={"pause_after_canary": after_canary == "pause"},
+                    start_at=start_at, label=f"{label_of(plan)}'s change",
+                    link=f"/v2/intent?list={list_name}", key=plan.get("hash") or commit)
+    return mask_payload({"state": got["state"], "commit": commit, "plan": plan,
+                         "batches": batches, "next": got["next"],
+                         "results": got["results"], "stopped": got["stopped"],
+                         "told": got["told"], "actor": actor})
 
 
 def run_start(list_name: str, plan: dict, commit: str, batches: list, *, after_canary: str,

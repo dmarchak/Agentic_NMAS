@@ -275,13 +275,30 @@ class TestAdd:
         (g,) = p["groups"]
         lines = [l["line"] for l in g["lines"]]
         assert lines == ["privilege exec all level 3 show telemetry ietf subscription",
+                         "privilege exec level 3 show telemetry ietf",
+                         "privilege exec level 3 show telemetry",
                          "privilege exec level 1 show",
                          f"username {RO} privilege 3 algorithm-type scrypt secret "
                          "<redacted:read-account:profile:default>"]
-        assert "puts `show` back at level 1" in g["lines"][1]["effect"]
+        effect = {l["line"]: l["effect"] for l in g["lines"]}
+        assert "puts `show` back at level 1" in effect["privilege exec level 1 show"]
+        assert "leading word" in effect["privilege exec level 3 show telemetry"]
         assert any("users gains" in w for w in g["change"])
         assert RO_PW not in json.dumps(p)
         assert RA.add_preview([("Lab", "r2")])["hash"] == p["hash"]
+
+    def test_the_lines_shown_are_the_lines_the_template_writes(self, lab):
+        """The level's lines a person reads are `privilege_exec.rendered`'s for the same
+        entries, leading words included (C3580), each entry's effect on its own line."""
+        from modules.nsot import privilege_exec as PE
+
+        (g,) = RA.add_preview([("Lab", "r2")])["groups"]
+        wanted = PE.read_account_lines("cisco_iosxe", 3, ping_traceroute=False)
+        shown = [l["line"] for l in g["lines"]][:-1]
+        assert shown == PE.rendered([w["entry"] for w in wanted])
+        effect = {l["line"]: l["effect"] for l in g["lines"]}
+        for w in wanted:
+            assert effect[PE.render_line(w["entry"])] == w["effect"]
 
     def test_a_device_is_refused_by_name(self, lab):
         p = RA.add_preview([("Lab", "r2"), ("Lab", "gone"), ("Nowhere", "x")])
@@ -334,11 +351,33 @@ class TestTheOrder:
 @pytest.fixture
 def planned(monkeypatch):
     """`plan_devices` gives each device a program (a moved one when asked), the Topology read
-    says Mercury reaches x through c, and `apply_batch` records what it was sent."""
+    says Mercury reaches x through c, and `apply_batch` records what it was sent and runs its
+    check after verify on each device that deployed, as THE apply's `_settle_after_verify`
+    does (a ``rollback`` reason fails the device, rolled back). Each device's probe is planned
+    (none for a device in ``no_probe``; a moved hash, once its own apply has begun, for one in
+    ``probe_moves``) and run with the verdict ``verdict`` names (PASS by default)."""
     import routes.deploy as rd
+    from modules import read_account_probe as P
     from modules.nsot.deploy import DEPLOYED
 
-    state = {"moved": set(), "calls": [], "fail": set()}
+    state = {"moved": set(), "calls": [], "fail": set(), "no_probe": set(),
+             "probe_moves": set(), "verdict": {}, "probed": [], "rolled_back": []}
+
+    def probe_plan(network, d):
+        if d in state["no_probe"]:
+            return {"refused": f"REFUSED: no read-only account for {d}: none resolves"}
+        moved = d in state["probe_moves"] and any(d in c for c in state["calls"])
+        return {"network": network, "device": d, "hash": "p-moved" if moved else f"p-{d}",
+                "account": {"username": RO, "source": "profile"},
+                "reads": [{"op": "version", "command": "show version"},
+                          {"op": "mac", "result": "NOT MEASURED", "why": "no MAC"}],
+                "refused_steps": [{"key": "enable", "command": "enable"}]}
+
+    def probe_run(p, dev, actor, values, cap, held=False):
+        assert held, "the rollout's probe runs inside THE apply's hold"
+        state["probed"].append(p["device"])
+        result = state["verdict"].get(p["device"], "PASS")
+        return {"device": p["device"], "verdict": {"result": result, "why": f"{result} said"}}
 
     def plan_devices(list_name, hosts, **kw):
         return [{"device": d, "deployable": True, "blocking_reasons": [], "capture_hash": f"c-{d}",
@@ -348,8 +387,25 @@ def planned(monkeypatch):
 
     def apply_batch(list_name, confirmations, command_hashes, **kw):
         state["calls"].append(list(confirmations))
-        return {"results": [{"device": d, "outcome": "failed" if d in state["fail"] else DEPLOYED,
-                             "verify": {"ok": d not in state["fail"]}} for d in confirmations]}
+        check, results = kw.get("after_verify"), []
+        for d in confirmations:
+            r = {"device": d, "outcome": "failed" if d in state["fail"] else DEPLOYED,
+                 "verify": {"ok": d not in state["fail"]}}
+            if check is not None and r["outcome"] == DEPLOYED:
+                why = (check(d, r, None) or {}).get("rollback")
+                if why:
+                    r.update(outcome="failed", reason=why, stage="after_verify")
+                    state["rolled_back"].append(d)
+            results.append(r)
+        return {"results": results}
+    # `raising=False`: the fixture plants the probe's plan whether or not the module under test
+    # has one yet, so a test of the probe in verify fails in its own body where it is missing.
+    monkeypatch.setattr(RA, "_probe_plan", probe_plan, raising=False)
+    monkeypatch.setattr(P, "run", probe_run)
+    monkeypatch.setattr(P, "_inventory", lambda network: {d: {} for d in ("a", "b", "c")})
+    monkeypatch.setattr(P, "write_record", lambda rec: f"/records/{rec['device']}-1.json")
+    monkeypatch.setattr("modules.nsot.reads.cap_bytes", lambda network: 4096)
+    monkeypatch.setattr("modules.redact.known_secret_values", lambda: {})
     monkeypatch.setattr(rd, "plan_devices", plan_devices)
     monkeypatch.setattr(rd, "apply_batch", apply_batch)
     monkeypatch.setattr(RA, "management_carriers",
@@ -372,42 +428,144 @@ class TestTheRollout:
         assert RA.rollout_plan("Lab", ["a", "b", "c", "same"], "b", 4)["hash"] == p["hash"]
         assert RA.rollout_plan("Lab", ["a", "b", "c", "same"], "a", 4)["hash"] != p["hash"]
 
-    def test_the_run_pauses_after_the_canary_and_before_the_carrier(self, lab, planned):
+    def test_the_run_goes_wave_to_wave_by_itself_the_carrier_last(self, lab, planned):
+        """The operator, 2026-11-14 (board R's 00): one confirm, then the canary and every
+        wave by themselves, the carrier last, with no press between them."""
         from modules.nsot import capture_job
 
         p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
         job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
                                actor_kind="person")
-        assert capture_job.wait(job, 10)
-        run = capture_job.get(job)["payload"]
-        assert run["state"] == "paused" and run["waits"] == "canary" and planned["calls"] == [["b"]]
-        assert RA.go_on_refusal(run, "") == ""
-        job = RA.rollout_go_on(run, actor="op", actor_kind="person")
-        assert capture_job.wait(job, 10)
-        run = capture_job.get(job)["payload"]
-        assert run["state"] == "paused" and run["waits"] == "management"
-        assert planned["calls"] == [["b"], ["a"]], "the carrier waits for its own confirm"
-        why = RA.go_on_refusal(run, "a")
-        assert "the next wave is c" in why and "named a" in why
-        job = RA.rollout_go_on(run, actor="op", actor_kind="person")
         assert capture_job.wait(job, 10)
         run = capture_job.get(job)["payload"]
         assert run["state"] == "done" and planned["calls"] == [["b"], ["a"], ["c"]]
         assert [r["device"] for r in run["results"]] == ["b", "a", "c"]
 
-    def test_the_first_failure_stops_it(self, lab, planned):
+    def test_the_pause_after_the_canary_holds_until_continued(self, lab, planned):
         from modules.nsot import capture_job
 
+        options = {"pause_after_canary": "1"}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4, options=options)
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person", options=options)
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "paused" and run["waits"] == "canary" and planned["calls"] == [["b"]]
+        assert RA.go_on_refusal(run) == ""
+        job = RA.rollout_go_on(run, actor="op", actor_kind="person")
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "done" and planned["calls"] == [["b"], ["a"], ["c"]]
+
+    def test_a_changed_option_is_a_changed_hash_and_refuses_the_confirm(self, lab, planned):
+        from modules.nsot import capture_job
+
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        q = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4, options={"settle_s": "30"})
+        assert p["hash"] != q["hash"]
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person", options={"settle_s": "30"})
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "refused" and p["hash"][:12] in run["error"]
+        assert q["hash"][:12] in run["error"] and planned["calls"] == []
+
+    def test_the_first_failure_stops_it_names_the_rest_and_tells_the_team(self, lab, planned,
+                                                                         monkeypatch):
+        from modules.nsot import capture_job
+
+        told = []
+        monkeypatch.setattr("modules.notify.delivery.deliver_event",
+                            lambda event, teams: told.append(event) or {"sent": 1})
         planned["fail"] = {"a"}
         p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
         job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
                                actor_kind="person")
         assert capture_job.wait(job, 10)
-        job = RA.rollout_go_on(capture_job.get(job)["payload"], actor="op", actor_kind="person")
-        assert capture_job.wait(job, 10)
         run = capture_job.get(job)["payload"]
         assert run["state"] == "stopped" and "a did not deploy and verify" in run["stopped"]
-        assert RA.go_on_refusal(run, "c").startswith("that rollout is not paused")
+        assert run["not_started"] == ["c"] and planned["calls"] == [["b"], ["a"]]
+        assert len(told) == 1 and told[0]["event"] == "rollout_stopped"
+        assert "c" in told[0]["outcome"]
+        assert RA.go_on_refusal(run).startswith("that rollout is not paused")
+
+    def test_each_device_is_probed_as_the_account_as_part_of_its_verify(self, lab, planned):
+        """The coordinator, 2026-11-14 (item 1): deploy, read back, probe as the account; the
+        probe planned at the preview, its hash in the plan's, its verdict on the result."""
+        from modules.nsot import capture_job
+
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        assert {d["device"]: d["probe"]["hash"] for d in p["devices"]} == {
+            "a": "p-a", "b": "p-b", "c": "p-c"}
+        assert p["devices"][0]["probe"]["not_measured"] == ["mac"]
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person")
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "done" and planned["probed"] == ["b", "a", "c"]
+        assert {r["device"]: r["probe"]["result"] for r in run["results"]} == {
+            "a": "PASS", "b": "PASS", "c": "PASS"}
+        assert run["results"][0]["probe"]["record"] == "b-1.json"
+
+    def test_a_probe_moved_since_the_preview_is_a_moved_hash(self, lab, planned):
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        planned["calls"].append(["a"])           # what a probe's plan reads moved
+        planned["probe_moves"] = {"a"}
+        assert RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)["hash"] != p["hash"]
+
+    @pytest.mark.parametrize("verdict", ["FAIL", "UNREADABLE"])
+    def test_a_failed_probe_rolls_the_device_back_stops_and_tells_the_team(
+            self, lab, planned, monkeypatch, verdict):
+        from modules.nsot import capture_job
+
+        told = []
+        monkeypatch.setattr("modules.notify.delivery.deliver_event",
+                            lambda event, teams: told.append(event) or {"sent": 1})
+        planned["verdict"] = {"a": verdict}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person")
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "stopped" and planned["rolled_back"] == ["a"]
+        assert planned["calls"] == [["b"], ["a"]] and run["not_started"] == ["c"]
+        a = next(r for r in run["results"] if r["device"] == "a")
+        assert f"gave {verdict}" in a["reason"] and a["probe"]["result"] == verdict
+        assert len(told) == 1 and told[0]["event"] == "rollout_stopped"
+
+    def test_an_incomplete_probe_passes_and_says_so(self, lab, planned):
+        from modules.nsot import capture_job
+
+        planned["verdict"] = {"a": "INCOMPLETE"}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person")
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        assert run["state"] == "done" and planned["rolled_back"] == []
+        assert next(r for r in run["results"] if r["device"] == "a")["probe"]["result"] == \
+            "INCOMPLETE"
+
+    def test_a_probe_that_moved_at_apply_rolls_back_naming_both_hashes(self, lab, planned):
+        from modules.nsot import capture_job
+
+        planned["probe_moves"] = {"a"}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person")
+        assert capture_job.wait(job, 10)
+        run = capture_job.get(job)["payload"]
+        a = next(r for r in run["results"] if r["device"] == "a")
+        assert run["state"] == "stopped" and planned["rolled_back"] == ["a"]
+        assert "p-a" in a["reason"] and "p-moved" in a["reason"] and "a" not in planned["probed"]
+
+    def test_a_device_whose_probe_cannot_be_planned_is_refused_at_the_preview(self, lab,
+                                                                              planned):
+        planned["no_probe"] = {"a"}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        assert p["ok"] and [d["device"] for d in p["devices"]] == ["b", "c"]
+        (r,) = p["refused"]
+        assert r["device"] == "a" and "cannot be probed after verify" in r["reasons"][0]
 
     def test_an_unreadable_management_path_is_not_offered_and_refused_at_confirm(
             self, lab, planned, monkeypatch):
@@ -429,8 +587,7 @@ class TestTheRollout:
         assert run["state"] == "refused" and run["error"] == p["blocked"]
         assert planned["calls"] == [], "nothing is sent"
 
-    def test_devices_the_person_names_go_last_alone_on_their_own_confirm(
-            self, lab, planned, monkeypatch):
+    def test_devices_the_person_names_go_last_alone(self, lab, planned, monkeypatch):
         from modules.nsot import capture_job
 
         monkeypatch.setattr(RA, "management_carriers", lambda network, hosts: {
@@ -442,11 +599,8 @@ class TestTheRollout:
         job = RA.rollout_start("Lab", ["a", "b", "c"], "", 4, p["hash"], actor="op",
                                actor_kind="person", named=["a"])
         assert capture_job.wait(job, 10)
-        job = RA.rollout_go_on(capture_job.get(job)["payload"], actor="op", actor_kind="person")
-        assert capture_job.wait(job, 10)
         run = capture_job.get(job)["payload"]
-        assert run["waits"] == "management" and planned["calls"] == [["b"], ["c"]]
-        assert "the next wave is a" in RA.go_on_refusal(run, "")
+        assert run["state"] == "done" and planned["calls"] == [["b"], ["c"], ["a"]]
 
     def test_a_blocked_preview_offers_no_deploy(self, lab, planned, monkeypatch):
         from modules.nsot import capture_job

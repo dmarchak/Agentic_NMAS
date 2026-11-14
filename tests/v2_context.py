@@ -2277,7 +2277,10 @@ def _read_account_fleet(client, _lab, _mp):
                 "holds": {"level": 1 if s == "would_change" else 3}
                 if s in ("would_change", "device_only", "holds") else None,
                 "probe": probe if s == "holds" else None, "state": s, "why": f"why {s}",
-                "golden": s != "not_yet"} for n, s in enumerate(states)]
+                "golden": s != "not_yet",
+                "other_form": [{"old": "privilege exec level 3 x",
+                            "new": "privilege exec all level 3 x"}]
+                if s == "pending" else []} for n, s in enumerate(states)]
     # Per network keyed by its one id (C1903), the display name in the value.
     value = {"devices": devices,
              "networks": {"lab": {"name": "Lab", "error": ""},
@@ -2291,11 +2294,28 @@ def _read_account_fleet(client, _lab, _mp):
                                       "effect": "puts show back"}], "devices": ["r6"]}],
                "refused": [{"network": "Lab", "device": "r3", "why": "its golden holds it"}],
                "holding": [{"network": "Lab", "device": "r8"}],
+               "updating": [{"network": "Lab", "device": "r9",
+                             "lines": [{"old": "privilege exec level 3 x",
+                                        "new": "privilege exec all level 3 x"}]}],
                "networks": {"lab": {"name": "Lab", "devices": ["r6"]}}}
+    # C3583: Update the read-only account's lines, its preview and its result.
+    update = {"ok": True, "error": "", "level": 3, "ping": False,
+              "judged_at": "2026-11-13T20:00:00Z", "hash": "e" * 64,
+              "taking": [{"network": "Lab", "device": "r9"}],
+              "groups": [{"platform": "IOS-XE",
+                          "changes": [{"old": "privilege exec level 3 x",
+                                       "new": "privilege exec all level 3 x"}],
+                          "lines": [{"line": "privilege exec all level 3 x",
+                                     "effect": "levels 3 to 15 gain x"}], "devices": ["r9"]}],
+              "current": [{"network": "Lab", "device": "r8"}],
+              "refused": [{"network": "Lab", "device": "r3", "why": "the editor refuses it"}],
+              "networks": {"lab": {"name": "Lab", "devices": ["r9"]}}}
     plan = {"ok": True, "error": "", "network": "Lab", "base": "b" * 40, "hash": "c" * 64,
             "canary": "r5", "size": 4, "carries_why": "", "carries": {"r7": ["r3", "r4"]},
             "devices": [{"device": d, "program": ["username mercury-ro privilege 3 x"],
-                         "besides": 1 if d == "r6" else 0, "command_hash": f"h-{d}"}
+                         "besides": 1 if d == "r6" else 0, "command_hash": f"h-{d}",
+                         "probe": {"hash": f"p-{d}", "account": "mercury-ro", "reads": 12,
+                                   "refused": 6, "not_measured": ["mac_lookup"]}}
                         for d in ("r5", "r6", "r7")],
             "unchanged": ["r8"], "refused": [{"device": "r3", "reasons": ["not deployable"]}],
             "batches": [["r5"], ["r6"], ["r7"]], "confirm_at": [2]}
@@ -2303,20 +2323,28 @@ def _read_account_fleet(client, _lab, _mp):
     try:
         mp.setattr(RA, "held", lambda: {"value": value, "at": "2026-11-13T20:00:00Z", "why": ""})
         mp.setattr(RA, "add_preview", lambda picks, **kw: dict(preview))
+        mp.setattr(RA, "update_preview", lambda picks, **kw: dict(update))
+        mp.setattr(RA, "update_commit", lambda picks, confirmed, reason, actor: {
+            "ok": True, "error": "", "preview": update,
+            "commits": [{"network": "Lab", "devices": ["r9"], "commit": "f" * 40, "error": ""}]})
         mp.setattr(RA, "add_commit", lambda picks, confirmed, reason, actor: {
             "ok": False, "error": "Other: not committed", "preview": preview,
             "commits": [{"network": "Lab", "devices": ["r6"], "commit": "d" * 40, "error": ""},
                         {"network": "Other", "devices": ["x"], "commit": "",
                          "error": "not committed"}]})
-        mp.setattr(RA, "rollout_plan", lambda network, devices, canary="", size=4, named=(): dict(
+        mp.setattr(RA, "rollout_plan", lambda network, devices, canary="", size=4, named=(),
+                   options=None: dict(
             plan, named=list(named), carries_why="" if named else "no Topology read",
-            blocked="" if named else RA.blocked_words("no Topology read")))
+            blocked="" if named else RA.blocked_words("no Topology read"),
+            options=RA.fleet_change_options(options), account_only=["r6"] if named else []))
         fail = {"on": ""}
         mp.setattr(rd, "plan_devices", lambda ln, batch, **kw: [
             {"device": d, "capture_hash": f"c-{d}", "command_hash": f"h-{d}"} for d in batch])
         mp.setattr(rd, "apply_batch", lambda ln, conf, hashes, **kw: {"results": [
             {"device": d, "outcome": "failed" if d == fail["on"] else DEPLOYED,
-             "verify": {"ok": d != fail["on"], "summary": "a sent line was not read back"}}
+             "verify": {"ok": d != fail["on"], "summary": "a sent line was not read back"},
+             "probe": {"result": "FAIL" if d == fail["on"] else "PASS",
+                       "why": "every AI read answered", "record": f"{d}.json"}}
             for d in conf]})
         base = "/v2/credentials/profiles/read-account"
         for url in (f"{base}/fleet?open=holds", f"{base}/fleet?q=r9", f"{base}/add?tick=not-yet",
@@ -2325,6 +2353,10 @@ def _read_account_fleet(client, _lab, _mp):
             assert r.status_code == 200, (url, r.status_code)
         for path, form in (("/add/preview", {"device": ["Lab/r6"], "reason": "why"}),
                            ("/add", {"device": ["Lab/r6"], "reason": "why", "hash": "a" * 64}),
+                           ("/add/preview", {"device": ["Lab/r9"], "reason": "why",
+                                             "mode": "update"}),
+                           ("/add", {"device": ["Lab/r9"], "reason": "why", "hash": "e" * 64,
+                                     "mode": "update"}),
                            ("/rollout/plan", {"network": "Lab", "device": ["r5"]}),
                            ("/rollout/plan", {"network": "Lab", "device": ["r5"],
                                               "management": ["r7"]})):
@@ -2339,14 +2371,32 @@ def _read_account_fleet(client, _lab, _mp):
                 assert ("Last, alone" if named else "data-ra-blocked") in html, html[:300]
         for failing in ("", "r6"):
             fail["on"] = failing
+            # The pause after the canary chosen: the paused card's Continue, then the rest by
+            # itself (done, or stopped at r6 with the rest named and the team told).
             job = RA.rollout_start("Lab", ["r5", "r6", "r7"], "", 4, plan["hash"],
-                                   actor="op@example.com", actor_kind="person", named=["r7"])
+                                   actor="op@example.com", actor_kind="person", named=["r7"],
+                                   options={"pause_after_canary": "1"})
             assert capture_job.wait(job, 10)
+            html = client.get(f"{base}/rollout/run/{job}?network=Lab").get_data(as_text=True)
+            assert "Continue the rollout" in html, html[:300]
             job = RA.rollout_go_on(capture_job.get(job)["payload"], actor="op@example.com",
                                    actor_kind="person")
             assert capture_job.wait(job, 10)
             html = client.get(f"{base}/rollout/run/{job}?network=Lab").get_data(as_text=True)
-            assert ("data-ra-management" if not failing else "data-ra-stopped") in html
+            assert ("data-ra-wave" if not failing else "data-ra-stopped") in html
+            # Reopened from In progress: the page's own address draws the job's card.
+            page = client.get(f"/v2/credentials/profiles/read-account/job/{job}")
+            assert page.status_code == 200
+        # A run under way: its card says the wave it is on and each device done so far.
+        real_get = capture_job.get
+        mp.setattr(capture_job, "get", lambda job: {"state": "running"}
+                   if job == "running-rollout" else real_get(job))
+        mp.setattr(RA, "progress", lambda job: {"wave": 1, "state": "running",
+                                                "done": {"r5": "deployed"}})
+        html = client.get(f"{base}/rollout/run/running-rollout?network=Lab") \
+            .get_data(as_text=True)
+        assert "data-ra-progress" in html and "r5 (deployed)" in html, html[:300]
+        mp.setattr(capture_job, "get", real_get)
         r = client.post(f"{base}/rollout/go-on", data={"job": "no-such-job"})
         assert r.status_code == 409 and "data-ra-run-refused" in r.get_data(as_text=True)
         # Board R's R8: the probe's preview, its result in place and its refusal; the probe's

@@ -85,7 +85,12 @@ def merge(holds: list, ops: list, jobs: list) -> list:
     for op in ops:
         job = by_id.get(op.get("id"))
         key = (job["list"], job["device"]) if job else None
-        if key in held:
+        if job and job.get("page"):
+            # A job a page that is no device's started (board R's 0(a)): its row opens that
+            # page, which reopens the job.
+            rest.append(dict(op, page_url=job["page"], job=job["job"], net=job["list"],
+                             actor_kind=job.get("actor_kind", "")))
+        elif key in held:
             row = out[index[key]]
             row.update(job=job["job"], card=job["card"], actor_kind=job.get("actor_kind", ""))
             if op.get("own_steps"):
@@ -243,7 +248,16 @@ def _step(row: dict) -> str:
 def running_row(row: dict, viewer: str) -> dict:
     """One running operation as the list draws it: the device (or what the operation is
     about), the operation's name, the step, who, since when, its network, and whether the
-    device's page reopens its card. An operation holding no device has no page to open."""
+    device's page reopens its card. An operation holding no device has no page to open, but
+    a job a page started (its ``page_url``) reopens that page."""
+    if row.get("page_url"):
+        what = row.get("operation") or row.get("kind") or "an operation"
+        return {"device": row.get("device") or what, "list": row.get("net", ""),
+                "name": what[:1].upper() + what[1:],
+                "step": row.get("step_words") or row.get("step") or "started",
+                "who": _who(row.get("actor", ""), viewer),
+                "since": _clock(row.get("started", "")), "card": False, "page": False,
+                "stalled": False, "href": row["page_url"]}
     if row.get("list"):                               # a device's row (`merge` names its list)
         named = row.get("card") if row.get("card") in RUN_CARDS else row.get("operation", "")
         return {"device": row.get("device", ""), "list": row.get("list", ""),
@@ -319,6 +333,8 @@ def finished_row(job: dict, viewer: str) -> dict:
     from modules import device_actions
     from modules.nsot import listref
 
+    if job.get("page"):
+        return page_finished_row(job, viewer)
     try:
         c = device_actions.job_card(listref.resolve(job["list"]), job["device"], job["card"],
                                     job["job"])
@@ -343,6 +359,42 @@ def finished_row(job: dict, viewer: str) -> dict:
             # The job's id: with the run's, what Open the result and Dismiss mark seen.
             "job": job["job"],
             "steps": len((c.get("steps") or {}).get("trail") or [])}
+
+
+#: A page job's payload state -> its level (never green over a stop, a refusal or a pause).
+PAGE_LEVELS = {"done": "ok", "paused": "warn", "stopped": "danger", "refused": "danger"}
+
+
+def page_finished_row(job: dict, viewer: str):
+    """A finished job a page started (board R's 0(a)): its outcome from its own payload
+    (``state``, ``stopped``, ``error``; a plan's ``ok``), its level, and the page that reopens
+    it as the row's link; None when this server no longer holds its result."""
+    from modules.nsot import capture_job
+
+    got = capture_job.get(job["job"])
+    if got is None:
+        return None
+    payload = got.get("payload") or {}
+    if got.get("state") == "failed":
+        level, words = "danger", "failed: " + (got.get("error") or "no reason was recorded")
+    elif "state" in payload:
+        level = PAGE_LEVELS.get(payload["state"], "danger")
+        words = {"done": "done, every device verified",
+                 "paused": "paused after the canary: waits for your Continue",
+                 "stopped": "stopped: " + (payload.get("stopped") or "")[:120],
+                 "refused": "not run: " + (payload.get("error") or "")[:120]}.get(
+                     payload["state"], payload["state"])
+    elif payload.get("ok"):
+        level, words = "ok", "ready to read"
+    else:
+        level, words = "danger", "refused: " + (payload.get("error") or "no reason")[:120]
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(job.get("finished_at") or 0))
+    what = job.get("kind") or "an operation"
+    return {"device": what[:1].upper() + what[1:], "list": job["list"], "card": "",
+            "name": "its result waits on its page", "level": level,
+            "outcome": OUTCOMES[level], "words": words,
+            "at": _clock(at), "who": _who(job.get("actor", ""), viewer), "run": "",
+            "job": job["job"], "steps": 0, "href": job["page"]}
 
 
 def job_opened(job: dict, viewer: str) -> bool:

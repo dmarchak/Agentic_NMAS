@@ -45,7 +45,7 @@ def page():
 
     return _page("v2/credentials.html", active_nav="credentials", tab="profiles",
                  list_name=_credentials_list(request), known=True, ro=P.read_view(), **_ctx(),
-                 **fleet_ctx())
+                 **fleet_ctx(), ra_job=(request.args.get("ra_job") or "").strip())
 
 
 @bp.route("/region", methods=["GET"])
@@ -222,36 +222,43 @@ def read_account_add_form():
 @bp.route("/read-account/add/preview", methods=["POST"])
 def read_account_add_preview():
     """The Add's preview: per ticked device the intent change and the lines a deploy will
-    send, masked, and the devices refused by name. Writes nothing."""
+    send, masked, and the devices refused by name. Writes nothing. With ``mode=update`` (the
+    form's own hidden field, sent by Update the read-only account's lines…), Update's
+    preview instead (C3583): each line its intent holds in another form, old -> new."""
     from modules.nsot import read_account as RA
     from modules.outbound import mask_payload
 
     picks = RA.picks_of(request.form.getlist("device"))
     reason = " ".join((request.form.get("reason") or "").split())
-    p = mask_payload(RA.add_preview(picks))
+    update = request.form.get("mode") == "update"
+    p = mask_payload(RA.update_preview(picks) if update else RA.add_preview(picks))
     code = 200 if p.pop("ok") else 400        # said by the status and by `p.error`
-    return _op(code, op={"state": "add_preview", "p": p, "reason": reason,
-                                   "picked": [f"{n}/{d}" for n, d in picks]})
+    return _op(code, op={"state": "update_preview" if update else "add_preview", "p": p,
+                         "reason": reason, "picked": [f"{n}/{d}" for n, d in picks]})
 
 
 @bp.route("/read-account/add", methods=["POST"])
 def read_account_add():
     """Commit the previewed Add as the verified person with their reason: refused, nothing
-    written, unless the preview made again has the confirmed hash; one commit per network."""
+    written, unless the preview made again has the confirmed hash; one commit per network.
+    With ``mode=update``, the previewed Update the read-only account's lines (C3583), the
+    same way (`read_account.update_commit`)."""
     from modules import identity
     from modules.nsot import read_account as RA
     from modules.outbound import mask_payload
 
     picks = RA.picks_of(request.form.getlist("device"))
     reason = " ".join((request.form.get("reason") or "").split())
-    got = RA.add_commit(picks, request.form.get("hash") or "", reason,
-                        identity.request_actor())
+    update = request.form.get("mode") == "update"
+    got = (RA.update_commit if update else RA.add_commit)(
+        picks, request.form.get("hash") or "", reason, identity.request_actor())
     if not got["ok"] and not got["commits"]:
-        p = mask_payload(got.get("preview") or RA.add_preview(picks))
+        p = mask_payload(got.get("preview")
+                         or (RA.update_preview(picks) if update else RA.add_preview(picks)))
         p.pop("ok", None)
-        return _op(409, op={"state": "add_preview", "p": p, "reason": reason,
-                                      "picked": [f"{n}/{d}" for n, d in picks],
-                                      "refused": got["error"]})
+        return _op(409, op={"state": "update_preview" if update else "add_preview", "p": p,
+                            "reason": reason, "picked": [f"{n}/{d}" for n, d in picks],
+                            "refused": got["error"]})
     done = [c for c in got["commits"] if c["commit"]]
     roll = None
     if done:
@@ -260,27 +267,46 @@ def read_account_add():
         net = done[0]["network"]
         roll = _rollout_form(net, sorted(set(RA.pending_of(net)) | set(done[0]["devices"])))
     return _op(op={"state": "added", "commits": got["commits"], "error": got["error"],
-                   "actor": identity.request_actor(), "roll": roll})
+                   "actor": identity.request_actor(), "roll": roll, "updated": update,
+                   "source": RA.UPDATE_SOURCE if update else RA.SOURCE})
 
 
-def _rollout_form(network: str, devices=None, canary: str = "", size=None, named=()) -> dict:
+def _rollout_form(network: str, devices=None, canary: str = "", size=None, named=(),
+                  options=None) -> dict:
     from modules.nsot import listref
     from modules.nsot import read_account as RA
 
     pending = RA.pending_of(network)
     chosen = [d for d in (devices if devices is not None else pending)]
-    return {"network": network, "networks": listref.names(),
+    # The network whose devices the form offers is always one of its choices: a network on
+    # disk the registry has not caught up with (`listref.exists`) is never drawn as another
+    # network's devices under the select's first name.
+    names = listref.names()
+    if network and network not in names:
+        names = [network] + names
+    return {"network": network, "networks": names,
             "devices": chosen, "canary": canary, "size": size or RA.WAVE,
-            "wave_max": RA.WAVE_MAX, "named": [d for d in named if d]}
+            "wave_max": RA.WAVE_MAX, "named": [d for d in named if d],
+            "options": RA.fleet_change_options(options), "settle_max": RA.SETTLE_MAX}
 
 
 @bp.route("/read-account/rollout", methods=["GET"])
 def read_account_rollout_form():
     """Roll it out: the network, its devices whose intent names the account and whose golden
-    does not hold it (the held coverage), the canary and the wave size; nothing sent."""
+    does not hold it (the held coverage), the canary and the wave size; nothing sent. The
+    network is the one named (``network``, else the page's ``list``); with none named, the
+    active network when it has devices waiting, else the first network (by name) the held
+    coverage has devices waiting in: a measured default, so the coverage bar's Roll it out…
+    opens on the devices it counts, never on an empty network."""
     from modules.nsot import listref
+    from modules.nsot import read_account as RA
 
-    network = (request.args.get("network") or "").strip() or listref.active().name
+    network = (request.args.get("network") or request.args.get("list") or "").strip()
+    if not network:
+        active = listref.active().name
+        waiting = sorted({r["network"] for r in (RA.held()["value"] or {}).get("devices") or []
+                          if r.get("state") == "pending"})
+        network = active if active in waiting or not waiting else waiting[0]
     return _op(op={"state": "roll_form", "roll": _rollout_form(network)})
 
 
@@ -304,11 +330,13 @@ def read_account_rollout_plan():
     canary = (request.form.get("canary") or "").strip()
     size = _size(request.form)
     named = request.form.getlist("management")
-    roll = _rollout_form(network, devices, canary, size, named)
+    options = RA.fleet_change_options(request.form)
+    roll = _rollout_form(network, devices, canary, size, named, options)
     if not devices:
         return _op(400, op={"state": "roll_form", "roll": roll,
                                       "refused": "no device is chosen: tick one to roll out"})
-    job = RA.plan_start(network, devices, canary, size, identity.request_actor(), named)
+    job = RA.plan_start(network, devices, canary, size, identity.request_actor(), named,
+                        options)
     return _op(op={"state": "roll_planning", "job": job, "roll": roll})
 
 
@@ -319,15 +347,24 @@ def read_account_rollout_planned(job):
     from modules.nsot import capture_job
 
     got = capture_job.get(job)
-    roll = _rollout_form((request.args.get("network") or "").strip(),
-                         request.args.getlist("device"),
-                         (request.args.get("canary") or "").strip(), _size(request.args),
-                         request.args.getlist("management"))
+    plan = (got or {}).get("payload") or {}
+    if plan.get("network") and not request.args.get("network"):
+        # Reopened from In progress (`ra_job`): the form's values are the plan's own.
+        roll = _rollout_form(plan["network"], [d["device"] for d in plan.get("devices") or []]
+                             + list(plan.get("unchanged") or [])
+                             + [r["device"] for r in plan.get("refused") or []],
+                             plan.get("canary", ""), plan.get("size"), plan.get("named") or (),
+                             plan.get("options"))
+    else:
+        roll = _rollout_form((request.args.get("network") or "").strip(),
+                             request.args.getlist("device"),
+                             (request.args.get("canary") or "").strip(), _size(request.args),
+                             request.args.getlist("management"), request.args)
     if got is None:
         return _op(op={"state": "roll_unknown", "job": job, "roll": roll})
     if got["state"] == "running":
         return _op(op={"state": "roll_planning", "job": job, "roll": roll})
-    plan = got.get("payload") or {}
+    _opened(job)
     if got["state"] == "failed" or not plan.get("ok"):
         return _op(op={"state": "roll_form", "roll": roll, "refused": (
             got.get("error") or plan.get("error") or "the plan did not finish")})
@@ -338,9 +375,10 @@ def read_account_rollout_planned(job):
 
 @bp.route("/read-account/rollout", methods=["POST"])
 def read_account_rollout_confirm():
-    """Confirm the rollout's hash as a verified person: one job makes the plan again, refuses
-    unless its hash is the one confirmed, then deploys the canary alone through THE apply and
-    pauses. Answers at once with the run's card."""
+    """The ONE confirm of the whole plan by its hash, its options with it, as a verified
+    person: one job makes the plan again, refuses unless its hash is the one confirmed (a
+    changed option is a changed hash), then THE engine runs the canary and every wave by
+    itself. Answers at once with the run's card."""
     from modules import identity
     from modules.nsot import read_account as RA
 
@@ -350,21 +388,51 @@ def read_account_rollout_confirm():
                            (request.form.get("canary") or "").strip(), _size(request.form),
                            (request.form.get("hash") or "").strip(),
                            actor=identity.request_actor(), actor_kind=getattr(who, "kind", ""),
-                           named=request.form.getlist("management"))
-    return _op(202, op={"state": "roll_running", "job": job, "network": network})
+                           named=request.form.getlist("management"),
+                           options=RA.fleet_change_options(request.form))
+    return _op(202, op={"state": "roll_running", "job": job, "network": network, "p": {}})
+
+
+def _opened(job: str) -> None:
+    """The job's result was drawn for the person looking: it leaves their "Finished, not opened
+    yet" (`capture_job.mark_opened`, the one home)."""
+    from modules.nsot import capture_job
+    from routes.operations import viewer_key
+
+    try:
+        capture_job.mark_opened(job, viewer_key())
+    except Exception:                                 # noqa: BLE001 (the list keeps it)
+        log.warning("read account: job %s not marked opened", job, exc_info=True)
+
+
+@bp.route("/read-account/job/<job>", methods=["GET"])
+def read_account_job(job):
+    """A job this card started, reopened from In progress (``ra_job`` on the page): its card as
+    the job's own route draws it, by its kind (the preview, the run, the probe)."""
+    from modules.nsot import capture_job
+
+    kind = ((capture_job.card_jobs() and next((j for j in capture_job.card_jobs()
+                                               if j["job"] == job), None)) or {}).get("kind", "")
+    if kind == "read-only account rollout preview":
+        return read_account_rollout_planned(job)
+    if kind == "read-only account rollout":
+        return read_account_rollout_run(job)
+    if kind == "read-only account probe":
+        return read_account_probe_job(job)
+    return _op(op={"state": "roll_unknown", "job": job, "roll": {"network": ""}})
 
 
 @bp.route("/read-account/rollout/go-on", methods=["POST"])
 def read_account_rollout_go_on():
-    """Go on after a pause, as a verified person: the next waves from the paused run's own
-    record; a management-path device's wave only on the confirm naming it."""
+    """Continue the rollout, after the pause its plan chose: the person's press, as a verified
+    person, the rest of the waves from the paused run's own record, by themselves."""
     from modules import identity
     from modules.nsot import capture_job
     from modules.nsot import read_account as RA
 
     paused = (request.form.get("job") or "").strip()
     run = ((capture_job.get(paused) or {}).get("payload")) or {}
-    why = RA.go_on_refusal(run, request.form.get("confirm_device") or "")
+    why = RA.go_on_refusal(run)
     if why:
         return _op(409, op={"state": "roll_refused", "error": why, "job": paused,
                                       "network": run.get("network", "")})
@@ -380,6 +448,7 @@ def read_account_rollout_run(job):
     """The rollout's card for its job: running, paused (after the canary, or before a
     management-path device), stopped, done, refused, or why there is none."""
     from modules.nsot import capture_job
+    from modules.nsot import read_account as RA
 
     got = capture_job.get(job)
     if got is None:
@@ -387,7 +456,8 @@ def read_account_rollout_run(job):
                                  "roll": {"network": (request.args.get("network") or "")}})
     if got["state"] == "running":
         return _op(op={"state": "roll_running", "job": job,
-                                 "network": (request.args.get("network") or "")})
+                       "network": (request.args.get("network") or ""), "p": RA.progress(job)})
+    _opened(job)
     run = got.get("payload") or {}
     if got["state"] == "failed" or run.get("state") == "refused":
         return _op(op={"state": "roll_refused", "job": job,
@@ -414,15 +484,15 @@ def _run_view(run: dict) -> dict:
                 if outcome == "deployed" and (r.get("verify") or {}).get("ok") is False:
                     outcome = "verify failed"
             rows.append({"device": d, "outcome": outcome, "why": why,
+                         "probe": (r or {}).get("probe") or {},
                          "carries": len((plan.get("carries") or {}).get(d) or [])})
         waves.append({"n": n, "kind": ("canary" if n == 0 else "management"
                                         if n in (plan.get("confirm_at") or []) else "wave"),
                       "rows": rows})
-    nxt = run.get("next", 0)
-    upcoming = (plan.get("batches") or [])[nxt] if nxt < len(plan.get("batches") or []) else []
     return {"state": run.get("state", ""), "network": run.get("network", ""),
-            "stopped": run.get("stopped", ""), "waits": run.get("waits", ""), "waves": waves,
-            "upcoming": upcoming, "hash": plan.get("hash", ""),
+            "stopped": run.get("stopped", ""), "waves": waves,
+            "not_started": run.get("not_started") or [], "told": run.get("told") or {},
+            "hash": plan.get("hash", ""),
             "carries": {d: len(v) for d, v in (plan.get("carries") or {}).items()}}
 
 

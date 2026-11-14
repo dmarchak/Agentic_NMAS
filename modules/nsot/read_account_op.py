@@ -59,6 +59,12 @@ def _probe():
     return read_account_probe
 
 
+def _page_of(network: str) -> str:
+    """The page a probe's job reopens from In progress (`read_account.page_of`, one home)."""
+    from modules.nsot import read_account
+    return read_account.page_of(network)
+
+
 def preview(network: str, device: str) -> dict:
     """The preview: ``{"ok", "refused", "network", "device", "account", "lines", "hash",
     "now"}``. *lines* are the probe's own preview words (its account, every command and what
@@ -136,7 +142,7 @@ def start(network: str, device: str, confirmed: str, actor: str) -> str:
     # Its page showing a probe in progress is C3539.
     return capture_job.start(network, f"Probe {device}'s read-only account", actor, work,
                              kind="read-only account probe", announce_keys=ANNOUNCE_KEYS,
-                             announcer=ANNOUNCER)
+                             announcer=ANNOUNCER, page=_page_of(network))
 
 
 def view(rec: dict) -> dict:

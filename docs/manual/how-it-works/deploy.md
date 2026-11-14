@@ -360,8 +360,11 @@ Leave out plans again on every one of them, because it changes what is confirmed
 not in any hash: the confirm sends it as the list shows it, the server refuses one that is not
 exactly the confirmed devices, each once, and the job and the receipts record the devices in
 it. A device refused at apply is skipped and the rest
-proceed. After `deploy_verify_failure_limit` failed devices (default 2) the circuit breaker
-trips and the remaining devices are not attempted, each saying so. A failed device is one that
+proceed. The batch runs through the same rollout engine every batch deploy runs (the
+operator, 2026-11-14): at its first failed device the circuit breaker trips, that device is
+rolled back, the remaining devices are not attempted, each saying so, and the team is told
+through the network's Who is told (a restore keeps `deploy_verify_failure_limit`, default 2).
+A failed device is one that
 did not end deployed with its verify passed: a push the device rejected, a refusal on the way to
 the device, a verify that raised, or a verify that did not pass (intent unmet, unreadable after
 the change, a sent line not read back). A drifted device (its stored capture moved since the

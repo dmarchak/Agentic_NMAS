@@ -158,6 +158,9 @@ def mark_seen():
     ident = (entry or {}).get("job") or (entry or {}).get("run") or job or run
     run_href = current_app.jinja_env.get_template("v2/_macros.html").module.run_href
     where = unescape(str(run_href(device, network or None, ident or None))).strip()
+    if (entry or {}).get("href", "").startswith("/v2/"):
+        # A job a page started (board R's 0(a)): the page that reopens it.
+        where = entry["href"]
     if request.headers.get("HX-Request"):
         resp = make_response("", 204)
         resp.headers["HX-Redirect"] = where

@@ -431,3 +431,39 @@ def read_account_lines(dialect: str, level: int = READ_ACCOUNT_LEVEL, *,
                            f"on the device, the plain `{command} <address>` too (the "
                            f"installation choice \"{router_reads.PING_CHOICE}\")")})
     return out
+
+
+def with_updated_entries(host_vars: dict, entries) -> tuple:
+    """``(document, changed)``: *host_vars* (a copy; the caller's is never changed) with each
+    held entry whose command one of *entries* names, but in another form (another level or
+    another ``all``), replaced by that entry, in render order (`ordered`); ``changed`` is
+    ``[{"command", "old", "new"}]``, each an entry. THE edit of its own that `with_entries`
+    refuses to make in passing (C3583: the read-only account's telemetry line became
+    ``all``): it changes only the entries the given set names, and nothing else; an entry of
+    *entries* the document does not hold is not added (that is `with_entries`'), and an entry
+    held exactly is left as it is (a second run changes nothing). ValueError when an entry is
+    not one the key may hold (`problem`, judged against the document as it would then stand)."""
+    doc = dict(host_vars or {})
+    held = [dict(e) for e in doc.get("privilege_exec") or [] if isinstance(e, dict)]
+    index = {e.get("command"): i for i, e in enumerate(held)}
+    changed = []
+    for entry in entries or []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("command"), str):
+            raise ValueError(problem(entry) or f"{entry!r} is not an entry")
+        want = {"level": entry.get("level"), "command": entry["command"],
+                "all": bool(entry.get("all", False))}
+        i = index.get(want["command"])
+        if i is None:
+            continue
+        have = held[i]
+        if (have.get("level"), bool(have.get("all", False))) == (want["level"], want["all"]):
+            continue
+        changed.append({"command": want["command"], "old": dict(have), "new": want})
+        held[i] = want
+    for c in changed:
+        why = problem(c["new"], [e for e in held if e is not c["new"]])
+        if why:
+            raise ValueError(why)
+    if changed:
+        doc["privilege_exec"] = ordered(held)
+    return doc, changed

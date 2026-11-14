@@ -2444,14 +2444,15 @@ def onboard_ztp_iosxe():
 def read_account_rollout():
     return svg(520, (
         "The read-only account's rollout (board R). Add the read-only account committed it to "
-        "each device's intent; the rollout deploys that intent through the batch deploy. The "
-        "preview sends nothing: each chosen device's program comes from the deploy's own plan, "
-        "masked, in one order (the canary alone, then waves, then each device carrying "
-        "Mercury's management path last and alone) under one hash, which you confirm. The run "
-        "holds each device, sends its program, verifies it and saves it to startup, rolling it "
-        "back if verify fails; it pauses after the canary for Go on, and before a "
-        "management-path device for a confirm naming it. The first failure stops the rest. "
-        "Each device's receipt and golden are recorded."), [
+        "each device's intent; the rollout deploys that intent through the batch deploy's "
+        "engine. The preview sends nothing: each chosen device's program comes from the "
+        "deploy's own plan, masked, in one order (the canary alone, then waves, then each "
+        "device carrying Mercury's management path last, after every device reached through "
+        "it) with its options, under one hash, which you confirm once. Then the run goes by "
+        "itself: each device held, sent, verified, probed signed in as the read-only account, "
+        "and saved to startup; the settle waited between waves; a pause after the canary only "
+        "when you chose one. The first failure, a failed probe included, is rolled back, stops "
+        "the rest and tells the team. Each device's receipt and golden are recorded."), [
         lanes(20, 514),
         band(20, 150, "The preview · nothing sent"),
         doc("intent", 14, 42, 90, 42, "Intent", "the account added"),
@@ -2459,16 +2460,16 @@ def read_account_rollout():
         doc("box", 122, 42, 80, 42, "Programs", "the deploy's plan"),
         num(14, 42, 1),
         t(14, 104, "canary · waves · management path last", "sm"),
-        person(14, 118, 188, 32, "You confirm one hash"), num(14, 118, 2),
+        person(14, 118, 188, 32, "You confirm once, by hash"), num(14, 118, 2),
         device(240, 50, 140, 48, "The devices", "not contacted", off=True),
         nosend(310, 130, ("nothing is sent", "until you confirm")),
-        band(176, 270, "The run · one device at a time"),
+        band(176, 270, "The run · by itself, wave by wave"),
         device(262, 200, 118, 196, "Each device", "held", top=True),
         *rows([
-            (220, "send", 3, "Canary", "sent, verified, saved; pause"),
-            (262, "send", 4, "Waves", "each program checked again"),
-            (304, "send", 5, "Management path", "last, alone, its own confirm"),
-            (346, "undo", 6, "If verify fails: roll back", "the rest not attempted"),
+            (220, "send", 3, "Canary", "probed, saved; pause if chosen"),
+            (262, "send", 4, "Waves", "by themselves, the settle between"),
+            (304, "send", 5, "Management path", "last, after all it reaches"),
+            (346, "undo", 6, "Verify or probe fails: undo", "stop, tell the team"),
         ]),
         store(14, 460, 120, 42, "Receipts", "one per device"), num(14, 460, 7),
         doc("golden", 144, 460, 110, 42, "Golden", "after its save"),

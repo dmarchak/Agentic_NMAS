@@ -52,8 +52,10 @@ STAGES = {
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
     # Board R (provisional, operator review pending): the read-only account's rollout, the
     # committed intent of the chosen devices through the batch deploy's plan and THE apply
-    # (`fleet_change.run_batches` over `routes.deploy.apply_batch`): the canary, Go on, a
-    # management-path device on its own confirm; each device verified, saved, rolled back.
+    # (`fleet_change.run_waves`, THE engine, over `routes.deploy.apply_batch`): one confirm, the
+    # canary and every wave by themselves; each device verified, probed signed in as the
+    # account (`read_account.probe_after_verify`, THE apply's check after verify), saved, and
+    # rolled back on a failed verify or probe.
     "credential_profiles_v2.read_account_rollout_confirm": Stages(
         "credential_profiles_v2.read_account_rollout_plan", "hash",
         "modules.pipeline._stage_verify", "modules.pipeline._stage_rollback",

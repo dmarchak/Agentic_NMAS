@@ -11,23 +11,25 @@
 {% endfor %}</pre>
 {%- endmacro -%}
 {%- macro roll_hidden(roll) -%}
-<input type="hidden" name="network" value="{{ roll.network }}">{% for d in roll.devices %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}<input type="hidden" name="canary" value="{{ roll.canary }}"><input type="hidden" name="size" value="{{ roll.size }}">{% for d in roll.named %}<input type="hidden" name="management" value="{{ d }}">{% endfor %}
+<input type="hidden" name="network" value="{{ roll.network }}">{% for d in roll.devices %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}<input type="hidden" name="canary" value="{{ roll.canary }}"><input type="hidden" name="size" value="{{ roll.size }}">{% for d in roll.named %}<input type="hidden" name="management" value="{{ d }}">{% endfor %}<input type="hidden" name="settle_s" value="{{ roll.options.settle_s }}">{% if roll.options.pause_after_canary %}<input type="hidden" name="pause_after_canary" value="1">{% endif %}
 {%- endmacro -%}
 {%- macro roll_form(roll, refused='') -%}
 <form method="post" action="{{ url_for('credential_profiles_v2.read_account_rollout_plan') }}" hx-post="{{ url_for('credential_profiles_v2.read_account_rollout_plan') }}" hx-target="#ra-op" hx-swap="outerHTML" autocomplete="off" data-ra-roll-form>
   <div class="op-part"><h3>Roll it out</h3><div>
-    <p class="small">Deploys these devices' committed intent through the batch deploy: one preview of every device's program and one hash; the canary first, alone; then waves; each device held, sent, verified, saved to startup, rolled back on failure; the first failure stops the rest. A device carrying Mercury's management path goes last, alone, on its own confirm.</p>
+    <p class="small">Deploys these devices' committed intent through the batch deploy: one preview of every device's program and one hash, confirmed once; then the canary and every wave run by themselves, each device held, sent, verified and saved to startup; the first failure is rolled back, stops the rest and tells the team. A device carrying Mercury's management path goes last, after every device reached through it, unless its program is accounts and privilege lines only.</p>
     {%- if refused %}<div class="notice notice-danger" role="alert" data-ra-refused>{{ icon('warn', 16) }}<p><strong>Not planned:</strong> {{ refused }}.</p></div>{% endif %}
     <div class="fc-run-form">
       <div><label for="ra-roll-net">Network</label><select id="ra-roll-net" name="network" hx-get="{{ url_for('credential_profiles_v2.read_account_rollout_form') }}" hx-target="#ra-op" hx-swap="outerHTML" hx-trigger="change">{% for n in roll.networks %}<option value="{{ n }}"{% if n == roll.network %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
       <div><label for="ra-roll-canary">Canary</label><select id="ra-roll-canary" name="canary"><option value="">the first by the plan's order</option>{% for d in roll.devices %}<option value="{{ d }}"{% if d == roll.canary %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
       <div><label for="ra-roll-size">Then waves of</label><input id="ra-roll-size" name="size" type="number" min="1" max="{{ roll.wave_max }}" value="{{ roll.size }}"></div>
+      <div><label for="ra-roll-settle">Settle between waves (seconds)</label><input id="ra-roll-settle" name="settle_s" type="number" min="0" max="{{ roll.settle_max }}" value="{{ roll.options.settle_s }}"></div>
     </div>
+    <p class="ra-tick"><label><input type="checkbox" name="pause_after_canary" value="1"{% if roll.options.pause_after_canary %} checked{% endif %}> Pause after the canary for my Continue <span class="small muted">(off: the canary and every wave run by themselves, the first failure rolled back and the run stopped, the team told)</span></label></p>
     {%- if roll.devices %}
     <details class="rot-group" data-keep="ra-roll-devices"{% if roll.devices | length <= 12 %} open{% endif %}><summary>{{ badge(roll.devices | length ~ ' to deploy', 'info') }} <span class="small">its intent names the account, its golden does not hold it</span></summary>
       <p class="ra-ticks">{% for d in roll.devices %}<label class="ra-tick"><input type="checkbox" name="device" value="{{ d }}" checked> <span class="mono">{{ d }}</span></label>{% endfor %}</p>
     </details>
-    <details class="rot-group" data-keep="ra-roll-named" data-ra-named-form{% if roll.named %} open{% endif %}><summary>{{ badge(roll.named | length ~ ' named as the management path', 'warn' if roll.named else 'muted') }} <span class="small">devices that carry Mercury's management path, named by you; each goes last, alone, on its own confirm</span></summary>
+    <details class="rot-group" data-keep="ra-roll-named" data-ra-named-form{% if roll.named %} open{% endif %}><summary>{{ badge(roll.named | length ~ ' named as the management path', 'warn' if roll.named else 'muted') }} <span class="small">devices that carry Mercury's management path, named by you; each goes last, alone, after every device reached through it</span></summary>
       <p class="small">Mercury measures this from the Topology read. When that read cannot be used, the rollout is not offered until it can, or until you name the devices here.</p>
       <p class="ra-ticks">{% for d in roll.devices %}<label class="ra-tick"><input type="checkbox" name="management" value="{{ d }}"{% if d in roll.named %} checked{% endif %}> <span class="mono">{{ d }}</span></label>{% endfor %}</p>
     </details>
@@ -40,6 +42,7 @@
 </form>
 {%- endmacro -%}
 <div id="ra-op">
+{%- set PROBE_KIND = {'PASS': 'ok', 'INCOMPLETE': 'warn', 'FAIL': 'danger', 'UNREADABLE': 'warn', 'SIGN-IN REFUSED': 'danger'} %}
 {%- if op.state == 'add_form' %}
 {%- set c = op.c %}
 <section class="op-card" aria-labelledby="ra-add-h">
@@ -63,7 +66,7 @@
       <div class="table-wrap"><table class="table ra-table"><thead><tr><th scope="col"><span class="sr-only">Tick</span></th><th scope="col">Device</th><th scope="col">Platform</th><th scope="col">Now</th></tr></thead><tbody>
       {%- for d in n.devices %}
       {%- set ticked = d.addable and (op.tick == 'not-yet' or op.tick == 'network:' ~ n.name or op.tick == 'platform:' ~ d.platform) %}
-      <tr data-ra-pick="{{ n.name }}/{{ d.device }}"><td><input type="checkbox" name="device" value="{{ n.name }}/{{ d.device }}" aria-label="Tick {{ d.device }}"{% if ticked %} checked{% endif %}{% if not d.addable %} disabled{% endif %}></td><th scope="row" class="mono">{{ d.device }}</th><td>{{ d.platform }}</td><td>{{ badge(d.words, d.kind) }}</td></tr>
+      <tr data-ra-pick="{{ n.name }}/{{ d.device }}"><td><input type="checkbox" name="device" value="{{ n.name }}/{{ d.device }}" aria-label="Tick {{ d.device }}"{% if ticked %} checked{% endif %}{% if not d.addable %} disabled{% endif %}></td><th scope="row" class="mono">{{ d.device }}</th><td>{{ d.platform }}</td><td>{{ badge(d.words, d.kind) }}{% if d.other_form %} {{ badge(d.other_form ~ ' line' ~ ('' if d.other_form == 1 else 's') ~ ' in another form', 'warn') }}{% endif %}</td></tr>
       {%- endfor %}
       </tbody></table></div>
     </details>
@@ -102,6 +105,15 @@
   {%- if p.refused %}
   <div class="op-part"><h3>Refused</h3><div><ul class="small" data-ra-refused-list>{% for r in p.refused %}<li><strong class="mono">{{ r.device }}</strong> ({{ r.network }}): {{ r.why }}. Nothing is written for it.</li>{% endfor %}</ul></div></div>
   {%- endif %}
+  {%- if p.updating %}
+  <div class="op-part"><h3>In another form</h3><div data-ra-updating>
+    <p class="small">{{ p.updating | map(attribute='device') | join(', ') }}: {{ 'its' if p.updating | length == 1 else 'their' }} intent holds the read-only account's lines in another form. Add never changes a held line in passing; <strong>Update the read-only account's lines</strong> is that edit, previewed line by line, nothing written yet.</p>
+    <form method="post" action="{{ url_for('credential_profiles_v2.read_account_add_preview') }}" hx-post="{{ url_for('credential_profiles_v2.read_account_add_preview') }}" hx-target="#ra-op" hx-swap="outerHTML" autocomplete="off" data-ra-update-offer>
+    <input type="hidden" name="mode" value="update"><input type="hidden" name="reason" value="{{ op.reason }}">{% for u in p.updating %}<input type="hidden" name="device" value="{{ u.network }}/{{ u.device }}">{% endfor %}
+    <p class="op-act"><button type="submit" class="btn btn-small" data-op="credentials" hx-disabled-elt="this"><span class="op-idle">Update the read-only account's lines…</span><span class="op-busy">Checking each device…</span></button>{{ how('credentials', 'update-read-account', compact=True, op="Update the read-only account's lines") }}</p>
+    </form>
+  </div></div>
+  {%- endif %}
   {%- if p.holding %}
   <div class="op-part"><h3>Already</h3><div><p class="small">{{ p.holding | map(attribute='device') | join(', ') }}: {{ 'its' if p.holding | length == 1 else 'their' }} intent holds it already; nothing to add.</p></div></div>
   {%- endif %}
@@ -118,15 +130,55 @@
   </div></div>
   </form>
 </section>
+{%- elif op.state == 'update_preview' %}
+{%- set p = op.p %}
+<section class="op-card" aria-labelledby="ra-upd-h">
+  <div class="op-hd"><h2 id="ra-upd-h">Update the read-only account's lines in {{ p.taking | length }} device{{ '' if p.taking | length == 1 else 's' }}' intent</h2><div class="op-hd-actions">{{ how('credentials', 'update-read-account', compact=True, op="Update the read-only account's lines") }}</div></div>
+  {%- if op.refused %}<div class="op-part"><h3>Not written</h3><div><div class="notice notice-danger" role="alert" data-ra-update-refused>{{ icon('warn', 16) }}<p><strong>Nothing was written:</strong> {{ op.refused }}.</p></div></div></div>{% endif %}
+  {%- if p.error %}<div class="op-part"><h3>Refused</h3><div><div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ p.error }}.</p></div></div></div>{% endif %}
+  <div class="op-part"><h3>What</h3><div>
+    <p data-ra-update-summary><strong>{{ p.taking | length }} change</strong>{% if p.refused %} · {{ badge(p.refused | length ~ ' refused', 'danger') }}{% endif %}{% if p.current %} · {{ p.current | length }} current already{% endif %} · {{ p.networks | length }} network{{ '' if p.networks | length == 1 else 's' }}, one commit each · level {{ p.level }}</p>
+    <p class="small muted">Only the read-only account's own lines change; every other line of the intent stays as it is. Nothing is written by this preview, and nothing is sent to a device: the rollout deploys it.</p>
+  </div></div>
+  {%- if p.groups %}
+  <div class="op-part"><h3>Each device</h3><div>
+    {%- for g in p.groups %}
+    <details class="fc-group" data-keep="ra-upd-group-{{ loop.index }}" data-ra-update-group{% if loop.first %} open{% endif %}><summary>{{ badge(g.platform, 'info') }} {{ g.devices | length }} device{{ '' if g.devices | length == 1 else 's' }}: {{ g.devices[:8] | join(', ') }}{% if g.devices | length > 8 %} and {{ g.devices | length - 8 }} more{% endif %}</summary>
+      <ul class="small" data-ra-update-lines>{% for c in g.changes %}<li><code>{{ c.old }}</code> → <code>{{ c.new }}</code></li>{% endfor %}</ul>
+      <p class="small">Then a deploy will send, in this order (masked):</p>
+      {{ program(g.lines) }}
+    </details>
+    {%- endfor %}
+  </div></div>
+  {%- endif %}
+  {%- if p.refused %}
+  <div class="op-part"><h3>Refused</h3><div><ul class="small" data-ra-update-refused-list>{% for r in p.refused %}<li><strong class="mono">{{ r.device }}</strong> ({{ r.network }}): {{ r.why }}. Nothing is written for it.</li>{% endfor %}</ul></div></div>
+  {%- endif %}
+  {%- if p.current %}
+  <div class="op-part"><h3>Already</h3><div><p class="small">{{ p.current | map(attribute='device') | join(', ') }}: {{ 'its' if p.current | length == 1 else 'their' }} lines are the account's already; nothing to change.</p></div></div>
+  {%- endif %}
+  <form method="post" action="{{ url_for('credential_profiles_v2.read_account_add') }}" hx-post="{{ url_for('credential_profiles_v2.read_account_add') }}" hx-target="#ra-op" hx-swap="outerHTML" autocomplete="off">
+  <input type="hidden" name="mode" value="update">{%- for d in op.picked %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}<input type="hidden" name="hash" value="{{ p.hash }}">
+  <div class="op-part"><h3>Confirm</h3><div>
+    <label class="sr-only" for="ra-reason3">Reason</label><textarea id="ra-reason3" name="reason" class="set-reason" rows="2" required>{{ op.reason }}</textarea>
+    <p class="small muted">Preview <span class="mono" title="sha256:{{ p.hash }}">{{ p.hash[:12] }}</span>: if a device's intent moved since, nothing is written and it says which.</p>
+    {%- if may.may %}
+    <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="credentials" hx-disabled-elt="this"{{ gate('approve') }}{% if not p.taking %} disabled aria-disabled="true" data-refused="Not available: no ticked device's lines change"{% endif %}><span class="op-idle">Update {{ p.taking | length }} device{{ '' if p.taking | length == 1 else 's' }}' intent</span><span class="op-busy">Committing…</span></button>{{ how('credentials', 'update-read-account', compact=True, op="Update the read-only account's lines") }}
+    {%- else %}<p class="muted small">{{ may.statement }} Nothing can be committed from here.</p><p>{% endif %}
+      <a class="btn btn-small" href="{{ url_for('credential_profiles_v2.page') }}" hx-get="{{ url_for('credential_profiles_v2.read_account_add_form') }}" hx-target="#ra-op" hx-swap="outerHTML">Back</a>
+      <a class="btn btn-small" href="{{ url_for('credential_profiles_v2.page') }}" hx-get="{{ url_for('credential_profiles_v2.read_account_close') }}" hx-target="#ra-op" hx-swap="outerHTML">Cancel</a></p>
+  </div></div>
+  </form>
+</section>
 {%- elif op.state == 'added' %}
 <section class="op-card op-{{ 'danger' if op.error else 'ok' }}" aria-labelledby="ra-added-h">
-  <div class="op-hd"><h2 id="ra-added-h">{{ 'Partly added' if op.error else 'Added' }} to intent</h2><div class="op-hd-actions">{{ how('credentials', 'add-read-account', compact=True, op='Add the read-only account') }}</div></div>
+  <div class="op-hd"><h2 id="ra-added-h">{% if op.updated %}{{ 'Partly updated' if op.error else 'Updated' }} in intent{% else %}{{ 'Partly added' if op.error else 'Added' }} to intent{% endif %}</h2><div class="op-hd-actions">{{ how('credentials', 'add-read-account', compact=True, op='Add the read-only account') }}</div></div>
   <div class="op-part"><h3>What</h3><div>
     {%- for c in op.commits %}
     {%- if c.commit %}<p data-ra-committed>{{ icon('tick', 16) }} <strong>{{ c.network }}</strong>: {{ c.devices | join(', ') }}, committed as {{ op.actor | people }}, <code title="{{ c.commit }}">{{ c.commit[:10] }}</code>.</p>
     {%- else %}<div class="notice notice-danger" role="alert" data-ra-not-committed>{{ icon('warn', 16) }}<p><strong>{{ c.network }}: not committed</strong> ({{ c.devices | join(', ') }}): {{ c.error }}. Nothing was written for {{ 'it' if c.devices | length == 1 else 'them' }}.</p></div>{% endif %}
     {%- endfor %}
-    <p class="small">Nothing was sent to a device. Recorded on History (each network's commit, Source <code>read-account-add</code>, with your reason).</p>
+    <p class="small">Nothing was sent to a device. Recorded on History (each network's commit, Source <code>{{ op.source or 'read-account-add' }}</code>, with your reason).</p>
   </div></div>
   {%- if op.roll %}{{ roll_form(op.roll) }}{% endif %}
 </section>
@@ -147,18 +199,20 @@
   <div class="op-part"><h3>What</h3><div>
     <p data-ra-plan-summary><strong>{{ p.devices | length }} device{{ '' if p.devices | length == 1 else 's' }}, {{ p.batches | length }} wave{{ '' if p.batches | length == 1 else 's' }}</strong> · {{ badge(p.devices | length ~ ' to send', 'ok') }}{% if p.carries %} {{ badge(p.carries | length ~ " carr" ~ ('ies' if p.carries | length == 1 else 'y') ~ " Mercury's management path", 'warn') }}{% endif %} {{ badge(p.unchanged | length ~ ' send nothing', 'muted') }} {{ badge(p.refused | length ~ ' refused', 'danger' if p.refused else 'muted') }}</p>
     <p class="small muted">Planned in {{ op.elapsed_s }} s · sha256 <span class="mono" title="{{ p.hash }}">{{ p.hash[:12] }}</span> · at <code title="{{ p.base }}">{{ p.base[:10] }}</code></p>
+    <p class="small" data-ra-options>Runs by itself once confirmed: {{ "a pause after the canary for your Continue" if p.options.pause_after_canary else "no pause after the canary" }}, {{ (p.options.settle_s ~ " s between waves") if p.options.settle_s else "no settle time" }}; the first device that fails is rolled back, the run stops, and the team is told. These are part of the hash: change one and preview again.</p>
+    {%- if p.account_only %}<p class="small" data-ra-account-only>{{ p.account_only | join(", ") }} carr{{ "ies" if p.account_only | length == 1 else "y" }} Mercury's management path, and {{ "its program is" if p.account_only | length == 1 else "their programs are" }} accounts and privilege lines only, which cannot cut a path: in the normal waves.</p>{% endif %}
     {%- if p.blocked %}<div class="notice notice-danger" role="alert" data-ra-blocked>{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ p.blocked }}. Preview it again once the Topology read answers, or name the devices that carry the management path.</p></div>
-    {%- elif p.carries_why %}<div class="notice notice-warn" role="status" data-ra-carries-unknown>{{ icon('warn', 16) }}<p><strong>Mercury's management path could not be measured:</strong> {{ p.carries_why }}. You named {{ p.named | join(', ') }} as carrying it; each goes last, alone, on its own confirm.</p></div>{% endif %}
+    {%- elif p.carries_why %}<div class="notice notice-warn" role="status" data-ra-carries-unknown>{{ icon('warn', 16) }}<p><strong>Mercury's management path could not be measured:</strong> {{ p.carries_why }}. You named {{ p.named | join(', ') }} as carrying it; each goes last, alone, after every device reached through it.</p></div>{% endif %}
   </div></div>
   <div class="op-part"><h3>Order</h3><div>
     {%- set progs = {} %}{% for d in p.devices %}{% set _ = progs.update({d.device: d}) %}{% endfor %}
     {%- for b in p.batches %}
     {%- set mgmt = loop.index0 in p.confirm_at %}
     <div class="ra-wave{{ ' ra-hold' if mgmt }}" data-ra-wave="{{ loop.index0 }}"><strong>{% if loop.first and not mgmt %}Canary{% elif mgmt %}Last, alone{% else %}Wave {{ loop.index }}{% endif %}</strong> · {{ b | join(', ') }}
-      {%- if mgmt and not p.carries[b[0]] %} {{ badge("named by you as carrying Mercury's management path", 'warn') }}<p class="small">You named {{ b[0] }}. It goes last, alone, and waits for its own confirm after every other wave verified.</p>
-      {%- elif mgmt %} {{ badge("carries Mercury's management path to " ~ p.carries[b[0]] | length ~ " device" ~ ('' if p.carries[b[0]] | length == 1 else 's'), 'warn', title=p.carries[b[0]] | join(', ')) }}<p class="small">Mercury reaches {{ p.carries[b[0]] | join(', ') }} through {{ b[0] }}. It goes last, alone, and waits for its own confirm after every other wave verified.</p>{% endif %}
+      {%- if mgmt and not p.carries[b[0]] %} {{ badge("named by you as carrying Mercury's management path", 'warn') }}<p class="small">You named {{ b[0] }}. It goes last, alone, after every device reached through it; the run reaches it by itself.</p>
+      {%- elif mgmt %} {{ badge("carries Mercury's management path to " ~ p.carries[b[0]] | length ~ " device" ~ ('' if p.carries[b[0]] | length == 1 else 's'), 'warn', title=p.carries[b[0]] | join(', ')) }}<p class="small">Mercury reaches {{ p.carries[b[0]] | join(', ') }} through {{ b[0] }}. It goes last, alone, after every device reached through it; the run reaches it by itself.</p>{% endif %}
       {%- for d in b %}
-      <details class="fc-group" data-keep="ra-program-{{ d }}"><summary class="small" title="program sha256 {{ progs[d].command_hash }}">{{ d }}'s program, masked · {{ progs[d].program | length }} line{{ '' if progs[d].program | length == 1 else 's' }}{% if progs[d].besides %} · {{ badge(progs[d].besides ~ ' besides the account', 'warn') }}{% endif %}</summary><pre class="code ra-prog">{{ progs[d].program | join('\n') }}</pre></details>
+      <details class="fc-group" data-keep="ra-program-{{ d }}"><summary class="small" title="program sha256 {{ progs[d].command_hash }}">{{ d }}'s program, masked · {{ progs[d].program | length }} line{{ '' if progs[d].program | length == 1 else 's' }}{% if progs[d].besides %} · {{ badge(progs[d].besides ~ ' besides the account', 'warn') }}{% endif %}</summary><pre class="code ra-prog">{{ progs[d].program | join('\n') }}</pre>{% if progs[d].probe %}<p class="small" data-ra-plan-probe title="probe sha256 {{ progs[d].probe.hash }}">Then probed as {{ progs[d].probe.account }}, part of its verify: {{ progs[d].probe.reads }} read{{ '' if progs[d].probe.reads == 1 else 's' }} the AI asks, and {{ progs[d].probe.refused }} command{{ '' if progs[d].probe.refused == 1 else 's' }} it must be refused{% if progs[d].probe.not_measured %}; not measured, as Mercury holds no argument for them: {{ progs[d].probe.not_measured | join(', ') }}{% endif %}. A FAIL, or the account not signing in, rolls it back and stops the run.</p>{% endif %}</details>
       {%- endfor %}
     </div>
     {%- endfor %}
@@ -187,17 +241,18 @@
 {%- elif op.state == 'roll_running' %}
 <section class="op-card" aria-labelledby="ra-run-h" hx-get="{{ url_for('credential_profiles_v2.read_account_rollout_run', job=op.job, network=op.network) }}" hx-trigger="nmas:fleet_change from:body, nmas:device_progress from:body" hx-target="#ra-op" hx-swap="outerHTML">
   <div class="op-hd"><h2 id="ra-run-h">Rolling out to {{ op.network }}</h2></div>
-  <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, then each device in turn: held, sent, verified, saved. The card redraws as it goes.</p></div></div>
+  <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, then each wave by itself: each device held, sent, verified, saved. The card redraws as it goes; leave the page and In progress keeps it.</p>
+    {%- if op.p %}<p class="small" data-ra-progress>{{ 'Settling before' if op.p.state == 'settling' else 'Running' }} {{ 'the canary' if op.p.wave == 0 else 'wave ' ~ (op.p.wave + 1) }}{% if op.p.done %} · done so far: {% for d, o in op.p.done.items() %}{{ d }} ({{ o | replace('_', ' ') }}){{ ', ' if not loop.last }}{% endfor %}{% endif %}</p>{% endif %}</div></div>
 </section>
 {%- elif op.state == 'roll_run' %}
 {%- set r = op.r %}
 <section class="op-card op-{{ 'danger' if r.state == 'stopped' else 'ok' if r.state == 'done' else 'warn' }}" aria-labelledby="ra-ran-h">
-  <div class="op-hd"><h2 id="ra-ran-h">Rolling out to {{ r.network }} · {% if r.state == 'paused' %}{{ 'waiting for its own confirm' if r.waits == 'management' else 'paused after the canary' if r.waits == 'canary' else 'paused' }}{% elif r.state == 'stopped' %}stopped{% else %}done{% endif %}</h2><div class="op-hd-actions">{{ how('read-account-rollout', 'run', compact=True, op='the rollout') }}</div></div>
-  {%- if r.state == 'stopped' %}<div class="op-part"><h3>Stopped</h3><div><div class="notice notice-danger" role="alert" data-ra-stopped>{{ icon('warn', 16) }}<p><strong>Stopped:</strong> {{ r.stopped }}. A failed device was rolled back on its own; the devices after it were not attempted.</p></div></div></div>{% endif %}
+  <div class="op-hd"><h2 id="ra-ran-h">Rolling out to {{ r.network }} · {% if r.state == 'paused' %}paused after the canary{% elif r.state == 'stopped' %}stopped{% else %}done{% endif %}</h2><div class="op-hd-actions">{{ how('read-account-rollout', 'run', compact=True, op='the rollout') }}</div></div>
+  {%- if r.state == 'stopped' %}<div class="op-part"><h3>Stopped</h3><div><div class="notice notice-danger" role="alert" data-ra-stopped>{{ icon('warn', 16) }}<p><strong>Stopped:</strong> {{ r.stopped }}. The device that failed was rolled back; {{ r.not_started | length }} not started{% if r.not_started %} ({{ r.not_started[:12] | join(', ') }}{% if r.not_started | length > 12 %} and {{ r.not_started | length - 12 }} more{% endif %}){% endif %}. {% if r.told.error %}The team was NOT told: {{ r.told.error }}.{% else %}The team was told ({{ r.told.sent or 0 }} sent{% if r.told.failed %}, {{ r.told.failed }} failed{% endif %}).{% endif %}</p></div></div></div>{% endif %}
   <div class="op-part"><h3>Waves</h3><div>
     {%- for w in r.waves %}
     <div class="ra-wave{{ ' ra-hold' if w.kind == 'management' }}" data-ra-wave="{{ w.n }}"><strong>{% if w.kind == 'canary' %}Canary{% elif w.kind == 'management' %}Last, alone{% else %}Wave {{ w.n + 1 }}{% endif %}</strong>
-      {%- for x in w.rows %} · <span class="mono">{{ x.device }}</span> {% if x.outcome == 'deployed' %}{{ badge('deployed, verified, saved', 'ok') }}{% elif x.outcome in ('waiting',) %}{{ badge('waiting', 'muted') }}{% elif x.outcome in ('unattempted', 'not attempted') %}{{ badge('not attempted', 'muted') }}{% else %}{{ badge(x.outcome | replace('_', ' '), 'danger') }}{% endif %}{% if x.why %} <span class="small">{{ x.why }}</span>{% endif %}{% if x.carries %} <span class="small muted">(carries the management path to {{ x.carries }})</span>{% endif %}{% endfor %}
+      {%- for x in w.rows %} · <span class="mono">{{ x.device }}</span> {% if x.outcome == 'deployed' %}{{ badge('deployed, verified, saved', 'ok') }}{% elif x.outcome in ('waiting',) %}{{ badge('waiting', 'muted') }}{% elif x.outcome in ('unattempted', 'not attempted') %}{{ badge('not attempted', 'muted') }}{% else %}{{ badge(x.outcome | replace('_', ' '), 'danger') }}{% endif %}{% if x.why %} <span class="small">{{ x.why }}</span>{% endif %}{% if x.probe.result %} <span class="small" data-ra-run-probe title="{{ x.probe.why }}">probe {{ badge(x.probe.result, PROBE_KIND.get(x.probe.result, 'warn')) }}</span>{% endif %}{% if x.carries %} <span class="small muted">(carries the management path to {{ x.carries }})</span>{% endif %}{% endfor %}
     </div>
     {%- endfor %}
     <p class="small muted">Each device's receipt is on its History · confirmed sha256 <span class="mono" title="{{ r.hash }}">{{ r.hash[:12] }}</span></p>
@@ -206,14 +261,10 @@
   <form method="post" action="{{ url_for('credential_profiles_v2.read_account_rollout_go_on') }}" hx-post="{{ url_for('credential_profiles_v2.read_account_rollout_go_on') }}" hx-target="#ra-op" hx-swap="outerHTML">
   <input type="hidden" name="job" value="{{ op.job }}">
   <div class="op-part"><h3>Next</h3><div>
-    {%- if r.waits == 'management' %}
-    <input type="hidden" name="confirm_device" value="{{ r.upcoming[0] }}">
-    <div class="notice notice-warn" role="status" data-ra-management>{{ icon('warn', 16) }}<p><strong>Mercury reaches {{ r.carries.get(r.upcoming[0], 0) }} device{{ '' if r.carries.get(r.upcoming[0], 0) == 1 else 's' }} through {{ r.upcoming[0] }}.</strong> A failure there can cut Mercury off from them until it is rolled back. Deploy it while someone can reach it another way.</p></div>
-    {%- endif %}
     {%- if may_send.may %}
-    <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="read-account-rollout" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{% if r.waits == 'management' %}Deploy {{ r.upcoming[0] }} (the management path){% else %}Go on: the next waves{% endif %}</span><span class="op-busy">Deploying…</span></button>{{ how('read-account-rollout', 'run', compact=True, op='the rollout') }}</p>
+    <p class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="read-account-rollout" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Continue the rollout</span><span class="op-busy">Deploying…</span></button>{{ how('read-account-rollout', 'run', compact=True, op='the rollout') }}</p>
     {%- else %}<p class="muted small">{{ may_send.statement }} Nothing can be sent from here.</p>{% endif %}
-    <p class="small muted">Each device's program is checked against the confirmed one before it is sent. Not pressed, nothing more is sent: the run stays paused, and the coverage says "not deployed yet".</p>
+    <p class="small muted">The canary deployed, verified and saved. Continue runs every wave left by itself, each device's program checked against the confirmed one before it is sent. Not pressed, nothing more is sent: the run stays paused, and the coverage says "not deployed yet".</p>
   </div></div>
   </form>
   {%- elif r.state == 'stopped' %}
@@ -257,7 +308,6 @@
 </section>
 {%- elif op.state == 'probe_done' %}
 {%- set r = op.r %}
-{%- set PROBE_KIND = {'PASS': 'ok', 'INCOMPLETE': 'warn', 'FAIL': 'danger', 'UNREADABLE': 'warn', 'SIGN-IN REFUSED': 'danger'} %}
 <section class="op-card op-{{ PROBE_KIND.get(r.result, 'warn') }}" aria-labelledby="ra-pd-h">
   <div class="op-hd"><h2 id="ra-pd-h">{{ r.device }}'s read-only account: {{ r.result }}</h2><div class="op-hd-actions">{{ how('read-account-probe', 'run', compact=True, op='the probe') }}</div></div>
   <div class="op-part"><h3>Verdict</h3><div>

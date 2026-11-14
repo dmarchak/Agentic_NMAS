@@ -116,17 +116,19 @@ GATES = {
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; THE plan and apply (`routes.deploy.plan_devices`, `apply_batch`) the batch apply runs too, as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
     "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; rotate_op.confirm_and_start): the device then accepts only the new password"),
-    "credential_profiles_v2.read_account_rollout_confirm": _g(C, "deploys the read-only "
-        "account's rollout (board R): the plan made again and refused unless its hash is the "
-        "one confirmed, then the canary through THE apply (held, sent, verified, saved, rolled "
-        "back on failure), the run pausing after it"),
+    "credential_profiles_v2.read_account_rollout_confirm": _g(C, "the ONE confirm of the "
+        "read-only account's rollout (board R's 00): the plan and its options made again and "
+        "refused unless their hash is the one confirmed, then THE engine runs the canary and "
+        "every wave by itself through THE apply (held, sent, verified, probed signed in as the "
+        "account, saved, rolled back on a failed verify or probe), the first failure stopping "
+        "it and telling the team"),
     "credential_profiles_v2.read_account_probe_confirm": _g(C, "probes a device's read-only "
         "account (board R's R8): the probe's plan made again and refused unless its hash is the "
         "one confirmed, then the reads sent AS the read-only account holding the device, "
         "configuring nothing, the verdict recorded under the device's identity"),
-    "credential_profiles_v2.read_account_rollout_go_on": _g(C, "the rollout's next waves after "
-        "a pause, from the paused run's own record, each device's program checked again before "
-        "it is sent; a management-path device only on the confirm naming it (board R)"),
+    "credential_profiles_v2.read_account_rollout_go_on": _g(C, "Continue the rollout after "
+        "the pause its plan chose (board R's 00): every wave left, by itself, from the paused "
+        "run's own record, each device's program checked again before it is sent"),
     "credential_profiles_v2.rotate_due_confirm": _g(C,"rotates every due device's login credential (C724, Rotate due devices now), one at a time through the device page's rotation, bound to the previewed list's hash"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "v2.pair_apply_confirm": _g(C, "deploys both ends of a link as one change (C1908, C1909; board F7-Q): each device's confirmed program through the batch apply, the second end sent only when the first deployed, the link verified once both applied, and both rolled back if either end or the link fails"),
@@ -415,9 +417,13 @@ GATES = {
                                                   "ticked device's intent (its users entry and "
                                                   "its level's lines), one commit per network, "
                                                   "as a verified person with a reason, bound to "
-                                                  "the preview's hash; sends nothing"),
+                                                  "the preview's hash; sends nothing; with "
+                                                  "mode=update, Update the read-only account's "
+                                                  "lines (C3583) commits each line its intent "
+                                                  "holds in another form, the same way"),
     "credential_profiles_v2.read_account_add_preview": _g(N, "previews Add the read-only "
-                                                          "account: reads each ticked device's "
+                                                          "account, or with mode=update Update "
+                                                          "its lines: reads each ticked device's "
                                                           "committed intent; writes nothing and "
                                                           "sends nothing"),
     "credential_profiles_v2.read_account_rollout_plan": _g(N, "starts the rollout's preview as "

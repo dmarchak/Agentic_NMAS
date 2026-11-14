@@ -163,7 +163,10 @@ def scope_bar(current: str) -> dict:
     return {"current": current, "is_default": L.is_default(current), "networks": total,
             "inheriting": len(buckets["differs"]) + len(buckets["inherits"]),
             "standalone": buckets["standalone"], "differs": buckets["differs"],
-            "inherits": buckets["inherits"], "unreadable": unreadable,
+            # A network that inherits everything is drawn by its name alone: its mode and
+            # parts say only that it inherits, so they are not carried.
+            "inherits": [{"name": r["name"]} for r in buckets["inherits"]],
+            "unreadable": unreadable,
             "others": total - 1}
 
 

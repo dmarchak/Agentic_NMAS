@@ -99,12 +99,43 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
                 log.info("deploy job %s: progress not announced (%s); the page asks "
                          "when Check now is pressed", job_id, exc)
 
+        # THE rollout engine (the operator, 2026-11-14: "the same engine for every batch
+        # deploy", `fleet_change.run_waves`): the confirmed devices as ONE wave in their order
+        # (one run, one receipt run id and one golden commit, as a batch has always been; a
+        # pair's two ends both or neither), THE apply stopping at the first failed device
+        # its breaker counts (`CircuitBreaker.counts`, limit 1: a push rejected, a refusal on
+        # the way to the device, a verify that did not pass; rolled back), the rest named not
+        # started and the team told. A device refused before the batch (its program moved,
+        # `report["refused"]`) or found drifted is its own row and the rest go on, as the
+        # batch's breaker has always counted them.
+        from modules.nsot import fleet_change
+        from modules.nsot.deploy import UNATTEMPTED, CircuitBreaker
+
+        counts = CircuitBreaker(limit=1).counts
+        report = {"results": []}
+
+        def apply_wave(_n, devices):
+            got = apply_batch(list_name, {d: confirmations[d] for d in devices},
+                              command_hashes, authorise=authorise, remove=remove,
+                              scope=scope, actor=actor, actor_kind=actor_kind,
+                              on_device=on_device, declare=declare, stop_at_first=True,
+                              **({"pair": pair} if pair else {}))
+            report.update({k: v for k, v in got.items() if k != "results"})
+            rows = got.get("results") or []
+            before = {r.get("device") for r in got.get("refused") or []}
+            failed = [r["device"] for r in rows
+                      if r.get("outcome") != UNATTEMPTED and r.get("device") not in before
+                      and counts(r)]
+            return {"results": rows,
+                    "stopped": f"{', '.join(failed)} did not deploy and verify" if failed
+                    else ""}
+
         with identity.carried(ident):
-            report = apply_batch(list_name, {d: confirmations[d] for d in order},
-                                 command_hashes, authorise=authorise, remove=remove,
-                                 scope=scope, actor=actor, actor_kind=actor_kind,
-                                 on_device=on_device, declare=declare,
-                                 **({"pair": pair} if pair else {}))
+            ran = fleet_change.run_waves(list_name, [list(order)], apply_wave, options={},
+                                         label=label, key=job_id,
+                                         link=f"/v2/history?list={list_name}")
+        report["results"] = ran["results"]
+        report["stopped"], report["told"] = ran["stopped"], ran["told"]
         # A device refused at apply (its program moved) or skipped as drifted
         # never reaches the batch's own loop, so no event names it: it is
         # recorded from the report, or its row would read "not reached", the

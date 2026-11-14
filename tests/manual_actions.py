@@ -402,6 +402,10 @@ NOT_AN_OPERATION = {
     # C537: the In progress chip's rows open a device's page, which reopens the card (a read).
     ("_in_progress.html", "btn btn-small"): "Open its card, or Open <device>: opens the device's "
                                             "page, where a running operation's card reopens, a read",
+    # Board R's 00 (a): a job a page started (the read-only account's rollout, its preview and
+    # its probe) opens that page, where its card reopens on the job (a read).
+    ("_in_progress.html", "Open its card"): "opens the page a page-level job was started on, "
+                                            "where its card reopens on the job, a read",
     ("_in_progress.html", "Open the result"): "opens the device's page on the finished "
                                               "operation's result, kept as opened for the "
                                               "person looking (C3081); no device is touched",

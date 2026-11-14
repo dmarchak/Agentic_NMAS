@@ -180,9 +180,11 @@ resets {{ clock(r.at, note=r.zone_hm ~ " " ~ r.zone ~ ": the cap's day begins at
     to the incident's URL"): that change is made here alone. *result* names one run (a kept
     job's id, or a run's record id), so the page opens THAT run's result, never only the
     device's newest (C3081); Open the result's mark (`routes/v2.seen_run`) sends the
-    browser to this same address. -#}
-{% macro run_href(device, network=none, result=none) -%}
-{{ url_for('device_v2.device', name=device, list=network, result=result or none) }}
+    browser to this same address. *page*: a page-level job's own page (`capture_job.start`'s
+    ``page``, the card it reopens on, e.g. Credentials for the read-only account's rollout),
+    which is where its result opens instead (board R's 00 (a)). -#}
+{% macro run_href(device, network=none, result=none, page=none) -%}
+{%- if page %}{{ page }}{% else %}{{ url_for('device_v2.device', name=device, list=network, result=result or none) }}{% endif %}
 {%- endmacro %}
 
 

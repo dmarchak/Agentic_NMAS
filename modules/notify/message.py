@@ -84,6 +84,10 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
           # turned self-healing off or stopped it; on by default for every team
           # (modules/heal/blind_notice.py), once per raise.
           "heal_blind": "self-healing is blind or paused",
+          # The rollout engine (the operator, 2026-11-14: "the first failure rolls that device
+          # back and stops the run, telling the team"): once per stopped run
+          # (modules/nsot/fleet_change.py, `run_waves`).
+          "rollout_stopped": "a rollout stopped at its first failure",
           "test": "a test send", "verification": "a verification code"}
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a
