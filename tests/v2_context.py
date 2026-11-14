@@ -3048,7 +3048,8 @@ def _plans(client, _lab, mp):
                plan_steps=[{"n": 1, "words": "one", "state": "done", "words_said": "ok"},
                            {"n": 2, "words": "two", "state": "not_run", "words_said": ""}])
     r = client.get("/v2/plans/preview", query_string={"run": "run-1"})
-    assert 'data-state="not_run"' in r.get_data(as_text=True)
+    # Its steps on THE stepper: step 1 done, step 2 not reached (the run stopped before it).
+    assert 'run-step run-step-not_reached" data-step="step-2"' in r.get_data(as_text=True)
     got = {"ok": True, "state": "answered", "error": "", "detail": "", "answer": "Yes.",
            "cites": [], "passages": [], "call_id": "ai-0123456789abcdef", "gap": False,
            "typed_masked": "", "plan": {"plan": "dhcp-reservation", "title": "Reserve it",

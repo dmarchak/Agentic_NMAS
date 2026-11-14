@@ -451,15 +451,40 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
 # topology is left out (the investigation reads only the incident's device, C3685), then the
 # pack's largest trimmable sections are cut to half their pieces, each cut said in the section.
 
-#: What pass 2 may add to pass 1 at most: each read's answer cut at `read_loop.AI_READ_CAP`
-#: bytes and its record (operation, arguments, why, hypothesis, verdict: under 600 characters
-#: as sent), and the reads' format; pass 2 sends no read set (`loop_feature`'s ``first_only``).
-READS_RESERVE_CHARS = RL.MAX_READS * (RL.AI_READ_CAP + 600) + len(RL.READS_FORMAT)
+#: What pass 2 may add to pass 1 at most (`reads_reserve_chars`, measured at import); pass 2
+#: sends no read set (`loop_feature`'s ``first_only``).
+def reads_reserve_chars() -> int:
+    """What pass 2 may add to pass 1 at most, in the request's characters, MEASURED by building
+    it (the review of the fit, 2026-11-14: a fixed 600 a read undercounted): `read_loop.
+    MAX_READS` records as `read_loop.as_sent` sends them, each at its largest (its why and its
+    hypothesis at `read_loop.TEXT_MAX`, its words at the command shape's most, an answer of
+    `read_loop.AI_READ_CAP` characters written as show output escapes worst in practice: a
+    line break every 40 characters and a quoted word on each line), the part encoded as pass 2
+    sends it and then once more as the request's body escapes it, and the reads' format
+    context, likewise, beside its wrapper. A text of quotes alone would escape further; show
+    output does not."""
+    line = 'state "up" ' + "x" * 24 + "\n"                     # 40 characters a line
+    answer = (line * (RL.AI_READ_CAP // len(line) + 1))[:RL.AI_READ_CAP]
+    words = "w" * RR.COMMAND_WORDS.most
+    records = [{"id": f"read:{n}", "op": "show", "args": {"device": "d" * 63, "words": words},
+                "why": "y" * RL.TEXT_MAX, "hypothesis": "h" * RL.TEXT_MAX, "verdict": "run",
+                "answer": answer, "bytes": 10 ** 6, "cut": True, "withheld": 999}
+               for n in range(1, RL.MAX_READS + 1)]
+    part = json.dumps(RL.as_sent(records), sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":"))
+    wrapper = '\n<data name="mercury_reads">\n\n</data>\n<context name="reads_format">\n\n</context>'
+    return (len(json.dumps(part, ensure_ascii=False)) + len(json.dumps(RL.READS_FORMAT))
+            + len(json.dumps(wrapper)))
+
+
+READS_RESERVE_CHARS = reads_reserve_chars()
 #: The pack's sections a fit may cut, in no order (the largest is cut first): never the
 #: incident, the device, what Mercury tried, the diagnosis, the attempts or Seen before.
 TRIMMABLE = ("logs", "neighbours", "history", "observer", "health")
-#: Each trimmable section is halved at most this many times.
-MOST_HALVINGS = 2
+#: Each trimmable section is halved at most this many times (to an eighth of its pieces: with
+#: the measured reserve, the host's measured incident's sizes need a third halving of their
+#: largest section).
+MOST_HALVINGS = 3
 #: The topology's words when a fit leaves it out (the prompt: "Its absence is not evidence").
 TOPOLOGY_LEFT_OUT = ("not sent: with it the request would be over its bound; this "
                      "investigation reads only the incident's device")
@@ -534,14 +559,37 @@ def fit(prep: dict, bound: int = None) -> dict:
         s = prep["sections"][i]
         pieces = list(s.get("pieces") or [])
         total = s.get("cut_of") or len(pieces)
-        kept = pieces[:max(1, len(pieces) // 2)]
+        kept, which = halve(pieces, prep["pack"].get("onset") or "")
         prep["sections"][i] = dict(s, pieces=kept, cut_of=total,
-                                   cut=f"{len(kept)} of its {total} pieces sent, to fit the "
-                                       "request's bound")
+                                   cut=f"{len(kept)} of its {total} pieces sent, {which}, to "
+                                       "fit the request's bound")
         halved[s.get("name")] = halved.get(s.get("name"), 0) + 1
         _repack(prep)
-        steps.append(f"{s.get('name')} cut to {len(kept)} of {total} pieces")
+        steps.append(f"{s.get('name')} cut to {len(kept)} of {total} pieces, {which}")
     return prep
+
+
+def _epoch(text) -> float:
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def halve(pieces: list, onset: str) -> tuple:
+    """``(kept, which)``: half of *pieces* (at least one), in their own order, and which half
+    in words. When every piece has a time (``at``) and the pack an onset, the half nearest the
+    onset (a log section holds the lines nearest it, sorted by time: the review of the fit,
+    2026-11-14); else the first half, said."""
+    k = max(1, len(pieces) // 2)
+    at = _epoch(onset)
+    times = [_epoch(p.get("at")) if isinstance(p, dict) else None for p in pieces]
+    if at is not None and pieces and all(t is not None for t in times):
+        nearest = sorted(range(len(pieces)), key=lambda i: (abs(times[i] - at), i))[:k]
+        return [pieces[i] for i in sorted(nearest)], "those nearest the onset"
+    return pieces[:k], "the first in its order"
 
 
 # ── The check ───────────────────────────────────────────────────────────────────────────────
@@ -672,7 +720,7 @@ def _cut(text) -> str:
     return text if len(text) <= SHOWN_CHARS else text[:SHOWN_CHARS - 1] + "…"
 
 
-def shown(answer, said: dict = None, pass_: int = 1) -> dict:
+def shown(answer, said: dict = None, pass_: int = 1, fit=()) -> dict:
     """What the section draws of a checked answer: the rationale, each hypothesis's claim and
     what it cites, the fix's why or the gap's what, and what the reads did. Kept with the
     proposal line (masked at rest)."""
@@ -688,7 +736,18 @@ def shown(answer, said: dict = None, pass_: int = 1) -> dict:
         out["cites"] = list(answer.gap.evidence_refs)[:8]
     if said and said.get("asked"):
         out["reads"] = _cut(said.get("words"))
+    if fit:
+        # What `fit` left out or cut to bring the request inside its bound, said where the
+        # section draws the call's line (beside what the reads did), and kept with the line.
+        out["fit"] = list(fit)
+        out["reads"] = _cut("; ".join(x for x in (out.get("reads"), fit_words(fit)) if x))
     return out
+
+
+def fit_words(fit) -> str:
+    """The fit's steps as a person reads them, or ``""``: "to fit the prompt's bound: the
+    topology left out; logs cut to ..."."""
+    return ("to fit the prompt's bound: " + "; ".join(fit)) if fit else ""
 
 
 def loop_feature(prep: dict) -> RL.LoopFeature:
@@ -783,7 +842,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     first = got.get("first") or {}
     out = {"state": "failed", "words": "", "proposal": {}, "checked": None, "call_ids": ids,
            "cost_usd": float(got.get("cost_usd") or 0.0), "reads": said, "shown": {},
-           "typed_masked": memo.get("typed_masked")}
+           "typed_masked": memo.get("typed_masked"),
+           # What was left out or cut to fit the prompt's bound (`fit`), in order.
+           "fit": list(prep["said"].get("fit") or ())}
     links = {"page": f"/v2/incident/{incident.id}?list={network}", "anchor": "inc-ai"}
     version = (PROMPT_SECOND if got["pass"] == 2 else PROMPT if plain else PROMPT_READS)[1]
     common = {"calls": ids, "prompt": f"{FEATURE}.v{version}", "by": actor,
@@ -815,7 +876,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         out.update(state="unchecked", words=words, proposal=keep(words))
         return out
     answer = got["answer"]
-    out["shown"] = shown(answer, said, got["pass"])
+    out["shown"] = shown(answer, said, got["pass"], fit=prep["said"].get("fit") or ())
     if answer.outcome.value == "refuse":
         calls.record_use(final_call, "shown: the evidence cannot say", actor=actor,
                          detail=answer.why_not[:200], links=links)
@@ -973,7 +1034,10 @@ def preview(network: str, found: dict, incident, *, actor: str = "", note: str =
         + (f" ({now_off})" if now_off else "") + "; this preview built what a press would "
         "send with it on, and did not change it.",
         f"Pass 1 is the reads pass ({first['prompt']}): the pack, the incident's own sections, "
-        "the note and the read set.",
+        "the note and the read set"
+        + (", the topology left out to fit the prompt's bound" if TOPOLOGY_LEFT_OUT in
+           (prep["data"].get("network_topology") or "") else
+           (", and the topology" if prep["topo"].get("sent") else "")) + ".",
         f"The preview ran {len(ran)} of {len(asked)} read(s), every one the incident's scope "
         "allows (" + ", ".join(f"{r['id']} {r.get('op')} {r.get('verdict')}"
                                 for r in records) + "). A press's real first answer asks "
@@ -985,6 +1049,10 @@ def preview(network: str, found: dict, incident, *, actor: str = "", note: str =
         + (" Each device read ran through Mercury's reads engine, which records it on "
            "History › Reads, as it records every read of a device." if device_reads else
            " The device's reads were left out (--local-reads-only).")]
+    fitted = prep["said"].get("fit") or []
+    said.append(("The request was fitted " + fit_words(fitted) + ", as a press's would be.")
+                if fitted else "The request fits the prompt's bound whole: nothing was left "
+                               "out or cut.")
     if second is None:
         said.append("Pass 2 is not built: " + ("pass 1 was refused" if first["body"] is None
                                                else "no read ran, so a press asks no pass 2"))

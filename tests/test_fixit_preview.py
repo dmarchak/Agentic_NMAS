@@ -613,7 +613,11 @@ def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch): 
     assert "read_set" not in json.dumps(got["second"]["body"]["system"])
     assert "read_set" in json.dumps(got["first"]["body"]["system"])
     sent = got["first"]["body"]["messages"][0]["content"]
-    assert T.TOPOLOGY_LEFT_OUT in sent and "pieces sent, to fit the request's bound" in sent
+    assert T.TOPOLOGY_LEFT_OUT in sent and "to fit the request's bound" in sent
+    # The preview says what was done, and that pass 1 went without its topology.
+    said = " ".join(got["said"])
+    assert "the topology left out to fit the prompt's bound" in said
+    assert "The request was fitted to fit the prompt's bound: the topology left out" in said
     # The worst pass 2 (three reads at the cap) fits too: pass 1 with the reserve is in bound.
     prep = T.request(NET, *_found(ai, iid))
     chars = T.request_chars(prep)
@@ -639,6 +643,70 @@ def test_a_pack_that_fits_is_sent_whole(ai, reads, monkeypatch):  # noqa: F811
     assert prep["topo"]["sent"] is True and prep["data"]["network_topology"].startswith(
         "devices:")
     assert T.TOPOLOGY_LEFT_OUT not in json.dumps(prep["data"])
+
+
+def test_the_reserve_holds_three_reads_at_their_largest(ai, reads, monkeypatch):  # noqa: F811
+    """The review of the fit (2026-11-14): three reads at the cap, their why and hypothesis at
+    `read_loop.TEXT_MAX`, answered with show output escaped as it is twice (a line break every
+    40 characters, a quoted word on each line), built into pass 2 through the press's own
+    builders (`read_loop.second_request`, `gateway.request_body`): what pass 2 adds is within
+    `READS_RESERVE_CHARS`, as `fit` models it (pass 1, less the read set, plus the reserve)."""
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import read_loop as RL
+    from modules.ai import router_reads as RR
+    _class(monkeypatch, True)
+    line = 'state "up" ' + "x" * 24 + "\n"
+    answer = (line * (RL.AI_READ_CAP // len(line) + 1))[:RL.AI_READ_CAP - 200]
+    monkeypatch.setattr(RR, "run", lambda op, args, requests, scope: RL.Answered(answer))
+    asked = [{"op": "show", "args": {"device": "r2", "words": words},
+              "why": "y" * RL.TEXT_MAX, "hypothesis": "h" * RL.TEXT_MAX}
+             for words in ("telemetry ietf subscription all", "telemetry internal connection",
+                           "telemetry ietf subscription 101 receiver")]
+    monkeypatch.setattr(T, "preview_requests", lambda incident, device_reads=True: asked)
+    iid = stopped(ai)
+    got = _preview(iid)
+    assert [r["verdict"] for r in got["reads"]] == ["run"] * 3, got["reads"]
+    first = len(json.dumps(got["first"]["body"], ensure_ascii=False))
+    second = len(json.dumps(got["second"]["body"], ensure_ascii=False))
+    assert second <= first - len(T.read_set()) + T.READS_RESERVE_CHARS, (
+        first, second, T.READS_RESERVE_CHARS)
+    # And the reserve is no guess: at least the reviewer's measured 15,967 characters.
+    assert T.READS_RESERVE_CHARS >= 15967, T.READS_RESERVE_CHARS
+
+
+def test_a_press_says_what_was_cut_on_its_line(ai, reads, monkeypatch):  # noqa: F811
+    """The review of the fit (2026-11-14): a press whose request was fitted says so where the
+    section draws its call's line, and keeps it with the proposal line (`shown`)."""
+    from modules.fixit import incident as F
+    from tests.test_fixit_section_v2 import incident
+    from tests.test_fixit_troubleshoot import sec_of
+    _class(monkeypatch, True)
+    _r4_sized(monkeypatch)
+    iid = stopped(ai)
+    ai.answer = answer(fix())
+    r, html = press(ai, iid)
+    assert r.status_code == 200, html
+    assert "to fit the prompt's bound: the topology left out" in sec_of(html)
+    (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
+    assert line["shown"]["fit"][0] == "the topology left out", line["shown"]
+
+
+def test_a_halving_keeps_the_pieces_nearest_the_onset():
+    """A log section holds the lines nearest the onset, sorted by time: a halving keeps the
+    half nearest it, in their order, and says so; pieces with no time keep the first half,
+    said."""
+    from modules.ai import fixit_troubleshoot as T
+    onset = "2026-11-14T10:00:00Z"
+    pieces = [{"at": f"2026-11-14T09:{m:02d}:00Z", "text": f"line {m}"}
+              for m in (40, 50, 55, 58)] + [
+             {"at": f"2026-11-14T10:{m:02d}:00Z", "text": f"line 1{m}"} for m in (1, 3, 20, 30)]
+    kept, which = T.halve(pieces, onset)
+    assert [p["text"] for p in kept] == ["line 55", "line 58", "line 11", "line 13"]
+    assert which == "those nearest the onset"
+    kept, which = T.halve([{"text": "a"}, {"text": "b"}, {"text": "c"}], onset)
+    assert [p["text"] for p in kept] == ["a"] and which == "the first in its order"
+    kept, which = T.halve(pieces, "")
+    assert kept == pieces[:4] and which == "the first in its order"
 
 
 def _found(w, iid):

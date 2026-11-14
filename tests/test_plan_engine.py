@@ -410,6 +410,96 @@ def client(kea, monkeypatch):
 
 
 HX = {"HX-Request": "true"}
+#: The run's first step, done, as THE stepper draws it (`run_stepper`, `plan_engine.run_card`).
+DONE_STEP = 'run-step run-step-done" data-step="step-1"'
+
+
+class TestTheRunOnTheOneStepper:
+    """A plan's run drawn by THE stepper from its own record (`plan_engine.run_card`): each step
+    its recorded state, never green over a stop or a step that leaves its own approval."""
+
+    def _rec(self, state, outcome, *steps):
+        return {"title": "Describe the link", "plan": "describe-link", "state": state,
+                "outcome": outcome, "why": "the run's own words",
+                "plan_steps": [{"n": n, "kind": k, "words": f"words {n}", "state": s,
+                                "words_said": f"said {n}"}
+                               for n, (k, s) in enumerate(steps, 1)]}
+
+    def _states(self, card):
+        (row,) = card["rows"]
+        return row["group"], [(s["key"], s["words"], s["state"]) for s in row["steps"]]
+
+    def test_a_stopped_run_draws_its_failed_step_and_the_rest_not_reached(self):
+        group, steps = self._states(E.run_card(self._rec(
+            "failed", "stopped", ("intent-description", "done"),
+            ("intent-description", "refused"), ("intent-description", "not_run"))))
+        assert group == "failed"
+        assert steps == [("step-1", "Set a description", "done"),
+                         ("step-2", "Set a description", "failed"),
+                         ("step-3", "Set a description", "not_reached")]
+
+    def test_running_the_steps_not_yet_run_wait_their_turn(self):
+        card = E.run_card(self._rec("running", "running", ("intent-description", "done"),
+                                    ("intent-description", "running"),
+                                    ("intent-description", "not_run")))
+        group, steps = self._states(card)
+        assert group == "running" and card["single"]
+        assert [s for _k, _w, s in steps] == ["done", "running", "waiting"]
+        assert card["rows"][0]["steps"][0]["note"] == "said 1"
+
+    def test_a_create_that_leaves_its_verify_is_never_green(self):
+        group, steps = self._states(E.run_card(self._rec(
+            "unverified", "partial", ("ztp-create", "done"))))
+        assert group == "partial" and steps == [("step-1", "Create by ZTP", "needs")]
+
+    def test_a_run_refused_before_its_steps_says_why_in_their_place(self):
+        card = E.run_card({"title": "Reserve it", "state": "refused", "outcome": "refused",
+                           "why": "the plan is not the one approved", "plan_steps": []})
+        (row,) = card["rows"]
+        assert row["group"] == "failed" and row["steps"] == []
+        assert row["detail"] == "the plan is not the one approved"
+
+    def test_approved_its_page_draws_the_running_step_on_the_stepper(self, kea, monkeypatch):
+        """Approve pressed on the real card; while the run's step applies, the run's page (the
+        job's *page*, as In progress opens it) draws it on `run_stepper`, the step running and
+        the card asking for itself again; once it ends, the step done and the redraw stopped."""
+        import dataclasses
+        import re
+
+        import app as A
+        A.app.config["TESTING"] = True
+        client = A.app.test_client()
+        started, during = [], []
+        monkeypatch.setattr("modules.nsot.capture_job.start",
+                            lambda lst, label, actor, work, **kw: started.append((work, kw))
+                            or "j-1")
+        kind = E.STEP_KINDS["dhcp-reservation"]
+
+        def apply(*a, **k):
+            page = started[0][1]["page"].replace("{job}", "j-1")
+            during.append(client.get(page, headers=HX).get_data(as_text=True))
+            return kind.apply(*a, **k)
+        monkeypatch.setitem(E.STEP_KINDS, "dhcp-reservation", dataclasses.replace(kind,
+                                                                                apply=apply))
+        html = client.get("/v2/plans/preview", query_string={
+            "list": "Default", "plan": "dhcp-reservation", "params": json.dumps(RES)},
+            headers=HX).get_data(as_text=True)
+        m = re.search(r'hx-post="(/v2/plans/approve[^"]*)" hx-vals=\'\{"hash": "([0-9a-f]{16})"',
+                      html)
+        r = client.post(m.group(1).replace("&amp;", "&"), data={
+            "hash": m.group(2), "plan": "dhcp-reservation", "params": json.dumps(RES),
+            "reason": REASON}, headers=HX)
+        assert r.status_code == 200 and 'aria-busy="true"' in r.get_data(as_text=True)
+        monkeypatch.setattr("modules.nsot.capture_job.get", lambda job: {"state": "running"})
+        ((work, kw),) = started
+        work("j-1")
+        (out,) = during
+        assert "data-run-stepper" in out and 'aria-busy="true"' in out
+        assert 'run-step run-step-running" data-step="step-1"' in out
+        assert 'aria-current="step"' in out and "DHCP reservation" in out
+        assert kea.recorded
+        after = client.get(kw["page"].replace("{job}", "j-1"), headers=HX).get_data(as_text=True)
+        assert DONE_STEP in after and 'aria-busy="true"' not in after
 
 
 class TestTheCard:
@@ -431,7 +521,7 @@ class TestTheCard:
             "reason": REASON}, headers=HX)
         out = r.get_data(as_text=True)
         assert r.status_code == 200, out
-        assert "Every step ran and was verified:" in out and 'data-state="done"' in out
+        assert "Every step ran and was verified:" in out and DONE_STEP in out
         assert kea.recorded
 
     def test_a_job_that_ended_with_no_record_is_said_never_running(self, kea, monkeypatch):
@@ -494,7 +584,7 @@ class TestTheCard:
         whole = page.get_data(as_text=True)
         assert page.status_code == 200 and whole.lstrip().lower().startswith("<!doctype html")
         assert "<title>A plan" in whole and "htmx" in whole
-        assert "Every step ran and was verified:" in whole and 'data-state="done"' in whole
+        assert "Every step ran and was verified:" in whole and DONE_STEP in whole
 
     def test_a_hash_not_previewed_is_refused_in_place_with_nothing_run(self, client, kea):
         r = client.post("/v2/plans/approve?list=Default", data={

@@ -47,6 +47,21 @@ def _params(text):
                                                           "JSON object")
 
 
+def _kept(rec: dict) -> dict:
+    """The run's record as the card draws it: its steps are drawn by THE stepper (`_drawn`),
+    so the record goes without them (a route hands its template only what it draws)."""
+    return {k: v for k, v in rec.items() if k != "plan_steps"}
+
+
+def _drawn(card: dict) -> dict:
+    """`plan_engine.run_card`'s stepper as the card draws it: one row, so no counts, total or
+    groups (`run_stepper` draws the bar and counts for more than one row, and groups from
+    `run_stepper.GROUP_FROM`), and a row's time as its words (``elapsed_words``), never its
+    seconds."""
+    return dict({k: v for k, v in card.items() if k not in ("counts", "total", "groups")},
+                rows=[{k: v for k, v in r.items() if k != "elapsed_s"} for r in card["rows"]])
+
+
 def card(network: str, args, **answer) -> dict:
     """The card's context in the state its query names: ``preview``, ``running`` or
     ``result``; reads only Mercury's records (and each step's own dry run)."""
@@ -66,7 +81,9 @@ def card(network: str, args, **answer) -> dict:
         rec = E.record_of(network, c["run"])
         if rec is None or rec.get("state") == "running":
             c["state"] = "running"
-            c["record"] = rec or {}
+            c["record"] = _kept(rec or {})
+            # Its steps on THE stepper once the run has recorded them (`plan_engine.run_card`).
+            c["stepper"] = _drawn(E.run_card(rec)) if rec and rec.get("plan_steps") else None
             c["job_failed"] = ""
             if c["job"]:
                 # The job's own state while the record says running (or there is none yet): a
@@ -78,7 +95,7 @@ def card(network: str, args, **answer) -> dict:
                     c["job_failed"] = redact_text(job.get("error") or job.get("reason") or
                                        f"its job {c['job']} ended, and no record was written")
         else:
-            c.update(state="result", record=rec,
+            c.update(state="result", record=_kept(rec), stepper=_drawn(E.run_card(rec)),
                      level=("ok" if rec.get("state") == "done" else
                             "warn" if rec.get("outcome") == "partial" else "danger"))
         return c

@@ -541,6 +541,42 @@ def step_labels(steps: list) -> list:
             + [("record", "Record the plan's outcome, each step's own")])
 
 
+#: Each step kind's label on THE stepper (two to four words, docs/UI_RULES.md); its whole words
+#: are the step's hover.
+STEP_LABELS = {"dhcp-reservation": "DHCP reservation", "intent-description": "Set a description",
+               "ztp-create": "Create by ZTP"}
+#: A run's outcome -> its one row's group on THE stepper (never done over a partial or a stop).
+ROW_GROUP = {"running": "running", "done": "done", "partial": "partial", "stopped": "failed",
+             "refused": "failed", "failed": "failed"}
+
+
+def run_card(rec: dict) -> dict:
+    """A plan's run drawn on THE stepper (`run_stepper.card`, `run_stepper` the one macro,
+    tests/test_one_stepper.py) from its own record: one row, the plan, its steps in order, each
+    its recorded state (one whose done leaves its own approval to come, ZTP's Create, amber as
+    needing a person, never green; a moved or failed one failed), the steps after
+    a stop not reached, and before the end each step not yet run waiting its turn."""
+    from modules import run_stepper as RS
+
+    outcome = rec.get("outcome") or "running"
+    ended = rec.get("state") != "running"
+    steps = []
+    for s in rec.get("plan_steps") or []:
+        kind = STEP_KINDS.get(s.get("kind"))
+        state = {"done": "needs" if kind and kind.done_level == "partial" else "done",
+                 "running": "running", "failed": "failed", "refused": "failed"}.get(
+            s.get("state"), "not_reached" if ended else "waiting")
+        steps.append(dict(RS.step(f"step-{s.get('n')}",
+                                  STEP_LABELS.get(s.get("kind"), f"Step {s.get('n')}"), state,
+                                  note=str(s.get("words_said") or "")[:300]),
+                          title=f"Step {s.get('n')}: {s.get('words') or ''}"))
+    group = ROW_GROUP.get(outcome, "failed") if ended else "running"
+    row = RS.row(rec.get("title") or rec.get("plan") or "the plan", group, steps, device=False,
+                 detail="" if steps else str(rec.get("why") or "")[:300])
+    return RS.card([row], label="The plan's steps", key="plan",
+                   group_words={"partial": "done; a step leaves its own approval to come"})
+
+
 def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
     """Why the approval is not a verified person's, or ``""`` (an allowlist of the ways a
     request's identity is established, `identity.REQUEST_VERIFICATIONS`)."""

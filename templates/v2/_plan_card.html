@@ -1,11 +1,13 @@
 {%- from "v2/_macros.html" import icon, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- A plan of Mercury's operations (routes/plans_v2.card, modules/plan_engine.py), drawn in place
     where it was offered (the toolbar assistant's answer). Outcome first: what the plan does, its
     steps in order, each previewed by its own operation (its change, its checks, what it does not
     do), the plan's one hash, a reason, and the button named for the work, busy on itself until
-    the card answers. Started, the card listens for the run's record and draws each step's
-    outcome in place: the first step that did not pass leads, and the steps after it say they did
-    not run. Nothing is retried. -#}
+    the card answers. Started, the card listens for the run's record and draws its steps on THE
+    stepper (`run_stepper`, from `plan_engine.run_card`): each step's state and what it said,
+    the steps after a stop not reached. Nothing is retried. The preview's list is the plan's
+    program, not progress. -#}
 {%- set P = c.preview or {} -%}
 <div class="heal-prop plan-card" id="plan-card"{% if c.state == 'running' and not c.job_failed %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
 {%- if c.error %}
@@ -17,20 +19,17 @@
   {%- else %}
   <p><strong>Running the plan{% if c.record.title %}: {{ c.record.title }}{% endif %}, on {{ c.list }}.</strong> Each step runs through its own operation, in order; the first that does not pass stops the plan. This answer updates when the run records a step.</p>
   {%- endif %}
+  {%- if c.stepper %}{{ run_stepper(c.stepper) }}{% endif %}
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
   <div class="notice notice-{{ 'muted' if c.level == 'ok' else ('warning' if c.level == 'warn' else 'danger') }} set-result" role="{{ 'status' if c.level == 'ok' else 'alert' }}">{{ icon('tick' if c.level == 'ok' else 'warn', 16) }}<p><strong>{{ (c.outcome_words.get(r.outcome, r.outcome)) | capitalize }}:</strong> {{ r.why }}</p></div>
-  <ol class="small plan-steps">
-    {%- for s in r.plan_steps or [] %}
-    <li data-plan-step="{{ s.n }}" data-state="{{ s.state }}"><strong>{{ s.words }}</strong>: {% if s.state == 'not_run' %}did not run{% elif s.state == 'done' %}done{% elif s.state == 'running' %}running{% else %}{{ s.state }}{% endif %}{% if s.words_said %}: {{ s.words_said }}{% endif %}</li>
-    {%- endfor %}
-  </ol>
+  {{ run_stepper(c.stepper) }}
   <p class="small">Approved by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}.</p>
 {%- elif not P.ok %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>This plan is not offered:</strong> {{ P.refused }}</p></div>
 {%- else %}
   <p><strong>{{ P.title }}, on {{ c.list }}.</strong> {{ P.words }}: {{ P.steps | length }} step{{ 's' if P.steps | length != 1 }}, run in order, each through its own operation; the first that does not pass stops the plan, and nothing is retried.</p>
-  <ol class="small plan-steps">
+  <ol class="small plan-program">
     {%- for s in P.steps %}
     <li data-plan-step="{{ s.n }}"><strong>{{ s.words }}</strong>{% if s.drawn.title %}: {{ s.drawn.title }}{% endif %}{% if s.drawn.change %}. {{ s.drawn.change }}{% endif %}
       {%- if s.drawn.not_done %}<span class="muted"> ({{ s.drawn.not_done | join('; ') }})</span>{% endif %}</li>

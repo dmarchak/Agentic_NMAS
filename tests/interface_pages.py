@@ -39,9 +39,17 @@ from tests.js_source import loaded_scripts
 #: The device the walk holds pending onboarding by out-of-band ZTP, its console surveyed
 #: (`seed`), so a pending page and its console card are in the population (C1575).
 PENDING = "edge9"
-#: Where the walk starts: Needs attention, a device page in each golden state, and a pending
-#: device's page (no link reaches it: a pending device is in no inventory).
-START = ("/v2/", "/v2/device/r3", "/v2/device/r9", f"/v2/device/{PENDING}")
+#: The plan run the walk holds going (`seed`, `_plan_running`): its record kept after its first
+#: step, its job running.
+PLAN_RUN, PLAN_JOB = "walk-plan-run", "walk-plan-job"
+#: A running plan's page, as In progress's Open asks for it (the job's *page*,
+#: `plan_engine.start`): no link reaches it, because In progress is drawn by a request, never a
+#: page, and the plan's card is offered only in the toolbar assistant's answer.
+PLAN_PAGE = f"/v2/plans/preview?list=Lab&plan=dhcp-reservation&run={PLAN_RUN}&job={PLAN_JOB}"
+#: Where the walk starts: Needs attention, a device page in each golden state, a pending
+#: device's page (no link reaches it: a pending device is in no inventory), and a running
+#: plan's page (`PLAN_PAGE`).
+START = ("/v2/", "/v2/device/r3", "/v2/device/r9", f"/v2/device/{PENDING}", PLAN_PAGE)
 #: The query parameters that make a different page (a device or settings tab, the intent
 #: editor open); any other parameter is a filter over the same page.
 PAGE_PARAMS = ("tab", "edit")
@@ -195,12 +203,37 @@ def _pending_surveyed(repo: str, mp, folder: str) -> None:
 
 
 def seed(lab: dict, mp, folder: str) -> None:
-    """What the walk's lab holds beyond test_device_v2's: r3's committed intent, and the
-    pending device `PENDING` with its console survey. tests/v2_context.py's measure seeds the
+    """What the walk's lab holds beyond test_device_v2's: r3's committed intent, the
+    pending device `PENDING` with its console survey, and a plan run still going
+    (`_plan_running`, whose page is `PLAN_PAGE`). tests/v2_context.py's measure seeds the
     same, from the same starts."""
     _commit_intent(lab["repo"], "r3")
     _pending_surveyed(lab["repo"], mp, folder)
     _loop_run("Lab", mp, folder)
+    _plan_running("Lab", mp)
+
+
+def _plan_running(network: str, mp) -> None:
+    """A plan run on *network* still going (`PLAN_RUN`): its record as `plan_engine.run` keeps
+    it once its first step has begun, and its job running in the job registry (`PLAN_JOB`), so
+    `PLAN_PAGE` draws the running card on THE stepper, which asks for itself again as the run
+    moves. The walk's own patches of the two reads, each falling through to the real one for
+    any other run or job: no run starts and nothing is written."""
+    from modules import plan_engine
+    from modules.nsot import capture_job
+
+    rec = {"id": PLAN_RUN, "key": plan_engine.KEY, "list": network, "plan": "dhcp-reservation",
+           "title": "Reserve 192.0.2.150 for h5", "state": "running", "outcome": "running",
+           "actor": "walk@example.invalid", "reason": "the printer needs a fixed address",
+           "plan_steps": [{"n": 1, "kind": "dhcp-reservation", "state": "running",
+                           "words": plan_engine.STEP_KINDS["dhcp-reservation"].words,
+                           "words_said": ""}], "steps": []}
+    record_of, get = plan_engine.record_of, capture_job.get
+    mp.setattr(plan_engine, "record_of", lambda net, run: (
+        dict(rec) if (net, run) == (network, PLAN_RUN) else record_of(net, run)))
+    mp.setattr(capture_job, "get", lambda job: (
+        {"job": PLAN_JOB, "state": "running", "list": network} if job == PLAN_JOB
+        else get(job)))
 
 
 def _sdn_connection(network: str, mp) -> None:

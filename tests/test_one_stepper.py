@@ -53,6 +53,7 @@ OPERATION_PAGES = {
     "_dhcp_subnet.html": "DHCP subnet writes",
     "_dhcp_reserve.html": "DHCP reservation writes",
     "_dhcp_exclusion.html": "DHCP exclusion writes",
+    "_plan_card.html": "A plan of operations (modules/plan_engine.py), its steps in order",
 }
 #: Operation pages not yet converted (the 2026-10-12 program, finished the same day): EXACT,
 #: so nothing joins it.
