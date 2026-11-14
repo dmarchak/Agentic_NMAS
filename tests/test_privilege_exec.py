@@ -25,12 +25,15 @@ the template, previewed and approved by hash").
 - **a merge-only deploy adds them** and sends nothing where the device holds them, and never a
   ``no``; verify reads each back.
 
-**The device lines here are TYPED, not captured**: no capture in tests/fixtures holds a
-``privilege`` line (searched 2026-11-13). Their form is Cisco's command reference's
-(``privilege mode [all] {level level | reset} command-string``), each added to a REAL capture
-(tests/fixtures/configs/) before its ``end``. What a device prints back for one (the lines for
-a command's leading words, their order) is the first deploy's verify and the probe's to
-measure, and the proposal says so.
+**The device lines here are TYPED in the form a device was measured to store** (C3580): no
+capture in tests/fixtures holds a ``privilege`` line (searched 2026-11-13), so each is added to
+a REAL capture (tests/fixtures/configs/) before its ``end``, in Cisco's command reference's form
+(``privilege mode [all] {level level | reset} command-string``) and with what r4 (IOS-XE)
+stored for the approved pair, read from its golden through `scripts/nmas-config-read` on
+2026-11-14 (`R4`): a line for each leading word of the telemetry command at level 3, right
+after it and longest first, then the restore. Before that measurement the typed lines held the
+pair alone, so the render wrote two lines fewer than the device stores and all six IOS-XE
+routers departed from intent by two (C3580).
 
 IPv6 beside IPv4: the read set's IPv6 forms (``ping ipv6``, ``traceroute ipv6``, ``show ipv6
 route``) are held as forms beside the IPv4 ones; nothing here parses an address.
@@ -48,25 +51,41 @@ CAPTURES = {"cisco_iosxe": "r1_c8000v.cfg", "cisco_ios": "s1_vios_l2.cfg"}
 PLATFORMS = sorted(CAPTURES)
 
 #: Typed (see the module's words): the lines the key holds, an IPv6 form among them.
+#: Each command's leading words are among them, as a device stores them (C3580): `traceroute`
+#: for `traceroute ipv6`, `show ipv6` for `show ipv6 route`.
 MODELLED = ["privilege exec level 3 show telemetry ietf subscription",
             "privilege exec all level 3 ping",
             "privilege exec all level 3 traceroute ipv6",
+            "privilege exec level 3 traceroute",
             "privilege exec level 3 show telemetry ietf",
             "privilege exec level 3 show telemetry",
             "privilege exec level 3 show",
-            "privilege exec level 14 show ipv6 route"]
+            "privilege exec level 14 show ipv6 route",
+            "privilege exec level 14 show ipv6"]
 ENTRIES = [{"level": 3, "command": "show telemetry ietf subscription", "all": False},
            {"level": 3, "command": "ping", "all": True},
            {"level": 3, "command": "traceroute ipv6", "all": True},
+           {"level": 3, "command": "traceroute", "all": False},
            {"level": 3, "command": "show telemetry ietf", "all": False},
            {"level": 3, "command": "show telemetry", "all": False},
            {"level": 3, "command": "show", "all": False},
-           {"level": 14, "command": "show ipv6 route", "all": False}]
+           {"level": 14, "command": "show ipv6 route", "all": False},
+           {"level": 14, "command": "show ipv6", "all": False}]
 #: The operator's approved pair (2026-11-13): the telemetry line, and the level-1 restore of
 #: its leading word `show`, as entries and as the lines they render, in the order sent.
 TELEMETRY = {"level": 3, "command": "show telemetry ietf subscription", "all": False}
 RESTORE = {"level": 1, "command": "show", "all": False}
 PAIR = ["privilege exec level 3 show telemetry ietf subscription", "privilege exec level 1 show"]
+#: What r4 (IOS-XE) stores for the pair: its golden's privilege lines, in its order, read
+#: masked through `scripts/nmas-config-read --grep '^privilege'` on 2026-11-14 (C3580); r1,
+#: r3, r6, r7 and r8 hold the same four.
+R4 = ["privilege exec level 3 show telemetry ietf subscription",
+      "privilege exec level 3 show telemetry ietf",
+      "privilege exec level 3 show telemetry",
+      "privilege exec level 1 show"]
+#: The two lines the device writes for the telemetry command's leading words, which the
+#: render lacked: r4's "departs (-2)".
+HEADS = R4[1:3]
 #: Typed: lines the key may NOT hold, each staying unmodelled, whole.
 NOT_MODELLED = ["privilege exec level 5 configure terminal",
                 "privilege exec level 15 show telemetry ietf subscription",
@@ -349,12 +368,17 @@ class TestAMergeOnlyDeployAddsThem:
     def test_the_program_adds_exactly_the_lines_the_device_lacks(self, platform):
         from modules.nsot.deploy import merge_commands
 
+        # Three entries, and the device's lines for the leading words they move (C3580): the
+        # telemetry command's three, `show` at 3 since nothing restores it, and `traceroute`.
+        sent = [MODELLED[0], "privilege exec level 3 show telemetry ietf",
+                "privilege exec level 3 show telemetry", "privilege exec level 3 show",
+                MODELLED[1], MODELLED[2], "privilege exec level 3 traceroute"]
         program = merge_commands(self._rendered(platform, ENTRIES[:3]), _capture(platform))
         assert [c for c in program if "privilege" in c and not c.startswith("username")] \
-            == MODELLED[:3]
+            == sent
         held = _with(platform, MODELLED[:1])
         program = merge_commands(self._rendered(platform, ENTRIES[:3]), held)
-        assert [c for c in program if c.startswith("privilege")] == MODELLED[1:3]
+        assert [c for c in program if c.startswith("privilege")] == sent[1:]
 
     def test_a_device_holding_them_is_sent_nothing_and_never_a_no(self, platform):
         from modules.nsot.deploy import merge_commands
@@ -535,11 +559,13 @@ class TestTheRestoreIsSentAfterItsLine:
     """IOS raises a command's leading words when it takes the higher line, so the restore goes
     after it: in the render and the program, whatever the order in intent or in a capture."""
 
-    @pytest.mark.parametrize("order", [(0, 1), (1, 0)], ids=["as sent", "restore first"])
+    @pytest.mark.parametrize("order", [(0, 1, 2, 3), (3, 0, 1, 2)],
+                             ids=["as sent", "restore first"])
     def test_a_capture_holding_the_pair_is_modelled_in_the_order_it_is_sent(
             self, platform, order):
-        hv = _parse(_with(platform, [PAIR[n] for n in order]), platform)
-        assert hv["privilege_exec"] == [TELEMETRY, RESTORE]
+        hv = _parse(_with(platform, [R4[n] for n in order]), platform)
+        assert hv["privilege_exec"] == [TELEMETRY, _entry("show telemetry ietf", all=False),
+                                        _entry("show telemetry", all=False), RESTORE]
         assert not [u for u in hv["unmodeled"] if u["line"].startswith("privilege")]
         assert "_privilege_exec_at" not in hv, "the parser's own bookkeeping never leaves it"
 
@@ -551,17 +577,18 @@ class TestTheRestoreIsSentAfterItsLine:
         hv = _parse(_capture(platform), platform)
         hv["privilege_exec"] = [dict(e) for e in entries]
         lines = roundtrip.render(hv, platform).splitlines()
-        at = [lines.index(line) for line in PAIR]
-        assert at[1] == at[0] + 1, (at, "the restore directly after its line")
-        assert [lines.count(line) for line in PAIR] == [1, 1]
-        assert lines[at[1] + 1].startswith("username "), "and both before the accounts"
+        at = [lines.index(line) for line in R4]
+        assert at == list(range(at[0], at[0] + 4)), (at, "r4's four lines, in its order, the "
+                                                         "restore directly after them")
+        assert [lines.count(line) for line in R4] == [1] * 4
+        assert lines[at[-1] + 1].startswith("username "), "and all before the accounts"
         program = merge_commands("\n".join(lines) + "\n", _capture(platform))
-        assert [c for c in program if c.startswith("privilege")] == PAIR
-        # A device holding the higher line and not the restore is sent the restore alone.
-        program = merge_commands("\n".join(lines) + "\n", _with(platform, PAIR[:1]))
-        assert [c for c in program if c.startswith("privilege")] == PAIR[1:]
-        assert not [c for c in merge_commands("\n".join(lines) + "\n", _with(platform, PAIR))
-                    if "privilege exec" in c], "holding both, nothing, and never a `no`"
+        assert [c for c in program if c.startswith("privilege")] == R4
+        # A device holding the higher lines and not the restore is sent the restore alone.
+        program = merge_commands("\n".join(lines) + "\n", _with(platform, R4[:3]))
+        assert [c for c in program if c.startswith("privilege")] == R4[3:]
+        assert not [c for c in merge_commands("\n".join(lines) + "\n", _with(platform, R4))
+                    if "privilege exec" in c], "holding all four, nothing, and never a `no`"
 
     def test_several_higher_lines_all_come_before_the_restores(self, platform):
         hv = _parse(_capture(platform), platform)
@@ -570,14 +597,18 @@ class TestTheRestoreIsSentAfterItsLine:
         assert PX.problems(hv) == []
         got = [l for l in roundtrip.render(hv, platform).splitlines()
                if l.startswith("privilege")]
+        # `show ip route`'s leading words are both restores, so it writes no line for them.
         assert got == ["privilege exec level 3 show telemetry ietf subscription",
+                       "privilege exec level 3 show telemetry ietf",
+                       "privilege exec level 3 show telemetry",
                        "privilege exec level 5 show ip route",
                        "privilege exec level 1 show", "privilege exec level 1 show ip"]
-        assert got == [PX.render_line(e) for e in PX.ordered(hv["privilege_exec"])]
+        assert got == PX.rendered(hv["privilege_exec"])
 
-    @pytest.mark.parametrize("order", [(0, 1), (1, 0)], ids=["as sent", "restore first"])
+    @pytest.mark.parametrize("order", [(0, 1, 2, 3), (3, 0, 1, 2)],
+                             ids=["as sent", "restore first"])
     def test_the_round_trip_and_the_fixed_point_hold_in_either_order(self, platform, order):
-        text = _with(platform, [PAIR[n] for n in order])
+        text = _with(platform, [R4[n] for n in order])
         report = roundtrip.validate_device(text, platform)
         assert not report.get("error"), report.get("error")
         assert report["details"]["missing"] == [] and report["details"]["extra"] == [], report
@@ -600,10 +631,10 @@ class TestTheRestoreIsSentAfterItsLine:
     def test_verify_reads_the_pair_back(self, platform):
         from modules.nsot.verify_scope import read_back
 
-        got = read_back(PAIR, _with(platform, PAIR))
-        assert got["missing"] == [] and got["checked"] == 2, got
-        got = read_back(PAIR, _with(platform, PAIR[:1]))
-        assert got["missing"] == [PAIR[1]], got
+        got = read_back(R4, _with(platform, R4))
+        assert got["missing"] == [] and got["checked"] == 4, got
+        got = read_back(R4, _with(platform, PAIR))
+        assert got["missing"] == HEADS, got
 
 
 # ── The read-only account's lines, as data ────────────────────────────────────────────────────
@@ -615,9 +646,16 @@ class TestTheReadAccountsLines:
 
     def test_on_ios_xe_the_telemetry_line_then_the_show_restore_and_nothing_else(self):
         got = PX.read_account_lines("cisco_iosxe", ping_traceroute=False)
-        assert [g["entry"] for g in got] == [TELEMETRY, RESTORE]
-        assert [PX.render_line(g["entry"]) for g in got] == PAIR
-        assert "no level loses anything by the line itself" in got[0]["effect"]
+        # `all` on the telemetry line (C3583): the plain line left the account at 3 refused
+        # `show telemetry ietf subscription all` and `... 101 receiver` at their next word
+        # (r7's probe, 2026-11-14).
+        assert [g["entry"] for g in got] == [dict(TELEMETRY, all=True), RESTORE]
+        assert [PX.render_line(g["entry"]) for g in got] == [
+            "privilege exec all level 3 show telemetry ietf subscription", PAIR[1]]
+        assert PX.rendered([g["entry"] for g in got]) == [
+            "privilege exec all level 3 show telemetry ietf subscription"] + R4[1:]
+        assert "and every option under it" in got[0]["effect"]
+        assert "nothing outside that command changes level" in got[0]["effect"]
         assert got[1]["effect"] == (
             "puts `show` back at level 1, where it was: levels 0 to 2 keep every show command "
             "they had; only `show telemetry ietf subscription` (and its leading words `show "
@@ -635,8 +673,8 @@ class TestTheReadAccountsLines:
     def test_the_choice_adds_the_two_all_lines_and_says_what_they_remove(self):
         got = PX.read_account_lines("cisco_iosxe", ping_traceroute=True)
         assert [PX.render_line(g["entry"]) for g in got] == [
-            PAIR[0], "privilege exec all level 3 ping", "privilege exec all level 3 traceroute",
-            PAIR[1]]
+            "privilege exec all level 3 show telemetry ietf subscription",
+            "privilege exec all level 3 ping", "privilege exec all level 3 traceroute", PAIR[1]]
         for g, command in zip(got[1:3], ("ping", "traceroute")):
             assert f"it REMOVES {command} from levels 0 to 2 for every account on the device" \
                 in g["effect"], g["effect"]
@@ -657,3 +695,82 @@ class TestTheReadAccountsLines:
         got = PX.read_account_lines("cisco_iosxe", 5, ping_traceroute=True)
         assert [g["entry"]["level"] for g in got] == [5, 5, 5, 1]
         assert "levels 0 to 4" in got[1]["effect"] and "sits at 5" in got[3]["effect"]
+
+
+# ── The device's lines for a command's leading words (C3580) ─────────────────────────────────
+
+#: Entry sets whose render the template and `PX.rendered` must agree on, each a shape the
+#: leading-word rule has a branch for.
+SHAPES = {
+    "the approved pair": [TELEMETRY, RESTORE],
+    "the pair, restore first": [RESTORE, TELEMETRY],
+    "the pair with all": [dict(TELEMETRY, all=True), RESTORE],
+    "no restore": [TELEMETRY],
+    "a head named at another level": [TELEMETRY, _entry("show telemetry", level=5, all=False),
+                                      RESTORE],
+    "two lines sharing heads": [TELEMETRY, _entry("show ip route", all=False), RESTORE],
+    "one word": [_entry("ping", all=True)],
+    "the whole typed set": ENTRIES,
+}
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+class TestTheDeviceWritesTheLeadingWords:
+    """r4's "departs (-2)" (C3580): IOS-XE stores a line for each leading word of a command it
+    moved, at that line's level, right after it and longest first; the render wrote the entry's
+    line alone, so every IOS-XE router given the read-only account departed from its intent by
+    those two lines. The render writes them now, and intent reads back as the device stores it."""
+
+    def _lines(self, platform, entries):
+        hv = _parse(_capture(platform), platform)
+        hv["privilege_exec"] = [dict(e) for e in entries]
+        return [l for l in roundtrip.render(hv, platform).splitlines()
+                if l.startswith("privilege")]
+
+    def test_the_approved_pair_renders_what_r4_stores_line_for_line(self, platform):
+        assert self._lines(platform, [TELEMETRY, RESTORE]) == R4
+
+    def test_r4_s_golden_against_the_pair_s_intent_departs_by_nothing(self, platform):
+        """The comparison guard 4 and the device list read: the render of the pair's intent
+        against a config holding r4's four lines, nothing missing and nothing extra."""
+        from modules.nsot.deploy import merge_commands
+
+        hv = _parse(_capture(platform), platform)
+        hv["privilege_exec"] = [dict(TELEMETRY), dict(RESTORE)]
+        rendered = roundtrip.render(hv, platform)
+        stored = _with(platform, R4)
+        assert [l for l in rendered.splitlines() if l.startswith("privilege")] == R4
+        assert sorted(l for l in stored.splitlines() if l.startswith("privilege")) \
+            == sorted(R4), "the stored config holds exactly the four"
+        assert not [c for c in merge_commands(rendered, stored) if "privilege" in c]
+
+    @pytest.mark.parametrize("shape", sorted(SHAPES))
+    def test_the_template_writes_what_the_module_says(self, platform, shape):
+        got = self._lines(platform, SHAPES[shape])
+        assert got == PX.rendered(SHAPES[shape]), shape
+        assert len(got) == len(set(got)), "no line twice"
+
+    def test_a_head_an_entry_names_is_that_entry_s_line_alone(self, platform):
+        got = self._lines(platform, SHAPES["a head named at another level"])
+        assert got == ["privilege exec level 3 show telemetry ietf subscription",
+                       "privilege exec level 3 show telemetry ietf",
+                       "privilege exec level 5 show telemetry",
+                       "privilege exec level 1 show"]
+
+    def test_lines_sharing_a_head_write_it_once_after_the_first(self, platform):
+        got = self._lines(platform, SHAPES["two lines sharing heads"])
+        assert got == R4[:3] + ["privilege exec level 3 show ip route",
+                                "privilege exec level 3 show ip", R4[3]]
+
+    def test_an_all_line_writes_its_heads_without_all(self, platform):
+        """Cisco's command reference, `privilege`: `all` "changes the privilege level for all
+        the suboptions to the same level", and "the commands starting with the first word will
+        also have the specified access level"."""
+        got = self._lines(platform, SHAPES["the pair with all"])
+        assert got == ["privilege exec all level 3 show telemetry ietf subscription"] + R4[1:]
+
+    def test_with_no_restore_show_is_written_at_the_line_s_level(self, platform):
+        assert self._lines(platform, [TELEMETRY]) == R4[:3] + ["privilege exec level 3 show"]
+
+    def test_a_one_word_command_has_no_head(self, platform):
+        assert self._lines(platform, SHAPES["one word"]) == ["privilege exec all level 3 ping"]

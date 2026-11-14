@@ -362,7 +362,13 @@ class TestACustomPrivilegeLevel:
     LINES = [{"level": 3, "command": "show telemetry ietf subscription", "all": False},
              {"level": 3, "command": "ping", "all": True},
              {"level": 3, "command": "ping ipv6", "all": True}]
+    #: What the render writes and the device stores for LINES (C3580): after the telemetry line,
+    #: its leading words at the same level, longest first, as r4 stored them (its golden,
+    #: 2026-11-14), and `show` among them at 3, since LINES restores nothing; `ping` is its own
+    #: entry, so `ping ipv6` writes no line for it.
     SENT = ["privilege exec level 3 show telemetry ietf subscription",
+            "privilege exec level 3 show telemetry ietf", "privilege exec level 3 show telemetry",
+            "privilege exec level 3 show",
             "privilege exec all level 3 ping", "privilege exec all level 3 ping ipv6"]
 
     def _doc(self, platform):
@@ -461,8 +467,8 @@ class TestACustomPrivilegeLevel:
         capture, doc = self._doc("cisco_iosxe")
         program = merge_commands(prepare_device(_artifact(capture, doc))["config"], capture)
         shown = [redact_text(c) for c in program]
-        assert shown[:3] == self.SENT, "nothing of a privilege line is a secret"
-        assert RO_PW not in " ".join(shown) and shown[3].startswith(
+        assert shown[:len(self.SENT)] == self.SENT, "nothing of a privilege line is a secret"
+        assert RO_PW not in " ".join(shown) and shown[len(self.SENT)].startswith(
             f"username {RO_NAME} privilege 3 algorithm-type scrypt secret ")
 
 

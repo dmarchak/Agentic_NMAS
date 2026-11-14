@@ -274,7 +274,7 @@ class TestAdd:
         assert "host_vars" not in status
         (g,) = p["groups"]
         lines = [l["line"] for l in g["lines"]]
-        assert lines == ["privilege exec level 3 show telemetry ietf subscription",
+        assert lines == ["privilege exec all level 3 show telemetry ietf subscription",
                          "privilege exec level 1 show",
                          f"username {RO} privilege 3 algorithm-type scrypt secret "
                          "<redacted:read-account:profile:default>"]

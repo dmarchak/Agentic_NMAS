@@ -325,6 +325,46 @@ def render_line(entry: dict) -> str:
             f"{entry['command']}")
 
 
+def leading_words(entries) -> list:
+    """``[(entry, [head, ...])]`` for *entries* in render order (`ordered`): each entry with
+    the leading words the device writes a line for after it (C3580, measured on an IOS-XE
+    router, 2026-11-14: after ``privilege exec level 3 show telemetry ietf subscription`` it stores
+    ``privilege exec level 3 show telemetry ietf`` and ``privilege exec level 3 show
+    telemetry``, longest first, then the restore ``privilege exec level 1 show``). A head is
+    left out when an entry names that command itself (the restore's ``show``: its own line),
+    or when an earlier entry's line wrote it already. A level-1 entry has none (a restore raises
+    nothing); an ``all`` entry has the same as a plain one, written without ``all`` (Cisco's
+    command reference, ``privilege``: "the commands starting with the first word will also
+    have the specified access level"; what the device prints for them after an ``all`` line is
+    the first deploy's read back)."""
+    entries = ordered(entries)
+    named = {e.get("command") for e in entries if isinstance(e, dict)}
+    written, out = set(), []
+    for e in entries:
+        heads = []
+        if isinstance(e, dict) and e.get("level") != RESTORE:
+            words = str(e.get("command") or "").split()
+            for n in range(len(words) - 1, 0, -1):
+                head = " ".join(words[:n])
+                if head not in named and head not in written:
+                    written.add(head)
+                    heads.append(head)
+        out.append((e, heads))
+    return out
+
+
+def rendered(entries) -> list:
+    """Every line `_common.j2`'s ``privilege_exec`` writes for *entries*, in its order: each
+    entry's line (`render_line`), then the device's lines for its leading words at the same
+    level (`leading_words`). So intent renders exactly what the device stores, and a test
+    holds the template and this equal."""
+    out = []
+    for e, heads in leading_words(entries):
+        out.append(render_line(e))
+        out += [f"privilege exec level {e['level']} {h}" for h in heads]
+    return out
+
+
 def parse_line(line: str):
     """The entry a device's *line* is, ``{"level", "command", "all"}``, or None when it is not
     one this key may hold and render back exactly: such a line stays unmodelled, verbatim. A
@@ -352,8 +392,12 @@ def read_account_lines(dialect: str, level: int = READ_ACCOUNT_LEVEL, *,
     order: ``[{"entry", "effect"}]``, *effect* what the line does to every other account of
     the device, in words a preview states. The operator's approved set (2026-11-13):
 
-    - on a dialect the need was measured on (`MEASURED`): the telemetry line at *level*, then
-      the level-1 restore of ``show``, its leading word;
+    - on a dialect the need was measured on (`MEASURED`): the telemetry line at *level* with
+      ``all``, then the level-1 restore of ``show``, its leading word. ``all`` because the
+      plain line moves only the command's own words: the account at 3 was refused
+      ``show telemetry ietf subscription all`` and ``... 101 receiver`` at their next word
+      (the probe on an IOS-XE router, 2026-11-14, C3583), and ``all`` "changes the privilege level for all the
+      suboptions to the same level" (Cisco's command reference, ``privilege``);
     - ping's and traceroute's ``all`` lines only when *ping_traceroute* (None reads the
       installation choice, `router_reads.ping_traceroute_on`; off by default), each saying
       that it removes the command from levels 0 to 2 for every account;
@@ -366,10 +410,12 @@ def read_account_lines(dialect: str, level: int = READ_ACCOUNT_LEVEL, *,
         ping_traceroute = router_reads.ping_traceroute_on()
     top = f"{level} to {HIGH}"
     out = [
-        {"entry": {"level": level, "command": "show telemetry ietf subscription", "all": False},
-         "effect": (f"levels {top} gain `show telemetry ietf subscription`; no level loses "
-                    "anything by the line itself, but the device raises its leading word "
-                    f"`show` to {level} with it, which the next line puts back")},
+        {"entry": {"level": level, "command": "show telemetry ietf subscription", "all": True},
+         "effect": (f"levels {top} gain `show telemetry ietf subscription` and every option "
+                    "under it (`all`, a subscription's id, `receiver`); nothing outside that "
+                    "command changes level, but the device raises its leading words `show`, "
+                    f"`show telemetry` and `show telemetry ietf` to {level} with it, and the "
+                    "next line puts `show` back")},
         {"entry": {"level": RESTORE, "command": "show", "all": False},
          "effect": (f"puts `show` back at level {RESTORE}, where it was: levels 0 to "
                     f"{level - 1} keep every show command they had; only `show telemetry ietf "

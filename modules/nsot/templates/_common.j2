@@ -189,11 +189,24 @@ redistribute {{ r.protocol }}{% if r.process %} {{ r.process }}{% endif %}{% if 
     `users` below, so the lines stand before the accounts that use the level. Every line at a
     level above 1 first, then the level-1 lines (each the restore of a leading word a higher
     line raised: the device raises it when it takes that line, so the restore goes after it),
-    whatever their order in intent (`privilege_exec.ordered`). -#}
+    whatever their order in intent (`privilege_exec.ordered`).
+    The device writes a line for each leading word a higher line moved, at that line's level,
+    right after it and longest first (C3580, measured on an IOS-XE router, 2026-11-14:
+    `... level 3 show telemetry ietf subscription`, then `... level 3 show telemetry ietf`,
+    `... level 3 show telemetry`, then the restore `... level 1 show`), so the render writes
+    them too and intent reads back as the device stores it. A leading word intent names itself
+    (the restore's `show`) is its own entry's line, and one an earlier line wrote is not written
+    twice. An `all` line moves its leading words as the plain line does (Cisco's command
+    reference, `privilege`: "the commands starting with the first word will also have the
+    specified access level"), so its leading words are written the same way, without `all`;
+    what the device prints for them after an `all` line is the first deploy's read back. -#}
 {%- macro privilege_exec(v) -%}
 {%- set px = v.get('privilege_exec') or [] -%}
+{%- set named = px | map(attribute='command') | list -%}
+{%- set written = [] -%}
 {% for p in px if p.level | string != '1' %}privilege exec {{ 'all ' if p.get('all') else '' }}level {{ p.level }} {{ p.command }}
-{% endfor %}
+{% set words = p.command.split() %}{% for n in range(words | length - 1, 0, -1) %}{% set head = words[:n] | join(' ') %}{% if head not in named and head not in written %}{{ written.append(head) or '' }}privilege exec level {{ p.level }} {{ head }}
+{% endif %}{% endfor %}{% endfor %}
 {%- for p in px if p.level | string == '1' %}privilege exec level 1 {{ p.command }}
 {% endfor %}
 {%- endmacro -%}

@@ -180,19 +180,28 @@ line renders and the device prints, so verify reads it back), and a second key,
 `privilege_exec`, holds one entry per read moved to that level:
 
     privilege_exec:
-    - {level: 3, command: show telemetry ietf subscription, all: false}
+    - {level: 3, command: show telemetry ietf subscription, all: true}
     - {level: 1, command: show, all: false}
 
-which a deploy sends, before the account's line, as `privilege exec level 3 show telemetry ietf
-subscription` and then `privilege exec level 1 show`. **A line moves a command for every
-account on the device**, not for this one alone, and its leading words move with it: the
-first line lowers the telemetry read to level 3, which takes nothing from anyone, but the
-device raises the word `show` itself to 3 as it takes the line, and every account below
-level 3 would lose every show command. The second line puts `show` back at level 1, so
-those accounts keep every show command they had and only the telemetry read sits at 3.
-Mercury always sends the level-1 line after the line it follows, whatever their order in
-intent. On an IOS-XE device these two are the read-only account's lines; on an IOS device
-there are none, because what privilege 1 misses there is not measured yet.
+which a deploy sends, before the account's line, as four lines, the ones the device itself
+stores for these two entries:
+
+    privilege exec all level 3 show telemetry ietf subscription
+    privilege exec level 3 show telemetry ietf
+    privilege exec level 3 show telemetry
+    privilege exec level 1 show
+
+**A line moves a command for every account on the device**, not for this one alone, and its
+leading words move with it. The first line lowers the telemetry read to level 3, with every
+option under it (`all`: a subscription's id, `receiver`); that takes nothing from anyone. But
+the device raises the command's leading words `show telemetry ietf`, `show telemetry` and
+`show` to 3 as it takes the line, and every account below level 3 would lose every show
+command. The device writes a line for each of those leading words, and Mercury's render
+writes them too, so the device and its intent read the same. The last line puts `show` back
+at level 1, so those accounts keep every show command they had, and only the telemetry
+commands sit at 3. Mercury always sends the level-1 line after the lines it follows, whatever
+their order in intent. On an IOS-XE device these are the read-only account's lines; on an IOS
+device there are none, because what privilege 1 misses there is not measured yet.
 
 Mercury holds an entry to an allowlist and refuses anything else by name when the intent is
 saved. The level is 2 to 14. The command is a read of the AI read set, in the device's own
