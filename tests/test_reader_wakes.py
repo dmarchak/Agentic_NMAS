@@ -131,8 +131,10 @@ class TestTheMechanism:
         woke = W.wake(("goldens",), "device_v2.capture_confirm")
         assert "remote-publication" not in woke, "not running in this process: not asked"
         # freshness retired; the lab's reader left (C663); NetBox against the goldens (C1344);
-        # the drained reader, whose management path is read from the goldens (C3166)
-        assert set(woke) == {"baseline-usability", "netbox-lag", "drained"}
+        # the drained reader, whose management path is read from the goldens (C3166); board R's
+        # read-account-coverage, which reads what each golden holds of the read-only account
+        assert set(woke) == {"baseline-usability", "netbox-lag", "drained",
+                             "read-account-coverage"}
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
         assert {b for _n, b, _k in asked} == {"device_v2.capture_confirm"}
 

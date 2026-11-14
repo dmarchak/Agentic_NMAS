@@ -108,7 +108,8 @@ class RetireRefused(Exception):
 #: The manual's page names each (tests/test_manual.py reads this tuple).
 STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "ztp_subnet", "commit",
          "tags",
-         "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "telemetry",
+         "rolled_back", "approvals", "rotation_policy", "topology", "probes", "heartbeat",
+         "telemetry",
          "console", "netbox_record", "legacy", "host_key", "row")
 
 #: The namespace a retired device's golden tags are archived under:
@@ -471,6 +472,10 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     take("approvals", _approval_facts(list_name, hostname, known))
     take("rotation_policy", _policy_facts(list_name, hostname))
     take("topology", _topology_facts(list_name, hostname))
+    # Its read-only account probe records (board R's R8), kept by its identity, and any the
+    # command line kept flat by its name in this network: removed, so a new device of the name
+    # inherits no probe verdict.
+    take("probes", _probe_facts(list_name, hostname, identity or _former_identity(repo, hostname)))
     # Its heartbeat rule never refuses: a rules file that cannot be read is said in what
     # still watches it (`_watchers`), the hourly check naming the rule EXTRA meanwhile.
     hb = _heartbeat_facts(hostname)
@@ -945,6 +950,25 @@ def _named_elsewhere(list_name: str, hostname: str) -> list:
         if any(d.get("hostname") == hostname for d in load_saved_devices(csv_path)):
             found.append(lst["name"])
     return found
+
+
+def _probe_facts(list_name: str, hostname: str, identity: str) -> dict:
+    """Its read-only account probe records (board R's R8, `read_account_op.device_folders`):
+    its identity's folder and the flat records the command line kept by its name in this
+    network, removed after the commit. A store that cannot be listed refuses by name: could
+    not read is not none kept."""
+    from modules.nsot import read_account_op as RAO
+
+    try:
+        paths = RAO.device_folders(list_name, hostname, identity)
+    except Exception as exc:                   # noqa: BLE001 - said as the refusal
+        return {"refuse": (f"its read-only account probe records could not be listed ({exc}): "
+                           "a new device of the name could inherit a verdict")}
+    if not paths:
+        return {"step": "no read-only account probe record is kept for it", "done": True}
+    return {"step": (f"remove its read-only account probe records ({len(paths)} folder or "
+                     "file, kept by its identity or its name): a new device of the name "
+                     "inherits no verdict"), "done": False, "work": {"paths": paths}}
 
 
 def _policy_facts(list_name: str, hostname: str) -> dict:
@@ -1789,6 +1813,7 @@ STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides clea
               "commit": "Intent and golden removed", "tags": "Golden tags archived",
               "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
               "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
+              "probes": "Read-only account probe records removed",
               "heartbeat": "Heartbeat rule removed", "telemetry": "Telemetry rules removed",
               "console": "Console path and runs removed",
               "netbox_record": "NetBox record retired",
@@ -2079,6 +2104,25 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("topology")
         except Exception as exc:               # noqa: BLE001
             return fail("topology", exc)
+
+    if "probes" in pending:
+        import shutil
+
+        from modules import read_account_probe as RAP
+
+        try:
+            root = os.path.realpath(RAP.records_root())
+            for path in (work.get("probes") or {}).get("paths") or []:
+                real = os.path.realpath(path)
+                if not real.startswith(root + os.sep):
+                    raise RuntimeError(f"{path} is not under {root}: not removed")
+                if os.path.isdir(real):
+                    shutil.rmtree(real)
+                elif os.path.exists(real):
+                    os.remove(real)
+            done.append("probes")
+        except Exception as exc:               # noqa: BLE001
+            return fail("probes", exc)
 
     if "heartbeat" in pending:
         from modules import heartbeat_windows as HW

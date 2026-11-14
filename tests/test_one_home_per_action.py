@@ -41,9 +41,10 @@ DECLARED_DYNAMIC = {
     # The Tier 2 probe sends each measured command once (scripts/nmas-tier2-probe, STEPS).
     ("scripts/nmas-tier2-probe", "measure"): ("tier 2 probe",),
     # C2657: the read-only account probe sends its four expected-refused commands once each
-    # (scripts/nmas-read-account-probe, REFUSED) and only its two answers, `end` to a
+    # (modules/read_account_probe.py, REFUSED: the probe's one home since board R's R8, run by
+    # its command line and by Credentials' Probe…) and only its two answers, `end` to a
     # configuration prompt and `n` to a `[confirm]`, holding the device for the run.
-    ("scripts/nmas-read-account-probe", "run"): ("read-only account probe",),
+    ("modules/read_account_probe.py", "run"): ("read-only account probe",),
     # C2458, H20: the port bounce's one send (modules/heal/bounce.py, `Session.send`): its fixed,
     # previewed program (the revert timer and the bounce), its confirm and its repair, one batch
     # each, holding the device; self-healing's bounce and the revert-timer probe

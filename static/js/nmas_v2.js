@@ -60,6 +60,11 @@
               'templates',
               // A credential profile saved or deleted: Credentials › Profiles re-reads.
               'credentials',
+              // Which devices hold the read-only account (board R, the
+              // read-account-coverage reader): its card on Credentials › Profiles re-reads.
+              'read_account',
+              // A read-only account probe finished (board R's R8): its card reads it by id.
+              'read_account_probe',
               // The topology reader's graph moved, or an island was declared (P.11).
               'topology',
               // The fleet's syslog counts moved (the Logs view, C652).
@@ -1411,6 +1416,8 @@
   function relayTemplates() { relay('templates'); }
   function relaySave() { relay('save'); }
   function relayCredentials() { relay('credentials'); }
+  function relayReadAccount() { relay('read_account'); }
+  function relayReadAccountProbe() { relay('read_account_probe'); }
   function relayTopology() { relay('topology'); }
   function relayLogs() { relay('logs'); }
   function relayDhcp() { relay('dhcp'); }
@@ -1685,6 +1692,8 @@
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
     NMAS.subscribe('save', 'v2Save', relaySave);
     NMAS.subscribe('credentials', 'v2Credentials', relayCredentials);
+    NMAS.subscribe('read_account', 'v2ReadAccount', relayReadAccount);
+    NMAS.subscribe('read_account_probe', 'v2ReadAccountProbe', relayReadAccountProbe);
     NMAS.subscribe('topology', 'v2Topology', relayTopology);
     NMAS.subscribe('logs', 'v2Logs', relayLogs);
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);

@@ -639,3 +639,47 @@ class TestTheTabDrawsTheReadersValue:
         assert "Every adjacency intent implies for r3 that is measured is up." in html
         assert "The last refresh failed (" in html and "Could not connect" in html
         assert "this is what the adjacencies reader held when it last read Prometheus" in html
+
+
+class TestTheInterfacesIntentGivesANeighbourOn:
+    """`link_interfaces`: what a read of "who is cabled here" (CDP, LLDP) is asked of (the
+    operator, 2026-11-13: the read-only account probe asked them of Loopback0, which the
+    device refuses for every account). On the nine real fleet configs."""
+
+    def test_a_routers_are_its_data_links_never_its_loopback_or_its_vrf_interface(self):
+        from modules import neighbours as N
+        intents = _intents()
+        for host in ("r1", "r2", "r3", "r4", "r5"):
+            names = [i["name"] for i in intents[host]["interfaces"]]
+            assert names[0] == "Loopback0", "the first interface intent holds is the loopback"
+            got = N.link_interfaces(intents, host)
+            assert got and got[0] == "GigabitEthernet2", (host, got)
+            assert not [n for n in got if n.lower().startswith("loopback")], got
+            vrf = [i["name"] for i in intents[host]["interfaces"] if i.get("vrf")]
+            assert vrf == ["GigabitEthernet1"] and "GigabitEthernet1" not in got, (vrf, got)
+
+    def test_each_is_an_adjacencys_local_interface_or_shares_a_network(self):
+        from modules import neighbours as N
+        intents = _intents()
+        via = {a["via"] for a in N.expected(intents, "r3") if a["proto"] in ("ospf", "ospfv3")}
+        got = N.link_interfaces(intents, "r3")
+        assert via and via <= set(got), (via, got)
+        for name in got:
+            assert name in via or N.far_ends(intents, "r3", name), name
+
+    def test_a_device_alone_in_intent_has_none(self):
+        from modules import neighbours as N
+        intents = _intents()
+        assert N.link_interfaces({"r3": intents["r3"]}, "r3") == []
+        assert N.link_interfaces(intents, "nobody") == []
+
+    def test_an_ipv6_only_link_is_a_link(self):
+        from modules import neighbours as N
+        intents = {"a": {"interfaces": [{"name": "GigabitEthernet2",
+                                         "ipv6": ["2001:db8:12::1/64"]},
+                                        {"name": "Loopback0", "ipv6": ["2001:db8:ff::1/64"]}]},
+                   "b": {"interfaces": [{"name": "GigabitEthernet3",
+                                         "ipv6": ["2001:db8:12::2/64"]},
+                                        {"name": "Loopback0", "ipv6": ["2001:db8:ff::2/64"]}]}}
+        assert N.link_interfaces(intents, "a") == ["GigabitEthernet2"]
+        assert N.link_interfaces(intents, "b") == ["GigabitEthernet3"]

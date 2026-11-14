@@ -90,6 +90,21 @@ def same_interface(a: str, b: str) -> bool:
     return canonical(a).lower() == canonical(b).lower()
 
 
+#: The interface types a cable plugs into: the Ethernet families and Serial of
+#: `INTERFACE_PREFIXES`. Every other type there is made in software (a loopback, a tunnel, an
+#: SVI, a bundle, a bridge or virtual group), and nothing is cabled to it.
+CABLED_PREFIXES = ("TenGigabitEthernet", "FortyGigabitEthernet", "HundredGigE", "TwentyFiveGigE",
+                   "GigabitEthernet", "FastEthernet", "Ethernet", "Serial")
+
+
+def cabled(name: str) -> bool:
+    """Whether *name* is an interface of a type a cable plugs into (`CABLED_PREFIXES`), by its
+    canonical form's type word, whole: a subinterface of one is (``GigabitEthernet2.10``); a
+    name of no known type is not (never guessed)."""
+    match = _SPLIT_RE.match(canonical(name))
+    return bool(match) and match.group(1) in CABLED_PREFIXES
+
+
 #: An interface reference is a WHOLE TOKEN (C485, 2026-10-05): preceded by the line's start, a
 #: space or a comma, and followed by its end, a space, a comma or a range's `-`. A name inside
 #: a token is part of a literal: AutoInstall writes `ip dhcp client client-id ascii

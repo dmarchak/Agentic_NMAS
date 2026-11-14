@@ -50,6 +50,31 @@ STAGES = {
     "intent_layers_v2.change_go_on": Stages(
         "intent_layers_v2.change_run", "job", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # Board R (provisional, operator review pending): the read-only account's rollout, the
+    # committed intent of the chosen devices through the batch deploy's plan and THE apply
+    # (`fleet_change.run_batches` over `routes.deploy.apply_batch`): the canary, Go on, a
+    # management-path device on its own confirm; each device verified, saved, rolled back.
+    "credential_profiles_v2.read_account_rollout_confirm": Stages(
+        "credential_profiles_v2.read_account_rollout_plan", "hash",
+        "modules.pipeline._stage_verify", "modules.pipeline._stage_rollback",
+        "routes.deploy._write_receipts"),
+    "credential_profiles_v2.read_account_rollout_go_on": Stages(
+        "credential_profiles_v2.read_account_rollout_run", "job",
+        "modules.pipeline._stage_verify", "modules.pipeline._stage_rollback",
+        "routes.deploy._write_receipts"),
+    # Board R's R8: the read-only account probe, its own program previewed and bound by its
+    # hash; it configures nothing, so there is nothing to roll back; its verdict is its verify,
+    # its record kept under the device's identity.
+    "credential_profiles_v2.read_account_probe_confirm": Stages(
+        "credential_profiles_v2.read_account_probe_preview", "hash",
+        "modules.read_account_probe.verdict",
+        "n/a: it configures nothing (a configuration prompt is answered end at once and is its "
+        "FAIL)", "modules.read_account_probe.write_record"),
+    # Board R's Add: each ticked device's intent through the intent editor's one commit path,
+    # bound to the preview's hash (each device's base and the document committed).
+    "credential_profiles_v2.read_account_add": Stages(
+        "credential_profiles_v2.read_account_add_preview", "hash", NO_DEVICE, FORWARD,
+        "modules.nsot.intent_edit.commit_many"),
     # The v2 device page's Deploy, with Mode B (7.3): the same plan and apply, as a job.
     "device_v2.deploy_confirm": Stages(
         "device_v2.deploy", "command_hash", "modules.pipeline._stage_verify",
@@ -465,6 +490,11 @@ HISTORY = {
     "v2.profile_apply_confirm": ("receipts", "golden"),
     "intent_layers_v2.change_approve": ("receipts", "golden"),
     "intent_layers_v2.change_go_on": ("receipts", "golden"),
+    # Board R: the read-only account's rollout, each device's receipt and golden.
+    "credential_profiles_v2.read_account_rollout_confirm": ("receipts", "golden"),
+    "credential_profiles_v2.read_account_rollout_go_on": ("receipts", "golden"),
+    "credential_profiles_v2.read_account_add": ("intent",),
+    "credential_profiles_v2.read_account_probe_confirm": ("read_account_probes",),
     "v2.pair_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),

@@ -27,7 +27,18 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
-Templates sha256: `c9e8425914944fbe2c463ab3841bbce5b1fa2748033e10176a9cd0b4f4347126`
+Templates sha256: `1a30ec45c0c366fc53459654827708e82a988496bc3fa2c26fbd0ae3f306c5b6`
+
+**Compared again 2026-11-13 (board R; provisional, operator review pending):** by the templates'
+diff against the regions below, not from new shots. `credentials.html` includes, on the Profiles
+tab only and after the Read-only account card, the card board R adds (Read-only account on the
+devices, `_read_account_fleet.html`), compared in its own record, docs/fidelity/read-account.md.
+In `_credential_read_account.html` the **On the devices** value alone changes its words: it said
+"not read yet", and now says the account's state on each device is read below, from each
+device's committed intent and golden, added by Add the read-only account… and deployed by its
+rollout; the same element in the same position. The break-glass record's tab renders as before;
+every verdict stands.
+Templates sha256 before: `c9e8425914944fbe2c463ab3841bbce5b1fa2748033e10176a9cd0b4f4347126`.
 
 **Compared again 2026-11-13 (the read-only account through intent, C2657):** by the template's
 diff against the regions below, not from new shots. In `_credential_read_account.html`, the

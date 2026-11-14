@@ -349,3 +349,156 @@ class TestSetValueNeverSetsItPerDevice:
         ok = secret_refs.check(LIST, HOST, "user_admin_secret", "Typed-Not-Real-1",
                                "Typed-Not-Real-1", "a reason", intent=doc)
         assert all(c["ok"] for c in ok if c["name"] == "not the read-only account")
+
+
+class TestACustomPrivilegeLevel:
+    """The read-only account at privilege 3 with the reads that level may run (the operator,
+    2026-11-13: "mercury-ro at privilege 3, with `privilege exec level 3 <command>` lines for
+    exactly the reads that need it, through intent and the template, previewed and approved
+    by hash like r2's account"). The device lines here are in the form r2 printed its account
+    in (2026-11-13), with `privilege 3` where IOS prints a privilege that is not its default;
+    that form is the first deploy's verify to measure."""
+
+    LINES = [{"level": 3, "command": "show telemetry ietf subscription", "all": False},
+             {"level": 3, "command": "ping", "all": True},
+             {"level": 3, "command": "ping ipv6", "all": True}]
+    SENT = ["privilege exec level 3 show telemetry ietf subscription",
+            "privilege exec all level 3 ping", "privilege exec all level 3 ping ipv6"]
+
+    def _doc(self, platform):
+        capture, doc = _committed(platform, entry={"privilege": 3, "secret_ref": REF})
+        doc["privilege_exec"] = [dict(e) for e in self.LINES]
+        return capture, doc
+
+    @pytest.mark.parametrize("platform", ["cisco_iosxe", "cisco_ios"])
+    def test_the_account_renders_privilege_3_after_the_lines_of_its_level(self, store, platform):
+        from modules.nsot.deploy import prepare_device
+
+        _set_account()
+        capture, doc = self._doc(platform)
+        config = prepare_device(_artifact(capture, doc, platform))["config"].splitlines()
+        account = f"username {RO_NAME} privilege 3 algorithm-type scrypt secret {RO_PW}"
+        assert _line("\n".join(config)) == account
+        at = [config.index(line) for line in self.SENT]
+        assert at == sorted(at) and at[-1] < config.index(account), (at, config.index(account))
+
+    @pytest.mark.parametrize("platform", ["cisco_iosxe", "cisco_ios"])
+    def test_a_device_whose_golden_lacks_the_account_is_sent_it_added_never_refused(
+            self, store, platform):
+        """r2, 2026-11-13: its running configuration holds the account at privilege 1 (the
+        deploy whose verify failed saved nothing), its golden does not. The change-of-account
+        guard compares the golden's line, so the privilege-3 deploy adds the account."""
+        from modules.nsot.deploy import dangerous_in, merge_commands, prepare_device
+
+        _set_account()
+        capture, doc = self._doc(platform)
+        assert f"username {RO_NAME}" not in capture
+        program = merge_commands(prepare_device(_artifact(capture, doc, platform))["config"],
+                                 capture)
+        assert program == self.SENT + [
+            f"username {RO_NAME} privilege 3 algorithm-type scrypt secret {RO_PW}"], program
+        assert dangerous_in(program) == [], "no line here needs a reason"
+
+    @pytest.mark.parametrize("platform", ["cisco_iosxe", "cisco_ios"])
+    def test_verify_reads_privilege_3_back_and_says_when_the_device_holds_another(
+            self, store, platform):
+        from modules.nsot.deploy import merge_commands, prepare_device
+        from modules.nsot.verify_scope import account_held, read_back
+
+        _set_account()
+        capture, doc = self._doc(platform)
+        program = merge_commands(prepare_device(_artifact(capture, doc, platform))["config"],
+                                 capture)
+        sent = program[-1]
+        printed = "\n".join(self.SENT + [f"username {RO_NAME} privilege 3 secret {DEVICE_FORM}"])
+        running = capture.replace("\nend", f"\n{printed}\nend", 1)
+        assert account_held(sent, running) == ""
+        got = read_back(program, running)
+        assert got["missing"] == [] and got["checked"] == len(program), got
+        # The account as r2 holds it now, at the default privilege, never printed.
+        at_1 = running.replace(f"username {RO_NAME} privilege 3 secret",
+                               f"username {RO_NAME} secret")
+        assert account_held(sent, at_1) == (
+            f"account {RO_NAME} is there with privilege unset (1), not 3")
+        assert RO_PW not in " ".join(read_back(program, at_1)["missing"])
+
+    def test_a_device_whose_golden_holds_the_account_at_privilege_1_is_refused(self, store):
+        """An account is added, never changed: once a golden holds the privilege-1 line, a
+        deploy that would re-send it at privilege 3 is refused, naming the account and never
+        a value."""
+        from modules.nsot.deploy import prepare_device
+        from modules.nsot.render_artifact import CredentialWouldChange
+
+        _set_account()
+        capture, doc = self._doc("cisco_iosxe")
+        held = capture.replace("\nend", f"\nusername {RO_NAME} secret {DEVICE_FORM}\nend", 1)
+        with pytest.raises(CredentialWouldChange) as exc:
+            prepare_device(_artifact(held, doc))
+        assert f"username:{RO_NAME}" in str(exc.value)
+        assert RO_PW not in str(exc.value) and DEVICE_FORM.split()[1] not in str(exc.value)
+
+    def test_after_the_capture_the_privilege_3_line_is_the_device_s_and_nothing_is_sent(
+            self, store):
+        from modules.nsot import credential_rotation as CR
+        from modules.nsot.deploy import merge_commands, prepare_device
+
+        _set_account()
+        capture, doc = self._doc("cisco_iosxe")
+        printed = "\n".join(self.SENT + [f"username {RO_NAME} privilege 3 secret {DEVICE_FORM}"])
+        after = capture.replace("\nend", f"\n{printed}\nend", 1)
+        (got,) = [c for c in CR.capture_typed_secrets(LIST, HOST, doc, after)
+                  if c["ref"] == REF]
+        assert got["captured"] is True, got
+        config = prepare_device(_artifact(after, doc))["config"]
+        assert _line(config) == f"username {RO_NAME} privilege 3 secret {DEVICE_FORM}"
+        assert merge_commands(config, after) == []
+
+    def test_the_preview_masks_the_account_and_shows_the_lines_whole(self, store):
+        from modules.nsot.deploy import merge_commands, prepare_device
+        from modules.redact import redact_text
+
+        _set_account()
+        capture, doc = self._doc("cisco_iosxe")
+        program = merge_commands(prepare_device(_artifact(capture, doc))["config"], capture)
+        shown = [redact_text(c) for c in program]
+        assert shown[:3] == self.SENT, "nothing of a privilege line is a secret"
+        assert RO_PW not in " ".join(shown) and shown[3].startswith(
+            f"username {RO_NAME} privilege 3 algorithm-type scrypt secret ")
+
+
+class TestAnActionWritesTheAccountsEntry:
+    """`hostvars.with_read_account`: the one `users` entry, written for a device by code (the
+    operator, 2026-11-13: an "Add the read-only account…" action, no hand-typed YAML)."""
+
+    def test_a_device_without_it_gains_the_entry_and_no_name_or_password(self, store):
+        before = {"hostname": HOST, "users": [{"name": "admin", "privilege": 15}]}
+        doc, change = hostvars.with_read_account(before, "default", 3)
+        assert change == "added"
+        assert doc["users"] == [{"name": "admin", "privilege": 15},
+                                {"privilege": 3, "secret_ref": REF}]
+        assert before["users"] == [{"name": "admin", "privilege": 15}], "the caller's is its own"
+
+    def test_an_entry_at_another_privilege_is_moved_and_said(self, store):
+        held = {"users": [{"privilege": 1, "secret_ref": REF}]}
+        doc, change = hostvars.with_read_account(held, "default", 3)
+        assert change == "privilege 1 to 3" and doc["users"] == [
+            {"privilege": 3, "secret_ref": REF}]
+        assert held["users"][0]["privilege"] == 1
+        again, change = hostvars.with_read_account(doc, "default", 3)
+        assert change == "" and again == doc
+
+    def test_another_profile_s_account_is_its_own_entry(self, store):
+        held = {"users": [{"privilege": 1, "secret_ref": REF}]}
+        doc, change = hostvars.with_read_account(held, "role:router", 3)
+        assert change == "added" and doc["users"][0] == {"privilege": 1, "secret_ref": REF}
+        assert doc["users"][1] == {"privilege": 3,
+                                   "secret_ref": "read-account:profile:role:router"}
+
+    def test_what_it_writes_renders_the_account(self, store):
+        from modules.nsot.deploy import prepare_device
+
+        _set_account()
+        capture, doc = _committed("cisco_iosxe", entry={"privilege": 1, "secret_ref": REF})
+        doc, _change = hostvars.with_read_account(doc, "default", 3)
+        assert _line(prepare_device(_artifact(capture, doc))["config"]) == (
+            f"username {RO_NAME} privilege 3 algorithm-type scrypt secret {RO_PW}")

@@ -1181,6 +1181,114 @@ class TestRotateDueCards(_Cards):
         return html
 
 
+# ── Board R: the read-only account's Add, its rollout and its probe ──────────
+
+class TestReadAccountCards(_Cards):
+    """test_read_account_fleet's lab (r2's real capture and intent, a read-only account set) and
+    its `planned` programs (the deploy's plan and THE apply replaced; nothing sent)."""
+    from tests import test_read_account_fleet as _ra
+    lab, planned = hosted(_ra.lab), hosted(_ra.planned)
+
+    CASES = {
+        "add": ("_read_account_op.html", "Add to {{ p.taking | length }} device{{ '' if "
+                "p.taking | length == 1 else 's' }}' intent", r"Add to 1 device' intent",
+                "data: no ticked device takes it"),
+        "canary": ("_read_account_op.html", "Deploy the canary", r"Deploy the canary",
+                   "data: Mercury's management path could not be measured"),
+        "go_on": ("_read_account_op.html", "{% if r.waits == 'management' %}Deploy "
+                  "{{ r.upcoming[0] }} (the management path){% else %}Go on: the next "
+                  "waves{% endif %}", r"Go on: the next waves", "viewer"),
+    }
+
+    def _add(self, request, device):
+        lab = request.getfixturevalue("lab")
+        return _text(lab["client"].post("/v2/credentials/profiles/read-account/add/preview",
+                                        data={"device": [device], "reason": "why"}))
+
+    def drawn_add(self, request):
+        return self._add(request, "Lab/r2")
+
+    def blocked_add(self, request, monkeypatch):
+        html = self._add(request, "Lab/gone")
+        assert "not in Lab" in html, "floor: the refused device is drawn"
+        return html
+
+    def _plan(self, request):
+        from modules.nsot import capture_job
+        request.getfixturevalue("planned")
+        client = request.getfixturevalue("lab")["client"]
+        base = "/v2/credentials/profiles/read-account/rollout"
+        r = client.post(f"{base}/plan", data={"network": "Lab", "device": ["a", "b", "c"],
+                                              "size": "4"})
+        job = _text(r).split("/rollout/plan/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 10)
+        return _text(client.get(f"{base}/plan/{job}?network=Lab&device=a&device=b&device=c"
+                                "&size=4"))
+
+    def drawn_canary(self, request):
+        return self._plan(request)
+
+    def blocked_canary(self, request, monkeypatch):
+        from modules.nsot import read_account as RA
+        request.getfixturevalue("planned")
+        monkeypatch.setattr(RA, "management_carriers", lambda network, hosts: {
+            "carries": {}, "why": "the Topology read could not be used"})
+        html = self._plan(request)
+        assert "data-ra-blocked" in html, "floor: the blocked plan is drawn"
+        return html
+
+    def _paused(self, request):
+        from modules.nsot import capture_job
+        from modules.nsot import read_account as RA
+        request.getfixturevalue("planned")
+        client = request.getfixturevalue("lab")["client"]
+        p = RA.rollout_plan("Lab", ["a", "b"], "", 4)
+        job = RA.rollout_start("Lab", ["a", "b"], "", 4, p["hash"], actor="op",
+                               actor_kind="person")
+        assert capture_job.wait(job, 10)
+        return _text(client.get(
+            f"/v2/credentials/profiles/read-account/rollout/run/{job}?network=Lab"))
+
+    def drawn_go_on(self, request):
+        return self._paused(request)
+
+    def blocked_go_on(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._paused(request)
+        assert "data-ra-wave" in html, "floor: the paused run is drawn"
+        return html
+
+
+class TestReadAccountProbeCards(_Cards):
+    """test_read_account_probe's lab (its stand-in device at the session seam; nothing opened
+    by a preview)."""
+    from tests import test_read_account_probe as _rp, test_read_account_probe_op as _rpo
+    lab, op = hosted(_rp.lab), hosted(_rpo.op)
+
+    CASES = {
+        "probe": ("_read_account_op.html", "Probe {{ p.device }}", r"Probe edge1",
+                  "data: inside one of the installation's no-change windows"),
+    }
+
+    def _preview(self, request):
+        import app as A
+        request.getfixturevalue("op")
+        return _text(A.app.test_client().get(
+            "/v2/credentials/profiles/read-account/probe?network=net&device=edge1"))
+
+    def drawn_probe(self, request):
+        return self._preview(request)
+
+    def blocked_probe(self, request, monkeypatch):
+        from tests.test_read_account_probe_op import NO_CHANGE_NOW, WINDOWS
+        op = request.getfixturevalue("op")
+        monkeypatch.setattr("modules.change_windows.windows", lambda: list(WINDOWS))
+        monkeypatch.setattr(op["P"], "no_change_now", NO_CHANGE_NOW)
+        html = self._preview(request)
+        assert "data-ra-probe-now" in html, "floor: the refusal now is drawn"
+        return html
+
+
 # ── NetBox's Import, Remove and Stop tracking, on test_netbox_v2's networks ─
 
 class TestNetBoxCards(_Cards):
@@ -2393,9 +2501,11 @@ class TestThePopulation:
         Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904;
         84 until a lost telemetry stream's Re-subscribe <device>'s telemetry (<ids>) and Re-add
         the receiver for <id>, C2838, 2026-11-10; 86 until the Update page's Decline the step on
-        an owed host step, the operator, 2026-11-11)."""
+        an owed host step, the operator, 2026-11-11; 87 until board R's four, 2026-11-13: Add to
+        N devices' intent, Deploy the canary, the rollout's Go on (or Deploy <device> (the
+        management path)) and Probe <device>)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 87, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 91, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -100,6 +100,9 @@ class BaseParser:
             (re.compile(r"^router bgp\s+(\d+)"),             self._h_bgp),
             (re.compile(r"^ipv6 router ospf\s+(\d+)"),       self._h_ospfv3),
             (re.compile(r"^ipv6 router rip\s+(\S+)"),        self._h_ripng),
+            # What a custom privilege level may run (`modules/nsot/privilege_exec.py`): modelled
+            # only when the line is one intent may hold; any other stays unmodelled, verbatim.
+            (re.compile(r"^privilege exec\s+(.*)$"),         self._h_privilege_exec),
             (re.compile(r"^username\s+(\S+)\s+(.*)$"),       self._h_username),
             (re.compile(r"^enable secret\s+(.*)$"),          self._h_enable_secret),
             (re.compile(r"^enable password\s+(.*)$"),        self._h_enable_secret),
@@ -209,6 +212,7 @@ class BaseParser:
                     "lineno": block.lineno,
                 })
 
+        self._settle_privilege_exec(out)
         out = self._apply_schema_defaults(out)
         from modules.nsot.features import settle
         out = settle(out, self.platform)
@@ -406,6 +410,50 @@ class BaseParser:
             else:
                 entry.setdefault("extra", []).append(child.strip())
         out["vlans"].append(entry)
+
+    def _h_privilege_exec(self, block, out, m):
+        """``privilege exec [all] level <n> <command>``: an entry of ``privilege_exec`` when it
+        is one the key may hold (level 2 to 14, a read of the AI read set) and renders back
+        exactly; else unmodelled, whole. Emitted only when a config holds one, so it is not a
+        schema default every parse fills."""
+        from modules.nsot import privilege_exec
+
+        entry = None if block.children else privilege_exec.parse_line(block.stripped)
+        if entry is None:
+            return False
+        out.setdefault("privilege_exec", []).append(entry)
+        # Where each stood, so a level-1 line that restores nothing the config holds goes
+        # back to `unmodeled` whole once every line is read (`_settle_privilege_exec`).
+        out.setdefault("_privilege_exec_at", []).append((block.line, block.lineno))
+
+    @staticmethod
+    def _settle_privilege_exec(out: dict) -> None:
+        """The ``privilege_exec`` entries once every line is read: a level-1 line is kept only
+        as the restore of a leading word of a higher line the same config holds
+        (`privilege_exec.settled`); any other returns to ``unmodeled``, verbatim, at its own
+        line. The kept entries are in render order, so parse, render, parse is a fixed point
+        whatever order the device printed them in."""
+        at = out.pop("_privilege_exec_at", None)
+        held = out.get("privilege_exec")
+        if not held or not at:
+            return
+        from modules.nsot import privilege_exec
+
+        try:
+            kept, dropped = privilege_exec.settled(held)
+        except Exception as exc:                     # noqa: BLE001 (parse never raises)
+            # Not judged: every line returns to `unmodeled`, whole, and nothing is modelled.
+            log.debug("parser: the privilege lines could not be settled: %s", exc)
+            kept, dropped = [], list(range(len(held)))
+        for n in dropped:
+            line, lineno = at[n]
+            out["unmodeled"].append({"line": line, "children": [], "lineno": lineno})
+        if dropped:
+            out["unmodeled"].sort(key=lambda e: e.get("lineno") or 0)
+        if kept:
+            out["privilege_exec"] = kept
+        else:
+            del out["privilege_exec"]
 
     def _h_username(self, block, out, m):
         name, rest = m.group(1), m.group(2).strip()

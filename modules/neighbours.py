@@ -283,6 +283,25 @@ def _far_ends(lined: dict, host: str, interface: str) -> set:
     return out
 
 
+def link_interfaces(intents: dict, host: str) -> list:
+    """*host*'s interfaces committed intent gives a neighbour on, in intent's order: an OSPF or
+    OSPFv3 adjacency's local interface (`expected`), or one sharing an IPv4 or global IPv6
+    network with another device's interface (`far_ends`). Never a loopback, an interface in a
+    VRF or a shut one (`_no_adjacency`: no neighbour is cabled to the first, and the others
+    form none). What a read of "who is cabled here" (CDP, LLDP) is asked of; ``[]`` when intent
+    gives the device no neighbour, which the caller says."""
+    lined = _all_lines(intents)
+    via = {a["via"] for a in expected(intents, host) if a["proto"] in ("ospf", "ospfv3")}
+    out = []
+    for iface in (lined.get(host) or {}).get("interfaces") or []:
+        name = iface.get("name", "")
+        if not name or _no_adjacency(iface) or name in out:
+            continue
+        if name in via or _far_ends(lined, host, name):
+            out.append(name)
+    return out
+
+
 def window_far_ends(intents: dict, devices, interfaces=None) -> list:
     """``[(device, interface)]``: the far ends of every link a planned window's operation takes
     down (C2751; the operator's rule of 2026-11-08: a window for any link-affecting operation

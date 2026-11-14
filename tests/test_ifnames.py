@@ -81,3 +81,26 @@ class TestSharedTable:
         for canonical, abbrevs in ifnames.INTERFACE_PREFIXES:
             for abbrev in abbrevs:
                 assert ifnames.canonical(f"{abbrev}0") == f"{canonical}0"
+
+
+class TestCabled:
+    """`cabled`: the interface types a cable plugs into (the read-only account probe asks CDP
+    and LLDP of one, the operator, 2026-11-13)."""
+
+    @pytest.mark.parametrize("name", ["GigabitEthernet2", "Gi0/1", "TenGigabitEthernet1/0/1",
+                                      "FastEthernet0/1", "Ethernet0/0", "Serial0/0/0",
+                                      "GigabitEthernet2.10", "HundredGigE1/0/1"])
+    def test_an_ethernet_or_serial_interface_is(self, name):
+        assert ifnames.cabled(name)
+
+    @pytest.mark.parametrize("name", ["Loopback0", "Lo0", "Tunnel1", "Vlan100", "Port-channel1",
+                                      "BDI10", "VirtualPortGroup0", "Multilink1", "", "Bogus3",
+                                      "GigabitEthernetX"])
+    def test_an_interface_made_in_software_or_unknown_is_not(self, name):
+        assert not ifnames.cabled(name)
+
+    def test_every_type_of_the_table_is_decided(self):
+        """Each canonical type is cabled or not by the list, none by a prefix of another."""
+        cabled = {c for c, _a in ifnames.INTERFACE_PREFIXES if ifnames.cabled(f"{c}0")}
+        assert cabled == set(ifnames.CABLED_PREFIXES)
+        assert set(ifnames.CABLED_PREFIXES) <= {c for c, _a in ifnames.INTERFACE_PREFIXES}

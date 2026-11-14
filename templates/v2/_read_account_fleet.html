@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import how -%}
+{#- Board R (provisional, operator review pending; the operator, 2026-11-13): the read-only
+    account on the devices, under the Read-only account card. The coverage the
+    read-account-coverage reader holds (`_read_account_coverage.html`, re-read when it
+    announces `read_account`), and below it the place where Add the read-only account… and the
+    rollout open in place (`_read_account_op.html`). routes/credential_profiles_v2.py over
+    modules/nsot/read_account.py. -#}
+<section class="card ra-card" aria-labelledby="ra-h">
+  <div class="card-head"><h2 id="ra-h">Read-only account on the devices</h2>{{ how('credentials', 'on-the-devices') }}</div>
+  {% include "v2/_read_account_coverage.html" %}
+  <div id="ra-op"></div>
+</section>

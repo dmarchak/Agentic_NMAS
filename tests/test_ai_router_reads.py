@@ -194,10 +194,11 @@ def test_each_planted_request_is_refused_for_its_own_reason(lab, command, said):
     ("show ipv6 route 2001:db8::5", None),
     ("show ip cef 198.51.100.3", None),
     ("show ipv6 cef 2001:db8:ff::3", None),
-    ("ping 192.0.2.4 source GigabitEthernet4 repeat 5 timeout 2", None),
-    ("ping ipv6 2001:db8::4 repeat 5 timeout 2", None),
-    ("traceroute 192.0.2.6 numeric timeout 2 probe 1 ttl 1 16", None),
-    ("traceroute ipv6 2001:db8::6 numeric timeout 2 probe 1 ttl 1 16", None),
+    # The plain ping (the operator, 2026-11-13): 5 echoes and a 2 second timeout are the
+    # device's defaults, so it is the same measurement and answers at privilege 1. The forms
+    # with options are `test_the_forms_asked_only_under_the_installation_choice`'s.
+    ("ping 192.0.2.4", None),
+    ("ping ipv6 2001:db8::4", None),
     ("show ip bgp neighbors 192.0.2.6", None),
     ("show bgp ipv6 unicast neighbors 2001:db8::6", None),
     ("show ipv6 route 2001:DB8:0::5", "show ipv6 route 2001:db8::5"),
@@ -211,6 +212,61 @@ def test_each_allowed_form_passes_rendered_exactly(lab, command, sent):
     assert readonly_commands.refusal(got["command"]) == ""
 
 
+#: The forms whose options are not the device's defaults: asked only under the installation
+#: choice "Let the read-only account ping and traceroute" (the operator, 2026-11-13: "Ping and
+#: traceroute: not by default"). Each was an allowed form of 19.5's table before the choice.
+CHOICE_FORMS = [
+    ("ping_from", "ping 192.0.2.4 source GigabitEthernet4 repeat 5 timeout 2"),
+    ("ping6_from", "ping ipv6 2001:db8::4 source GigabitEthernet4 repeat 5 timeout 2"),
+    ("traceroute", "traceroute 192.0.2.6 numeric timeout 2 probe 1 ttl 1 16"),
+    ("traceroute6", "traceroute ipv6 2001:db8::6 numeric timeout 2 probe 1 ttl 1 16"),
+]
+
+
+@pytest.mark.parametrize("op,command", CHOICE_FORMS)
+def test_the_forms_asked_only_under_the_installation_choice(lab, op, command):
+    _ready()
+    on = match(command, ping_traceroute=True)
+    assert on["verdict"] == "allowed" and on["command"] == command, on["reason"]
+    assert readonly_commands.refusal(on["command"]) == ""
+    # Off, which is the default: refused by name, naming the choice and its setting, never
+    # silently and never as "not one of the read set's commands".
+    off = match(command)
+    assert off["verdict"] == "refused" and off["command"] == "" and off["op"] == op, off
+    assert off["reason"] == (
+        f"{op}: it needs the installation choice \"Let the read-only account ping and "
+        "traceroute\" (ai_read_account_ping_traceroute is off): its options are above the "
+        "read-only account's level without it, and the lines that open them take ping and "
+        "traceroute from every account below that level")
+
+
+def test_the_choice_is_the_installations_setting_off_by_default(lab):
+    """`scope_for` reads the setting where no caller names the choice; anything but a stored
+    `true` is off, and a scope built without it is read as off (the closed side)."""
+    from modules.settings_schema import DEFAULTS, write_settings
+
+    _ready()
+    assert DEFAULTS[R.PING_CHOICE_KEY] is False
+    assert R.PING_CHOICE == "Let the read-only account ping and traceroute"
+    assert scope()["ping_traceroute"] is False and R.ping_traceroute_on() is False
+    assert match(CHOICE_FORMS[2][1])["verdict"] == "refused"
+    assert write_settings({R.PING_CHOICE_KEY: True})["ok"]
+    assert scope()["ping_traceroute"] is True and R.ping_traceroute_on() is True
+    assert match(CHOICE_FORMS[2][1])["verdict"] == "allowed", "read from the setting"
+    assert R.choice_off("traceroute", {}) != "" and R.choice_off("traceroute", None) != ""
+    assert R.choice_off("traceroute", {"ping_traceroute": "yes"}) != "", "only true is on"
+    assert R.choice_off("ping", {}) == "" and R.choice_off("ping6", {}) == "", "the plain ping"
+    assert R.choice_off("route", {}) == ""
+
+
+def test_exactly_the_forms_with_options_need_the_choice():
+    """Every ping or traceroute of the read set but the two plain pings (a floor of four)."""
+    with_options = {name for name, send, *_rest in R.SHAPES
+                    if send.split()[0] in ("ping", "traceroute")
+                    and send not in ("ping {address}", "ping ipv6 {address}")}
+    assert with_options == set(R.CHOICE_OPS) and len(R.CHOICE_OPS) == 4
+
+
 @pytest.mark.parametrize("command,said", [
     ("show interfaces GigabitEthernet4 | inc up",
      "'inc' is not one of the output modifiers, in full: begin, count, exclude, include, "
@@ -219,8 +275,15 @@ def test_each_allowed_form_passes_rendered_exactly(lab, command, sent):
     ("show ip route 2001:db8::5", "route's argument address: '2001:db8::5' is not one IPv4 "
      "address"),
     ("show ip route 203.0.113.9", "203.0.113.9 is not an address of Branch"),
-    ("ping 192.0.2.4 repeat 100 timeout 2", "'100' is a word the shape"),
-    ("ping 192.0.2.4", "`ping 192.0.2.4` stops before `repeat 5 timeout 2`"),
+    # A ping's numbers are never the model's: the plain form names none (the operator,
+    # 2026-11-13: the plain ping, whose 5 echoes and 2 seconds are the device's defaults).
+    ("ping 192.0.2.4 repeat 100 timeout 2",
+     "'repeat' is a word the shape `ping {address}` does not name"),
+    ("ping 192.0.2.4 repeat 5 timeout 2",
+     "'repeat' is a word the shape `ping {address}` does not name"),
+    ("ping 192.0.2.4 source GigabitEthernet4 repeat 100 timeout 2", "'100' is a word the shape"),
+    ("traceroute 192.0.2.6",
+     "`traceroute 192.0.2.6` stops before `numeric timeout 2 probe 1 ttl 1 16`"),
     ("show ip ospf neighbor", "stops before `{interface} detail`"),
     ("show ipv6 ospf neighbor", "r3's platform is cisco_iosxe, and this form is cisco_ios's"),
     ("sh int GigabitEthernet4", "`sh int GigabitEthernet4` is not one of the AI read set's "
@@ -324,12 +387,20 @@ def test_the_loops_form_is_judged_by_the_same_family(lab):
              "why": "reach", "hypothesis": "the far end answers"},
             {"op": "route", "args": {"device": "r3", "address": "192.0.2.5", "extra": "x"},
              "why": "route", "hypothesis": "no route"}]
-    got = RL.check(R.AI_READS, asks, network=NETWORK, scope=scope())
+    # The sourced ping is asked under the installation choice (the operator, 2026-11-13).
+    got = RL.check(R.AI_READS, asks, network=NETWORK, scope=scope(ping_traceroute=True))
     assert [g["verdict"] for g in got] == ["allowed", "allowed", "refused"]
     assert got[0]["requests"] == ["show interfaces GigabitEthernet4"]
     assert got[1]["requests"] == ["ping ipv6 2001:db8::5 source GigabitEthernet0/1 repeat 5 "
                                   "timeout 2"]
     assert "route takes no argument 'extra'" in got[2]["reason"]
+    # With the choice off (the default) the loop's request is refused by name, nothing sent.
+    off = RL.check(R.AI_READS, asks, network=NETWORK, scope=scope())
+    assert [g["verdict"] for g in off] == ["allowed", "refused", "refused"]
+    assert off[1]["requests"] == [] and "it needs the installation choice" in off[1]["reason"]
+    plain = RL.check(R.AI_READS, [dict(asks[1], op="ping6", args={
+        "device": "s1", "address": "2001:db8::5"})], network=NETWORK, scope=scope())
+    assert plain[0]["requests"] == ["ping ipv6 2001:db8::5"], plain
 
 
 # ── The declaration ───────────────────────────────────────────────────────────────────────────
@@ -348,10 +419,16 @@ def test_the_family_is_declared_over_the_cli_rule_with_its_verbs_and_bounds():
         assert "|" not in send, send
         assert op.args["device"].against is R._device_named
         words = send.split()
-        if words[0] == "ping":
+        # A ping is the plain form (the device's defaults: 5 echoes, 2 seconds; the operator,
+        # 2026-11-13) or carries exactly those numbers; a traceroute its bounds. No other.
+        if words[0] == "ping" and op.name in ("ping", "ping6"):
+            assert send in ("ping {address}", "ping ipv6 {address}"), send
+        elif words[0] == "ping":
             assert words[-4:] == ["repeat", "5", "timeout", "2"], send
+            assert op.name in R.CHOICE_OPS, op.name
         if words[0] == "traceroute":
             assert words[-8:] == "numeric timeout 2 probe 1 ttl 1 16".split(), send
+            assert op.name in R.CHOICE_OPS, op.name
     config = sorted(o.name for o in R.AI_READS.operations if o.egress_class)
     assert config == ["running_config", "running_config_interface"]
     assert {R.AI_READS.class_of(o) for o in R.AI_READS.operations} == {
@@ -456,12 +533,19 @@ def test_golden_interfaces_are_the_interface_lines_as_written():
 #: don't-fragment probe), named here so a third cannot arrive unseen.
 RUNBOOK_ONLY = {
     "acl_counters": "an access list's entries are configuration",
-    "df_ping": "'size' is a word the shape `ping {address} repeat 5 timeout 2` does not name",
+    "df_ping": "'size' is a word the shape `ping {address}` does not name",
     # C2828's lost-stream runbook (C2894): a subscription's state and receiver hold the
     # collector's address and port, data the AI set has not been decided to carry off the host.
     "telemetry_brief": "is not one of the AI read set's commands",
     "telemetry_receiver": "is not one of the AI read set's commands",
 }
+
+
+#: The runbook reads whose command is the read set's plain ping with the device's defaults
+#: spelled out (the operator, 2026-11-13: the read-only account's ping is the plain form, whose
+#: 5 echoes and 2 second timeout are the defaults). Held as the same read, never excepted.
+RUNBOOK_SPELLS_THE_DEFAULTS = {"bgp_ping", "bgp_ping6", "reach_ping", "reach_ping6"}
+PING_DEFAULTS = " repeat 5 timeout 2"
 
 
 def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(lab):
@@ -474,18 +558,103 @@ def test_every_runbook_command_matches_the_ai_read_set_but_the_named_exceptions(
                                             "neighbor 2001:db8::1 remote-as 65002"]}}}
     intents = {"xe": dict(hv, platform="cisco_iosxe"), "ios": dict(hv, platform="cisco_ios")}
     golden = "interface GigabitEthernet0/1\ninterface Loopback0\n"
+    # The runbooks' sourced pings and traceroutes are the read set's forms under the
+    # installation choice (the operator, 2026-11-13); the runbooks themselves sign in as the
+    # deploy account and are not gated by it.
     sc = R.scope_for(NETWORK, ["xe", "ios"], intents=intents,
-                     goldens={"xe": golden, "ios": golden})
-    matched, excepted = 0, set()
+                     goldens={"xe": golden, "ios": golden}, ping_traceroute=True)
+    matched, excepted, plain = 0, set(), set()
     for kind, dialect, command in every_command():
         got = R.match(command, devices[dialect], sc, network=NETWORK)
         if kind in RUNBOOK_ONLY:
             assert got["verdict"] == "refused" and RUNBOOK_ONLY[kind] in got["reason"], got
             excepted.add(kind)
             continue
+        if kind in RUNBOOK_SPELLS_THE_DEFAULTS:
+            # The runbook's unsourced ping spells out the device's defaults; the read set's is
+            # the same ping without them: the runbook's command less those words is the read
+            # set's own, and with them it is refused at the first.
+            assert command.endswith(PING_DEFAULTS), command
+            assert got["verdict"] == "refused" and "'repeat' is a word the shape" in \
+                got["reason"], got
+            bare = command[:-len(PING_DEFAULTS)]
+            got = R.match(bare, devices[dialect], sc, network=NETWORK)
+            assert got["verdict"] == "allowed" and got["command"] == bare, got
+            plain.add(kind)
+            matched += 1
+            continue
         assert got["verdict"] == "allowed", (kind, command, got["reason"])
         assert got["command"] == command
         matched += 1
     assert excepted == set(RUNBOOK_ONLY)
+    assert plain == RUNBOOK_SPELLS_THE_DEFAULTS
     # the floor: every other template (37 since C2828's two telemetry reads)
     assert matched == 2 * 37 - 2 * len(RUNBOOK_ONLY)
+
+
+# ── The forms a device refuses for every account (the operator, 2026-11-13) ───────────────────
+#
+# The read-only account probe on an IOS-XE router, 2026-11-13: `show cdp neighbors Loopback0
+# detail`, its LLDP form and `show spanning-tree interface Loopback0` answered `% Invalid
+# input` for the deploy account as for the read-only one ("probe shapes wrong for the platform
+# or interface": the operator). The AI's check refuses the same forms, so the probe and the AI
+# agree.
+
+@pytest.mark.parametrize("command", ["show cdp neighbors Loopback0 detail",
+                                     "show lldp neighbors Loopback0 detail"])
+def test_cdp_and_lldp_are_never_asked_of_a_loopback(lab, command):
+    _ready()
+    got = match(command)
+    assert got["verdict"] == "refused" and got["command"] == "", got
+    assert "Loopback0 is a loopback, and nothing is cabled to a loopback" in got["reason"]
+    held = match(command.replace("Loopback0", "GigabitEthernet4"))
+    assert held["verdict"] == "allowed", held["reason"]
+    # Every other read of an interface is still asked of a loopback.
+    assert match("show interfaces Loopback0")["verdict"] == "allowed"
+    assert match("show ipv6 interface Loopback0")["verdict"] == "allowed"
+
+
+NO_VLANS = (False, "declared: no VLAN database (a test's own words)")
+
+
+def test_spanning_tree_is_a_switchs_read_refused_where_no_vlan_database(lab):
+    _ready()
+    command = "show spanning-tree interface GigabitEthernet4"
+    got = match(command, capabilities={"r3": NO_VLANS})
+    assert got["verdict"] == "refused" and got["command"] == "", got
+    assert got["reason"].endswith("r3 has no VLAN database (declared: no VLAN database (a "
+                                  "test's own words)), and this form is a switch's"), got
+    # A VLAN database, and an answer nobody holds, are both asked (a device's refusal says).
+    for capability in ((True, "measured"), (None, "not declared and not measured")):
+        assert match(command, capabilities={"r3": capability})["verdict"] == "allowed"
+    # Nothing else is a switch's read by this rule.
+    assert match("show interfaces GigabitEthernet4",
+                 capabilities={"r3": NO_VLANS})["verdict"] == "allowed"
+
+
+def test_the_scope_reads_the_platform_tables_declaration_never_a_name_or_a_role(
+        lab, monkeypatch):
+    """The declared entry is Mercury's own (platform_capabilities.json: the C8000V), read by
+    the device's NetBox device type; s1, in a role called switch and with no device type
+    named, is unknown, never a guessed yes."""
+    devices = [dict(d, _model="C8000V") if d["hostname"] == "r3" else dict(d) for d in DEVICES]
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda path: devices)
+    got = R.scope_for(NETWORK, ["r3", "s1"], intents=INTENTS, goldens=GOLDENS)["devices"]
+    assert got["r3"]["vlan_database"] is False
+    assert "Mercury's platform table" in got["r3"]["vlan_database_words"]
+    assert got["s1"]["vlan_database"] is None
+
+
+def test_another_platforms_form_is_named_by_one_function(lab):
+    """`other_platform`: what the probe leaves out and the check refuses, one comparison."""
+    _ready()
+    sc = scope(capabilities={"r3": NO_VLANS, "s1": (True, "measured")})
+    assert "this form is cisco_ios's" in R.other_platform("ipv6_ospf_neighbor", "r3", sc)
+    assert R.other_platform("ospfv3_neighbor", "r3", sc) == ""
+    assert "this form is a switch's" in R.other_platform("stp", "r3", sc)
+    assert R.other_platform("stp", "s1", sc) == ""
+    assert R.other_platform("interfaces", "r3", sc) == "", "no platform form"
+    # A platform nobody knows is not "another platform": the check refuses it in its own words.
+    unknown = scope(dialects={"r3": "", "s1": "cisco_ios"})
+    assert R.other_platform("ipv6_ospf_neighbor", "r3", unknown) == ""
+    assert "not known" in match("show ipv6 ospf neighbor", dialects={"r3": ""})["reason"]

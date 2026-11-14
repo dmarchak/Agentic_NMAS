@@ -87,6 +87,19 @@ NOT_AN_OPERATION = {
                                     "state stays off, nothing was written (H28)",
     ("_credential_read_account.html", "Cancel"): "draws the Read-only account card again "
                                                  "without the form: nothing was saved (H28)",
+    # Board R: the read-only account on the devices (Credentials › Profiles).
+    ("_read_account_coverage.html", "Search"): "narrows the coverage's groups to the devices "
+                                               "matching the search and filters; reads only",
+    ("_read_account_op.html", "Cancel"): "closes Add's or the rollout's card: nothing was "
+                                         "written or sent",
+    ("_read_account_op.html", "Back"): "draws Add's ticks again; the preview wrote nothing",
+    ("_read_account_op.html", "All not yet ( )"): "ticks every device that can take the "
+                                                  "account; writes nothing",
+    ("_read_account_op.html", "Every device of"): "ticks a network's devices that can take "
+                                                  "the account; writes nothing",
+    ("_read_account_op.html", "Every device"): "ticks a platform's devices that can take the "
+                                               "account; writes nothing",
+    ("_read_account_op.html", "Clear"): "unticks every device; writes nothing",
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
     # C3455: AI troubleshooting's choices open modals (`_modal.html`); each closes by its own
     # button or Escape, the opener given the focus back.

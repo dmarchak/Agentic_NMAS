@@ -746,6 +746,48 @@ class TestTopology:
         assert last["action"] == "forgot" and last["device"] == HOST
 
 
+class TestReadOnlyAccountProbeRecords:
+    """Board R's R8: the read-only account probe's records, kept by the device's network and
+    identity (and the command line's older ones, flat by name), are removed, so a new device of
+    the name inherits no verdict; another device's records stay."""
+
+    def _write(self, folder, name, rec):
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+
+    def test_its_records_are_removed_and_another_device_s_kept(self, lab, tmp_path,
+                                                                monkeypatch):
+        from modules.nsot import manifest
+        from modules.nsot import read_account_op as RAO
+        from modules import read_account_probe as P
+
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path / "data"))
+        ident, _e = manifest.find_by_name(lab["repo"], HOST)
+        other_ident, _e = manifest.find_by_name(lab["repo"], OTHER)
+        assert ident and other_ident and ident != other_ident
+        rec = {"network": "Lab", "device": HOST, "at": "2026-11-13T19:40:00Z",
+               "verdict": {"result": "PASS"}}
+        self._write(P.record_dir("Lab", ident), f"{HOST}-20261113T194000Z.json", rec)
+        self._write(P.records_root(), f"{HOST}-20261112T100000Z.json", rec)
+        self._write(P.record_dir("Lab", other_ident), f"{OTHER}-20261113T194000Z.json",
+                    dict(rec, device=OTHER))
+        assert RAO.newest("Lab", HOST)["result"] == "PASS"
+        p = RT.plan("Lab", HOST, REASON)
+        assert "remove its read-only account probe records (2" in _step(p, "probes")["what"]
+        _retire()
+        assert not os.path.exists(P.record_dir("Lab", ident))
+        assert not os.path.exists(os.path.join(P.records_root(),
+                                               f"{HOST}-20261112T100000Z.json"))
+        assert RAO.newest("Lab", HOST, identity="") == {}, "nothing left by its name"
+        assert RAO.newest("Lab", OTHER)["result"] == "PASS", "another device's records stay"
+
+    def test_nothing_kept_is_said(self, lab, tmp_path, monkeypatch):
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path / "data"))
+        step = _step(RT.plan("Lab", HOST, REASON), "probes")
+        assert step["what"] == "no read-only account probe record is kept for it"
+
+
 # ----------------------------------------------------------------------------- C1342
 
 @pytest.fixture

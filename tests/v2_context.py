@@ -2225,6 +2225,136 @@ def _read_only_account(client, lab, _mp):
         mp.undo()
 
 
+def _read_account_fleet(client, _lab, _mp):
+    """Board R (provisional, operator review pending): Credentials › Profiles' Read-only account
+    on the devices, its coverage held with a device in every state, a probe record and a network
+    that could not be read; Add's form, its preview (a device taking it, one refused, one
+    holding it) and its result; the rollout's form, its preview (a canary, a wave, a
+    management-path carrier last, a device sending nothing, one refused), its run paused before
+    the carrier and stopped at a failure, and its refusal. The coverage, the preview and THE
+    apply are planted for this provider alone, then undone; the jobs are the real ones."""
+    import pytest
+
+    import routes.deploy as rd
+    from modules.nsot import capture_job
+    from modules.nsot import read_account as RA
+    from modules.nsot.deploy import DEPLOYED
+
+    probe = {"network": "Lab", "at": "2026-11-13T19:40:00Z", "actor": "op@example.com",
+             "result": "PASS", "why": "every AI read answered", "file": "r3-x.json"}
+    states = ("would_change", "no_account", "pending", "not_yet", "device_only", "holds")
+    devices = [{"network": "Lab", "device": f"r{n + 3}", "dialect": "cisco_iosxe",
+                "platform": "IOS-XE", "profile": "" if s == "no_account" else "default",
+                "account": "" if s == "no_account" else "mercury-ro",
+                "intent": {"profile": "default", "level": 3} if s in ("pending", "holds")
+                else None,
+                "holds": {"level": 1 if s == "would_change" else 3}
+                if s in ("would_change", "device_only", "holds") else None,
+                "probe": probe if s == "holds" else None, "state": s, "why": f"why {s}",
+                "golden": s != "not_yet"} for n, s in enumerate(states)]
+    # Per network keyed by its one id (C1903), the display name in the value.
+    value = {"devices": devices,
+             "networks": {"lab": {"name": "Lab", "error": ""},
+                          "other": {"name": "Other", "error": "RuntimeError: no repo"}},
+             "level": 3, "goldens": {}}
+    preview = {"ok": True, "error": "", "level": 3, "ping": False,
+               "judged_at": "2026-11-13T20:00:00Z", "hash": "a" * 64,
+               "taking": [{"network": "Lab", "device": "r6"}],
+               "groups": [{"platform": "IOS-XE", "change": ["users gains mercury-ro"],
+                           "lines": [{"line": "privilege exec level 1 show",
+                                      "effect": "puts show back"}], "devices": ["r6"]}],
+               "refused": [{"network": "Lab", "device": "r3", "why": "its golden holds it"}],
+               "holding": [{"network": "Lab", "device": "r8"}],
+               "networks": {"lab": {"name": "Lab", "devices": ["r6"]}}}
+    plan = {"ok": True, "error": "", "network": "Lab", "base": "b" * 40, "hash": "c" * 64,
+            "canary": "r5", "size": 4, "carries_why": "", "carries": {"r7": ["r3", "r4"]},
+            "devices": [{"device": d, "program": ["username mercury-ro privilege 3 x"],
+                         "besides": 1 if d == "r6" else 0, "command_hash": f"h-{d}"}
+                        for d in ("r5", "r6", "r7")],
+            "unchanged": ["r8"], "refused": [{"device": "r3", "reasons": ["not deployable"]}],
+            "batches": [["r5"], ["r6"], ["r7"]], "confirm_at": [2]}
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(RA, "held", lambda: {"value": value, "at": "2026-11-13T20:00:00Z", "why": ""})
+        mp.setattr(RA, "add_preview", lambda picks, **kw: dict(preview))
+        mp.setattr(RA, "add_commit", lambda picks, confirmed, reason, actor: {
+            "ok": False, "error": "Other: not committed", "preview": preview,
+            "commits": [{"network": "Lab", "devices": ["r6"], "commit": "d" * 40, "error": ""},
+                        {"network": "Other", "devices": ["x"], "commit": "",
+                         "error": "not committed"}]})
+        mp.setattr(RA, "rollout_plan", lambda network, devices, canary="", size=4, named=(): dict(
+            plan, named=list(named), carries_why="" if named else "no Topology read",
+            blocked="" if named else RA.blocked_words("no Topology read")))
+        fail = {"on": ""}
+        mp.setattr(rd, "plan_devices", lambda ln, batch, **kw: [
+            {"device": d, "capture_hash": f"c-{d}", "command_hash": f"h-{d}"} for d in batch])
+        mp.setattr(rd, "apply_batch", lambda ln, conf, hashes, **kw: {"results": [
+            {"device": d, "outcome": "failed" if d == fail["on"] else DEPLOYED,
+             "verify": {"ok": d != fail["on"], "summary": "a sent line was not read back"}}
+            for d in conf]})
+        base = "/v2/credentials/profiles/read-account"
+        for url in (f"{base}/fleet?open=holds", f"{base}/fleet?q=r9", f"{base}/add?tick=not-yet",
+                    f"{base}/rollout?network=Lab"):
+            r = client.get(url, headers={"Accept": "text/html"})
+            assert r.status_code == 200, (url, r.status_code)
+        for path, form in (("/add/preview", {"device": ["Lab/r6"], "reason": "why"}),
+                           ("/add", {"device": ["Lab/r6"], "reason": "why", "hash": "a" * 64}),
+                           ("/rollout/plan", {"network": "Lab", "device": ["r5"]}),
+                           ("/rollout/plan", {"network": "Lab", "device": ["r5"],
+                                              "management": ["r7"]})):
+            r = client.post(base + path, data=form)
+            assert r.status_code in (200, 202), (path, r.status_code)
+            if path == "/rollout/plan":
+                job = r.get_data(as_text=True).split("/rollout/plan/", 1)[1].split("?", 1)[0]
+                assert capture_job.wait(job, 10)
+                named = "&management=r7" if form.get("management") else ""
+                html = client.get(f"{base}/rollout/plan/{job}?network=Lab&device=r5{named}") \
+                    .get_data(as_text=True)
+                assert ("Last, alone" if named else "data-ra-blocked") in html, html[:300]
+        for failing in ("", "r6"):
+            fail["on"] = failing
+            job = RA.rollout_start("Lab", ["r5", "r6", "r7"], "", 4, plan["hash"],
+                                   actor="op@example.com", actor_kind="person", named=["r7"])
+            assert capture_job.wait(job, 10)
+            job = RA.rollout_go_on(capture_job.get(job)["payload"], actor="op@example.com",
+                                   actor_kind="person")
+            assert capture_job.wait(job, 10)
+            html = client.get(f"{base}/rollout/run/{job}?network=Lab").get_data(as_text=True)
+            assert ("data-ra-management" if not failing else "data-ra-stopped") in html
+        r = client.post(f"{base}/rollout/go-on", data={"job": "no-such-job"})
+        assert r.status_code == 409 and "data-ra-run-refused" in r.get_data(as_text=True)
+        # Board R's R8: the probe's preview, its result in place and its refusal; the probe's
+        # plan and its run planted, the job the real one.
+        from modules.nsot import read_account_op as RAO
+        rec = {"network": "Lab", "device": "r5", "actor": "op@example.com",
+               "at": "2026-11-13T19:40:00Z", "account": {"username": "mercury-ro"},
+               "reads": [{"op": "version", "command": "show version", "result": "PASS",
+                          "why": "answered"}],
+               "refused": [{"command": "enable", "result": "PASS", "why": "refused"}],
+               "verdict": {"result": "INCOMPLETE", "why": "not every read measured",
+                           "proposal": "privilege exec lines"}}
+        mp.setattr(RAO, "preview", lambda network, device: {
+            "ok": True, "refused": "", "network": network, "device": device,
+            "account": {"username": "mercury-ro", "source": "profile:default"},
+            "lines": ["PREVIEW: nothing connects", "  show version"], "hash": "e" * 64,
+            "now": "inside the backup window"})
+        assert "data-ra-probe-now" in client.get(f"{base}/probe?network=Lab&device=r5") \
+            .get_data(as_text=True)
+        for payload in ({"state": "done", "record": "r5-x.json", "rec": RAO.view(rec)},
+                        {"state": "refused", "error": "the program moved"}):
+            job = capture_job.start("Lab", "probe", "op@example.com",
+                                    lambda _j, p=payload: dict(p),
+                                    kind="read-only account probe",
+                                    announce_keys=RAO.ANNOUNCE_KEYS, announcer=RAO.ANNOUNCER)
+            assert capture_job.wait(job, 10)
+            html = client.get(f"{base}/probe/job/{job}?network=Lab&device=r5") \
+                .get_data(as_text=True)
+            assert ("data-ra-probe-verdict" if payload["state"] == "done"
+                    else "data-ra-probe-not-run") in html, html[:300]
+    finally:
+        mp.undo()
+
+
 def _no_change_window(client, _lab, _mp):
     """Credentials › Profiles with a no-change window set (C1317; none by default, so the
     walk's lab has none): `change_windows.windows` answers one, as the installation's setting
@@ -4879,7 +5009,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _alert_evidence, _logs_builder_leftovers, _logs_older, _alert_history,
                    _alert_rule_changes, _history_runs, _history_beside,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _read_only_account, _lab9_sitting_findings,
+                   _no_change_window, _read_only_account, _read_account_fleet,
+                   _lab9_sitting_findings,
                    _display_names,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,

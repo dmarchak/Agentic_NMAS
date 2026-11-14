@@ -1,0 +1,58 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Board R's R1 (provisional, operator review pending): which devices hold the read-only
+    account, from the read-account-coverage reader's held value and its age, never computed
+    here. The summary by result first, then filter and search, then the groups by result,
+    collapsed, the states to act on first; an open group lists its first rows and says how many
+    it leaves. Never a password. modules/nsot/read_account.py (`view`). -#}
+{%- set PROBE_KIND = {'PASS': 'ok', 'INCOMPLETE': 'warn', 'FAIL': 'danger', 'UNREADABLE': 'warn', 'SIGN-IN REFUSED': 'danger'} -%}
+<div id="ra-cov" hx-get="{{ url_for('credential_profiles_v2.read_account_fleet') }}" hx-trigger="nmas:read_account from:body" hx-include="#ra-filter" hx-swap="outerHTML">
+{%- if fleet is none %}
+  <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p><strong>Not read yet:</strong> {{ held_why }}. Which devices hold the account is read in the background from each device's committed intent and golden; this redraws when it has been.</p></div>
+{%- else %}
+  {%- for net, err in fleet.errors %}
+  <div class="notice notice-danger" role="alert" data-ra-error>{{ icon('warn', 16) }}<p><strong>{{ net }} could not be read:</strong> {{ err }}. Its devices are not counted below.</p></div>
+  {%- endfor %}
+  <p class="ra-sum" aria-label="Summary" data-ra-summary><strong>{{ fleet.total }} device{{ '' if fleet.total == 1 else 's' }}</strong>{% if fleet.subset %} <span class="small">(a subset: {{ fleet.matching }} match)</span>{% endif %}:
+    {%- for s in fleet.summary %} {{ badge(s.count ~ ' ' ~ s.words, s.kind) }}{% endfor %}
+    {%- if not fleet.summary %} <span class="muted">none</span>{% endif %}
+    <span class="small muted">· probe: {% for k, n in fleet.probe %}{{ n }} {{ k }}{{ ', ' if not loop.last }}{% else %}none{% endfor %} · checked {{ stamp(held_at) }}</span></p>
+  <div class="of-bar">
+    <form id="ra-filter" class="of-filter" method="get" action="{{ url_for('credential_profiles_v2.page') }}" hx-get="{{ url_for('credential_profiles_v2.read_account_fleet') }}" hx-target="#ra-cov" hx-swap="outerHTML" hx-trigger="submit, change from:select, search">
+      <label class="sr-only" for="ra-q">Search devices</label><input id="ra-q" type="search" name="q" value="{{ fleet.chosen.q }}" placeholder="Search devices" autocomplete="off">
+      <label class="sr-only" for="ra-net">Network</label><select id="ra-net" name="network"><option value="">Every network</option>{% for n in fleet.networks %}<option value="{{ n }}"{% if fleet.chosen.network == n %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <label class="sr-only" for="ra-plat">Platform</label><select id="ra-plat" name="platform"><option value="">Every platform</option>{% for p in fleet.platforms %}<option value="{{ p }}"{% if fleet.chosen.platform == p %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+      <label class="sr-only" for="ra-state">Result</label><select id="ra-state" name="state"><option value="">Every result</option>{% for k, words in fleet.states %}<option value="{{ k }}"{% if fleet.chosen.state == k %} selected{% endif %}>{{ words }}</option>{% endfor %}</select>
+      <button class="btn btn-small" type="submit">Search</button>
+    </form>
+    <span class="ra-acts">
+      <span class="op-act"><a class="btn btn-primary btn-small" data-op="credentials" href="{{ url_for('credential_profiles_v2.read_account_add_form') }}" hx-get="{{ url_for('credential_profiles_v2.read_account_add_form') }}" hx-target="#ra-op" hx-swap="outerHTML">Add the read-only account…</a>{{ how('credentials', 'add-read-account', compact=True, op='Add the read-only account') }}</span>
+      <span class="op-act"><a class="btn btn-small" data-op="read-account-rollout" href="{{ url_for('credential_profiles_v2.read_account_rollout_form') }}" hx-get="{{ url_for('credential_profiles_v2.read_account_rollout_form') }}" hx-target="#ra-op" hx-swap="outerHTML">Roll it out…</a>{{ how('read-account-rollout', compact=True, op='the rollout') }}</span>
+    </span>
+  </div>
+  {%- for g in fleet.groups %}
+  <details class="rot-group" data-keep="ra-{{ g.state }}" data-ra-group="{{ g.state }}"{% if g.open %} open{% endif %}><summary>{{ badge(g.words, g.kind) }} <span>{{ g.count }}</span></summary>
+    <div class="table-wrap"><table class="table ra-table">
+      <thead><tr><th scope="col">Device</th><th scope="col">Network</th><th scope="col">Platform</th><th scope="col">Intent says</th><th scope="col">Device holds</th><th scope="col">Level</th><th scope="col">Last probe</th><th scope="col">Result</th></tr></thead>
+      <tbody>
+      {%- for r in g.rows %}
+      <tr data-ra-device="{{ r.device }}" data-state="{{ r.state }}">
+        <th scope="row"><a class="mono" href="{{ url_for('device_v2.device', name=r.device, list=r.network) }}">{{ r.device }}</a></th>
+        <td>{{ r.network }}</td>
+        <td title="{{ r.dialect or 'no dialect known' }}">{{ r.platform }}</td>
+        <td>{% if r.intent %}<span class="mono">{{ r.account or r.intent.profile }}</span>, level {{ r.intent.level }}{% else %}<span class="muted">not yet</span>{% endif %}</td>
+        <td>{% if r.holds %}<span class="mono">{{ r.account }}</span>, level {{ r.holds.level }}{% elif not r.golden %}<span class="muted">no golden recorded</span>{% else %}<span class="muted">not yet</span>{% endif %}</td>
+        <td>{% if r.holds %}{{ r.holds.level }}{% elif r.intent %}{{ r.intent.level }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.probe %}{{ stamp(r.probe.at) }} by {{ (r.probe.actor or 'nobody recorded') | people }} {{ badge(r.probe.result, PROBE_KIND.get(r.probe.result, 'muted'), title=r.probe.why) }}{% else %}<span class="muted">never probed</span>{% endif %}
+          {%- if r.intent or r.holds %} <span class="op-act"><a class="btn btn-small" data-op="read-account-probe" href="{{ url_for('credential_profiles_v2.read_account_probe_preview', network=r.network, device=r.device) }}" hx-get="{{ url_for('credential_profiles_v2.read_account_probe_preview', network=r.network, device=r.device) }}" hx-target="#ra-op" hx-swap="outerHTML">Probe…</a>{{ how('read-account-probe', compact=True, op='the probe') }}</span>{% endif %}</td>
+        <td>{{ badge(g.words, g.kind) }}{% if r.why %} <span class="small">{{ r.why }}</span>{% endif %}{% if r.profile %} <span class="small muted" title="the profile its read-only account comes from">({{ r.profile }})</span>{% endif %}</td>
+      </tr>
+      {%- endfor %}
+      </tbody>
+    </table></div>
+    {%- if g.left %}<p class="small muted" data-ra-left>{{ g.rows | length }} of {{ g.count }} shown: search or filter to narrow.</p>{% endif %}
+  </details>
+  {%- else %}
+  <p class="muted" data-ra-none>{% if fleet.subset %}No device matches.{% else %}No network holds a device yet.{% endif %}</p>
+  {%- endfor %}
+{%- endif %}
+</div>

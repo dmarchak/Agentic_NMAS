@@ -216,6 +216,13 @@ finished by running it again:
     inventory changed, so the generated scrape files drop the device where the app writes
     them.
 
+Between its Topology entries and its heartbeat rule, one more step: **its read-only account
+probe records** (`probes`). Read: the probe records kept under its identity, and any the
+command line kept by its name in this network. Sent: nothing. Recorded: each removed, so a new
+device of the same name inherits no probe verdict
+([Probe the read-only account](read-account-probe)); when that store cannot be listed, the plan
+says so and the retirement waits.
+
 Nothing is sent to the device at any step.
 
 ## What a new device of the same name sees {#same-name}

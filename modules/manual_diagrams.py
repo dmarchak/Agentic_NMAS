@@ -2441,8 +2441,72 @@ def onboard_ztp_iosxe():
     ])
 
 
+def read_account_rollout():
+    return svg(520, (
+        "The read-only account's rollout (board R). Add the read-only account committed it to "
+        "each device's intent; the rollout deploys that intent through the batch deploy. The "
+        "preview sends nothing: each chosen device's program comes from the deploy's own plan, "
+        "masked, in one order (the canary alone, then waves, then each device carrying "
+        "Mercury's management path last and alone) under one hash, which you confirm. The run "
+        "holds each device, sends its program, verifies it and saves it to startup, rolling it "
+        "back if verify fails; it pauses after the canary for Go on, and before a "
+        "management-path device for a confirm naming it. The first failure stops the rest. "
+        "Each device's receipt and golden are recorded."), [
+        lanes(20, 514),
+        band(20, 150, "The preview · nothing sent"),
+        doc("intent", 14, 42, 90, 42, "Intent", "the account added"),
+        arrow("rec", 104, 63, 120, 63),
+        doc("box", 122, 42, 80, 42, "Programs", "the deploy's plan"),
+        num(14, 42, 1),
+        t(14, 104, "canary · waves · management path last", "sm"),
+        person(14, 118, 188, 32, "You confirm one hash"), num(14, 118, 2),
+        device(240, 50, 140, 48, "The devices", "not contacted", off=True),
+        nosend(310, 130, ("nothing is sent", "until you confirm")),
+        band(176, 270, "The run · one device at a time"),
+        device(262, 200, 118, 196, "Each device", "held", top=True),
+        *rows([
+            (220, "send", 3, "Canary", "sent, verified, saved; pause"),
+            (262, "send", 4, "Waves", "each program checked again"),
+            (304, "send", 5, "Management path", "last, alone, its own confirm"),
+            (346, "undo", 6, "If verify fails: roll back", "the rest not attempted"),
+        ]),
+        store(14, 460, 120, 42, "Receipts", "one per device"), num(14, 460, 7),
+        doc("golden", 144, 460, 110, 42, "Golden", "after its save"),
+    ])
+
+
+def read_account_probe():
+    return svg(430, (
+        "Probing the read-only account (board R's R8). The preview sends nothing: the probe's "
+        "own plan names the account it signs in as, every command in the order it is sent and "
+        "what each is expected to answer, under one hash, which you confirm. The run holds the "
+        "device and signs in as the read-only account, never escalating: it sends each AI read, "
+        "expected answered, then show running-config, configure terminal, clear counters, debug "
+        "? and enable, each expected refused, answering nothing but end or n. Its verdict comes "
+        "from the device's own answers, and its masked record is kept under the device's "
+        "identity, read on History and in the coverage."), [
+        lanes(20, 424),
+        band(20, 130, "The preview · nothing sent"),
+        doc("box", 14, 42, 188, 42, "The probe's program", "every command, in order"),
+        num(14, 42, 1),
+        person(14, 98, 188, 32, "You confirm its hash"), num(14, 98, 2),
+        device(240, 50, 140, 48, "The device", "not contacted", off=True),
+        band(156, 210, "The run · holding the device"),
+        device(262, 180, 118, 170, "The device", "as the read-only account", top=True),
+        *rows([
+            (204, "send", 3, "Hold, sign in", "as the read-only account"),
+            (246, "read", 4, "Each AI read", "expected answered"),
+            (288, "read", 5, "Five commands", "expected refused"),
+            (330, None, 6, "The verdict", "from the device's answers"),
+        ]),
+        store(14, 378, 188, 40, "The record", "by the device's identity"), num(14, 378, 7),
+    ])
+
+
 #: name -> function drawing it. The file is ``docs/manual/diagrams/<name>.svg``.
 DIAGRAMS = {
+    "read-account-rollout": read_account_rollout,
+    "read-account-probe": read_account_probe,
     "deploy": deploy,
     "onboard": onboard,
     "revert-retry": revert_retry,

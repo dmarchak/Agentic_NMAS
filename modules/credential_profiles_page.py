@@ -332,6 +332,37 @@ def read_view() -> dict:
     return dict(said, state="ok", rows=rows, coverage=shown, error="")
 
 
+def replace_refusal(profile: str) -> str:
+    """Why *profile*'s read-only account password may not be replaced now, or ``""`` (C3427,
+    the first part): a device that holds the account keeps the password it was given (its
+    captured form is what later renders send), and no operation carries a new one to it yet, so
+    a replacement would leave the AI's reads of every such device failing to sign in. Refused
+    while the coverage (board R's reader) says a device whose read-only account comes from
+    *profile* holds it, naming them; refused too while the coverage cannot be read, since
+    whether a device holds it cannot then be told (an unreadable read neither passes nor
+    fails). Nothing is written by asking."""
+    from modules.nsot import read_account as RA
+
+    got = RA.held()
+    if got["value"] is None:
+        return (f"whether a device holds {profile}'s read-only account cannot be told (the "
+                f"coverage has not been read: {got['why']}), and a replaced password reaches no "
+                "device that holds it; nothing was saved. Try again once Credentials' Read-only "
+                "account on the devices is drawn")
+    holding = sorted(f"{r['device']} ({r['network']})" for r in got["value"].get("devices") or []
+                     if r.get("profile") == profile and r.get("holds"))
+    if not holding:
+        return ""
+    shown = ", ".join(holding[:8]) + (f" and {len(holding) - 8} more" if len(holding) > 8
+                                      else "")
+    return (f"{len(holding)} device{'s' if len(holding) != 1 else ''} hold{'' if len(holding) != 1 else 's'} "
+            f"{profile}'s read-only account ({shown}, as their goldens were read "
+            f"{got['at'] or 'at a time not recorded'}), and a replaced password reaches none of "
+            "them: each keeps the password it was given, so the AI's reads of it would fail to "
+            "sign in. Replacing it waits for the rollout that carries a new password to every "
+            "device holding it (C3427); nothing was saved")
+
+
 def save_read(profile: str, username: str, password: str, *, actor: str,
               verified: str) -> dict:
     """Set *profile*'s read-only account (its name once, its password each time) as the
@@ -339,6 +370,10 @@ def save_read(profile: str, username: str, password: str, *, actor: str,
     "recorded", "record_error"}``. The password is never returned."""
     from modules import credential_changes, credentials
 
+    if (credentials.read_accounts().get((profile or "").strip()) or {}).get("password_set"):
+        why = replace_refusal((profile or "").strip())
+        if why:
+            return {"ok": False, "error": why}
     try:
         got = credentials.set_read_account(profile, username, password, actor=actor,
                                            verified=verified)

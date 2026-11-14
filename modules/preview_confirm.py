@@ -3205,6 +3205,8 @@ RETIRE_GATES = (
      "every network's inventory was read: no other device has its name"),
     ("topology", "the Topology declarations and layout can be read",
      "its declaration and place, if any, are removed"),
+    ("probes", "its read-only account probe records can be listed",
+     "its records, kept by its identity or its name, are removed"),
     ("console", "its console runs and the console path Mercury made can be read",
      "its console port and runs, if any, are removed"),
     ("netbox_record", "Mercury's created-object record can be read",
@@ -3335,6 +3337,7 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                      "rotation_policy": "took it out of the credential-rotation policies "
                                         "naming it (C1336)",
                      "topology": "removed its Topology declaration and arranged place (C1341)",
+                     "probes": "removed its read-only account probe records (board R's R8)",
                      "heartbeat": "removed its Grafana heartbeat rule from the generated rules "
                                   "file and named it for deletion; its host step installs both "
                                   "(C1338, C1419)",

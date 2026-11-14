@@ -163,7 +163,120 @@ leaves the line without a value, and the deploy is refused by name before anythi
 device that already holds an account of that name with another line is refused: the deploy
 adds the account, never changes it. After its deploy verifies, Mercury keeps the device's own
 form of the password for that device, so later deploys send nothing for it. Replacing the
-password here changes no device: the devices keep the one they were given, and the AI's reads
-of them fail to sign in until the new one reaches them, which no operation does yet.
+password here changes no device: the devices keep the one they were given, and no operation
+carries a new one to them yet. So **Replace its password…** is refused while a device whose
+read-only account comes from this profile holds it (as **On the devices** last read its golden),
+naming each device and when it was read, and while that coverage cannot be read; nothing is
+saved. It is allowed while no device holds the account (C3427's first part; its rollout to
+every device holding the account comes later).
 Deleting a profile deletes its read-only account with it; retiring a device removes its intent,
 and the account with it.
+
+**Where privilege 1 misses a read**, the account moves to a custom privilege level and intent
+names the reads that level may run. Measured on an IOS-XE router: privilege 1 answers the AI
+read set's show commands and a plain ping, and refuses its telemetry reads and the options of
+its ping and traceroute. The `users` entry then carries the level (`privilege: 3`, which the
+line renders and the device prints, so verify reads it back), and a second key,
+`privilege_exec`, holds one entry per read moved to that level:
+
+    privilege_exec:
+    - {level: 3, command: show telemetry ietf subscription, all: false}
+    - {level: 1, command: show, all: false}
+
+which a deploy sends, before the account's line, as `privilege exec level 3 show telemetry ietf
+subscription` and then `privilege exec level 1 show`. **A line moves a command for every
+account on the device**, not for this one alone, and its leading words move with it: the
+first line lowers the telemetry read to level 3, which takes nothing from anyone, but the
+device raises the word `show` itself to 3 as it takes the line, and every account below
+level 3 would lose every show command. The second line puts `show` back at level 1, so
+those accounts keep every show command they had and only the telemetry read sits at 3.
+Mercury always sends the level-1 line after the line it follows, whatever their order in
+intent. On an IOS-XE device these two are the read-only account's lines; on an IOS device
+there are none, because what privilege 1 misses there is not measured yet.
+
+Mercury holds an entry to an allowlist and refuses anything else by name when the intent is
+saved. The level is 2 to 14. The command is a read of the AI read set, in the device's own
+whole words (a show form, ping or traceroute, IPv6 forms beside IPv4), or the leading words
+of one, as a device prints them back; never `configure`, `debug`, `clear`, `write`, `copy`,
+`reload`, `enable` or `show running-config`. `all: true` writes the line's `all` keyword
+(every option under the command moves with it), only on a read's whole words, never on `show`
+alone. **Level 1 is held only as that restore**: for the leading words of another entry the
+same intent holds at 2 to 14, without `all`. A level-1 entry alone, for `ping`, `traceroute`
+or any read's whole words, or leading nothing the intent holds, is refused. A deploy adds
+these lines and never removes one: a line taken out of intent stays on the device. A device
+whose stored configuration already holds the account at privilege 1 is refused the change (an
+account is added, never changed). Mercury never signs in to a parser view for these reads: a
+view needs `aaa new-model`, which changes how every person signs in to the device.
+
+**Ping and traceroute are not opened to the account by default.** Their options are
+privileged on these devices, and the two lines that open them to level 3 (`privilege exec all
+level 3 ping`, `privilege exec all level 3 traceroute`) **remove ping and traceroute from
+levels 0 to 2 for every account on the device**, the plain `ping <address>` too. So it is an
+installation choice, **Let the read-only account ping and traceroute**, off unless an admin
+turns it on (the setting `ai_read_account_ping_traceroute`; it has no control on a Settings
+screen yet, and is set in the settings file). While it is off, no such line is written, the
+AI's ping is the plain `ping <address>` (the device's defaults, 5 echoes and a 2 second
+timeout, so it measures the same and answers at privilege 1), and a ping from a named
+interface or a traceroute is refused, naming the choice. With it on, the account's lines gain
+those two, and their preview says what they remove.
+
+## On the devices {#on-the-devices}
+
+The card **Read-only account on the devices**, below the Read-only account card (board R,
+provisional, operator review pending), says which devices hold the account, at which level, and
+what its last probe said. It is read in the background, never by the page: from each device's
+committed intent (its `users` entry naming `read-account:profile:<profile>`, and the level),
+its committed golden (the `username <account>` line it holds as last captured, and its level:
+a line naming no privilege is level 1, the device's default) and the newest record of the
+read-only account probe for it. The summary leads, with when it was read ("checked 40 s ago"):
+how many devices there are and how many are in each state, and how many probe records say
+PASS, INCOMPLETE, FAIL or nothing. Never a password.
+
+**Search devices**, **Network**, **Platform** and **Result** narrow the groups, and the summary
+then says it is a subset and how many match. The groups are by state, each closed until
+opened, the states to act on first:
+
+- **can't be added**: the device's golden holds the account at another level than the
+  account's (3). An account is added, never changed, so a deploy would refuse it.
+- **no read-only account**: none of the device's profiles carries one. Set one first.
+- **intent says it, not deployed yet**: its intent names the account and its golden does not
+  hold it: the rollout deploys it.
+- **not yet**: neither its intent nor its golden holds it.
+- **on the device, not in intent**: its golden holds it at the account's level, its intent does
+  not name it.
+- **hold it at level 3**: both say it.
+
+Each row: the device (opening its page), the network, the platform, **Intent says** (the
+account and its level, or not yet), **Device holds** (the account and its level, not yet, or no
+golden recorded), the level, **Last probe** (when, by whom, and the result, its reason on
+hover; never probed when there is no record) and the state with why. An open group lists its
+first 50 devices and says how many it leaves: search or filter to narrow. **Probe…**, on a row
+whose intent names the account or whose device holds it, opens the probe's preview in place:
+whom it signs in as, every command in order and what each is expected to answer, and its hash;
+**Probe <device>** runs it as a verified person, holding the device, and the verdict is drawn in
+place, kept by the device's identity, and listed on History under **Read-only account probes**
+([Probe the read-only account](read-account-probe)). The Last probe column reads the newest
+record of the device itself: a former device of the same name lends it none.
+
+## Add the read-only account {#add-read-account}
+
+**Add the read-only account…** opens the devices to tick, grouped by network, each with its
+state as the coverage last read it; a device that holds it already, or cannot take it, cannot
+be ticked. **All not yet (N)**, **Every device of <network>** and **Every <platform> device**
+tick a group; **Clear** unticks. Give a **Reason** and press **Preview the intent change**: it
+writes nothing. For each ticked device, its committed intent gains the account's `users` entry
+by reference (`{privilege: 3, secret_ref: read-account:profile:<profile>}`, no name and no
+password) and its level's `privilege_exec` entries for its platform (on IOS-XE the telemetry
+line and the level-1 restore of `show`; on IOS none), as structured entries, never typed text.
+The preview groups the devices with the same change and shows, for each group, the change in
+words and the lines a deploy will send, in order, masked, each `privilege exec` line with what
+it does to every other account on the device. While **Let the read-only account ping and
+traceroute** is off, it says what turning it on would remove. A device is **refused by name**
+when no read-only account resolves for it, its golden holds the account at another level (as
+the coverage last read it; the deploy checks again), or the intent editor's checks refuse the
+result. **Add to N devices' intent**, as a verified person, commits it through the intent
+editor's own commit: one commit per network, `Source: read-account-add`, with your reason and
+the preview's hash. If any device's intent moved since the preview, nothing is written and it
+says so, naming both hashes. **Back** returns to the ticks, **Cancel** closes the card. The
+result names each network's commit, says nothing was sent, and offers the rollout:
+[Roll out the read-only account](read-account-rollout).

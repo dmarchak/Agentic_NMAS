@@ -1750,7 +1750,8 @@ request is refused, and each allowed form passes):
 | `show interfaces GigabitEthernet4 \| include line protocol\|errors` | passes |
 | `show ip ospf neighbor GigabitEthernet4 detail \| section Neighbor` | passes |
 | `show ip route 192.0.2.5`, `show ipv6 route 2001:db8::5` | pass |
-| `ping 192.0.2.4 source GigabitEthernet4 repeat 5 timeout 2`, `ping ipv6 2001:db8::4 repeat 5 timeout 2` | pass |
+| `ping 192.0.2.4`, `ping ipv6 2001:db8::4` (the plain ping; the operator, 2026-11-13) | pass |
+| `ping 192.0.2.4 source GigabitEthernet4 repeat 5 timeout 2`, `traceroute 192.0.2.6 numeric timeout 2 probe 1 ttl 1 16` and their IPv6 forms | pass under the installation choice "Let the read-only account ping and traceroute"; while it is off (the default) refused, naming the choice |
 
 Each refusal's words are asserted as well as its verdict, so a refusal for the wrong reason
 fails. The planted cases are shown able to fail (the property removed in a throwaway worktree,
@@ -1760,6 +1761,16 @@ The set is the diagnosis's state reads (19.3's table): interfaces, the IP interf
 CDP and LLDP, the OSPF interface and neighbours, BGP summary and neighbours, route, CEF, ARP and
 ND, the MAC table by address, spanning tree by interface, and ping (repeat ≤ 5, timeout ≤ 2) and
 traceroute (ttl ≤ 16, probe 1, timeout ≤ 2) to an address of the network.
+
+**Ping and traceroute as the read-only account (the operator, 2026-11-13).** The options of
+ping and traceroute are privileged on IOS and IOS-XE, and the `privilege exec` line that opens
+them to the read-only account's level takes ping or traceroute from every account below it.
+So the unsourced ping is the plain form, `ping <address>` (5 echoes and a 2 second timeout
+are the device's defaults: the same measurement, answered at privilege 1), and the sourced
+ping and the traceroute are asked only under the installation choice "Let the read-only
+account ping and traceroute" (`ai_read_account_ping_traceroute`, off by default); while it is
+off each is refused by name, naming the choice (`router_reads.choice_off`). The diagnosis
+runbooks, which sign in as the deploy account, are not changed.
 
 **`show running-config` goes through the existing configuration masking** (the operator, N20).
 It and its section forms (`show running-config interface <if>`, `| section <name>`) are

@@ -183,11 +183,27 @@ redistribute {{ r.protocol }}{% if r.process %} {{ r.process }}{% endif %}{% if 
 {% endfor %}
 {%- endmacro -%}
 
+{#- What a custom privilege level may run (the operator, 2026-11-13;
+    `modules/nsot/privilege_exec.py`): one global line per entry of `privilege_exec`, the `all`
+    keyword before `level` when the entry sets it. Emitted only when intent holds the key, by
+    `users` below, so the lines stand before the accounts that use the level. Every line at a
+    level above 1 first, then the level-1 lines (each the restore of a leading word a higher
+    line raised: the device raises it when it takes that line, so the restore goes after it),
+    whatever their order in intent (`privilege_exec.ordered`). -#}
+{%- macro privilege_exec(v) -%}
+{%- set px = v.get('privilege_exec') or [] -%}
+{% for p in px if p.level | string != '1' %}privilege exec {{ 'all ' if p.get('all') else '' }}level {{ p.level }} {{ p.command }}
+{% endfor %}
+{%- for p in px if p.level | string == '1' %}privilege exec level 1 {{ p.command }}
+{% endfor %}
+{%- endmacro -%}
+
 {%- macro users(v) -%}
 {#- Privilege 1 is IOS's and IOS-XE's default and the device never prints it (measured on an
     IOS-XE device, 2026-11-13: a privilege-1 account sent with `privilege 1` read back with no
     privilege, so verify failed, C3479), so a privilege-1 user renders without it, as the device
     holds it. -#}
+{{- privilege_exec(v) -}}
 {% for u in v.users %}username {{ u.name }}{% if u.privilege is defined and u.privilege | string != '1' %} privilege {{ u.privilege }}{% endif %}{% if u.secret_ref %} {{ u.secret_kind }} {{ secret(u.secret_ref) }}{% endif %}
 
 {% endfor %}

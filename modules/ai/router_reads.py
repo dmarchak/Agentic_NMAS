@@ -16,7 +16,12 @@ every rendered request is held to it again before it runs.
     and it has a read-only account; a device without one is refused by name ("no read-only
     account for edge1"), never read with the deploy account;
   - **an interface** is in the platform's interface-name shape and the device's committed
-    golden holds it (`interface <name>`, compared in its long form);
+    golden holds it (`interface <name>`, compared in its long form); CDP's and LLDP's is
+    never a loopback (`_cabled_interface`: nothing is cabled to one, and the device refuses
+    the form, measured 2026-11-13);
+  - **a switch's read** (spanning tree) is refused, as another platform's form, on a device
+    declared or measured to have no VLAN database (`_switch_form`, `vlan_capability`), as a
+    dialect's own form is on the other dialect (`other_platform` names either);
   - **an address** is one IPv4 or IPv6 address (`ipaddress`, no zone, no prefix) of the
     operation's family, and of the network: an address its committed intent holds, or one
     inside a subnet intent's interfaces carry;
@@ -36,9 +41,25 @@ own requests carry no modifier: an operation renders its fixed command, and the 
 diagnosis runbooks' pipe-rule test, and the planted table of 19.5); it judges the command it
 parsed through `read_loop.check`, one path.
 
-**The fixed numbers:** a ping is ``repeat 5 timeout 2``, a traceroute ``numeric timeout 2
-probe 1 ttl 1 16`` (19.5: repeat at most 5, timeout at most 2, probe 1, ttl at most 16). They
-are part of each shape, never the model's to choose.
+**The fixed numbers:** a ping is 5 echoes with a 2 second timeout, a traceroute ``numeric
+timeout 2 probe 1 ttl 1 16`` (19.5: repeat at most 5, timeout at most 2, probe 1, ttl at most
+16). They are part of each shape, never the model's to choose.
+
+**Ping and traceroute as the read-only account** (the operator, 2026-11-13). The options of
+ping and traceroute are privileged on IOS and IOS-XE (Cisco, "Using the Extended ping and
+Extended traceroute Commands", Document ID 13730; measured: an IOS-XE router refused the
+read-only account at ``repeat``, ``source`` and ``numeric``), and a ``privilege exec`` line
+that opens them to the account's level takes ping or traceroute away from every account
+below it. So:
+- ``ping`` and ``ping6`` send the plain form, ``ping <address>``: 5 echoes and a 2 second
+  timeout are the device's defaults (the same document), so the plain form is the same
+  measurement, and it answers at privilege 1;
+- ``ping_from``, ``ping6_from``, ``traceroute`` and ``traceroute6`` carry options that are
+  not defaults (``source``; ``numeric timeout 2 probe 1 ttl 1 16``), so they are asked only
+  under the installation choice "Let the read-only account ping and traceroute"
+  (`PING_CHOICE`, the setting `PING_CHOICE_KEY`, off by default; then the account's level
+  holds the two ``privilege exec all`` lines, `privilege_exec.read_account_lines`). With the
+  choice off each is refused by name, naming the choice, never silently (`choice_off`).
 
 **`show running-config` is the configuration class's** (N20), never the device state class's:
 its forms are declared with ``egress_class="configuration"``, so they are refused, naming the
@@ -182,7 +203,58 @@ def _dialect(want: str):
             return (f"{host}'s platform is {got or 'not known'}, and this form is "
                     f"{want}'s")
         return ""
+
+    def other(args, scope) -> str:
+        host = args["device"]
+        got = (((scope or {}).get("devices") or {}).get(host) or {}).get("dialect") or ""
+        return check(args, scope) if got else ""
+
+    check.other_platform = other
     return check
+
+
+def _switch_form(args, scope) -> str:
+    """Spanning tree is a switch's read (the operator, 2026-11-13: asked of a router it was a
+    refused read, never the account's doing). A device with no VLAN database, DECLARED or
+    MEASURED (`modules/nsot/vlan_capability.py`, never a name or a role), is no switch: the
+    form is another platform's there. One whose answer is unknown is asked: a device's own
+    refusal says it then."""
+    host = args["device"]
+    dev = ((scope or {}).get("devices") or {}).get(host) or {}
+    if dev.get("vlan_database") is False:
+        return (f"{host} has no VLAN database ({dev.get('vlan_database_words') or 'declared'})"
+                ", and this form is a switch's")
+    return ""
+
+
+_switch_form.other_platform = _switch_form
+
+
+def _cabled_interface(args, scope) -> str:
+    """CDP and LLDP name who is cabled to an interface, and nothing is cabled to a loopback:
+    an IOS-XE router refuses ``show cdp neighbors Loopback0 detail`` and its LLDP form with
+    ``% Invalid input`` at the interface's name, for the deploy account as for the read-only
+    one (measured 2026-11-13). Refused here, by name, before it is asked."""
+    from modules.nsot.ifnames import canonical
+
+    name = args["interface"]
+    if canonical(name).lower().startswith("loopback"):
+        return (f"{name} is a loopback, and nothing is cabled to a loopback: this read is of "
+                "an interface a link is on")
+    return ""
+
+
+def other_platform(op: str, host: str, scope: dict) -> str:
+    """Why the operation *op* is another platform's form on *host* (a dialect's own form on
+    the other dialect; a switch's read on a device with no VLAN database), or ``""``: it is
+    this platform's, or the platform is not known (then the check refuses or asks, said in its
+    own words). The read-only account probe leaves such a form out by this, the AI's check
+    refuses it by the same comparison: one home."""
+    for name, _send, _args, against, _cls, _words in SHAPES:
+        asks = getattr(against, "other_platform", None)
+        if name == op and asks is not None:
+            return asks({"device": host}, scope)
+    return ""
 
 
 def _all(*checks):
@@ -192,6 +264,46 @@ def _all(*checks):
             if why:
                 return why
         return ""
+    return check
+
+
+#: The installation choice, in the operator's words (2026-11-13), and its setting: whether the
+#: read-only account's level holds ping's and traceroute's options (off by default: the lines
+#: that open them take ping and traceroute from every account below that level).
+PING_CHOICE = "Let the read-only account ping and traceroute"
+PING_CHOICE_KEY = "ai_read_account_ping_traceroute"
+#: The operations asked only under the choice: each carries an option that is not the
+#: device's default, which the read-only account's level does not hold without it.
+CHOICE_OPS = ("ping_from", "ping6_from", "traceroute", "traceroute6")
+
+
+def ping_traceroute_on() -> bool:
+    """Whether the installation choice `PING_CHOICE` is on (`PING_CHOICE_KEY`; off by default,
+    and off when the setting cannot be read: the closed side)."""
+    from modules.settings_schema import get_setting
+
+    try:
+        return get_setting("ai_read_account_ping_traceroute", False) is True  # PING_CHOICE_KEY
+    except Exception as exc:                            # noqa: BLE001 (closed, and said)
+        log.warning("router reads: %s could not be read (%s): read as off", PING_CHOICE_KEY,
+                    type(exc).__name__)
+        return False
+
+
+def choice_off(op: str, scope: dict) -> str:
+    """Why the operation *op* is not asked while the installation choice is off, or ``""`` (it
+    is not one of `CHOICE_OPS`, or the scope says the choice is on). The scope carries the
+    choice (`scope_for`); one built without it is read as off."""
+    if op not in CHOICE_OPS or (scope or {}).get("ping_traceroute") is True:
+        return ""
+    return (f"it needs the installation choice \"{PING_CHOICE}\" ({PING_CHOICE_KEY} is off): "
+            "its options are above the read-only account's level without it, and the lines "
+            "that open them take ping and traceroute from every account below that level")
+
+
+def _choice_for(op: str):
+    def check(args, scope) -> str:
+        return choice_off(op, scope)
     return check
 
 
@@ -211,9 +323,9 @@ SHAPES = (
      "IPv4 address, IP MTU and access lists bound"),
     ("ipv6_interface", "show ipv6 interface {interface}", _IF, None, None,
      "IPv6 addresses and access lists bound"),
-    ("cdp", "show cdp neighbors {interface} detail", _IF, None, None,
+    ("cdp", "show cdp neighbors {interface} detail", _IF, _cabled_interface, None,
      "who CDP says is cabled there"),
-    ("lldp", "show lldp neighbors {interface} detail", _IF, None, None,
+    ("lldp", "show lldp neighbors {interface} detail", _IF, _cabled_interface, None,
      "who LLDP says is cabled there"),
     ("ospf_interface", "show ip ospf interface {interface}", _IF, None, None,
      "OSPF on the interface"),
@@ -246,19 +358,24 @@ SHAPES = (
      "a neighbour resolved (IPv6 neighbour discovery)"),
     ("mac", "show mac address-table address {mac}", (("mac", MAC),), None, None,
      "where a MAC address is learned"),
-    ("stp", "show spanning-tree interface {interface}", _IF, None, None,
+    ("stp", "show spanning-tree interface {interface}", _IF, _switch_form, None,
      "spanning tree on the interface"),
-    ("ping", "ping {address} " + _PING, _ADDR4, _address_of_network, None,
+    # The plain ping: 5 echoes, a 2 second timeout, the device's defaults (`_PING`'s numbers).
+    ("ping", "ping {address}", _ADDR4, _address_of_network, None,
      "an address reachable"),
     ("ping_from", "ping {address} source {interface} " + _PING, _ADDR4 + _IF,
-     _address_of_network, None, "an address reachable from an interface"),
-    ("ping6", "ping ipv6 {address} " + _PING, _ADDR6, _address_of_network, None,
+     _all(_choice_for("ping_from"), _address_of_network), None,
+     "an address reachable from an interface"),
+    ("ping6", "ping ipv6 {address}", _ADDR6, _address_of_network, None,
      "an address reachable (IPv6)"),
     ("ping6_from", "ping ipv6 {address} source {interface} " + _PING, _ADDR6 + _IF,
-     _address_of_network, None, "an address reachable from an interface (IPv6)"),
-    ("traceroute", "traceroute {address} " + _TRACE, _ADDR4, _address_of_network, None,
+     _all(_choice_for("ping6_from"), _address_of_network), None,
+     "an address reachable from an interface (IPv6)"),
+    ("traceroute", "traceroute {address} " + _TRACE, _ADDR4,
+     _all(_choice_for("traceroute"), _address_of_network), None,
      "the path toward an address"),
-    ("traceroute6", "traceroute ipv6 {address} " + _TRACE, _ADDR6, _address_of_network, None,
+    ("traceroute6", "traceroute ipv6 {address} " + _TRACE, _ADDR6,
+     _all(_choice_for("traceroute6"), _address_of_network), None,
      "the path toward an address (IPv6)"),
     # AI troubleshooting's S6 (the fix-it plan): a lost stream's two device reads, each the
     # stream runbook's own command (`diagnose.COMMANDS`), measured on captures read through
@@ -393,14 +510,40 @@ def golden_interfaces(text: str) -> list:
     return list(dict.fromkeys(_IFACE_LINE.findall(text or "")))
 
 
+def vlan_databases(network: str, hosts) -> dict:
+    """``{host: (has, words)}``: whether each of *hosts* has a VLAN database, as Mercury's
+    platform table declares it or the device's own recorded answer measured it
+    (`vlan_capability.of`: stored data only, never a device read); ``(None, why)`` when neither
+    says, or it could not be read. A network with no data folder has recorded no answer, and
+    is asked its declaration alone: a read makes no folder."""
+    import os
+
+    from modules import config
+    from modules.nsot import vlan_capability
+
+    out = {}
+    recorded = os.path.isdir(config.list_data_path(network))
+    for host in hosts or ():
+        try:
+            got = vlan_capability.of(network, host, measure=recorded)
+        except Exception as exc:                        # noqa: BLE001 (unknown, and said)
+            log.warning("router reads: %s's VLAN database could not be read: %s", host, exc)
+            got = {"has": None, "words": f"it could not be read ({type(exc).__name__})"}
+        out[host] = (got.get("has"), got.get("words") or "")
+    return out
+
+
 def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = "",
-              intents: dict = None, goldens: dict = None, dialects: dict = None) -> dict:
+              intents: dict = None, goldens: dict = None, dialects: dict = None,
+              capabilities: dict = None, ping_traceroute: bool = None) -> dict:
     """What `AI_READS`' comparisons read for an incident's *hosts* in *network*: each device's
-    golden interfaces, intent's BGP peers, its dialect and whether it has a read-only account
-    (`read_accounts`, the reads engine's resolver, always: never given); the network's
-    addresses and subnets from committed intent. *intents* (``{host: host vars}``), *goldens*
-    (``{host: text}``) and *dialects* are read from the committed stores when not given. The
-    reads are recorded as "the AI analysis of incident <id>, turned on by <admin>"."""
+    golden interfaces, intent's BGP peers, its dialect, whether it has a VLAN database (a
+    switch's reads) and whether it has a read-only account (`read_accounts`, the reads engine's
+    resolver, always: never given); the network's addresses and subnets from committed intent.
+    *intents* (``{host: host vars}``), *goldens* (``{host: text}``), *dialects* and
+    *capabilities* (`vlan_databases`' shape) are read from the committed stores when not given,
+    and *ping_traceroute* (the installation choice, `ping_traceroute_on`) from its setting.
+    The reads are recorded as "the AI analysis of incident <id>, turned on by <admin>"."""
     from modules.neighbours import _v4, addresses, bgp_peers
 
     hosts = [h for h in dict.fromkeys(hosts or ()) if h]
@@ -411,6 +554,8 @@ def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = ""
     if dialects is None:
         dialects = {h: _dialect_of((intents.get(h) or {}).get("platform"), h) for h in hosts}
     accounts = read_accounts(network, hosts)
+    if capabilities is None:
+        capabilities = vlan_databases(network, hosts)
     prefixes = set()
     for hv in intents.values():
         for iface in (hv or {}).get("interfaces") or []:
@@ -429,10 +574,14 @@ def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = ""
             "peers": [str(a) for a, _ in bgp_peers((intents or {}).get(host) or {})],
             "dialect": (dialects or {}).get(host) or "",
             "subscriptions": _declared_subscriptions((intents or {}).get(host) or {}),
+            "vlan_database": (capabilities.get(host) or (None, ""))[0],
+            "vlan_database_words": (capabilities.get(host) or (None, ""))[1],
             "read_account": accounts[host][0], "read_account_why": accounts[host][1]}
     actor = (f"the AI analysis of incident {incident}, turned on by "
              f"{turned_on_by or 'nobody named'}") if incident else "the AI analysis"
     return {"network": network, "devices": devices,
+            "ping_traceroute": (ping_traceroute_on() if ping_traceroute is None
+                                else ping_traceroute is True),
             "addresses": sorted(str(a) for a in addresses(intents or {})),
             "prefixes": sorted(prefixes), "actor": actor}
 

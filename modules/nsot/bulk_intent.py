@@ -81,7 +81,10 @@ def known_top_level() -> set:
             "dhcp_server",
             # The configuration archive (H22): emitted only when a config holds `archive`
             # with exactly its `path`, so not a schema default either.
-            "archive"}
+            "archive",
+            # What a custom privilege level may run (`modules/nsot/privilege_exec.py`): emitted
+            # only when a config holds a line the key may hold, so not a schema default either.
+            "privilege_exec"}
     return base | set(BaseParser.SCHEMA_DEFAULTS)
 
 
@@ -272,6 +275,7 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
         gate += hostvars.description_problems(after)                  # C428
         gate += [m for _n, m in hostvars.contradiction_problems(after)]  # C1429
         gate += hostvars.archive_problems(after)                      # H22
+        gate += hostvars.privilege_exec_problems(after)               # reads alone, 2 to 14
         try:
             hostvars.assert_printable(new_text, host)
             hostvars.assert_no_secret_values(new_text, host)

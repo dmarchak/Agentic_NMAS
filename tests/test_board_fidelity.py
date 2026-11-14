@@ -107,7 +107,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_heal_proposal.html": "heal-proposal.md",
               # History › Export (Lab 9 B5; board lab9-sdn H, self-signed under the Phase 7
               # mode 2026-11-10): History's Export tab, its two logs and their downloads.
-              "_history_export.html": "history-export.md"}
+              "_history_export.html": "history-export.md",
+              # Credentials › Profiles' Read-only account on the devices (board R, provisional,
+              # operator review pending; the operator, 2026-11-13): coverage, Add, the rollout.
+              "_read_account_fleet.html": "read-account.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -4527,3 +4527,107 @@ mutated: `display_names.label`'s digest and `redact.egress_payload`'s labelling 
 above; unchanged here but for the key's source), and the evaluation scripts
 (scripts/nmas-fixit-cases, scripts/nmas-heal-cases), which run on the host where the start has
 installed the key.
+
+## 2026-11-13: the accounts' block gains the privilege lines, the account at privilege 3, by hand
+
+**What changed in the tier:** the macro that renders an account's line. `_common.j2`'s `users`
+now writes intent's `privilege_exec` lines first (its new `privilege_exec` macro: `privilege
+exec [all] level <n> <command>`, one per entry, `modules/nsot/privilege_exec.py`), then the
+accounts as before (the operator, 2026-11-13: "mercury-ro at privilege 3, with `privilege exec
+level 3 <command>` lines for exactly the reads that need it, through intent and the template").
+The account's own line is not changed: `privilege 3` renders by C3479's rule (every privilege
+but 1). No secret's resolution, store or mask is changed.
+
+The danger the hand check guards: an account's line lost, changed or doubled by the lines
+written before it; a privilege line carrying a secret's value; a line rendered in another form
+than its entry (`all` added or dropped, the level and the command exchanged, lines dropped), so
+the device is sent what the preview's reader did not approve; the account's privilege dropped
+from its line.
+
+**The method:** each mutant one exact replacement, required to match once
+(`scratchpad/priv3-agent/mut.py`), in a `scripts/nmas-control` throwaway worktree of the working
+tree; then tests/test_privilege_exec.py, test_read_account_intent.py,
+test_credential_never_changes_on_deploy.py, test_roundtrip.py, test_secret_refs_resolve.py and
+test_deploy_contract.py, no `-x`, in CI's interpreter, confined, two workers. Baseline: 250
+passed. **Runs:** 2026-11-13 18:01:18 to 18:03:44 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: no account line rendered | killed (56 failed) | the deploy contract's renders, the read account's measured form, the credential guard's tests |
+| T1 the `privilege_exec` lines not written (the call dropped from `users`) | killed (16 failed) | `test_the_render_writes_each_line_before_the_accounts`, the round trip, the fixed point, `test_the_program_adds_exactly_the_lines_the_device_lacks`, the privilege-3 program |
+| T2 `all` never written | killed (20 failed) | the same, and `test_a_device_holding_them_is_sent_nothing_and_never_a_no` |
+| T3 `all` always written | killed (20 failed) | the same |
+| T4 the level and the command exchanged | killed (20 failed) | the same |
+| T5 only the first line written | killed (16 failed) | the render's order test, the round trip, the merge-only program |
+| T7 a secret's value written on a privilege line | killed (22 failed) | the round trip (nothing extra in the render), the render's order test, the fixed point, the merge-only program's exact lines |
+| T8 the account's line without `privilege 3` (only 15 rendered) | killed (8 failed) | `test_the_account_renders_privilege_3_after_the_lines_of_its_level`, `test_verify_reads_privilege_3_back_and_says_when_the_device_holds_another`, the added-never-refused program |
+| T9 the lines written once per account, inside the accounts' loop | killed (1 failed) | `test_after_the_capture_the_privilege_3_line_is_the_device_s_and_nothing_is_sent` (two accounts; the real captures hold one, so the key's own tests could not see it) |
+
+**The result: 8 mutants and the canary, all killed in their first run, none equivalent.** Not
+mutated: the account line's own expression and `secret()` (C3479's and C2657's sections; not
+changed here), `hostvars.with_read_account` (it writes a reference and a privilege, never a
+value; its tests are in test_read_account_intent.py), and the rule of what an entry may hold
+(`privilege_exec.problem`: not the tier's; its controls are in docs/TESTING.md's row for
+test_privilege_exec.py).
+
+**The same macro again, the same day: the level-1 restore after its line** (the operator,
+2026-11-13: "Line 1 ... plus `privilege exec level 1 show`. Let level 1 through intent only
+for a leading word of an entry held at a higher level"). The `privilege_exec` macro now writes
+every entry at a level above 1 first and the level-1 entries after them, whatever their order
+in intent, the level-1 line never with `all` (IOS raises a command's leading words when it
+takes the higher line, so the restore sent before it would be undone). The danger: the
+restore sent before its line or not at all (every account below the level loses every `show`
+command), a level-1 line written with `all` (every command under the word opened to every
+account), a higher line lost or written twice. The same method and tests; baseline 315 passed.
+**Runs:** 2026-11-13 19:02:38 to 19:07:17 UTC (these, then eight controls of the rule itself).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: no account line rendered | killed (67 failed) | the deploy contract's renders, the read account's measured form, the credential guard's tests |
+| T10 the level-1 lines not written | killed (10 failed) | `test_the_render_and_the_program_send_the_higher_line_first` (both orders, both platforms), `test_several_higher_lines_all_come_before_the_restores`, the round trip and fixed point in either order |
+| T11 a level-1 line written among the higher ones as well | killed (10 failed) | the same (each line once, the restore directly after its line) |
+| T12 the higher lines written a second time as level 1 | killed (26 failed) | the merge-only program's exact lines, the fixed point, the round trip (nothing extra) |
+| T13 `all` written on the level-1 line | killed (10 failed) | the render's and the program's exact lines, the round trip |
+| T14 only the level-1 lines written (the higher ones lost) | killed (26 failed) | the merge-only program, the render's order test, the fixed point |
+| T15 the entries written in reverse order | killed (13 failed) | the render's order test, the fixed point, the merge-only program |
+
+**The result: 6 mutants and the canary, all killed in their first run, none equivalent.**
+
+## 2026-11-13: Replace its password… refused while a device holds the account (C3427, its first part), and the probe's records kept by identity (board R's R8), by hand
+
+**What changed in the tier:** the write path of a secret value. `credential_profiles_page.
+save_read`, the one route that seals a read-only account's password into the credential store
+(Credentials › Read-only account › Set or Replace), now asks `replace_refusal` before it writes
+when the profile already holds an account: refused, nothing written, while the coverage (board
+R's reader) says a device whose read-only account comes from that profile holds it (naming each
+device and when its golden was read), and while the coverage cannot be read. The store's own
+`credentials.set_read_account` and its sealing are unchanged. Beside it, the probe's records
+(every answer masked by value, the account's password among the values; the masking is the
+probe's `run`, moved unchanged into `modules/read_account_probe.py`, outside modules/nsot/ and modules/ai/) are now written under
+the device's network and identity (`record_dir`) rather than flat by name.
+
+The danger the hand check guards: a replaced password that reaches no device holding the
+account (the AI's reads of every such device then fail to sign in); a guard that passes when it
+cannot read the coverage; another profile's devices judged in place of its own; a record a new
+device of the same name inherits.
+
+**The method:** `scratchpad/boardr/hand.sh` in a throwaway worktree (`scripts/nmas-control`),
+each mutant applied by `sed` to the worktree's copy, then tests/test_read_account_fleet.py,
+test_read_account_probe_op.py, test_read_account_probe.py, test_read_only_account.py,
+test_credential_profiles_v2.py and test_no_post_returns_a_stored_secret.py, no `-x`, CI's
+interpreter, confined, two workers. Baseline: 150 passed. **Runs:** 2026-11-13 20:35:29 to
+20:40:15 UTC.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `replace_refusal` raises | killed (3 failed) | the three `TestReplaceWhileADeviceHoldsIt` tests |
+| H1 the guard never asked before the write | killed (2 failed) | `test_refused_naming_the_device_and_the_store_unchanged`, `test_refused_while_the_coverage_cannot_be_read` |
+| H2 a device holding the account not counted | killed | `test_refused_naming_the_device_and_the_store_unchanged` |
+| H3 a coverage that cannot be read passes | killed | `test_refused_while_the_coverage_cannot_be_read` |
+| H4 another profile's devices counted in place of its own | killed | `test_refused_naming_the_device_and_the_store_unchanged` |
+| R1 a record written flat by name, not under its identity | killed (2 failed) | `test_it_runs_holding_the_device_and_records_by_identity`, `test_history_and_the_coverage_read_it_and_another_identity_does_not` |
+| R2 the identity folder ignoring the identity | killed (3 failed) | the two `TestTheProbeRecords` tests and the History test |
+
+**The result: 6 mutants and the canary, all killed in the first run, none equivalent.** Not
+mutated: the store's sealing and `credentials.set_read_account` (unchanged), the probe's masking
+in `run` (moved unchanged; tests/test_read_account_probe.py's masking tests pass on the module).

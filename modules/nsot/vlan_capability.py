@@ -117,7 +117,8 @@ def measured(list_name: str, hostname: str, *, cut: dict = None):
     An unreadable or failed answer is passed over for an older readable one (a failed read
     keeps the last good value); an answer from before the name's cut is an earlier device's,
     and ends the search. Reads files only, where `reads` writes them; called for a network
-    whose committed intent was just read, so its folder is there."""
+    whose committed intent was just read, so its folder is there (a caller that cannot say so
+    asks `of` with *measure* False where the network has no folder)."""
     from modules.nsot import reads, retire
 
     got = reads.runs(list_name, device=hostname, limit=RUNS_READ)
@@ -146,11 +147,13 @@ def _inventory(list_name: str) -> list:
     return load_saved_devices(listref.resolve(list_name).csv_path)
 
 
-def of(list_name: str, hostname: str) -> dict:
+def of(list_name: str, hostname: str, *, measure: bool = True) -> dict:
     """*hostname*'s VLAN database, and where the answer came from: ``{"hostname", "platform",
     "device_type", "has": True | False | None, "source": declared | measured | unknown,
     "words", "at", "check"}``. *words* says the answer and its source, for a refusal or a
-    preview to quote."""
+    preview to quote. *measure* False reads the declaration alone (a network with no data
+    folder has recorded no run, and reading its runs would make the folder): an undeclared
+    device is then unknown."""
     from modules.nsot import platform
 
     try:
@@ -171,8 +174,8 @@ def of(list_name: str, hostname: str) -> dict:
             f"{entry['device_type']}, {entry.get('basis', '')}: {entry.get('source', '')}"
             f"{owed})"))
     try:
-        seen = measured(list_name, hostname)
-    except Exception as exc:                          # noqa: BLE001 (unknown, said)
+        seen = measured(list_name, hostname) if measure else None
+    except Exception as exc:                         # noqa: BLE001 (unknown, said)
         log.warning("vlan capability: %s's Show commands runs unreadable: %s", list_name, exc)
         seen = None
     if seen is not None:

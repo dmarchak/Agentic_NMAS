@@ -353,7 +353,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.host_key_windows",
                            "modules.readers.onboarding_progress",
                            "modules.readers.sdn_controllers",
-                           "modules.readers.drained_state")
+                           "modules.readers.drained_state",
+                           "modules.readers.read_account_coverage")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).

@@ -3434,3 +3434,17 @@ dialog.modal::backdrop { background: var(--scrim); }
 .inc-hyp { margin: 0; padding-left: 20px; }
 .inc-hyp li { overflow-wrap: anywhere; }
 
+/* Board R (provisional, operator review pending): the read-only account on the devices,
+   Credentials › Profiles (templates/v2/_read_account_*.html). */
+.ra-card { margin-top: 12px; }
+.ra-sum { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.ra-acts { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ra-table td, .ra-table th { vertical-align: top; }
+.ra-prog { margin: 4px 0; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); font: 12.5px/1.5 var(--mono); white-space: pre; overflow-x: auto; }
+.ra-eff { color: var(--ink-3); }
+.ra-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.ra-ticks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.ra-tick { display: inline-flex; gap: 4px; align-items: center; }
+.ra-wave { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 8px 0; }
+.ra-wave.ra-hold { border-left-color: var(--warn-mark); }

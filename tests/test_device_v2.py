@@ -691,6 +691,9 @@ class TestTheShippedScripts:
                                                     "20261008T000000000000Z-" + "0" * 32,
                                                     "/v2/templates?list=Lab",
                                                     "/v2/credentials/profiles?list=Lab",
+                                                    # Board R: a probe's card while it runs.
+                                                    "/v2/credentials/profiles/read-account/"
+                                                    "probe/job/x?network=Lab&device=r3",
                                                     "/v2/topology?list=Lab",
                                                     # A path trace shown (board D, C693).
                                                     "/v2/topology?list=Lab&trace=" + "e" * 32,
@@ -802,7 +805,10 @@ class TestTheShippedScripts:
         # attention alone, whose keys now reach its store and never the page.
         # +1 2026-11-12: time_zone (a person's time zone kept, by Change… or a first visit's
         # send: Settings' Time zone card reads again).
-        assert len(keys) == 56
+        # +2 2026-11-13: read_account (board R: Credentials' Read-only account on the devices
+        # redraws when its coverage reader reads again) and read_account_probe (a probe's card
+        # reads its job when the probe ends).
+        assert len(keys) == 58
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {

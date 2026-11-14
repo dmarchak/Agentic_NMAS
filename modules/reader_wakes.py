@@ -52,6 +52,12 @@ WOKEN_BY = {
     # C1693: each network's committed host_vars at HEAD, judged for the round trip: an intent
     # commit (Normalise's, or any edit, which saves in Mercury's own formatting) clears a row.
     "intent-format": ("intent",),
+    # Board R: each network's committed intent and goldens, its inventory and the credential
+    # store's read-only account names: an Add or any intent commit, a deploy's or a capture's
+    # golden, an import, an account set or a profile changed. Never woken by `read_account`,
+    # the key it announces itself.
+    "read-account-coverage": ("intent", "goldens", "inventory", "credentials",
+                              "read_account_probe"),
     # the rotation record and the credential store's metadata; NetBox, Proxmox and TLS by
     # settings.
     "credential-health": ("credentials", "rotation", "settings"),

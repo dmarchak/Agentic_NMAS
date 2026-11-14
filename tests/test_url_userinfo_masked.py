@@ -94,6 +94,9 @@ ENTRY_POINTS = {
         m for m, _digests, _n in __import__("modules.secret_compare", fromlist=["_masked_lines"])
         ._masked_lines(PLANTED, None, None)),
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
+    # Board R's R8: a device's answer as the read-only account probe's record keeps it.
+    "modules/read_account_probe.py:mask_answer": lambda: __import__(
+        "modules.read_account_probe", fromlist=["mask_answer"]).mask_answer(PLANTED, {}),
     # C2821: a drift diff as the approval queue stores it, masked at rest.
     "modules/approval_queue.py:_masked": lambda: __import__(
         "modules.approval_queue", fromlist=["_masked"])._masked(PLANTED),

@@ -149,6 +149,14 @@ def _bodies(v):
                                                         "before": "(absent)", "after": "x"}),
                                          "a network that does not exist: refused, nothing "
                                          "planned"),
+        # Board R: Add the read-only account's preview and the rollout's preview job, each
+        # with no device ticked: refused before any intent or program is read.
+        "credential_profiles_v2.read_account_add_preview": (400, ("form", {"reason": "x"}),
+                                                            "no device ticked: refused, "
+                                                            "nothing read"),
+        "credential_profiles_v2.read_account_rollout_plan": (400, ("form", {"network": LIST}),
+                                                             "no device chosen: refused, no "
+                                                             "job started"),
         "adopt_v2.preview": (400,("form", {"hostname": "r9"}),
                              "no network named: refused before the device is read"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),

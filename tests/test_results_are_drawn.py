@@ -257,6 +257,23 @@ PAGE_RECORD = {
     "intent_layers_v2.change_go_on": ("templates/v2/_fleet_run.html",
                                       ("rows_table(r.rows)", "r.commit", "r.left"),
                                       "device_v2.history"),
+    # Board R: the read-only account's Add (each network's commit or its refusal, in place) and
+    # its rollout (each wave's devices and outcomes in place, where it stopped); each device's
+    # intent commit and receipt read again on its History.
+    "credential_profiles_v2.read_account_add": ("templates/v2/_read_account_op.html",
+                                                ("op.state == 'added'", "c.commit", "c.error"),
+                                                "device_v2.history"),
+    "credential_profiles_v2.read_account_rollout_confirm": (
+        "templates/v2/_read_account_op.html", ("op.state == 'roll_run'", "x.outcome", "r.stopped"),
+        "device_v2.history"),
+    # Board R's R8: a probe's verdict and each command's result in place; read again on History
+    # (Read-only account probes) and in the coverage's Last probe.
+    "credential_profiles_v2.read_account_probe_confirm": (
+        "templates/v2/_read_account_op.html", ("op.state == 'probe_done'", "r.result", "r.rows"),
+        "v2.history_page"),
+    "credential_profiles_v2.read_account_rollout_go_on": (
+        "templates/v2/_read_account_op.html", ("op.state == 'roll_run'", "x.outcome", "r.stopped"),
+        "device_v2.history"),
     # DHCP › Reservations (C529 step 2, board B): the result in place, read back from Kea, and
     # its commit; read again on the network's History (dhcp/reservations.yml).
     "dhcp_v2.reservation_confirm": ("templates/v2/_dhcp_reserve.html",

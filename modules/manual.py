@@ -51,6 +51,10 @@ PAGES = (
     ("save", "Save to startup and as golden", H, "how-it-works/save.md"),
     ("seed", "Seed intent", H, "how-it-works/seed.md"),
     ("fleet-change", "Plan a layer's change", H, "how-it-works/fleet-change.md"),
+    ("read-account-rollout", "Roll out the read-only account", H,
+     "how-it-works/read-account-rollout.md"),
+    ("read-account-probe", "Probe the read-only account", H,
+     "how-it-works/read-account-probe.md"),
     ("onboard", "Onboard a device", H, "how-it-works/onboard.md"),
     ("adopt", "Adopt a device", H, "how-it-works/adopt.md"),
     ("retire", "Retire a device", H, "how-it-works/retire.md"),
@@ -249,6 +253,9 @@ OPERATIONS = {
     # kept snapshot.
     "sdn-analyse-tools": ("modules.ai.sdn_analyst_tools", "STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
+    # Board R: the read-only account's rollout through the batch deploy.
+    "read-account-rollout": ("modules.nsot.read_account", "STEPS"),
+    "read-account-probe": ("modules.nsot.read_account_op", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
     "edit-template": ("modules.nsot.template_edit", "STEPS"),

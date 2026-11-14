@@ -185,6 +185,14 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
     if problems:
         return refuse("schema", "; ".join(problems), _line_of(text, "archive"), 1)
 
+    # 2c''''. A `privilege_exec` entry is a read of the AI read set at level 2 to 14 (the
+    #         operator, 2026-11-13): any other verb, level or `all` is refused by name.
+    problems = hostvars.privilege_exec_problems(parsed)
+    if problems:
+        return refuse("schema", "; ".join(problems[:6])
+                      + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
+                      _line_of(text, "privilege_exec:"), 1)
+
     # 2c''. An interface intent shut is not "brought up" by shutdown: false alone (R5): neither
     #       line renders and the port stays shut. Against what is committed at HEAD.
     committed = None

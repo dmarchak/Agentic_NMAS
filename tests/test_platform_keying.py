@@ -49,6 +49,9 @@ KEYING = {
     "modules/heal/diagnose.py":             "dialect",   # its reads' templates, by dialect
     "modules/heal/bounce.py":               "dialect",   # the revert timer measured, by dialect
     "modules/ai/router_reads.py":           "dialect",   # AI_READS' shapes, by dialect (H24)
+    # MEASURED: the config dialects the read-only account's level lines were measured on
+    # (`read_account_lines`, the operator, 2026-11-13), compared with platform_for_device().
+    "modules/nsot/privilege_exec.py":       "dialect",
     "modules/nsot/templates_repo.py":       "dialect",
     "modules/nsot/parsers/base.py":         "dialect",
     "modules/nsot/parsers/cisco_ios.py":    "dialect",

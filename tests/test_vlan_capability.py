@@ -204,6 +204,19 @@ class TestWhereTheAnswerComesFrom:
         assert (got["has"], got["source"]) == (False, "measured")
         assert "measured: no VLAN database" in got["words"]
 
+    def test_the_declaration_alone_where_the_caller_says_not_to_measure(self, net):
+        """`measure` False (the AI read set's scope, for a network with no data folder: reading
+        its runs would make the folder): a recorded answer is not read, a declaration is."""
+        from modules.nsot import vlan_capability
+        net.append(PLAIN_SWITCH)
+        net.append(ROUTER_NAMED_LIKE_A_SWITCH)
+        measure("Lab", "core-switch-1", REFUSALS[0])
+        assert vlan_capability.of("Lab", "core-switch-1")["source"] == "measured"
+        got = vlan_capability.of("Lab", "core-switch-1", measure=False)
+        assert (got["has"], got["source"]) == (None, "unknown")
+        declared = vlan_capability.of("Lab", "access-switch-1", measure=False)
+        assert (declared["has"], declared["source"]) == (False, "declared")
+
     def test_the_declaration_is_read_before_a_measurement(self, net):
         from modules.nsot import vlan_capability
         net.append(ROUTER_NAMED_LIKE_A_SWITCH)

@@ -619,6 +619,8 @@ INTENT_SECTIONS = {
     "call_home": frozenset({"body"}),
     "vlans[]": frozenset({"id", "name", "extra"}),
     "users[]": frozenset({"name", "privilege", "secret_ref", "secret_kind"}),
+    # The reads a custom privilege level may run (`modules/nsot/privilege_exec.py`).
+    "privilege_exec[]": frozenset({"level", "command", "all"}),
     "tracks[]": frozenset({"id", "spec"}),
     "static_routes[]": frozenset({"family", "spec"}),
     "acls[]": frozenset({"type", "name", "entries"}),
@@ -988,6 +990,23 @@ def archive_problems(host_vars: dict) -> list:
             "unmodelled `archive` block"]
 
 
+def privilege_exec_problems(host_vars: dict) -> list:
+    """``[message]``: each ``privilege_exec`` entry that is not one intent may hold (the
+    operator, 2026-11-13; `modules/nsot/privilege_exec.py`, the one rule): a level outside 2 to
+    14, a command that is not a read of the AI read set (``configure``, ``debug``, ``clear``,
+    ``write``, ``copy``, ``reload`` and ``enable`` refused by name), ``all`` on leading words
+    alone, or a command named twice. ``[]`` if none. Asked wherever intent is authored (the
+    editor, bulk intent, the profile's layers) and again where it is written
+    (`write_committed_text`), so no path sends a line the rule would not have written."""
+    from modules.nsot import privilege_exec
+
+    return privilege_exec.problems(host_vars)
+
+
+class PrivilegeExecRefused(ValueError):
+    """Authored intent whose ``privilege_exec`` holds an entry it may not (the entry named)."""
+
+
 def unshut_problems(committed: dict, host_vars: dict) -> list:
     """``[(index, message)]``: each interface committed intent shuts (``shutdown: true``) that
     the edit sets ``shutdown: false`` without ``no_shutdown: true`` (R5, 2026-10-30): neither
@@ -1067,6 +1086,11 @@ def write_committed_text(repo: str, hostname: str, text: str, *,
     problems = description_problems(parsed) if judge_descriptions else []
     if problems:
         raise SessionDescription(f"{hostname}: " + "; ".join(problems))
+    # Whatever the path that wrote it: a `privilege_exec` entry is one the rule allows, or
+    # nothing is written (a parse emits none it refuses, so a record never meets this).
+    problems = privilege_exec_problems(parsed)
+    if problems:
+        raise PrivilegeExecRefused(f"{hostname}: " + "; ".join(problems))
     # The leak check on the text as given, so its refusal names that text's line; the canonical
     # text written holds the same values (the same document), checked again all the same.
     assert_no_secret_values(text, hostname)
@@ -1772,6 +1796,30 @@ def read_account_users(host_vars: dict, *, decide: bool = True,
                                    else READ_ACCOUNT_TYPED_KIND)
         out.append(user)
     return {**host_vars, "users": out}
+
+
+def with_read_account(host_vars: dict, profile: str, privilege: int = 1) -> tuple:
+    """``(document, change)``: *host_vars* (a copy) whose ``users`` holds *profile*'s read-only
+    account by its reference at *privilege*, and what changed, in words: ``"added"``,
+    ``"privilege <a> to <b>"`` or ``""`` (it held it so already). The one ``users`` entry an
+    action that adds the account to a device, or to many, writes (``{privilege, secret_ref}``:
+    no name and no password, both the credential store's), so nobody types the YAML; the
+    result goes through the intent editor like any edit. A change of privilege here is a change
+    of INTENT only: a deploy still refuses to change an account its device's golden holds
+    (`deploy.assert_credentials_unchanged`)."""
+    ref = f"{READ_ACCOUNT_PREFIX}{profile}"
+    doc = dict(host_vars or {})
+    users = [dict(u) if isinstance(u, dict) else u for u in doc.get("users") or []]
+    for user in users:
+        if isinstance(user, dict) and user.get("secret_ref") == ref:
+            was = user.get("privilege", 1)
+            if str(was) == str(privilege):
+                return doc, ""
+            user["privilege"] = privilege
+            doc["users"] = users
+            return doc, f"privilege {was} to {privilege}"
+    doc["users"] = users + [{"privilege": privilege, "secret_ref": ref}]
+    return doc, "added"
 
 
 def _read_account_resolvable(host_vars: dict, ref: str) -> bool:

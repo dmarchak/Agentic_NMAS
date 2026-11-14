@@ -60,6 +60,8 @@ DIRECT = {
     "v2.profile_apply_confirm": ("json_keys", "confirmations"),
     "v2.pair_apply_confirm": ("json_keys", "confirmations"),
     "v2.history_reapply_confirm": ("json_keys", "confirmations"),
+    # Board R: the read-only account's rollout deploys each device the form names.
+    "credential_profiles_v2.read_account_rollout_confirm": ("form_list", "device"),
 }
 
 NOT_DIRECT = {
@@ -92,6 +94,17 @@ NOT_DIRECT = {
     "credential_profiles_v2.rotate_due_confirm": "the due list is computed from the "
                                                  "inventory's credentials; a controller-managed "
                                                  "switch has no login credential to rotate",
+    # Board R: Add commits intent only (sends nothing); the rollout's confirm, DIRECT above,
+    # refuses a controller-managed device before anything is sent; Go on runs only the paused
+    # run's devices, each passed by that confirm; a probe signs in and reads, configuring
+    # nothing.
+    "credential_profiles_v2.read_account_add": "commits intent only and sends nothing; the "
+                                               "rollout's confirm refuses a controller-managed "
+                                               "device before anything is sent",
+    "credential_profiles_v2.read_account_rollout_go_on": "runs only the paused run's devices, "
+                                                         "each passed by the rollout's confirm",
+    "credential_profiles_v2.read_account_probe_confirm": "signs in as the read-only account "
+                                                         "and reads; configures nothing",
     "dhcp_v2.exclusion_confirm": "changes Kea, not a device",
     "dhcp_v2.lease_confirm": "changes Kea, not a device",
     "dhcp_v2.reservation_confirm": "changes Kea, not a device",

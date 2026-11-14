@@ -129,6 +129,11 @@ VOCABULARY = {
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
     "diagnosis": "a diagnosis Diagnose… ran from the Device page (board H, H16): finished, ready to read by id",
+    "read_account": "which devices hold the read-only account, by their intent, goldens and probe "
+                    "records (board R; the read-account-coverage reader's value)",
+    "read_account_probe": "a read-only account probe run from Credentials (board R's R8, "
+                          "modules/nsot/read_account_op.py): finished, ready to read by id, its "
+                          "record written",
     "fleet_change": "a layer change's plan (board FC4, modules/nsot/fleet_change.py): finished, "
                     "ready to read by id",
     "persist_read": "Persist's preview read of what a device runs against what it boots (C886): "
@@ -190,6 +195,9 @@ ANNOUNCERS = {
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     "diagnosis": ("diagnosis",),  # modules/heal/diagnose_page.py: a diagnosis run's end (H16)
     "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
+    # modules/nsot/read_account_op.py (board R's R8): a probe's end, its record written and the
+    # device released.
+    "read-account-probe": ("read_account_probe", "device_holds"),
     # modules/nsot/fleet_change.py: a run's end (the approval and canary, or Go on's rest).
     "fleet-change-run": ("fleet_change", "deploy_job", "device_state", "baselines", "drift",
                          "rolled_back", "goldens", "remote", "intent", "approvals"),
@@ -271,6 +279,24 @@ DECLARED = {
     "credential_profiles_v2.delete": ("credentials",),
     "credential_profiles_v2.policy_save": ("credentials",),
     "credential_profiles_v2.read_account_save": ("credentials",),
+    # Board R: Add commits each ticked device's intent (one commit per network); the coverage
+    # reader is woken by `intent` and announces `read_account` once it has read again.
+    "credential_profiles_v2.read_account_add": ("intent",),
+    "credential_profiles_v2.read_account_add_preview": Nothing("a preview: reads each ticked "
+                                                               "device's committed intent and "
+                                                               "writes nothing"),
+    "credential_profiles_v2.read_account_rollout_plan": Nothing(
+        "starts the rollout's preview as a job and answers at once; the job ANNOUNCES "
+        "fleet_change when it ends (ANNOUNCERS fleet-change); it writes nothing"),
+    "credential_profiles_v2.read_account_rollout_confirm": Nothing(
+        "starts the rollout as a job and answers at once; the run ANNOUNCES what a deploy moves "
+        "as it ends (ANNOUNCERS fleet-change-run, device-ops)"),
+    "credential_profiles_v2.read_account_probe_confirm": Nothing(
+        "starts the probe as a job and answers at once; the job ANNOUNCES read_account_probe and "
+        "device_holds when it ends (ANNOUNCERS read-account-probe)"),
+    "credential_profiles_v2.read_account_rollout_go_on": Nothing(
+        "starts the run's next part as a job and answers at once (ANNOUNCERS fleet-change-run, "
+        "device-ops)"),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # routes.golden.apply_captures

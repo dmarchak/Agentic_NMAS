@@ -171,6 +171,15 @@ DEFAULTS: dict = {
     # it. Neither is drawn yet (the incident page's AI troubleshooting section draws them).
     "ai_troubleshoot_mode":     "manual",
     "ai_cap_usd_per_incident":  1.00,
+    # "Let the read-only account ping and traceroute" (the operator, 2026-11-13;
+    # `router_reads.PING_CHOICE`). OFF by default, which is today's behaviour on a device (no
+    # `privilege exec` line for ping or traceroute is written): the lines that open their
+    # options to the read-only account's level take ping and traceroute away from every
+    # account below that level, so it is a person's decision about their devices' other
+    # accounts, and no measurement can make it. While it is off the AI's ping is the plain
+    # form and its sourced ping and its traceroute are refused by name. Not drawn on a
+    # Settings card yet (a new control needs its board): set in the settings file.
+    "ai_read_account_ping_traceroute": False,
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -975,6 +984,7 @@ SCHEMA: dict = {
         # no "no cap" (the fix-it plan's decision 1).
         "ai_troubleshoot_mode": {"enum": ["manual", "off"]},
         "ai_cap_usd_per_incident": {"type": "number", "exclusiveMinimum": 0},
+        "ai_read_account_ping_traceroute": _BOOL,
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

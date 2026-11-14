@@ -3088,6 +3088,37 @@ def host_keys(ctx):
                 if len(events) > ctx["limit"] else [])
 
 
+def read_account_probes(ctx):
+    """Each read-only account probe (board R's R8, `modules/nsot/read_account_op.py`, and the
+    command line's): who confirmed it, its verdict and why, and the account it signed in as. Its
+    store is the network's own probe records, kept by device identity; one device's History
+    reads that device's folder only (`read_account_op.records`), so a former device of the same
+    name lends it none. Every row at or before the page's place is kept before the newest-N
+    cut."""
+    from modules.nsot import read_account_op as RAO
+
+    got = RAO.records(ctx["ref"].name, device=ctx["device"] or "",
+                      repo=getattr(ctx["ref"], "repo_dir", "") or "")
+    errors = ([f"{len(got['unreadable'])} probe record(s) could not be read: "
+               f"{', '.join(got['unreadable'][:5])}"] if got["unreadable"] else [])
+    events = []
+    for r in got["records"]:
+        host = r.get("device", "")
+        if not _mine(ctx, host) or not _recent(ctx, r.get("at")):
+            continue
+        v = RAO.view(r)
+        events.append(_event(r.get("at"), "read_account_probe",
+                             f"Read-only account probe: {v['result']}", [host],
+                             who=r.get("actor", ""), detail=v["why"][:200], outcome=v["result"],
+                             record=[("Record", r.get("file")), ("Account", v["account"]),
+                                     ("Program", r.get("hash")),
+                                     ("Results", ", ".join(f"{n} {k}" for k, n in v["counts"])),
+                                     ("Proposal", v["proposal"])]))
+    cut = len(events) > ctx["limit"]
+    return _out(events[:ctx["limit"]], errors,
+                cut=[f"the probe records' newest {ctx['limit']}"] if cut else [])
+
+
 #: Every store History reads, in the order it asks them. A source absent here is read nowhere;
 #: `operation_stages.HISTORY` names one per operation, `WRITTEN_ELSEWHERE` the rest.
 SOURCES = {
@@ -3109,6 +3140,7 @@ SOURCES = {
     "alert_rule_changes": alert_rule_changes, "secret_values": secret_values,
     "page_stalls": page_stalls, "notifications": notifications, "heal": heal,
     "diagnoses": diagnoses, "ai_reads": ai_reads, "reader_restarts": reader_restarts,
+    "read_account_probes": read_account_probes,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -3121,6 +3153,8 @@ KIND_GROUPS = (
                               ("rotations", "Rotations", ("rotation",)),
                               ("persists", "Persists", ("persist",)),
                               ("privileged", "Privileged commands (Tier 2)", ("privileged",)),
+                              ("read_account_probes", "Read-only account probes",
+                               ("read_account_probe",)),
                               ("reloads", "Reloads", ("reload",)),
                               ("console", "Console surveys and kick-starts", ("console",)),
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
@@ -3317,6 +3351,7 @@ SOURCE_KINDS = {
     "page_stalls": ("stall",), "notifications": ("notification",), "heal": ("heal",),
     "diagnoses": ("diagnosis",), "ai_reads": ("ai_read",),
     "reader_restarts": ("reader_restart",),
+    "read_account_probes": ("read_account_probe",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their
