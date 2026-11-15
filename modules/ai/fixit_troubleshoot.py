@@ -129,8 +129,26 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: their schemas, so a call recorded under them stays readable; none is asked now.
 #: v9 and v10 (the operator, 2026-11-15): v7 and v8 as the provider can compile them, their
 #: schemas flattened (`TroubleshootPlanFlat`); v7 and v8 stay readable, never asked.
-PROMPT_PLAN = (FEATURE, 9)
-PROMPT_PLAN_READS = (FEATURE, 10)
+#: v11, v12 and v13 (C3797, the same day): the investigation, iterative: v11 its first pass,
+#: v12 a later pass with the reads so far (it may ask again), v13 its last pass (and the plain
+#: one); each answer names the read it lacked. v9 and v10 stay readable, never asked.
+PROMPT_PLAN = (FEATURE, 13)
+PROMPT_PLAN_READS = (FEATURE, 11)
+PROMPT_AGAIN = (FEATURE, 12)
+#: The investigation's bounds (C3797; the operator: "the incident's cost cap, plus a declared
+#: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): at most
+#: `ROUNDS` rounds of reads, `MAX_READS` reads in all (three a pass, the family's limit), and
+#: `WALL_S` seconds from the first pass's start before the last pass is asked (reasoned: a switch's
+#: press of 2026-11-15 19:10 UTC took about 20 s a pass and under 2 s a read, so four passes
+#: and nine reads are about 100 s; 2.5x that is 240 s); and the incident's cost cap before each
+#: further pass (`P.cap_state`, one call's worst case).
+ROUNDS = 3
+MAX_READS = 9
+WALL_S = 240.0
+#: The most calls one investigation makes: its rounds and its last pass; and the calls the
+#: estimate expects of one (reasoned: a read round and its answer, then the last pass).
+CALLS_WORST = ROUNDS + 1
+CALLS_EXPECTED = 3
 PROMPT_SECOND = PROMPT_PLAN
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
@@ -338,6 +356,28 @@ class TroubleshootPlanReadsFlat(FlatWire, TroubleshootPlanReads):
         return _without_fix(schema)
 
 
+@register(FEATURE, 11)
+class TroubleshootInvestigate(TroubleshootPlanReadsFlat):
+    """The investigation's first pass (C3797; the operator, 2026-11-15: "the AI settles
+    uncertainty itself, like a Mercury user"): `TroubleshootPlanReadsFlat`, with the read it
+    lacked (*lacked_read*: the one read-only command that would settle what its plan depends on
+    when its read set offers none, "" otherwise), flattened as v10 is."""
+    lacked_read: str = ""
+
+
+@register(FEATURE, 12)
+class TroubleshootInvestigateAgain(TroubleshootInvestigate):
+    """A later pass of the investigation, its reads so far attached: `TroubleshootInvestigate`,
+    which may ask for more."""
+
+
+@register(FEATURE, 13)
+class TroubleshootInvestigated(TroubleshootPlanFlat):
+    """The investigation's last pass (its bounds reached): `TroubleshootPlanFlat` with
+    *lacked_read*; it cannot ask again."""
+    lacked_read: str = ""
+
+
 #: How a call that was sent and got no answer begins its line (the operator, 2026-11-15: a
 #: refused request was drawn as "the AI named no fix"): `fixit.section` reads it as a failure,
 #: never as an answer.
@@ -389,7 +429,9 @@ def _without_fix(schema: dict) -> dict:
 
 SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
              4: TroubleshootFixitReads, 5: TroubleshootEngineerReads, 7: TroubleshootPlan,
-             8: TroubleshootPlanReads, 9: TroubleshootPlanFlat, 10: TroubleshootPlanReadsFlat}
+             8: TroubleshootPlanReads, 9: TroubleshootPlanFlat, 10: TroubleshootPlanReadsFlat,
+             11: TroubleshootInvestigate, 12: TroubleshootInvestigateAgain,
+             13: TroubleshootInvestigated}
 
 
 class Refused(ValueError):
@@ -403,23 +445,24 @@ class Refused(ValueError):
 # ── The figures, drawn before the press ─────────────────────────────────────────────────────
 
 def worst_usd() -> float:
-    """One investigation's worst case in US dollars: `read_loop.CALLS_PER_FINDING` calls at the
-    pin's per-call cap (`profiles.cap_per_call`)."""
+    """One investigation's worst case in US dollars: `CALLS_WORST` calls (its rounds and its
+    last pass, C3797) at the pin's per-call cap (`profiles.cap_per_call`)."""
     from modules.ai import profiles
 
-    return round(profiles.cap_per_call(FEATURE) * RL.CALLS_PER_FINDING, 6)
+    return round(profiles.cap_per_call(FEATURE) * CALLS_WORST, 6)
 
 
 def estimate() -> dict:
     """``{"usd", "worst", "measured", "basis"}``: what one investigation is expected to cost,
     the task's measured mean cost per sent call (`background.measured_cost`, its last 30 days)
-    times its two calls, or, with none measured, its worst case said as such; and the worst
-    case. A read of the record of AI calls; no call is made."""
+    times the calls one is expected to make (`CALLS_EXPECTED`), or, with none measured, its
+    worst case said as such; and the worst case. A read of the record of AI calls; no call is
+    made."""
     from modules.ai import background
 
     got = background.measured_cost(FEATURE)
     worst = worst_usd()
-    usd = round(float(got["usd_per_call"]) * RL.CALLS_PER_FINDING, 6)
+    usd = round(float(got["usd_per_call"]) * CALLS_EXPECTED, 6)
     return {"usd": min(usd, worst), "worst": worst, "measured": bool(got["measured"]),
             "basis": got["basis"]}
 
@@ -682,6 +725,33 @@ def reads_reserve_chars() -> int:
 
 
 READS_RESERVE_CHARS = reads_reserve_chars()
+#: What a pass carrying reads holds once beside their part, whatever their number: the reads'
+#: format context and the part's wrapper, in the request's characters.
+READS_OVERHEAD_CHARS = len(json.dumps(RL.READS_FORMAT)) + len(json.dumps(
+    '\n<data name="mercury_reads">\n\n</data>\n<context name="reads_format">\n\n</context>'))
+#: The room for reads when a press's own cannot be measured (a request not built): the
+#: reserve's, three reads at their largest.
+READS_ROOM_CHARS = READS_RESERVE_CHARS - READS_OVERHEAD_CHARS
+
+
+def read_room(prep: dict) -> int:
+    """The room every pass of this investigation may fill with reads (C3797), in the request's
+    characters as `read_loop._sent_chars` counts them: what the task's prompt bound leaves
+    after pass 1 as built (it carries the read set, as every pass that may ask again does),
+    less the reads' format and wrapper; at least the room pass 2 had before (`_over` fits pass 1
+    so it is), and `READS_ROOM_CHARS` when pass 1 cannot be built. Its reads share it: past it
+    the newest answers are cut, said, and the last pass is asked (`read_loop._within_room`)."""
+    from modules.ai import profiles
+
+    try:
+        chars = request_chars(prep)
+    except Exception:                               # noqa: BLE001 (the reserve's room instead)
+        chars = 0
+    if not chars:
+        return READS_ROOM_CHARS
+    bound = int(profiles.TASKS[FEATURE]["max_prompt_tokens"])
+    allowed = int((bound - 1) * gateway.CHARS_PER_TOKEN)
+    return max(0, allowed - chars - READS_OVERHEAD_CHARS)
 #: The pack's sections a fit may cut, in no order (the largest is cut first): never the
 #: incident, the device, what Mercury tried, the diagnosis, the attempts or Seen before.
 TRIMMABLE = ("logs", "neighbours", "history", "observer", "health")
@@ -711,7 +781,9 @@ def request_chars(prep: dict) -> int:
 
 def _over(prep: dict, bound: int) -> bool:
     """Whether pass 1, or pass 2 at its worst (pass 1 less the read set it does not carry, plus
-    `READS_RESERVE_CHARS`), is over *bound* by the fallback over-estimate."""
+    `READS_RESERVE_CHARS`), is over *bound* by the fallback over-estimate. A later pass of the
+    investigation keeps its read set: its reads are held to the room pass 1 leaves under the
+    bound instead (`read_room`, C3797)."""
     chars = request_chars(prep)
     worst = chars + max(0, READS_RESERVE_CHARS - len(read_set()))
     return bool(chars) and gateway.tokens_of_chars(max(chars, worst)) > bound
@@ -1082,6 +1154,10 @@ def shown(answer, said: dict = None, pass_: int = 1, fit=(), marks: dict = None,
                      "confirm": _cut(h.confirm_with)})
     out = {"rationale": _cut(answer.rationale), "needs_human": bool(answer.needs_human),
            "hypotheses": hyps, "passes": pass_}
+    # The read the AI lacked (C3797): what "How to fix it" offers a person to run.
+    lacked = " ".join(str(getattr(answer, "lacked_read", "") or "").split())
+    if lacked:
+        out["lacked_read"] = _cut(lacked)
     plan = list(getattr(answer, "plan", None) or [])
     # The fix's steps, each with its why, its citations and its mark: the page's preflight
     # refuses a step resting only on unverified citations by these (`fixit.plan.preflight`).
@@ -1149,10 +1225,17 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         # whole answer for it.
         return [r for r in cites(answer) if not str(r).startswith("read:")]
 
-    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootPlanReadsFlat),
-                          second=(PROMPT_PLAN, TroubleshootPlanFlat),
-                          plain=(PROMPT_PLAN, TroubleshootPlanFlat), check=check_, cites=cites_,
-                          acts_on=acts_on, first_only=("read_set",))
+    # The investigation (C3797): iterative within its bounds, the incident's cost cap asked
+    # before each further pass (`prep["may_go_on"]`, the press's; none in a preview).
+    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootInvestigate),
+                          second=(PROMPT_PLAN, TroubleshootInvestigated),
+                          plain=(PROMPT_PLAN, TroubleshootInvestigated), check=check_,
+                          cites=cites_, acts_on=acts_on, first_only=("read_set",),
+                          again=(PROMPT_AGAIN, TroubleshootInvestigateAgain), rounds=ROUNDS,
+                          max_reads=MAX_READS, wall_s=WALL_S,
+                          read_room=(read_room(prep) if "sections" in prep
+                                     else READS_ROOM_CHARS),
+                          may_go_on=prep.get("may_go_on"))
 
 
 def marks_of(prep: dict, answer) -> dict:
@@ -1328,6 +1411,14 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
     memo = {}
+
+    def may_go_on(_cost_usd):
+        # The incident's cost cap before each further pass of the investigation (C3797): this
+        # press's own calls are recorded as they are made, so the spend read includes them.
+        now_cs = P.cap_state(incident, worst_usd() / CALLS_WORST)
+        return "" if now_cs["state"] == "allowed" else now_cs["words"]
+
+    prep["may_go_on"] = may_go_on
     feature = loop_feature(prep)
 
     def ask(feature_, prompt, schema, parts, *, trigger, **kw):
@@ -1369,8 +1460,13 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
            # What was left out or cut to fit the prompt's bound (`fit`), in order.
            "fit": list(prep["said"].get("fit") or ())}
     links = {"page": f"/v2/incident/{incident.id}?list={network}", "anchor": "inc-ai"}
-    version = (PROMPT_PLAN if got["pass"] == 2 or plain or (retry or {}).get("accepted")
-               else PROMPT_PLAN_READS)[1]
+    # The prompt the kept answer came from: the investigation's own pass when it says
+    # (`read_loop._investigate`: v12 or v13), else as the two passes chose it.
+    asked_prompt = str(got.get("prompt") or "")
+    version = (int(asked_prompt.rsplit(".v", 1)[1])
+               if asked_prompt.startswith(f"{FEATURE}.v") and not (retry or {}).get("accepted")
+               else (PROMPT_PLAN if got["pass"] >= 2 or plain or (retry or {}).get("accepted")
+                     else PROMPT_PLAN_READS)[1])
     # A background investigation names no person on its line (both or neither are kept): its
     # trigger, the job, is on its calls' rows.
     common = {"calls": ids, "prompt": f"{FEATURE}.v{version}",
@@ -1392,7 +1488,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             out["proposal"] = keep(words)
         return out
     final_call = ((retry or {}).get("call_id") if (retry or {}).get("accepted") else
-                  (got.get("second") or {}).get("call_id") if got["pass"] == 2
+                  (got.get("second") or {}).get("call_id") if got["pass"] >= 2
                   else first.get("call_id")) or (ids[-1] if ids else "")
     if got["state"] == "refused_by_check":
         why = got.get("why") or ""
@@ -1590,7 +1686,10 @@ def preview(network: str, found: dict, incident, *, actor: str = "", note: str =
     ran = [r for r in records if r.get("verdict") == "run"]
     second = None
     if ran:
-        prompt2, schema2, parts2, ctx2 = RL.second_request(feature, prep["data"], ctx, records)
+        # The press's next pass after its reads: the investigation's again pass (C3797), which
+        # may ask for more, as `read_loop._investigate` builds it.
+        build = RL.again_request if feature.rounds else RL.second_request
+        prompt2, schema2, parts2, ctx2 = build(feature, prep["data"], ctx, records)
         second = _preview_body(prompt2, schema2, parts2, ctx2)
     state = "on" if not now_off else "off"
     said = [

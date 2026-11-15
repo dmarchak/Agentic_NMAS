@@ -584,8 +584,14 @@ COMMAND_LEFT_OUT = (
 #: family's words alone. The floor is the AI read set's shapes and the heal runbooks' commands
 #: (tests/test_ai_engineer_reads.py holds both to these).
 SHOW_FAMILIES = (
-    ("interfaces", ("", "{if}", "description", "status", "counters", "trunk", "summary",
-                    "{if} counters", "{if} status", "{if} switchport", "{if} trunk")),
+    ("interfaces", ("", "{if}", "description", "status", "status err-disabled", "counters",
+                    "trunk", "summary", "{if} counters", "{if} status", "{if} switchport",
+                    "{if} trunk")),
+    # An err-disabled port's reads (the operator, 2026-11-15, C3797), measured first through
+    # the reads engine on three of the lab's switches (tests/fixtures/errdisable/README.md),
+    # as a person runs them in Show commands.
+    ("errdisable recovery", ("",)),
+    ("port-security", ("interface {if}",)),
     ("ip interface", ("", "brief", "{if}")),
     ("ipv6 interface", ("", "brief", "{if}")),
     ("ip route", ("", "summary", "{a4}", "{a4} {mask}", "{p4}", "vrf {name}", "vrf {name} {a4}",

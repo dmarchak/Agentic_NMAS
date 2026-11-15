@@ -103,7 +103,15 @@ the AI troubleshooting section's What the AI found is drawn collapsed under "Pre
 <time>, prompt v<n>" while a newer investigation stands, and an answer resting on another
 incident's call is one muted line saying it is superseded, its content withheld; no element
 moves (tests/test_fixit_answer_superseded.py).
-Templates sha256: `14ce739429871b32851fa0e40cc0b9e2ca795c775212e137f4d263d859d4f095`
+
+Compared again 2026-11-15 (C3797, the investigation loop): How to fix it's primary, for an
+answer with no plan that names the read it lacked, is the link "Run <read> in Show commands"
+(Show commands opened with the command and the device filled in), Ask the AI again beside it
+as secondary and Hand over… a link, where it drew Ask the AI again alone or, past the cap,
+nothing to press; the AI's cost line says "at most 4 calls" (the investigation's worst case)
+where it said two. No region moves and no element is added beyond the one link;
+tests/test_fixit_lacked_read.py.
+Templates sha256: `08728c041a801cb1c70abc7fec8f45456863d700d149192c0ec9d06dd3169570`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

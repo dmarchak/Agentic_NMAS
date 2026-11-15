@@ -21,7 +21,12 @@ faked (`connection.with_temp_connection`, Show commands' own, and
   scope, the golden under the configuration class.
 - **A missing capability** (a read Mercury lacks, a gap) is recorded for review and listed on
   History; a read refused for its scope is not one.
+- **An err-disabled port's reads** (C3797): `show interfaces status err-disabled`, `show
+  errdisable recovery` and `show port-security interface <if>` are the AI's and a person's
+  Show commands' both, held to the scope and the golden, each answering with its capture.
 """
+import os
+
 import pytest
 
 from modules import credentials, readonly_commands
@@ -407,6 +412,95 @@ def test_the_egress_mask_withholds_the_planted_secret_lines():
     kept = "Internet  192.0.2.6   5   aabb.cc00.0100  ARPA   GigabitEthernet4"
     assert redact.redact_egress(kept) == kept, "an ARP row is no key row"
     assert "admin" in redact.redact_egress(planted["pair"]), "the username stays"
+
+
+# ── An err-disabled port's reads (the operator, 2026-11-15, C3797) ───────────────────────────
+#
+# "Add the err-disable reads to its read families (show interfaces status err-disabled, show
+# errdisable recovery, show port-security interface <if>), measured first; they're
+# Show-command families a person can run too." Each answer below is a capture read through
+# Mercury's reads engine on 2026-11-15 (tests/fixtures/errdisable/README.md, its run ids).
+
+ERRDISABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "errdisable")
+#: s1's golden here: its uplink, the captured BPDU-guard port (GigabitEthernet1/0) and the
+#: captured port-security port (GigabitEthernet0/3, s5's), so each form names a held port.
+PORT_GOLDENS = dict(GOLDENS, s1="hostname s1\ninterface GigabitEthernet0/1\n no shutdown\n"
+                                "interface GigabitEthernet0/3\n switchport port-security\n"
+                                "interface GigabitEthernet1/0\n spanning-tree bpduguard enable\n")
+
+
+def capture(name: str) -> str:
+    with open(os.path.join(ERRDISABLE, name), encoding="utf-8", newline="") as fh:
+        return fh.read()
+
+
+#: (the words the AI asks, the command sent, the capture the device answers with).
+ERRDISABLE_READS = [
+    ("interfaces status err-disabled", "show interfaces status err-disabled",
+     "s2_status_errdisabled.txt"),
+    ("interfaces status err-disabled", "show interfaces status err-disabled",
+     "s5_status_errdisabled.txt"),
+    ("errdisable recovery", "show errdisable recovery", "s1_errdisable_recovery.txt"),
+    ("port-security interface GigabitEthernet1/0",
+     "show port-security interface GigabitEthernet1/0", "s1_port_security_gi10.txt"),
+    ("port-security interface Gi0/3", "show port-security interface Gi0/3",
+     "s5_port_security_gi03.txt"),
+]
+
+
+@pytest.mark.parametrize("words,sent,_capture", ERRDISABLE_READS)
+def test_an_err_disabled_ports_reads_are_the_ais_and_a_persons(lab, words, sent, _capture):
+    """One catalogue, two uses: the AI's check (`read_loop.check` with AI troubleshooting's
+    family) allows each form on the incident's switch, its interface one the golden holds, and
+    a person's Show commands (`reads_page.check`, the reads engine's person rule) takes the same
+    command."""
+    from modules import reads_page
+
+    _state_on()
+    (got,) = judged(ask("show", device="s1", words=words), goldens=PORT_GOLDENS)
+    assert got["verdict"] == "allowed", got
+    assert got["requests"] == [sent]
+    assert readonly_commands.refusal(sent) == ""
+    assert reads_page.check(sent)["ok"] is True, reads_page.check(sent)
+
+
+@pytest.mark.parametrize("request_,said", [
+    (ask("show", device="s9", words="errdisable recovery"),
+     "s9 is not a device the incident names"),
+    (ask("show", device="s1", words="port-security interface GigabitEthernet1/1"),
+     "GigabitEthernet1/1 is not an interface s1's golden holds"),
+    (ask("show", device="s1", words="port-security interface Gi9/9"),
+     "Gi9/9 is not an interface s1's golden holds"),
+    (ask("show", device="s1", words="port-security"),
+     "show port-security takes: `show port-security interface {if}`"),
+    (ask("show", device="s1", words="errdisable detect"),
+     "is not one of the AI's read families"),
+])
+def test_an_err_disabled_ports_reads_are_held_to_the_scope_and_the_golden(lab, request_, said):
+    _state_on()
+    (got,) = judged(request_, goldens=PORT_GOLDENS)
+    assert got["verdict"] == "refused" and got["requests"] == [], got
+    assert said in got["reason"], got["reason"]
+
+
+@pytest.mark.parametrize("words,sent,capture_", ERRDISABLE_READS)
+def test_each_capture_is_what_the_read_returns(lab, monkeypatch, words, sent, capture_):
+    """Through the family's executor and THE reads engine (recorded on History › Reads): the
+    device answers with the capture and the read returns it byte for byte, s5's empty answer
+    (no port err-disabled) an empty read, never a failure."""
+    from modules.nsot import reads
+
+    answers = {sent: capture(capture_)}
+    monkeypatch.setattr("modules.commands.run_device_command", lambda conn, c: answers[c])
+    _state_on()
+    sc = scope(goldens=PORT_GOLDENS)
+    (got,) = judged(ask("show", device="s1", words=words), goldens=PORT_GOLDENS)
+    assert got["requests"] == [sent], got
+    answer = R.run("show", {"device": "s1", "words": words}, got["requests"], sc)
+    assert answer.answer == capture(capture_)
+    (record,) = reads.runs(NETWORK)["runs"]
+    assert record["by"] == "ai_analysis"
+    assert record["results"]["s1"]["answers"][0]["command"] == sent
 
 
 def test_show_config_takes_only_a_configuration_form(lab):

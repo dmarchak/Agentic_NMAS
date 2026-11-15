@@ -80,6 +80,28 @@ def test_its_own_answer_is_drawn_as_its_own(ai):  # noqa: F811
     assert got["previous"] is False
 
 
+def test_an_answer_with_no_plan_is_never_said_as_one_to_approve(ai):  # noqa: F811
+    """The builder's finding (the operator, 2026-11-15): an AI answer with no plan leaves the
+    section "proposed", and Incidents and Needs attention said "approve, modify or deny the
+    plan" with nothing to approve."""
+    from modules import incidents_list
+    iid = stopped(ai)
+    calls.record({"id": "ai-0000000000000a03", "feature": "fixit_troubleshoot", "verdict": "ok",
+                  "prompt": "fixit_troubleshoot.v13", "cost_usd": 0.03,
+                  "subject": {"kind": "heal_incident", "id": iid, "devices": ["r2"]}})
+    F.record_proposal(incident(iid), "ai", words="The AI named no fix: the collector holds "
+                      "the old session.", calls=["ai-0000000000000a03"],
+                      prompt="fixit_troubleshoot.v13",
+                      shown={"rationale": "the collector holds the old session.",
+                             "hypotheses": []})
+    (row,) = [r for r in incidents_list.rows(NET)["rows"] if r["id"] == iid]
+    label = row["bluf"]["fix"]["label"]
+    assert "approve" not in label.lower(), label
+    assert "ask it again or hand it over" in label, label
+    body = ai.client.get(f"/v2/incidents?list={NET}").get_data(as_text=True)
+    assert "approve, modify or deny the plan" not in body
+
+
 def test_during_a_new_investigation_the_previous_answer_is_labelled(ai):  # noqa: F811
     iid = stopped(ai)
     calls.record({"id": "ai-0000000000000a02", "feature": "fixit_troubleshoot", "verdict": "ok",

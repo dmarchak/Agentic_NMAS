@@ -95,6 +95,7 @@ import json
 import logging
 import re
 import string
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Optional, Union
@@ -110,8 +111,14 @@ MAX_READS = 3
 #: Each read's answer to the model, at most, in bytes (19.5, B4 1.3: one constant for the
 #: router and SDN loops). The record keeps the same; the reads engine's own record keeps its own.
 AI_READ_CAP = 4 * 1024
-#: The loop is at most two calls a finding (19.5: "`calls_per_finding` becomes 2").
+#: The loop is at most two calls a finding (19.5: "`calls_per_finding` becomes 2"), but for an
+#: iterative feature (`LoopFeature.rounds`), whose calls are its rounds and its last pass.
 CALLS_PER_FINDING = 2
+#: An iterative loop's own ceilings, whatever a feature declares (C3797): the most rounds of
+#: reads, reads in all, and seconds before the last pass.
+MAX_ROUNDS = 6
+MAX_LOOP_READS = 12
+MAX_WALL_S = 600.0
 #: A read's id: its place in the requests pass 1 made.
 READ_ID = re.compile(r"read:[1-9][0-9]{0,2}")
 #: A read request's keys, in the order a refusal names them.
@@ -562,12 +569,41 @@ class LoopFeature:
     #: Context blocks pass 1 alone carries (a read set: pass 2 cannot ask again), left out of
     #: pass 2's request (`second_request`); none by default.
     first_only: tuple = ()
+    #: The investigation (C3797; the operator, 2026-11-15: "The read loop is iterative ... not a
+    #: fixed 2 passes"): *again* is ``((prompt name, version), schema)``, a pass with the reads
+    #: so far attached that may ask for more (its schema has ``reads``); *rounds* the most
+    #: rounds of reads before the last pass (0: the two passes, as every feature but one runs);
+    #: *max_reads* the most reads in all, *wall_s* the most seconds from the first pass's start
+    #: before the last pass is asked (`modules/waits.py`, ``read_loop.py::run``); *may_go_on*
+    #: (``may_go_on(cost_usd) -> "" or why``) the feature's own bound asked before each
+    #: further pass (AI troubleshooting's: the incident's cost cap).
+    again: Optional[tuple] = None
+    rounds: int = 0
+    max_reads: int = 0
+    wall_s: float = 0.0
+    may_go_on: Optional[Callable] = None
+    #: The most characters every pass's ``mercury_reads`` part may take, as it is sent (`_sent_
+    #: chars`): the room the feature's prompt bound left for reads (0: none declared). Past it
+    #: the newest answers are cut, said, and the last pass is asked.
+    read_room: int = 0
 
     def __post_init__(self):
         name = self.task if isinstance(self.task, str) and self.task else _shown(self.task)
 
         def refuse(why):
             raise Undeclarable(f"the read loop feature {name} cannot be declared: {why}")
+
+        if self.rounds:
+            if not (isinstance(self.again, tuple) and len(self.again) == 2
+                    and isinstance(self.again[1], type) and _has_reads(self.again[1])):
+                refuse("an iterative loop's again pass is not ((prompt name, version), a "
+                       "schema with a reads field)")
+            if not (isinstance(self.rounds, int) and 1 <= self.rounds <= MAX_ROUNDS):
+                refuse(f"its rounds ({self.rounds!r}) are not 1 to {MAX_ROUNDS}")
+            if not (isinstance(self.max_reads, int) and 1 <= self.max_reads <= MAX_LOOP_READS):
+                refuse(f"its max_reads ({self.max_reads!r}) are not 1 to {MAX_LOOP_READS}")
+            if not (isinstance(self.wall_s, (int, float)) and 0 < self.wall_s <= MAX_WALL_S):
+                refuse(f"its wall_s ({self.wall_s!r}) is not above 0 and at most {MAX_WALL_S}")
 
         for which, spec in (("first", self.first), ("second", self.second),
                             ("plain", self.plain)):
@@ -742,7 +778,7 @@ def _refused_row(row: dict) -> dict:
 
 
 def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
-          assume_on=()) -> list:
+          assume_on=(), start: int = 1) -> list:
     """Each of pass 1's *requests* judged, in order: ``[{"id": "read:<n>", "verdict":
     "allowed" | "refused", "op", "args", "why", "hypothesis", "requests", "reason"}]``. A
     refused request's *reason* names the operation and the argument it compared; *args* are
@@ -752,7 +788,9 @@ def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
     *assume_on* names egress classes judged on for this check without reading their switch:
     only AI troubleshooting's preview passes one (`fixit_troubleshoot.preview`, the device
     state class: what a press would read once the class is on, nothing sent and nothing
-    recorded); the loop never does. A classification marking still refuses every request."""
+    recorded); the loop never does. A classification marking still refuses every request.
+    *start* is the first request's number: an iterative loop's later round continues the ids
+    its earlier rounds gave (C3797), so every read of one investigation has its own id."""
     from modules import redact
 
     scope = dict(scope or {})
@@ -761,7 +799,8 @@ def check(family: ReadFamily, requests, *, network: str, scope: dict = None,
     for n, raw in enumerate(list(requests or ()), 1):
         got = _judge(family, raw, n, network, scope, off)
         texts = raw if isinstance(raw, dict) else {}
-        row = {"id": f"read:{n}", "op": got.get("op", ""), "args": got.get("args", {}),
+        row = {"id": f"read:{start + n - 1}", "op": got.get("op", ""),
+               "args": got.get("args", {}),
                "why": texts.get("why") if isinstance(texts.get("why"), str) else "",
                "hypothesis": (texts.get("hypothesis")
                               if isinstance(texts.get("hypothesis"), str) else ""),
@@ -1078,20 +1117,25 @@ def reads_off(family: ReadFamily, network: str) -> str:
 
 
 def _log_sending(out: dict, family: ReadFamily, feature: LoopFeature, records: list, *,
-                 network: str, subject: dict, trigger: dict) -> str:
+                 network: str, subject: dict, trigger: dict, asking_call: str = None) -> str:
     """The send log's ``reads`` row for *records* (`read_log.sending`): "" when it is kept,
-    else why not (the loop then sends nothing of the reads)."""
+    else why not (the loop then sends nothing of the reads). *asking_call* is the call whose
+    answer asked for them (pass 1's by default; an iterative loop's round names its own), and
+    each row's id is kept in ``loops``."""
     from modules.ai import read_log
 
     loop = read_log.new_id()
     out.update(loop=loop, logged=False)
+    out.setdefault("loops", []).append(loop)
     entries = []
     for r in records:
         op = family.operation(r.get("op") or "")
         entries.append(read_log.entry(r, family.class_of(op) if op is not None else ""))
     try:
         read_log.sending(loop, network=network, subject=subject, task=feature.task,
-                         trigger=trigger, first_call=out["first"].get("call_id") or "",
+                         trigger=trigger,
+                         first_call=(asking_call if asking_call is not None
+                                     else out["first"].get("call_id")) or "",
                          entries=entries)
     except Exception as exc:                            # noqa: BLE001 (said: nothing is sent)
         log.error("read loop: the send log of %s could not be written: %s", loop, exc)
@@ -1183,6 +1227,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         return {k: got.get(k) for k in ("ok", "call_id", "error", "detail", "cap_kind")
                 if k in got}
 
+    started = time.monotonic()              # an iterative loop's wall-time bound counts from here
     off = _all_off(family, network)
     plain = bool(off) and feature.plain is not None
     prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
@@ -1206,6 +1251,10 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     wanted = _reads_of(answer)
     if not wanted:
         return out
+    if feature.rounds:
+        return _investigate(family, feature, out, wanted, started=started, ask=ask,
+                            common=common, data=data, ctx=ctx, network=network, scope=scope,
+                            actable=actable, subject=subject, trigger=trigger, asked=asked)
     records = run_reads(family, check(family, wanted, network=network, scope=scope), scope)
     out["reads"] = records
     summary = _summary(records)
@@ -1240,3 +1289,129 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     out.update(answer=final, words=f"AI analysis: {summary}; second pass answered")
     out["pass"] = 2
     return out
+
+
+def _sent_chars(records: list) -> int:
+    """The characters *records* take in a request as sent: their ``mercury_reads`` part
+    (`as_sent`, encoded as the passes encode it), encoded again inside the request's body."""
+    part = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":"))
+    return len(json.dumps(part, ensure_ascii=False))
+
+
+#: What a read's answer cut to fit the investigation's room ends with.
+ROOM_CUT = "\n<cut: the investigation's room for reads in the prompt>"
+
+
+def _within_room(records: list, room: int, newest: list) -> bool:
+    """Cut the answers of *newest* (this round's records, the last of *records*), newest
+    first, until *records* fit *room* (`_sent_chars`), each cut said in its answer and marked
+    ``cut`` (its whole size and hash stay as read); whether any was cut. Run before the round
+    is logged, so the send log holds what is sent; an earlier round's reads, already logged
+    and within the room, are never cut again."""
+    cut = False
+    for r in reversed(newest):
+        over = _sent_chars(records) - room
+        if over <= 0:
+            break
+        if r.get("verdict") != "run" or not r.get("answer"):
+            continue
+        keep = max(0, len(r["answer"]) - over - len(json.dumps(ROOM_CUT)))
+        r["answer"] = r["answer"][:keep] + ROOM_CUT
+        r["cut"] = cut = True
+    return cut
+
+
+def again_request(feature: LoopFeature, data: dict, context: dict, records: list) -> tuple:
+    """An iterative loop's further pass's ``(prompt, schema, parts, context)`` (C3797): *data*
+    with every read so far as sent in the ``mercury_reads`` part, pass 1's *context* whole (its
+    read set kept: this pass may ask again) with the reads' format; the feature's *again*
+    prompt and schema."""
+    parts = dict(data)
+    parts[READS_PART] = json.dumps(as_sent(records), sort_keys=True, ensure_ascii=False,
+                                   separators=(",", ":"))
+    prompt, schema = feature.again
+    return prompt, schema, parts, dict(context or {}, reads_format=READS_FORMAT)
+
+
+def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: list, *,
+                 started: float, ask, common: dict, data: dict, ctx: dict, network: str,
+                 scope, actable, subject, trigger, asked) -> dict:
+    """An iterative loop's reads (C3797; the operator, 2026-11-15: "the AI requests reads from
+    its read families, Mercury runs them through the read engine ... and the AI continues until
+    it's confident or hits the bounds"): each round's requests judged and the allowed ones run
+    (ids continuing the investigation's), logged before anything of them is sent, then a pass
+    with every read so far attached: the *again* pass, which may ask for more, while the
+    feature's bounds allow another round (its *rounds*, *max_reads*, *wall_s* from the first
+    pass's start, and its *may_go_on*), else the *second* pass, which cannot. A read refused,
+    failed or empty is fed back as its record says, so the model may choose another. The loop
+    ends when an answer asks for no read (it is confident), at the last pass, or when a pass is
+    not answered or is refused by the check (the newest checked answer stands, said). ``out``
+    as `run` returns it, ``pass`` the calls made and ``rounds`` the rounds of reads run."""
+    records, rounds, asking = [], 0, out["first"].get("call_id") or ""
+    # The wall-time bound as a deadline (`modules/waits.py`, ``read_loop.py::_investigate``).
+    deadline = started + float(feature.wall_s)
+    while True:
+        rounds += 1
+        room = max(0, feature.max_reads - len(records))
+        judged = check(family, wanted[:room], network=network, scope=scope,
+                       start=len(records) + 1)
+        over = wanted[room:]
+        judged += [_refused_row({"id": f"read:{len(records) + len(judged) + k + 1}",
+                                 "op": str((w or {}).get("op") or "") if isinstance(w, dict)
+                                 else "", "args": {}, "why": "", "hypothesis": "",
+                                 "requests": [], "verdict": "refused",
+                                 "reason": f"past the investigation's {feature.max_reads} "
+                                           "reads in all"})
+                   for k, w in enumerate(over)]
+        ran = run_reads(family, judged, scope)
+        records += ran
+        # Every read sent fits the room the feature's prompt bound left for them: the newest
+        # cut to fit, said, before the round is logged (so the log holds what is sent).
+        full = bool(feature.read_room) and _within_room(records, feature.read_room, ran)
+        out["reads"] = list(records)
+        out["rounds"] = rounds
+        summary = _summary(records)
+        unlogged = _log_sending(out, family, feature, ran, network=network, subject=subject,
+                                trigger=trigger, asking_call=asking)
+        if unlogged:
+            out["state"] = "first_pass"
+            out["words"] = (f"AI analysis: {summary}; not asked again: the send log could not "
+                            f"be written ({unlogged}), so nothing of the reads is sent")
+            return out
+        bound = ("its rounds of reads" if rounds >= feature.rounds else
+                 "its reads" if len(records) >= feature.max_reads else
+                 "its room for reads in the prompt" if full else
+                 "its time" if time.monotonic() >= deadline else "")
+        why_not = feature.may_go_on(out["cost_usd"]) if feature.may_go_on else ""
+        if why_not:
+            out["state"] = "first_pass"
+            out["words"] = f"AI analysis: {summary}; not asked again: {why_not}"
+            return out
+        last = bool(bound)
+        prompt, schema, parts, ctx2 = (second_request(feature, data, ctx, records) if last
+                                       else again_request(feature, data, ctx, records))
+        got = ask(feature.task, prompt, schema, parts, context=ctx2, **common)
+        out["second"] = asked(got)
+        out["pass"] += 1
+        _log_answered(out, got)
+        if not got.get("ok"):
+            out["state"] = "first_pass"
+            out["words"] = f"AI analysis: {summary}; {_second_failed(got)}"
+            return out
+        answer = got["output"]
+        why = second_check(feature, answer, records, actable)
+        if why:
+            out["second"]["why"] = why
+            out["state"] = "first_pass"
+            out["words"] = (f"AI analysis: {summary}; pass {out['pass']} refused by Mercury's "
+                            f"check: {why}; the answer before it is shown")
+            return out
+        out.update(answer=answer, state="answered", prompt=f"{prompt[0]}.v{prompt[1]}")
+        wanted = [] if last else _reads_of(answer)
+        if not wanted:
+            out["words"] = (f"AI analysis: {summary}; {rounds} round{'s' if rounds != 1 else ''}"
+                            " of reads; answered" + (f" at the bound on {bound}" if bound else ""))
+            out["bound"] = bound
+            return out
+        asking = got.get("call_id") or ""

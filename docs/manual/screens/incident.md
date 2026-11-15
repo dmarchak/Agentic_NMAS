@@ -84,6 +84,8 @@ Three lines, at the top of the page, before anything else:
 | The AI proposes a plan | **Approve**, **Modify…** and **Deny…** (below) |
 | Mercury's fix failed, and the AI was not started by itself (its background feature was off for the network then, or the fix failed before it was turned on) | **Start AI troubleshooting**: one investigation, its cost beside it |
 | You denied the AI's plan | **Ask the AI again**: a new investigation, told what you denied and why |
+| The AI proposed no plan, naming a read that would settle it but that its reads do not offer | **Run <read> in Show commands**: it opens [Show commands](show-commands) on the incident's device with the command filled in, and nothing is read until you press Run there; **Ask the AI again** is beside it |
+| The AI proposed no plan and named no read it lacked | **Ask the AI again** while it is offered, else **Hand over…**: never nothing |
 | A cap would be passed, or nothing else is left | **Hand over…** |
 | The incident's own Needs attention item offers an action | that action ([What to do](#what-to-do)) |
 | Mercury or an approved plan is working, or nobody is needed | nothing to press, said |

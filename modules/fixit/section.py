@@ -23,8 +23,11 @@ acts once resolved.
 these keys of `view`, and this module keeps to them):
 
 - ``bluf``: ``{"what", "impact", "fix": {"kind": "approve"|"button"|"hand_over"|"start"|"none",
-  "label", "href"?}, "severity"}``, the three lines from Mercury's own table (`modules/bluf.py`,
-  never the AI's words); *severity* ``critical`` only for a network outage;
+  "label", "href"?, "read"?}, "severity"}``, the three lines from Mercury's own table
+  (`modules/bluf.py`, never the AI's words); *severity* ``critical`` only for a network outage;
+  with no plan to approve the fix is never blank: the read the AI's answer said it lacked
+  (``read``, `lacked_read`), a ``button`` linking Show commands with it filled in, else Ask the
+  AI again when offered, else Hand over;
 - ``status``: one plain line ("Mercury's fix failed twice. The AI is investigating (started
   40 s ago), about $0.05.");
 - ``proposal``: ``{"id", "hash", "refused_hash", "approvable", "steps": [{"n", "operation",
@@ -95,8 +98,9 @@ RETRY_IN = ("passed", "stopped", "proposed", "cancelled", "handed_over")
 #: figure, two calls at $0.125, "at most $0.25"), so the cap holds Mercury's re-plan as it
 #: holds the AI's.
 WORST_PIN = "fixit_troubleshoot"
-#: The calls one AI attempt makes: the read loop's two passes (`read_loop.CALLS_PER_FINDING`).
-CALLS_PER_ATTEMPT = 2
+#: The most calls one AI attempt makes: the investigation's rounds and its last pass
+#: (`fixit_troubleshoot.CALLS_WORST`, C3797; tests/test_fixit_section_v2.py holds them equal).
+CALLS_PER_ATTEMPT = 4
 #: Who a proposal came from, as an attempt's line says it.
 SOURCE_WORDS = {"mercury": "Mercury's diagnosis", "ai": "the AI", "person": "a person"}
 #: How many attempts the section lists before it counts the rest (each one line).
@@ -596,6 +600,38 @@ def _holds(found: dict, device: str, plan=None) -> list:
     return out
 
 
+#: The longest lacked read the fix names (Show commands' own row holds one command).
+LACKED_MOST = 240
+
+
+def lacked_read(answer) -> str:
+    """The read the AI's newest answer said would settle the question but its read set does
+    not offer (its ``shown["lacked_read"]``, C3797), when that answer proposed no plan and is
+    this incident's own: one line a person's Show commands runs (`readonly_commands.refusal`,
+    the one allowlist), else ``""``. A read the allowlist refuses is never offered as a
+    button: the fix then falls to Ask the AI again or Hand over."""
+    from modules import readonly_commands
+
+    if not isinstance(answer, dict) or answer.get("has_plan") or answer.get("superseded"):
+        return ""
+    shown = answer.get("shown") if isinstance(answer.get("shown"), dict) else {}
+    read = shown.get("lacked_read")
+    read = " ".join(read.split()) if isinstance(read, str) else ""
+    if not read or len(read) > LACKED_MOST or readonly_commands.refusal(read):
+        return ""
+    return read
+
+
+def show_commands_href(network: str, device: str, command: str) -> str:
+    """Show commands (`routes/reads_v2.py`'s page) for *device* of *network* with *command* in
+    its first row: its own query fields, ``q`` the device filter and ``command`` the row, as
+    the device's Ask the device card's saved sets link it."""
+    from urllib.parse import urlencode
+
+    return "/v2/show-commands?" + urlencode({"list": network, "q": device,
+                                             "command": command})
+
+
 def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict, drawn: list,
               cs, resolved, now: float) -> None:
     """The R1 and R2 contract (the module's docstring, "THE CONTRACT"), added to *out*:
@@ -677,6 +713,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                       "refused": ""},
     }
     out["actions"] = actions
+    lacked = lacked_read(out["ai_answer"])
     if done:
         nxt = {"kind": "none", "label": ""}
     elif actions["approve"]["offered"] or proposed:
@@ -687,6 +724,12 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     elif actions["start"]["offered"]:
         nxt = {"kind": "start", "label": "Start AI troubleshooting",
                "href": actions["start"]["href"]}
+    elif lacked:
+        # No plan, and the AI named the read that would settle it but its read set lacks
+        # (C3797): a person's read in Show commands, the command filled in, Ask the AI again
+        # beside it when offered (the template draws it).
+        nxt = {"kind": "button", "label": f"Run {lacked} in Show commands",
+               "href": show_commands_href(network, inc.device, lacked), "read": lacked}
     elif actions["ask_again"]["offered"]:
         nxt = {"kind": "button", "label": "Ask the AI again",
                "href": actions["ask_again"]["href"]}
@@ -904,7 +947,9 @@ def ai_offer(state: str, cs: dict, network: str = None) -> dict:
             "in_state": state in AI_IN, "refused": off or (
                 cs["words"] if cs["state"] != "allowed" else ""),
             "estimate": P.money(est["usd"]), "worst": P.money(est["worst"]),
-            "measured": est["measured"], "basis": est["basis"]}
+            "measured": est["measured"], "basis": est["basis"],
+            # The most calls one investigation makes (C3797: its rounds and its last pass).
+            "calls": AIT.CALLS_WORST}
 
 
 def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",

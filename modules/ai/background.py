@@ -117,7 +117,9 @@ FEATURES: dict = {
         "trigger_words": ("Mercury's fix fails, does not verify, or none exists for an "
                           "incident's kind"),
         "findings": ("fixit_failure",),
-        "calls_per_finding": 2,
+        # The calls one investigation is expected to make (`fixit_troubleshoot.CALLS_EXPECTED`:
+        # iterative since C3797, at most `CALLS_WORST`).
+        "calls_per_finding": 3,
         "frequency": "modules.fixit.auto:failure_frequency",
     },
 }

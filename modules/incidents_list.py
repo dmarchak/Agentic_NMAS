@@ -141,7 +141,7 @@ def _fixit_of(network: str, found: dict) -> dict:
     except Exception as exc:                            # noqa: BLE001 (a row still draws)
         log.warning("incidents list: %s's troubleshooting of %s cannot be read (%s)",
                     network, found.get("id"), type(exc).__name__)
-        return {"state": "", "ai": None}
+        return {"state": "", "ai": None, "plan": False}
     ai = None
     try:
         inc = section.incident_of(network, found)["incident"]
@@ -159,7 +159,9 @@ def _fixit_of(network: str, found: dict) -> dict:
         else:
             ai = {"state": "ended", "since": since,
                   "words": v.get("status") or "The AI's investigation ended"}
-    return {"state": v.get("state") or "", "ai": ai}
+    # Whether a plan stands to approve: a proposal line with no plan (an answer that named no
+    # fix, a gap) is the section's "proposed" too, and must never be said as one to approve.
+    return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal"))}
 
 
 def _group(st: dict, tl: dict) -> str:
@@ -185,7 +187,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     device = (inc or {}).get("device") or entry.get("device") or ""
     heal = IP.state_of(inc, entry, decisions)
     fx = (_fixit_of(network, found) if heal not in IP.RESOLVED and found["id"] in fixit_ids
-          else {"state": "", "ai": None})
+          else {"state": "", "ai": None, "plan": False})
     fixit = fx["state"]
     st = IP.status(inc, entry, decisions, fixit)
     tl = IP.timeline(inc, entry, decisions)
@@ -215,7 +217,10 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
                                                   if d.get("id")],
             "acknowledged": "",
             # R2 (the operator, 2026-11-14): its bottom line, from Mercury's own table.
-            "bluf": bluf_of(found, st["why"]),
+            # The builder's finding (the operator, 2026-11-15): an answer with no plan names the
+            # next step, never "approve, modify or deny the plan".
+            "bluf": bluf_of(found, NO_PLAN if st["why"] == "fix_proposed" and not fx["plan"]
+                            else st["why"]),
             # Gate 2 (the operator, 2026-11-15): "AI investigating" with its start while an
             # investigation runs, its one-line outcome once it ended (`_fixit_of`); redrawn
             # when the job announces its start and end (`troubleshoot_job`, ``drift``).
@@ -225,7 +230,11 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
 #: The next action a Needs attention row about an incident names, by why its page says it
 #: needs a person (`incident_page.status`): the BLUF's fix (`modules/bluf.py`'s kinds) and its
 #: label. Anything else is the table's own kind for the incident.
+#: Why for an incident the AI answered with no plan (its section "proposed", nothing to approve).
+NO_PLAN = "ai_answered_no_plan"
 NEXT_BY_WHY = {"fix_proposed": ("approve", "Open the incident: approve, modify or deny the plan"),
+               NO_PLAN: ("button", "Open the incident: see what the AI found, then ask it "
+                                   "again or hand it over"),
                "proposal": ("approve", "Open the incident: approve or decline the proposal"),
                "proposal_denied": ("button", "Open the incident: ask the AI again, or hand it "
                                              "over"),

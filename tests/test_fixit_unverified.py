@@ -113,7 +113,7 @@ class TestMarked:
         assert all(not h["unverified_words"] for h in line["shown"]["hypotheses"])
         assert "every citation of the second answer is in what was sent" in \
             line["shown"]["retry"]["words"]
-        assert line["prompt"] == "fixit_troubleshoot.v9"  # v7 flattened (2026-11-15)
+        assert line["prompt"] == "fixit_troubleshoot.v13"  # the investigation's last pass (C3797)
 
 
 class TestApprovable:

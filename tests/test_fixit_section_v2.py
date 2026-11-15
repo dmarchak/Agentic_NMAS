@@ -836,9 +836,12 @@ class TestTheSetting:
 
 class TestTheFigures:
     def test_a_retry_s_worst_case_is_two_calls_at_the_pin_s_cap(self):
-        from modules.ai import profiles, read_loop
-        assert S.CALLS_PER_ATTEMPT == read_loop.CALLS_PER_FINDING
-        assert S.worst_usd() == round(2 * profiles.cap_per_call(S.WORST_PIN), 6)
+        # Premise corrected (C3797, the operator, 2026-11-15: the investigation is iterative,
+        # "not a fixed 2 passes"): its worst case is its rounds and its last pass, four calls.
+        from modules.ai import fixit_troubleshoot as AIT
+        from modules.ai import profiles
+        assert S.CALLS_PER_ATTEMPT == AIT.CALLS_WORST == AIT.ROUNDS + 1 == 4
+        assert S.worst_usd() == round(4 * profiles.cap_per_call(S.WORST_PIN), 6)
         assert 0 < S.worst_usd() < 1.0, "one retry's worst case fits under the $1.00 default cap"
 
 

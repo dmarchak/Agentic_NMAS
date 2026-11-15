@@ -114,6 +114,14 @@ WAITS = {
         "each bound is a PLAN_BOUNDS entry the plan's template names, its own why and basis "
         "there; a poll ends as soon as the read holds",
         "reasoned", True, ("PLAN_BOUNDS",)),
+    "modules/ai/read_loop.py::_investigate": _w(
+        "an iterative investigation's deadline: past it no further round of reads is asked, and "
+        "the last pass answers with what was read (it never sleeps; the bound is checked after "
+        "each round's reads)",
+        "the feature's declared wall_s (AI troubleshooting's WALL_S, 240 s: a switch's press of "
+        "2026-11-15 measured about 20 s a pass and under 2 s a read, four passes and nine reads "
+        "about 100 s, 2.5x that), at most the loop's MAX_WALL_S",
+        "reasoned", True, ("MAX_WALL_S",)),
     "modules/heal_notice.py::_cleared": _w(
         "an incident's symptom to stay quiet through the network's flap window before it is "
         "called cleared by itself",

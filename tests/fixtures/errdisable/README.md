@@ -15,3 +15,18 @@ from memory except where the table says so.
 
 Measured beside them (2026-11-14 19:5x UTC, scripts/nmas-config-read): s1, s2 and s5's goldens
 hold no `errdisable recovery` line.
+
+## The AI's err-disable reads (C3797)
+
+Read on 2026-11-15 through Mercury's read engine (`modules.nsot.reads.run`, recorded runs on
+History › Reads), masked, before the three forms joined the AI's read families
+(`modules/ai/router_reads.py` `SHOW_FAMILIES`); used by tests/test_ai_engineer_reads.py. Each
+file is the answer's bytes exactly (the engine's byte count beside it), with no edit.
+
+| File | Device, read, run | What it is |
+|---|---|---|
+| `s2_status_errdisabled.txt` | s2, `show interfaces status err-disabled`, run `20261115T192418810135Z-9faf4ba6588244dca613218e870f9146` | the whole answer, 134 bytes: an empty first line, the header, and Gi1/0's row (bpduguard). s1's answer (run `20261115T192414088169Z-8ebe93e8575e41a28630932247a04928`) is the same bytes but its description, `h1` for `h3` |
+| `s5_status_errdisabled.txt` | s5, `show interfaces status err-disabled`, run `20261115T192425538822Z-9f712a7c86594a9387005d5233e72963` | the whole answer, 0 bytes: no port err-disabled, and IOS prints nothing, not even the header |
+| `s1_errdisable_recovery.txt` | s1, `show errdisable recovery`, run `20261115T192414088169Z-8ebe93e8575e41a28630932247a04928` | the whole answer, 1194 bytes: every cause's timer Disabled, the 300 s interval, no interface listed. s2's and s5's answers (their runs above) are the same bytes |
+| `s1_port_security_gi10.txt` | s1, `show port-security interface GigabitEthernet1/0`, run `20261115T192414088169Z-8ebe93e8575e41a28630932247a04928` | the whole answer, 429 bytes: port security Disabled on a BPDU-guard port. s2's GigabitEthernet1/0 (its run above) is the same bytes |
+| `s5_port_security_gi03.txt` | s5, `show port-security interface GigabitEthernet0/3`, run `20261115T192425538822Z-9f712a7c86594a9387005d5233e72963` | the whole answer, 427 bytes: Enabled, Secure-up, Shutdown mode, one MAC (aabb.cc00.8007 on VLAN 10), no violation |

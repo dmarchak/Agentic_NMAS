@@ -151,6 +151,19 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ### Git, the gate and deploys
 
+- **Temporary fast lane (the operator, 2026-11-15, until the operator ends it; off before the
+  Lab 10 recording and before the demo, each of which first gets one full gate and CI green on
+  the final sha):** a change is deployed with `nmas-deploy --fast-lane "<the tests run and
+  their result>"` once the tests for its touched files (impact analysis) pass, with no pre-gate
+  and no CI verdict asked; the nightly backup window, the preflight and a green smoke check
+  still hold (nmas-deploy runs the smoke check after the restart and a red one puts the previous
+  release back at once); every fast-lane deploy is recorded with its sha, files and tests in the
+  deploy record, and `nmas-deploy --revert` puts back the previous deployed sha; full CI keeps
+  running on main, a red on the running release a Needs attention warning, not a stop; the
+  independent review stays only for code that writes to devices (the runner, plan execution,
+  operations). Cost: CI's protection moves after the deploy, not before it. Prevents: a gate
+  of about an hour for each small fix while the operator tests live.
+  [tests/test_nmas_deploy_fast_lane.py; the review and the off-before rule: not mechanised]
 - **The gate:** `git add -A` → `scripts/nmas-stage-guard` → a snapshot worktree of the staged
   tree → the suite in CI's interpreter and command there (docs/TESTING.md, "CI's interpreter
   here"; a commit whose every path is under docs/ runs the doc set alone) → commit in the

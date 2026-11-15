@@ -169,6 +169,71 @@ def test_opening_an_alert_s_item_loads_its_explain_in_a_real_browser(b2, monkeyp
     assert "No evidence pack is built" not in closed, "nothing asked before it opens"
 
 
+@pytest.mark.parametrize("width", [1280, 390])
+def test_the_title_is_the_line_and_the_impact_and_ai_status_are_each_one_line_under_it(
+        monkeypatch, width):
+    """C3790 (the operator, 2026-11-15: "Needs attention rows lost their titles. Each row shows
+    only the AI status line ... the first line is the problem title, then the impact, then the
+    action; the AI's status goes under it, one line"), in a real browser at desktop and phone
+    width: the title is drawn whole-width on the row's first line however long the AI's
+    status is, the impact under it and the AI's status under that, each one line."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tests above still run")
+    import app as nmas
+    from routes import v2
+
+    title = "s2 Gi1/0 err-disabled by BPDU guard: h3 is offline"
+    row = A.row(source="heal", kind="cant_fix", key="hi-c85f5bf71c80", level="warning",
+                what=title, cause="s2 is at its golden", action={"label": "Open s2"},
+                devices=["s2"], since=NOW - 3600, event="hi-c85f5bf71c80")
+    row["impact"] = ("h3 has no network until the port is recovered; the rest of the network "
+                     "is unaffected")
+    # The host's own words at 17:09 UTC (C3790), long enough to take the whole line.
+    row["ai_status"] = {"state": "ended", "since": "2026-11-15T17:00:00Z", "words": (
+        "Mercury's fix failed once. Couldn't troubleshoot: The AI was not asked: the press "
+        "could not be tied to a verified person (a host script under the operator's grant, "
+        "refused by the gateway); nothing was sent. Ask the AI again, or hand over.")}
+    payload = A.needs_attention(sources=[_src()])
+    payload["rows"] = [row]
+    payload["badge"] = dict(payload.get("badge") or {}, n=1)
+    monkeypatch.setattr(v2, "_attention", lambda: payload)
+    measure = (
+        "var s = document.querySelector('details.att > summary.att-line');"
+        "function box(sel) { var e = s.querySelector(sel); var r = e.getBoundingClientRect();"
+        "  return {top: r.top, bottom: r.bottom, width: r.width, height: r.height,"
+        "          lh: parseFloat(getComputedStyle(e).lineHeight) || 20,"
+        "          text: e.textContent.trim()}; }"
+        "return {what: box('.att-what'), impact: box('.att-impact'), ai: box('.att-ai'),"
+        "        line: s.getBoundingClientRect().width};")
+    with browser.Served(nmas.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 900})
+            b.go(srv.url("/v2/"))
+            b.wait_for("return !!window.htmx && "
+                       "!!document.querySelector('details.att > summary.att-line .att-ai')", 15)
+            got = b.js(measure)
+            # Opened, the row keeps its line where it was: the title neither moves nor narrows.
+            b.click("details.att > summary.att-line .att-what")
+            b.wait_for("return document.querySelector('details.att').open === true", 5)
+            opened = b.js(measure)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert (opened["what"]["top"], opened["what"]["width"]) == (
+        got["what"]["top"], got["what"]["width"]), (got, opened)
+    what, impact, ai = got["what"], got["impact"], got["ai"]
+    assert what["text"] == title, got
+    # The title keeps the line: at least half the row's width on a desktop, its whole width
+    # less the age and action on a phone; never squeezed to nothing by the AI's words.
+    assert what["width"] >= (0.45 if width > 700 else 0.3) * got["line"], got
+    assert what["bottom"] <= impact["top"] + 1 and impact["bottom"] <= ai["top"] + 1, got
+    for one in (impact, ai):
+        assert one["height"] < 1.8 * one["lh"], f"not one line: {got}"
+    assert ai["text"].startswith("AI: Mercury's fix failed once."), got
+
+
 def test_a_closed_warning_section_stays_closed_across_a_redraw(monkeypatch):
     from tests import browser
     ok, why = browser.available()

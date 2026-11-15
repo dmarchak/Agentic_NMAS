@@ -47,7 +47,7 @@
 {%- set u_again = (ACT.ask_again or {}).href or url_for('fixit_v2.ask_again', incident_id=x.id, list=x.network) -%}
 {%- set u_start = (ACT.start or {}).href or url_for('fixit_v2.start', incident_id=x.id, list=x.network) -%}
 {%- set hand_mid = 'fixit-hand-' ~ x.id -%}
-{%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most two calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
+{%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most {{ A.calls }} calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
 {#- A press that posts, from the button itself (busy on itself until its answer: `op-idle`,
     `op-busy`), the hidden fields beside it and *know*'s optional box included. -#}
 {%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure') -%}
@@ -121,6 +121,10 @@
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='btn btn-small btn-primary') }}
       {%- elif is_again %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=True, aiv=ct) }}
+      {%- elif F.kind == 'button' and F.read and F.href %}
+        {#- C3797: the read the AI said would settle it, which its read set lacks: a person's
+            read in Show commands, its row filled in; nothing runs until Run is pressed there. -#}
+        <span class="op-act"><a class="btn btn-small btn-primary" data-op="show-commands" data-fix-read="{{ F.read }}" href="{{ F.href }}" title="Opens Show commands on {{ x.device }} with {{ F.read }} in its first row: you check it and press Run there; nothing is read until you do">Run <span class="mono">{{ F.read }}</span> in Show commands</a>{{ how('show-commands', compact=True, op='Show commands') }}</span>
       {%- elif F.kind in ('item', 'button') and item_action is defined and item_action | trim %}{{ item_action }}
       {%- elif F.kind == 'button' %}<p class="bluf-fix-words">{{ F.label | times }}</p>
       {%- elif not F.label %}

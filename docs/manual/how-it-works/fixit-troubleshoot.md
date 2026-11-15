@@ -180,7 +180,9 @@ It runs these steps, one investigation:
    the incident's device, asked as an engineer types it in Show commands (show, ping or
    traceroute and the rest of the command: a show of one of the AI's command families, an
    engineer's troubleshooting reads, each in one of its forms, held whole by Mercury's
-   allowlist too; standby and VRRP only in their brief forms; each address in it one of the
+   allowlist too; standby and VRRP only in their brief forms; an err-disabled port's own
+   reads, `show interfaces status err-disabled`, `show errdisable recovery` and `show
+   port-security interface <interface>`, among them, as a person runs them; each address in it one of the
    network's and each interface, written as one word, one the device's golden holds; a
    configuration form only under the configuration class, off on every network), run
    through Mercury's own reads engine as Mercury's account (or the read-only account, under

@@ -55,12 +55,21 @@ G4 = {"guard": 4, "name": "golden departs from intent",
 @pytest.fixture
 def world(ai, monkeypatch):  # noqa: F811
     """`ai` with r3 to r9 in the inventory beside r2, the background switches' clock at the
-    test's moment, and self-healing's policy stood in (`policy`)."""
+    test's moment, and self-healing's policy stood in (`policy`); the installation's day cap
+    `DAY_CAP`."""
+    from modules.settings_schema import write_settings
     rows = [dict(DEV, _netbox_id=7)] + [dict(DEV, hostname=d, ip=f"192.0.2.{20 + n}",
                                              _netbox_id=20 + n) for n, d in enumerate(DEVICES)]
     monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: list(rows))
     monkeypatch.setattr("modules.ai.background._now", lambda: NOW)
+    assert write_settings({"ai_cap_usd_per_day": DAY_CAP})["ok"]
     return ai
+
+
+#: The installation's and the feature's day cap in this world: five investigations fit under it
+#: at their worst. Premise corrected (C3797): an investigation's worst case is four calls since
+#: the loop is iterative ($0.5004), so five need $2.502, past the $1.50 they fitted under at two.
+DAY_CAP = 3.00
 
 
 def opened(device: str, at: float = DETECTED) -> str:
@@ -131,7 +140,7 @@ def form_of(w):
     return html, shown, f"{AIT.estimate()['usd']:.6f}"
 
 
-def post(w, shown, each, day="1.50", month="10.00", incident=None):
+def post(w, shown, each, day=f"{DAY_CAP:.2f}", month="10.00", incident=None):
     """Turn Automatic on the one way (Gate 2): the network's limits set with the estimate
     acknowledged (Settings › AI's card), then the control strip's switch pressed, bound to the
     line it drew (*shown*). Every listed incident starts (no ticks). *each* is unused by the
@@ -379,8 +388,8 @@ class TestTheCaps:
 
     @pytest.mark.parametrize("room, ticked, starts", [(2, 3, 2), (1, 2, 1)])
     def test_only_the_overall_day_cap_binds(self, world, counted, room, ticked, starts):
-        """Today's spend elsewhere leaves room for *room* under the installation's $1.50 day
-        cap, with the feature's own day limit at $1.50 holding five: the later ones are refused
+        """Today's spend elsewhere leaves room for *room* under the installation's `DAY_CAP`
+        day cap, with the feature's own day limit at it holding five: the later ones are refused
         at the day cap, naming today's spend and the starts ahead of them. Premise corrected
         (Gate 2, C3769: no ticks; the ids predate it): every listed incident is pressed, at
         least *ticked* of them, and *starts* (the room) start, the rest refused."""
@@ -388,7 +397,7 @@ class TestTheCaps:
         from modules.ai import fixit_troubleshoot as AIT
         from modules import troubleshoot_control as T
         planted()
-        spent = round(1.50 - AIT.worst_usd() * room - 0.001, 4)
+        spent = round(DAY_CAP - AIT.worst_usd() * room - 0.001, 4)
         assert calls.record({"id": calls.new_id(), "feature": "explain", "actor": TEST_PERSON,
                              "model": "m", "cost_usd": spent, "tokens": {"in": 1, "out": 1},
                              "trigger": {"kind": "person", "by": TEST_PERSON}})["recorded"]
@@ -403,7 +412,7 @@ class TestTheCaps:
             (line,) = F.starts(inc_of(iid))["starts"]
             assert (line["state"], line["which"]) == ("capped", "day")
             assert f"today's AI spend ${spent:.2f}" in line["words"], line["words"]
-            assert "would pass the day cap of $1.50" in line["words"]
+            assert f"would pass the day cap of ${DAY_CAP:.2f}" in line["words"]
             assert "held by the investigations started with it" in line["words"]
 
 
@@ -491,7 +500,7 @@ class TestInABrowser:
         from modules.ai import background
         got = planted()
         est = background.estimate(background._network(NET), A.FEATURE)
-        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=1.5, month_usd=10.0,
+        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=DAY_CAP, month_usd=10.0,
                                 shown=est["digest"], accepted=True, actor=TEST_PERSON,
                                 verified="access")
         with browser.Served(nmas.app) as srv, browser.Browser() as b:

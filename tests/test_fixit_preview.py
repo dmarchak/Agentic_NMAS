@@ -297,8 +297,8 @@ def test_with_the_class_off_it_builds_the_reads_pass_and_says_so(ai, reads,  # n
     iid = stopped(ai)
     got = _preview(iid)
     assert got["class"]["now"] == "off" and "an admin turns it on" in got["class"]["why_off"]
-    # Pass 1 is the reads pass of the plan answer: v10, v8 flattened (2026-11-15; v5 before).
-    assert got["first"]["prompt"] == "fixit_troubleshoot.v10"
+    # Pass 1 is the investigation's first pass: v11 (C3797; v10, v8 flattened, before).
+    assert got["first"]["prompt"] == "fixit_troubleshoot.v11"
     assert "collector_sessions" in json.dumps(got["first"]["body"]["system"]), "the read set"
     said = " ".join(got["said"])
     assert "is off for" in said and "did not change it" in said and "at most 3" in said
@@ -611,7 +611,9 @@ def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch): 
     assert got["first"]["prompt_tokens_estimated"] <= bound, got["first"]
     assert got["second"] is not None
     assert got["second"]["prompt_tokens_estimated"] <= bound, got["second"]
-    assert "read_set" not in json.dumps(got["second"]["body"]["system"])
+    # Premise corrected (C3797): the pass after the reads may ask again, so it keeps the read
+    # set (the investigation's last pass is the one that drops it), and still fits the bound.
+    assert "read_set" in json.dumps(got["second"]["body"]["system"])
     assert "read_set" in json.dumps(got["first"]["body"]["system"])
     sent = got["first"]["body"]["messages"][0]["content"]
     assert T.TOPOLOGY_LEFT_OUT in sent and "to fit the request's bound" in sent
@@ -620,9 +622,11 @@ def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch): 
     assert "the topology left out to fit the prompt's bound" in said
     assert "The request was fitted to fit the prompt's bound: the topology left out" in said
     # The worst pass 2 (three reads at the cap) fits too: pass 1 with the reserve is in bound.
+    # A later pass that keeps its read set (C3797) holds its reads to the room pass 1 leaves.
     prep = T.request(NET, *_found(ai, iid))
     chars = T.request_chars(prep)
     worst = chars + max(0, T.READS_RESERVE_CHARS - len(T.read_set()))
+    assert gateway.tokens_of_chars(chars + T.READS_OVERHEAD_CHARS + T.read_room(prep)) <= bound
     assert gateway.tokens_of_chars(max(chars, worst)) <= bound
     assert prep["said"]["fit"][0] == "the topology left out", prep["said"]["fit"]
     assert any("cut to" in step for step in prep["said"]["fit"])
@@ -669,8 +673,12 @@ def test_the_reserve_holds_three_reads_at_their_largest(ai, reads, monkeypatch):
     assert [r["verdict"] for r in got["reads"]] == ["run"] * 3, got["reads"]
     first = len(json.dumps(got["first"]["body"], ensure_ascii=False))
     second = len(json.dumps(got["second"]["body"], ensure_ascii=False))
-    assert second <= first - len(T.read_set()) + T.READS_RESERVE_CHARS, (
-        first, second, T.READS_RESERVE_CHARS)
+    # Premise corrected (C3797): the next pass keeps the read set (it may ask again), so it adds
+    # its reads to pass 1, held to the room pass 1 leaves under the bound.
+    assert second <= first + T.READS_RESERVE_CHARS, (first, second, T.READS_RESERVE_CHARS)
+    assert T.read_room(T.request(NET, *_found(ai, iid))) >= \
+        T.READS_RESERVE_CHARS - len(T.read_set()) - T.READS_OVERHEAD_CHARS, \
+        "at least the room pass 2 had"
     # And the reserve is no guess: at least the reviewer's measured 15,967 characters.
     assert T.READS_RESERVE_CHARS >= 15967, T.READS_RESERVE_CHARS
 

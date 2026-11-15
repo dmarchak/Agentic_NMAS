@@ -154,7 +154,7 @@ class TestThePress:
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
         assert line["source"] == "ai" and line["operation"] == "telemetry-resubscribe"
         assert line["params"]["subs"] == ["101", "102"]
-        assert line["prompt"] == "fixit_troubleshoot.v9"  # the plain pass: v7 flattened (2026-11-15)
+        assert line["prompt"] == "fixit_troubleshoot.v13"  # the plain pass: the investigation's last (C3797)
         assert line["shown"]["hypotheses"][0]["cites"] == ["attempt:1"]
         (call,) = line["calls"]
         rows = calls.read()["rows"]
@@ -304,7 +304,8 @@ class TestRefusedAtThePress:
         r, html = press(ai, iid, drawn_spent="0.000000", drawn_cap="1.000000")
         assert r.status_code == 409
         said = sec_of(html)
-        assert "Not asked" in said and "$0.2502" in said and "$0.10" in said
+        # The worst case is four calls since C3797 (the investigation's rounds and last pass).
+        assert "Not asked" in said and "$0.5004" in said and "$0.10" in said
         assert "the per-incident cap was $1.00 when the panel was drawn" in said
         assert ai.sent == [] and calls.read()["rows"] == []
         assert F.read(incident(iid))["state"] == "absent"
@@ -319,8 +320,10 @@ class TestRefusedAtThePress:
         _r, html = page(ai.client, iid)
         sec = sec_of(html)
         worst = AIT.worst_usd()
-        assert worst == round(2 * profiles.cap_per_call("fixit_troubleshoot"), 6)
-        assert f"at most {P.money(worst)} (one investigation: at most two calls" in sec
+        # Premise corrected (C3797): the investigation's worst case is its rounds and its last
+        # pass, four calls at the pin's per-call cap ($0.5004), drawn so.
+        assert worst == round(4 * profiles.cap_per_call("fixit_troubleshoot"), 6)
+        assert f"at most {P.money(worst)} (one investigation: at most 4 calls" in sec
         assert P.cap_state(incident(iid), worst)["worst"] == worst
         assert 'name="drawn_cap" value="1.000000"' in sec
 
@@ -373,7 +376,8 @@ class TestRefusedAtThePress:
         assert said.count("Not asked") == 1, said[:400]
         assert ("Since the panel was drawn, the per-incident cap was $1.00 when the panel was "
                 "drawn and is $0.10 now") in said
-        assert "$0.2502" in said and "against the cap of $0.10" in said, said[:600]
+        # Four calls' worst case since C3797.
+        assert "$0.5004" in said and "against the cap of $0.10" in said, said[:600]
         assert ai.sent == [], "the model is not asked past the cap"
         assert calls.read()["rows"] == []
         assert F.read(incident(iid))["lines"] == kept, "nothing is recorded"

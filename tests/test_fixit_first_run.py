@@ -97,7 +97,12 @@ class TestEachInvestigationIsItsOwnCall:
         from modules import troubleshoot_control as troubleshoot
         from modules.ai import background
         est = background.estimate(background._network(NET), "fixit_auto")
-        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=1.5, month_usd=10.0,
+        # A day limit four investigations fit under: each one's worst case is four calls since
+        # C3797 ($0.5004), so four plan $2.0016 against it, which $1.50 refused after two (the
+        # feature's day limit within the installation's day cap, raised with it).
+        from modules.settings_schema import write_settings
+        assert write_settings({"ai_cap_usd_per_day": 2.50})["ok"]
+        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=2.5, month_usd=10.0,
                                 shown=est["digest"], accepted=True,
                                 actor=TEST_PERSON, verified="access")
         r = world.client.post(
@@ -299,6 +304,90 @@ class TestTheErrDisabledPort:
         (row,) = missing.for_incident(s1.iid)
         assert row["overlooked"] == ["errdisable-recover"], "the row says a plan exists"
 
+    def test_it_reads_the_err_disable_status_confirms_bpduguard_and_proposes_the_plan(
+            self, s1, monkeypatch):
+        """C3797 (the operator, 2026-11-15: "Test with this incident shape: the AI reads
+        err-disable status, confirms bpduguard and the cause cleared, and proposes the recovery
+        plan"): the investigation's first pass asks for s1's err-disable status and its
+        errdisable recovery; Mercury runs them (the read engine stood in by s1's own answers,
+        measured on the host that day through it, run 20261115T192414088169Z-8ebe...); the next
+        pass sees both, cites them, asks for nothing more, and proposes the built-in recovery
+        plan, whose preconditions (the port err-disabled by the cause, the switch not
+        recovering it itself, the cause cleared) the plan reads again before it runs."""
+        from modules.ai import read_loop as RL
+        from modules.ai import router_reads as RR
+        from modules.nsot import command_plan as CP
+        from tests.test_fixit_preview import _class
+        _class(monkeypatch, True)
+        monkeypatch.setattr(RR, "_committed", lambda network, hosts: (
+            {h: {} for h in hosts}, {h: "interface GigabitEthernet1/0\n" for h in hosts}))
+        monkeypatch.setattr(RR, "read_accounts", lambda network, hosts: {h: (True, "")
+                                                                         for h in hosts})
+        answers = {"show interfaces status err-disabled": S1_ERRDISABLED,
+                   "show errdisable recovery": S1_RECOVERY}
+        ran = []
+
+        def device(op, args, requests, scope):
+            ran.append(tuple(requests))
+            return RL.Answered("\n".join(answers[r] for r in requests), run="run-s1")
+        monkeypatch.setattr(RR, "run", device)
+        passes = []
+
+        def make(body):
+            a = own_answer(body)
+            text = json.dumps(body["messages"])
+            passes.append("mercury_reads" in text)
+            if "mercury_reads" not in text:
+                return dict(a, reads=[
+                    {"op": "show", "args": {"device": "s1", "subscription": "",
+                                            "words": w},
+                     "why": "is the port err-disabled, and by what",
+                     "hypothesis": "BPDU guard shut Gi1/0"}
+                    for w in ("interfaces status err-disabled", "errdisable recovery")])
+            assert "err-disabled bpduguard" in text and "bpduguard" in text
+            step = dict(RECOVER, evidence_refs=["read:1", "read:2"])
+            return dict(a, plan=[step], reads=[])
+        got, _found = self.investigate(s1, monkeypatch, make)
+        assert passes == [False, True], "a first pass, then one that saw the reads"
+        assert ran == [("show interfaces status err-disabled",), ("show errdisable recovery",)]
+        assert got["state"] == "proposed", got["words"]
+        (step,) = got["proposal"]["steps"]
+        assert step["operation"] == "errdisable-recover"
+        assert s1.asked == [{"device": "s1", "interface": "Gi1/0", "cause": "bpduguard"}]
+        assert [p["name"] for p in CP.template_of("errdisable-recover").preconditions] == [
+            "The port is err-disabled by the cause now",
+            "The switch does not recover the cause itself", "The cause has cleared"], \
+            "the plan reads its preconditions again before it runs"
+        (line,) = [ln for ln in __import__("modules.fixit.incident", fromlist=["read"]).read(
+            __import__("modules.fixit.section", fromlist=["x"]).incident_of(
+                NET, __import__("modules.incident_page", fromlist=["x"]).resolve(
+                    NET, s1.iid))["incident"])["lines"] if "proposal" in ln]
+        assert line["prompt"] == "fixit_troubleshoot.v12", "the answer is the later pass's"
+
+    def test_with_no_read_to_settle_it_it_names_the_read_it_lacked(self, s1, monkeypatch):
+        """C3797: it declines a plan only when its reads cannot settle the question, naming the
+        read it lacked; the card keeps it for "How to fix it"."""
+        from tests.test_fixit_preview import _class
+        _class(monkeypatch, False)                # no device read: the plain pass alone
+
+        def make(body):
+            return dict(own_answer(body), lacked_read="show port-security interface Gi1/0")
+        got, _found = self.investigate(s1, monkeypatch, make)
+        assert got["shown"]["lacked_read"] == "show port-security interface Gi1/0"
+
+
+#: s1's own answers through Mercury's read engine, 2026-11-15 19:24 UTC (run
+#: 20261115T192414088169Z-8ebe93e8575e41a28630932247a04928), as captured.
+S1_ERRDISABLED = ("\nPort      Name               Status       Reason               "
+                  "Err-disabled Vlans\nGi1/0     h1 - VLAN 10       err-disabled bpduguard")
+S1_RECOVERY = ("ErrDisable Reason            Timer Status\n"
+               "-----------------            --------------\n"
+               "arp-inspection               Disabled\n"
+               "bpduguard                    Disabled\n"
+               "psecure-violation            Disabled\n\n"
+               "Timer interval: 300 seconds\n\n"
+               "Interfaces that will be enabled at the next timeout:")
+
 
 # ── E: the first measured calls ─────────────────────────────────────────────────────────────
 
@@ -332,5 +421,7 @@ def test_the_estimate_takes_the_first_measured_calls_as_measured(ai, monkeypatch
     # clock (`calls._now`): that morning's.
     monkeypatch.setattr(calls, "_now", lambda: AFTER)
     est = AIT.estimate()
-    assert est["measured"] is True and est["usd"] == pytest.approx(0.071584), est
-    assert est["worst"] == pytest.approx(2 * profiles.cap_per_call("fixit_troubleshoot"))
+    # The calls one investigation is expected to make, three since C3797 (it may ask again);
+    # its worst case, four.
+    assert est["measured"] is True and est["usd"] == pytest.approx(3 * 0.035792), est
+    assert est["worst"] == pytest.approx(4 * profiles.cap_per_call("fixit_troubleshoot"))
