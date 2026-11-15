@@ -216,7 +216,9 @@ class TestOnePress:
         from modules.ai import fixit_troubleshoot as AIT
         from modules.money import usd
         got = planted()
-        r, out = acknowledge(world)
+        # A day cap that holds four investigations at their worst case (`CALLS_WORST`, four
+        # calls each since the investigation loop, C3797), so every listed incident starts.
+        r, out = acknowledge(world, day="3.00")
         assert r.status_code == 200 and "Automatic may be turned on" in out, out
         each = AIT.estimate()["usd"]
         html = strip(world)

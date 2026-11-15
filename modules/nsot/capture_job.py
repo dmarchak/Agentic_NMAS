@@ -102,6 +102,11 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
             state, error = "failed", f"{type(exc).__name__}: {exc}"
         with _lock:
             job = _jobs.get(job_id)
+            if job is not None and job.get("stopped"):
+                # Ended by its watchdog past its bound (`stop`): its late end changes nothing.
+                log.warning("%s %s returned after it was stopped; its end is not kept", kind,
+                            job_id)
+                return
             if job is not None:
                 job.update(state=state, payload=payload, error=error,
                            finished_at=time.time())
@@ -116,6 +121,24 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
         _jobs[job_id]["thread"] = t
     t.start()
     return job_id
+
+
+def stop(job_id: str, why: str) -> bool:
+    """End a running job from outside its thread (its watchdog, past its bound,
+    `troubleshoot_job._watch`): its record failed with *why*, finished now, its end announced
+    as a failure. Its thread, if it ever returns, changes nothing more (`run` keeps a stopped
+    job's state). Whether it was running."""
+    from modules import op_progress
+
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or job.get("state") != "running":
+            return False
+        job.update(state="failed", error=str(why), finished_at=time.time(), stopped=True)
+    op_progress.finish(job_id, "failed")
+    _announce(job_id, False)
+    _announce_moved()
+    return True
 
 
 def _announce(job_id: str, ok: bool) -> None:

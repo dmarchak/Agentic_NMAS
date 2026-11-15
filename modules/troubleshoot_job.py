@@ -40,19 +40,104 @@ def page_of(network: str, incident_id: str) -> str:
 
 
 def start(network: str, incident_id: str, actor: str, work, *, label: str = "",
-          actor_kind: str = "") -> str:
+          actor_kind: str = "", key: str = "", trigger: str = "person") -> str:
     """Start *work* (``work(job_id) -> payload``) as the investigation's job for *incident_id*
     on *network*, as *actor*: its id, at once (`capture_job.start`). R1's automatic start
     passes *actor_kind* ``policy``, so the job is drawn as Mercury's own, never "by" anyone
-    (C3161)."""
+    (C3161). With the start line's *key*, the job is held to its bound (`bound_s`): past it,
+    its watchdog (`_watch`) ends it."""
     from modules.nsot import capture_job
 
     job = capture_job.start(network, label or f"AI troubleshooting {incident_id}", actor,
                             work, kind=KIND, announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER, page=page_of(network, incident_id),
                             actor_kind=actor_kind)
+    if key:
+        import threading
+        threading.Thread(target=_watch, args=(job, network, incident_id, key, trigger),
+                         name=f"fixit-watch-{job[:8]}", daemon=True).start()
     _announce_start()
     return job
+
+
+# ── The bound (the operator, 2026-11-15: "Every AI job enforces its declared bound (240 s plus
+# margin): past it, it ends itself, records why ("stopped: waited N s for <thing>"), releases
+# anything it holds, and the card says so") ──────────────────────────────────────────────────
+
+#: The jobs a watchdog ended, by id: a late answer from one is never kept (`was_stopped`).
+_stopped = set()
+#: What each running job is doing, by id: ``(words, since)``, set at each of its steps (`step`).
+_steps = {}
+
+
+def bound_s() -> float:
+    """The most an investigation's job may run: the investigation's own wall time
+    (`fixit_troubleshoot.WALL_S`, after which it asks its last pass) plus that last call's
+    longest time in the adapter (`gateway.send_bound_s`), the margin."""
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.ai import gateway
+    return float(AIT.WALL_S) + float(gateway.send_bound_s())
+
+
+def step(words: str) -> None:
+    """Say what the running job (`op_progress.current`) is doing now, for its watchdog's record
+    if it never ends: "building the request", "asking the model (pass 2)", ..."""
+    import time
+
+    from modules import op_progress
+    job = op_progress.current()
+    if job:
+        _steps[job] = (str(words), time.time())
+
+
+def was_stopped(job: str) -> bool:
+    """Whether *job* was ended by its watchdog: its answer, if one comes, is never kept."""
+    return bool(job) and job in _stopped
+
+
+def _watch(job: str, network: str, incident_id: str, key: str, trigger: str,
+           wait=None, bound=None) -> bool:
+    """End *job* once it has run past its bound and is still running: its start's ``failed``
+    line ("stopped: waited N s for <its step>"), so the card says it and the incident takes a
+    new press (the start line no longer stands); the job's own record failed with the same
+    words, announced; its late answer discarded (`was_stopped`). Whether it ended it. *wait*
+    and *bound* stand in for the clock (tests)."""
+    import threading
+    import time
+
+    from modules.nsot import capture_job
+    bound = bound_s() if bound is None else float(bound)
+    if wait is None:
+        threading.Event().wait(bound)
+    else:
+        wait(bound)
+    got = capture_job.get(job) or {}
+    if got.get("state") != "running":
+        _steps.pop(job, None)
+        return False
+    began = float(got.get("started_at") or time.time())
+    doing, since = _steps.pop(job, ("starting, before its first step", began))
+    words = (f"stopped: waited {int(time.time() - began)} s, past its bound of {int(bound)} s, "
+             f"for {doing} (since {int(time.time() - since)} s)")
+    _stopped.add(job)
+    inc = _incident(network, incident_id)
+    if inc is not None:
+        record_failure(inc, key, words, trigger=trigger)
+    capture_job.stop(job, words)
+    log.error("fixit job %s on %s: %s", job, incident_id, words)
+    return True
+
+
+def _incident(network: str, incident_id: str):
+    from modules import incident_page
+    from modules.fixit import section
+    try:
+        return section.incident_of(network, incident_page.resolve(network, incident_id))[
+            "incident"]
+    except Exception as exc:                            # noqa: BLE001 (the job still ends)
+        log.error("fixit job: %s's incident could not be read to end its job: %s",
+                  incident_id, exc)
+        return None
 
 
 #: What an investigation's start announces (Gate 2, the operator, 2026-11-15: Incidents' rows

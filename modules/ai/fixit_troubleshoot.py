@@ -734,6 +734,24 @@ READS_OVERHEAD_CHARS = len(json.dumps(RL.READS_FORMAT)) + len(json.dumps(
 READS_ROOM_CHARS = READS_RESERVE_CHARS - READS_OVERHEAD_CHARS
 
 
+def _room_of(prep: dict) -> int:
+    """*prep*'s room for reads (`read_room`), measured once, when the press or the preview builds
+    its feature after the fit, and kept on it: measuring builds pass 1's request
+    (`request_chars`), which builds this feature again, so while a request is being sized (and
+    for a request with no pack built) the reserve's room is given, never measured (a press of
+    2026-11-15 20:41 UTC recursed here for minutes before its first call)."""
+    if "read_room" in prep:
+        return prep["read_room"]
+    if "sections" not in prep or prep.get("_measuring_room"):
+        return READS_ROOM_CHARS
+    prep["_measuring_room"] = True
+    try:
+        prep["read_room"] = read_room(prep)
+    finally:
+        prep.pop("_measuring_room", None)
+    return prep["read_room"]
+
+
 def read_room(prep: dict) -> int:
     """The room every pass of this investigation may fill with reads (C3797), in the request's
     characters as `read_loop._sent_chars` counts them: what the task's prompt bound leaves
@@ -770,8 +788,19 @@ def request_chars(prep: dict) -> int:
     (a stored secret, no label key: the press is refused for that, never for its size)."""
     from modules.ai import triggers
 
+    # Pass 1's body never depends on the room for reads, so it is built without measuring it
+    # (`_room_of`): measuring is this function, and a fit asks it while the pack still moves.
+    measuring = prep.get("_measuring_room")
+    prep["_measuring_room"] = True
+    try:
+        feature = loop_feature(prep)
+    finally:
+        if measuring:
+            prep["_measuring_room"] = measuring
+        else:
+            prep.pop("_measuring_room", None)
     prompt, schema, parts, ctx = RL.first_request(
-        loop_feature(prep), prep["data"], prep["ctx"], reads_context(), plain=False)
+        feature, prep["data"], prep["ctx"], reads_context(), plain=False)
     got = gateway.request_body(FEATURE, prompt, schema, parts, context=ctx or None,
                                kind=triggers.PERSON)
     if "refused" in got:
@@ -1232,9 +1261,7 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
                           plain=(PROMPT_PLAN, TroubleshootInvestigated), check=check_,
                           cites=cites_, acts_on=acts_on, first_only=("read_set",),
                           again=(PROMPT_AGAIN, TroubleshootInvestigateAgain), rounds=ROUNDS,
-                          max_reads=MAX_READS, wall_s=WALL_S,
-                          read_room=(read_room(prep) if "sections" in prep
-                                     else READS_ROOM_CHARS),
+                          max_reads=MAX_READS, wall_s=WALL_S, read_room=_room_of(prep),
                           may_go_on=prep.get("may_go_on"))
 
 
@@ -1408,6 +1435,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     if cs["state"] != "allowed":
         raise Refused(cs["words"].replace("Retry isn't available", "Not asked", 1)
                       + ". Nothing was sent")
+    from modules import troubleshoot_job as TJ
+    TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
     memo = {}
@@ -1424,7 +1453,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     def ask(feature_, prompt, schema, parts, *, trigger, **kw):
         # The gateway's own ask, the press's trigger passed on; what it masked of the note is
         # said back to the person.
+        memo["calls"] = memo.get("calls", 0) + 1
+        TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
+        TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
         if got.get("typed_masked") and "typed_masked" not in memo:
             memo["typed_masked"] = got["typed_masked"]
         return got
@@ -1435,6 +1467,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     from modules.nsot import listref
     net_id = listref.network_id(network)
     plain = bool(RL.reads_off(FR.FAMILY, net_id))
+    TJ.step("reading the reads' scope (the device's committed intent and golden)")
     scope = None if plain else _scope(network, incident, actor, collector, series)
     trig = trigger if background else triggers.person(actor, counts_for=counts_for)
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
@@ -1473,6 +1506,13 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
               "by": "" if background else actor, "verified": actor_verified, "note": note}
 
     def keep(words, **more):                                                     # record
+        from modules import op_progress
+        if TJ.was_stopped(op_progress.current()):
+            # Its watchdog ended this job past its bound (`troubleshoot_job._watch`): the
+            # incident already says so, and a late answer is never kept over it.
+            log.warning("fixit troubleshoot: %s's answer came after its job was stopped; "
+                        "not kept", incident.id)
+            return {}
         try:
             return F.record_proposal(incident, "ai", words=words, now=now, **common, **more)
         except (F.Refused, OSError, ValueError) as exc:
@@ -1498,6 +1538,11 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         out.update(state="unchecked", words=words, proposal=keep(words))
         return out
     answer = got["answer"]
+    from modules import op_progress
+    if TJ.was_stopped(op_progress.current()):
+        # Ended by its watchdog past its bound: nothing of a late answer is kept or proposed.
+        out.update(state="failed", words="stopped past its bound before it answered")
+        return out
     out["shown"] = shown(answer, said, got["pass"], fit=prep["said"].get("fit") or (),
                          marks=marks, retry=retry)
     if overlooked:

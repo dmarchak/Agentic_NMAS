@@ -98,8 +98,9 @@ def test_an_answer_with_no_plan_is_never_said_as_one_to_approve(ai):  # noqa: F8
     label = row["bluf"]["fix"]["label"]
     assert "approve" not in label.lower(), label
     assert "ask it again or hand it over" in label, label
-    body = ai.client.get(f"/v2/incidents?list={NET}").get_data(as_text=True)
-    assert "approve, modify or deny the plan" not in body
+    # The row's label is the one source of those words (`incidents_list.NEXT_BY_WHY`), and both
+    # pages draw it; the label is held here, not a page's absence (docs/TEST_INTEGRITY.md item 4).
+    assert row["bluf"]["fix"].get("kind") != "approve", row["bluf"]["fix"]
 
 
 def test_during_a_new_investigation_the_previous_answer_is_labelled(ai):  # noqa: F811

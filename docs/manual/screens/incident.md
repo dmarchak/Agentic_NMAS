@@ -117,8 +117,8 @@ the answer is drawn under the buttons, in place.
 ## Fixing it {#ai-troubleshooting}
 
 What to do and AI troubleshooting are this one card, under the bottom line. It starts with one
-status line, for example "Mercury's fix failed twice. The AI is investigating (started 20 s
-ago), about $0.25.", then the AI's plan when there is one: what the AI found, and each step with
+status line, for example "Mercury's fix failed twice. The AI is investigating (started at
+13:41), about $0.25.", the start drawn in your time zone, then the AI's plan when there is one: what the AI found, and each step with
 its preflight ("preflight passed", or "refused at its preflight:" and why). The plan's hash and
 each step's are in [The record](#the-record). Below, collapsed:
 

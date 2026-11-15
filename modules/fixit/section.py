@@ -29,7 +29,7 @@ these keys of `view`, and this module keeps to them):
   (``read``, `lacked_read`), a ``button`` linking Show commands with it filled in, else Ask the
   AI again when offered, else Hand over;
 - ``status``: one plain line ("Mercury's fix failed twice. The AI is investigating (started
-  40 s ago), about $0.05.");
+  at <ISO instant>), about $0.05."; the screen draws the instant in the viewer's zone);
 - ``proposal``: ``{"id", "hash", "refused_hash", "approvable", "steps": [{"n", "operation",
   "words", "params", "hash", "preflight": {"ok", "refused"}, "repeat"}], "found",
   "why_refused", "source", "by", "at",
@@ -848,13 +848,17 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
             .strip()
     if state == "investigating":
         est = AIT.estimate()
-        since = int(max(0, now - float((last_start or {}).get("epoch") or now)))
+        # The start's instant, never a count of seconds (C3801: "started 0 s ago" stayed 0 s on
+        # a card nine minutes on): the screen draws it in the viewer's zone (`times`), so it is
+        # right on every draw and needs no ticking.
+        at = float((last_start or {}).get("epoch") or now)
+        when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
         how = "started"
         if (last_start or {}).get("words") == A.CATCH_UP_WORDS and last_start.get("by"):
             # A catch-up's start at the switch's turn-on (C3732): the person who ticked it.
             from modules import display_names
-            how = f"started at turn-on by {display_names.people(last_start['by'])},"
-        return (f"{lead} The AI is investigating ({how} {since} s ago), about "
+            how = f"started at turn-on by {display_names.people(last_start['by'])}"
+        return (f"{lead} The AI is investigating ({how} at {when}), about "
                 f"{money(est['usd'])}.").strip()
     if state == "capped":
         which = (last_start or {}).get("which") or "a"

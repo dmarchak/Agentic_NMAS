@@ -357,7 +357,7 @@ def _ask(incident_id: str, what: str, *, note: str, allowed: str):
             raise
         return ended["out"]
     job = troubleshoot_job.start(network, incident_id, who["actor"], work,
-                          label=f"{what}: {incident_id}")
+                          label=f"{what}: {incident_id}", key=key, trigger="person")
     # The job runs on; its end is announced and the card re-fetches. A job that ended before
     # this answer is drawn (a quick refusal) says what it found.
     said = ((ended["out"] or {}).get("words") if "out" in ended else

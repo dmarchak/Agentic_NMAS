@@ -536,7 +536,7 @@ def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
             troubleshoot_job.start(network, iid, f"job:{job}",
                             lambda _j, i=iid, k=f["key"], jb=job: fixit_investigation(
                                 network, i, k, jb), label=f"Automatic AI troubleshooting: {iid}",
-                            actor_kind="policy")
+                            actor_kind="policy", key=f["key"], trigger="auto")
     return out
 
 
@@ -764,7 +764,7 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
                 starter(network, iid, f["key"], work)
             else:
                 troubleshoot_job.start(network, iid, actor, lambda _j, w=work: w(),
-                                       label=label)
+                                       label=label, key=f["key"], trigger="person")
     return out
 
 

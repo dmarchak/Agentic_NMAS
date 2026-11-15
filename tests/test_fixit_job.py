@@ -81,6 +81,10 @@ class TestTheJob:
             sec = section_of(html)
             assert 'data-state="investigating"' in sec
             assert "The AI is investigating (started" in sec
+            # The start as an instant the screen draws in the viewer's zone, never a count of
+            # seconds that stays where it was drawn (C3801: "started 0 s ago", nine minutes on).
+            assert "The AI is investigating (started at <time" in sec, sec[:800]
+            assert " s ago)" not in sec
             assert "/fixit/start" not in sec, "never a fresh button while it runs"
             # A second press while it runs: refused, naming the running one; no second job.
             again = post(blocked.client, iid, "ask_again", text="")
@@ -193,3 +197,67 @@ class TestTheFinishedRow:
         assert rule, "the one-line rule"
         for decl in ("white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"):
             assert decl in rule.group(1), decl
+
+
+# ── The bound (the operator, 2026-11-15: "Every AI job enforces its declared bound (240 s plus
+# margin): past it, it ends itself, records why ("stopped: waited N s for <thing>"), releases
+# anything it holds, and the card says so. Test: a job blocked on a fake read past the bound
+# ends with that record.") ────────────────────────────────────────────────────────────────────
+
+def _until(cond, bound_s=10.0):
+    """Wait, bounded, for *cond*; whether it held (an Event's wait, never a sleep loop)."""
+    pause = threading.Event()
+    for _ in range(int(bound_s / 0.05)):
+        if cond():
+            return True
+        pause.wait(0.05)
+    return cond()
+
+
+class TestTheBound:
+    def test_a_job_blocked_past_its_bound_ends_itself_with_why_and_its_late_answer_is_dropped(
+            self, blocked, monkeypatch):
+        from html import unescape
+
+        from modules import troubleshoot_job as TJ
+        monkeypatch.setattr(TJ, "bound_s", lambda: 0.3)
+        iid = plant()
+        attempt(blocked.client, subs=("101",))
+        blocked.answer = answer(fix())
+        try:
+            r = post(blocked.client, iid, "start", text="")
+            assert r.status_code == 202, r.get_data(as_text=True)
+            assert blocked.entered.wait(10), "the job reached its blocked step"
+            job = max(jobs_of_kind(), key=lambda j: j["started_at"])["job"]
+            assert _until(lambda: (capture_job.get(job) or {}).get("state") == "failed"), \
+                "past its bound, the job ended itself while its step was still blocked"
+            got = capture_job.get(job)
+            assert got["error"].startswith("stopped: waited "), got["error"]
+            assert "past its bound of 0 s" in got["error"], got["error"]
+            assert "for asking the model (call 1" in got["error"], \
+                "the record names the step it was waiting on: " + got["error"]
+            lines = F.starts(incident(iid))["starts"]
+            assert [ln["state"] for ln in lines] == ["started", "failed"], lines
+            assert lines[-1]["words"].startswith("stopped: waited "), lines[-1]
+            _r, html = page(blocked.client, iid)
+            sec = unescape(section_of(html))
+            assert "Couldn't troubleshoot: stopped: waited " in sec, sec[:800]
+            assert "/fixit/ask_again" in sec, "and the AI may be asked again"
+        finally:
+            blocked.release.set()
+            wait_all()
+        # Released late, its answer changes nothing: the record and the card stay stopped.
+        assert [ln["state"] for ln in F.starts(incident(iid))["starts"]] == ["started", "failed"]
+        assert capture_job.get(job)["state"] == "failed"
+        _r, html = page(blocked.client, iid)
+        assert 'data-state="proposed"' not in section_of(html)
+
+    def test_a_job_that_ends_within_its_bound_is_left_alone(self):
+        from modules import troubleshoot_job as TJ
+        job = capture_job.start("net", "x", "someone", lambda job_id: {"state": "gap"},
+                                kind=TJ.KIND)
+        assert capture_job.wait(job, 10)
+        assert TJ._watch(job, "net", "inc-0", "person:1", "person",
+                         wait=lambda s: None, bound=1) is False
+        assert capture_job.get(job)["state"] == "done"
+        assert not TJ.was_stopped(job)

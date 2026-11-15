@@ -122,6 +122,13 @@ WAITS = {
         "2026-11-15 measured about 20 s a pass and under 2 s a read, four passes and nine reads "
         "about 100 s, 2.5x that), at most the loop's MAX_WALL_S",
         "reasoned", True, ("MAX_WALL_S",)),
+    "modules/troubleshoot_job.py::_watch": _w(
+        "an AI troubleshooting job's bound: its watchdog waits it out once, then ends the job if "
+        "it still runs, recording the step it was in (the operator, 2026-11-15: \"Every AI job "
+        "enforces its declared bound (240 s plus margin)\")",
+        "the investigation's WALL_S (240 s) plus one call's longest time in the adapter "
+        "(gateway.send_bound_s, 235 s), its last pass's, the margin",
+        "reasoned", False, ("WALL_S",)),
     "modules/heal_notice.py::_cleared": _w(
         "an incident's symptom to stay quiet through the network's flap window before it is "
         "called cleared by itself",

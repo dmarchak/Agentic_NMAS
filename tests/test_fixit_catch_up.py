@@ -451,7 +451,8 @@ class TestThePerson:
                       words=A.CATCH_UP_WORDS, by=TEST_PERSON, verified="access", now=NOW)
         x = S.view(NET, incident_page.resolve(NET, iid), now=NOW + 5)
         assert x["state"] == "investigating"
-        assert (f"started at turn-on by {display_names.people(TEST_PERSON)}, 5 s ago"
+        # Its start as the instant itself, drawn in the viewer's zone (C3801), never "5 s ago".
+        assert (f"started at turn-on by {display_names.people(TEST_PERSON)} at {iso(NOW)}"
                 in x["status"]), x["status"]
 
 
