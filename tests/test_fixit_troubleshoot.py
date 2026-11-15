@@ -109,7 +109,7 @@ def ai(web, monkeypatch, tmp_path):  # noqa: F811
 
 
 def press(w, iid, note="", **data):
-    r = post(w.client, iid, "troubleshoot", note=note, **data)
+    r = post(w.client, iid, "start", text=note, **data)
     return r, r.get_data(as_text=True)
 
 
@@ -142,10 +142,14 @@ class TestThePress:
         sec = sec_of(html)
         assert 'data-state="proposed"' in sec
         assert "The AI proposes one fix" in sec
-        assert "What's wrong (the AI, checked against what was sent):" in sec
+        # Premise corrected (the operator's R2, 2026-11-14): the AI's proposal is a plan of
+        # steps (`plan.preflight`): what it found leads it, and a step repeating a failed
+        # attempt is refused at its preflight naming the attempt, where the proposal was
+        # flagged and opened in its card.
+        assert "What the AI found:" in sec
         assert 'class="ai-fb"' in sec, "Was this right? under the AI's answer"
-        assert "Proposed before in this incident: attempt 1, failed" in sec
-        assert "Open the fix's card…" in sec and "fixit=" + iid in sec
+        assert "already failed on this incident as attempt 1" in sec
+        assert "/fixit/approve" not in sec, "a repeat is never approvable"
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
         assert line["source"] == "ai" and line["operation"] == "telemetry-resubscribe"
         assert line["params"]["subs"] == ["101", "102"]
@@ -200,7 +204,9 @@ class TestThePress:
         r, html = press(ai, iid)
         sec = sec_of(html)
         assert r.status_code == 200 and "a gap" in sec
-        assert "Open the fix's card…" not in sec and "none Mercury can run" in sec
+        # Premise corrected (R2): the gap is said by the card's status line, the line's own
+        # words, where "Proposed fix: none Mercury can run" was the old state's paragraph.
+        assert "Open the fix's card…" not in sec and "/fixit/approve" not in sec
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
         assert line["operation"] == "" and line["calls"] and line["shown"]["gap"]
 
@@ -302,7 +308,7 @@ class TestRefusedAtThePress:
         iid = stopped(ai)
         assert write_settings({"ai_troubleshoot_mode": "off"})["ok"]
         _r, html = page(ai.client, iid)
-        assert "/fixit/troubleshoot" not in sec_of(html)
+        assert "/fixit/start" not in sec_of(html)
         r, html = press(ai, iid)
         assert r.status_code == 409 and "its mode is Off" in sec_of(html)
         assert ai.sent == []
@@ -321,28 +327,65 @@ class TestRefusedAtThePress:
         r, _html = press(ai, iid)
         assert r.status_code == 409 and ai.sent == []
 
+    @pytest.mark.parametrize("what", ["start", "modify"])
+    def test_a_press_after_the_cap_moved_is_refused_naming_what_moved(self, ai, what):
+        """The old TestRetry's guarantee kept for Start and Modify (one path, `fixit_v2._ask`):
+        a press from a panel drawn under the cap, made after the cap moved, is refused naming
+        what moved and both figures; the model is asked zero times and nothing is recorded."""
+        from modules.settings_schema import write_settings
+        from tests.test_heal_resubscribe_v2 import hidden
+        iid = stopped(ai)
+        data = {"text": "the collector looks stuck"}
+        if what == "modify":
+            line = F.record_proposal(incident(iid), "person", steps=[
+                {"operation": "telemetry-readd", "params": {"sub": "101"}}])
+            data["proposal"] = line["proposal"]
+        _r, html = page(ai.client, iid)
+        drawn = {"drawn_spent": hidden(html, "drawn_spent"),
+                 "drawn_cap": hidden(html, "drawn_cap")}
+        assert drawn == {"drawn_spent": "0.000000", "drawn_cap": "1.000000"}
+        assert write_settings({"ai_cap_usd_per_incident": 0.10})["ok"]
+        kept = F.read(incident(iid))["lines"]
+        r = post(ai.client, iid, what, **data, **drawn)
+        said = sec_of(r.get_data(as_text=True))
+        assert r.status_code == 409, said[:400]
+        assert said.count("Not asked") == 1, said[:400]
+        assert ("Since the panel was drawn, the per-incident cap was $1.00 when the panel was "
+                "drawn and is $0.10 now") in said
+        assert "$0.2502" in said and "against the cap of $0.10" in said, said[:600]
+        assert ai.sent == [], "the model is not asked past the cap"
+        assert calls.read()["rows"] == []
+        assert F.read(incident(iid))["lines"] == kept, "nothing is recorded"
+
 
 # ── One press, the trigger, and no other way in ─────────────────────────────────────────────
 
 class TestNoOtherWayIn:
     def test_one_press_key_is_one_call(self, ai):
         iid = stopped(ai)
+        # Premise corrected (R1, 2026-11-14): the one press is Start AI troubleshooting, taken
+        # once under the record's lock; the second press is refused before anything is sent.
         h = {"HX-Request": "true", "X-NMAS-Press": "a" * 32}
-        for _ in range(2):
-            r = ai.client.post(f"/v2/incident/{iid}/fixit/troubleshoot?list={NET}",
-                               data={"note": ""}, headers=h)
-            assert r.status_code == 200
+        got = [ai.client.post(f"/v2/incident/{iid}/fixit/start?list={NET}",
+                              data={"text": ""}, headers=h) for _ in range(2)]
+        assert [r.status_code for r in got] == [200, 409]
+        assert "Start AI troubleshooting is not offered now" in got[1].get_data(as_text=True)
         assert len(ai.sent) == 1
 
     def test_no_background_feature_and_the_only_way_in_is_the_gated_post(self):
         from modules.ai import background
         from tests import test_ai_controls as T
         from tests.test_ai_entry_points import entry_points
-        assert not [f for f in background.FEATURES if "fixit" in f]
+        # R1 (the operator, 2026-11-14): ONE background feature of AI troubleshooting's task,
+        # the automatic investigation of a failure, off by default per network; its job is
+        # tests/test_ai_entry_points.py's `BACKGROUND_JOBS`' fixit_investigation.
+        assert [f for f in background.FEATURES if "fixit" in f] == ["fixit_auto"]
+        assert background.FEATURES["fixit_auto"]["task"] == "fixit_troubleshoot"
         found = entry_points(T._sources())
         mine = {k: v for k, v in found.items() if k[0] == "routes.fixit_v2"}
-        assert mine == {("routes.fixit_v2", "troubleshoot"): {
-            "endpoint": "fixit_v2.troubleshoot", "methods": ["POST"]}}
+        assert mine == {("routes.fixit_v2", name): {
+            "endpoint": f"fixit_v2.{name}", "methods": ["POST"]}
+            for name in ("modify", "ask_again", "start")}
 
     def test_the_incident_page_calls_no_model_and_draws_the_control(self, ai, monkeypatch):
         from tests.test_ai_entry_points import FIXIT_PAGES, _count_ai

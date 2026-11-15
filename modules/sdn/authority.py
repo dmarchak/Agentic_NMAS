@@ -112,6 +112,13 @@ NOT_DIRECT = {
     "dhcp_v2.reservation_confirm": "changes Kea, not a device",
     # The plan engine: its steps change Kea, committed intent (never sent to a device: a deploy
     # is its own approval) and a device being created with no inventory record yet.
+    # An incident's plan (C3694, routes/fixit_v2.approve): each step a catalog operation on the
+    # incident's own device, never named by its request; a device Mercury does not manage (an
+    # observe-only device, a host) is refused by each step's own preflight
+    # (`fixit.validate.check`, `management.refusal_for`).
+    "fixit_v2.approve": "an incident's plan of catalog operations on the incident's own device, "
+                        "named by no request field; each step's preflight refuses a device "
+                        "Mercury does not manage (fixit.validate.check)",
     "plans_v2.approve": "a plan changes Kea, committed intent and a device not yet in the "
                         "inventory, never a device's configuration; its intent step refuses a "
                         "controller-managed device itself (`refusal`, in "

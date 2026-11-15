@@ -2527,6 +2527,48 @@ class TestPlanCards(_Cards):
         return html
 
 
+class TestFixitPlanCards(_Cards):
+    """An incident's proposal as a plan (C3694; routes/fixit_v2.py's approve), on
+    tests/test_fixit_section_v2.py's world (r2's real configuration and intent, a lost-stream
+    incident from the incidents store's own writer): a proposal re-subscribing r2's telemetry
+    (101, 102), its plan preflighted by the real catalog step, draws Approve on the incident's
+    page. Blocked: r2 is held by another operation, so the step's own check refuses at preflight
+    and the page says Approve isn't offered, with no button."""
+    from tests import test_fixit_section_v2 as _fs, test_heal_resubscribe as _hr
+    from tests import test_sdn_connections as _sc
+    networks, lab, web = hosted(_sc.networks), hosted(_hr.lab), hosted(_fs.web)
+
+    CASES = {"approve": ("_fixit_section.html", "Approve", r"Approve",
+                         "data: r2 is held by another operation, so the step's preflight "
+                         "refuses")}
+
+    def _card(self, request):
+        import app as A
+        from modules.fixit import incident as F
+        from tests.test_fixit_section_v2 import incident, page, plant
+        request.getfixturevalue("web")
+        iid = plant()
+        F.record_proposal(incident(iid), "person", steps=[
+            {"operation": "telemetry-resubscribe", "params": {"subs": ["101", "102"]}}])
+        r, html = page(A.app.test_client(), iid)
+        assert r.status_code == 200 and 'id="inc-fixit"' in html, "floor: the section is drawn"
+        return html
+
+    def drawn_approve(self, request):
+        html = self._card(request)
+        assert 'name="hash"' in html, "floor: the plan's hash is carried"
+        return html
+
+    def blocked_approve(self, request, monkeypatch):
+        request.getfixturevalue("web")
+        monkeypatch.setattr("modules.nsot.device_ops.holder",
+                            lambda network, device: {"operation": "a deploy",
+                                                     "actor": "someone"})
+        html = self._card(request)
+        assert "Approve isn't offered" in html, "floor: the refused plan is drawn"
+        return html
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -2602,9 +2644,10 @@ class TestThePopulation:
         a carrier's own confirm until the rollout engine, 2026-11-14) and Probe <device>; 91
         until board R's Update N devices' intent, C3583, 2026-11-14; 92 until the collector
         step's Close the collector's stale session for <device>, then re-subscribe (<ids>), C3078,
-        2026-11-14; 93 until the plan engine's Approve the plan on <network>: <title>, 2026-11-14)."""
+        2026-11-14; 93 until the plan engine's Approve the plan on <network>: <title>, 2026-11-14;
+        94 until an incident's plan's Approve, C3694, 2026-11-14)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 94, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 95, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

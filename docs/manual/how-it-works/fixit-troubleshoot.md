@@ -1,13 +1,75 @@
-# AI troubleshooting: Troubleshoot with AI, Retry, Cancel and Hand over
+# AI troubleshooting: Start, Approve, Modify, Deny and Hand over
 
-An incident's page ([An incident's page](incident)) has an **AI troubleshooting** section. It
-lists every fix tried in the incident, says what each one cost in AI, and offers what a person
-may do next: **Troubleshoot with AI** (or, after a failed attempt, Retry with more
-information's **Ask the AI to re-plan**), which asks the AI once, as you, and **Ask Mercury's
-diagnosis to re-plan**, which asks no AI. Either way, a fix runs only when you approve it in its
-operation's own card, by its preview's hash.
+An incident's page ([An incident's page](incident)) leads with its bottom line: what happened,
+its impact, and the one next action. Under it is one card, **Fixing it**, where What to do and
+AI troubleshooting used to be two: a status line, the AI's plan when there is one, and,
+collapsed, every fix tried in the incident with what each cost in AI. When Mercury's own fix
+fails, the AI investigates by itself where its background feature is on ([Starting by
+itself](#automatic)); otherwise **Start AI troubleshooting** is the next action. The AI
+proposes a plan; you **Approve** it by its hash, **Modify…** it or **Deny…** it. Nothing runs
+until a person approves it, and nothing that already failed in the incident is offered as its
+next action (the operator's rule of 2026-11-14).
 
-![AI troubleshooting on an incident's page: an attempt is a catalogue operation's run on the incident's device, read from the operation's own record; a failed attempt stops the section, and nothing more runs until a person chooses. Troubleshoot with AI, or Retry with more information, asks the per-incident cap again at the press; then either Mercury's own diagnosis, with no AI, or one AI investigation the person's press asked for (at most two calls, its answer checked against what was sent) names a fix as one catalogue operation, checked against the incident, the heal guards and committed intent, and kept as one proposal line with the person's note; a proposal that repeats a failed attempt is flagged. The fix runs only through its operation's own card, previewed and confirmed by hash, and its run's record names the incident, the attempt and the proposal. Cancel and Hand over each record one line, and Hand over keeps a write-up and sends its link to the teams chosen. Nothing in the section reaches the device but the operation a person confirmed.](diagrams/fixit-troubleshoot.svg)
+![AI troubleshooting on an incident's page: an attempt is a catalogue operation's run on the incident's device, read from the operation's own record; a failed attempt is said by the card's status line, and nothing more runs until the AI is started, by itself where its background feature is on for the network, or by a person's Start AI troubleshooting. The per-incident cap is asked again first; one AI investigation (at most two calls, its answer checked against what was sent) proposes a plan of catalogue operations, each step preflighted against the incident, the heal guards and committed intent, a step that repeats a failed attempt refused. The plan runs only when a person approves it by its hash; Modify asks for a revised plan and Deny records why not, and neither runs anything. Hand over keeps a write-up and sends its link to the teams chosen. Nothing in the card reaches the device but the plan a person approved.](diagrams/fixit-troubleshoot.svg)
+
+## Starting by itself {#automatic}
+
+"Start AI troubleshooting automatically when Mercury's fix fails" is a background AI feature,
+off by default on every network. It is one row among the other background features (Settings ›
+AI, Background features, [Settings › AI](settings-ai)), turned on with **Turn on…** after its
+estimate (per incident, against the per-incident cap and the day cap) and off with **Turn
+off**, each only by a verified person and recorded. It starts anything only while self-healing
+is in **Auto** on the network (its policy in force now, not expired): with self-healing off or
+in Dry run, nobody asked Mercury to fix anything, so nothing starts. While both are on, a code
+fix that fails or does not verify, of a kind Auto allows, or a problem for which no code fix
+exists (a can't-fix, a lost telemetry stream), starts one AI investigation, once per failure,
+within the caps; a cap that would be passed starts nothing,
+and the card says which cap and offers **Hand over…**. The AI only proposes: a person approves
+every plan by its hash.
+
+Turning it on never catches up, and neither does turning self-healing's Auto on. An incident
+whose fix failed before either was on (or while either was off, or self-healing was in Dry
+run) shows **Start AI troubleshooting** as its next action, a person's press that runs the same
+investigation once.
+
+## Approve, Modify and Deny {#approve}
+
+The AI's plan is drawn in the card: what the AI found, then each step with its preflight, the
+check Mercury runs on each step before it can be approved ("preflight passed", or "refused at
+its preflight:" and why). The plan's hash and each step's are in the page's record.
+
+**Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since
+the page was drawn is refused, naming what moved, and nothing is sent. A plan with a step
+refused at its preflight has no Approve; the line under the buttons says why.
+
+## Modify {#modify}
+
+**Modify…** opens a box, anchored to it, for what should change. **Revise the plan** sends your
+words (masked before they are sent) to the AI, which returns a revised plan with a new hash.
+Nothing runs: Approve, Modify… and Deny… come back with the new plan. **Cancel**, or Escape,
+closes the box with nothing sent.
+
+## Deny {#deny}
+
+**Deny…** opens its confirm, with an optional reason. **Deny the plan** records the denial and
+your reason; nothing runs and the incident stays open, with **Ask the AI again** and **Hand
+over…** as its next actions. **Keep the plan** closes the confirm with nothing recorded.
+
+## Ask the AI again {#ask-again}
+
+After a denial, **Ask the AI again** runs a new investigation, told what was denied and why,
+under the same caps as the first. Its plan is drawn with Approve, Modify… and Deny… again.
+
+## Start AI troubleshooting {#start}
+
+On Needs attention, the row about such an incident offers the same:
+**Start AI troubleshooting…**, a link to the incident's bottom line, where the button is. A lost
+telemetry stream's row offers it in place of Re-subscribe while the incident offers it, so the
+row and the page never name two different next actions.
+
+**Start AI troubleshooting** is the next action when Mercury's fix failed and the AI was not
+started by itself. Its cost is drawn beside it before you press. It runs one investigation, as
+you ([the investigation](#ask-ai)); the plan it returns runs only when you approve it.
 
 ## The attempts {#attempts}
 
@@ -17,70 +79,72 @@ incident was detected. Each one is read from the operation's own record every ti
 drawn, so its outcome is the operation's words. A run started from the section's proposal also
 names the incident in its record, and is that incident's attempt whatever its time.
 
-Each attempt is one line: when it ran, the operation and its parameters, who proposed it (when
-it came from a proposal here) and who approved it, its outcome, its AI cost, and **Open the
-run**, which opens the run's own card with its steps and verify reads.
+Each attempt is one line, under the card's collapsed **Attempts**: when it ran, the operation
+and its parameters, who proposed it (when it came from a proposal here) and who approved it,
+its outcome, its AI cost, and **Open the run**, which opens the run's own card with its steps
+and verify reads. A fix that failed is listed again under **Other actions**, with the attempt
+it failed in and its record; it is never the next action.
 
-The section's first line says what this incident's AI calls have cost against its cap, and
-today's spend against the day cap. Both are summed from the record of AI calls each time.
+The card's collapsed **Costs** says what this incident's AI calls have cost against its cap,
+and today's spend against the day cap. Both are summed from the record of AI calls each time.
 
 ## A failed attempt stops {#the-stop}
 
-When the newest attempt did not pass its verify, the section **stops**: it says what the run
-found, from the run's own record, one line per subscription with its state in words (the
-operation's outcome, or what its checks said), each line opening to its three checks with
-their addresses, ports and connection numbers, and any stale session flagged; then "Nothing
-more runs unless you choose." No page load, no refresh and no announcement starts another
-attempt or asks for another plan. The choices are Retry with more information, Cancel and Hand
-over: three buttons in one row, drawn alike, each opening its own modal beside it over the
-page, with the focus inside it. Cancel in the modal, or Escape, closes it and gives the focus
-back to its button; what you typed stays for when you open it again. A press in a modal is
-answered in the section, in place, with the focus on the answer.
+When the newest attempt did not pass its verify, the card's status line says so, and its
+collapsed **What attempt <n> found** says what the run found, from the run's own record, one
+line per subscription with its state in words (the operation's outcome, or what its checks
+said), each line opening to its three checks with their addresses, ports and connection
+numbers, and any stale session flagged. No page load, no refresh and no announcement starts
+another attempt. What comes next is the bottom line's one action: the AI's investigation
+([Starting by itself](#automatic), or **Start AI troubleshooting**), or **Hand over…**.
 
-## Retry with more information {#retry}
+## The steps, from a plan to its run {#steps}
 
-Retry's modal has a box for what you know that Mercury doesn't. Mercury's diagnosis does not read
-words; the AI does, masked before they are sent, and they are kept for the hand-over. Before
-you press, the panel shows what each choice costs (Mercury's diagnosis nothing; the AI at most
-two calls' worth), what the incident has spent, what it would have spent at most afterwards
-against its cap, and today's spend. It also lists what the AI is sent when it is asked. **Ask
-the AI to re-plan** runs the same steps as [Troubleshoot with AI](#ask-ai).
+Each press in the card is a verified person's, refused with nothing recorded or sent
+otherwise, and each takes these steps, which its code keeps:
 
-Pressing **Ask Mercury's diagnosis to re-plan** runs these steps:
+1. `preflight`: before the plan is drawn, each step is checked by code against the catalogue's
+   schema, what the incident names (its device and its lost subscriptions), the heal guards (a
+   planned window, the device held by another run) and committed intent, and a step that
+   repeats an attempt that failed here is refused. A refused step is drawn refused with why,
+   and the plan then has no Approve.
+2. `approve`: **Approve** sends the plan's hash; the plan is preflighted again and refused,
+   naming both hashes, when it moved. Then Mercury runs each step in order through its own
+   operation (its preview again, its apply re-checking its own hash, its verify, its record),
+   stops at the first that does not pass, and retries nothing.
+3. `modify`: **Modify…** sends your words to the AI with the evidence, under the cap; the AI
+   returns a revised plan with a new hash. Nothing runs.
+4. `deny`: **Deny…** records the denial and your reason. Nothing runs.
+5. `ask_again`: after a denial, or an answer that proposed no plan, **Ask the AI again** runs a
+   new investigation under the cap. Nothing runs.
+6. `start`: **Start AI troubleshooting** runs the one investigation for an incident whose
+   failure did not start one by itself, once. Nothing runs.
 
-1. `person`: the press is a verified person's, or it is refused with nothing recorded.
-2. `cap`: the per-incident cap is asked again ([the cap](#the-cap)). Past it, the press is
-   refused, naming both figures and what moved since the panel was drawn, and Mercury's
-   diagnosis is not asked.
-3. `propose`: Mercury's own diagnosis of the incident (the newest one attached to it) names its
-   next step as one catalogue operation, with its parameters. A diagnosis whose next step is no
-   catalogue operation, or no diagnosis at all, names none, and says why.
-4. `check`: the proposal is checked by code against the catalogue's schema, against what the
-   incident names (its device and its lost subscriptions), against the heal guards (a planned
-   window, the device held by another run) and against committed intent.
-5. `record`: one proposal line is kept in the incident's troubleshooting record, with the
-   operation and its parameters (or why there is none), who pressed, and the note.
+Start, Modify… and Ask the AI again each answer at once: the investigation runs as a job (under
+**In progress** too), the card says "The AI is investigating" with when it started, after a
+reload as well, and it is drawn again when the job ends. A second press while one runs is
+refused, naming the one running, so no investigation is paid for twice. A job that fails says
+so in the card: "Couldn't troubleshoot:" and why, with **Ask the AI again**.
 
-Nothing runs. The proposal is drawn with **Open the fix's card…**, which opens the operation's
-own card in the section: its program, its hash and your reason, exactly as everywhere else. The
-fix runs only when you confirm it there.
+Mercury's own re-plan (Retry with more information) and Cancel are no longer on the page (the
+operator, 2026-11-14: Modify… and Deny… replace them).
 
-## Troubleshoot with AI {#ask-ai}
+## The investigation {#ask-ai}
 
-With nothing tried yet, the section offers **Troubleshoot with AI**, with an optional box,
-**Add what you know first**. After a failed attempt, Retry with more information offers the same
-press as **Ask the AI to re-plan**. Before you press, the section shows what it costs: at most
-two calls at the AI's per-call cap (at most $0.25 today), and about what it has cost before
-once it has been measured; the incident's spend so far and after it at most, against its cap;
-and today's spend against the day cap. The button carries the AI mark; when hosted AI cannot
-answer now (it is off, no key is set, the day cap is reached, or the provider's usage limit
-holds), it is drawn disabled with why, and Mercury's own diagnosis stays usable.
+**Start AI troubleshooting** and **Ask the AI again** each run one investigation; with the
+background feature on, the failure itself starts it ([Starting by itself](#automatic)). Its
+cost is drawn before you press: at most two calls at the AI's per-call cap (at most $0.25
+today), and about what it has cost before once it has been measured; the incident's spend so
+far against its cap, and today's against the day cap, under the card's **Costs**. The button
+carries the AI mark; when hosted AI cannot answer now (it is off, no key is set, the day cap is
+reached, or the provider's usage limit holds), it is drawn disabled with why.
 
-Pressing it runs these steps, as you, one investigation:
+It runs these steps, one investigation:
 
-1. `person`: the press is a verified person's, or it is refused with nothing sent. The press is
-   the call's trigger: the gateway refuses it for anyone but the person who pressed, and no
-   timer, job, page load or failure starts it.
+1. `person`: a press is a verified person's, or it is refused with nothing sent; the press is
+   the call's trigger, and the gateway refuses it for anyone but the person who pressed. A
+   start by itself is a background call, the background feature's, under its caps, once per
+   failure; no timer, job or page load starts one.
 2. `mode`: AI troubleshooting's mode (Settings › Installation › AI, AI troubleshooting) is
    Manual. Off refuses the press, with nothing sent.
 3. `cap`: the per-incident cap is asked again ([the cap](#the-cap)): spent so far plus this
@@ -135,18 +199,18 @@ Pressing it runs these steps, as you, one investigation:
    AI said (its rationale and each hypothesis with what it cites). The call's own record on
    History says what became of its answer and links back to the incident's page.
 
-Nothing runs. A proposed fix is drawn with **Open the fix's card…**, exactly as Mercury's own;
-it runs only when you confirm it there by its hash. If it fails, the section stops again, and
-the AI is asked again only when you press again.
+Nothing runs. A proposed plan is drawn with its steps and **Approve**, **Modify…** and
+**Deny…**; it runs only when you approve it by its hash. If it fails, the card says so, and the
+AI is asked again only by a press, or once by itself for the new failure.
 
-## A repeated proposal is flagged {#a-repeat}
+## A repeated proposal is refused {#a-repeat}
 
-A proposal is compared with every attempt in the incident that did not pass. The same operation
-with the same parameters is drawn "Proposed before in this incident: attempt N, failed: …", with
-its time; the parameter hash the two were compared by is in the page's record (The record,
-"Proposed fix's parameter hash"). Its card then asks **what is different now**, at least three
-words, and refuses the confirm without it. The same operation with other parameters is drawn as
-a variation, naming each parameter that changed. A repeat is never hidden.
+A plan's steps are compared with every attempt in the incident that did not pass. A step of the
+same operation with the same parameters is refused at its preflight, naming the attempt it
+repeats and what that attempt said, so the plan has no Approve: nothing that already failed in
+the incident is offered as its next action. The failed operation stays under **Attempts** and
+**Other actions**, with its record. The same operation with other parameters is a variation,
+and is offered.
 
 ## The run's record {#the-run}
 
@@ -158,21 +222,17 @@ line then says who proposed it, and the incident's list can tell later how it wa
 
 **AI spend per incident** (Settings › Installation › AI, the AI troubleshooting card, $1.00 by
 default) holds every attempt: what the incident's AI calls have cost so far plus the next
-attempt's worst case is compared with it. At the cap exactly is allowed; past it, Retry is not
-offered and the section says spent, the worst case, their sum and the cap. An attempt's worst
-case is two calls at the per-call cap of the AI's pinned model (at most $0.25 today), whether
-you then ask the AI or Mercury's diagnosis, which costs nothing. There is no "no cap", and
-Mercury never raises it. **AI mode**
-on the same card is Manual (an AI troubleshoot only on a person's press) or Off.
+attempt's worst case is compared with it. At the cap exactly is allowed; past it, nothing
+starts, the card says which cap would be passed (spent, the worst case, their sum and the cap),
+and **Hand over…** is the next action. An attempt's worst case is two calls at the per-call cap
+of the AI's pinned model (at most $0.25 today). There is no "no cap", and Mercury never raises
+it. **AI mode** on the same card is Manual or Off; Off offers no AI at all.
 
-## Cancel {#cancel}
+## Cancel and Retry are gone {#cancel}
 
-**Cancel** opens its confirm: **Cancel troubleshooting** records one line, and **Keep
-troubleshooting** closes the confirm with nothing recorded. The line says who cancelled, when,
-and the attempts and AI spend as they stood.
-It runs nothing, sends nothing and holds no device. The incident stays open at its page, and the
-section reads "Troubleshooting cancelled at <time> by <name>". A later Retry ends the cancelled
-state.
+Cancel and Retry with more information were removed on 2026-11-14: **Deny…** records that a
+plan is not wanted, and **Modify…** says what the AI should change. An incident cancelled
+before then keeps its line in its troubleshooting record and on its page's status line.
 
 ## Hand over {#hand-over}
 
@@ -185,6 +245,7 @@ incident's record, with Download as Markdown. Its page draws every time in your 
 UTC on the hover; the Markdown and the message sent to a team say each time in UTC, since
 they leave Mercury. **Send the hand-over** sends it to the teams you
 tick, each one of the teams told about the network's can't-fix (Settings › Notifications); with
-none ticked it is kept and sent to nobody. A send that fails says so, with **Send again**. Once
-the incident is resolved, the section is read-only: a Cancel, Retry or Hand over sent to it then
-is refused, with nothing recorded.
+none ticked it is kept and sent to nobody. A send that fails says so, with **Send again**.
+**Hand over…** is beside the next action, as a link, while the incident is open, and is the
+next action itself when nothing else is left (a cap passed). Once the incident is resolved, the
+card is read-only: a press sent to it then is refused, with nothing recorded.

@@ -183,6 +183,55 @@ only view: an expert can always work at the mechanism level, by hand.
 **The test, beside the industry need:** a feature that changes the network states the outcome
 a non-expert approves, and the checks that prove it.
 
+## Two standing rules: the AI troubleshoots by itself, and every screen leads with its bottom line
+
+**The operator's design change, 2026-11-14, standing:**
+- **R1. When Mercury's code fix fails, the AI troubleshoots automatically. No button starts
+  it.** A code fix that fails, does not verify, or does not exist for the incident's kind
+  starts AI troubleshooting once per failure, within the caps ($1.00 an incident, $80 a day).
+  A cap that would be exceeded starts nothing, and the card says which cap and offers Hand
+  over. It is a background AI feature under CLAUDE.md's AI cost safety rules, unchanged: the
+  switch "Start AI troubleshooting automatically when Mercury's fix fails" is **off by default
+  on every network**, offered as one switch in the AI settings with its estimate beside it
+  (per incident, the per-incident cap, the day cap), and only a person turns it on or off
+  (the operator, 2026-11-14: "keep CLAUDE.md as it is"). Turning it on never catches up: an
+  incident whose fix failed before it was on starts nothing by itself, and keeps one "Start
+  AI troubleshooting" button for a person's press. The AI's NEVERs stand: it proposes, and a
+  person approves by hash. **Cost:** one background AI call per failure where a person turned
+  it on, inside the caps. **Prevents:** an incident waiting for a person to press a button
+  whose outcome was already decided, and spend no person approved.
+- **R2. BLUF, bottom line up front, on every screen, card and notification.** The top is three
+  plain lines:
+  1. what happened, in the engineer's words ("r7 stopped sending telemetry at 09:30"), never
+     Mercury's codes (CONFIG_I, g4, cant_fix, "departs (-2)");
+  2. the impact on the network or on Mercury ("Mercury can't see r7's interfaces or CPU;
+     traffic is unaffected");
+  3. how to fix it: the one next action as a button, or the AI's proposal with Approve, Modify
+     and Deny.
+
+  Everything else sits below, collapsed: evidence, attempts, guards and holds, alert text,
+  timings, costs, History links. Severity follows impact: critical only for a network outage.
+  The impact line comes from Mercury's own table per incident or fault kind, never written by
+  the AI, and a test fails on a kind without its what, impact and fix. Nothing that already
+  failed on an incident is offered as its next action. A guard or hold working as designed is
+  a plain line in the details, never a failure. **Cost:** one table entry per kind, and each
+  screen's top drawn from it. **Prevents:** a person reading Mercury's internals to find out
+  what broke, what it costs them and what to press.
+
+- **R4. Incidents are problems, not signals** (the operator, 2026-11-14). Syslog lines, alerts,
+  lost streams and reads are evidence. Mercury classifies evidence into a problem (device,
+  object, condition, cause, who is affected) and titles the incident by it ("s1 Gi1/0
+  err-disabled by BPDU guard: h1 is offline", never "alert 'Critical syslog received'
+  firing"); the alerts are listed as evidence under it, and related signals fold into the one
+  problem. Before any action the device is read to confirm the classification; evidence and
+  device disagreeing is no action, said. A saved script matches on the classified problem's
+  fields, never an alert's name or a raw line. Evidence Mercury cannot classify goes to the
+  AI, which names the problem in the same fields; a person saving the fix saves the
+  classification rule with the operation, seeing and editing the match first. R2's BLUF table
+  is keyed by problem. **Cost:** one classifier per problem kind, and a device read before
+  acting. **Prevents:** incidents named after their symptoms, a fix chosen from an alert's
+  name, and a script matching a problem it was never made for.
+
 ## Human-facing means human-readable
 
 **A standing design rule (the operator, 2026-11-08), applied to everything human-facing from

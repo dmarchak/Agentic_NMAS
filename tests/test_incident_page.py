@@ -237,6 +237,12 @@ def cell(body, name):
     return m.group(0)
 
 
+def timings(body):
+    """The four recorded times, TIME TO REPAIR and one line per attempt: under Timings,
+    collapsed below the BLUF (the operator's R2, 2026-11-14), where they were the header's."""
+    return body.split('id="inc-timings"', 1)[1].split("</details>", 1)[0]
+
+
 def text_of(html):
     return " ".join(unescape(re.sub(r"<[^>]+>", " ", html)).split())
 
@@ -291,7 +297,9 @@ class TestTheTimelineFromItsRecords:
             # and a step's, the shared macros' (`_macros.clock`): each the viewer's own time.
             assert 'class="clock"' in tag and " data-clock" in tag, tag
             assert re.search(r'title="\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC"', tag), tag
-        head = body.split('class="card inc-head', 1)[1].split("</section>", 1)[0]
+        # Premise corrected (the operator's R2, 2026-11-14): the header's recorded times are
+        # under Timings now, collapsed below the BLUF.
+        head = timings(body)
         mine = re.findall(r"<time [^>]*>", head)
         assert len(mine) >= 6 and all('data-clock="date-seconds"' in t for t in mine), mine
         assert " UTC<" not in re.sub(r"<time [^>]*>[^<]*</time>", "", body.split(
@@ -491,7 +499,7 @@ class TestNoHumanOnlyFromTheRecord:
         body = page(client, iid)
         said = "· by Mercury's self-healing · policy set by admin"
         assert said in text_of(cell(body, "ttr"))
-        head = text_of(body.split('class="card inc-head', 1)[1].split("</section>", 1)[0])
+        head = text_of(timings(body))  # R2: the times and who took part, under Timings
         assert head.count("Mercury's self-healing") == 1, "said once, beside the repair time"
         assert "No person needed" in body and "No person took part in this incident" in body
         assert text_of(body.split("<h1", 1)[1].split("</h1>", 1)[0]).endswith(
@@ -508,7 +516,7 @@ class TestNoHumanOnlyFromTheRecord:
         body = page(client, iid)
         assert times_in(cell(body, "decided")) == [taken["at"]]
         assert "· by Mercury's self-healing · approved by op" in text_of(cell(body, "ttr"))
-        head = text_of(body.split('class="card inc-head', 1)[1].split("</section>", 1)[0])
+        head = text_of(timings(body))  # R2: the times and who took part, under Timings
         assert head.count("approved by op") == 1, "said once, beside the repair time"
         assert "policy set by" not in head and "No person needed" not in body
         # Premise corrected (C3453, "A title is a summary of at most 70 characters"): the
@@ -811,9 +819,13 @@ class TestThePage:
         body = page(client, acknowledged(cant_fix()))
         live = body.split('id="incident-live"', 1)[1].split("</main>", 1)[0]
         assert "<form" not in live and "<button" not in live and "hx-post" not in live
-        todo = live.split('id="inc-todo"', 1)[1].split("</section>", 1)[0]
-        assert todo.count("<a ") == 2 and "Open Needs attention" not in todo
+        # Premise corrected (the operator's R2, 2026-11-14): What to do became the BLUF's third
+        # line, its one action alone; the History link it drew beside it is under What Mercury
+        # has done, once.
+        todo = live.split('id="inc-bluf"', 1)[1].split("</section>", 1)[0]
+        assert todo.count("<a ") == 1 and "Open Needs attention" not in todo
         assert todo.count("btn-primary") == 1 and ">Open edge-b</a>" in todo
+        assert ">Open edge-b&#39;s History</a>" not in todo
 
     def test_it_is_drawn_again_when_self_healing_announces_and_never_polls(self, client):
         iid = healed()
@@ -895,7 +907,9 @@ class TestInARealBrowser:
                         "var t = document.querySelector('[data-cell=detected] time');"
                         "return t && t.textContent")
                     drawn = b.js("return Array.prototype.map.call(document.querySelectorAll("
-                                 "'.inc-head time'), function (t) { return t.textContent; })")
+                                 "'#inc-timings time'), function (t) { return t.textContent; })")
+                    # Premise corrected (R2, 2026-11-14): the header's recorded times are
+                    # under Timings now, collapsed below the BLUF (`timings`, above).
                     # Every clock on the page, as [its text, its hover].
                     clocks = b.js("return Array.prototype.map.call(document.querySelectorAll("
                                   "'time[data-clock]'), function (t) { return [t.textContent, "

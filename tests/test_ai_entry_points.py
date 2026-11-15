@@ -36,7 +36,13 @@ TOP = "<top level>"
 #: only through one is no person's click: the scan stops there. Exact (each must still reach
 #: the gateway, its feature declared, and the scan find its caller without it), so it never
 #: excuses more than it names. ``{(module, function): background feature}``.
-BACKGROUND_JOBS = {("modules.heal_notice", "notice"): "heal_analysis"}
+BACKGROUND_JOBS = {("modules.heal_notice", "notice"): "heal_analysis",
+                   # R1 (the operator, 2026-11-14): the automatic investigation of a failure
+                   # of Mercury's fix, under fixit_auto's background trigger, off by default
+                   # per network (`background.FEATURES`).
+                   ("modules.heal_notice", "fixit_investigation"): "fixit_auto"}
+#: What each job calls to make its feature's call (the attribute its body names).
+JOB_CALLS = {"heal_analysis": "analyse", "fixit_auto": "troubleshoot"}
 
 
 def _methods(func):
@@ -132,9 +138,18 @@ def test_each_background_job_is_exact_and_names_its_feature():
         rel = mod.replace(".", os.sep) + ".py"
         tree = ast.parse(src[rel])
         func = next(f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name == name)
-        assert "analyse" in {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
-    from modules.ai import heal_analysis
+        attrs = {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
+        assert JOB_CALLS[feature] in attrs, (name, feature)
+    from modules.ai import fixit_troubleshoot, heal_analysis
     assert heal_analysis.trigger_for("Default", "hi-0", "j")["feature"] == "heal_analysis"
+    assert fixit_troubleshoot.background_trigger(
+        "Default", "j", "decision:hi-0")["feature"] == "fixit_auto"
+    # The automatic job asks under its feature's trigger, by reference (never a person's).
+    rel = os.path.join("modules", "heal_notice.py")
+    func = next(f for f in ast.parse(src[rel]).body
+                if isinstance(f, ast.FunctionDef) and f.name == "fixit_investigation")
+    assert "background_trigger" in {n.attr for n in ast.walk(func)
+                                    if isinstance(n, ast.Attribute)}
 
 
 HEAD = "from flask import Blueprint\nbp = Blueprint('planted', __name__)\n"

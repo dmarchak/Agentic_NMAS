@@ -9,8 +9,10 @@ with AI, or Retry with more information's Ask the AI to re-plan (routes/fixit_v2
 ``troubleshoot``, a POST a verified person makes, gated ``configure``). Its trigger is
 ``triggers.person`` of the request's verified actor, which the gateway refuses outside a request
 or for anyone else; no timer, job, page load or failure's handler calls it
-(tests/test_ai_entry_points.py), and no background feature is registered for it
-(`background.FEATURES` holds none). **One press, one investigation**: at most two calls
+(tests/test_ai_entry_points.py), but one: since the operator's R1 (2026-11-14) the background
+feature ``fixit_auto`` (`background.FEATURES`, off by default per network) asks the same
+investigation once per failure of Mercury's fix, as its job under its own trigger
+(`background_trigger`; `heal_notice.fixit_investigation`). **One press, one investigation**: at most two calls
 (`read_loop.CALLS_PER_FINDING`: pass 1 and, when a read ran, pass 2), its reads included, under
 the per-incident cap (`fixit.policy.cap_state`: spent plus the investigation's worst case,
 `worst_usd`) and the gateway's own caps (the day cap and the per-call cap, asked before each
@@ -90,6 +92,11 @@ log = logging.getLogger(__name__)
 #: v2 is S5's first pass over the router read set alone: no longer asked, kept with its schema
 #: so a call recorded under it stays readable (expand, then contract).
 FEATURE = "fixit_troubleshoot"
+#: The background feature that asks the same investigation by itself when Mercury's fix fails
+#: (the operator's R1, 2026-11-14; `background.FEATURES`, a STANDING one), and the finding kind
+#: its trigger names: the failure's own record (`fixit.auto`'s key).
+AUTO_FEATURE = "fixit_auto"
+AUTO_FINDING = "fixit_failure"
 PROMPT = (FEATURE, 1)
 PROMPT_READS_V2 = (FEATURE, 2)
 PROMPT_READS_V4 = (FEATURE, 4)
@@ -773,6 +780,18 @@ def reads_context() -> dict:
     return {"read_set": read_set()}
 
 
+def background_trigger(network: str, job: str, failure_key: str) -> dict:
+    """The background trigger of an investigation R1 starts by itself (CLAUDE.md, "Every AI
+    call names its trigger"): ``fixit_auto``'s, as *job*, on *network*'s one id
+    (`listref.network_id`, what `background.admit` compares), caused by the failure's own
+    record *failure_key* (`fixit.auto`)."""
+    from modules.ai import triggers
+    from modules.nsot import listref
+
+    return triggers.background(AUTO_FEATURE, job, listref.network_id(network), AUTO_FINDING,
+                               failure_key)
+
+
 def _person(actor: str, actor_verified: str, person: bool) -> str:
     if person and actor and actor_verified not in ("", "none", None):
         return ""
@@ -785,9 +804,12 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                  person: bool, note: str = "", resolved: float = None, send=None,
                  today: str = None, now: float = None, sources=None, planned=None,
                  seen: dict = None, loki=None, prometheus=None, collector=None,
-                 series=None) -> dict:
+                 series=None, trigger: dict = None) -> dict:
     """One investigation of *incident* (a `fixit.incident.Incident`, the one *found* resolves),
-    asked by *actor*, a person verified as *actor_verified* (`STEPS`):
+    asked by *actor*, a person verified as *actor_verified* (`STEPS`), or, with *trigger*, by
+    the background feature ``fixit_auto`` on a failure (`background_trigger`, R1): *actor* is
+    then the trigger's job (``job:<id>``), no person is named on its line, and the gateway
+    refuses the call unless the feature is on and inside its caps.
 
     ``{"state", "words", "proposal", "checked", "call_ids", "cost_usd", "reads", "typed_masked",
     "shown"}``, *state* one of `STATES`, *proposal* the line kept in the incident's record
@@ -801,9 +823,17 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     from modules.fixit import incident as F
     from modules.fixit import policy as P
 
-    why = _person(actor, actor_verified, person)                                 # person
-    if why:
-        raise Refused(why, 403)
+    background = isinstance(trigger, dict) and trigger.get("kind") == triggers.BACKGROUND
+    if background:
+        if trigger.get("feature") != AUTO_FEATURE or actor != triggers.actor_of(trigger):
+            raise Refused(f"Not asked: a background investigation is {AUTO_FEATURE}'s, as its "
+                          f"job ({triggers.actor_of(trigger)!r}), and {trigger.get('feature')!r}"
+                          f" as {actor!r} was given. Nothing was sent", 403)
+        actor_verified = ""
+    else:
+        why = _person(actor, actor_verified, person)                             # person
+        if why:
+            raise Refused(why, 403)
     off = P.ai_refusal()                                                         # mode
     if off:
         raise Refused(f"Not asked: {off}. Nothing was sent")
@@ -832,7 +862,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     plain = bool(RL.reads_off(FR.FAMILY, net_id))
     scope = None if plain else _scope(network, incident, actor, collector, series)
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
-                 data=prep["data"], actor=actor, trigger=triggers.person(actor),
+                 data=prep["data"], actor=actor,
+                 trigger=trigger if background else triggers.person(actor),
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,
                  reads_context=reads_context())
@@ -847,8 +878,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
            "fit": list(prep["said"].get("fit") or ())}
     links = {"page": f"/v2/incident/{incident.id}?list={network}", "anchor": "inc-ai"}
     version = (PROMPT_SECOND if got["pass"] == 2 else PROMPT if plain else PROMPT_READS)[1]
-    common = {"calls": ids, "prompt": f"{FEATURE}.v{version}", "by": actor,
-              "verified": actor_verified, "note": note}
+    # A background investigation names no person on its line (both or neither are kept): its
+    # trigger, the job, is on its calls' rows.
+    common = {"calls": ids, "prompt": f"{FEATURE}.v{version}",
+              "by": "" if background else actor, "verified": actor_verified, "note": note}
 
     def keep(words, **more):                                                     # record
         try:

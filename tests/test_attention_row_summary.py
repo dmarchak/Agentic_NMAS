@@ -199,6 +199,11 @@ def test_an_opened_row_is_a_summary_in_a_real_browser(client, monkeypatch, world
             b.wait_for("return location.pathname === arguments[0] && "
                        "!!document.querySelector('#inc-wrong .heal-facts')", 15,
                        f"/v2/incident/{landed['incident_page']['id']}")
+            # Premise corrected (the operator's R2, 2026-11-14: "Everything else sits below,
+            # collapsed"): What's wrong is collapsed under its heading, so it is opened, as a
+            # person opens it, before its words are read.
+            b.click("#inc-wrong summary")
+            b.wait_for("return document.querySelector('#inc-wrong details').open", 10)
             wrong = b.js("return document.querySelector('#inc-wrong').innerText")
             for fact in landed["heal_cause"]["facts"]:
                 assert low(fact["text"]) in low(wrong), fact
@@ -231,7 +236,7 @@ def test_what_the_incident_s_page_draws_is_not_drawn_again_on_the_row(client, mo
         assert T.text_of(fact) not in T.text_of(mine), fact
     inc = T.page(client, r["incident_page"]["id"])
     wrong = inc.split('id="inc-wrong"', 1)[1].split('id="inc-done"', 1)[0]
-    done = inc.split('id="inc-done"', 1)[1].split('id="inc-todo"', 1)[0]
+    done = inc.split('id="inc-done"', 1)[1].split("</section>", 1)[0]  # R2: no What to do card
     assert 'class="set-list heal-facts"' in wrong
     for fact in facts:
         assert T.text_of(fact) in T.text_of(wrong), fact

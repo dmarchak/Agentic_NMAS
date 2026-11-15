@@ -43,6 +43,7 @@
 {#- C2817 (mock 2): a dry-run record's question opens the row to its Right / Wrong. -#}
 {%- elif first == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
 {#- C2838: a lost telemetry stream's Re-subscribe… opens the row to its card, drawn in it. -#}
+{%- elif first == 'start' %}<a class="btn btn-small btn-outline" data-op="fixit-troubleshoot" data-next-acts="start" href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}#inc-bluf">Start AI troubleshooting…</a>{{ how('fixit-troubleshoot', 'start', compact=True, op='AI troubleshooting') }}
 {%- elif first == 'resubscribe' %}<a class="btn btn-small btn-outline att-jump" data-op="telemetry-resubscribe" data-next-acts="resubscribe" href="#resub-{{ r.action.device | replace('.', '-') }}">Re-subscribe {{ r.action.device }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…</a>{{ how('telemetry-resubscribe', compact=True, op='a re-subscribe') }}
 {#- The operator, 2026-11-11: a host step's row drew no action on its line; its one action is
     the Update page, where the step is said done or declined with a reason. -#}
@@ -138,7 +139,19 @@
           Both come from the alerts reader's stored value (attention.stream_fix); the action,
           Re-subscribe, follows under What to do. Whether the device answers, what Mercury
           cannot see, Seen before and Mercury's diagnosis are under Details. -#}
-      {%- if fx %}
+      {#- The operator's R2 (2026-11-14, MERCURY_CHARTER "Two standing rules"): a row about an
+          incident that carries its BLUF (`r.bluf`, the incident page's own three lines) leads
+          with them, after Open the incident and in place of its own cause: what happened,
+          the impact, and how to fix it, the fix a link to the incident's page, where its
+          control is. -#}
+      {%- if r.bluf %}
+      {%- set bf = r.bluf.fix or {} %}
+      <dl class="bluf att-bluf">
+        <div class="bluf-line" data-bluf="what"><dt>What happened</dt><dd>{{ r.bluf.what }}</dd></div>
+        <div class="bluf-line" data-bluf="impact"><dt>Impact</dt><dd>{% if r.bluf.impact %}{{ r.bluf.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</dd></div>
+        <div class="bluf-line" data-bluf="fix"><dt>How to fix it</dt><dd>{% set bfw = bf.label or {'approve': 'Review the plan…', 'start': 'Start AI troubleshooting', 'hand_over': 'Hand over…'}.get(bf.kind, '') %}{% if bfw and r.incident_page %}<a class="att-bluf-fix" data-fix="{{ bf.kind }}" href="{{ bf.href or url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) ~ '#inc-bluf' }}">{{ bfw }}</a>{% elif bfw %}{{ bfw }}{% else %}<span class="muted">Nothing to press now.</span>{% endif %}</dd></div>
+      </dl>
+      {%- elif fx %}
       <div class="att-fix">
         <p class="fix-lead att-wrong">{{ fx.lead }}</p>
         {%- if (nets.get(fx.device) or [])|length == 1 %}

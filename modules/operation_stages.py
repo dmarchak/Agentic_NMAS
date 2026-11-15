@@ -124,6 +124,13 @@ STAGES = {
     # reservation's read-back from Kea, intent read back holding the change, Add device's
     # Create passing only when every one of its steps ran); the first step that does not pass
     # stops the plan; the plan's record beside each step's own.
+    # An incident's plan of catalog operations (C3694, routes/fixit_v2.py): preflighted and drawn
+    # on the incident's page, approved once by the plan's hash (``hash``); each step is
+    # Re-subscribe's own apply, so its verify, its put-back and its record are Re-subscribe's,
+    # the plan's own record beside them.
+    "fixit_v2.approve": Stages(
+        "incident_v2.incident", "hash", "modules.heal.resubscribe.verify",
+        "modules.heal.resubscribe.put_back", "modules.plan_engine._record"),
     "plans_v2.approve": Stages(
         "plans_v2.preview", "hash", "modules.plan_engine.run",
         "n/a: a plan changes no device; the first step that does not pass stops it, each step "
@@ -601,16 +608,22 @@ HISTORY = {
                               "on the dry-run record's own History row (kind heal)"),
     # The incident page's AI troubleshooting section (board recurring-fixes v2): each choice
     # and proposal is a line of the incident's own troubleshooting record, drawn on its page.
-    "fixit_v2.cancel": ("n/a: a cancel is one line of the incident's troubleshooting record "
-                        "(modules/fixit/incident.py), drawn on the incident's page, never one "
-                        "device's record"),
-    "fixit_v2.retry": ("n/a: a re-plan is one proposal line of the incident's troubleshooting "
-                       "record (modules/fixit/incident.py), drawn on the incident's page; the "
-                       "fix it proposes runs only through its operation's own confirm"),
-    "fixit_v2.troubleshoot": ("n/a: at most two AI calls kept in the fleet's ai_calls record, "
-                              "and one proposal line of the incident's troubleshooting record "
-                              "(modules/fixit/incident.py), drawn on the incident's page; the "
-                              "fix it proposes runs only through its operation's own confirm"),
+    # The plan's steps' runs are each its device's run records, read by History's privileged
+    # source; the plan's own record beside them.
+    "fixit_v2.approve": ("privileged",),
+    "fixit_v2.deny": ("n/a: a denial is one line of the incident's troubleshooting record "
+                      "(modules/fixit/incident.py), drawn on the incident's page, never one "
+                      "device's record"),
+    "fixit_v2.modify": ("n/a: at most two AI calls kept in the fleet's ai_calls record, and one "
+                        "proposal line of the incident's troubleshooting record, drawn on the "
+                        "incident's page; the plan it proposes runs only on Approve"),
+    "fixit_v2.ask_again": ("n/a: at most two AI calls kept in the fleet's ai_calls record, and "
+                           "one proposal line of the incident's troubleshooting record, drawn "
+                           "on the incident's page; the plan it proposes runs only on Approve"),
+    "fixit_v2.start": ("n/a: one start line and at most two AI calls kept in the fleet's "
+                       "ai_calls record, and one proposal line of the incident's "
+                       "troubleshooting record, drawn on the incident's page; the plan it "
+                       "proposes runs only on Approve"),
     "fixit_v2.handover": ("n/a: a hand-over is one line of the incident's troubleshooting "
                           "record and a kept write-up, linked from the incident's page; its send "
                           "is in the notifications' delivery log, never one device's record"),

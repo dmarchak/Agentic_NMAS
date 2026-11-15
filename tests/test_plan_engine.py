@@ -38,6 +38,10 @@ def kea(kea_dir, networks, monkeypatch):  # noqa: F811
         record=lambda ln_, p, actor, reason: recorded.append((p["subject"], actor, reason))
         or {"ok": True, "commit": "abc1234"}, **kw))
     monkeypatch.setattr("modules.list_settings.kea_owner", lambda ln: (ln, "set"))
+    # The subnet holding the address is found on the same Kea (`plan_engine.dhcp_subnet_for`,
+    # B1: derived, never asked for): the Kea client itself stood in, the one I/O seam, so the
+    # plan engine's own lookup runs as written.
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: k)
     k.recorded, k.dir = recorded, kea_dir
     return k
 
@@ -55,7 +59,8 @@ def approve(plan, params, h=None, **over):
 class TestTheSchema:
     @pytest.mark.parametrize("plan, params, code, words", [
         ("reload-everything", {}, "not_a_plan",
-         "a plan is one of Mercury's (add-ztp-device, describe-link and dhcp-reservation)"),
+         "a plan is one of Mercury's (add-ztp-device, describe-link, dhcp-reservation and "
+         "incident-fix)"),
         ("dhcp-reservation", dict(RES, commands="reload"), "unknown_parameter",
          "also given: a parameter the schema does not name is refused"),
         ("dhcp-reservation", {k: v for k, v in RES.items() if k != "mac"}, "missing_parameter",
@@ -95,6 +100,41 @@ class TestTheReservationPlan:
         (step,) = got["steps"]
         # The family is the address's: the IPv6 subnet 10's own preview answers.
         assert got["ok"], step["refused"]
+
+    @pytest.mark.parametrize("address, subnet, prefix", [
+        ("10.10.20.150", "20", "10.10.20.0/24"), ("2001:db8:10::150", "10", "2001:db8:10::/64")])
+    def test_its_subnet_left_out_is_found_by_mercury_and_bound(self, kea, address, subnet,
+                                                               prefix):
+        """B1 (the operator's test, 2026-11-14): the subnet is derived from the address, never
+        a value the person or the model must give; the preview names it and where it was found,
+        and the approved run applies exactly it."""
+        found = {k: v for k, v in RES.items() if k != "subnet"}
+        found["address"] = address
+        got = E.preview("Default", "dhcp-reservation", found)
+        assert got["ok"], got["refused"]
+        (step,) = got["steps"]
+        assert got["params"]["subnet"] == "" and step["resolved"] == {"subnet": subnet}
+        assert step["drawn"]["checks"][0].startswith(f"Found: {prefix} (Kea subnet {subnet}")
+        assert step["hash"] == E.preview("Default", "dhcp-reservation",
+                                         dict(found, subnet=subnet))["steps"][0]["hash"]
+        if address == "10.10.20.150":
+            rec = approve("dhcp-reservation", found)
+            assert rec["outcome"] == "done", rec["why"]
+            assert rec["plan_steps"][0]["resolved"] == {"subnet": "20"}
+            with open(kea.dir["files"][("dhcp4", 20)], encoding="utf-8") as fh:
+                assert json.load(fh)[0]["ip-address"] == address
+
+    @pytest.mark.parametrize("over, words", [
+        ({"address": "10.10.99.5"}, "10.10.99.5 is in no subnet Mercury's DHCP serves"),
+        ({"address": "2001:db8:99::5"}, "2001:db8:99::5 is in no subnet Mercury's DHCP serves"),
+        ({"subnet": "10"}, "10.10.20.150 is not in the subnet 10: of the subnets Mercury's DHCP "
+                           "serves, 10.10.20.0/24 (Kea subnet 20, VLAN 20 - h2) contains it"),
+    ])
+    def test_no_subnet_or_a_choice_that_is_none_is_refused_in_plain_words(self, kea, over,
+                                                                            words):
+        got = E.preview("Default", "dhcp-reservation", dict(RES, **over))
+        assert not got["ok"] and words in got["refused"], got["refused"]
+        assert "subnet id" not in got["refused"]
 
     def test_approved_it_runs_its_own_apply_verify_and_record(self, kea):
         rec = approve("dhcp-reservation", RES)

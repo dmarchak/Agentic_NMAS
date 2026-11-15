@@ -142,7 +142,8 @@ in a 390 px frame.
 | The counts (C3457) | "Critical · 2", items counted | items counted still, the rows said beside them where a group draws several | **same** |
 
 Templates sha256 before: `1ff25f10f89a3ffdcb20e0bf1e96809fdedf7be51165a2e6830bf45a9ea5f538`.
-Templates sha256: `bb8ff923d1b36b02e3f82ff791115e205a3c636c050f46880958bf2b921b0b8a`
+Templates sha256: `9a37296dcbfc479e9eab5a6f8db17aa4960451e05c1f00f2a9009becec35c8a4`
+(before the R2 row lead and the lost stream's Start, 2026-11-14, below: `bb8ff923d1b36b02e3f82ff791115e205a3c636c050f46880958bf2b921b0b8a`)
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and
@@ -616,3 +617,25 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Nothing to act on | one line and What was checked, collapsed | "Every source answered and none reports anything a person must do." and What was checked, collapsed | **same** |
 | The sidebar's badge | unacknowledged Critical and Warning items | unacknowledged items of every level, Unknown included (attention.badge_of) | **deviation** (log: Board NA-R built, part 2) |
 | Phone | the severity above the title, the action under it | the same (`nar-phone-page-390`) | **same** |
+
+**Compared again 2026-11-14 (the operator's R2: "The incident page, its Needs attention row
+and the notification: The BLUF is at the top"):** a row about an incident that carries the
+BLUF (`row.bluf`) leads its opened body, after Open the incident and in place of its own
+cause, with What happened, Impact and How to fix it, the fix a link to the incident's page.
+Every other row and region is unchanged. Compared by the template's diff and the page
+tests/test_incident_bluf.py draws (`TestTheRowLeadsWithTheBluf`), not by new shots.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| An incident row's bottom line (R2) | not on board NA-R (its opened row led with the cause) | What happened, Impact, How to fix it after Open the incident, the row's own cause not drawn; its line's primary unchanged | **deviation** (log: Needs attention: a row about an incident leads with its bottom line (R2)) |
+
+**Compared again 2026-11-14 (R1 and R2, one first action for a row and its incident's page):**
+a lost stream's row whose incident offers Start AI troubleshooting (no code fix of Mercury's,
+and the AI not started by itself: `fixit.auto.offers_start`) draws Start AI troubleshooting…,
+a link to the incident's bottom line, as its line's primary in place of Re-subscribe, so the
+row and the page offer the same action (`attention.first_action`'s ``start``). Every other row
+and region is unchanged. Compared by the template's diff, not by new shots.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A lost stream's primary (R1, R2) | Re-subscribe on its line (board NA-R) | Start AI troubleshooting…, to the incident's bottom line, while its incident offers it | **deviation** (log: Needs attention: a row about an incident leads with its bottom line (R2)) |

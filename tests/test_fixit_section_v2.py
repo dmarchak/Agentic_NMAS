@@ -130,9 +130,30 @@ def page(client, iid):
 
 
 def section_of(html):
-    m = re.search(r'<section class="card fixit[^"]*" id="inc-ai".*?</section>', html, re.S)
-    assert m, "no AI troubleshooting section drawn"
-    return m.group(0)
+    """The fragment the section draws (the page's, or a post's answer). Premise corrected (the
+    operator's R2, 2026-11-14): it is the BLUF and the one card under it ("Fixing it", which
+    keeps the id `inc-ai`) with their modals, one swap target (`#inc-fixit`), where it was the
+    AI troubleshooting card alone."""
+    assert 'id="inc-fixit"' in html and 'id="inc-ai"' in html, "no AI troubleshooting drawn"
+    return html.split('<div class="inc-fixit" id="inc-fixit"', 1)[1].split(
+        'id="inc-timings"', 1)[0]
+
+
+def drawn_page(client, iid):
+    """The incident's page, held to the page's first property: a 200 that leaves every file
+    of the store as it was (tests/test_incident_page.py's `read`)."""
+    from tests import test_incident_page as TP
+
+    before = TP.stores()
+    r, html = page(client, iid)
+    assert r.status_code == 200, html[:300]
+    assert TP.stores() == before, "drawing the incident's page wrote nothing"
+    return html
+
+
+def bluf_of(html):
+    """The BLUF's three lines (`#inc-bluf`): what happened, the impact, the one next action."""
+    return html.split('id="inc-bluf"', 1)[1].split("</section>", 1)[0]
 
 
 def post(client, iid, what, **data):
@@ -148,7 +169,11 @@ class TestTheStates:
         assert r.status_code == 200, html
         sec = section_of(html)
         assert 'data-state="ready"' in sec
-        assert "No fix has been tried in this incident" in sec
+        # Premise corrected (the operator's R1 and R2, 2026-11-14): the one card's status line
+        # is the section's own (`x.status`), and a lost stream (no code fix of its kind) has
+        # the AI as its next action; "No fix has been tried" was the old state's paragraph.
+        assert re.search(r'<p class="fixit-status" data-status>[^<]+', sec)
+        assert "Start AI troubleshooting" in bluf_of(sec)
         assert "AI $0.00 of its cap of $1.00" in sec
         assert "/fixit/retry" not in sec and "/fixit/cancel" not in sec
         assert "/fixit/handover" in sec
@@ -160,11 +185,18 @@ class TestTheStates:
         _r, html = page(web, iid)
         sec = section_of(html)
         assert 'data-state="stopped"' in sec
-        assert "Stopped: " in sec and "Nothing more runs unless you choose." in sec
+        # Premise corrected (R2): the stop is said once, by the card's status line (the
+        # section's `status`), where "Stopped: … Nothing more runs unless you choose." was.
+        status = re.search(r'<p class="fixit-status" data-status>(.*?)</p>', sec, re.S).group(1)
+        assert "Start AI troubleshooting" in status, status
         assert 'data-attempt="1"' in sec and "<strong>failed:</strong>" in sec
         assert f"result={rec['id']}" in sec, "Open the run opens the run's own card"
-        assert "Retry with more information…" in sec and "/fixit/cancel" in sec
-        assert "Hand over…" in sec
+        # Premise corrected (the operator's R2, 2026-11-14: "Cancel and 'Retry with more
+        # information' are removed (Deny and Modify replace them). Hand over stays as a
+        # secondary link"): Mercury's fix failed, so the next action is the AI's.
+        assert "Retry with more information" not in sec and "/fixit/cancel" not in sec
+        assert "/fixit/retry" not in sec
+        assert "Start AI troubleshooting" in bluf_of(sec) and "Hand over…" in bluf_of(sec)
         # What it found is the run's own record: each subscription's line says its outcome,
         # and opens to its checks (C3455, the GUI review's AI2: one line per subscription).
         for sub in ("101", "102"):
@@ -177,7 +209,7 @@ class TestTheStates:
         # What Mercury has done never says nothing ran beside an attempt (C3198).
         done = html.split('id="inc-done"', 1)[1].split("</section>", 1)[0]
         assert "Nothing has run in this incident." not in done
-        assert "The 1 fix a person ran is listed under AI troubleshooting, below." in done
+        assert "The 1 fix a person ran is listed under Fixing it, above, in its Attempts." in done
 
     def test_resolved_is_read_only(self, web):
         from modules.heal import incidents
@@ -190,7 +222,9 @@ class TestTheStates:
         assert "hx-post" not in sec and "<form" not in sec
         assert 'data-attempt="1"' in sec
         # A press sent to it all the same (an older tab) is refused, with nothing recorded.
-        for what in ("cancel", "retry", "handover"):
+        # Premise corrected (R2): Cancel's and Retry's routes are gone; Start's and Hand
+        # over's remain.
+        for what in ("start", "handover"):
             r = post(web, iid, what)
             assert r.status_code == 409, what
             assert "is resolved (cleared)" in r.get_data(as_text=True), what
@@ -203,7 +237,7 @@ class TestTheStates:
         _r, html = page(web, iid)
         sec = section_of(html)
         assert 'data-state="none"' in sec and "identity is not known" in sec
-        r = post(web, iid, "cancel")
+        r = post(web, iid, "handover")  # R2: Cancel's route is gone; Hand over's remains
         assert r.status_code == 409 and "identity is not known" in r.get_data(as_text=True)
         from modules.config import list_data_path
         assert not os.path.exists(os.path.join(list_data_path(NET), "fixit")), \
@@ -240,90 +274,105 @@ ADDRESS = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b|\b[0-9a-f]{1,4}(?::[0-9a-f]{0
                      re.I)
 
 
-class TestTheChoices:
-    """The GUI review's AI1 (C3455; docs/UI_RULES.md, "Choices of one decision are drawn alike
-    and together"): Retry with more information…, Cancel and Hand over… are three buttons in one
-    row, left to right, drawn alike and none of them the page's primary, each opening its modal
-    (the operator's rule of 2026-11-12); Cancel's modal is its confirm."""
+class TestTheNextAction:
+    """The operator's R2 (2026-11-14), replacing the GUI review's AI1 row of three choices
+    (C3455): "Cancel and 'Retry with more information' are removed (Deny and Modify replace
+    them). Hand over stays as a secondary link", and "Never offer, as the next action, anything
+    that already failed on this incident". The BLUF's third line holds the ONE next action,
+    the page's one primary; Hand over… beside it is a link-styled button opening its modal
+    (the operator's rule of 2026-11-12); a press's answer is drawn under them in place."""
 
-    def test_after_a_stop_three_buttons_alike_each_opening_its_modal(self, web):
+    def test_after_a_stop_the_ai_is_the_next_action_and_hand_over_a_link(self, web):
         iid = plant()
         attempt(web)
         sec = section_of(page(web, iid)[1])
-        got = choices_of(sec)
-        assert [w for _a, w in got] == ["Retry with more information…", "Cancel", "Hand over…"]
-        assert len({attr(a, "class") for a, _w in got}) == 1, "drawn alike"
-        for a, words in got:
-            assert "btn-primary" not in attr(a, "class"), words
-            assert attr(a, "type") == "button" and attr(a, "aria-haspopup") == "dialog", words
-            mid = attr(a, "data-modal-open")
-            assert mid and attr(a, "aria-controls") == mid, words
-            assert "hx-post" not in a, f"{words} opens its modal; the modal's own button posts"
-            assert modal_of(sec, mid) is not None, f"{words}'s modal {mid} is not drawn"
-        retry, cancel, hand = (modal_of(sec, attr(a, "data-modal-open")) for a, _w in got)
-        assert "/fixit/retry" in retry and "Ask Mercury's diagnosis to re-plan" in retry
-        assert "/fixit/handover" in hand and "Send the hand-over" in hand
-        # Cancel's modal is its confirm: it alone posts, and its other button records nothing.
-        assert sec.count("/fixit/cancel") == 1 and "/fixit/cancel" in cancel
-        assert "Cancel troubleshooting" in cancel
-        assert re.search(r"<button[^>]*data-modal-close[^>]*>Keep troubleshooting</button>",
-                         cancel)
-        for body in (retry, hand):
-            assert re.search(r"<button[^>]*data-modal-close[^>]*>Cancel</button>", body)
-        assert "<summary>Retry with more information…" not in sec
-        assert "<summary>Hand over…" not in sec
-        # The section draws no primary on the page: What to do's is its one (C3450).
-        assert "btn-primary" not in outside_modals(sec)
+        bluf = bluf_of(sec)
+        assert 'data-fix="start"' in bluf
+        prim = primaries_of(outside_modals(sec))
+        assert [w for _a, w in prim] == ["Start AI troubleshooting Starting…"], prim
+        (start,) = [a for a, _w in prim]
+        assert "/fixit/start" in attr(start, "hx-post"), "Start's own route (the section's)"
+        assert attr(start, "hx-target") == "#inc-fixit"
+        # The fix that failed (attempt 1, Re-subscribe) is in Attempts, never the next action.
+        assert "Re-subscribe" not in bluf
+        attempts = sec.split('data-more="attempts"', 1)[1].split("</details>", 1)[0]
+        assert "Re-subscribe r2&#39;s telemetry (101, 102)" in attempts
+        (hand,) = re.findall(r'<button\b([^>]*\bdata-modal-open="fixit-hand-[^"]+"[^>]*)>', bluf)
+        assert attr(hand, "class").startswith("bluf-link") and "btn-primary" not in hand
+        assert attr(hand, "aria-haspopup") == "dialog" and "hx-post" not in hand
+        body = modal_of(sec, attr(hand, "data-modal-open"))
+        assert "/fixit/handover" in body and "Send the hand-over" in body
+        assert re.search(r"<button[^>]*data-modal-close[^>]*>Cancel</button>", body)
+        for gone in ("/fixit/cancel", "/fixit/retry", "Retry with more information",
+                     "Cancel troubleshooting", "Keep troubleshooting", 'class="fixit-choices"'):
+            assert gone not in sec, gone
         assert sum(web.started.values()) == 0
 
-    def test_nothing_tried_offers_hand_over_alone_and_its_modal_hands_over(self, web):
+    def test_nothing_tried_offers_one_action_and_hand_over_answers_in_place(self, web):
         iid = plant()
         sec = section_of(page(web, iid)[1])
-        assert [w for _a, w in choices_of(sec)] == ["Hand over…"]
-        assert "Troubleshoot with AI" in sec
-        assert "btn-primary" not in outside_modals(sec)
-        # Its modal's own form, pressed: the write-up kept, answered in the section in place,
-        # whose row then holds all three choices, still alike and none primary.
+        assert len(primaries_of(outside_modals(sec))) == 1
         hand = modal_of(sec, f"fixit-hand-{iid}")
-        m = re.search(r'<form class="fixit-form" hx-post="([^"]+)"', hand)
-        assert m, f"Hand over's modal holds no form that posts: {hand}"
+        m = re.search(r'<form class="fixit-form" hx-post="([^"]+)" hx-target="#inc-fixit"', hand)
+        assert m, f"Hand over's modal holds no form that posts to the fragment: {hand}"
         r = web.post(m.group(1).replace("&amp;", "&"), data={"note": ""}, headers=HX)
         out = r.get_data(as_text=True)
         assert r.status_code == 200, out
-        assert "Hand-over 1 kept." in out and 'data-state="handed_over"' in out
-        assert [w for _a, w in choices_of(out)] == ["Retry with more information…", "Cancel",
-                                                    "Hand over…"]
-        assert "btn-primary" not in outside_modals(out)
+        assert out.lstrip().startswith('<div class="inc-fixit" id="inc-fixit"'), out[:200]
+        answer = bluf_of(out).split('class="bluf-answer"', 1)[1]
+        assert "Hand-over 1 kept." in answer, "the answer is drawn under the controls"
+        assert 'data-state="handed_over"' in out
+        assert "/fixit/cancel" not in out and "Retry with more information" not in out
 
-    def test_past_the_cap_the_row_is_cancel_and_hand_over_and_cancel_confirms(self, web):
+    def test_past_the_cap_the_card_says_which_cap_and_offers_hand_over(self, web):
         iid = plant()
         attempt(web)
         setting(ai_cap_usd_per_incident=0.10)
-        sec = section_of(page(web, iid)[1])
-        assert [w for _a, w in choices_of(sec)] == ["Cancel", "Hand over…"]
-        assert "Retry isn&#39;t available" in sec.split('class="fixit-choices"', 1)[0]
-        # Cancel's confirm, pressed: one line recorded, and the row is Hand over… alone (Retry
-        # past the cap, Cancel not twice).
-        cancel = modal_of(sec, f"fixit-cancel-{iid}")
-        m = re.search(r'<button[^>]*hx-post="([^"]+)"', cancel)
-        assert m, f"Cancel's modal holds no button that posts: {cancel}"
-        r = web.post(m.group(1).replace("&amp;", "&"), headers=HX)
-        out = r.get_data(as_text=True)
-        assert r.status_code == 200, out
-        assert 'data-state="cancelled"' in out
-        assert [ln.get("choice") for ln in F.read(incident(iid))["lines"]] == ["cancel"]
-        assert [w for _a, w in choices_of(out)] == ["Hand over…"]
+        sec = section_of(drawn_page(web, iid))
+        assert "/fixit/start" not in sec, "no Start past the cap"
+        cap = re.search(r'<p class="small fixit-cap"[^>]*>(.*?)</p>', sec, re.S)
+        assert cap and "against the cap of $0.10" in cap.group(1), sec[-1500:]
+        assert "Hand over…" in bluf_of(sec) and "/fixit/cancel" not in sec
 
-    def test_a_proposal_draws_its_card_s_button_as_secondary(self, web, tmp_path):
+    def test_past_the_cap_hand_over_is_the_one_control_drawn(self, web):
+        """The old row's past-the-cap case (Cancel and Hand over…, Cancel now gone): past the
+        cap the drawn page offers Hand over… alone; no control that asks the AI (Start, Ask
+        the AI again, Modify…) or decides a plan (Approve, Deny…) is drawn or posts."""
+        iid = plant()
+        attempt(web)
+        setting(ai_cap_usd_per_incident=0.10)
+        sec = section_of(drawn_page(web, iid))
+        outside = outside_modals(sec)
+        labels = [" ".join(re.sub(r"<[^>]+>", " ", inner).split())
+                  for tag, inner in re.findall(r"<button\b([^>]*)>(.*?)</button>", outside, re.S)
+                  if "data-help" not in tag and "how-btn" not in tag and "help-panel" not in tag]
+        assert [w for w in labels if not w.startswith("How does")] == ["Hand over…"], labels
+        for route in ("start", "ask_again", "modify", "approve", "deny"):
+            assert f"/fixit/{route}" not in sec, route
+        assert [w for _a, w in primaries_of(outside)] == ["Hand over…"], \
+            "past the cap Hand over… is the one next action"
+
+    def test_a_proposal_is_its_plan_with_modify_and_deny(self, web, tmp_path):
+        """Premise corrected (R2): a proposal is a plan of steps with Approve, Modify… and
+        Deny… (`plan.preflight`), where it was one operation opened in its card from Go to the
+        proposed fix; this one repeats attempt 1, so it is refused at its preflight and draws
+        no Approve and no primary."""
         iid = plant()
         proposed(web, iid, tmp_path)
-        _r, html = page(web, iid)
+        html = drawn_page(web, iid)
         sec = section_of(html)
-        assert "Open the fix's card…" in sec
-        assert [w for _a, w in choices_of(sec)] == ["Retry with more information…", "Cancel",
-                                                    "Hand over…"]
-        assert "btn-primary" not in outside_modals(sec)
+        assert 'data-fix="approve"' in bluf_of(sec)
+        assert f"fixit-modify-{iid}" in bluf_of(sec) or f"fixit-deny-{iid}" in bluf_of(sec)
+        assert "Approve isn't offered: a step was refused at its preflight" in bluf_of(sec)
+        assert primaries_of(outside_modals(sec)) == []
         assert outside_modals(html).count("btn-primary") <= 1, "the page draws one primary"
+
+
+def primaries_of(html):
+    """Every primary control in *html*: ``(attributes, words)``."""
+    return [(a, " ".join(re.sub(r"<[^>]+>", " ", w).split()))
+            for _t, a, w in re.findall(r'<(a|button|summary)\b([^>]*\bbtn-primary\b[^>]*)>(.*?)</\1>',
+                                       html, re.S)]
 
 
 class TestWhatItFound:
@@ -353,6 +402,12 @@ class TestWhatItFound:
                         {"width": 1280, "height": 900})
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
                 b.wait_for("return !!document.querySelector('#inc-ai .fixit-sub')")
+                # Premise corrected (the operator's R2, 2026-11-14: "Everything else sits below,
+                # collapsed"): the lines are under the card's collapsed "What attempt 1 found",
+                # opened first as a person opens it; each line is then read as before.
+                b.click('#inc-ai details[data-more="found"] > summary')
+                b.wait_for("return document.querySelector('#inc-ai details[data-more=found]')"
+                           ".open")
                 closed = b.js(read)
                 b.js("document.querySelector('#inc-ai .fixit-sub > summary')"
                      ".scrollIntoView({block: 'center'})")
@@ -399,60 +454,111 @@ class TestWhatItFound:
 
 
 class TestTheRepeatsHash:
-    """The GUI review's AI3 (C3455): the proposal's warning holds no parameter hash; the hash
-    it was compared by is in The record."""
+    """The GUI review's AI3 (C3455): the repeat's words hold no parameter hash. Premise
+    corrected (the operator's R2, 2026-11-14: "Never offer, as the next action, anything that
+    already failed on this incident"): a plan repeating a failed attempt is refused at its
+    preflight, naming the attempt, where it was flagged and offered; Approve is not drawn. The
+    plan's shape (`plan.preflight`) carries no parameter hash, so The record's "Proposed fix's
+    parameter hash" line is not drawn for it."""
 
-    def test_the_warning_names_no_hash_and_the_record_does(self, web, tmp_path):
+    def test_the_repeat_is_refused_naming_its_attempt_and_no_hash(self, web, tmp_path):
         iid = plant()
         proposed(web, iid, tmp_path)
         line = F.read(incident(iid))["lines"][-1]
         hashed = F.params_hash(line["operation"], line["params"])
-        _r, html = page(web, iid)
-        flag = re.search(r'<p class="fixit-flag".*?</p>', section_of(html), re.S).group(0)
-        assert "Proposed before in this incident: attempt 1, failed" in flag
-        assert hashed not in flag and "hash" not in flag, flag
-        assert hashed not in section_of(html)
+        html = drawn_page(web, iid)
+        sec = section_of(html)
+        step = re.search(r'<li class="fixit-step fixit-step-refused" data-step="1".*?</li>',
+                         sec, re.S)
+        assert step, sec[:2000]
+        said = " ".join(re.sub(r"<[^>]+>", " ", step.group(0)).split())
+        assert "already failed on this incident as attempt 1" in said, said
+        assert hashed not in sec and "parameter hash" not in sec
+        assert "/fixit/approve" not in sec, "a repeat is never approvable"
+
+    def test_the_warning_names_no_hash_and_the_record_does(self, web, tmp_path):
+        """The old guarantee kept (C3455's AI3): the words a person reads name no hash; the
+        incident's record keeps what was refused, by hash: the refused plan's own (as Approve
+        would have bound it) and the repeating step's parameter hash, the same as attempt 1's."""
+        from modules.fixit import plan as FP
+        iid = plant()
+        proposed(web, iid, tmp_path)
+        line = F.read(incident(iid))["lines"][-1]
+        hashed = F.params_hash(line["operation"], line["params"])
+        assert line["params_hash"] == hashed, "the stored record keeps the parameter hash"
+        plan = FP.preflight(incident(iid), line)
+        assert plan["hash"] == "" and not plan["approvable"]
+        assert len(plan["refused_hash"]) == 16
+        html = drawn_page(web, iid)
+        sec = section_of(html)
+        for h in (hashed, plan["refused_hash"]):
+            assert h not in sec, h
+        assert "hash" not in " ".join(re.sub(r"<[^>]+>", " ", outside_modals(sec)).split())
         record = html.split('class="card tl-record-d', 1)[1].split("</details>", 1)[0]
-        m = re.search(r"<dt>Proposed fix's parameter hash</dt><dd>(.*?)</dd>", record, re.S)
-        assert m, record[-600:]
-        said = " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
-        assert said == f"{hashed} · proposal {line['proposal']} · the same as attempt 1's"
+        m = re.search(r"<dt>The refused plan</dt><dd>(.*?)</dd>", record, re.S)
+        assert m, record[-800:]
+        said = " ".join(re.sub(r"<[^>]+>", "", m.group(1)).split()).replace("&#39;", "'")
+        assert said == (f"{plan['refused_hash']} · proposal {line['proposal']} · step 1's "
+                        f"parameter hash {hashed}, the same as attempt 1's"), said
 
 
-# ── Cancel runs nothing (the operator's test 3, at the route) ───────────────────────────────
+# ── Cancel and Retry are gone (the operator's R2, 2026-11-14) ──────────────────────────────
 
-class TestCancel:
-    def test_one_line_nothing_started_the_page_stays_open(self, web):
+class TestCancelAndRetryAreGone:
+    """Premise corrected (the operator's R2, 2026-11-14: "Cancel and 'Retry with more
+    information' are removed (Deny and Modify replace them)"): their routes answer 404 and
+    record nothing, and the page draws neither. What the old TestCancel held of Cancel (one
+    line, nothing started) has no control left to hold."""
+
+    @pytest.mark.parametrize("what", ["cancel", "retry"])
+    def test_their_routes_are_gone_and_record_nothing(self, web, what):
         iid = plant()
         attempt(web)
-        r = post(web, iid, "cancel")
-        out = r.get_data(as_text=True)
-        assert r.status_code == 200, out
-        assert "Troubleshooting cancelled" in out and 'data-state="cancelled"' in out
-        assert sum(web.started.values()) == 0
-        lines = F.read(incident(iid))["lines"]
-        assert [ln.get("choice") for ln in lines] == ["cancel"] and lines[0]["attempts"] == 1
-        assert F.state_of(incident(iid), None) == "cancelled"
-        r2, html = page(web, iid)
-        assert r2.status_code == 200 and "Troubleshooting cancelled" in section_of(html)
-        # Cancelled, Retry stays the way back in; Cancel is not offered twice.
-        assert "Retry with more information…" in section_of(html)
-        assert "/fixit/cancel" not in section_of(html)
-
-    def test_an_unverified_request_is_refused_and_records_nothing(self, web, monkeypatch):
-        iid = plant()
-        monkeypatch.setattr("modules.identity.verified_identity", lambda *a, **k: None)
-        r = post(web, iid, "cancel")
-        assert r.status_code == 403
-        assert "verified person&#39;s press" in r.get_data(as_text=True)
+        r = post(web, iid, what, note="x")
+        assert r.status_code == 404, r.get_data(as_text=True)[:300]
         assert F.read(incident(iid))["state"] == "absent"
+        assert sum(web.started.values()) == 0
+        sec = section_of(page(web, iid)[1])
+        assert f"/fixit/{what}" not in sec and "Retry with more information" not in sec
+        assert "Cancel troubleshooting" not in sec
 
-    def test_an_id_no_record_holds_is_404_said(self, web):
-        r = post(web, "hi-000000000000", "cancel")
-        assert r.status_code == 404 and "no incident" in r.get_data(as_text=True)
+
+class TestAnUnknownIncident:
+    """The old TestCancel's 404 kept for every control that replaced it: each fixit POST route
+    on an id no record holds answers 404, says so in words, and records nothing (no file under
+    the data folder written, no model asked, nothing started)."""
+
+    UNKNOWN = "hi-000000000000"
+    ROUTES = ["approve", "modify", "deny", "ask_again", "start", "handover", "handover/1/send"]
+
+    @pytest.mark.parametrize("what", ROUTES)
+    def test_an_id_no_record_holds_is_404_said(self, web, what):
+        from html import unescape
+
+        from modules import config
+        from tests.test_fixit_preview import _tree
+        plant()                                      # one real incident, so the store is read
+        before = _tree(config.DATA_DIR)
+        assert any("incident" in p for p in before), "floor: the incidents store is there"
+        r = post(web, self.UNKNOWN, what, proposal="p1", hash="0" * 16, text="x y z",
+                 note="x", reason="x", team="t-1")
+        said = " ".join(unescape(re.sub(r"<[^>]+>", " ", r.get_data(as_text=True))).split())
+        assert r.status_code == 404, said[:300]
+        assert f"{self.UNKNOWN} is no incident this network's records hold" in said, said[:300]
+        assert _tree(config.DATA_DIR) == before, "nothing is recorded"
+        assert F.read(incident(self.UNKNOWN))["state"] == "absent"
+        assert sum(web.started.values()) == 0, web.started
+
+    def test_every_fixit_post_route_is_asked(self):
+        """The population: every POST rule of the blueprint is one of ROUTES (by its rule)."""
+        import app as A
+        rules = {r.rule.split("/fixit/", 1)[1].replace("<int:version>", "1")
+                 for r in A.app.url_map.iter_rules()
+                 if r.endpoint.startswith("fixit_v2.") and "POST" in (r.methods or ())}
+        assert len(rules) >= 7 and rules == set(self.ROUTES), rules
 
 
-# ── Retry with more information, through Mercury's own proposer ────────────────────────────
+# ── Mercury's own re-plan, through its proposer (`section.retry`) ──────────────────────────
 
 @pytest.fixture
 def counted(monkeypatch):
@@ -473,92 +579,42 @@ def setting(**kw):
     assert got["ok"], got
 
 
-class TestRetry:
-    def test_it_re_plans_with_mercury_s_diagnosis_flagging_the_repeat(self, web, counted,
-                                                                      tmp_path):
-        from markupsafe import escape
-        iid = plant()
-        rec = attempt(web)
-        diagnosed(iid, tmp_path)
-        web.started.update(dict.fromkeys(web.started, 0))     # the diagnosis's own reads
-        _r, html = page(web, iid)
-        assert "What the AI would be sent, once it is asked" in html
-        assert "Mercury's diagnosis does not read words" in html
-        r = post(web, iid, "retry", note="the collector's socket looks stuck",
-                 drawn_spent=hidden(html, "drawn_spent"), drawn_cap=hidden(html, "drawn_cap"))
-        out = r.get_data(as_text=True)
-        assert r.status_code == 200, out
-        assert len(counted) == 1
-        assert 'data-state="proposed"' in out
-        # The failed attempt's outcome in the operation's own words (its whole words are on
-        # its line's hover and its card).
-        assert rec["outcome"] == "not_back" and rec["why"]
-        assert ("Proposed before in this incident: attempt 1, failed: re-subscribed; the "
-                "stream did not come back") in out
-        assert f'title="{escape(rec["why"])}"' in out
-        assert "Open the fix's card…" in out
-        (line,) = F.read(incident(iid))["lines"]
-        assert line["source"] == "mercury" and line["operation"] == "telemetry-resubscribe"
-        assert line["params"] == {"subs": ["101", "102"], "collector_step": False}
-        assert line["note"] == "the collector's socket looks stuck"
-        assert line["by"] and line["verified"]
-        assert sum(web.started.values()) == 0, "a re-plan starts nothing"
+class TestTheCap:
+    """Past the per-incident cap the AI is not offered and the card says both figures (what
+    TestRetry's cap test held of the page; the rest of TestRetry held Mercury's own re-plan,
+    `section.retry`, removed with Retry with more information by the operator's R2,
+    2026-11-14)."""
 
-    def test_no_diagnosis_is_a_proposal_of_nothing_said(self, web, counted):
-        iid = plant()
-        attempt(web)
-        r = post(web, iid, "retry", note="")
-        out = r.get_data(as_text=True)
-        assert r.status_code == 200 and len(counted) == 1
-        assert "none Mercury can run" in out and "has not diagnosed this incident" in out
-        (line,) = F.read(incident(iid))["lines"]
-        assert line["operation"] == "" and "has not diagnosed" in line["words"]
-
-    def test_past_the_cap_retry_is_not_offered_and_says_both_figures(self, web, counted):
+    def test_past_the_cap_the_ai_is_not_offered_and_both_figures_are_said(self, web):
         iid = plant()
         attempt(web)
         setting(ai_cap_usd_per_incident=0.10)
-        _r, html = page(web, iid)
-        sec = section_of(html)
-        assert "Retry with more information…" not in sec
+        sec = section_of(drawn_page(web, iid))
+        assert "/fixit/start" not in sec and "Retry with more information" not in sec
+        assert "Start AI troubleshooting" not in [w for _a, w in primaries_of(sec)]
         from modules.fixit.policy import money
         worst = money(S.worst_usd())                  # the pin's two calls, from its prices
-        assert (f"Spent $0.00 in this incident; the next attempt costs at most {worst}, which "
-                f"would make {worst} against the cap of $0.10") in sec
-        assert "/fixit/cancel" in sec and "Hand over…" in sec
-        assert counted == []
-
-    def test_a_press_after_the_cap_moved_is_refused_naming_what_moved(self, web, counted):
-        iid = plant()
-        attempt(web)
-        _r, html = page(web, iid)
-        drawn = {"drawn_spent": hidden(html, "drawn_spent"),
-                 "drawn_cap": hidden(html, "drawn_cap")}
-        assert drawn == {"drawn_spent": "0.000000", "drawn_cap": "1.000000"}
-        setting(ai_cap_usd_per_incident=0.10)
-        r = post(web, iid, "retry", note="x", **drawn)
-        out = r.get_data(as_text=True)
-        assert r.status_code == 409, out
-        assert "the per-incident cap was $1.00 when the panel was drawn and is $0.10 now" in out
-        assert counted == [], "the proposer is not asked past the cap"
-        assert F.read(incident(iid))["state"] == "absent", "nothing is recorded"
-
-    def test_an_unverified_press_is_refused_before_the_proposer(self, web, counted,
-                                                               monkeypatch):
-        iid = plant()
-        attempt(web)
-        monkeypatch.setattr("modules.identity.verified_identity", lambda *a, **k: None)
-        r = post(web, iid, "retry", note="x")
-        assert r.status_code == 403 and counted == []
+        cap = re.search(r'<p class="small fixit-cap"[^>]*>(.*?)</p>', sec, re.S)
+        assert cap and worst in cap.group(1) and "$0.10" in cap.group(1), sec[-1200:]
+        assert "Hand over…" in bluf_of(sec)
 
 
 # ── The operation's card from the proposal: the repeat, and the run's record (C3106) ───────
 
+def replan(iid):
+    """One proposal line of Mercury's: the re-subscribe attempt 1 ran, as the removed Retry
+    with more information recorded it from Mercury's diagnosis. Premise corrected (the
+    operator's R2, 2026-11-14): Retry's route and `section.retry` are gone with its control,
+    so the line is planted by the troubleshooting record's own writer."""
+    return F.record_proposal(incident(iid), "mercury", "telemetry-resubscribe",
+                             {"subs": ["101", "102"], "collector_step": False}, by=ACTOR,
+                             verified="access-proxy", note="")
+
+
 def proposed(web, iid, tmp_path):
     attempt(web)
     diagnosed(iid, tmp_path)
-    r = post(web, iid, "retry", note="")
-    assert r.status_code == 200
+    replan(iid)
     return F.read(incident(iid))["lines"][-1]["proposal"]
 
 
@@ -785,9 +841,10 @@ class TestTheFigures:
 
 class TestOnAProjector:
     """In Firefox (where one runs; skipped naming why elsewhere), at 1920x1080 (the board's
-    "readable at 1920x1080 on a projector, with no inner scroll"): with a failed attempt, and
-    Retry's and Hand over's modals each opened in turn (C3455: each choice is a modal), no
-    element of the section scrolls inside itself, and each attempt is one line."""
+    "readable at 1920x1080 on a projector, with no inner scroll"): with a failed attempt, its
+    Attempts opened and Hand over's modal opened (the operator's R2, 2026-11-14: Retry's modal
+    is gone), no element of the BLUF or the one card scrolls inside itself, and each attempt
+    is one line."""
 
     def test_no_element_of_the_section_scrolls_inside_itself(self, web):
         from tests import browser
@@ -797,26 +854,24 @@ class TestOnAProjector:
         import app as APP
         iid = plant()
         attempt(web)
-        scrolls, opened = {}, {}
+        mid = f"fixit-hand-{iid}"
         with browser.Served(APP.app) as srv, browser.Browser() as b:
             try:
                 b._call("POST", f"/session/{b.session}/window/rect",
                         {"width": 1920, "height": 1080})
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
-                b.wait_for("return !!document.querySelector('#inc-ai .fixit-choices')")
-                # Retry's modal and Hand over's opened as a person opens them, one at a time.
-                for key in ("retry", "hand"):
-                    mid = f"fixit-{key}-{iid}"
-                    b.click(f'#inc-ai [data-modal-open="{mid}"]')
-                    opened[key] = b.wait_for(f"return document.getElementById('{mid}').open")
-                    scrolls[key] = b.js(
-                        "return Array.prototype.filter.call(document.querySelectorAll("
-                        "'#inc-ai, #inc-ai *'), function (e) { var o = getComputedStyle(e);"
-                        "return (o.overflowY === 'auto' || o.overflowY === 'scroll' || "
-                        "o.overflowX === 'auto' || o.overflowX === 'scroll') && "
-                        "(e.scrollHeight > e.clientHeight + 1 || "
-                        "e.scrollWidth > e.clientWidth + 1);}).length")
-                    b.js(f"document.getElementById('{mid}').close()")
+                b.wait_for("return !!document.querySelector('#inc-bluf .bluf-acts')")
+                b.click('#inc-ai details[data-more="attempts"] > summary')
+                b.click(f'#inc-bluf [data-modal-open="{mid}"]')
+                opened = b.wait_for(f"return document.getElementById('{mid}').open")
+                scrolls = b.js(
+                    "return Array.prototype.filter.call(document.querySelectorAll("
+                    "'#inc-fixit, #inc-fixit *'), function (e) { var o = getComputedStyle(e);"
+                    "return (o.overflowY === 'auto' || o.overflowY === 'scroll' || "
+                    "o.overflowX === 'auto' || o.overflowX === 'scroll') && "
+                    "(e.scrollHeight > e.clientHeight + 1 || "
+                    "e.scrollWidth > e.clientWidth + 1);}).length")
+                b.js(f"document.getElementById('{mid}').close()")
                 lines = b.js("var a = document.querySelector('#inc-ai .fixit-a');"
                              "var lh = parseFloat(getComputedStyle(a).lineHeight) || 18;"
                              "return Math.round(a.getBoundingClientRect().height / lh);")
@@ -825,14 +880,13 @@ class TestOnAProjector:
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
-        assert opened == {"retry": True, "hand": True}, opened
-        assert scrolls == {"retry": 0, "hand": 0}, \
-            "something scrolls inside the AI troubleshooting section"
+        assert opened, "Hand over's modal opened"
+        assert scrolls == 0, "something scrolls inside the BLUF or the one card"
         assert lines <= 2, f"an attempt's line wraps to {lines} lines at 1920"
         assert wide, "the page scrolls sideways at 1920"
 
 
-# ── C3455: each choice's modal in a real browser ────────────────────────────────────────────
+# ── The BLUF's modals in a real browser (C3455; the operator's R2, 2026-11-14) ────────────────
 
 #: WebDriver's Escape key.
 ESCAPE = ""
@@ -877,55 +931,59 @@ def anchored(w: dict) -> str:
 
 
 class TestTheModals:
-    """In Firefox (skipped naming why where none runs): each of the three choices opens its
-    modal on its press, anchored to it, with the focus inside it and the page behind it inert
-    (`:modal`); Escape closes it and the focus is back on its button; Cancel's confirm records
-    its one line, answered in the section in place, the focus on the answer (the operator's rule
-    of 2026-11-12; C3455)."""
+    """In Firefox (skipped naming why where none runs): each of the BLUF's choices that takes
+    words, Modify…, Deny… and Hand over…, opens its modal on its press, anchored to it, with the
+    focus inside it and the page behind it inert (`:modal`); Escape closes it and the focus is
+    back on its button; Modify's Cancel closes it too; Hand over's confirm keeps its write-up,
+    answered under the BLUF's buttons in place, the focus on the answer (the operator's rule
+    of 2026-11-12; C3455; the operator's R2, 2026-11-14: Retry's and Cancel's modals are gone,
+    the plan planted over the section's model, as tests/test_incident_bluf.py plants it)."""
 
-    def test_each_choice_opens_its_modal_anchored_and_escape_gives_the_focus_back(self, web):
+    def test_each_choice_opens_its_modal_anchored_and_escape_gives_the_focus_back(self, web,
+                                                                                  monkeypatch):
         from tests import browser
+        from tests.test_incident_bluf import plan, planted
         ok, why = browser.available()
         if not ok:
             pytest.skip(f"no real browser here ({why}); the section's own checks above still run")
         import app as APP
         iid = plant()
         attempt(web)
+        planted(monkeypatch, iid, fix="approve", proposal=plan(iid),
+                offered=("approve", "modify", "deny"))
         seen, after, closed_by_cancel, confirmed = {}, {}, None, None
         with browser.Served(APP.app) as srv, browser.Browser() as b:
             try:
                 b._call("POST", f"/session/{b.session}/window/rect",
                         {"width": 1280, "height": 900})
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
-                b.wait_for("return !!document.querySelector('#inc-ai .fixit-choices')")
-                for key in ("retry", "cancel", "hand"):
+                b.wait_for("return !!document.querySelector('#inc-bluf .bluf-acts')")
+                for key in ("modify", "deny", "hand"):
                     mid = f"fixit-{key}-{iid}"
                     b.js("document.querySelector(arguments[0]).scrollIntoView({block: 'center'})",
                          f'[data-modal-open="{mid}"]')
-                    b.click(f'#inc-ai [data-modal-open="{mid}"]')
+                    b.click(f'#inc-bluf [data-modal-open="{mid}"]')
                     b.wait_for(f"return document.getElementById('{mid}').open")
                     seen[key] = b.js(WHERE, mid)
                     press_key(b, ESCAPE)
                     b.wait_for(f"return !document.getElementById('{mid}').open")
                     after[key] = b.js(WHERE, mid)
-                # Retry's own Cancel closes it too, and gives the focus back.
-                mid = f"fixit-retry-{iid}"
-                b.click(f'#inc-ai [data-modal-open="{mid}"]')
+                # Modify's own Cancel closes it too, and gives the focus back.
+                mid = f"fixit-modify-{iid}"
+                b.click(f'#inc-bluf [data-modal-open="{mid}"]')
                 b.wait_for(f"return document.getElementById('{mid}').open")
                 b.click(f"#{mid} [data-modal-close]")
                 b.wait_for(f"return !document.getElementById('{mid}').open")
                 closed_by_cancel = b.js(WHERE, mid)
-                # Cancel's confirm: its one line recorded, the answer drawn in place.
-                mid = f"fixit-cancel-{iid}"
-                b.click(f'#inc-ai [data-modal-open="{mid}"]')
+                # Hand over's confirm: the write-up kept, the answer drawn in place.
+                mid = f"fixit-hand-{iid}"
+                b.click(f'#inc-bluf [data-modal-open="{mid}"]')
                 b.wait_for(f"return document.getElementById('{mid}').open")
                 b.click(f"#{mid} button[data-op]")
-                b.wait_for("return document.querySelector('#inc-ai').dataset.state === "
-                           "'cancelled'")
                 confirmed = b.wait_for(
-                    "var a = document.activeElement; return !document.getElementById("
-                    f"'{mid}') && a && a.classList.contains('set-result') && "
-                    "document.querySelector('#inc-ai').contains(a) && a.textContent.trim()")
+                    "var a = document.activeElement; return a && a.classList.contains("
+                    "'set-result') && document.querySelector('#inc-bluf .bluf-answer')"
+                    ".contains(a) && a.textContent.trim()", 20)
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
@@ -937,6 +995,6 @@ class TestTheModals:
             assert not w["open"] and w["focus_on_opener"], \
                 f"Escape on {key}'s modal left {w} (the focus is not back on its button)"
         assert not closed_by_cancel["open"] and closed_by_cancel["focus_on_opener"]
-        assert confirmed and confirmed.startswith("Cancelled: one line recorded"), confirmed
-        assert [ln.get("choice") for ln in F.read(incident(iid))["lines"]] == ["cancel"]
-        assert sum(web.started.values()) == 0
+        assert confirmed and "Hand-over 1 kept" in confirmed, confirmed
+        assert [ln.get("version") for ln in F.read(incident(iid))["lines"]
+                if "version" in ln] == [1]

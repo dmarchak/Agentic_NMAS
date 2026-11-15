@@ -170,6 +170,9 @@ ANNOUNCERS = {
     # modules/attention_store.py (C3166): a recompute that changed what the list draws.
     "needs-attention": ("attention",),
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
+    # modules/troubleshoot_job.py (the operator, 2026-11-14): an AI troubleshooting investigation's
+    # job ended (Start AI troubleshooting, Modify, Ask the AI again, R1's automatic start).
+    "fixit-investigation": ("ai_calls", "drift", "in_progress"),
     # routes/settings_v2.display_name (board E2a): a display name changed, for every open
     # page's name chip and Needs attention; the posting page hears its own response.
     "display-names": ("people",),
@@ -415,9 +418,11 @@ DECLARED = {
     # The incident page's AI troubleshooting section (routes/fixit_v2.py): each post draws the
     # section again in place, and an incident's page open elsewhere (its live region rides on
     # drift) reads the incident's record again; a hand-over's send moves the notifications log.
-    "fixit_v2.cancel": ("drift",),
-    "fixit_v2.retry": ("drift",),
-    "fixit_v2.troubleshoot": ("ai_calls", "drift"),
+    "fixit_v2.approve": ("privileged", "drift", "in_progress"),
+    "fixit_v2.deny": ("drift",),
+    "fixit_v2.modify": ("ai_calls", "drift"),
+    "fixit_v2.ask_again": ("ai_calls", "drift"),
+    "fixit_v2.start": ("ai_calls", "drift"),
     "fixit_v2.handover": ("drift", "notifications"),
     "fixit_v2.handover_send": ("drift", "notifications"),
     # Notifications (board H, artboard B; H9; routes/notify_v2.py): the relay's password is a

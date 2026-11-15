@@ -667,7 +667,7 @@ class TestACantFixsSteps:
         monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Default"])
         page = A.app.test_client().get(f"/v2/incident/{inc}?list=Default")
         assert page.status_code == 200
-        done = page.get_data(as_text=True).split('id="inc-done"', 1)[1].split('id="inc-todo"')[0]
+        done = page.get_data(as_text=True).split('id="inc-done"', 1)[1].split("</section>", 1)[0]  # R2
         assert "data-run-stepper" in done and 'class="run-stages"' in done
         # Drawn, for a row with no page: ONE closed line on the row, the stepper inside it; the
         # cause above says why, so the step it stopped at is named and its sentence is not

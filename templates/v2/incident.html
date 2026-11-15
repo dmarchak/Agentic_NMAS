@@ -3,16 +3,21 @@
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- One incident's own page (the incident page's board, part B; the operator's design change
     of 2026-11-11: "each incident gets its own page"), for a self-healing incident (an `hi-`
-    id). `modules/incident_page.page` is its model, from routes/incident_v2. Top to bottom: the
-    header (the state, the level, the device, the four recorded times and TIME TO REPAIR, one
-    line per attempt), the timeline, What's wrong, What Mercury has done (THE stepper's five
-    stages, as the heal's card on its device's page draws them, then Mercury's diagnosis in
-    full), What to do, the AI troubleshooting frame, then Evidence, Seen before and The
-    record. ONE state for the whole page (the GUI review's item 2, C3450; the operator,
+    id). `modules/incident_page.page` is its model, from routes/incident_v2. Top to bottom
+    (the operator's R2, 2026-11-14, MERCURY_CHARTER "Two standing rules": the bottom line up
+    front, everything else collapsed below): the header (the title, the state, the level, the
+    device); the BLUF's three lines and the ONE card that What to do and AI troubleshooting
+    became (`_fixit_section.html`, which every fix-it post draws again in place), the
+    incident's own Needs attention action handed to it as `item_action` and what the item
+    says beside it as `item_more`; then, collapsed: the timings (the four recorded times, TIME
+    TO REPAIR, one line per attempt), the timeline, What's wrong, What Mercury has done (THE
+    stepper's five stages, as the heal's card on its device's page draws them, then Mercury's
+    diagnosis in full), Evidence, Seen before and The record. ONE state for the whole page (the GUI review's item 2, C3450; the operator,
     2026-11-13; `incident_page.status`): the header's badge and every section carry it
-    (`data-inc-state`), and none says another. What to do says it in words and, while a person
-    is needed, draws the ONE action the incident's own Needs attention item offers as the
-    page's one primary button (`p.item`: `incident_page.item_of`, which action being
+    (`data-inc-state`), and none says another. The one card says it in words and, while a
+    person is needed and the BLUF's fix is the item's (`bluf.fix.kind` button), the BLUF draws
+    the ONE action the incident's own Needs attention item offers as the page's one primary
+    button (`p.item`: `incident_page.item_of`, which action being
     `attention.first_action`'s answer, the resolver the item's own line asks); its card (a
     proposal's, a Re-subscribe's) is read and drawn under the button when it is pressed, the
     button never moving. A page that needs nobody draws no primary button. What the item kept
@@ -81,6 +86,78 @@
       {%- if p.resolved %} <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
       {%- elif p.opened %} <span>since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
   </div></div>
+</section>
+{%- set fx = r.fix %}
+{#- The incident's own Needs attention action (the GUI review's item 2, C3450), handed to the
+    BLUF as its one next action where the BLUF's fix is the item's (`bluf.fix.kind` button):
+    the ONE action as the page's one primary button (`it.first`: `attention.first_action`'s
+    answer, the resolver the item's line asks). An action drawn in place opens its card UNDER
+    the button when it is pressed (`inc-card`, read then: `toggle once`), so the button never
+    moves (docs/UI_RULES.md, "No control moves when its own result appears"); Re-subscribe
+    carries the incident, so its run is this incident's attempt. A Re-subscribe that already
+    failed here is never the item's action (`incident_page.page`, R2). -#}
+{%- set item_action %}
+  {%- if it.first %}
+  {%- set opener = 'inc-open-' ~ p.id %}
+  <div class="inc-act" data-first="{{ it.first }}" data-item="{{ it.state }}">
+    {%- if it.first == 'run' %}
+    <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
+    <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
+    {%- elif it.first == 'start' %}
+    {#- The item's action is Start AI troubleshooting, the BLUF's own button above: never a
+        second one here. -#}
+    <p class="small muted">Start AI troubleshooting, above, is this incident's next action.</p>
+    {%- elif it.first == 'heal_proposal' %}
+    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">Review the fix…</summary></details>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
+    <div class="inc-card"><div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading the proposal as Mercury recorded it, with Approve and Decline…</p></div></div>
+    {%- elif it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length == 1 %}
+    {%- set rd = r.action.device %}
+    {#- C3078: a proposal naming the collector step opens the card with it, and says so. -#}
+    {%- set stepped = ((p.fixit or {}).proposal or {}).operation == 'telemetry-collector-resubscribe' %}
+    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">{% if stepped %}Close the collector's stale session for {{ rd }}, then re-subscribe ({{ (r.action.subs or [])|join(', ') }})…{% else %}Re-subscribe {{ rd }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…{% endif %}</summary></details>{{ how('telemetry-resubscribe', 'the-collector-step' if stepped else '', compact=True, op='the collector step' if stepped else 'a re-subscribe') }}
+    <div class="inc-card"><div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(','), fixit=(p.id if p.fixit.state != 'none' else none), collector=('1' if stepped else none)) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading what Re-subscribe will send to {{ rd }}, from its committed intent…</p></div></div>
+    {%- elif it.first == 'heal_mark' and r.heal_mark %}
+    {#- A dry-run record's question has two answers, Right and Wrong…, neither the primary. -#}
+    {%- with list_name=r.heal_mark.list, decision_id=r.heal_mark.decision, mark=r.heal_mark.mark, unreadable=r.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}
+    {%- elif it.first == 'likely' %}
+    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
+    {%- elif it.first == 'href' %}
+    <a class="btn btn-small btn-primary" href="{{ r.action.href }}">Open…</a>
+    {%- else %}
+    {#- The item's first device, in its own network when that is known (C493): the action of
+        a can't-fix, and of an incident whose item is not on Needs attention now. -#}
+    {%- set d = (r.devices or [p.device])[0] %}
+    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else p.network)) }}">Open {{ d }}</a>
+    {%- endif %}
+  </div>
+  {%- endif %}
+{%- endset %}
+{#- What the item says beside its action, drawn under the one card's status line: its own
+    words, Diagnose… (board H's amendment, artboard I: the device's dialog, beside the action
+    and never a second primary), why an action is not offered, and how its item clears. -#}
+{%- set item_more %}
+  {%- if p.todo.more %}<p class="inc-more">{{ p.todo.more | times }}</p>{% endif %}
+  {%- if it.first %}
+  {%- if r.diagnose and r.diagnose.device %}
+  <p class="small inc-diagnose"><span class="op-act"><a class="btn btn-small btn-outline" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=r.diagnose.device, list=r.diagnose.list) if r.diagnose.unreachable else url_for('device_v2.device', name=r.diagnose.device, list=r.diagnose.list, op='diagnose', **r.diagnose.args) }}" title="{{ r.diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted small">{{ r.diagnose.words }}</span></p>
+  {%- endif %}
+  {%- if it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length != 1 %}
+  <p class="small muted">Re-subscribe is not offered: {{ (nets.get(r.action.device) or [])|length }} of the networks Mercury holds name a device {{ r.action.device }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
+  {%- endif %}
+  {%- if r.diagnose and not r.diagnose.device %}<p class="small muted">Diagnose… is not offered: {{ r.diagnose.words }}.</p>{% endif %}
+  {%- if r.clears %}<p class="small att-clears">Its Needs attention item clears when {{ r.clears }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
+  {%- endif %}
+{%- endset %}
+{#- The BLUF and the one card (`modules/fixit/section.py`), drawn with no AI call; its posts
+    draw it again in place (routes/fixit_v2.py). -#}
+{%- set x = p.fixit %}
+{%- set answer = {} %}
+{%- set item_state = it.state %}
+{% include "v2/_fixit_section.html" %}
+{#- Timings, collapsed (R2): the four recorded times, TIME TO REPAIR and one line per
+    attempt. -#}
+<details class="card inc-timings" id="inc-timings" data-keep="inc-timings-{{ p.id }}">
+  <summary>Timings · {% if p.ttr.seconds is not none %}repaired in {{ p.ttr.words }}{% elif p.opened %}since {{ at(p.opened) }}{% else %}not recorded{% endif %}</summary>
   <dl class="inc-times">
     {%- for c in p.header %}
     <div class="inc-time inc-time-{{ c.state }}" data-cell="{{ c.name | lower }}"{% if c.hover %} title="{{ c.hover }}"{% endif %}><dt>{{ c.name }}</dt><dd>{{ cell(c) }}</dd></div>
@@ -96,7 +173,7 @@
     {%- else %} <strong>applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verify failed</strong>
     {%- endif %}{% if a.who %} · {{ a.who }}{% endif %}</p>
   {%- endfor %}
-</section>
+</details>
 {%- if p.events %}
 <details class="card inc-events" data-keep="inc-events-{{ p.id }}"{% if p.resolved %} open{% endif %}>
   <summary>Timeline · {{ p.events | length }} recorded event{{ '' if p.events | length == 1 else 's' }}, oldest first</summary>
@@ -107,13 +184,14 @@
   </ol>
 </details>
 {%- endif %}
-<section class="card" id="inc-wrong" aria-labelledby="h-inc-wrong" data-inc-state="{{ p.state }}">
-  <div class="card-head"><h2 id="h-inc-wrong">What's wrong{{ ' (was)' if p.resolved }}</h2></div>
+{#- What's wrong and What Mercury has done, each a card collapsed under its heading (R2: the
+    evidence one level down; each keeps its id and the page's one state). -#}
+<section class="card inc-fold" id="inc-wrong" aria-labelledby="h-inc-wrong" data-inc-state="{{ p.state }}">
+  <details class="inc-fold-d" data-keep="inc-wrong-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-wrong">What's wrong{{ ' (was)' if p.resolved }}</h2></summary>
   {#- A lost telemetry stream, as its Needs attention item says it (C3488; `attention.stream_fix`,
       from the alerts reader's stored value): how long the device has sent nothing and what
       that costs; whether the device answers (the reachability reader's stored value; a
       reading that cannot say is said as that); what Mercury cannot see meanwhile. -#}
-  {%- set fx = r.fix %}
   {%- if fx %}
   <p class="fix-lead inc-lead">{{ fx.lead }}</p>
   {%- if fx.answers %}<p class="fix-answers{% if fx.answers.state != 'answers' %} warn-text{% endif %}" data-answers="{{ fx.answers.state }}">{{ fx.answers.words }}</p>{% endif %}
@@ -126,9 +204,13 @@
   {%- if p.wrong.words %}<p>{% if p.closed_at %}Decided then: {% endif %}{{ p.wrong.words }}.</p>{% endif %}
   {%- if p.wrong.watching %}<p>{{ p.wrong.watching }}</p>{% endif %}
   {%- if not (fx or p.wrong.cause or p.wrong.change or p.wrong.words or p.wrong.watching) %}<p class="muted">Its decision's words are not kept: the steps below are what is recorded.</p>{% endif %}
+  {%- if r.likely %}
+  <p class="small heal-hyp"><strong>Likely cause (a hypothesis, not checked):</strong> {{ r.likely.device }}'s configuration was changed outside Mercury at {{ clock(r.likely.at) }}{% if r.likely.words %} ({{ r.likely.words }}){% endif %}, shortly before this began, and that change is not fixed yet.</p>
+  {%- endif %}
+  </details>
 </section>
-<section class="card" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
-  <div class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</div>
+<section class="card inc-fold" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
+  <details class="inc-fold-d" data-keep="inc-done-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</summary>
   {%- if p.done.steps %}
   {#- THE stepper's five stages, as the heal's card on its device's page draws them
       (`incident_page.heal_card`: `run_card.named_heal`, else `run_card.steps_card`); who it
@@ -137,8 +219,8 @@
   {{ run_stepper(p.done.steps) }}
   {%- elif p.fixit and p.fixit.attempts %}
   {#- An operation a person ran in the incident (a Re-subscribe) is no heal: it is listed, with
-      its card, under AI troubleshooting below, never said here as nothing (C3198). -#}
-  <p>Self-healing ran nothing in this incident. The {{ p.fixit.attempts | length }} fix{{ 'es' if p.fixit.attempts | length != 1 }} a person ran {{ 'are' if p.fixit.attempts | length != 1 else 'is' }} listed under AI troubleshooting, below.</p>
+      its card, under Fixing it's Attempts, never said here as nothing (C3198). -#}
+  <p>Self-healing ran nothing in this incident. The {{ p.fixit.attempts | length }} fix{{ 'es' if p.fixit.attempts | length != 1 }} a person ran {{ 'are' if p.fixit.attempts | length != 1 else 'is' }} listed under Fixing it, above, in its Attempts.</p>
   {%- else %}
   <p>Nothing has run in this incident.</p>
   {%- endif %}
@@ -176,81 +258,19 @@
   </div>
   {%- endif %}
   <p class="small inc-links"><a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open its record on {{ p.device }}'s History</a>{% if p.done.change_record %} · <a href="{{ url_for('heal_proposal_v2.change_record_md', list_name=p.network, incident_id=p.id) }}" download title="Mercury's change record for this incident, masked: deterministic, no AI call">Download the change record (.md)</a>{% endif %}</p>
-</section>
-{#- What to do (the GUI review's item 2, C3450): the page's ONE state in words (`p.todo.words`,
-    from `incident_page.status`), what the incident's Needs attention item says to do in its
-    own words (`p.todo.more`), and, while a person is needed, that item's ONE action as the
-    page's one primary button (`it.first`: `attention.first_action`'s answer, the resolver the
-    item's line asks). An action drawn in place opens its card UNDER the button when it is
-    pressed (`inc-card`, read then: `toggle once`), so the button never moves (docs/UI_RULES.md,
-    "No control moves when its own result appears"); Re-subscribe carries the incident, so its
-    run is this incident's attempt and a repeat of one that failed asks what is different now
-    (`fixit.section.card_link`). A page that needs nobody draws no button. -#}
-<section class="card" id="inc-todo" aria-labelledby="h-inc-todo" data-inc-state="{{ p.state }}" data-item="{{ it.state }}">
-  <div class="card-head"><h2 id="h-inc-todo">What to do</h2></div>
-  <p class="inc-need">{{ p.todo.words | times }}</p>
-  {%- if p.todo.more %}<p class="inc-more">{{ p.todo.more | times }}</p>{% endif %}
-  {%- if it.first %}
-  {%- set opener = 'inc-open-' ~ p.id %}
-  <div class="inc-act" data-first="{{ it.first }}">
-    {%- if it.first == 'run' %}
-    <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
-    <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
-    {%- elif it.first == 'proposed' %}
-    {#- A fix proposed under AI troubleshooting (`status`: fix_proposed): its card is opened
-        there, where its repeat flag and the AI's reasons are; this goes to it. -#}
-    <a class="btn btn-small btn-primary att-jump" href="#fixit-op">Go to the proposed fix</a>
-    {%- elif it.first == 'heal_proposal' %}
-    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">Review the fix…</summary></details>{{ how('heal-proposal', 'card', compact=True, op='reviewing a proposal') }}
-    <div class="inc-card"><div class="heal-prop" id="heal-prop-{{ r.action.decision }}" hx-get="{{ url_for('heal_proposal_v2.proposal', list_name=r.action.list, decision_id=r.action.decision) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading the proposal as Mercury recorded it, with Approve and Decline…</p></div></div>
-    {%- elif it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length == 1 %}
-    {%- set rd = r.action.device %}
-    {#- C3078: a proposal naming the collector step opens the card with it, and says so. -#}
-    {%- set stepped = ((p.fixit or {}).proposal or {}).operation == 'telemetry-collector-resubscribe' %}
-    <details class="inc-open" id="{{ opener }}" data-keep="{{ opener }}"><summary class="btn btn-small btn-primary">{% if stepped %}Close the collector's stale session for {{ rd }}, then re-subscribe ({{ (r.action.subs or [])|join(', ') }})…{% else %}Re-subscribe {{ rd }}'s telemetry ({{ (r.action.subs or [])|join(', ') }})…{% endif %}</summary></details>{{ how('telemetry-resubscribe', 'the-collector-step' if stepped else '', compact=True, op='the collector step' if stepped else 'a re-subscribe') }}
-    <div class="inc-card"><div class="heal-prop" id="resub-{{ rd | replace('.', '-') }}" hx-get="{{ url_for('resubscribe_v2.preview', name=rd, list=nets[rd][0], subs=(r.action.subs or [])|join(','), fixit=(p.id if p.fixit.state != 'none' else none), collector=('1' if stepped else none)) }}" hx-trigger="toggle once from:#{{ opener }}" hx-swap="outerHTML"><p class="small muted">Reading what Re-subscribe will send to {{ rd }}, from its committed intent…</p></div></div>
-    {%- elif it.first == 'heal_mark' and r.heal_mark %}
-    {#- A dry-run record's question has two answers, Right and Wrong…, neither the primary. -#}
-    {%- with list_name=r.heal_mark.list, decision_id=r.heal_mark.decision, mark=r.heal_mark.mark, unreadable=r.heal_mark.unreadable, answered=false, marked=false, refused=none, why=none %}{% include "v2/_heal_mark.html" %}{% endwith %}
-    {%- elif it.first == 'likely' %}
-    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=r.likely.device, list=(nets[r.likely.device][0] if (nets.get(r.likely.device) or [])|length == 1 else none)) }}" title="A hypothesis, not checked: {{ r.likely.device }}'s configuration was changed outside Mercury shortly before, and that change is not fixed yet">Open {{ r.likely.device }} (likely cause)</a>
-    {%- elif it.first == 'href' %}
-    <a class="btn btn-small btn-primary" href="{{ r.action.href }}">Open…</a>
-    {%- else %}
-    {#- The item's first device, in its own network when that is known (C493): the action of
-        a can't-fix, and of an incident whose item is not on Needs attention now. -#}
-    {%- set d = (r.devices or [p.device])[0] %}
-    <a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else p.network)) }}">Open {{ d }}</a>
-    {%- endif %}
-    {#- Diagnose…, where the item offers it (board H's amendment, artboard I): the device's
-        dialog, its runbook and target from the incident's trigger; it reads nothing until a
-        person runs it there. Beside the action, never a second primary. -#}
-    {%- if r.diagnose and r.diagnose.device %}
-    <span class="op-act"><a class="btn btn-small btn-outline" data-op="diagnose" href="{{ url_for('device_v2.diagnose_unreachable', name=r.diagnose.device, list=r.diagnose.list) if r.diagnose.unreachable else url_for('device_v2.device', name=r.diagnose.device, list=r.diagnose.list, op='diagnose', **r.diagnose.args) }}" title="{{ r.diagnose.title }}">Diagnose…</a>{{ how('diagnose', compact=True, op='a diagnosis') }}</span> <span class="muted small">{{ r.diagnose.words }}</span>
-    {%- endif %}
-  </div>
-  {%- if it.first == 'resubscribe' and (nets.get(r.action.device) or [])|length != 1 %}
-  <p class="small muted">Re-subscribe is not offered: {{ (nets.get(r.action.device) or [])|length }} of the networks Mercury holds name a device {{ r.action.device }}, and it is sent only to a device found in exactly one, so which device is not decided.</p>
-  {%- endif %}
-  {%- if r.diagnose and not r.diagnose.device %}<p class="small muted">Diagnose… is not offered: {{ r.diagnose.words }}.</p>{% endif %}
-  {%- if r.likely %}
-  <p class="small heal-hyp"><strong>Likely cause (a hypothesis, not checked):</strong> {{ r.likely.device }}'s configuration was changed outside Mercury at {{ clock(r.likely.at) }}{% if r.likely.words %} ({{ r.likely.words }}){% endif %}, shortly before this began, and that change is not fixed yet.</p>
-  {%- endif %}
-  {%- if r.clears %}<p class="att-clears">Its Needs attention item clears when {{ r.clears }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
-  {%- endif %}
+  {#- What to do's links (`p.todo.links`) join History's here, once each (R2: the History
+      links one level down). -#}
+  {%- set more_links = p.todo.links | reject('equalto', 'history') | list %}
+  {%- if more_links %}
   <p class="small inc-links">
-    {%- for l in p.todo.links %}
-    {%- if l == 'history' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">Open {{ p.device }}'s History</a>
-    {%- elif l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
+    {%- for l in more_links %}
+    {%- if l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
     {%- else %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">Open {{ p.device }}</a>
     {%- endif %}{% if not loop.last %} · {% endif %}
     {%- endfor %}</p>
+  {%- endif %}
+  </details>
 </section>
-{#- AI troubleshooting (board recurring-fixes v2; `modules/fixit/section.py`), drawn with no
-    AI call; its posts draw it again in place (routes/fixit_v2.py). -#}
-{%- set x = p.fixit %}
-{%- set answer = {} %}
-{% include "v2/_fixit_section.html" %}
 <details class="card inc-evidence" data-keep="inc-evidence-{{ p.id }}">
   <summary>Evidence</summary>
   <ul class="set-list">
@@ -269,14 +289,15 @@
     matches or the search could not be made (said, never read as "never seen"). -#}
 {%- if fx and fx.seen %}
 {%- set s = fx.seen %}
-<section class="card" id="inc-seen" aria-labelledby="h-inc-seen" data-seen="{{ s.state }}">
-  <div class="card-head"><h2 id="h-inc-seen">Seen before on {{ fx.device }}</h2></div>
+<section class="card inc-fold" id="inc-seen" aria-labelledby="h-inc-seen" data-seen="{{ s.state }}">
+  <details class="inc-fold-d" data-keep="inc-seen-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-seen">Seen before on {{ fx.device }}</h2></summary>
   {%- if s.state == 'match' %}
   <p class="fix-seen"><strong>{{ clock(s.from, 'date') }} to {{ clock(s.to, 'date') }}:</strong> {{ s.what }}{% if s.cause %} {{ s.cause }}{% endif %} {{ s.ended.words }}{% if s.ended.at %} {{ clock(s.ended.at, 'date') }}{% endif %}{{ s.ended.tail }}{% if s.held %} {{ s.held.words }}{% if s.held.at %} {{ clock(s.held.at, 'date') }}{% endif %}{{ s.held.tail }}{% endif %}</p>
   <p class="small inc-links"><a href="{{ url_for('v2.monitoring_alerts_history', device=fx.device, q='telemetry stream lost', range=s.range) }}">Open that incident</a>{% if s.ended.list %} · <a href="{{ url_for('device_v2.device', name=fx.device, list=s.ended.list, tab='history') }}">Open that operation's record</a>{% endif %}</p>
   {%- else %}
   <p class="fix-seen warn-text">Couldn't be checked: {{ s.why }}. Whether {{ fx.device }} lost telemetry before is not known.</p>
   {%- endif %}
+  </details>
 </section>
 {%- endif %}
 <details class="card tl-record-d inc-record" data-keep="inc-record-{{ p.id }}">
@@ -288,7 +309,14 @@
     {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}
     {#- The proposed fix's parameter hash (the GUI review's AI3, C3455): the proposal's warning
         says only that it repeats; the hash it was compared by is here. -#}
-    {%- set fxp = p.fixit.proposal or {} %}{% if fxp.flag and fxp.flag.params_hash %}<dt>Proposed fix's parameter hash</dt><dd><span class="mono">{{ fxp.flag.params_hash }}</span> · proposal {{ fxp.id }}{% if fxp.flag.kind == 'repeat' %} · the same as attempt {{ fxp.flag.attempt }}'s{% endif %}</dd>{% endif %}</dl>
+    {%- set fxp = p.fixit.proposal or {} %}{% if fxp.flag and fxp.flag.params_hash %}<dt>Proposed fix's parameter hash</dt><dd><span class="mono">{{ fxp.flag.params_hash }}</span> · proposal {{ fxp.id }}{% if fxp.flag.kind == 'repeat' %} · the same as attempt {{ fxp.flag.attempt }}'s{% endif %}</dd>{% endif %}
+    {#- The plan's hash and each step's (R2: Approve is by the plan's hash; the hashes are the
+        record's, never the card's main text). -#}
+    {%- if fxp.steps is defined and fxp.hash %}<dt>The plan's hash</dt><dd><span class="mono">{{ fxp.hash }}</span>{% for st in fxp.steps %} · step {{ st.n }} <span class="mono">{{ st.hash }}</span>{% endfor %}</dd>{% endif %}
+    {#- A plan refused at its preflight: what was refused, by hash (the section's words name
+        none): the plan's hash as Approve would have bound it, and a repeating step's
+        parameter hash with the attempt it is the same as. -#}
+    {%- if fxp.steps is defined and not fxp.hash and (fxp.refused_hash or fxp.steps | selectattr('repeat') | list) %}<dt>The refused plan</dt><dd>{% if fxp.refused_hash %}<span class="mono">{{ fxp.refused_hash }}</span> · {% endif %}proposal {{ fxp.id }}{% for st in fxp.steps %}{% if st.repeat %} · step {{ st.n }}'s parameter hash <span class="mono">{{ st.repeat.params_hash }}</span>, the same as attempt {{ st.repeat.attempt }}'s{% endif %}{% endfor %}</dd>{% endif %}</dl>
 </details>
 </div>
 {%- endif %}

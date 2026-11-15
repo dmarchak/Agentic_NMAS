@@ -6675,6 +6675,15 @@ def _link_stream_incidents(rows: list, read=None) -> None:
                 tag = fault_drills.tag_of(inc)
                 r["incident_page"] = dict({"id": inc["id"], "list": net},
                                           **({"drill": tag["id"]} if tag else {}))
+                # R1 and R2 (2026-11-14): a lost stream has no code fix of Mercury's; while its
+                # failure will not start the AI by itself, its first action is the incident
+                # page's Start AI troubleshooting, the same as the page's (`first_action`).
+                try:
+                    from modules.fixit import auto as fixit_auto
+                    if fixit_auto.offers_start(net, inc):
+                        r["incident_page"]["start"] = True
+                except Exception as exc:              # noqa: BLE001 (the row keeps its action)
+                    log.warning("attention: %s's start could not be read: %s", inc["id"], exc)
                 break
 
 
@@ -6729,14 +6738,22 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
             out.append(top)
     for iid in sorted(needs - linked):
         inc = by_id[iid]
-        r = row(source="heal", kind="incident", key=iid, level="warning", event=iid,
+        # R2 (the operator, 2026-11-14): the row leads with the incident's BLUF, from
+        # Mercury's own table (`incidents_list.bluf_of`): its what, its impact first in the
+        # cause, its next action as the action; its level from impact (critical only for a
+        # network outage).
+        b = inc.get("bluf") or {}
+        r = row(source="heal", kind="incident", key=iid,
+                level="danger" if b.get("severity") == "critical" else "warning", event=iid,
                 devices=[inc["device"]] if inc.get("device") else [],
                 since=_ts(inc.get("since")),
-                what=f"{inc['title']}: it needs a person",
-                cause=(f"Troubleshooting › Incidents holds {iid} open: "
+                what=b.get("what") or f"{inc['title']}: it needs a person",
+                cause=((f"{b['impact']}. " if b.get("impact") else "")
+                       + f"Troubleshooting › Incidents holds {iid} open: "
                        f"{inc.get('waits') or inc.get('state_words') or 'it waits for a person'}"
                        ", and no other row here names it"),
-                action={"label": "Open the incident and decide what to do",
+                action={"label": (b.get("fix") or {}).get("label")
+                        or "Open the incident and decide what to do",
                         "href": inc.get("href") or ""},
                 operands={"list": lst, "incident": iid})
         r["incident_page"] = {"id": iid, "list": lst}
@@ -6746,8 +6763,8 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
 
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
 #: incident's page draw a control for.
-FIRST_ACTIONS = ("run", "alike", "ai_spend_panel", "heal_proposal", "heal_halt", "heal_mark",
-                 "resubscribe", "update_page", "likely", "device", "href", "")
+FIRST_ACTIONS = ("run", "alike", "start", "ai_spend_panel", "heal_proposal", "heal_halt",
+                 "heal_mark", "resubscribe", "update_page", "likely", "device", "href", "")
 #: The actions whose control is a card drawn in place when it is pressed.
 IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe")
 
@@ -6780,6 +6797,10 @@ def first_action(r: dict) -> str:
         return "run"
     if opens == "alike":
         return "alike"
+    if opens == "resubscribe" and (r.get("incident_page") or {}).get("start"):
+        # R1 and R2: the incident offers Start AI troubleshooting (`fixit.auto.offers_start`),
+        # so its row does too: one first action for the row and its page.
+        return "start"
     if opens == "resubscribe" and len(row_device_networks(r, act.get("device"))) != 1:
         # Re-subscribe is sent only to a device found in exactly one network (the row's own
         # card says "is not offered" otherwise), so its line offers the device instead, never

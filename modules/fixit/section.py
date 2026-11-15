@@ -19,15 +19,44 @@ no control. Each state's controls are the board's: Retry with more information, 
 Hand over after a STOP; the per-incident cap's refusal in place of Retry (G1); nothing that
 acts once resolved.
 
-**Retry with more information re-plans through Mercury's own proposer, with no AI** (`retry`):
-the person's press, the cap asked again at the press (spent plus a retry's worst case against
-the cap, refused with both operands when it would pass it, the proposer not asked), Mercury's
-diagnosis's next step as one catalogue operation (`proposers.mercury`), checked by code
-(`validate.check`), and ONE proposal line in the incident's record: the operation and its
-parameters, or why there is none, with the person's note. Mercury's diagnosis does not read
-the note: the AI does, and it is kept for the hand-over. A retry's worst case is the AI
-troubleshoot's (`worst_usd`: two calls at the per-call cap of `WORST_PIN`, AI troubleshooting's
-own pin), so the cap holds Mercury's re-plan as it holds the AI's; Mercury's costs nothing.
+**THE CONTRACT** (the operator's R1 and R2, 2026-11-14; the incident page's frontend draws
+these keys of `view`, and this module keeps to them):
+
+- ``bluf``: ``{"what", "impact", "fix": {"kind": "approve"|"button"|"hand_over"|"start"|"none",
+  "label", "href"?}, "severity"}``, the three lines from Mercury's own table (`modules/bluf.py`,
+  never the AI's words); *severity* ``critical`` only for a network outage;
+- ``status``: one plain line ("Mercury's fix failed twice. The AI is investigating (started
+  40 s ago), about $0.05.");
+- ``proposal``: ``{"id", "hash", "refused_hash", "approvable", "steps": [{"n", "operation",
+  "words", "params", "hash", "preflight": {"ok", "refused"}, "repeat"}], "found",
+  "why_refused", "source", "by", "at",
+  "calls", "note", "shown", "prompt"}`` or None, *shown* the AI's checked answer as kept
+  (``rationale``, ``hypotheses`` each ``{"claim", "cites"}``, the fix's ``why`` and ``cites``,
+  ``reads``, ``fit``);
+- ``ai_answer``: the AI's newest answer, with or without a plan: ``{"id", "words", "shown",
+  "gap", "has_plan", "calls", "prompt", "at", "note"}`` or None, so the page draws its diagnosis
+  and the missing capability (``gap``) of an answer that proposed no operation (`fixit.plan.preflight`): every step preflighted before it is
+  drawn, a refused one drawn refused with why and the plan then not approvable; *hash* the
+  plan's, the one Approve sends (``hash``, with ``proposal`` its id);
+- ``actions``: ``{"approve", "modify", "deny", "ask_again", "start", "hand_over"}``, each
+  ``{"offered", "href", "refused"}`` (POSTs of routes/fixit_v2.py: approve takes ``proposal``,
+  ``hash`` and an optional ``reason``; modify ``proposal`` and ``text``; deny ``proposal`` and
+  an optional ``reason``; ask_again and start an optional ``text``; hand_over is the existing
+  Hand over form);
+- ``attempts`` (as before), ``other_actions`` (each operation that already failed here:
+  ``{"operation", "attempt", "words", "run"}``, drawn only collapsed, never as the next
+  action), ``holds`` (each guard or hold working as designed, one plain line), ``cap``
+  (``{"state": "ok"|"reached"|"unreadable", "which": "incident"|"day"|"month"|"", "words"}``);
+- ``auto``: the network's switch for automatic troubleshooting (`auto_model`: ``{"feature",
+  "words", "trigger_words", "on", "by", "at", "ends", "estimate": {"label", "calls_per_day",
+  "usd_per_day", "usd_per_month", "frequency_basis", "cost_basis", "suggested", "digest",
+  "error"}, "incident_cap", "day_cap", "settings_href"}``); turned on and off only in Settings ›
+  AI (`background.turn_on`, `turn_off`), off by default on every network;
+- the section's ``state`` (`STATES`) adds ``investigating`` (an investigation started and
+  nothing come of it yet), ``denied`` and ``capped``.
+
+Cancel and Retry with more information are removed (the operator: Deny and Modify replace
+them); a cancel line written before stays readable.
 
 **The AI is offered beside it** (`ai_offer`, S5): Troubleshoot with AI with nothing tried, and
 Retry's Ask the AI to re-plan, in Manual mode while the cap allows, the estimate and the worst
@@ -53,13 +82,13 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Retry with more information's steps, as its manual page names them.
-STEPS = ("person", "cap", "propose", "check", "record")
-#: Cancel's: a verified person, one line.
-CANCEL_STEPS = ("person", "record")
+#: The card's steps, from a plan to its run, as its manual page names them
+#: (docs/manual/how-it-works/fixit-troubleshoot.md, "The steps"): each plan's preflight, then
+#: each press (`actions`), a verified person's.
+STEPS = ("preflight", "approve", "modify", "deny", "ask_again", "start")
 #: The section's states, each drawn by templates/v2/_fixit_section.html.
 STATES = ("none", "ready", "running", "passed", "stopped", "proposed", "cancelled",
-          "handed_over", "resolved")
+          "handed_over", "resolved", "investigating", "denied", "capped")
 #: The states in which Retry with more information is offered (the cap permitting).
 RETRY_IN = ("passed", "stopped", "proposed", "cancelled", "handed_over")
 #: The pin a retry's worst case is drawn from: AI troubleshooting's own (S5; the board's
@@ -363,7 +392,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
            "ended": ended if resolved is not None else "",
            "advisories": [{"at": a.get("at") or "", "words": a.get("words") or ""}
                           for a in (found.get("advisories") or [])[-1:]],
-           "cant_fix": analysed(found)}
+           "cant_fix": analysed(found), "ai_failed": ""}
     if inc is None:
         return _stated(out, found)
     now = time.time() if now is None else float(now)
@@ -390,14 +419,36 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
                 "day_cap": P.money(day["cap"]) if day["cap"] is not None else ""},
         handovers=H.versions(inc)["versions"])
     events = [(a["started_at"], 0, "attempt", a) for a in tried["attempts"]]
-    events += [(float(ln["epoch"]), 1, "proposal" if "proposal" in ln else ln["choice"], ln)
-               for ln in rec["lines"]]
+    # Record lines in their written order at one time (a start and the proposal it led to may
+    # share a second): the later line is the newer.
+    events += [(float(ln["epoch"]), 1 + n, _line_kind(ln), ln)
+               for n, ln in enumerate(rec["lines"])
+               if _line_kind(ln) != "start"
+               or ln.get("state") in ("started", "capped", "failed")]
     newest = max(events, key=lambda e: (e[0], e[1])) if events else None
     if resolved is not None:
         out["state"] = "resolved"
+        _contract(out, network, found, inc, rec, tried, drawn, None, resolved, now)
         return _stated(out, found)
     if newest is None:
         state = "ready"
+    elif newest[2] == "start":
+        state = ("investigating" if newest[3].get("state") == "started"
+                 and now - newest[0] < investigation_bound_s() else
+                 "capped" if newest[3].get("state") == "capped" else "ready")
+        if newest[3].get("state") == "failed":
+            # The investigation's job failed or was refused before anything was sent: drawn in
+            # place, never silent (`troubleshoot_job.record_failure`).
+            out["ai_failed"] = newest[3].get("words") or "the investigation gave no reason"
+        elif newest[3].get("state") == "started" and state == "ready":
+            # Started, and nothing came of it within its bound: its job was lost (a restart, a
+            # worker gone). Said as a failure, with Ask the AI again, never a dead end.
+            out["ai_failed"] = (f"the AI did not answer in {int(investigation_bound_s())} s; "
+                                "its job may have stopped (a restart)")
+    elif newest[2] == "deny":
+        state = "denied"
+    elif newest[2] == "approve":
+        state = "running"
     elif newest[2] == "attempt":
         a = newest[3]
         state = ("running" if a["state"] == "running" else "passed" if a["passed"]
@@ -433,7 +484,305 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         "sent": _what_is_sent(drawn, rec["lines"])}
     out["ai"] = ai_offer(state, cs)
     out["teams"] = H.offered(network)
+    _contract(out, network, found, inc, rec, tried, drawn, cs, resolved, now)
     return _stated(out, found)
+
+
+def _line_kind(line: dict) -> str:
+    """A record line's kind as the section's events name it: ``proposal``, ``start`` or its
+    choice (``deny``, ``approve``, ``handover``, ``save``, ``cancel``)."""
+    if "proposal" in line:
+        return "proposal"
+    if "start" in line:
+        return "start"
+    return line.get("choice") or ""
+
+
+def investigation_bound_s() -> float:
+    """How long a started investigation is drawn as going: the reservation's life
+    (`gateway.reservation_ttl_s`, 2.5 times one call's longest time), as the notifier waits."""
+    from modules.ai import gateway
+
+    return float(gateway.reservation_ttl_s())
+
+
+def _href(network: str, incident_id: str, name: str) -> str:
+    from urllib.parse import quote
+
+    return f"/v2/incident/{incident_id}/fixit/{name}?list={quote(network)}"
+
+
+def _current_proposal(rec: dict):
+    """The proposal a person may decide on now: the newest proposal line naming an operation,
+    when no deny or approve of it, and no newer proposal, followed it; else None."""
+    lines = rec["lines"]
+    last = max((n for n, ln in enumerate(lines) if "proposal" in ln), default=None)
+    if last is None or not lines[last].get("operation"):
+        return None
+    pid = lines[last]["proposal"]
+    if any(ln.get("choice") in ("deny", "approve") and ln.get("decides") == pid
+           for ln in lines[last + 1:]):
+        return None
+    return lines[last]
+
+
+#: A preflight refusal's code (`validate.check`) to the guard that made it: such a guard
+#: blocks the plan's step, and its hold line says so.
+BLOCKING_CODES = {"planned_work": 3}
+
+
+def _holds(found: dict, device: str, plan=None) -> list:
+    """Each guard or hold that applied to the incident's heal, working as designed, as one
+    plain line (`bluf.hold_line`), once each: the step log's newest guard and each decision's.
+    A guard whose refusal stopped a step of *plan* at its preflight says it blocks the fix."""
+    from modules import bluf as B
+
+    blocking = {BLOCKING_CODES[s["preflight"].get("code")] for s in (plan or {}).get("steps", [])
+                if s["preflight"].get("code") in BLOCKING_CODES}
+    hits = [(found.get("entry") or {}).get("guard")]
+    hits += [d.get("guard") for d in found.get("decisions") or []]
+    out = []
+    for h in hits:
+        n = (h or {}).get("guard") if isinstance(h, dict) else None
+        line = B.hold_line(h, device, blocks=n in blocking)
+        if line and line not in out:
+            out.append(line)
+    return out
+
+
+def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict, drawn: list,
+              cs, resolved, now: float) -> None:
+    """The R1 and R2 contract (the module's docstring, "THE CONTRACT"), added to *out*:
+    ``bluf``, ``status``, ``proposal``, ``actions``, ``attempts`` (as drawn), ``other_actions``,
+    ``holds`` and ``cap``. A read."""
+    from modules import bluf as B
+    from modules.fixit import auto as A
+    from modules.fixit import plan as FP
+    from modules.fixit import policy as P
+
+    state = out["state"]
+    iid = out["id"]
+    done = resolved is not None
+    failed = [a for a in drawn if a["state"] == "failed"]
+    out["other_actions"] = [{"operation": a["operation"], "attempt": a["n"],
+                             "words": a["words"], "run": a["run"]} for a in failed]
+    line = None if done else _current_proposal(rec)
+    plan = FP.preflight(inc, line, now=now) if line else None
+    out["holds"] = _holds(found, inc.device, plan)
+    out["proposal"] = plan
+    # The AI's newest answer as the page draws it, with or without a plan (its diagnosis, its
+    # hypotheses and what each cites, the fix's why, or the missing capability it names).
+    newest_ai = next((ln for ln in reversed(rec["lines"])
+                      if "proposal" in ln and ln.get("source") == "ai"), None)
+    out["ai_answer"] = None if newest_ai is None or done else {
+        "id": newest_ai.get("proposal") or "", "words": newest_ai.get("words") or "",
+        "shown": newest_ai.get("shown") if isinstance(newest_ai.get("shown"), dict) else {},
+        "gap": ((newest_ai.get("shown") or {}).get("gap") or "") if isinstance(
+            newest_ai.get("shown"), dict) else "",
+        "has_plan": bool(newest_ai.get("operation")), "calls": list(newest_ai.get("calls") or []),
+        "prompt": newest_ai.get("prompt") or "", "at": newest_ai.get("at") or "",
+        "note": newest_ai.get("note") or ""}
+    off = P.ai_refusal()
+    capped = cs is not None and cs["state"] != "allowed"
+    starts = [ln for ln in rec["lines"] if "start" in ln]
+    last_start = starts[-1] if starts else None
+    which = (last_start or {}).get("which") or ("incident" if capped else "")
+    cap_reached = state == "capped" or capped
+    out["cap"] = {"state": "reached" if cap_reached else "unreadable" if (
+                      cs is not None and cs.get("spent") is None and capped) else "ok",
+                  "which": which if cap_reached else "",
+                  "words": ((last_start or {}).get("words") if state == "capped" else
+                            cs["words"] if capped else "")}
+    ai_refused = off or (out["cap"]["words"] if cap_reached else "")
+    proposed = plan is not None and state == "proposed"
+    sw = A.switch(network)
+    legacy = (A.manual_start(network, iid, extra=failed, record=found.get("incident") or {})
+              if not done else {"offered": False, "words": ""})
+    asked = any("proposal" in ln and ln.get("source") == "ai" for ln in rec["lines"])
+    # Start AI troubleshooting, a person's press, the R1 flow from step 3: for an incident
+    # whose failure will not start an investigation by itself (`auto.manual_start`: the
+    # network's switch is off, or the failure was recorded before it was turned on), or one
+    # whose automatic start was taken with no AI call (the mode off, hosted AI off); never
+    # once the AI was asked or an automatic start went.
+    went = [s for s in starts if s.get("state") in ("started", "capped")]
+    taken_off = any(s.get("state") in ("off", "failed") for s in starts)
+    start_offered = (not done and not asked and not went and state in ("ready", "stopped")
+                     and (legacy["offered"] or taken_off))
+    out["auto"] = auto_model(network, sw)
+    # After a denial, or an answer that named no plan (a gap, no fix, the evidence cannot say):
+    # the AI may be asked again.
+    deny_last = (state == "denied" or (state == "proposed" and plan is None)
+                 or bool(out.get("ai_failed"))
+                 # An approved plan that stopped (the R1 flow's step 7): with the switch or
+                 # Auto off nothing asks again by itself, so the person may.
+                 or (state == "stopped" and any(ln.get("choice") == "approve"
+                                                for ln in rec["lines"])))
+    actions = {
+        "approve": {"offered": bool(proposed and plan["approvable"]),
+                    "href": _href(network, iid, "approve"),
+                    "refused": "" if not proposed or plan["approvable"] else
+                    plan["why_refused"]},
+        "modify": {"offered": bool(proposed and not ai_refused),
+                   "href": _href(network, iid, "modify"),
+                   "refused": ai_refused if proposed else ""},
+        "deny": {"offered": bool(proposed), "href": _href(network, iid, "deny"), "refused": ""},
+        "ask_again": {"offered": bool(deny_last and not ai_refused),
+                      "href": _href(network, iid, "ask_again"),
+                      "refused": ai_refused if deny_last else ""},
+        "start": {"offered": bool(start_offered and not ai_refused),
+                  "href": _href(network, iid, "start"),
+                  "refused": ai_refused if start_offered else ""},
+        "hand_over": {"offered": not done, "href": _href(network, iid, "handover"),
+                      "refused": ""},
+    }
+    out["actions"] = actions
+    if done:
+        nxt = {"kind": "none", "label": ""}
+    elif actions["approve"]["offered"] or proposed:
+        nxt = {"kind": "approve", "label": "Approve the plan" if plan["approvable"] else
+               "Modify or deny the plan", "href": actions["approve"]["href"]}
+    elif state == "investigating":
+        nxt = {"kind": "none", "label": "The AI is investigating"}
+    elif actions["start"]["offered"]:
+        nxt = {"kind": "start", "label": "Start AI troubleshooting",
+               "href": actions["start"]["href"]}
+    elif actions["ask_again"]["offered"]:
+        nxt = {"kind": "button", "label": "Ask the AI again",
+               "href": actions["ask_again"]["href"]}
+    elif state == "running":
+        nxt = {"kind": "none", "label": "The approved plan is running"}
+    elif state in ("ready",) and not failed and not starts:
+        nxt = {"kind": "none", "label": "Mercury is working on it"}
+    else:
+        nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
+    out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
+                   if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
+                            "problem")}
+    # The page draws the problem by its condition (the rest of its fields are the BLUF's
+    # words): only what is drawn is carried.
+    out["bluf"]["problem"] = {"condition": (out["bluf"].get("problem") or {}).get("condition")
+                              or ""}
+    newest = next((ln for ln in reversed(rec["lines"]) if "proposal" in ln), {})
+    out["status"] = _status(state, inc, network, plan, failed, last_start, legacy, done,
+                            out.get("ended") or "", now, said=newest.get("words") or "",
+                            failed_words=out.get("ai_failed") or "")
+
+
+#: Where the network's background AI switches are turned on and off (Settings › AI, the
+#: background features' card, `routes/settings_v2.py`).
+SETTINGS_AI_HREF = "/v2/settings/installation?tab=ai"
+
+
+def auto_model(network: str, sw: dict = None) -> dict:
+    """The network's switch for automatic troubleshooting as the section and the Settings card
+    draw it (the contract's ``auto``): ``{"feature", "words", "on", "by", "at", "ends",
+    "estimate", "settings_href"}``; *estimate* `background.estimate`'s labelled figures (calls
+    a day, dollars a day and a month, its basis), shown before Turn on, with the per-incident
+    cap and the day cap beside them. A read: no call is made."""
+    from modules.ai import background, gateway
+    from modules.fixit import auto as A
+    from modules.fixit import policy as P
+
+    sw = sw or A.switch(network)
+    spec = background.FEATURES[A.FEATURE]
+    try:
+        if sw["on"]:
+            # On: what it was approved at is the switch's own (Settings › AI draws it with
+            # its spend against it); no estimate is made again on a page draw.
+            raise LookupError("on")
+        est = background.estimate(network, A.FEATURE)
+        estimate = {"label": est["label"], "calls_per_day": est["calls_per_day"],
+                    "usd_per_day": est["usd_per_day"], "usd_per_month": est["usd_per_month"],
+                    "frequency_basis": est["frequency"]["basis"],
+                    "cost_basis": est["cost"]["basis"], "suggested": est["suggested"],
+                    "digest": est["digest"], "error": ""}
+    except LookupError:
+        est = (sw.get("entry") or {}).get("estimate") or {}
+        estimate = {"label": "the estimate shown when it was turned on",
+                    "calls_per_day": est.get("calls_per_day"),
+                    "usd_per_day": est.get("usd_per_day"),
+                    "usd_per_month": est.get("usd_per_month"), "error": ""}
+    except Exception as exc:                          # noqa: BLE001 (said in place)
+        estimate = {"error": f"the estimate could not be made ({type(exc).__name__}: {exc})"}
+    cap = P.cap_usd()
+    ends = background.approval_ends(sw["entry"]) if sw.get("entry") else None
+    return {"feature": A.FEATURE, "words": spec["words"], "trigger_words": spec["trigger_words"],
+            "on": bool(sw["on"]), "by": sw.get("by") or "", "at": sw.get("at") or "",
+            "ends": _iso(ends) if ends else "", "estimate": estimate,
+            "incident_cap": P.money(cap["usd"]) if cap["state"] == "ok" else "",
+            "day_cap": (P.money(gateway.day_cap()) if gateway.day_cap() is not None else ""),
+            "settings_href": SETTINGS_AI_HREF}
+
+
+def _status(state: str, inc, network: str, plan, failed: list, last_start, legacy: dict,
+            done: bool, ended: str, now: float, said: str = "",
+            failed_words: str = "") -> str:
+    """The section's one status line, in plain words (the contract's ``status``); *said* is
+    the newest proposal line's own words (a proposal that names no operation says why)."""
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.fixit import auto as A
+    from modules.fixit.policy import money
+
+    if done:
+        return f"Resolved: {ended or 'closed'}."
+    got = A.failures(network, open_ids={inc.id})
+    n = len(got["failures"]) + len(failed)
+    times = {0: "", 1: " once", 2: " twice"}.get(n, f" {n} times")
+    lead = f"Mercury's fix failed{times}." if n else ""
+    if not lead and legacy.get("failure"):
+        # A failure Mercury holds with no attempt of its own: no fix of its own exists for this
+        # problem (a lost stream), or its decision stopped it.
+        lead = ("Mercury has no fix of its own for this problem."
+                if legacy["failure"].get("outcome") == "no_code_fix" else
+                "Mercury's fix did not run.")
+    if failed_words:
+        return f"{lead} Couldn't troubleshoot: {failed_words}. Ask the AI again, or hand over."\
+            .strip()
+    if state == "investigating":
+        est = AIT.estimate()
+        since = int(max(0, now - float((last_start or {}).get("epoch") or now)))
+        return (f"{lead} The AI is investigating (started {since} s ago), about "
+                f"{money(est['usd'])}.").strip()
+    if state == "capped":
+        which = (last_start or {}).get("which") or "a"
+        return (f"{lead} The AI did not start: this incident's AI cap would be passed. "
+                "Hand over to an engineer.").strip() if which == "incident" else (
+               f"{lead} The AI did not start: the {which} cap would be passed. Hand over to "
+               "an engineer.").strip()
+    if plan is not None and state == "proposed":
+        steps = len(plan["steps"])
+        who = {"the AI": "The AI", "Mercury's diagnosis": "Mercury's diagnosis",
+               "a person": "A person"}.get(plan.get("source") or "", "The AI")
+        plural = "s" if steps != 1 else ""
+        if plan["approvable"]:
+            return (f"{lead} {who} proposes a plan of {steps} step{plural}. Nothing runs until "
+                    "you approve it.").strip()
+        # Why is drawn once, on the refused step and beside Approve: never again here.
+        return (f"{lead} {who} proposes a plan of {steps} step{plural}, and Mercury would "
+                "refuse a step of it as it stands: modify it or deny it.").strip()
+    if state == "proposed" and said:
+        # What the answer said is drawn below it (its diagnosis, its missing capability): the
+        # status names only what kind of answer it was.
+        kind = ("the AI found what the fix needs, and no Mercury operation does it yet"
+                if said.startswith("No Mercury operation") else
+                "the AI's answer couldn't be checked" if "couldn't be checked" in said else
+                "the AI says the evidence cannot say" if "cannot say" in said else
+                "the AI was not asked" if said.startswith("The AI was not asked") else
+                "the AI named no fix Mercury can run")
+        return f"{lead} No plan to approve: {kind}. Ask it again, or hand over.".strip()
+    if state == "denied":
+        return f"{lead} The proposal was denied; nothing ran. Ask the AI again, or hand over."\
+            .strip()
+    if state == "running":
+        return f"{lead} The approved plan is running.".strip()
+    if legacy.get("offered"):
+        return (f"{lead} {legacy['words']}. Start AI troubleshooting to have the AI "
+                "investigate.").strip()
+    if state == "stopped":
+        return f"{lead} The last attempt did not fix it.".strip()
+    if state == "handed_over":
+        return f"{lead} Handed over to an engineer.".strip()
+    return lead or "Mercury is watching it; nothing has failed yet."
 
 
 def _stated(out: dict, found: dict) -> dict:
@@ -499,7 +848,7 @@ def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",
         network, found, resolved=resolved, ended=ended, now=now)))
 
 
-# ── Retry with more information ─────────────────────────────────────────────────────────────
+# ── Mercury's diagnosis, and what moved since the panel was drawn ─────────────────────────
 
 def diagnosis_of(incident) -> dict:
     """The newest diagnosis Mercury ran for *incident* (`steplog.diagnoses` attached to it),
@@ -535,57 +884,6 @@ def _moved_words(drawn_spent, drawn_cap, got: dict) -> str:
         moved.append(f"the per-incident cap was {money(was_cap)} when the panel was drawn and "
                      f"is {money(got['cap'])} now")
     return "; ".join(moved)
-
-
-def retry(network: str, found: dict, *, actor: str, actor_verified: str, person: bool,
-          note: str = "", drawn_spent: str = "", drawn_cap: str = "", now: float = None,
-          sources=None, planned=None) -> dict:
-    """Retry with more information, pressed by *actor*, a person verified as *actor_verified*
-    (`STEPS`): the cap asked again at the press, Mercury's own proposer asked for the fix its
-    diagnosis names, the proposal checked, and ONE proposal line recorded with the person's
-    *note*. ``{"line", "checked", "proposed"}``, or raises `Refused` with nothing recorded and
-    the proposer not asked. *drawn_spent* and *drawn_cap* are the figures the panel was drawn
-    with, so a refusal can say what moved since. *sources* and *planned* are the check's seams
-    (tests). Asks no model, holds no device, starts no job and sends nothing, and runs nothing
-    on Mercury's host: a collector-step proposal is checked without the close helper's dry run
-    (`catalog._collector_plan`), which runs only on the person's own card preview."""
-    from modules.fixit import incident as F
-    from modules.fixit import policy as P
-    from modules.fixit import proposers
-    from modules.fixit import validate as V
-
-    got = incident_of(network, found)
-    inc = got["incident"]
-    if inc is None:                                                                # person
-        raise Refused(f"Not re-planned: {got['why']}", 404)
-    if not person or not actor or actor_verified in ("", "none", None):
-        raise Refused("Not re-planned: Retry with more information is a verified person's "
-                      f"press, and this request is not one (its actor is {actor or 'none'}, "
-                      f"verified by {actor_verified or 'nothing'})", 403)
-    cs = P.cap_state(inc, worst_usd())                                             # cap
-    if cs["state"] != "allowed":
-        moved = _moved_words(drawn_spent, drawn_cap, cs)
-        log.info("fixit: %s: a retry refused at the press by the cap: %s", inc.id, cs["words"])
-        raise Refused(cs["words"] + (f". Since the panel was drawn, {moved}" if moved else ""),
-                      409)
-    proposed = proposers.mercury(inc, diagnosis_of(inc))                           # propose
-    checked = None
-    if proposed["state"] == "proposed":
-        checked = V.check(inc, proposed["operation"], proposed["params"], now=now,  # check
-                          sources=sources, planned=planned)
-    if checked and checked["ok"]:
-        line = F.record_proposal(inc, "mercury", checked["operation"],             # record
-                                 V.as_attempt(checked["operation"], checked["params"]),
-                                 by=actor, verified=actor_verified, note=note, now=now)
-    else:
-        why = (proposed["words"] if checked is None else
-               f"Mercury's diagnosis named {proposed['operation']}, and the check refused it: "
-               f"{checked['refused']}")
-        line = F.record_proposal(inc, "mercury", by=actor, verified=actor_verified,
-                                 note=note, words=why, now=now)
-    log.info("fixit: %s: Retry with more information by %s: %s", inc.id, actor,
-             line.get("operation") or "no operation")
-    return {"line": line, "checked": checked, "proposed": proposed}
 
 
 # ── The operation's card, opened from the section ───────────────────────────────────────────

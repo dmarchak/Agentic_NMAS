@@ -109,11 +109,12 @@ NOT_AN_OPERATION = {
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
     # C3455: AI troubleshooting's choices open modals (`_modal.html`); each closes by its own
     # button or Escape, the opener given the focus back.
-    ("_fixit_section.html", "Cancel"): "closes Retry with more information's or Hand over's "
-                                       "modal: nothing was asked, kept or sent, and what was "
-                                       "typed stays for when it is opened again",
-    ("_fixit_section.html", "Keep troubleshooting"): "closes Cancel's confirm: nothing was "
-                                                     "recorded",
+    # The operator's R2 (2026-11-14): Cancel and Retry with more information are gone; Modify…
+    # and Deny… open their modals as Hand over… does.
+    ("_fixit_section.html", "Cancel"): "closes Modify's or Hand over's modal: nothing was "
+                                       "asked, kept or sent, and what was typed stays for when "
+                                       "it is opened again",
+    ("_fixit_section.html", "Keep the plan"): "closes Deny's confirm: nothing was recorded",
     ("_sdn_settings.html", "Cancel"): "draws the SDN controllers card again (leaving Edit or "
                                       "Remove…), writing nothing",
     # Board H's Self-healing tab and Notifications (H9).
@@ -486,9 +487,6 @@ NOT_AN_OPERATION = {
     ("incident.html", "Open the run"): ("opens the held device's page, which draws the run "
                                         "holding it; the incident's action returns when the "
                                         "run ends"),
-    ("incident.html", "Go to the proposed fix"): ("moves to the proposal under AI "
-                                                  "troubleshooting on the same page, where "
-                                                  "its card is opened"),
 }
 
 

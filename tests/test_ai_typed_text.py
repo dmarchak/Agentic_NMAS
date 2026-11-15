@@ -443,13 +443,18 @@ FIELDS = {
         "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
-    # AI troubleshooting on an incident's page (the fix-it plan's S5): the note as typed; the
-    # figures the panel was drawn with only compare the cap at the press, never sent.
-    "fixit_v2.troubleshoot": {
-        "form.note": TYPED("fixit_troubleshoot", "note"),
+    # AI troubleshooting on an incident's page (the fix-it plan's S5; R1, 2026-11-14): Start,
+    # Ask the AI again and Modify each send the person's words as typed (the typed part
+    # ``note``); the figures the panel was drawn with only compare the cap at the press, never
+    # sent; Modify names the proposal it revises, an id Mercury drew (one reader, `_ask`, for
+    # the three, so each is said to read it).
+    **{f"fixit_v2.{name}": {
+        "form.text": TYPED("fixit_troubleshoot", "note"),
         "form.drawn_spent": "the incident's AI spend the panel was drawn with (a refusal names "
                             "what moved); never sent",
-        "form.drawn_cap": "the per-incident cap the panel was drawn with; never sent"},
+        "form.drawn_cap": "the per-incident cap the panel was drawn with; never sent",
+        "form.proposal": "the id of the proposal Mercury drew, which Modify revises; never sent"}
+       for name in ("start", "ask_again", "modify")},
     # Lab 9 B4: Analyse with the trace tool sends the same snapshot's facts, its hosts and the
     # reads Mercury answered from it; nothing typed.
     "sdn_analyse_v2.ask_tools": {

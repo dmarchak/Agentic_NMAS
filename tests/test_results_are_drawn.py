@@ -91,6 +91,12 @@ TOAST_ENOUGH = {}
 #: strict policy, so the evidence is the template's source, as the
 #: component's is its function's.
 PAGE_RECORD = {
+    # Approve on an incident's plan (the operator's R2, 2026-11-14; routes/fixit_v2.approve):
+    # its answer drawn under the BLUF's buttons in place, its runs as the incident's attempts
+    # in the one card, each with its run's record; the incident's page re-reads them.
+    "fixit_v2.approve": ("templates/v2/_fixit_section.html",
+                         ('class="bluf-answer"', "answer.done", "answer.refused", "x.attempts"),
+                         "incident_v2.incident"),
     # The Update button: the request is answered 202, the page waits on
     # /health, and the updater's record is drawn as "The last update" (its
     # outcome and reason) on the Update page, whose panel route re-reads it.

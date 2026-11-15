@@ -267,7 +267,7 @@ class TestTheStore:
         ('{"version": 1, "incident": "hi-000000000009", "lines": []}',
          "it names the incident 'hi-000000000009', not hi-3f9c1a2b7d40"),
         ('{"version": 1, "incident": "hi-3f9c1a2b7d40", "lines": [{"note": "x", "epoch": 1}]}',
-         "its line 1 is neither a proposal nor a choice"),
+         "its line 1 is not exactly one of a proposal, a choice and a start"),
         ('{"version": 1, "incident": "hi-3f9c1a2b7d40", "lines": [{"choice": "retry", '
          '"epoch": 1}]}', "its line 1 is a choice this release does not know \\('retry'\\)"),
     ])

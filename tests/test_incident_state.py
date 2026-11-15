@@ -63,7 +63,10 @@ NOBODY = ("No person needed", "Nothing yet", "Mercury is still reading", "Nothin
 SOMEBODY = ("Needs a person", "It needs a person", "Nothing more runs unless you choose",
             "Stopped:")
 #: The sections that carry the page's state, by the id each has (the header has none).
-SECTIONS = ("inc-wrong", "inc-done", "inc-todo", "inc-ai")
+#: Premise corrected (the operator's R2, 2026-11-14): What to do and AI troubleshooting are one
+#: card (`inc-ai`, "Fixing it") under the BLUF (`inc-bluf`), whose third line is What to do's
+#: one action.
+SECTIONS = ("inc-wrong", "inc-done", "inc-bluf", "inc-ai")
 
 
 def with_its_item(monkeypatch):
@@ -85,6 +88,13 @@ def section(body: str, sid: str) -> str:
     part = body.split(f'id="{sid}"', 1)
     assert len(part) == 2, f"no #{sid} is drawn"
     return part[1].split("</section>", 1)[0]
+
+
+def todo_of(body: str) -> str:
+    """What to do as the page draws it since the operator's R2 (2026-11-14): the BLUF (its
+    third line the one action, its opening tag carrying the item's state), then the one card
+    under it (the state in words, what the item says, how it clears)."""
+    return section(body, "inc-bluf") + section(body, "inc-ai")
 
 
 def primaries(html: str) -> list:
@@ -208,7 +218,7 @@ class TestOneStateOnThePage:
         assert [w for w in wrong if w in words] == [], (state, words)
         assert [w for w in right if w in words], f"the page says its own state: {words}"
         # And What to do says it in words, once.
-        todo = T.text_of(section(body, "inc-todo"))
+        todo = T.text_of(todo_of(body))
         assert todo.count("It needs a person") == (1 if state == "needs_person" else 0), todo
 
     def test_the_scan_finds_a_planted_contradiction(self, client, monkeypatch):  # noqa: F811
@@ -236,7 +246,7 @@ class TestTheOnePrimaryButton:
         with_its_item(monkeypatch)
         iid = PLANTS[name][0]()
         row, words, target = the_row(client, iid)
-        todo = section(T.page(client, iid), "inc-todo")
+        todo = todo_of(T.page(client, iid))
         assert 'data-item="stands"' in todo.split(">", 1)[0]
         button = the_primary(todo)
         tag, attrs, said = button
@@ -264,7 +274,7 @@ class TestTheOnePrimaryButton:
         opens, written here from what was planted."""
         with_its_item(monkeypatch)
         iid = T.cant_fix()
-        button = the_primary(section(T.page(client, iid), "inc-todo"))
+        button = the_primary(todo_of(T.page(client, iid)))
         assert (button[0], button[2]) == ("a", "Open edge-b")
         assert attr(button[1], "href") == f"/v2/device/edge-b?list={NET}"
 
@@ -272,7 +282,7 @@ class TestTheOnePrimaryButton:
                                                                       measured):  # noqa: F811
         with_its_item(monkeypatch)
         d = proposed()
-        todo = section(T.page(client, d["incident"]), "inc-todo")
+        todo = todo_of(T.page(client, d["incident"]))
         button = the_primary(todo)
         assert (button[0], button[2]) == ("summary", "Review the fix…")
         cid, card, _attrs = card_of(todo, "heal-prop-")
@@ -285,17 +295,24 @@ class TestTheOnePrimaryButton:
     def test_a_page_that_needs_nobody_draws_no_primary_button(self, client, monkeypatch, name):  # noqa: F811
         with_its_item(monkeypatch)
         plant, state = PLANTS[name]
-        todo = section(T.page(client, plant()), "inc-todo")
+        body = T.page(client, plant())
+        todo = todo_of(body)
         assert f'data-inc-state="{state}"' in todo.split(">", 1)[0], "What to do says its state"
         assert primaries(todo) == [] and "data-first=" not in todo
-        assert T.text_of(todo).split("What to do", 1)[1].strip().startswith("Nothing")
+        # Premise corrected (R2, 2026-11-14): no heading "What to do"; the BLUF's third line
+        # says there is nothing to press, and the one card's status line says why.
+        fix = T.text_of(section(body, "inc-bluf")).split("How to fix it", 1)[1].strip()
+        assert fix.startswith("Nothing to press"), fix
+        status = re.search(r'<p class="fixit-status"[^>]*>(.*?)</p>', section(body, "inc-ai"),
+                           re.S)
+        assert status and T.text_of(status.group(1)).startswith("Nothing"), status
 
     def test_an_item_that_left_needs_attention_is_said_and_the_device_opened(self, client):  # noqa: F811
         """A person acknowledged the can't-fix's item: the list was read and holds no item for
         it. Premise corrected (C3620, 2026-11-14: "an incident that still needs a person ...
         stays on Needs attention until it is resolved or acknowledged, with no age-out"): it
         left by the acknowledgement, where it had left by the lab's age (decided in 2026-09)."""
-        todo = section(T.page(client, T.acknowledged(T.cant_fix())), "inc-todo")
+        todo = todo_of(T.page(client, T.acknowledged(T.cant_fix())))
         assert 'data-item="none"' in todo.split(">", 1)[0]
         assert "Its item is not on Needs attention now" in T.text_of(todo)
         button = the_primary(todo)
@@ -307,7 +324,7 @@ class TestTheOnePrimaryButton:
 
         monkeypatch.setattr(attention_store, "COMPUTE_ON_READ", False)
         attention_store.clear()
-        todo = section(T.page(client, T.cant_fix()), "inc-todo")
+        todo = todo_of(T.page(client, T.cant_fix()))
         assert 'data-item="reading"' in todo.split(">", 1)[0]
         said = T.text_of(todo)
         assert "Needs attention is still being read" in said
@@ -324,7 +341,7 @@ class TestTheOnePrimaryButton:
         with_its_item(monkeypatch)
         d = proposed()
         with device_ops.hold(NET, "edge-b", "capture", actor="op@example.com"):
-            todo = section(T.page(client, d["incident"]), "inc-todo")
+            todo = todo_of(T.page(client, d["incident"]))
         button = the_primary(todo)
         assert button[2] == "Open the run" and 'data-first="run"' in todo
         assert "<summary" not in todo and 'class="inc-card"' not in todo, \
@@ -352,6 +369,12 @@ class TestTheOneResolver:
         ({"action": {"open": "resubscribe", "device": "r1", "subs": ["101"]},
           "devices": ["r1"], "networks": {"r1": [NET]}}, "resubscribe",
          "Re-subscribe r1's telemetry (101)…"),
+        # R1 and R2 (2026-11-14): a lost stream's row whose incident offers Start AI
+        # troubleshooting offers it too (`fixit.auto.offers_start`).
+        ({"action": {"open": "resubscribe", "device": "r1", "subs": ["101"]},
+          "devices": ["r1"], "networks": {"r1": [NET]},
+          "incident_page": {"id": "hi-000000000001", "list": NET, "start": True}}, "start",
+         "Start AI troubleshooting…"),
         ({"action": {"open": "ai_spend_panel"}}, "ai_spend_panel", "Open the spend panel"),
         ({"action": {"open": "app_update"}, "source": "host_steps"}, "update_page",
          "Open the Update page"),

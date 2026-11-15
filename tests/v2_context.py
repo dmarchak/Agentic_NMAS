@@ -5077,14 +5077,18 @@ def _fixit_section(client, _lab, _mp):
         if job:
             capture_job.wait(job.group(1), 10)
         stopped = client.get(page).get_data(as_text=True)
-        assert 'data-state="stopped"' in stopped and "What it found" in stopped, stopped[:400]
-        assert "What the AI would be sent" in stopped
+        # The operator's R2 (2026-11-14): the run's findings one level down in the one card,
+        # and the next action the AI's (Retry with more information's panel is gone).
+        assert 'data-state="stopped"' in stopped and "What attempt 1 found" in stopped, \
+            stopped[:400]
+        assert "Start AI troubleshooting" in stopped
         # A proposal of both subscriptions, by the record's own writer: a variation of the
         # attempt that re-subscribed 101 alone; and its card, opened from it.
         line = F.record_proposal(F.Incident("Lab", iid, "nb:3", "r3", t0 - 3600, ("101", "102")),
                                  "mercury", R.KEY, {"subs": ["101", "102"]})
         proposed = client.get(page).get_data(as_text=True)
-        assert "A variation of attempt 1" in proposed, proposed[:400]
+        # R2: a proposal is drawn as its plan's steps, each with its preflight.
+        assert 'class="fixit-plan"' in proposed and "preflight" in proposed, proposed[:400]
         opened = client.get(f"{base}?list=Lab&subs=101,102&fixit={iid}&proposal={line['proposal']}",
                             headers=hx).get_data(as_text=True)
         assert "A variation of attempt 1" in opened and 'name="fixit"' in opened, opened[:400]
@@ -5101,7 +5105,46 @@ def _fixit_section(client, _lab, _mp):
                                                  "cites": ["attempt:1"]}],
                                  "gap": "close the collector's session from r3", "passes": 1})
         gap = client.get(page).get_data(as_text=True)
-        assert "checked against what was sent" in gap and "attempt:1" in gap, gap[:400]
+        # R2: the gap is said by the one card's status line, and drawn whole under What the AI
+        # found (`x.ai_answer`, the answer that proposed no plan). Premise corrected (Part A's
+        # review, 2026-11-14): the status names the kind of answer, never repeats its words.
+        assert "no Mercury operation does it yet" in gap, gap[:400]
+        assert "close the collector&#39;s session from r3" in gap or \
+            "close the collector's session from r3" in gap, gap[:400]
+        # The R2 contract's holds and a plan's AI answer (its hypotheses, each with what it
+        # cites), planted over the section's own model for one draw: a hold is the step log's
+        # guard on a heal decision, which this lost-stream incident has none of.
+        from modules.fixit import section as FS
+        real_view = FS.view
+        hold = ("Self-healing won't write to r3 until its saved config matches intent (2 lines "
+                "differ). This doesn't block the fix below.")
+        planted_plan = {"id": "p-walk", "hash": "a" * 64, "approvable": True, "found": "",
+                        "why_refused": "", "source": "the AI", "by": "", "at": "",
+                        "calls": ["ai-walk00000000"], "note": "", "prompt": "",
+                        "shown": {"rationale": "r3's old session stands.",
+                                  "hypotheses": [{"claim": "The collector holds r3's session.",
+                                                  "cites": ["attempt:1"]}]},
+                        "steps": [{"n": 1, "operation": R.COLLECTOR_KEY,
+                                   "words": "Close the collector's stale session for r3",
+                                   "params": "subs: 101, 102", "hash": "b" * 64,
+                                   "preflight": {"ok": True, "refused": ""}}]}
+        mp.setattr(FS, "view", lambda *a, **k: dict(real_view(*a, **k), holds=[hold],
+                                                    proposal=planted_plan, state="proposed"))
+        held = client.get(page).get_data(as_text=True)
+        assert "fixit-hold" in held and "The collector holds r3" in held, held[:400]
+        # A plan refused at its preflight as a repeat: The record keeps what was refused, by
+        # hash (the refused plan's, and its step's parameter hash with the attempt it repeats).
+        refused_plan = dict(planted_plan, hash="", refused_hash="c" * 16, approvable=False,
+                            why_refused="Step 1 would be refused: it already failed",
+                            steps=[dict(planted_plan["steps"][0],
+                                        preflight={"ok": False, "refused": "it already failed",
+                                                   "code": "repeat"},
+                                        repeat={"attempt": 1, "params_hash": "d" * 16})])
+        mp.setattr(FS, "view", lambda *a, **k: dict(real_view(*a, **k), proposal=refused_plan,
+                                                    state="proposed"))
+        refused = client.get(page).get_data(as_text=True)
+        assert "The refused plan" in refused and "d" * 16 in refused, refused[:400]
+        mp.setattr(FS, "view", real_view)
         # A hand-over to a team whose relay refuses: kept, Send again offered; then its page.
         r = client.post(f"/v2/incident/{iid}/fixit/handover?list=Lab", headers=hx,
                         data={"team": "t-walk", "note": "read the collector's sessions"})

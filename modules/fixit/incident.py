@@ -32,6 +32,12 @@ kinds only:
   that moment; a hand-over carries its ``version`` and the ``teams`` told, a save what was
   ``saved``. What a hand-over says is the hand-over builder's, never kept here.
 
+- a **start** line (the operator's R1, 2026-11-14; `claim_start`): ``{"start": <the failure's
+  key>, "trigger": "auto"|"person", "state", "failure", "job", "words", "which", "at",
+  "epoch"}``, one per key under the record's lock, so an investigation starts once per failure;
+  a choice line may also be ``deny`` (with ``decides``, the proposal, and an optional
+  ``reason``) or ``approve`` (``decides``, ``plan_hash`` and the plan engine's ``run``).
+
 Nothing a list or a page can derive is written: the words "cancelled" and "AI-assisted", an
 attempt, an outcome and a cost are never stored. The header names the incident, its network and
 the device it named at the record's first line (identity and label); the incident's own store
@@ -117,7 +123,22 @@ NOT_PARAMETERS = ("device", "reason")
 
 #: Who a proposal came from: Mercury's own diagnosis, a model's answer, or a person's choice.
 SOURCES = ("mercury", "ai", "person")
-CHOICES = ("cancel", "handover", "save")
+#: A person's choices. ``cancel`` is no longer offered (the operator's R1, 2026-11-14: Deny and
+#: Modify replace Cancel and Retry with more information), and a line written before stays
+#: readable (expand, then contract). ``deny`` declines the proposal shown, with an optional
+#: reason; ``approve`` approves a plan by its hash, naming the run it started.
+CHOICES = ("cancel", "handover", "save", "deny", "approve")
+#: How an investigation was started (a ``start`` line, `claim_start`): by itself on a failure
+#: (``auto``, R1) or by a person's press (``person``: Start AI troubleshooting, Ask the AI
+#: again, Modify). Its states: ``started`` (the AI was asked), ``capped`` (a cap would have
+#: been passed: nothing was asked, *which* names the cap), ``off`` (the installation's choice
+#: is off: nothing was asked) and ``failed`` (it could not be asked, *words* say why).
+START_TRIGGERS = ("auto", "person")
+START_STATES = ("started", "capped", "off", "failed")
+#: The most steps a plan's proposal line keeps (`plan_engine.MOST_STEPS`'s figure).
+MOST_STEPS = 10
+#: The line kinds, exactly one per line.
+LINE_KINDS = ("proposal", "choice", "start")
 #: What the save choice can be: apply alone next time, propose next time, or do not save.
 SAVE_CHOICES = ("apply_alone", "propose", "dont_save")
 
@@ -242,8 +263,12 @@ def _shape_error(doc, incident: Incident) -> str:
     if not isinstance(lines, list):
         return "it holds no lines"
     for n, line in enumerate(lines, 1):
-        if not isinstance(line, dict) or ("proposal" in line) == ("choice" in line):
-            return f"its line {n} is neither a proposal nor a choice"
+        if not isinstance(line, dict) or sum(1 for k in LINE_KINDS if k in line) != 1:
+            return f"its line {n} is not exactly one of a proposal, a choice and a start"
+        if "start" in line and (line.get("trigger") not in START_TRIGGERS
+                                or line.get("state") not in START_STATES):
+            return (f"its line {n} is a start this release does not know "
+                    f"({line.get('trigger')!r}, {line.get('state')!r})")
         if "choice" in line and line["choice"] not in CHOICES:
             return f"its line {n} is a choice this release does not know ({line['choice']!r})"
         if "proposal" in line and line.get("source") not in SOURCES:
@@ -279,27 +304,9 @@ def read(incident: Incident) -> dict:
 def _append(incident: Incident, build) -> dict:
     """Append ``build(lines so far)`` to *incident*'s record under its lock, masked, the
     document replaced atomically; the line as stored. A record that cannot be read raises
-    `filestore.StoreUnreadable` and is preserved; a network that does not exist is refused."""
-    from modules import filestore
-    from modules.nsot import listref
-    from modules.redact import redact_payload
-
-    p = path(incident)
-    if not listref.exists(incident.network):
-        raise Refused(f"{incident.network} is no network, so nothing is recorded for "
-                      f"{incident.id}")
-    with filestore.PathLock(p):
-        doc = filestore.read_json_for_write(p, empty=_empty(incident))
-        why = _shape_error(doc, incident)
-        if why:
-            filestore.preserve_corrupt(p, why)
-            raise filestore.StoreUnreadable(
-                _unreadable(incident, why) + ", so nothing was written: saving would have "
-                "replaced what it holds. The file is preserved beside it.")
-        line = redact_payload(build(doc["lines"]))
-        doc["lines"].append(line)
-        filestore.write_atomic(p, json.dumps(doc, indent=1, sort_keys=True))
-    return line
+    `filestore.StoreUnreadable` and is preserved; a network that does not exist is refused.
+    One write path (`_append_unless`, whose *build* may decline)."""
+    return _append_unless(incident, build)
 
 
 # ── A proposal's operation and parameters ───────────────────────────────────────────────────
@@ -381,7 +388,7 @@ SHOWN_BYTES = 8192
 def record_proposal(incident: Incident, source: str, operation: str = "", params=None, *,
                     calls=(), prompt: str = "", now: float = None, by: str = "",
                     verified: str = "", note: str = "", words: str = "",
-                    shown: dict = None) -> dict:
+                    shown: dict = None, steps=None) -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
     `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
@@ -391,9 +398,25 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     gives *by* and *verified* (both or neither), the *note* they typed and, when nothing was
     proposed, *words* saying why; an ``ai`` proposal may keep *shown*, what the section draws
     of the model's checked answer (its rationale, its hypotheses' claims and citations, the
-    fix's why or the gap), an object of at most `SHOWN_BYTES`; each kept only when given. It
-    starts nothing."""
+    fix's why or the gap), an object of at most `SHOWN_BYTES`; each kept only when given.
+
+    A PLAN of catalog operations (C3694) gives *steps*, ``[{"operation", "params"}]`` in their
+    order, 1 to `MOST_STEPS`, each kept canonical with its hash (``steps``: ``[{"operation",
+    "params", "params_hash"}]``); *operation* and *params* are then its first step's, so a
+    reader of the one-operation shape reads a plan of one as before. It starts nothing."""
     _check(incident)
+    kept_steps = []
+    if steps is not None:
+        if isinstance(steps, (str, bytes, dict)) or not 1 <= len(list(steps)) <= MOST_STEPS:
+            raise Refused(f"a plan's steps are a list of 1 to {MOST_STEPS} operations, and "
+                          f"{steps!r:.80} was given")
+        for s in steps:
+            if not isinstance(s, dict) or set(s) != {"operation", "params"}:
+                raise Refused("each step of a plan is exactly {operation, params}")
+            kept_steps.append({"operation": s["operation"],
+                               "params": canonical(s["operation"], s["params"]),
+                               "params_hash": params_hash(s["operation"], s["params"])})
+        operation, params = kept_steps[0]["operation"], kept_steps[0]["params"]
     if shown is not None and not isinstance(shown, dict):
         raise Refused(f"what is shown of an answer is an object, and {type(shown).__name__} "
                       "was given")
@@ -438,7 +461,7 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     more = {k: v for k, v in (("by", by), ("verified", verified),
                               ("note", typed),
                               ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
-                              ("shown", dict(shown or {})))
+                              ("shown", dict(shown or {})), ("steps", kept_steps))
             if v}
 
     def build(lines):
@@ -758,6 +781,141 @@ def record_save(incident: Incident, choice: str, actor: str, actor_verified: str
         raise Refused(f"the save choice is one of {', '.join(SAVE_CHOICES)}, and {choice!r} "
                       "was given")
     return _choice(incident, "save", actor, actor_verified, now, lambda lines: {"saved": choice})
+
+
+#: Where a denial's reason stops when kept.
+REASON_CHARS = 500
+#: A plan's hash, as the plan engine gives it (`plan_engine.plan_hash`: 16 hex characters).
+_PLAN_HASH = re.compile(r"[0-9a-f]{16}")
+
+
+def deny(incident: Incident, actor: str, actor_verified: str, *, proposal: str,
+         reason: str = "", now: float = None) -> dict:
+    """Record that *actor*, a verified person, denied *proposal* (a proposal line this record
+    holds), with their optional *reason* (masked as typed words are): ONE choice line, the line
+    as stored. Nothing runs and nothing is sent; the incident stays open, offering Ask the AI
+    again and Hand over. An unverified request, or a proposal this record does not hold, is
+    refused with nothing recorded."""
+    from modules.redact import redact_typed
+
+    _check(incident)
+    _person(actor, actor_verified, "a denial")
+    rec = read(incident)
+    if rec["state"] == "unreadable":
+        raise Refused(rec["error"])
+    if not proposal or proposal not in [ln.get("proposal") for ln in rec["lines"]]:
+        raise Refused(f"{incident.id}'s record holds no proposal {proposal!r}, so there is "
+                      "nothing to deny. Nothing was recorded")
+    said = redact_typed(" ".join(str(reason or "").split()))[:REASON_CHARS]
+    return _choice(incident, "deny", actor, actor_verified, now,
+                   lambda lines: dict({"decides": proposal}, **({"reason": said} if said
+                                                                 else {})))
+
+
+def record_approve(incident: Incident, actor: str, actor_verified: str, *, proposal: str,
+                   plan_hash: str, run: str, job: str = "", now: float = None) -> dict:
+    """Record that *actor*, a verified person, approved *proposal*'s plan by *plan_hash*, and
+    the plan run that approval started (*run*, its record's id; *job*): ONE choice line. The
+    line only: the run is the plan engine's, its outcome its own record's."""
+    _check(incident)
+    _person(actor, actor_verified, "an approval")
+    if not isinstance(plan_hash, str) or not _PLAN_HASH.fullmatch(plan_hash):
+        raise Refused(f"a plan is approved by its hash (16 hex characters), and {plan_hash!r} "
+                      "was given")
+    return _choice(incident, "approve", actor, actor_verified, now,
+                   lambda lines: {"decides": str(proposal or ""), "plan_hash": plan_hash,
+                                  "run": str(run or ""), "job": str(job or "")})
+
+
+def starts(incident: Incident) -> dict:
+    """*incident*'s ``start`` lines, oldest first: ``{"state", "starts", "error"}``."""
+    rec = read(incident)
+    return {"state": rec["state"], "starts": [ln for ln in rec["lines"] if "start" in ln],
+            "error": rec["error"]}
+
+
+def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
+                failure: dict = None, job: str = "", words: str = "", which: str = "",
+                by: str = "", verified: str = "", now: float = None,
+                busy_s: float = None):
+    """Take *key*, one failure's own record (``decision:<id>:<outcome>`` or ``run:<id>``,
+    `modules/fixit/auto.py`), for its ONE investigation: the ``start`` line as stored, or None
+    when a start line with *key* is already in the record. Under the record's lock across
+    processes (`_append`): two runners, two workers or a page and a runner never both take one.
+    *trigger* is one of `START_TRIGGERS`, *state* of `START_STATES`; *failure* what the key
+    names (``{"kind", "id", "outcome", "at"}``); *which* the cap a ``capped`` start was stopped
+    by (``incident`` or ``day``); a person's start gives *by* and *verified*. Starts nothing:
+    the caller asks the AI after it holds the line.
+
+    **One investigation at a time, atomically** (*busy_s*, the investigation's bound): a
+    ``started`` claim is refused, under the same lock, while the record's newest start is
+    ``started``, younger than *busy_s* and followed by no proposal line: a press and the
+    automatic pass, or two failures, at the same moment start ONE paid call."""
+    _check(incident)
+    if trigger not in START_TRIGGERS:
+        raise Refused(f"a start is one of {', '.join(START_TRIGGERS)}, and {trigger!r} was given")
+    if state not in START_STATES:
+        raise Refused(f"a start's state is one of {', '.join(START_STATES)}, and {state!r} was "
+                      "given")
+    if not isinstance(key, str) or not key or len(key) > 120:
+        raise Refused(f"a start is keyed by its failure's record, and {key!r} was given")
+    if bool(by) != bool(verified):
+        raise Refused("a press is recorded with who pressed and how they were verified, both "
+                      "or neither")
+    if by:
+        _person(by, verified, "a press")
+    at = time.time() if now is None else float(now)
+    taken = []
+
+    def build(lines):
+        if any(ln.get("start") == key for ln in lines if "start" in ln):
+            taken.append(True)
+            return None
+        if state == "started" and busy_s:
+            last = max((n for n, ln in enumerate(lines) if "start" in ln), default=None)
+            if (last is not None and lines[last].get("state") == "started"
+                    and at - float(lines[last].get("epoch") or 0) < float(busy_s)
+                    and not any("proposal" in ln for ln in lines[last + 1:])):
+                taken.append("busy")
+                return None
+        return dict({"start": key, "trigger": trigger, "state": state,
+                     "failure": dict(failure or {}), "job": str(job or ""),
+                     "words": " ".join(str(words or "").split())[:WORDS_CHARS],
+                     "which": str(which or ""), "at": _iso(at), "epoch": at},
+                    **({"by": by, "verified": verified} if by else {}))
+
+    line = _append_unless(incident, build)
+    if taken:
+        return None
+    log.info("fixit: %s: start %s taken (%s, %s)", incident.id, key, trigger, state)
+    return line
+
+
+def _append_unless(incident: Incident, build):
+    """`_append`, writing nothing when *build* answers None (a key already taken)."""
+    from modules import filestore
+    from modules.nsot import listref
+    from modules.redact import redact_payload
+
+    p = path(incident)
+    if not listref.exists(incident.network):
+        raise Refused(f"{incident.network} is no network, so nothing is recorded for "
+                      f"{incident.id}")
+    with filestore.PathLock(p):
+        doc = filestore.read_json_for_write(p, empty=_empty(incident))
+        why = _shape_error(doc, incident)
+        if why:
+            filestore.preserve_corrupt(p, why)
+            raise filestore.StoreUnreadable(
+                _unreadable(incident, why) + ", so nothing was written: saving would have "
+                "replaced what it holds. The file is preserved beside it.")
+        built = build(doc["lines"])
+        if built is None:
+            return None
+        line = redact_payload(built)
+        doc["lines"].append(line)
+        filestore.write_atomic(p, json.dumps(doc, indent=1, sort_keys=True))
+    return line
 
 
 # ── What the incidents list derives ─────────────────────────────────────────────────────────

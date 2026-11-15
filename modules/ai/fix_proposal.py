@@ -170,7 +170,12 @@ def for_incident(answer, incident, *, call_id: str, calls=(), actor: str,
     from modules.fixit import validate
 
     ids = [c for c in calls or () if c] or ([call_id] if call_id else [])
-    kept = {"by": actor, "verified": actor_verified, "note": note, "shown": shown or {}}
+    # A background investigation's (R1: its *actor* the job, *actor_verified* none) names no
+    # person on its line: both or neither are kept.
+    verified_person = bool(actor_verified) and actor_verified != "none"
+    kept = {"by": actor if verified_person else "",
+            "verified": actor_verified if verified_person else "", "note": note,
+            "shown": shown or {}}
     code, words = _call_refusal(call_id)
     if not code:
         code, words = _shape(answer)

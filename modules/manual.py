@@ -107,7 +107,7 @@ PAGES = (
     ("incident-timeline", "An incident's timeline and its time to repair", H,
      "how-it-works/incident-timeline.md"),
     ("fixit-troubleshoot",
-     "AI troubleshooting: Troubleshoot with AI, Retry, Cancel and Hand over", H,
+     "AI troubleshooting: Start, Approve, Modify, Deny and Hand over", H,
      "how-it-works/fixit-troubleshoot.md"),
     ("notifications", "Notifications: how a team is told", H,
      "how-it-works/notifications.md"),
@@ -282,8 +282,8 @@ OPERATIONS = {
     "privileged": ("modules.nsot.privileged", "STEPS"),
     # Board H, H5 and H9 (artboard E): a self-healing proposal approved by its hash, or declined.
     "heal-proposal": ("modules.heal.propose", "STEPS"),
-    # Board recurring-fixes v2 (the fix-it plan's S4): Retry with more information on an
-    # incident's page, re-planned by Mercury's own diagnosis with no AI call.
+    # The incident page's Fixing it (the operator's R1, 2026-11-14): a plan's preflight, and
+    # Approve, Modify, Deny, Ask the AI again and Start AI troubleshooting.
     "fixit-troubleshoot": ("modules.fixit.section", "STEPS"),
     # The fix-it plan's S5: Troubleshoot with AI, one investigation a person's press asks for.
     "fixit-ai": ("modules.ai.fixit_troubleshoot", "STEPS"),

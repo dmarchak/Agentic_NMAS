@@ -13,6 +13,12 @@ deploys, approves or saves anything, writes nothing to any source of truth, and 
 command to type into a device. For a fact about your network use **Ask in words** (History ›
 Query); to change a device, **Change it in words** on its Intent tab.
 
+**What NetBox reads send.** Only fixed fields are read (names, statuses, addresses, prefixes,
+VLANs, sites, descriptions), never contacts, comments or custom fields; an email address, and
+the display name of anyone Mercury knows, in a description becomes that person's label before
+it is sent. A third party's name typed into a description, someone Mercury holds no display
+name for, cannot be recognised as a name and is sent as typed.
+
 ## How an answer is made {#answer}
 
 1. `choose`: the manual's passages are chosen for your question by code, never by the model:

@@ -98,6 +98,25 @@ FEATURES: dict = {
         "calls_per_finding": 2,
         "frequency": "modules.ai.heal_analysis:cant_fix_frequency",
     },
+    # The operator's R1 (2026-11-14, docs/MERCURY_CHARTER.md "Two standing rules"): when
+    # Mercury's code fix fails, does not verify, or does not exist for an incident's kind, the
+    # AI troubleshoots by itself, once per failure (`heal_notice.run_fixit`,
+    # `modules/fixit/auto.py`). It calls AI troubleshooting's own task (the investigation a
+    # person's press asks for, its reads included: at most two calls a finding,
+    # `read_loop.CALLS_PER_FINDING`), on the finding ``fixit_failure`` (the failure's own
+    # record: a decision, an act or an approved plan's run). Off by default per network, as
+    # every feature here (the operator, 2026-11-14: CLAUDE.md's AI cost safety rules stand);
+    # turned on in Settings › AI after its estimate, and a failure recorded before the switch's
+    # ``at`` never starts anything by itself (no catch-up).
+    "fixit_auto": {
+        "task": "fixit_troubleshoot",
+        "words": "Start AI troubleshooting automatically when Mercury's fix fails",
+        "trigger_words": ("Mercury's fix fails, does not verify, or none exists for an "
+                          "incident's kind"),
+        "findings": ("fixit_failure",),
+        "calls_per_finding": 2,
+        "frequency": "modules.fixit.auto:failure_frequency",
+    },
 }
 
 

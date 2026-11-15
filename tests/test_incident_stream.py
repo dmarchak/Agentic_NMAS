@@ -41,7 +41,7 @@ from tests import test_seen_before as SBT
 from tests.test_fixit_section_v2 import counted, web  # noqa: F401  (fixtures)
 from tests.test_heal_resubscribe import lab  # noqa: F401  (the fixture `web` builds on)
 from tests.test_heal_resubscribe_v2 import hidden
-from tests.test_incident_state import (SECTIONS, attr, card_of, live, primaries, section,
+from tests.test_incident_state import (SECTIONS, attr, card_of, live, primaries, section, todo_of,
                                        the_primary)
 from tests.test_sdn_connections import networks  # noqa: F401  (the fixture `lab` builds on)
 from tests.test_seen_before import loki  # noqa: F401  (a fixture)
@@ -104,7 +104,12 @@ class TestTheRowOpensItsIncident:
         iid = FX.plant()
         row = the_row()
         assert row["action"]["open"] == "resubscribe" and row["source"].startswith("grafana")
-        assert row.get("incident_page") == {"id": iid, "list": NET}
+        # Premise corrected (R1 and R2, the review of 2026-11-14): the incident offers Start AI
+        # troubleshooting (no code fix, the AI not started by itself), and its link says so,
+        # so the row and the page offer the same first action (`attention.first_action`).
+        assert row.get("incident_page") == {"id": iid, "list": NET, "start": True}
+        from modules import attention
+        assert attention.first_action(row) == "start"
         listed = stream.get(f"/v2/attention?list={NET}").get_data(as_text=True)
         mine = listed.split(f'data-attention-row="{row["id"]}"', 1)[1]
         body = mine.split('<div class="att-body">', 1)[1]
@@ -186,7 +191,15 @@ class TestTheRowOpensItsIncident:
 # ── One state, and the row's action ────────────────────────────────────────────────────────
 
 class TestOneStateAndItsAction:
-    def test_nothing_tried_it_needs_a_person_and_offers_the_row_s_re_subscribe(self, stream):
+    """Premise corrected throughout (the operator's R1 and R2, 2026-11-14): What to do and AI
+    troubleshooting are one card under the BLUF, whose third line is the ONE next action, the
+    section model's (`bluf.fix`) or, where it names nothing to press, the row's own
+    (`incident_page.with_item`). A lost stream has no code fix of its kind, so its next
+    action with nothing tried is Start AI troubleshooting (`fixit.auto.manual_start`), where
+    it was the row's Re-subscribe; the row's Re-subscribe card is the page's action where the
+    section names none (planted below), and never once it failed here."""
+
+    def test_nothing_tried_it_needs_a_person_and_the_ai_is_its_next_action(self, stream):
         iid = FX.plant()
         assert IP.state_of(*T.model(iid)) == "open", "by the heal's records alone"
         assert IP.status(*T.model(iid), "ready")["why"] == "lost_stream"
@@ -198,12 +211,28 @@ class TestOneStateAndItsAction:
                       "Mercury is working on it"):
             assert wrong not in words, wrong
         assert "Needs a person" in words and "Warning" in words, "the row's own level"
-        todo = section(body, "inc-todo")
-        assert ("It needs a person: the fix changes r2's configuration, so a person approves "
-                "it. Until one does, r2's telemetry stays lost.") in T.text_of(todo)
+        button = the_primary(todo_of(body))
+        assert (button[0], T.text_of(button[2]).split(" Starting…")[0]) == (
+            "button", "Start AI troubleshooting")
+        assert re.search(r'<p class="fixit-status" data-status>[^<]+', section(body, "inc-ai"))
+
+    def test_with_the_section_naming_nothing_the_row_s_re_subscribe_is_the_action(
+            self, stream, monkeypatch):
+        """The row's own action, where the section's BLUF names nothing to press: the same
+        words as the row's line, its card read from the same address with the incident
+        named."""
+        from tests.test_incident_bluf import planted
+
+        # Premise corrected (R1 and R2, the review of 2026-11-14): while the incident offers
+        # Start AI troubleshooting, that is the row's and the page's first action; the row's
+        # Re-subscribe is its action once Start is not offered (here: the AI already asked).
+        monkeypatch.setattr("modules.fixit.auto.offers_start", lambda network, record: False)
+        iid = FX.plant()
+        planted(monkeypatch, iid, fix="none")
+        body = page(stream, iid)
+        todo = todo_of(body)
         button = the_primary(todo)
         assert (button[0], button[2]) == ("summary", BUTTON)
-        # The same words as the row's line, the card the row reads with the incident named.
         row = the_row()
         listed = stream.get(f"/v2/attention?list={NET}").get_data(as_text=True)
         mine = listed.split(f'data-attention-row="{row["id"]}"', 1)[1]
@@ -212,20 +241,16 @@ class TestOneStateAndItsAction:
         assert [T.text_of(x) for x in line] == [button[2]]
         theirs, ours = card_of(mine, "resub-r2")[1], card_of(todo, "resub-r2")[1]
         assert theirs and ours == f"{theirs}&fixit={iid}", (ours, theirs)
-        # AI troubleshooting agrees: nothing tried, and where a fix starts is above.
-        ai = T.text_of(section(body, "inc-ai"))
-        assert "No fix has been tried in this incident. What to do above says where one is " \
-               "started." in ai
 
     def test_with_no_item_on_needs_attention_it_still_never_says_no_person_needed(
             self, web, monkeypatch):  # noqa: F811
         """The same incident with Needs attention holding no row for it (its alert is not in
         the list's reading): it needs a person by its own records, so its level, which it
-        would take from its item, is not drawn at all, never "No person needed"; and its one
-        button opens its device. Premise corrected (C3701): with the sources emptied, Needs
-        attention still gives an open incident that needs a person a row of its own
-        (`attention._incidents_agree`), so no item is reached the one way left, the incidents
-        not readable for the match, as a store that cannot be read is."""
+        would take from its item, is not drawn at all, never "No person needed". Premise
+        corrected (C3701): with the sources emptied, Needs attention still gives an open
+        incident that needs a person a row of its own (`attention._incidents_agree`), so no
+        item is reached the one way left, the incidents not readable for the match, as a
+        store that cannot be read is."""
         from modules import attention
         from modules import incidents_list
 
@@ -237,16 +262,25 @@ class TestOneStateAndItsAction:
         assert carried(body) == ["needs_person"] * (len(SECTIONS) + 1), carried(body)
         head = live(body).split("</section>", 1)[0]
         assert "No person needed" not in T.text_of(live(body))
-        assert 'class="inc-sev"' not in head, "no level is drawn where none is known"
-        todo = section(body, "inc-todo")
+        # Premise corrected (the operator's R2, 2026-11-14: "Severity follows impact"): the
+        # level is known without the item, from Mercury's own table for a lost stream (it
+        # cannot see the device; traffic is unaffected), never critical on a guess.
+        sev = re.search(r'<span class="inc-sev">(.*?)</span></span>', head, re.S)
+        assert sev and T.text_of(sev.group(1)) == "Warning", head[-600:]
+        todo = todo_of(body)
         assert 'data-item="none"' in todo.split(">", 1)[0]
-        button = the_primary(todo)
-        assert (button[2], attr(button[1], "href")) == ("Open r2", f"/v2/device/r2?list={NET}")
+        assert len(primaries(todo)) == 1
 
-    def test_the_card_it_opens_is_the_incident_s_own(self, stream):
+    def test_the_card_it_opens_is_the_incident_s_own(self, stream, monkeypatch):
+        from tests.test_incident_bluf import planted
+
+        # Premise corrected, as above: the Re-subscribe card is the item's while Start is not
+        # offered.
+        monkeypatch.setattr("modules.fixit.auto.offers_start", lambda network, record: False)
         iid = FX.plant()
+        planted(monkeypatch, iid, fix="none")
         body = page(stream, iid)
-        card = card_of(section(body, "inc-todo"), "resub-r2")[1]
+        card = card_of(todo_of(body), "resub-r2")[1]
         assert card.endswith(f"&fixit={iid}"), f"the card names the incident: {card!r}"
         before = T.stores()
         got = stream.get(card, headers=FX.HX).get_data(as_text=True)
@@ -254,50 +288,43 @@ class TestOneStateAndItsAction:
         assert 'id="resub-r2"' in got and hidden(got, "fixit") == iid, \
             "its confirm records the run as this incident's attempt"
 
-    def test_a_fix_that_stopped_is_said_once_by_the_whole_page(self, stream):
-        """The review's page: a Re-subscribe ran, its verify read no data, the section says
-        Stopped; and the header, What's wrong and What to do now say the same."""
+    def test_a_fix_that_stopped_is_said_once_by_the_whole_page(self, stream, monkeypatch):
+        """A Re-subscribe ran and its verify read no data: the whole page says the one state,
+        and the Re-subscribe that failed is never the next action, even where the section
+        names nothing to press (planted)."""
+        from tests.test_incident_bluf import planted
+
         iid = FX.plant()
         FX.attempt(stream)
         body = page(stream, iid)
         assert carried(body) == ["needs_person"] * (len(SECTIONS) + 1), carried(body)
         assert 'data-state="stopped"' in body and '<span data-state="needs_person">' in body
         words = T.text_of(live(body))
-        assert "Stopped: " in words and "Nothing more runs unless you choose." in words
         for wrong in ("No person needed", "Nothing yet", "Mercury is still reading",
                       "Mercury is working on it"):
             assert wrong not in words, wrong
-        todo = section(body, "inc-todo")
-        assert ("It needs a person: attempt 1 did not fix it. Retry with more information, "
-                "Cancel and Hand over are under AI troubleshooting, below.") in T.text_of(todo)
-        button = the_primary(todo)
-        assert button[2] == BUTTON
+        assert the_primary(todo_of(body))[2].startswith("Start AI troubleshooting")
+        planted(monkeypatch, iid, fix="none")
+        again = todo_of(page(stream, iid))
+        assert BUTTON not in T.text_of(again) and 'data-first="resubscribe"' not in again
 
-    def test_a_fix_proposed_is_the_action_and_its_card_opens_in_its_section(self, stream,
-                                                                            counted,  # noqa: F811
-                                                                            tmp_path):
+    def test_a_fix_proposed_is_its_plan_in_the_one_card(self, stream, tmp_path):
         iid = FX.plant()
         FX.attempt(stream)
         FX.diagnosed(iid, tmp_path)
-        html = page(stream, iid)
-        r = FX.post(stream, iid, "retry", note="", drawn_spent=hidden(html, "drawn_spent"),
-                    drawn_cap=hidden(html, "drawn_cap"))
-        assert r.status_code == 200 and 'data-inc-state="needs_person"' in r.get_data(
-            as_text=True), "the section drawn again alone says the page's state too"
+        FX.replan(iid)
         body = page(stream, iid)
         assert 'data-state="proposed"' in body
         assert carried(body) == ["needs_person"] * (len(SECTIONS) + 1)
-        todo = section(body, "inc-todo")
-        assert "a fix is proposed under AI troubleshooting, below" in T.text_of(todo)
-        button = the_primary(todo)
-        assert (button[0], button[2], attr(button[1], "href")) == (
-            "a", "Go to the proposed fix", "#fixit-op")
+        todo = todo_of(body)
+        assert 'data-fix="approve"' in todo
         assert 'id="resub-r2"' not in todo, "no second card of the same operation"
-        assert 'id="fixit-op"' in section(body, "inc-ai")
+        assert 'class="fixit-plan"' in section(body, "inc-ai")
 
     def test_a_fix_running_or_passed_needs_nobody_now(self, stream, monkeypatch):
         """A page that needs nobody draws no primary button: the state function's answer for
-        a fix under way, drawn."""
+        a fix under way, drawn; the page's one state governs the BLUF's next action
+        (`incident_page.with_item`)."""
         iid = FX.plant()
         FX.attempt(stream)
         real = IP.status
@@ -305,9 +332,9 @@ class TestOneStateAndItsAction:
             i, e, d, "passed" if fixit == "stopped" else fixit))
         body = page(stream, iid)
         assert carried(body)[:4] == ["open"] * 4
-        todo = section(body, "inc-todo")
+        todo = todo_of(body)
         assert primaries(todo) == []
-        assert "Nothing now: attempt 1 passed its verify." in T.text_of(todo)
+        assert "Nothing to press: no person is needed." in T.text_of(todo)
 
 
 # ── What the row kept under Details, on the page (C3488) ───────────────────────────────────
@@ -369,7 +396,7 @@ SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-reques
 #: What to do as the browser shows it: each visible primary button's words and place, the (i)
 #: beside it, the card under it, every section's state, and whether the page scrolls sideways.
 SEEN = r"""
-var todo = document.querySelector('#inc-todo');
+var todo = document.querySelector('#inc-bluf');
 function box(e) { var r = e.getBoundingClientRect();    // its place on the page, scroll apart
   return [Math.round(r.left + window.scrollX), Math.round(r.top + window.scrollY),
           Math.round(r.width), Math.round(r.height)]; }
@@ -391,21 +418,29 @@ return JSON.stringify({
 """
 
 
-def test_the_button_is_pressed_and_its_card_opens_under_it_in_a_real_browser(stream):
+def test_the_button_is_pressed_and_its_card_opens_under_it_in_a_real_browser(stream,
+                                                                              monkeypatch):
+    """Premise corrected (the operator's R2, 2026-11-14): the row's Re-subscribe is the BLUF's
+    one action where the section names nothing to press and nothing failed (planted), never
+    after the attempt that failed, which this test ran before; What to do is the BLUF."""
     from tests import browser
+    from tests.test_incident_bluf import planted
 
     ok, why = browser.available()
     if not ok:
         pytest.skip(f"no real browser here ({why}); the page's own checks above still run")
     import app as nmas
 
+    # Premise corrected (R1 and R2, the review of 2026-11-14): Re-subscribe is the item's
+    # action once Start AI troubleshooting is not offered (here: the AI already asked).
+    monkeypatch.setattr("modules.fixit.auto.offers_start", lambda network, record: False)
     iid = FX.plant()
-    FX.attempt(stream)
+    planted(monkeypatch, iid, fix="none")
     with browser.Served(nmas.app) as srv, browser.Browser() as b:
         try:
             b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
             b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
-            b.wait_for("return !!window.htmx && !!document.querySelector('#inc-todo "
+            b.wait_for("return !!window.htmx && !!document.querySelector('#inc-bluf "
                        f".btn-primary') && {SETTLED}", 20)
             before = json.loads(b.js(SEEN))
             assert before["badge"] == "Needs a person"
@@ -415,8 +450,8 @@ def test_the_button_is_pressed_and_its_card_opens_under_it_in_a_real_browser(str
             assert words == BUTTON and at[3] >= 24, "one primary button, tall enough to press"
             assert before["card"] is None and before["how"], "the card is not drawn yet"
             assert before["sideways"] <= 0, "the page scrolls sideways at 1280 px"
-            b.click("#inc-todo .inc-open > summary")
-            b.wait_for("return !!document.querySelector('#inc-todo .inc-card [name=reason]')"
+            b.click("#inc-bluf .inc-open > summary")
+            b.wait_for("return !!document.querySelector('#inc-bluf .inc-card [name=reason]')"
                        f" && {SETTLED}", 20)
             after = json.loads(b.js(SEEN))
             # The card is read and drawn under the button; the button and the (i) beside it
@@ -429,22 +464,22 @@ def test_the_button_is_pressed_and_its_card_opens_under_it_in_a_real_browser(str
             assert after["fixit"] == iid, "the card names this incident"
             assert after["sideways"] <= 0 and after["states"] == before["states"]
             # Pressed again, the card is put away, and the button has still not moved.
-            b.click("#inc-todo .inc-open > summary")
-            b.wait_for("return !document.querySelector('#inc-todo .inc-open').open", 10)
+            b.click("#inc-bluf .inc-open > summary")
+            b.wait_for("return !document.querySelector('#inc-bluf .inc-open').open", 10)
             closed = json.loads(b.js(SEEN))
             assert closed["card"] is None and closed["primaries"][0] == [words, at]
             # At phone width: the one button still, nothing scrolling sideways, and its card
             # under it when it is pressed.
             b._call("POST", f"/session/{b.session}/window/rect", {"width": 390, "height": 800})
             b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
-            b.wait_for("return !!window.htmx && !!document.querySelector('#inc-todo "
+            b.wait_for("return !!window.htmx && !!document.querySelector('#inc-bluf "
                        f".btn-primary') && {SETTLED}", 20)
             phone = json.loads(b.js(SEEN))
             assert len(phone["primaries"]) == 1, phone["primaries"]
             small, where = phone["primaries"][0]
             assert small == BUTTON and phone["sideways"] <= 0, phone
-            b.click("#inc-todo .inc-open > summary")
-            b.wait_for("return !!document.querySelector('#inc-todo .inc-card [name=reason]')"
+            b.click("#inc-bluf .inc-open > summary")
+            b.wait_for("return !!document.querySelector('#inc-bluf .inc-card [name=reason]')"
                        f" && {SETTLED}", 20)
             pressed = json.loads(b.js(SEEN))
             assert pressed["primaries"][0] == [small, where] and pressed["sideways"] <= 0

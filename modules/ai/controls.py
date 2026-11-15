@@ -162,17 +162,16 @@ CONTROLS = {
         "beside": "Mercury's facts on the row and in the notice (detected, steps tried, "
                   "results), drawn with or without it",
     },
-    # AI troubleshooting on an incident's page (the fix-it plan's S5, board recurring-fixes
-    # v2): Troubleshoot with AI, and Retry with more information's Ask the AI to re-plan, one
+    # AI troubleshooting on an incident's page (the fix-it plan's S5; the operator's R1,
+    # 2026-11-14): Start AI troubleshooting, Ask the AI again after a denial, and Modify, one
     # person's press each, one investigation (at most two calls), under the per-incident cap.
     "fixit_troubleshoot": {
         "task": "fixit_troubleshoot",
-        "words": "Troubleshoot with AI",
-        "endpoints": ("fixit_v2.troubleshoot",),
+        "words": "Start AI troubleshooting",
+        "endpoints": ("fixit_v2.start", "fixit_v2.ask_again", "fixit_v2.modify"),
         "template": "v2/_fixit_section.html",
-        "screen": "An incident's page, AI troubleshooting",
-        "beside": "Mercury's own diagnosis (Retry's Ask Mercury's diagnosis to re-plan), the "
-                  "page's What to do, Cancel and Hand over",
+        "screen": "An incident's page, its bottom line and Fixing it",
+        "beside": "the incident's bottom line, Approve and Deny on a proposal, and Hand over",
     },
 }
 

@@ -454,5 +454,13 @@ def test_a_press_whose_answer_names_a_gap_records_it_for_review(ai, monkeypatch)
     monkeypatch.setattr(missing, "record", broken)
     iid2 = stopped(ai)
     ai.answer = answer(gap=gap)
-    r, html = press(ai, iid2)
+    # Premise corrected (R1, 2026-11-14): Start AI troubleshooting is taken once per incident;
+    # the same incident (its alerts fold into it) is asked again by Ask the AI again, which a
+    # gap's answer offers.
+    if iid2 == iid:
+        from tests.test_fixit_section_v2 import post
+        r = post(ai.client, iid2, "ask_again", text="")
+        html = r.get_data(as_text=True)
+    else:
+        r, html = press(ai, iid2)
     assert r.status_code == 200 and "a gap" in sec_of(html), "the answer stands"

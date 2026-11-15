@@ -173,7 +173,36 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             # hold keyed by one of its decisions.
             "ack_ids": [f"heal:{found['id']}"] + [f"heal:{d['id']}" for d in decisions
                                                   if d.get("id")],
-            "acknowledged": ""}
+            "acknowledged": "",
+            # R2 (the operator, 2026-11-14): its bottom line, from Mercury's own table.
+            "bluf": bluf_of(found, st["why"])}
+
+
+#: The next action a Needs attention row about an incident names, by why its page says it
+#: needs a person (`incident_page.status`): the BLUF's fix (`modules/bluf.py`'s kinds) and its
+#: label. Anything else is the table's own kind for the incident.
+NEXT_BY_WHY = {"fix_proposed": ("approve", "Open the incident: approve, modify or deny the plan"),
+               "proposal": ("approve", "Open the incident: approve or decline the proposal"),
+               "proposal_denied": ("button", "Open the incident: ask the AI again, or hand it "
+                                             "over"),
+               "ai_capped": ("hand_over", "Open the incident and hand it over"),
+               "attempt_stopped": ("button", "Open the incident: ask the AI again, or hand it "
+                                             "over"),
+               "handed_over": ("hand_over", "Open the incident"),
+               "ai_investigating": ("none", "Open the incident: the AI is investigating")}
+
+
+def bluf_of(found: dict, why: str) -> dict:
+    """The incident's BLUF (`bluf.bluf`): ``{"what", "impact", "fix", "severity"}``, its fix the
+    next action its *why* names (`NEXT_BY_WHY`), else the table's own kind for it."""
+    from modules import bluf as B
+
+    kind, label = NEXT_BY_WHY.get(why, ("", ""))
+    nxt = {"kind": kind, "label": label} if kind else None
+    got = B.bluf(B.model_of(found, nxt))
+    if not got["fix"].get("label"):
+        got["fix"] = dict(got["fix"], label="Open the incident and decide what to do")
+    return got
 
 
 def rows(network: str) -> dict:

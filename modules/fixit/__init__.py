@@ -13,6 +13,10 @@ The parts before the page (no AI call, nothing drawn):
   what the incident names, to the heal guards and to committed intent, and flagged when it
   repeats a fix that already failed; code decides, a person approves;
 - `proposers`: Mercury's own proposer, its diagnosis's next step as a catalog operation;
+- `plan`: a proposal as a plan of catalog operations, each step preflighted before it is drawn
+  and the plan's hash the one Approve sends (C3694);
+- `auto`: R1's trigger's records: which failures of Mercury's fix start an investigation by
+  themselves, each once, and never one recorded before the network's switch went on;
 - `payload`: what a later AI call would be sent of the incident's record, every person a
   stable label;
 - `handover`: the write-up for an engineer, kept as a new version each time, and its send to

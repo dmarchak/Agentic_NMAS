@@ -109,8 +109,12 @@ RESOLVED = ("fixed", "cleared", "cancelled")
 #: for, each with why the page then needs a person (`status`); and those in which a fix a
 #: person approved is under way or passed, so nobody is needed now.
 FIXIT_WAITS = {"stopped": "attempt_stopped", "proposed": "fix_proposed",
-               "cancelled": "troubleshooting_cancelled", "handed_over": "handed_over"}
-FIXIT_WORKING = {"running": "attempt_running", "passed": "attempt_passed"}
+               "cancelled": "troubleshooting_cancelled", "handed_over": "handed_over",
+               # R1 (2026-11-14): a denied proposal, and an investigation a cap stopped.
+               "denied": "proposal_denied", "capped": "ai_capped"}
+FIXIT_WORKING = {"running": "attempt_running", "passed": "attempt_passed",
+                 # R1: the AI investigating by itself, nobody needed until it proposes.
+                 "investigating": "ai_investigating"}
 #: Why the page's state is what it is (`status`), each said once, as What to do's words.
 WHYS = RESOLVED + ("healing", "watching", "verify_failed", "proposal", "decided",
                    "lost_stream") + tuple(FIXIT_WAITS.values()) + tuple(FIXIT_WORKING.values())
@@ -883,6 +887,10 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
     if why == "watching":
         return {"words": "Nothing yet: Mercury is working on it. This page says what it "
                          "decided as soon as it does.", "more": "", "links": ["device"]}
+    if why == "ai_investigating":
+        return {"words": "Nothing yet: the AI is investigating. Its proposal is drawn under AI "
+                         "troubleshooting when it is ready, and nothing runs until a person "
+                         "approves it.", "more": "", "links": ["device"]}
     words = {
         # Its item's own words say what failed and what to do about it; with no item, here.
         "verify_failed": ("It needs a person." if item["state"] == "stands" else
@@ -893,13 +901,17 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
         "decided": "It needs a person.",
         "lost_stream": f"It needs a person: the fix changes {device}'s configuration, so a "
                        f"person approves it. Until one does, {device}'s telemetry stays lost.",
-        "attempt_stopped": f"It needs a person: attempt {n} did not fix it. Retry with more "
-                           "information, Cancel and Hand over are under AI troubleshooting, "
-                           "below.",
-        "fix_proposed": "It needs a person: a fix is proposed under AI troubleshooting, below. "
-                        "It runs only when a person approves it in its card.",
+        # The next step is the page's top line, never Cancel or Retry with more information
+        # (removed: the operator's R2, 2026-11-14).
+        "attempt_stopped": f"It needs a person: attempt {n} did not fix it.",
+        "fix_proposed": "It needs a person: a fix is proposed. It runs only when a person "
+                        "approves it.",
         "troubleshooting_cancelled": "It needs a person: troubleshooting was cancelled, and "
                                      "the incident stays open.",
+        "proposal_denied": "It needs a person: the proposal was denied and nothing ran. Ask "
+                           "the AI again, or hand it over.",
+        "ai_capped": "It needs a person: the AI did not start, since a cap would be passed. "
+                     "Hand it over.",
         "handed_over": "It needs a person: it was handed over, and the incident stays open "
                        "until its symptom clears.",
     }[why]
@@ -1053,6 +1065,11 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     item = item_of(_held_attention(network) if attention is None else
                    attention() if callable(attention) else attention,
                    found["id"], decisions, network, device)
+    # Nothing that already failed on this incident is offered as its next action (the
+    # operator's R2, 2026-11-14): a Re-subscribe its item offers, once an attempt here failed,
+    # is in Attempts and Other actions only.
+    if item["first"] == "resubscribe" and failed_here(fixit):
+        item["first"] = ""
     if not st["needs"]:
         item["first"] = ""
     elif st["why"] == "fix_proposed" and (fixit.get("proposal") or {}).get("operation"):
@@ -1071,6 +1088,11 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     outcome = entry.get("outcome") or newest.get("outcome") or ""
     kind = entry.get("kind") or newest.get("kind") or ""
     sev = _severity(state, decisions, ran, tl["who"], resolved, item["level"])
+    # Severity follows impact (the operator's R2, 2026-11-14): while a person is needed, the
+    # header's level is the BLUF's (Mercury's own table: critical only for a network outage).
+    level = SEVERITY_SAID.get((fixit.get("bluf") or {}).get("severity") or "")
+    if level and state == "needs_person":
+        sev = {"words": level[0], "kind": level[1]}
     members = list(inc.get("attached") or [])
     card = heal_card(network, device, entry)
     cr = (entry.get("records") or {}).get("change_record") or {}
@@ -1163,5 +1185,77 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     # The item as its own list drew it (masked there, its people named there), and the
     # section as it draws itself (`section.drawn`): neither is worded again here.
     model["item"] = item
-    model["fixit"] = fixit
+    model["fixit"] = with_item(fixit, item, st["needs"]) if "bluf" in fixit else dict(
+        fixit, **composed(model, fixit, item, st["needs"]))
     return model
+
+
+#: The BLUF's severity (`bluf.severity`) as the header's level draws it: its words and badge.
+SEVERITY_SAID = {"critical": ("Critical", "danger"), "warning": ("Warning", "warn"),
+                 "info": ("No impact", "muted")}
+
+#: The section's states in which Mercury or a run is working, so nothing is a person's to press.
+WORKING = ("investigating", "running")
+
+
+def with_item(fixit: dict, item: dict, needs: bool) -> dict:
+    """The section's own BLUF, its fix the incident's Needs attention action (``item``, drawn
+    by the page) where the section names nothing to press while the page needs a person: a
+    heal's proposal to review, a dry-run record's question, a lost stream's Re-subscribe with
+    nothing tried. Never a fix that failed here (`page` dropped that one), and never while
+    Mercury or an approved run is working (`WORKING`)."""
+    fix = (fixit.get("bluf") or {}).get("fix") or {}
+    if not needs and fix.get("kind") not in ("none", None):
+        # The page's ONE state governs (C3450): a page that needs nobody draws no next action.
+        return dict(fixit, bluf=dict(fixit["bluf"], fix={"kind": "none", "label": ""}))
+    acts = fixit.get("actions") or {}
+    offered = any((acts.get(k) or {}).get("offered") for k in ("approve", "start", "ask_again"))
+    if not (needs and item.get("first") and fix.get("kind") in ("none", None) and not offered
+            and fixit.get("state") not in WORKING):
+        return fixit
+    return dict(fixit, bluf=dict(fixit["bluf"], fix={"kind": "item", "label": ""}))
+
+
+def failed_here(fixit: dict) -> bool:
+    """Whether an attempt of the incident's troubleshooting record ran and failed."""
+    return any(a.get("state") == "failed" for a in fixit.get("attempts") or [])
+
+
+def composed(model: dict, fixit: dict, item: dict, needs: bool) -> dict:
+    """The top of the page for a section model that carries no BLUF of its own (one built
+    before `modules/fixit/section.py` drew ``bluf``, ``status`` and ``actions``; the
+    operator's R2, 2026-11-14): ``{"bluf", "status", "actions"}`` composed from what the page
+    already holds, never new words. *what* is the item's lead sentence (a lost stream's),
+    else the page's title; *impact* what Mercury cannot see meanwhile, else "" (drawn as not
+    known); the fix: nothing while nobody is needed, the item's own action, Start AI
+    troubleshooting once a fix failed here (or with nothing tried and no action of its own),
+    else Hand over. Never a fix that already failed here (`failed_here`, and the item's
+    Re-subscribe dropped by `page` then)."""
+    row = item.get("row") or {}
+    fx = row.get("fix") or {}
+    ai = fixit.get("ai") or {}
+    state = fixit.get("state") or "none"
+    acting = state not in ("none", "resolved")
+    status = model["todo"]["words"]
+    start = bool(ai.get("offered")) and state in ("ready", "stopped", "cancelled",
+                                                   "handed_over", "passed")
+    if not needs:
+        fix = {"kind": "none", "label": ""}
+    elif item.get("first") == "proposed":
+        fix = {"kind": "item", "label": ""}
+    elif start and failed_here(fixit):
+        fix = {"kind": "start", "label": ""}
+    elif item.get("first"):
+        fix = {"kind": "item", "label": ""}
+    elif start:
+        fix = {"kind": "start", "label": ""}
+    elif acting:
+        fix = {"kind": "hand_over", "label": ""}
+    else:
+        fix = {"kind": "none", "label": ""}
+    return {"bluf": {"what": fx.get("lead") or model["title"], "impact": fx.get("unseen") or "",
+                     "fix": fix},
+            "status": status, "composed": True,
+            "actions": {"start": {"offered": start, "href": "", "refused": ai.get("refused")
+                                  or ""},
+                        "hand_over": {"offered": acting, "href": "", "refused": ""}}}

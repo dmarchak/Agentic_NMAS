@@ -52,10 +52,11 @@ MARKUP = {
     # page (routes/assistant_v2.panel).
     "assistant": {"button": r'<button\b[^>]*\bdata-op="assistant"[^>]*>',
                   "input": r'<textarea\b[^>]*\bid="asst-q"[^>]*>'},
-    # An incident's page, AI troubleshooting (the fix-it plan's S5): Troubleshoot with AI and
-    # its Add what you know box (nothing tried), or Retry's Ask the AI to re-plan.
-    "fixit_troubleshoot": {"button": (r'<button\b[^>]*\bhx-post="[^"]*/fixit/troubleshoot'
-                                      r'[^"]*"[^>]*>'),
+    # An incident's page, AI troubleshooting (the fix-it plan's S5; the operator's R2,
+    # 2026-11-14): Start AI troubleshooting and its Add what you know box, the BLUF's next
+    # action, where Troubleshoot with AI (or Retry's Ask the AI to re-plan) was.
+    "fixit_troubleshoot": {"button": (r'<button\b[^>]*\bhx-post="[^"]*/fixit/'
+                                      r'(?:troubleshoot|start)[^"]*"[^>]*>'),
                            "input": r'<textarea\b[^>]*\bid="fixit-know-[^"]*"[^>]*>'},
 }
 

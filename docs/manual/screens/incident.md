@@ -1,12 +1,13 @@
 # An incident's page
 
-Each self-healing incident has a page of its own, at `/v2/incident/<its id>`. It tells the
-whole story of one incident in one place: when it was detected, what Mercury decided and did,
-whether the fix was verified, how long the repair took, and what is left for a person. The
-page says one state, the same in its header and in every section, and while a person is
-needed it carries that person's one action, under [What to do](#what-to-do). Opening the page
-starts nothing and changes nothing: only a person's press does. How each time is found is on
-[An incident's timeline and its time to repair](incident-timeline).
+Each self-healing incident has a page of its own, at `/v2/incident/<its id>`. It leads with
+its bottom line: three plain lines saying what happened, what it costs the network or Mercury,
+and how to fix it, with the one thing to press ([The bottom line](#bluf)). Under it, one card,
+[Fixing it](#ai-troubleshooting), says where the fix stands. Everything else (the times, the
+timeline, what Mercury read and did, the evidence and the record) is collapsed below: open a
+part to read it. The page says one state, the same in its header and in every part. Opening
+the page starts nothing and changes nothing: only a person's press does. How each time is
+found is on [An incident's timeline and its time to repair](incident-timeline).
 
 **How to open it.** One place per incident, from wherever it is named:
 
@@ -15,7 +16,8 @@ starts nothing and changes nothing: only a person's press does. How each time is
   **Incidents**, then the tab the incident is on;
 - on [Needs attention](needs-attention), open an item about one incident (a self-healing
   item, or a lost telemetry stream whose device's network holds an open incident for it):
-  **Open the incident** is the first link in the opened item;
+  **Open the incident** is the first link in the opened item, and the item's own bottom line
+  follows it;
 - on [History](history), or a device's History tab, open a self-healing row: **Open the
   incident** is beside **Open the card**.
 
@@ -57,40 +59,137 @@ attention and on History, and the email that tells the team. Under it:
   the incident; and, once it is resolved, its span: from when it was detected to when it ended.
   A fixed incident ends when its fix is verified
   ([When it ended](incident-timeline#when-it-ended)).
-- **The four times and TIME TO REPAIR**: Detected, Decided, Fixed and Verified, each from a
-  record Mercury wrote at the time, then the time to repair in whole seconds with who it was
-  by: "by Mercury's self-healing · policy set by" the name of the person who confirmed the
-  network's policy, or "… · approved by" the person who approved the fix. A stage that has not
-  happened reads "not yet", and one that was never needed reads "not needed".
-- **One line per attempt**: "applied <time> · verified <time>", or "applied <time> · verify
-  failed".
+
+Every time is drawn in your own time zone; hover over one for its UTC time. People are named
+by their display name.
+
+## The bottom line {#bluf}
+
+Three lines, at the top of the page, before anything else:
+
+1. **What happened**: the problem, in an engineer's words ("edge1: telemetry streams 101 and
+   102 lost"), never the alert that raised it nor Mercury's codes. The alerts and log lines it
+   was classified from are its evidence, listed under it.
+2. **Impact**: what it costs the network or Mercury ("Mercury can't see edge1's interfaces or
+   CPU; traffic is unaffected"). It comes from Mercury's own table for each kind of problem,
+   never from the AI; a problem the table does not hold says the impact is not known.
+3. **How to fix it**: the one next action, as a button. Which one:
+
+| Where the incident stands | The next action |
+|---|---|
+| The AI proposes a plan | **Approve**, **Modify…** and **Deny…** (below) |
+| Mercury's fix failed, and the AI was not started by itself (its background feature was off for the network then, or the fix failed before it was turned on) | **Start AI troubleshooting**: one investigation, its cost beside it |
+| You denied the AI's plan | **Ask the AI again**: a new investigation, told what you denied and why |
+| A cap would be passed, or nothing else is left | **Hand over…** |
+| The incident's own Needs attention item offers an action | that action ([What to do](#what-to-do)) |
+| Mercury or an approved plan is working, or nobody is needed | nothing to press, said |
+
+**Nothing that already failed in this incident is offered as its next action.** A fix tried
+here that did not fix it is listed under Fixing it's **Attempts**, with its record, and under
+**Other actions**, never as the button. **Hand over…** is beside every next action while the
+incident is open, as a link: it opens its modal over the page ([Hand over](fixit-troubleshoot#hand-over)).
+
+**Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since it
+was drawn is refused, naming what moved. **Modify…** opens a box for what should change; the AI
+returns a revised plan with a new hash, nothing runs, and Approve, Modify… and Deny… come back
+with it (**Revise the plan** sends it; **Cancel** or Escape closes the box with nothing sent).
+**Deny…** records your reason, which is optional (**Deny the plan**; **Keep the plan** closes it
+with nothing recorded); nothing runs, and the incident stays open with **Ask the AI again** and
+**Hand over…**. A step refused at its preflight is drawn refused, with why, and Approve is then
+not offered: Modify… and Deny… are. Each button is busy on itself until its answer comes, and
+the answer is drawn under the buttons, in place.
+
+## Fixing it {#ai-troubleshooting}
+
+What to do and AI troubleshooting are this one card, under the bottom line. It starts with one
+status line, for example "Mercury's fix failed twice. The AI is investigating (started 20 s
+ago), about $0.25.", then the AI's plan when there is one: what the AI found, and each step with
+its preflight ("preflight passed", or "refused at its preflight:" and why). The plan's hash and
+each step's are in [The record](#the-record). Below, collapsed:
+
+- **Attempts**: each fix tried in this incident, one line each: when, the operation, who
+  proposed and approved it, its outcome, its AI cost and **Open the run**.
+- **What attempt <n> found**, after a fix that did not pass: one line per subscription with its
+  state in words ("Subscription 101: re-subscribed; the stream did not come back"), each opening
+  to its checks (the device's connection, the stream, the collector's sessions) and any flag.
+- **Other actions**: a fix that failed here, with the attempt it failed in and **Open its
+  record**.
+- **Holds and guards**: a guard or a hold that worked as designed, one plain line each, never
+  drawn as a failure ("Self-healing won't write to edge1 until its saved config matches intent (2
+  lines differ). This doesn't block the fix below.").
+- **Why the AI proposes this**: what it said was wrong, its hypotheses with what each cites, its
+  calls and cost, and **Was this right?**.
+- **Costs**: this incident's AI spend against its cap, today's against the day cap, and what one
+  investigation costs.
+- **The AI's analysis**, for a can't-fix: the analysis kept for the incident, in full,
+  advisory (self-healing never reads it).
+
+When the AI cannot start because a cap would be passed, the card says which cap, and **Hand
+over…** is the next action. **When Mercury's fix fails, the AI troubleshoots by itself** where
+the background feature "Start AI troubleshooting automatically when Mercury's fix fails" is on
+for the network: Settings › AI, beside the other background features, off by default on every
+network and turned on or off only by a verified person, its estimate shown first ([AI
+troubleshooting](fixit-troubleshoot#automatic)). Turning it on never catches up: an incident
+whose fix failed before it was on shows **Start AI troubleshooting**. Once the incident is
+resolved, the card is read-only. Each step is on [AI troubleshooting](fixit-troubleshoot).
+
+## What to do {#what-to-do}
+
+Where the incident's item on [Needs attention](needs-attention) offers an action and nothing
+in Fixing it is the next one, the bottom line's button is that action, the same as the item's,
+as the page's one primary button. The page never sends you back to Needs attention to act.
+
+| The incident | The button |
+|---|---|
+| A fix waits for a person (a proposal) | **Review the fix…** opens the proposal's card under the button, with Approve and Decline ([A self-healing proposal](heal-proposal)) |
+| A lost telemetry stream, nothing tried yet | **Re-subscribe <device>'s telemetry (<subscriptions>)…** opens its card under the button ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). Run from here, it is recorded as this incident's attempt. Once it has failed here it is never the button again |
+| A can't-fix, or a fix whose verify failed | **Open <device>**, or **Open <device> (likely cause)** when another device's change is the likeliest cause (a hypothesis, said as one, under What's wrong) |
+| A dry-run record | its question, **Right** or **Wrong…**: two answers, neither the primary |
+| A run holds the device | **Open the run**: the action returns when the run ends |
+
+The button does not move when its card appears: the card is drawn under it. Under Fixing it's
+status line are what the item says to do in its own words, **Diagnose…** where the item offers
+it ([Diagnose a device](diagnose)) and how its Needs attention item clears.
+
+A page that needs nobody (resolved, Mercury working, or a fix under way) draws no primary
+button. When the incident still needs a person and its item is no longer on Needs attention
+(it cleared there, or a person acknowledged it), the page says so and its button opens the
+device. While Needs attention is still being read, the page says that instead: an item not
+read yet is never said to be absent.
+
+## One state {#one-state}
+
+The page's state comes from one place, and every part of the page says the same: the badge in
+the header, the bottom line, Fixing it, What's wrong and What Mercury has done. It is worked
+out from the incident's own records and from what was tried in Fixing it:
+
+| The state | When | Fixing it says |
+|---|---|---|
+| Fixed, Cleared, Cancelled | the incident is resolved | Nothing, and why |
+| Open | Mercury is still reading the device, or its fix is running | Nothing yet |
+| Open | a fix a person approved is running, or passed its verify | Nothing yet, or Nothing now: the incident closes when its symptom clears |
+| Needs a person | every other case: a decision only a person can act on, a proposed fix, a failed verify, a fix that stopped without fixing it, a lost telemetry stream | It needs a person, why, and the one action above |
+
+So a page never says "No person needed" or "Mercury is working on it" in one place and
+"Stopped: nothing more runs unless you choose" in another.
+
+## Timings {#timings}
+
+Collapsed, under Fixing it; its line says the time to repair, or since when it is open.
+Opened: **Detected**, **Decided**, **Fixed** and **Verified**, each from a record Mercury wrote
+at the time, then **TIME TO REPAIR** in whole seconds with who it was by: "by Mercury's
+self-healing · policy set by" the name of the person who confirmed the network's policy, or
+"… · approved by" the person who approved the fix. A stage that has not happened reads "not
+yet", and one that was never needed reads "not needed". Then one line per attempt: "applied
+<time> · verified <time>", or "applied <time> · verify failed".
 
 **A failed verify never reads Fixed.** When a fix was applied and its verify failed, the state
 is Needs a person, the Fixed cell reads "not fixed", the Verified cell "failed" and when, and
 TIME TO REPAIR "not repaired"; hover over a cell for why.
 
-**Each fact is said once.** The header's cells and the attempt line say only the state; why a
-fix failed is said once, in the stage of What Mercury has done where it failed (open the stage
-for the whole of it). The timeline says each attempt's outcome ("attempt 1: rolled back").
-
-Every time is drawn in your own time zone; hover over one for its UTC time. People are named
-by their display name.
-
-## One state {#one-state}
-
-The page's state comes from one place, and every part of the page says the same: the badge in
-the header, What's wrong, What Mercury has done, What to do and AI troubleshooting. It is
-worked out from the incident's own records and from what was tried in AI troubleshooting:
-
-| The state | When | What to do says |
-|---|---|---|
-| Fixed, Cleared, Cancelled | the incident is resolved | Nothing, and why |
-| Open | Mercury is still reading the device, or its fix is running | Nothing yet |
-| Open | a fix a person approved is running, or passed its verify | Nothing yet, or Nothing now: the incident closes when its symptom clears |
-| Needs a person | every other case: a decision only a person can act on, a proposed fix, a failed verify, a fix that stopped without fixing it, a lost telemetry stream | It needs a person, why, and the one action |
-
-So a page never says "No person needed" or "Mercury is working on it" in one place and
-"Stopped: nothing more runs unless you choose" in another.
+**Each fact is said once.** The cells and the attempt line say only the state; why a fix failed
+is said once, in the stage of What Mercury has done where it failed (open the stage for the
+whole of it). The timeline says each attempt's outcome ("attempt 1: rolled back").
 
 ## The timeline {#timeline}
 
@@ -100,9 +199,10 @@ on a resolved incident and collapsed on one still open.
 
 ## What's wrong {#whats-wrong}
 
-What happened, as the decision stated it: the facts in time order, then what Mercury decided
-to do about it. The configuration line the title names in plain words is quoted here (a
-decision recorded without its facts says it as "What changed on <device>: …"). On a resolved
+Collapsed: open its heading to read it. What happened, as the decision stated it: the facts in
+time order, then what Mercury decided to do about it. The configuration line the title names in
+plain words is quoted here (a decision recorded without its facts says it as "What changed on
+<device>: …"), and a likely cause on another device, said as a hypothesis. On a resolved
 incident the heading reads "What's wrong (was)".
 
 For a lost telemetry stream it leads with what its Needs attention item says: how long the
@@ -112,7 +212,7 @@ and what Mercury cannot see until the stream is back.
 
 ## What Mercury has done {#what-mercury-has-done}
 
-The outcome, then the same five stages the heal's card on
+Collapsed: open its heading to read it. The outcome, then the same five stages the heal's card on
 the device's page draws: **Detected**, **Decided**, **Fixing**, **Checking** and **Done**,
 each with one sentence of at most 12 words, its time and its state. Open a stage for its
 steps, and for the whole of a sentence that was cut with "…". A failed stage names its step
@@ -121,85 +221,28 @@ decision that worked: its Decided stage reads "Can't fix: needs a person", in am
 "failed" in red. Fixing's time is the whole fix, any wait inside its verify
 included and named ([How long the fix took](incident-timeline#fixing)); Done's duration is the
 time to repair, in the same words. While the heal runs, the stages move as its card's do. Under it
-are links to the incident's record on the device's History and, when one was made,
-**Download the change record (.md)**. Before any decision it reads "Nothing has run in this
-incident."
+are links to the incident's record on the device's History, to the device and its Intent where
+they help, and, when one was made, **Download the change record (.md)**. Before any decision it
+reads "Nothing has run in this incident."
 
 **Mercury's diagnosis**, when one is attached to the incident, is drawn here in full: its
 verdict, the runbook, who ran it and how many reads it made, each hypothesis with its strength
 and what to do about it, what it ruled out, and where it stopped. It is read-only and uses no
 AI. A can't-fix with no diagnosis says so.
 
-## What to do {#what-to-do}
-
-The page's state in words, then, while a person is needed, the one action: the same action
-the incident's item on [Needs attention](needs-attention) offers, as the page's one primary
-button. The page never sends you back to Needs attention to act.
-
-| The incident | The button |
-|---|---|
-| A fix waits for a person (a proposal) | **Review the fix…** opens the proposal's card under the button, with Approve and Decline ([A self-healing proposal](heal-proposal)) |
-| A lost telemetry stream | **Re-subscribe <device>'s telemetry (<subscriptions>)…** opens its card under the button ([Re-subscribe a lost telemetry stream](telemetry-resubscribe)). Run from here, it is recorded as this incident's next attempt, and a repeat of an attempt that failed asks what is different now |
-| A fix is proposed under AI troubleshooting | **Go to the proposed fix** moves to the proposal below, where its card is opened |
-| A can't-fix, or a fix whose verify failed | **Open <device>**, or **Open <device> (likely cause)** when another device's change is the likeliest cause (a hypothesis, said as one) |
-| A dry-run record | its question, **Right** or **Wrong…**: two answers, neither the primary |
-| A run holds the device | **Open the run**: the action returns when the run ends |
-
-The button does not move when its card appears: the card is drawn under it. Under the action
-are what the item says to do in its own words, **Diagnose…** where the item offers it
-([Diagnose a device](diagnose)), how its Needs attention item clears, and links to the device
-and its History.
-
-A page that needs nobody (resolved, Mercury working, or a fix under way) draws no primary
-button. When the incident still needs a person and its item is no longer on Needs attention
-(it cleared there, or a person acknowledged it), the page says so and its button opens the
-device. While Needs attention is still being read, the page says that instead: an item not
-read yet is never said to be absent.
-
-## AI troubleshooting {#ai-troubleshooting}
-
-The fixes tried in this incident, one line each, with what each cost in AI and **Open the
-run**; this incident's AI spend against its cap and today's against the day cap; and what may
-be done next. With nothing tried, **Troubleshoot with AI** asks the AI once, as you, its
-estimate and the caps drawn before you press. After a fix that did not pass, the section stops
-and says what the run found: one line per subscription with its state in words ("Subscription
-101: re-subscribed; the stream did not come back"), and each line opens to its checks (the
-device's connection, the stream, the collector's sessions with their addresses and ports) and
-any flag. Its choices are three buttons in one row, drawn alike: **Retry with more
-information…**, **Cancel** and **Hand over…**. Each opens its own modal beside it, over the
-page; **Cancel** (in Retry's and Hand over's) or Escape closes it, and the focus goes back to
-the button that opened it. Retry's modal asks Mercury's own diagnosis to plan again, with no AI
-call, or the AI (**Ask the AI to re-plan**). Cancel's modal is its confirm: **Cancel
-troubleshooting** records the one line, and **Keep troubleshooting** closes it with nothing
-recorded. Hand over's holds the write-up's note and teams, and **Send the hand-over**. A press
-in a modal is answered in the section, in place, and the focus goes to the answer. The
-section's buttons are never the page's primary one, which is What to do's. Either proposal is
-drawn with **Open the fix's card…**, the AI's with what it found and what it cites; a proposal
-that repeats a failed attempt is flagged, its parameter hash in The record; a gap (no Mercury
-operation does what the fix needs) and an answer that couldn't be checked are said, with no
-Approve. Past the per-incident cap, neither is offered and the section says both figures. Once
-the incident is resolved, the section is read-only. Each step is on [AI troubleshooting:
-Troubleshoot with AI, Retry, Cancel and Hand over](fixit-troubleshoot).
-
-For a can't-fix, the **AI analysis** kept for the incident is drawn under it in full: its
-label and how it has been measured, its rationale, each hypothesis with what it cites and its
-recommended next step, and where the answer came from. It is advisory: self-healing never
-reads it. An analysis not kept yet, switched off, capped or not answered is said in place.
-The one line recording that the analysis ran is under it.
-
 ## Seen before {#seen-before}
 
-For a lost telemetry stream: whether the same loss was seen on this device before, when, how
-it ended and how long that held, with **Open that incident**. It is what the incident's Needs
-attention item holds, from the alerts reader's stored reading. It is drawn only when a past
-loss matches, or when the search could not be made, which is said: "couldn't be checked" is
-never read as "never seen".
+Collapsed. For a lost telemetry stream: whether the same loss was seen on this device before,
+when, how it ended and how long that held, with **Open that incident**. It is what the
+incident's Needs attention item holds, from the alerts reader's stored reading. It is drawn
+only when a past loss matches, or when the search could not be made, which is said: "couldn't
+be checked" is never read as "never seen".
 
 ## A hand-over's page {#hand-over}
 
 Each hand-over is kept as a version on its own page, `/v2/incident/<its id>/handover/<n>`: its
 nine sections, who handed it over and to which teams, a link back to the incident's page and
-**Download as Markdown**. It is linked from the section and from The record.
+**Download as Markdown**. It is linked from Fixing it and from The record.
 
 ## Evidence {#evidence}
 
@@ -210,11 +253,11 @@ each device attached to it with the reason it was attached.
 
 Collapsed. The incident's id, its network, its state as its own store keeps it, each
 decision's id, its mode, fix kind and tier (the decision's own where nothing has run yet), the
-program's hash and its lines (masked), the times behind the header, every
-step with its result, words and time, and who acted, by their identity as recorded. Every
-time is in your time zone, its UTC on the hover, as everywhere on the page. This is
-the only place on the page an identity is drawn. Each hand-over is listed last, with **Open the
-write-up**.
+program's hash and its lines (masked), the AI plan's hash and each of its steps' hashes, the
+times behind the timings, every step with its result, words and time, and who acted, by their
+identity as recorded. Every time is in your time zone, its UTC on the hover, as everywhere on
+the page. This is the only place on the page an identity is drawn. Each hand-over is listed
+last, with **Open the write-up**.
 
 ## What an address answers {#addresses}
 

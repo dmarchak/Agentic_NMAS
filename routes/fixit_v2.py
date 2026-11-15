@@ -4,17 +4,16 @@ recurring-fixes v2; the fix-it plan's S4 and S5), drawn from `modules/fixit/sect
 Each post answers with the section drawn again in place (`templates/v2/_fixit_section.html`),
 its answer leading it; none opens a second card elsewhere on the page:
 
-- ``cancel``: Cancel. One line in the incident's troubleshooting record, a verified person's;
-  nothing runs, nothing is sent, and the incident stays open (`incident.cancel`).
-- ``retry``: Retry with more information's Ask Mercury's diagnosis to re-plan. The
-  per-incident cap asked again at the press, then Mercury's own diagnosis re-plans
-  (`section.retry`): one proposal line, the person's note kept with it. No AI call.
-- ``troubleshoot``: Troubleshoot with AI, and Retry's Ask the AI to re-plan (S5): ONE
-  investigation asked as the verified person who pressed (`triggers.person`), the mode and
-  the per-incident cap asked again at the press, its answer checked by code and, when it names
-  one catalog operation, that proposal held to the same check as Mercury's own and opened in
-  its operation's own preview (`fixit_troubleshoot.troubleshoot`). It runs nothing: the
-  proposal's Approve is the operation's own card and confirm, by its preview's hash.
+- ``approve``, ``modify``, ``deny`` (the operator's R1, 2026-11-14, replacing Cancel and Retry
+  with more information): Approve runs the waiting plan by its preflighted hash as the plan
+  engine's incident-fix plan; Modify sends the person's words to the AI for a revised plan with
+  a new hash, running nothing; Deny records an optional reason, running nothing.
+- ``start`` (Start AI troubleshooting, once, for an incident whose failure did not start an
+  investigation by itself) and ``ask_again`` (after a denial): ONE investigation asked as the
+  verified person who pressed (`triggers.person`), the per-incident cap asked again at the
+  press (naming what moved since the panel was drawn), the section's own offer re-checked, its
+  answer checked by code and its plan preflighted (`fixit_troubleshoot.troubleshoot`). It runs
+  nothing. The one press that starts the AI is Start: Troubleshoot with AI is gone.
 - ``handover``: Hand over. The write-up built from the incident's records with no AI, kept as
   a new version, and sent to the teams ticked, each one told about the network's can't-fix
   (`handover.hand_over`).
@@ -22,12 +21,10 @@ its answer leading it; none opens a second card elsewhere on the page:
 - ``handover_page``: the write-up's own page, ``/v2/incident/<id>/handover/<version>`` (a GET;
   ``?download=md`` gives it as Markdown).
 
-Every post is a verified person's, gated ``configure`` (`modules/route_gates.py`; the board's
-decision 8: Troubleshoot, Retry, Cancel and Hand over as Explain), and each declares what it
-invalidates (`modules/invalidation.py`). The proposal's Approve is the operation's own card and
-confirm (routes/resubscribe_v2.py), which carries the incident, the attempt and the proposal
-into its run's record. Nothing here holds a device or starts a job, and only ``troubleshoot``
-asks a model, on a person's press.
+Every post is a verified person's, gated (`modules/route_gates.py`: Approve a confirm, the rest
+``configure``), and each declares what it invalidates (`modules/invalidation.py`). Approve
+starts the plan engine's job; nothing else here holds a device or starts a job, and only
+``start``, ``ask_again`` and ``modify`` ask a model, on a person's press.
 """
 
 import logging
@@ -109,95 +106,163 @@ def _not_a_person(who: dict, what: str) -> str:
             "Nothing was recorded")
 
 
-@bp.route("/<incident_id>/fixit/cancel", methods=["POST"])
-def cancel(incident_id):
-    """Cancel: one line recorded for the verified person; nothing runs, the incident stays
-    open (`section.CANCEL_STEPS`)."""
+def _gate(incident_id: str, what: str):
+    """``(network, found, incident, who, None)`` for a verified person's press on a standing
+    incident, or ``(…, response)``: the refusal drawn in place, nothing recorded or sent."""
+    from modules.fixit import section
+
+    network, found = _found(incident_id)
+    if found["found"] != "page":
+        return network, found, None, None, _missing(incident_id, found)
+    if _ended(found):
+        return network, found, None, None, _section(network, found, 409, refused=(
+            f"{incident_id} is resolved ({_ended(found)}), and its AI troubleshooting is "
+            "read-only. Nothing was recorded or sent"))
+    who = _person()
+    why = _not_a_person(who, what)
+    if why:
+        return network, found, None, who, _section(network, found, 403, refused=why)
+    got = section.incident_of(network, found)
+    if got["incident"] is None:
+        return network, found, None, who, _section(network, found, 409, refused=got["why"])
+    return network, found, got["incident"], who, None
+
+
+def _proposal_named(inc, named: str):
+    """``(line, why)``: the proposal a person may decide on now (`section._current_proposal`),
+    which must be the one the form names (``proposal``), or None with why."""
     from modules.fixit import incident as F
     from modules.fixit import section
 
-    network, found = _found(incident_id)
-    if found["found"] != "page":
-        return _missing(incident_id, found)
-    if _ended(found):
+    rec = F.read(inc)
+    if rec["state"] == "unreadable":
+        return None, rec["error"]
+    line = section._current_proposal(rec)
+    named = str(named or "").strip()
+    if line is None:
+        return None, f"{inc.id} has no proposal waiting for a decision now"
+    if named != line["proposal"]:
+        return None, (f"the proposal decided on is {named or 'none named'}, and the one waiting "
+                      f"now is {line['proposal']}: the page was drawn before it changed; read "
+                      "it again")
+    return line, ""
+
+
+@bp.route("/<incident_id>/fixit/approve", methods=["POST"])
+def approve(incident_id):
+    """Approve: the waiting plan, preflighted again, approved by its hash as the verified person
+    who pressed (``hash``), and started as the plan engine's ``incident-fix`` plan: each step in
+    order through its own operation's preview, apply (re-checking its own hash), verify and
+    record; the first that does not pass stops it; nothing retried. One approve line names the
+    run. Refused with nothing run when the hash is not the one preflighted now (both named) or
+    a step would be refused."""
+    from modules import plan_engine as PE
+    from modules.fixit import incident as F
+    from modules.fixit import plan as FP
+
+    network, found, inc, who, refused = _gate(incident_id, "Approve")
+    if refused is not None:
+        return refused
+    line, why = _proposal_named(inc, request.form.get("proposal"))
+    if line is None:
+        return _section(network, found, 409, refused=f"Not approved: {why}. Nothing ran")
+    plan = FP.preflight(inc, line)
+    if not plan or not plan["approvable"]:
         return _section(network, found, 409, refused=(
-            f"{incident_id} is resolved ({_ended(found)}), and its AI troubleshooting is "
-            "read-only. Nothing was recorded or sent"))
-    who = _person()
-    why = _not_a_person(who, "Cancel")                                             # person
-    if why:
-        return _section(network, found, 403, refused=why)
-    got = section.incident_of(network, found)
-    if got["incident"] is None:
-        return _section(network, found, 409, refused=got["why"])
+            "Not approved: " + ((plan or {}).get("why_refused") or "the proposal names no "
+                                "plan Mercury runs") + ". Nothing ran"))
+    sent = (request.form.get("hash") or "").strip()
+    if sent != plan["hash"]:
+        return _section(network, found, 409, refused=(
+            f"Not approved: you approved the plan {sent or 'with no hash'}, and the plan "
+            f"preflighted now is {plan['hash']}: it moved since the page was drawn. Read it "
+            "again. Nothing ran"))
+    reason = " ".join((request.form.get("reason") or "").split()) or (
+        f"approved plan {plan['hash']} on incident {incident_id}'s page")
+    # The collector step's session, bound now (the close helper's dry run, on this person's
+    # press): the plan run carries it in its hash, and its step refuses, naming both sessions,
+    # if the collector holds another when it runs.
+    params, bound = FP.plan_params(inc, line), plan["hash"]
+    from modules.heal import resubscribe as R
+    if any(s["operation"] == R.COLLECTOR_KEY for s in params["steps"]):
+        for s in params["steps"]:
+            if s["operation"] != R.COLLECTOR_KEY:
+                continue
+            got = PE.collector_session(network, s["params"]["device"],
+                                       s["params"].get("subscriptions") or [])
+            if not got["session"]:
+                return _section(network, found, 409, refused=(
+                    f"Not approved: the collector step names no session to close now "
+                    f"({got['refused']}). Nothing ran"))
+            s["session"] = got["session"]
+        engine = PE.preview(network, PE.INCIDENT_FIX, params)
+        if not engine["ok"]:
+            return _section(network, found, 409, refused=(
+                f"Not approved: {engine['refused']}. Nothing ran"))
+        bound = engine["hash"]
+    # The approval is kept BEFORE the run starts, naming the run it starts (its id given to
+    # the engine), so a run never exists without the person's approval on the record.
+    from modules.nsot import reads
+    run_id = reads.new_id()
     try:
-        line = F.cancel(got["incident"], who["actor"], who["actor_verified"])      # record
+        F.record_approve(inc, who["actor"], who["actor_verified"], proposal=line["proposal"],
+                         plan_hash=plan["hash"], run=run_id)
     except (F.Refused, OSError, ValueError) as exc:
-        return _section(network, found, 409, refused=f"Not cancelled: {exc}")
+        return _section(network, found, 409, refused=f"Not approved: {exc}. Nothing ran")
+    got = PE.start(network, PE.INCIDENT_FIX, params, bound, actor=who["actor"],
+                   actor_verified=who["actor_verified"], person=who["person"], reason=reason,
+                   run_id=run_id)
+    if got.get("refused"):
+        # Kept after its approval, so the card says it, never a run that never was.
+        from modules import troubleshoot_job
+        troubleshoot_job.record_failure(inc, f"approve:{run_id}",
+                                 f"the approved plan did not start: {got['refused']}",
+                                 trigger="person", by=who["actor"],
+                                 verified=who["actor_verified"])
+        return _section(network, found, 409, refused=f"Not approved: {got['refused']}")
     return _section(network, found, done=(
-        f"Cancelled: one line recorded, with {line['attempts']} attempt"
-        f"{'s' if line['attempts'] != 1 else ''} as they stand. Nothing ran and nothing was "
-        "sent; the incident stays open."))
+        f"Approved plan {plan['hash']}: it runs now, step by step, and stops at the first step "
+        "that does not pass. Each step's own record is under Attempts."))
 
 
-@bp.route("/<incident_id>/fixit/retry", methods=["POST"])
-def retry(incident_id):
-    """Retry with more information (`section.STEPS`): the cap asked again at the press, then
-    Mercury's own diagnosis re-plans; one proposal line with the person's note. No AI call."""
-    from modules.fixit import section
+@bp.route("/<incident_id>/fixit/deny", methods=["POST"])
+def deny(incident_id):
+    """Deny: the waiting proposal declined, with the person's optional reason; nothing runs and
+    nothing is sent; the incident stays open with Ask the AI again and Hand over."""
+    from modules.fixit import incident as F
 
-    network, found = _found(incident_id)
-    if found["found"] != "page":
-        return _missing(incident_id, found)
-    if _ended(found):
-        return _section(network, found, 409, refused=(
-            f"{incident_id} is resolved ({_ended(found)}), and its AI troubleshooting is "
-            "read-only. Nothing was recorded or sent"))
-    form = request.form
+    network, found, inc, who, refused = _gate(incident_id, "Deny")
+    if refused is not None:
+        return refused
+    line, why = _proposal_named(inc, request.form.get("proposal"))
+    if line is None:
+        return _section(network, found, 409, refused=f"Not denied: {why}. Nothing was recorded")
     try:
-        got = section.retry(network, found, note=form.get("note") or "",
-                            drawn_spent=form.get("drawn_spent") or "",
-                            drawn_cap=form.get("drawn_cap") or "", **_person())
-    except section.Refused as exc:
-        return _section(network, found, exc.status, refused=str(exc))
-    line = got["line"]
-    if line.get("operation"):
-        done = ("Re-planned by Mercury's diagnosis, with no AI: its proposal is below, checked "
-                "against this incident, the heal guards and committed intent. Nothing runs "
-                "until you approve it in its card.")
-    else:
-        done = ("Re-planned by Mercury's diagnosis, with no AI: it names no fix Mercury can "
-                "run, said below. Nothing ran.")
-    return _section(network, found, done=done)
+        F.deny(inc, who["actor"], who["actor_verified"], proposal=line["proposal"],
+               reason=request.form.get("reason") or "")
+    except (F.Refused, OSError, ValueError) as exc:
+        return _section(network, found, 409, refused=f"Not denied: {exc}")
+    return _section(network, found, done=(
+        "Denied: nothing ran and nothing was sent. The incident stays open: ask the AI again, "
+        "or hand it over."))
 
 
-@bp.route("/<incident_id>/fixit/troubleshoot", methods=["POST"])
-def troubleshoot(incident_id):
-    """Troubleshoot with AI (and Retry's Ask the AI to re-plan): one investigation, asked as
-    the verified person who pressed, its answer checked and at most one proposal opened in its
-    operation's preview (`fixit_troubleshoot.STEPS`). Refused in place, with nothing sent,
-    when the incident is resolved, the press is no verified person's, the mode is off or the
-    per-incident cap would be passed (naming what moved since the panel was drawn)."""
+def _ask(incident_id: str, what: str, *, note: str, allowed: str):
+    """One investigation asked as the verified person who pressed (`fixit_troubleshoot`), the
+    section's own offer re-checked first (*allowed*, the contract's action: ``modify``,
+    ``ask_again`` or ``start``); a Start is taken once under the record's lock (a person's
+    ``start`` line), so two presses start one. It runs nothing."""
     from modules.ai import fixit_troubleshoot as AIT
-    from modules.fixit import policy as P
+    from modules.fixit import incident as F
     from modules.fixit import section
 
-    network, found = _found(incident_id)
-    if found["found"] != "page":
-        return _missing(incident_id, found)
-    if _ended(found):
-        return _section(network, found, 409, refused=(
-            f"{incident_id} is resolved ({_ended(found)}), and its AI troubleshooting is "
-            "read-only. Nothing was sent"))
-    who = _person()
-    why = _not_a_person(who, "Troubleshoot with AI").replace("Nothing was recorded",
-                                                             "Nothing was sent")
-    if why:
-        return _section(network, found, 403, refused=why)
-    got = section.incident_of(network, found)
-    inc = got["incident"]
-    if inc is None:
-        return _section(network, found, 409, refused=got["why"])
+    from modules.fixit import policy as P
+
+    network, found, inc, who, refused = _gate(incident_id, what)
+    if refused is not None:
+        return refused
+    # The cap asked again at the press, naming what moved since the panel was drawn (the
+    # figures the press carries, ``drawn_spent`` and ``drawn_cap``, compared and never sent).
     cs = P.cap_state(inc, AIT.worst_usd())                                         # cap
     if cs["state"] != "allowed":
         moved = section._moved_words(request.form.get("drawn_spent") or "",
@@ -205,18 +270,120 @@ def troubleshoot(incident_id):
         return _section(network, found, 409, refused=(
             cs["words"].replace("Retry isn't available", "Not asked", 1)
             + (f". Since the panel was drawn, {moved}" if moved else "") + ". Nothing was sent"))
+    drawn = section.view(network, found, resolved=_resolved_at(found), ended=_ended(found))
+    act = (drawn.get("actions") or {}).get(allowed) or {}
+    if drawn.get("state") == "investigating":
+        # One investigation at a time, read from the record (every worker sees it).
+        return _section(network, found, 409, refused=(
+            f"Not asked: the AI is already investigating this incident ({drawn.get('status')}). "
+            "Nothing was sent"))
+    if not act.get("offered"):
+        return _section(network, found, 409, refused=(
+            f"Not asked: {what} is not offered now"
+            + (f" ({act['refused']})" if act.get("refused") else "") + ". Nothing was sent"))
+    if allowed == "modify":
+        line, why = _proposal_named(inc, request.form.get("proposal"))
+        if line is None:
+            return _section(network, found, 409, refused=f"Not asked: {why}. Nothing was sent")
+        if not " ".join(note.split()):
+            return _section(network, found, 400, refused=(
+                "Not asked: Modify sends your words to the AI, and none were typed. Nothing "
+                "was sent"))
+    # Taken ONCE under the record's lock (`claim_start`): Start's one key, or the next of the
+    # person's presses; a second press made at the same moment takes the same key and is
+    # refused, naming the investigation that runs, never a second paid call.
+    from modules import troubleshoot_job
+
+    people = [ln for ln in F.starts(inc)["starts"] if ln.get("trigger") == "person"
+              and not str(ln.get("start") or "").endswith(":failed")]
+    key = "person:start" if allowed == "start" else f"person:{len(people) + 1}"
     try:
-        out = AIT.troubleshoot(network, found, inc, actor=who["actor"],
-                               actor_verified=who["actor_verified"], person=who["person"],
-                               note=request.form.get("note") or "", resolved=_resolved_at(found))
-    except AIT.Refused as exc:
-        return _section(network, found, exc.status, refused=str(exc))
-    level = {"proposed": "muted", "gap": "warn", "no_fix": "warn", "unanswerable": "warn",
-             "refused_fix": "warn", "unchecked": "warn"}.get(out["state"], "warn")
-    if out["state"] == "failed" and not out["proposal"]:
-        return _section(network, found, 502, refused=f"Couldn't troubleshoot: {out['words']}")
-    return _section(network, found, level=level, done=out["words"],
-                    typed_masked=out.get("typed_masked"))
+        line = F.claim_start(inc, key, trigger="person", state="started",
+                             by=who["actor"], verified=who["actor_verified"],
+                             busy_s=section.investigation_bound_s())
+    except (F.Refused, OSError, ValueError) as exc:
+        return _section(network, found, 409, refused=f"Not asked: {exc}")
+    if line is None:
+        return _section(network, found, 409, refused=(
+            "Not asked: the AI is already investigating this incident (its start was taken a "
+            "moment ago, by another press). Nothing was sent"))
+    resolved = _resolved_at(found)
+
+    def investigate():
+        # Inside the press's own request context (copied into the job's thread): the call's
+        # trigger is the person who pressed, verified as their request was.
+        try:
+            out = AIT.troubleshoot(network, found, inc, actor=who["actor"],
+                                   actor_verified=who["actor_verified"], person=who["person"],
+                                   note=note, resolved=resolved)
+        except Exception as exc:                      # noqa: BLE001 (kept, then the job's)
+            # A refusal before anything was sent, or the investigation raising: drawn in place
+            # as "Couldn't troubleshoot: <why>", and the job's own failure under In progress.
+            words = str(exc) if isinstance(exc, AIT.Refused) else f"{type(exc).__name__}: {exc}"
+            troubleshoot_job.record_failure(inc, key, words, trigger="person", by=who["actor"],
+                                     verified=who["actor_verified"])
+            raise
+        if out["state"] == "failed" and not out["proposal"]:
+            troubleshoot_job.record_failure(inc, key, out["words"], trigger="person",
+                                     by=who["actor"], verified=who["actor_verified"])
+        words = out["words"]
+        if allowed == "modify" and out["state"] == "proposed":
+            words = ("The AI revised its plan with your words: the new plan, with its new hash, "
+                     "is below. Nothing ran.")
+        return {"state": out["state"], "words": words,
+                "typed_masked": out.get("typed_masked")}
+
+    from flask import copy_current_request_context
+
+    run = copy_current_request_context(investigate)
+    ended = {}
+
+    def work(_job):
+        try:
+            ended["out"] = run()
+        except Exception as exc:                      # noqa: BLE001 (said, then the job's)
+            ended["error"] = str(exc)
+            raise
+        return ended["out"]
+    job = troubleshoot_job.start(network, incident_id, who["actor"], work,
+                          label=f"{what}: {incident_id}")
+    # The job runs on; its end is announced and the card re-fetches. A job that ended before
+    # this answer is drawn (a quick refusal) says what it found.
+    said = ((ended["out"] or {}).get("words") if "out" in ended else
+            f"Couldn't troubleshoot: {ended['error']}" if "error" in ended else
+            troubleshoot_job.done_words(job))
+    if said is None:
+        return _section(network, found, 202, level="muted", done=(
+            "The AI is investigating. This card updates when it answers; nothing runs until "
+            "you approve a plan."))
+    return _section(network, found, level="muted" if not said.startswith("Couldn't") else
+                    "warn", done=said,
+                    typed_masked=(ended.get("out") or {}).get("typed_masked"))
+
+
+@bp.route("/<incident_id>/fixit/modify", methods=["POST"])
+def modify(incident_id):
+    """Modify: the person's words (``text``) sent to the AI through the gateway's typed part
+    (masked, the injection screen) with the evidence; the AI returns a revised plan with a new
+    hash. Nothing runs; it counts toward the incident's cap."""
+    return _ask(incident_id, "Modify", note=request.form.get("text") or "", allowed="modify")
+
+
+@bp.route("/<incident_id>/fixit/ask_again", methods=["POST"])
+def ask_again(incident_id):
+    """Ask the AI again, after a denial: the same investigation, the person's optional words
+    (``text``) with it. Nothing runs."""
+    return _ask(incident_id, "Ask the AI again", note=request.form.get("text") or "",
+                allowed="ask_again")
+
+
+@bp.route("/<incident_id>/fixit/start", methods=["POST"])
+def start(incident_id):
+    """Start AI troubleshooting: the one start for an incident whose failure did not start an
+    investigation by itself (the network's switch off, or the failure recorded before it was
+    turned on; e.g. hi-22cfdc299000), a person's press, the R1 flow from step 3."""
+    return _ask(incident_id, "Start AI troubleshooting", note=request.form.get("text") or "",
+                allowed="start")
 
 
 def _teams() -> list:

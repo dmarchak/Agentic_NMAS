@@ -39,6 +39,14 @@ incident whose newest decision is nothing to heal by the time it would be told i
 (`_withheld`). A can't-fix is told once per incident (``asked``): one standing and judged again
 (C2813) is never told twice.
 
+**R1, AI troubleshooting by itself** (the operator, 2026-11-14; `run_fixit`, after the notices):
+on a network whose ``fixit_auto`` switch is on (off by default; Settings › AI), each new failure
+of Mercury's fix on an open incident, recorded after the switch went on, is taken ONCE
+(`fixit.incident.claim_start`) and its investigation started in its own thread
+(`fixit_investigation`, a background call under the feature's trigger), inside the incident's
+cap, the feature's caps and the day cap; a proposal is told to the team, its BLUF first
+(`proposal_notice`, the event ``proposal``).
+
 **What a message carries** (`facts`): only `notify.message.FIELDS`, every byte through the
 egress mask at its sender. Each step is said in Mercury's words with the incident's
 configuration lines withheld (`evidence_pack.withhold`), and so is the analysis's text, which
@@ -47,6 +55,7 @@ may quote the intent section's masked lines: configuration lines are never in a 
 """
 
 import logging
+import os
 import re
 import threading
 import time
@@ -357,7 +366,240 @@ def run(network: str, *, now: float = None, starter=None, wait_s: float = None,
             threading.Thread(target=notice, args=(network, inc), kwargs=dict(kw, job=job),
                              daemon=True, name=f"heal-notice-{inc}").start()
         out["started"].append(inc)
+    try:
+        out["fixit"] = run_fixit(network, now=now)
+    except Exception as exc:                          # said; the next pass reads it again
+        log.exception("heal notice: %s's automatic troubleshooting pass failed", network)
+        out["failed"].append(f"automatic troubleshooting: {type(exc).__name__}: {exc}")
     return out
+
+
+# ── R1: AI troubleshooting started by itself when Mercury's fix fails ────────────────────────
+
+#: The most investigations one pass starts (the caps hold the spend; this holds a burst).
+FIXIT_MOST_PER_PASS = 3
+#: How long a started investigation is waited for before another failure of its incident may
+#: start one: the reservation's life, as a slow analysis is waited for (`follow_up_wait_s`).
+FIXIT_JOB_PREFIX = "fixit-auto"
+#: The steps of the automatic start, as the manual's How it works page names them.
+FIXIT_STEPS = (("switch", "Read the network's switch: off (the default), nothing is read or "
+                          "taken; on, only failures recorded after it was turned on count"),
+               ("auto", "Read self-healing's policy: not in Auto now (off, Dry run, expired), "
+                        "nothing starts; in Auto, only failures recorded after Auto went on, "
+                        "and of a fix kind Auto allows unless no code fix exists, count"),
+               ("failures", "Find each new failure of Mercury's fix on an open incident: a "
+                            "can't-fix or a hold, an act that did not verify, an approved "
+                            "plan that stopped"),
+               ("choice", "The AI troubleshooting mode Off, or hosted AI off: take it with no "
+                          "AI call"),
+               ("caps", "Over the incident's cap, the feature's own day or month cap, or the "
+                        "day cap: take it with no AI call, saying which cap"),
+               ("claim", "Take the failure once, under the incident record's lock"),
+               ("ask", "Ask the AI to investigate, as a background call on that failure"),
+               ("notify", "A proposal: tell the network's team, its bottom line first, with "
+                          "the incident's link"))
+
+
+def _fixit_state(inc, trigger: dict, now: float) -> tuple:
+    """``(state, which, words)`` an automatic start takes for *inc* now: ``off``, ``capped``
+    (*which* names the cap) or ``started``. Reads the settings and the record of AI calls."""
+    from modules.ai import background, calls, fixit_troubleshoot as AIT, gateway
+    from modules.fixit import policy as P
+
+    off = P.ai_refusal()
+    if off:
+        return "off", "", off
+    if not gateway.hosted_allowed()["allowed"]:
+        return "off", "", "hosted AI is off"
+    why = background.admit(trigger)
+    if why:
+        return "off", "", why
+    worst = AIT.worst_usd()
+    cs = P.cap_state(inc, worst)
+    if cs["state"] != "allowed":
+        return "capped", "incident", cs["words"].replace("Retry isn't available", "Not started",
+                                                         1)
+    day = calls.today()
+    over = background.over_cap(trigger, worst, day)
+    if over:
+        return ("capped" if over["kind"] == "feature_cap" else "off",
+                over.get("cap") or "day", over["why"])
+    cap = gateway.day_cap()
+    if cap is not None:
+        spent = calls.spent_usd(day)
+        if spent.get("usd") is None:
+            return "capped", "day", (f"today's AI spend cannot be read ({spent.get('error')}), "
+                                     "so it cannot be compared with the day cap")
+        if float(spent["usd"]) + worst > cap:
+            return "capped", "day", (
+                f"today's AI spend ${float(spent['usd']):.2f} plus this investigation's worst "
+                f"case ${worst:.2f} would pass the day cap of ${cap:.2f}")
+    return "started", "", ""
+
+
+def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
+    """R1's pass (`modules/fixit/auto.py`): each new failure of Mercury's fix on an open
+    incident, recorded since the network's stamp, taken ONCE (`incident.claim_start`) and,
+    when the choices are on and the caps allow it, its investigation started as its own
+    thread (*starter*, a thread unless given). ``{"network", "started", "capped", "off",
+    "failed"}``, each a list of failure keys."""
+    from modules import incident_page
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.config import list_data_path
+    from modules.fixit import auto as A
+    from modules.fixit import incident as F
+    from modules.fixit import section
+
+    at = time.time() if now is None else float(now)
+    out = {"network": network, "started": [], "capped": [], "off": [], "failed": []}
+    sw = A.switch(network)
+    if not sw["on"]:
+        # Off (the default on every network): nothing is read further and nothing is taken;
+        # a failure while it is off is before any later turn-on's time, so it never catches up.
+        return out
+    heal = A.heal_auto(network, at)
+    if not heal["auto"]:
+        # Self-healing off or in Dry run: nobody asked Mercury to fix anything (the operator,
+        # 2026-11-14), so nothing starts; a failure now is before any later Auto's time.
+        return out
+    opened = A.open_incidents(network)
+    got = A.failures(network, open_ids=set(opened))
+    if got["state"] != "ok":
+        out["failed"].append(got["error"])
+        return out
+    by = {}
+    for f in got["failures"]:
+        by.setdefault(f["incident"], []).append(f)
+    for iid, record in opened.items():
+        lost = A.no_code_fix(record)
+        if lost and lost["key"] not in {f["key"] for f in by.get(iid, [])}:
+            by.setdefault(iid, []).append(lost)
+            by[iid].sort(key=lambda f: f["epoch"])
+    folder = os.path.join(list_data_path(network), F.STORE_DIR)
+    for iid in opened:
+        if iid not in by and os.path.exists(os.path.join(folder, f"{iid}.json")):
+            by[iid] = []
+    bound = follow_up_wait_s()
+    for iid, fs in by.items():
+        if len(out["started"]) >= FIXIT_MOST_PER_PASS:
+            break
+        found = incident_page.resolve(network, iid)
+        if found["found"] != "page":
+            continue
+        inc = section.incident_of(network, found)["incident"]
+        if inc is None:
+            continue
+        try:
+            fs = fs + A.plan_failures(network, inc)
+            have = A.taken(inc)
+            new = [f for f in fs if f["key"] not in have and not A.eligible(f, sw, heal)]
+            if not new or A.in_flight(inc, at, bound):
+                continue
+            f = new[0]
+            job = f"{FIXIT_JOB_PREFIX}-{iid}-{len(have) + 1}"
+            trigger = AIT.background_trigger(network, job, f["key"])
+            state, which, words = _fixit_state(inc, trigger, at)
+            line = F.claim_start(inc, f["key"], trigger="auto", state=state, job=job,
+                                 which=which, words=words, now=at,
+                                 failure={k: f[k] for k in ("kind", "id", "outcome", "at")},
+                                 busy_s=bound)
+        except Exception as exc:                      # said; the next pass reads it again
+            out["failed"].append(f"{iid}: {type(exc).__name__}: {exc}")
+            continue
+        if line is None:
+            continue
+        out[state if state in ("started", "capped", "off") else "failed"].append(f["key"])
+        if state != "started":
+            continue
+        if starter is not None:
+            starter(network, iid, f["key"], job)
+        else:
+            # The same job path as a person's press (`troubleshoot_job.start`): listed under In
+            # progress, its end announced.
+            from modules import troubleshoot_job
+            troubleshoot_job.start(network, iid, f"job:{job}",
+                            lambda _j, i=iid, k=f["key"], jb=job: fixit_investigation(
+                                network, i, k, jb), label=f"Automatic AI troubleshooting: {iid}",
+                            actor_kind="policy")
+    return out
+
+
+def fixit_investigation(network: str, incident_id: str, key: str, job: str, *,
+                        send=None, deliver=None) -> dict:
+    """One automatic investigation (R1), its start already taken: AI troubleshooting's own
+    investigation as ``fixit_auto``'s background call on the failure *key*
+    (`fixit_troubleshoot.troubleshoot` with its trigger), and, when it proposes a plan, the
+    team told (`proposal_notice`). A refusal before anything was sent is kept as the failure's
+    second start line (``failed``), so the page says why. *send* replaces the provider and
+    *deliver* the relay (tests)."""
+    from modules import incident_page
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.ai import triggers
+    from modules.fixit import section
+
+    found = incident_page.resolve(network, incident_id)
+    inc = section.incident_of(network, found)["incident"] if found["found"] == "page" else None
+    if inc is None:
+        return {"state": "failed", "words": f"{incident_id} has no page"}
+    trigger = AIT.background_trigger(network, job, key)
+    try:
+        got = AIT.troubleshoot(network, found, inc, actor=triggers.actor_of(trigger),
+                               actor_verified="", person=False, trigger=trigger, send=send)
+    except AIT.Refused as exc:
+        from modules import troubleshoot_job
+        troubleshoot_job.record_failure(inc, key, str(exc), trigger="auto")
+        return {"state": "failed", "words": str(exc)}
+    except Exception as exc:                          # noqa: BLE001 (kept, then the job's)
+        from modules import troubleshoot_job
+        troubleshoot_job.record_failure(inc, key, f"{type(exc).__name__}: {exc}", trigger="auto")
+        raise
+    if got.get("state") == "failed" and not got.get("proposal"):
+        from modules import troubleshoot_job
+        troubleshoot_job.record_failure(inc, key, got.get("words") or "", trigger="auto")
+    if got.get("state") == "proposed":
+        try:
+            proposal_notice(network, incident_id, deliver=deliver)
+        except Exception as exc:                      # noqa: BLE001 (said; the page has it)
+            log.error("fixit auto: %s: its proposal was not told: %s", incident_id, exc)
+    return got
+
+
+def proposal_notice(network: str, incident_id: str, *, deliver=None) -> dict:
+    """Tell the network's team that the AI's proposal waits (the R1 flow's step 5; event
+    ``proposal``, "a fix waits for a person"), through the existing notification path: the
+    BLUF first (`bluf`: what happened, its impact, then the fix), then what the AI found and
+    the plan it proposes, step by step, with the incident's link. Mercury's facts and words
+    only: no person's name or address, and the incident's configuration lines withheld."""
+    from modules import bluf as B
+    from modules import evidence_pack as EP
+    from modules import incident_page
+    from modules.fixit import incident as F
+    from modules.fixit import plan as FP
+    from modules.fixit import section
+
+    found = incident_page.resolve(network, incident_id)
+    inc = section.incident_of(network, found)["incident"]
+    if inc is None:
+        return {"ok": False, "error": f"{incident_id} has no incident Mercury can name"}
+    rec = F.read(inc)
+    line = next((ln for ln in reversed(rec["lines"]) if "proposal" in ln), None)
+    plan = FP.preflight(inc, line) if line else None
+    if not plan:
+        return {"ok": False, "error": f"{incident_id} holds no proposal to tell"}
+    lines = lines_of(network, found.get("entry") or {})
+    b = B.bluf(B.model_of(found, {"kind": "approve", "label": "Approve, Modify or Deny"}))
+    steps = "; then ".join(s["words"] for s in plan["steps"])
+    event = {"incident": incident_id, "event": "proposal", "network": network,
+             "device": inc.device,
+             "lead": EP.withhold(f"{b['what']}. {b['impact']}.", lines),
+             "happened": EP.withhold(f"The AI found: {plan['found']}", lines)
+             if plan["found"] else "",
+             "outcome": EP.withhold(f"The AI proposes: {steps}" + (
+                 "" if plan["approvable"] else f". {plan['why_refused']}"), lines),
+             "todo": ("Approve, Modify or Deny the proposed plan on the incident's page; "
+                      "nothing runs until a person approves it"),
+             "link": incident_link(network, incident_id, inc.device)}
+    return (deliver or _deliver)(network, event)
 
 
 # ── The message ───────────────────────────────────────────────────────────────────────────────
