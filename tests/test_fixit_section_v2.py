@@ -468,7 +468,7 @@ class TestTheRepeatsHash:
         hashed = F.params_hash(line["operation"], line["params"])
         html = drawn_page(web, iid)
         sec = section_of(html)
-        step = re.search(r'<li class="fixit-step fixit-step-refused" data-step="1".*?</li>',
+        step = re.search(r'<li class="fixit-plan-item fixit-plan-item-refused" data-step="1".*?</li>',
                          sec, re.S)
         assert step, sec[:2000]
         said = " ".join(re.sub(r"<[^>]+>", " ", step.group(0)).split())

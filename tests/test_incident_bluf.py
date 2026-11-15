@@ -342,7 +342,7 @@ class TestTheProposal:
             assert f'data-manual="fixit-troubleshoot#{section}"' in html, section
         # The plan's steps, each with its preflight; its hash is the record's, not the card's.
         c = card(html)
-        steps = re.findall(r'<li class="fixit-step fixit-step-(\w+)" data-step="(\d)"', c)
+        steps = re.findall(r'<li class="fixit-plan-item fixit-plan-item-(\w+)" data-step="(\d)"', c)
         assert steps == [("ok", "1"), ("ok", "2")]
         assert text_of(c).count("preflight passed") == 2
         assert "a" * 64 not in text_of(c)
@@ -368,7 +368,7 @@ class TestTheProposal:
                 offered=("modify", "deny"))
         html = body_of(web, iid)
         c = card(html)
-        (step,) = re.findall(r'<li class="fixit-step fixit-step-refused" data-step="2".*?</li>',
+        (step,) = re.findall(r'<li class="fixit-plan-item fixit-plan-item-refused" data-step="2".*?</li>',
                              c, re.S)
         assert f"refused at its preflight: {why}" in text_of(step).replace("&#39;", "'")
         assert "/fixit/approve" not in html and ">Approve<" not in html

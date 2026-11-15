@@ -3538,10 +3538,10 @@ dialog.modal::backdrop { background: var(--scrim); }
 .fixit-said { font-size: 13px; color: var(--ink-2); }
 .fixit-cap { color: var(--warn); }
 .fixit-plan { border-left: 3px solid var(--accent); padding-left: 10px; display: flex; flex-direction: column; gap: 6px; }
-.fixit-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
-.fixit-step { overflow-wrap: anywhere; }
+.fixit-plan-items { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.fixit-plan-item { overflow-wrap: anywhere; }
 .fixit-pre { font-size: 12.5px; color: var(--ink-2); }
-.fixit-step-refused { color: var(--ink); }
+.fixit-plan-item-refused { color: var(--ink); }
 .fixit-pre-refused { color: var(--danger); font-weight: 600; }
 .fixit-more > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); min-height: 24px; }
 .fixit-more[open] > summary { margin-bottom: 6px; }

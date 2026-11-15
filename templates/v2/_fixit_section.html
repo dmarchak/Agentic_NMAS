@@ -165,10 +165,10 @@
       not offered (above). The hashes are the record's, one level down. -#}
   <div class="fixit-plan" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable else 'no' }}">
     {%- if NP.found %}<p><strong>What the AI found:</strong> {{ NP.found | times }}</p>{% endif %}
-    <ol class="fixit-steps">
+    <ol class="fixit-plan-items">
       {%- for st in NP.steps %}
       {%- set pf = st.preflight or {} %}
-      <li class="fixit-step fixit-step-{{ 'ok' if pf.ok else 'refused' }}" data-step="{{ st.n }}" value="{{ st.n }}"{% if pf.code %} data-refused-by="{{ pf.code }}"{% endif %}><span title="{{ st.params }}">{{ st.words | times }}</span>
+      <li class="fixit-plan-item fixit-plan-item-{{ 'ok' if pf.ok else 'refused' }}" data-step="{{ st.n }}" value="{{ st.n }}"{% if pf.code %} data-refused-by="{{ pf.code }}"{% endif %}><span title="{{ st.params }}">{{ st.words | times }}</span>
         {%- if pf.ok %} <span class="fixit-pre" data-preflight="ok">· preflight passed</span>
         {%- else %} <span class="fixit-pre fixit-pre-refused" data-preflight="refused">· refused at its preflight: {{ pf.refused or 'no reason was recorded' }}</span>{% endif %}</li>
       {%- endfor %}
