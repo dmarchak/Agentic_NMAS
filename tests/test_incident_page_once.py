@@ -113,3 +113,97 @@ class TestTheEvidenceIsDrawnOnce:
         planted = ('<div id="incident-live"><details><summary>Evidence (2)</summary></details>'
                    '<details class="card inc-evidence"><summary>Evidence</summary></details>')
         assert len(evidence_homes(planted)) == 2
+
+
+# ── R2's leftovers (the operator, 2026-11-15) ────────────────────────────────────────────────
+#: "no red "Check guards failed" or red "can't fix" chip for a decision working as designed;
+#: drop "heal_analysis not run: feature_off" and "not diagnosed: no adjacency" noise from the
+#: default view (details only)." (C3738, C3540)
+
+def done_of(body: str) -> str:
+    """What Mercury has done's card, as drawn."""
+    return body.split('id="inc-done"', 1)[1].split("</section>", 1)[0]
+
+
+def red_in(done: str) -> list:
+    """What draws a decision red in What Mercury has done: a failed stage or step, a stage
+    sentence announced as an alert, a danger chip."""
+    return [m for m in ("run-stage-failed", "run-step-failed", 'role="alert"', "badge-danger")
+            if m in done]
+
+
+class TestADecisionWorkingAsDesignedIsNeverRed:
+    def test_a_held_decision_s_stage_is_held_never_failed(self, client):  # noqa: F811
+        done = done_of(T.page(client, held()))
+        assert red_in(done) == [], red_in(done)
+        assert "run-stage-held" in done and "run-step-held" in done
+        assert "Held at " in done and "held by a guard, as designed" in done
+        # Why it held is one level down, on its step's line, never lost.
+        assert "intent" in T.text_of(done.split("run-step-held", 1)[1].split("</li>", 1)[0])
+
+    def test_a_cant_fix_s_chip_is_neutral_with_its_decision_on_the_hover(self, client):  # noqa: F811
+        body = T.page(client, T.cant_fix())
+        c = chip(body)
+        assert 'data-outcome-level="decision"' in c and "badge-neutral" in c, c
+        assert "badge-danger" not in c and "A decision, not a failure" in c, c
+        assert red_in(done_of(body)) == [], red_in(done_of(body))
+
+    def test_the_check_finds_the_red_the_review_measured(self):
+        """The floor: s1's What Mercury has done as the host drew it, 2026-11-15."""
+        planted = ('<span class="badge badge-danger">Self-healing (dry run): can&#39;t fix</span>'
+                   '<li class="run-stage run-stage-failed"><span class="run-stage-said" '
+                   'role="alert">Check guards failed</span>')
+        assert red_in(planted) == ["run-stage-failed", 'role="alert"', "badge-danger"]
+
+    def test_the_standing_decision_is_drawn_never_an_earlier_one_s_hold(self):
+        """An incident decided twice (held by a topology hold, then can't fix): its steps are
+        the standing decision's; the earlier hold stays in The record."""
+        from modules.heal import run_card
+
+        def dec(did, guards):
+            return [dict(s, row="decision", decision=did) for s in (
+                {"step": "claim", "result": "ok"}, {"step": "stops", "result": "ok"},
+                {"step": "approved", "result": "ok"}, {"step": "guards", "result": guards,
+                                                       "words": f"guards {guards}"})]
+        entry = {"incident": "hi-000000000001", "state": "decided", "outcome": "cant_fix",
+                 "steps": dec("hd-1", "held") + [dict(step="record", result="ok", row="decision",
+                                                      decision="hd-1")]
+                 + dec("hd-2", "ok") + [dict(step="decide", result="cant_fix", row="decision",
+                                             decision="hd-2", words="a person decides"),
+                                        dict(step="record", result="ok", row="decision",
+                                             decision="hd-2")]}
+        card = run_card.steps_card("edge-b", entry)
+        states = {s["key"]: s["state"] for s in card["rows"][0]["steps"]}
+        assert states["d-guards"] == "done" and states["d-decide"] == "needs", states
+        assert [g["state"] for g in card["stages"]] == ["needs"], card["stages"]
+
+
+class TestNoiseIsOneLevelDown:
+    def test_an_analysis_not_run_is_one_closed_line_never_the_ai_s_analysis(self, client):  # noqa: F811
+        iid = T.cant_fix()
+        words = ("AI analysis: not run: feature_off: the background feature heal_analysis is off "
+                 "for the network default; nothing was sent")
+        T.SL.record_advisory(NET, iid, device="edge-b", state="off", words=words, steps=[])
+        ai = T.page(client, iid).split('id="inc-ai"', 1)[1].split("</section>", 1)[0]
+        box = ai.split('id="inc-analysis"', 1)[1].split("</details>", 1)[0]
+        summary = T.text_of(box.split("<summary>", 1)[1].split("</summary>", 1)[0])
+        assert summary == "The AI's analysis · not run", summary
+        assert "AI analysis (advisory" not in box, "a call not made is no analysis"
+        line = box.split('data-advisory="not-run"', 1)[1].split("</p>", 1)[0]
+        assert "feature_off" not in line.split(">", 1)[1], "the code is on the hover only"
+        assert "feature_off" in unescape(line.split(">", 1)[0])
+        assert "nothing was sent" in T.text_of(line)
+
+    def test_a_diagnosis_not_made_is_closed_its_why_inside(self, client):  # noqa: F811
+        from modules.heal import auto_diagnose
+        iid = T.cant_fix()
+        why = "not diagnosed: intent holds no adjacency on edge-b whose diagnosis can be planned"
+        auto_diagnose._not_diagnosed(NET, {"device": "edge-b"}, iid, why, "refused", T0 + 10)
+        done = done_of(T.page(client, iid))
+        diag = done.split('id="inc-diag"', 1)[1].split("</div>", 1)[0]
+        assert 'data-diagnosis="not"' in done, diag
+        assert "warn-text" not in diag, "a diagnosis not made is not drawn as a warning"
+        box = re.search(r'<details class="small inc-diag-not"[^>]*>(.*?)</details>', diag, re.S)
+        assert box and "open" not in diag.split("inc-diag-not", 1)[1].split(">", 1)[0], diag
+        assert "no adjacency" in box.group(1) and "no adjacency" not in diag.replace(
+            box.group(0), ""), "its why is inside the closed line, nowhere else"

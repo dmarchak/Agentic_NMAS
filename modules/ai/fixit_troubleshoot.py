@@ -94,7 +94,7 @@ from modules.ai import read_loop as RL
 from modules.ai import fixit_reads as FR
 from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
-from modules.ai.schemas import StrictModel, register
+from modules.ai.schemas import FlatWire, StrictModel, register
 
 from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
 
@@ -127,8 +127,10 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: operations, built-in command plans, intent changes and deploys) with an improvement note; v7
 #: the plain pass and the second, v8 the reads pass. v1, v5 and v6 stay as they shipped, with
 #: their schemas, so a call recorded under them stays readable; none is asked now.
-PROMPT_PLAN = (FEATURE, 7)
-PROMPT_PLAN_READS = (FEATURE, 8)
+#: v9 and v10 (the operator, 2026-11-15): v7 and v8 as the provider can compile them, their
+#: schemas flattened (`TroubleshootPlanFlat`); v7 and v8 stay readable, never asked.
+PROMPT_PLAN = (FEATURE, 9)
+PROMPT_PLAN_READS = (FEATURE, 10)
 PROMPT_SECOND = PROMPT_PLAN
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
@@ -311,9 +313,83 @@ class TroubleshootPlanReads(TroubleshootPlan):
     reads: list[EngineerReadAsk] = []
 
 
+@register(FEATURE, 9)
+class TroubleshootPlanFlat(FlatWire, TroubleshootPlan):
+    """`TroubleshootPlan` as the provider can compile it (the operator, 2026-11-15: v7's 17 and
+    v8's 20 union parameters were over the provider's 16, and v8's every call was refused,
+    "The compiled grammar is too large"): sent flattened, every field required and none
+    nullable ("" or [] for none; `schemas.flatten`), read back in v7's shape (`unflatten`). Its
+    legacy ``fix`` is not asked (the plan is the fix) and reads as None."""
+
+    @classmethod
+    def model_json_schema(cls, *args, **kw):
+        schema = super().model_json_schema(*args, **kw)
+        return _without_fix(schema)
+
+
+@register(FEATURE, 10)
+class TroubleshootPlanReadsFlat(FlatWire, TroubleshootPlanReads):
+    """`TroubleshootPlanReads` flattened as `TroubleshootPlanFlat` is: its reads' arguments each
+    a string ("" for one the operation does not take), never a union of every scalar."""
+
+    @classmethod
+    def model_json_schema(cls, *args, **kw):
+        schema = super().model_json_schema(*args, **kw)
+        return _without_fix(schema)
+
+
+#: How a call that was sent and got no answer begins its line (the operator, 2026-11-15: a
+#: refused request was drawn as "the AI named no fix"): `fixit.section` reads it as a failure,
+#: never as an answer.
+NOT_ANSWERED = "The AI didn't answer"
+#: The same line as it was kept until then ("The AI did not answer (<kind>: <detail>)").
+NOT_ANSWERED_BEFORE = "The AI did not answer ("
+
+
+def not_answered_words(kind: str, detail: str) -> str:
+    """What a sent call that got no answer says: what happened, in words, then that nothing
+    reached a device (a failed call changes nothing). "The AI named no fix" is said only of an
+    answer that named none."""
+    import re
+
+    d = str(detail or "")
+    m = re.match(r"HTTP (\d{3})", d)
+    status = int(m.group(1)) if m else 0
+    low = d.lower()
+    if status == 429:
+        reason = "the provider is limiting requests; ask again in a minute"
+    elif 400 <= status < 500:
+        why = ("its schema too large" if "grammar" in low or ("schema" in low and (
+            "complex" in low or "large" in low)) else d.split(": ", 2)[-1][:120])
+        reason = f"the request was rejected ({why})"
+    elif status >= 500:
+        reason = f"the provider failed (HTTP {status})"
+    else:
+        reason = f"{kind or 'the call failed'}: {d[:160]}" if d else (kind or "the call failed")
+    return f"{NOT_ANSWERED}: {reason}. Nothing was sent to any device."
+
+
+def _without_fix(schema: dict) -> dict:
+    """*schema* without the legacy one-step ``fix`` (and its definitions, unreferenced once it
+    is gone): v9 and v10 ask for the plan alone."""
+    schema["properties"].pop("fix", None)
+    schema["required"] = [k for k in schema["required"] if k != "fix"]
+    text = json.dumps({k: v for k, v in schema.items() if k != "$defs"})
+    defs = schema.get("$defs") or {}
+    used, todo = set(), [text]
+    while todo:
+        chunk = todo.pop()
+        for name, body in defs.items():
+            if name not in used and f'"#/$defs/{name}"' in chunk:
+                used.add(name)
+                todo.append(json.dumps(body))
+    schema["$defs"] = {k: v for k, v in defs.items() if k in used}
+    return schema
+
+
 SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
              4: TroubleshootFixitReads, 5: TroubleshootEngineerReads, 7: TroubleshootPlan,
-             8: TroubleshootPlanReads}
+             8: TroubleshootPlanReads, 9: TroubleshootPlanFlat, 10: TroubleshootPlanReadsFlat}
 
 
 class Refused(ValueError):
@@ -1073,9 +1149,9 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         # whole answer for it.
         return [r for r in cites(answer) if not str(r).startswith("read:")]
 
-    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootPlanReads),
-                          second=(PROMPT_PLAN, TroubleshootPlan),
-                          plain=(PROMPT_PLAN, TroubleshootPlan), check=check_, cites=cites_,
+    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootPlanReadsFlat),
+                          second=(PROMPT_PLAN, TroubleshootPlanFlat),
+                          plain=(PROMPT_PLAN, TroubleshootPlanFlat), check=check_, cites=cites_,
                           acts_on=acts_on, first_only=("read_set",))
 
 
@@ -1310,8 +1386,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     if got["state"] == "failed":
         kind, detail = got.get("error") or "", got.get("detail") or ""
         words = (f"The AI was not asked: {NOT_SENT_WORDS.get(kind, kind)}: {detail}"
-                 if not RL.left_host(first) else
-                 f"The AI did not answer ({kind}: {detail[:200]})")
+                 if not RL.left_host(first) else not_answered_words(kind, detail))
         out.update(words=words)
         if ids and RL.left_host(first):
             out["proposal"] = keep(words)

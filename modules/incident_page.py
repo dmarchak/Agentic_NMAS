@@ -1153,12 +1153,18 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
               # A guard or hold working as designed is never a failure (R2; C3728): its
               # outcome drawn neutral, its plain line (`bluf.hold_line`) on the hover; red
               # only for what failed.
+              # A can't-fix is a decision working as designed too (the operator, 2026-11-15:
+              # "no red ... "can't fix" chip for a decision working as designed"): neutral,
+              # its decision's words on the hover; the header says a person is needed.
               "level": (("hold" if outcome in HOLD_OUTCOMES else
+                         "decision" if outcome in run_card.DECISION_NEEDS else
                          card.get("level") if card and card.get("state") == "result" else
                          "ok" if outcome in run_card.HEALED + run_card.DECISION_GOOD
                          else run_card.level_of(outcome)) if entry else ""),
               "hold": (_hold_words(entry, decisions, device)
-                       if entry and outcome in HOLD_OUTCOMES else ""),
+                       if entry and outcome in HOLD_OUTCOMES else
+                       _decision_words(entry, newest)
+                       if entry and outcome in run_card.DECISION_NEEDS else ""),
               "mode": steplog.MODE_WORDS.get(entry.get("mode"), "") if entry else "",
               # Whether its heal runs now: the live region then redraws on each step, as its
               # device's card does. Its times are the stages' own and the header's (each fact
@@ -1200,6 +1206,15 @@ def _hold_words(entry: dict, decisions: list, device: str) -> str:
         if line:
             return line
     return str(entry.get("words") or "")
+
+
+def _decision_words(entry: dict, newest: dict) -> str:
+    """A can't-fix's hover on What Mercury has done's chip: that it is a decision, then the
+    decision's own words (the newest decision's, else the step log entry's)."""
+    said = str(newest.get("outcome_words") or entry.get("outcome_words")
+               or newest.get("words") or entry.get("words") or "").strip()
+    return "A decision, not a failure: self-healing decided a person is needed" + (
+        f": {said}" if said else "")
 
 
 #: The BLUF's severity (`bluf.severity`) as the header's level draws it: its words and badge.

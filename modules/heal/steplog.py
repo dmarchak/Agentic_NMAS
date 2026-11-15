@@ -54,6 +54,12 @@ ROWS = ("decision", "started", "act", "raised", "interrupted", "diagnosis", "adv
 #: An advisory row's fields kept (`record_advisory`): its words, its steps and its references
 #: (the calls' ids, the send log's loop), never a model's answer.
 ADVISORY_FIELDS = ("words", "steps", "state", "calls", "loop", "pass")
+#: An advisory row's states in which the analysis was not run and nothing was sent (the
+#: feature or hosted AI off, a cap reached; `heal_analysis._failed`): no analysis, so the
+#: incident page draws it as one closed line, never as the AI's analysis (the operator,
+#: 2026-11-15: "drop "heal_analysis not run: feature_off" ... noise from the default view
+#: (details only)").
+ADVISORY_NOT_RUN = ("off", "capped")
 #: A diagnosis row's fields kept (`record_diagnosis`): Mercury's words and read references only.
 DIAGNOSIS_FIELDS = ("id", "runbook", "runbook_words", "target", "incident", "actor", "state",
                     "words", "steps", "hypotheses", "more", "ruled_out", "not_checked",

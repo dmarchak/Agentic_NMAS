@@ -391,6 +391,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     from modules.fixit import handover as H
     from modules.fixit import incident as F
     from modules.fixit import policy as P
+    from modules.heal import steplog
 
     got = incident_of(network, found)
     inc = got["incident"]
@@ -399,7 +400,10 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
            "incomplete": "", "stop": {}, "proposal": {}, "cancelled": {}, "handover": {},
            "handovers": [], "retry": {}, "teams": {}, "mode": {}, "unreadable": "",
            "ended": ended if resolved is not None else "",
-           "advisories": [{"at": a.get("at") or "", "words": a.get("words") or ""}
+           "advisories": [{"at": a.get("at") or "", "words": a.get("words") or "",
+                           # Whether it ran: one not run sent nothing and is no analysis
+                           # (`steplog.ADVISORY_NOT_RUN`), drawn as one closed line.
+                           "ran": a.get("state") not in steplog.ADVISORY_NOT_RUN}
                           for a in (found.get("advisories") or [])[-1:]],
            "cant_fix": analysed(found), "ai_failed": ""}
     if inc is None:
@@ -412,6 +416,9 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     cap = P.cap_usd(network)
     day = today()
     usd = {c["id"]: c["usd"] for c in calls["calls"]}
+    # The calls whose answer is another incident's (`calls_of`'s ``about_other``), read once
+    # here for `_contract`'s answer: never drawn as this incident's.
+    out["_other_calls"] = {c["id"] for c in calls["calls"] if c.get("about_other")}
     proposals = {ln["proposal"]: ln for ln in rec["lines"] if "proposal" in ln}
     drawn = [_attempt(a, proposals, usd) for a in tried["attempts"]]
     out.update(
@@ -521,6 +528,36 @@ def _href(network: str, incident_id: str, name: str) -> str:
     return f"/v2/incident/{incident_id}/fixit/{name}?list={quote(network)}"
 
 
+#: What a superseded answer says in place of its content (the operator, 2026-11-15: one
+#: switch's incident showed an answer about another switch, C3786).
+OTHER_INCIDENT_WORDS = ("Superseded: this answer was about another incident (its call joined "
+                        "another device's call, C3771), so it is not shown here")
+
+
+def _answer_drawn(line: dict, other: set, rec: dict, state: str) -> dict:
+    """The AI's newest answer line as the card draws it: its words, what it showed, its calls,
+    prompt and time; ``superseded`` (why, or "") when a call it rests on is another
+    incident's (`calls_of`'s ``about_other``), its content then withheld, never drawn as this
+    incident's; ``previous`` True while a newer investigation runs, the answer then drawn
+    labelled as the previous one (the operator, 2026-11-15)."""
+    shown = line.get("shown") if isinstance(line.get("shown"), dict) else {}
+    superseded = OTHER_INCIDENT_WORDS if set(line.get("calls") or []) & set(other) else ""
+    epoch = float(line.get("epoch") or 0)
+    newer_start = any("start" in ln and float(ln.get("epoch") or 0) > epoch
+                      for ln in rec["lines"])
+    prompt = str(line.get("prompt") or "")
+    return {"id": line.get("proposal") or "",
+            "words": superseded or line.get("words") or "",
+            "shown": {} if superseded else shown,
+            "gap": "" if superseded else (shown.get("gap") or ""),
+            "has_plan": bool(line.get("operation")) and not superseded,
+            "calls": list(line.get("calls") or []), "prompt": prompt,
+            "version": prompt.rsplit(".", 1)[-1] if "." in prompt else "",
+            "at": line.get("at") or "", "note": line.get("note") or "",
+            "superseded": superseded,
+            "previous": bool(state == "investigating" or (newer_start and state != "proposed"))}
+
+
 def _current_proposal(rec: dict):
     """The proposal a person may decide on now: the newest proposal line naming an operation,
     when no deny or approve of it, and no newer proposal, followed it; else None."""
@@ -583,14 +620,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     # hypotheses and what each cites, the fix's why, or the missing capability it names).
     newest_ai = next((ln for ln in reversed(rec["lines"])
                       if "proposal" in ln and ln.get("source") == "ai"), None)
-    out["ai_answer"] = None if newest_ai is None or done else {
-        "id": newest_ai.get("proposal") or "", "words": newest_ai.get("words") or "",
-        "shown": newest_ai.get("shown") if isinstance(newest_ai.get("shown"), dict) else {},
-        "gap": ((newest_ai.get("shown") or {}).get("gap") or "") if isinstance(
-            newest_ai.get("shown"), dict) else "",
-        "has_plan": bool(newest_ai.get("operation")), "calls": list(newest_ai.get("calls") or []),
-        "prompt": newest_ai.get("prompt") or "", "at": newest_ai.get("at") or "",
-        "note": newest_ai.get("note") or ""}
+    other = out.pop("_other_calls", set())
+    out["ai_answer"] = None if newest_ai is None or done else _answer_drawn(
+        newest_ai, other, rec, state)
     off = P.ai_refusal(network)
     capped = cs is not None and cs["state"] != "allowed"
     starts = [ln for ln in rec["lines"] if "start" in ln]
@@ -759,6 +791,15 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
         lead = ("Mercury has no fix of its own for this problem."
                 if legacy["failure"].get("outcome") == "no_code_fix" else
                 "Mercury's fix did not run.")
+    if not failed_words and state == "proposed" and said.startswith(
+            (AIT.NOT_ANSWERED, AIT.NOT_ANSWERED_BEFORE)):
+        # A call that was sent and got no answer is a failure, never an answer that named no
+        # fix (the operator, 2026-11-15: a refused request was drawn as one); a line kept
+        # before these words were, read again into them.
+        if said.startswith(AIT.NOT_ANSWERED_BEFORE):
+            kind, _, detail = said[len(AIT.NOT_ANSWERED_BEFORE):].rstrip(")").partition(": ")
+            said = AIT.not_answered_words(kind, detail)
+        failed_words = said.rstrip(".")
     if failed_words:
         return f"{lead} Couldn't troubleshoot: {failed_words}. Ask the AI again, or hand over."\
             .strip()

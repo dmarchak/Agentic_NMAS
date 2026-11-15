@@ -116,3 +116,80 @@ class TestTheJob:
         assert [ln["state"] for ln in lines] == ["started", "failed"]
         # And the AI may be asked again.
         assert "/fixit/ask_again" in sec
+
+
+# ── In progress's finished row, and the card's push (the operator, 2026-11-15) ──────────────
+#: "The status popover: one line per item ("Failed: request rejected. Details on the card"),
+#: never overflowing. When a job ends, the incident card updates by push without a reload,
+#: and the reason is stored and drawn after any refresh."
+
+LONG = ("The AI was not asked: the press could not be tied to a verified person (a host "
+        "script under the operator's grant, refused by the gateway); nothing was sent")
+
+
+def finished_row(html: str) -> str:
+    """The In progress list's finished row for AI troubleshooting."""
+    import re
+    rows = re.findall(r'<div class="ip-row">.*?</div>', html, re.S)
+    got = [r for r in rows if "<strong>AI troubleshooting</strong>" in r]
+    assert len(got) == 1, rows
+    return got[0]
+
+
+class TestTheFinishedRow:
+    def test_a_failed_job_is_one_line_its_reason_kept_and_its_end_pushed(self, blocked,
+                                                                         monkeypatch):
+        from html import unescape
+
+        from modules.ai import fixit_troubleshoot as AIT
+        iid = plant()
+        attempt(blocked.client, subs=("101",))
+
+        def refused(*a, **kw):
+            raise AIT.Refused(LONG)
+        monkeypatch.setattr(AIT, "troubleshoot", refused)
+        post(blocked.client, iid, "start", text="")
+        wait_all()
+        # Its end is announced on the incident pages' key, so the open card re-fetches.
+        assert any("drift" in keys for keys, by in blocked.announced
+                   if by == "fixit-investigation"), blocked.announced
+        bar = blocked.client.get("/operations/in_flight", headers={"HX-Request": "true"})
+        row = unescape(finished_row(bar.get_data(as_text=True)))
+        assert "badge-danger" in row and ">failed<" in row
+        line = row.split('class="ip-line">', 1)[1].split("</span>\n", 1)[0]
+        assert "The AI was not asked. Details on the card" in line, line
+        assert "the press could not be tied" not in line, \
+            "one line: the whole reason is on its hover, never in the line"
+        assert f'title="Failed: {LONG}"' in row, row
+        # The reason is the record's, so a refresh draws it from the store, not this job.
+        gone = [j["job"] for j in jobs_of_kind()]
+        with capture_job._lock:
+            for job_id in gone:
+                capture_job._jobs.pop(job_id, None)
+        _r, html = page(blocked.client, iid)
+        assert "the press could not be tied to a verified person" in unescape(section_of(html))
+
+    def test_a_plan_is_done_never_failed(self):
+        from modules import troubleshoot_job as TJ
+        o = TJ.outcome({"state": "done", "payload": {"state": "proposed", "words": "A plan"}})
+        assert (o["level"], o["badge"]) == ("ok", "plan proposed"), o
+        o = TJ.outcome({"state": "done", "payload": {"state": "gap", "words": "No operation"}})
+        assert o["level"] == "warn", "an answer with no plan is partial, never green or red"
+        o = TJ.outcome({"state": "failed", "error": "RuntimeError: the answer could not be "
+                        "read because the provider sent half of it and then closed"})
+        assert o["level"] == "danger"
+        assert o["line"] == "The answer could not be read because the… Details on the card", \
+            o["line"]
+        assert o["full"].startswith("Failed: the answer could not be read"), \
+            "the exception's type is left out of the hover too"
+
+    def test_each_line_is_cut_with_an_ellipsis_by_the_stylesheet(self):
+        import os
+        import re
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "static", "css", "nmas-v2.css"), encoding="utf-8") as fh:
+            css = fh.read()
+        rule = re.search(r"\.ip-what \.ip-line, \.ip-what > small \{([^}]*)\}", css)
+        assert rule, "the one-line rule"
+        for decl in ("white-space: nowrap", "overflow: hidden", "text-overflow: ellipsis"):
+            assert decl in rule.group(1), decl

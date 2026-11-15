@@ -60,7 +60,16 @@ toolbar assistant's Assistant button and chat panel shell, which are not in this
 with the assistant's own change); nothing in the In progress chip or its list moves, so every
 verdict below stands; compared by the template's diff. Templates sha256 before (base.html with
 them): `6545a4dcc80cdee007762f2b64fe63665aa82f0851c48892655724614020d43e`.
-Templates sha256: `8eeaa4d70e8fabc67bdb7258b10007b2fe064176bb8cbc24f4b519b374936a46`
+Compared again 2026-11-15 (the operator: "The status popover: one line per item ("Failed:
+request rejected. Details on the card"), never overflowing"): each line of a running and a
+finished row is one line (`.ip-line`: no wrap, cut with an ellipsis by the stylesheet), its
+whole words on its hover, the row's text taking the room beside its buttons; an AI
+troubleshooting row's badge says its outcome in a word or two (`troubleshoot_job.outcome`:
+failed, plan proposed, no plan) and its line the reason's first clause and "Details on the
+card", where a plan it proposed drew red "failed" before. Nothing else in the chip or its list
+moves and no element is added; compared by the template's diff and tests/test_fixit_job.py
+(`TestTheFinishedRow`), not by new shots.
+Templates sha256: `b4aae21918542f36a93719ad970f3832a09ef4ac0ffecceda8320932fc939ef1`
 
 **Compared again 2026-11-12 (local times, the viewer's time zone):** `base.html`'s `<body>` carries `data-tz-first` (where a verified person's first visit sends the browser's zone) only while no zone is kept for them: an attribute nothing draws, so no region moves and no shot was taken again; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `3f16fde7e5fd13c20f80a9f26cf6f655f44abfdc15e43294b340cb4820966390`.
 

@@ -89,7 +89,21 @@ by the templates' diff and tests/test_fixit_start_spend.py's page, not by new sh
 (C3715)"). Templates sha256 before: `fbfb0238afafd6fa251ca6d09709a7a31c5930c04aa4cffdcd04d17fd79bbc13`.
 Compared again 2026-11-15, the saved plans (Gate 1b; board saved-plans S, docs/boards/saved-plans.html, signed off under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md, "Board saved-plans S"): `_fixit_section.html` gains one include line at the foot of "Fixing it", `_saved_plans_slot.html`, which asks for `_saved_plans_saves.html` in place (`saved_plans_v2.card`). Compared by the templates and the HTML tests/test_saved_plans_v2.py renders beside the board, not by new shots; its regions are the last table below. Templates sha256 before: `1c2fb8376b40f5e83ca3d1c7f5510049ae6092dcf389962dbe5471c66f3651e9`.
 Compared again 2026-11-15 (tests/test_display_names_drawn.py): `_saved_plans_saves.html` draws a right's refusal and a press's answer through the `people` filter, so a person is named by display name, never an identity (C3715); the words and their places are unchanged. Compared by the template's diff and tests/test_saved_plans_v2.py's page, not by new shots. Templates sha256 before: `ed9aee3efc4837238d8bc72e8c63b5a2cf1c27d4d9e66e4e9d2c25993f5a97ea`.
-Templates sha256: `c124349c9a4de29311e363465f792cd00fbe0c686b1953e56e2f6985654e30d0`
+Compared again 2026-11-15 (the operator: "no red "Check guards failed" or red "can't fix"
+chip for a decision working as designed; drop "heal_analysis not run: feature_off" and "not
+diagnosed: no adjacency" noise from the default view (details only)"; C3738, C3540): What
+Mercury has done's chip for a can't-fix is neutral (`level` "decision", its decision's words on
+the hover), as a hold's is; its stepper draws the standing decision's steps, a held one
+neutral (stepper.md, the `held` state); Mercury's diagnosis not made is one closed line, "Not
+made", its why inside; an AI analysis not run (nothing sent) is one muted line inside The AI's
+analysis, its summary "· not run", the recorded words on its hover. No element moves; compared
+by the templates' diff and tests/test_incident_page_once.py (`TestADecisionWorkingAsDesignedIsNeverRed`,
+`TestNoiseIsOneLevelDown`), not by new shots. In the same gate (the operator's items C and D):
+the AI troubleshooting section's What the AI found is drawn collapsed under "Previous answer,
+<time>, prompt v<n>" while a newer investigation stands, and an answer resting on another
+incident's call is one muted line saying it is superseded, its content withheld; no element
+moves (tests/test_fixit_answer_superseded.py).
+Templates sha256: `14ce739429871b32851fa0e40cc0b9e2ca795c775212e137f4d263d859d4f095`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

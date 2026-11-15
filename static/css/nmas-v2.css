@@ -257,6 +257,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ip-row:hover { background: var(--hover); }
 .ip-what { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .ip-what small { display: block; color: var(--ink-2); font-size: 12px; }
+/* Each line of a row ONE line, never overflowing the list (the operator, 2026-11-15): cut with
+   an ellipsis, the whole on its hover (the line's title). */
+.ip-row > .ip-what { flex: 1 1 auto; }
+.ip-what .ip-line, .ip-what > small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* An entry's Open the result and its Dismiss (C3081), side by side, never wrapped apart. */
 .ip-acts { display: flex; gap: 6px; flex: none; margin: 0; }
 .ip-note { margin: 0 8px; font-size: 12.5px; color: var(--ink-3); }
@@ -441,6 +445,7 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
      item must fit). */
   .topbar:has(.ip-chip) .topbar-brand { display: none; }
   .ip-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ip-row > .ip-what { align-self: stretch; }
 }
 
 /* ---- the page ---- */
@@ -1545,6 +1550,7 @@ button.menu-item[disabled]:hover { background: none; }
 .run-stage-failed { border-top-color: var(--danger); color: var(--ink); }
 .run-stage-partial { border-top-color: var(--warn-mark); color: var(--ink); }
 .run-stage-needs { border-top-color: var(--warn-mark); color: var(--ink); }
+.run-stage-held { border-top-color: var(--ink-3); color: var(--ink-2); }
 .run-stage-long { margin: 2px 0 4px; font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
 .run-stage-not_reached .run-stage-name { text-decoration: line-through; }
 .run-stage-skipped { font-style: italic; }
@@ -1562,6 +1568,7 @@ button.menu-item[disabled]:hover { background: none; }
 .run-stage-list > .run-step-failed > strong { color: var(--danger); }
 .run-stage-list > .run-step-partial > strong { color: var(--warn); }
 .run-stage-list > .run-step-needs > strong { color: var(--warn); }
+.run-stage-list > .run-step-held > strong { color: var(--ink-2); }
 .run-stage-list > .run-step-waiting, .run-stage-list > .run-step-skipped { color: var(--ink-3); }
 .run-sub { margin: 3px 0 2px 4px; }
 @container (max-width: 640px) {
@@ -1573,6 +1580,7 @@ button.menu-item[disabled]:hover { background: none; }
   .run-stage-failed { border-left-color: var(--danger); }
   .run-stage-partial { border-left-color: var(--warn-mark); }
   .run-stage-needs { border-left-color: var(--warn-mark); }
+  .run-stage-held { border-left-color: var(--ink-3); }
 }
 .run-checks { margin: 2px 0 0; }
 .run-checks > summary { cursor: pointer; color: var(--ink-2); }

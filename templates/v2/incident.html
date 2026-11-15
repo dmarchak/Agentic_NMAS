@@ -210,8 +210,9 @@
   </details>
 </section>
 <section class="card inc-fold" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
-  <details class="inc-fold-d" data-keep="inc-done-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{#- A hold working as designed is drawn neutral, its plain line on the hover (R2, C3728); red
-    only for what failed. -#}{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral'), title=p.done.hold or none) }}</span>{% endif %}</summary>
+  <details class="inc-fold-d" data-keep="inc-done-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{#- A hold working as designed is drawn neutral, its plain line on the hover (R2, C3728), and so
+    is a can't-fix, a decision too (`level` "decision", its words on the hover); red only for
+    what failed. -#}{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral'), title=p.done.hold or none) }}</span>{% endif %}</summary>
   {%- if p.done.steps %}
   {#- THE stepper's five stages, as the heal's card on its device's page draws them
       (`incident_page.heal_card`: `run_card.named_heal`, else `run_card.steps_card`); who it
@@ -246,7 +247,9 @@
     {%- if dd.ruled_out %}<p class="small muted">Ruled out: {{ dd.ruled_out | join('; ') }}.</p>{% endif %}
     {%- if dd.stopped %}<p class="small warn-text">{{ dd.stopped }}.</p>{% endif %}
     {%- elif hd.state == 'not' %}
-    <p class="small warn-text">{{ hd.result.words }}.</p>
+    {#- Not made (the operator, 2026-11-15: "drop ... "not diagnosed: no adjacency" noise from
+        the default view (details only)"): one closed line, its why one level down. -#}
+    <details class="small inc-diag-not" data-keep="inc-diag-not-{{ p.id }}"><summary class="muted">Not made</summary><p class="small muted">{{ hd.result.words }}.</p></details>
     {%- elif hd.state == 'running' %}
     <p class="small muted">Running now: diagnosis <span class="mono">{{ hd.running.diagnosis }}</span> on {{ hd.device }}, by {{ hd.running.actor | people }}{% if hd.running.since %}, since {{ stamp(hd.running.since) }}{% endif %}. It is drawn here when it ends.</p>
     {%- elif hd.state == 'unreadable' %}

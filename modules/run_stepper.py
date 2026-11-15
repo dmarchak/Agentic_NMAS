@@ -75,11 +75,15 @@ GROUP_FROM = 25
 #: `skipped`: the run went past it without needing it (a rollback when nothing failed).
 #: `needs`: a decision that worked and hands the work to a person (a heal's can't-fix: C3454),
 #: drawn amber, never red.
-STEP_STATES = ("done", "running", "waiting", "failed", "partial", "needs", "not_reached",
-               "skipped")
+#: `held`: a guard or hold stopped a decision, working as designed (the operator, 2026-11-15:
+#: "no red "Check guards failed" ... for a decision working as designed"; R2), drawn neutral,
+#: never red; the steps after it are not reached.
+STEP_STATES = ("done", "running", "waiting", "failed", "partial", "needs", "held",
+               "not_reached", "skipped")
 #: Each state in words, for a reader the colour does not reach and for the steps taken.
 STATE_WORDS = {"done": "done", "running": "running now", "waiting": "pending",
                "failed": "failed", "partial": "not fully done", "needs": "needs a person",
+               "held": "held by a guard, as designed",
                "not_reached": "not reached: the run stopped before it",
                "skipped": "not needed in this run"}
 #: The most words a stage's sentence says (docs/UI_RULES.md: "a stepper uses labels of 2 to 4
@@ -95,7 +99,7 @@ FAILED_RESULTS = ("failed", "fail", "refused", "error")
 READ_WORDS = {"pass": "pass", "fail": "fail", "unreadable": "unreadable",
               "cant_tell": "unreadable", "waiting": "not yet"}
 #: Worst first: a step recorded several times is drawn as its worst record.
-_WORST = ("failed", "partial", "needs", "running", "done", "skipped")
+_WORST = ("failed", "partial", "needs", "held", "running", "done", "skipped")
 #: A word, as `STAGE_SAID_WORDS` counts them: a run that starts with a letter.
 _WORD = re.compile(r"[^\W\d_][^\s]*")
 #: What a step's record says it waits for (a heal's heartbeat, C3164): read by its stage's
@@ -264,12 +268,13 @@ def _epoch(iso):
         return None
 
 
-def result_state(result, good=(), bad=(), needs=()) -> str:
+def result_state(result, good=(), bad=(), needs=(), held=()) -> str:
     """A recorded step's *result* as a step's state. *good* and *bad* are the operation's own
-    results (a heal's ``healed``, a decision's ``halted``); *needs* the results of a decision
-    that worked and hands the work to a person (a decision's ``cant_fix``: ``needs``, amber,
-    never failed); a result nobody names is ``partial``: amber, never green by
-    resemblance."""
+    results (a heal's ``healed``, a rollback's ``rolled_back``); *needs* the results of a
+    decision that worked and hands the work to a person (a decision's ``cant_fix``: ``needs``,
+    amber, never failed); *held* the results of a guard or hold stopping a decision, working
+    as designed (a decision's ``held``, ``halted``, ``off``: ``held``, neutral, never
+    failed); a result nobody names is ``partial``: amber, never green by resemblance."""
     r = str(result or "")
     if r == "running":
         return "running"
@@ -279,6 +284,8 @@ def result_state(result, good=(), bad=(), needs=()) -> str:
         return "done"
     if r in needs:
         return "needs"
+    if r in held:
+        return "held"
     if r in FAILED_RESULTS or r in bad:
         return "failed"
     return "partial"
@@ -384,7 +391,7 @@ def labels_for(table: dict, **fields) -> dict:
 
 def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad=(),
                 conditional=(), prefix: str = "", cut_short: bool = False,
-                labels: dict = None, needs=()) -> dict:
+                labels: dict = None, needs=(), held=()) -> dict:
     """A run's own recorded *steps* (``{"step", "result", "words", "at"}``, in the order they
     were written) against the steps it *declared* (``(key, words)``, in order): ``{"steps",
     "lead", "trail", "at", "of"}``.
@@ -408,6 +415,9 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
       words): the step's column says the label, its hover the declared words.
     - *needs*: the results of a decision that worked and hands the work to a person
       (`result_state`): such a step is ``needs``, the lead when nothing failed or runs.
+    - *held*: the results of a guard or hold stopping a decision, working as designed: such
+      a step is ``held`` (neutral, never failed), the run stops there (the steps after it not
+      reached), and it leads when nothing failed, runs or needs a person.
     - ``at`` of ``of``: the newest recorded step's place among the declared ones."""
     now = time.time() if now is None else now
     steps = [s for s in steps or [] if isinstance(s, dict)]
@@ -420,7 +430,7 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
             events[s["step"]].append((n, s))
 
     def state_of(n, s):
-        st = result_state(s.get("result"), good, bad, needs)
+        st = result_state(s.get("result"), good, bad, needs, held)
         if st != "running" or (n == newest and not ended):
             return st
         if any(m > n for m, _x in events.get(s.get("step"), [])):
@@ -434,7 +444,8 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
     reached = max([i for i, k in enumerate(keys) if events[k]], default=-1)
     worst = {k: min((g[0] for g in by_key[k]), key=_WORST.index, default="")
              for k in keys}
-    stop = next((i for i, k in enumerate(keys) if worst[k] in ("failed", "partial")), None)
+    stop = next((i for i, k in enumerate(keys)
+                 if worst[k] in ("failed", "partial", "held")), None)
     out, lead = [], None
     for i, k in enumerate(keys):
         got = by_key[k]
@@ -472,7 +483,7 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
                 said = str(e.get("words") or "")
                 if st == "failed" and e.get("result") == "running":
                     said = (said + ". " if said else "") + "The run ended in this step"
-                if st in ("failed", "partial", "needs") and said:
+                if st in ("failed", "partial", "needs", "held") and said:
                     # Why, said ONCE on the card: under "Failed at", never again in the list.
                     why.append((f"{of}: " if of else "") + said)
                 if st != "running":
@@ -513,7 +524,7 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
         if waits:
             one[WAIT_FOR] = waits
         out.append(one)
-    for want in ("failed", "running") + (("partial", "needs") if ended else ()):
+    for want in ("failed", "running") + (("partial", "needs", "held") if ended else ()):
         lead = next((s for s in out if s["state"] == want), None)
         if lead:
             break
@@ -586,7 +597,7 @@ def record_card(name: str, label: str, phases: list, *, ended: bool, level: str 
         order = ("failed", "partial", "done")
         group = min(group, want, key=order.index)
     lead = None
-    for wanted in ("failed", "running", "partial", "needs"):
+    for wanted in ("failed", "running", "partial", "needs", "held"):
         lead = next((p["lead"] for p in phases
                      if p["lead"] and p["lead"]["state"] == wanted), None)
         if lead:
@@ -607,6 +618,7 @@ def record_card(name: str, label: str, phases: list, *, ended: bool, level: str 
 #: A stage's state in words, for a reader the colour does not reach.
 STAGE_WORDS = {"done": "done", "running": "in progress", "waiting": "not started",
                "failed": "failed", "partial": "not fully done", "needs": "needs a person",
+               "held": "held by a guard, as designed",
                "not_reached": "not reached: the run stopped before it",
                "skipped": "not needed in this run"}
 
@@ -634,11 +646,12 @@ def stage_state(states, ended: bool) -> str:
     two of them), not fully done when one is; done only when every step is done or not
     needed and one is done; pending when none has begun. Done is never drawn beside a step
     that is not. Needs a person when its decision handed the work to one (`result_state`'s
-    *needs*) and nothing in it failed, runs or is not fully done."""
+    *needs*) and nothing in it failed, runs or is not fully done; held when a guard stopped
+    its decision (`result_state`'s *held*) and nothing else is worse."""
     st = set(states)
     if not st:
         return "skipped"
-    for worst in ("failed", "running", "partial", "needs"):
+    for worst in ("failed", "running", "partial", "needs", "held"):
         if worst in st:
             return worst
     if st <= {"done", "skipped"}:
@@ -656,7 +669,7 @@ def _stage_lead(steps: list, state: str):
     """The step a stage's sentence is about: its failed one, else its running one, else the
     one not fully done, else the one that needs a person; for a stage between two steps, the
     next one pending."""
-    for want in ("failed", "running", "partial", "needs"):
+    for want in ("failed", "running", "partial", "needs", "held"):
         got = next((s for s in steps if s["state"] == want), None)
         if got:
             return got
@@ -721,6 +734,10 @@ def _generic_sentence(g: dict, summarised: bool = False, told: bool = False) -> 
         return f"{lead['words']}…" if lead else "In progress…"
     if state == "needs":
         return "Needs a person"
+    if state == "held":
+        # A guard working as designed (R2): its step named, never "failed"; why it held is on
+        # its step's line, one level down.
+        return f"Held at {(lead or {}).get('words') or g['name']}"
     if state in ("failed", "partial"):
         why = "" if summarised or told else (
             (lead or {}).get("why") or [(lead or {}).get("said") or ""])[0]
@@ -798,7 +815,7 @@ def stages(card: dict, declared, *, ended: bool, now: float = None, sentence=Non
         began = starts[0][1] if starts else ""
         ends = [e for e in (_epoch(s.get("at")) for s in drawn if s.get("at")) if e is not None]
         b = starts[0][0] if starts else None
-        took = (max(ends) - b if state in ("done", "partial", "failed", "needs") and ends
+        took = (max(ends) - b if state in ("done", "partial", "failed", "needs", "held") and ends
                 and b is not None else None)
         lead = _stage_lead(drawn, state)
         g = {"key": key, "name": name, "state": state, "state_words": STAGE_WORDS[state],
@@ -840,7 +857,7 @@ def stages(card: dict, declared, *, ended: bool, now: float = None, sentence=Non
         out[-1].update(state=group, state_words=STAGE_WORDS[group], took_words="")
     at = next((i for i, g in enumerate(out) if g["state"] in ("failed", "running")), None)
     if at is None:
-        at = next((i for i, g in enumerate(out) if g["state"] in ("partial", "needs")),
+        at = next((i for i, g in enumerate(out) if g["state"] in ("partial", "needs", "held")),
                   len(out) - 1)
     # The trail is kept for what counts it (the In progress row's "N steps recorded"); its
     # key into the stages was this function's alone.

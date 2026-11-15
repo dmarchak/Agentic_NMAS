@@ -16,7 +16,7 @@ import json
 import os
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from modules.ai import profiles
 
@@ -90,6 +90,155 @@ ANTHROPIC_KEYWORDS = frozenset((
 def json_schema(model) -> dict:
     """Pydantic's own JSON schema of *model* (what is committed)."""
     return model.model_json_schema()
+
+
+# ── The grammar's complexity (the operator, 2026-11-15: v8 was refused by the provider) ──────
+
+#: The provider's documented limits on every strict schema of ONE request, together
+#: (platform.claude.com/docs/en/build-with-claude/structured-outputs, "Schema complexity
+#: limits", read 2026-11-15): optional parameters (each property not in its object's
+#: `required`) and parameters with a union type (`anyOf` or a type array). Past these, or past
+#: an internal bound on the compiled grammar's size that the provider does not state, the
+#: request is refused with HTTP 400 before any token is generated: v8 of AI troubleshooting's
+#: answer (20 union parameters) was ("The compiled grammar is too large", 2026-11-15 17:18 UTC).
+PROVIDER_OPTIONAL_LIMIT = 24
+PROVIDER_UNION_LIMIT = 16
+
+
+def complexity(schema: dict) -> dict:
+    """*schema*'s grammar size as the provider counts it, each `$ref` followed once per use (a
+    use is a place the grammar expands): ``{"optional", "union", "objects", "properties",
+    "enum_values", "depth"}``."""
+    defs = schema.get("$defs") or {}
+    out = {"optional": 0, "union": 0, "objects": 0, "properties": 0, "enum_values": 0,
+           "depth": 0}
+
+    def deref(node):
+        ref = node.get("$ref") if isinstance(node, dict) else None
+        return (defs.get(ref.rsplit("/", 1)[-1]) or {}) if ref else node
+
+    def union(node):
+        return isinstance(node, dict) and bool(node.get("anyOf") or node.get("oneOf")
+                                               or isinstance(node.get("type"), list))
+
+    def walk(node, depth, stack):
+        if not isinstance(node, dict):
+            return
+        if node.get("$ref"):
+            name = node["$ref"].rsplit("/", 1)[-1]
+            if name in stack:
+                return
+            stack = stack + (name,)
+        node = deref(node)
+        out["depth"] = max(out["depth"], depth)
+        out["enum_values"] += len(node.get("enum") or [])
+        for alt in (node.get("anyOf") or []) + (node.get("oneOf") or []):
+            walk(alt, depth, stack)
+        if node.get("type") == "object" or "properties" in node:
+            out["objects"] += 1
+            required = set(node.get("required") or [])
+            for key, sub in (node.get("properties") or {}).items():
+                out["properties"] += 1
+                out["optional"] += key not in required
+                out["union"] += union(sub) or union(deref(sub))
+                walk(sub, depth + 1, stack)
+        if "items" in node:
+            walk(node["items"], depth + 1, stack)
+
+    walk(schema, 0, ())
+    return out
+
+
+def flatten(schema: dict) -> dict:
+    """*schema* with no optional and no union parameter: every property required, a nullable
+    one its non-null branch, a union of scalars a string, no default. What a `FlatWire` model
+    sends; "" or [] (or an object of nothing but those) stands for none, and the model's own
+    validator reads it back as None (`unflatten`)."""
+    schema = copy.deepcopy(schema)
+    scalars = {"string", "integer", "number", "boolean"}
+
+    def one(node):
+        alts = node.get("anyOf")
+        types = node.get("type")
+        if alts:
+            kept = [a for a in alts if a != {"type": "null"}]
+            node.pop("anyOf")
+            if len(kept) == 1:
+                node.update(kept[0])
+            elif all(set([a.get("type")]) <= scalars for a in kept):
+                node["type"] = "string"
+            else:
+                raise ValueError(f"flatten: a union of non-scalars cannot be flattened: {kept}")
+        elif isinstance(types, list):
+            kept = [t for t in types if t != "null"]
+            node["type"] = kept[0] if len(kept) == 1 else "string"
+        node.pop("default", None)
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "properties" in node:
+                for sub in node["properties"].values():
+                    one(sub)
+                node["required"] = list(node["properties"])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(schema)
+    return schema
+
+
+def _empty(value) -> bool:
+    """Whether a flattened answer's *value* stands for none."""
+    if value == "" or value == [] or value == {}:
+        return True
+    return isinstance(value, dict) and all(_empty(v) for v in value.values())
+
+
+def unflatten(model, data):
+    """*data* as `flatten`'s schema answers it, as *model* reads it: each Optional field whose
+    value is empty ("" or [], or an object of nothing but those) or absent is None, nested
+    models and lists of them included. Data already in the model's own shape (a recorded
+    answer, its nones as null) is unchanged."""
+    import typing
+
+    if not (isinstance(data, dict) and isinstance(model, type) and issubclass(model, BaseModel)):
+        return data
+    out = dict(data)
+    for name, field in model.model_fields.items():
+        args = typing.get_args(field.annotation)
+        optional = type(None) in args
+        inner = next((a for a in args if a is not type(None)), field.annotation) if optional \
+            else field.annotation
+        value = out.get(name)
+        if isinstance(inner, type) and issubclass(inner, BaseModel):
+            value = unflatten(inner, value)
+        elif typing.get_origin(inner) is list:
+            item = (typing.get_args(inner) or (None,))[0]
+            if isinstance(value, list) and isinstance(item, type) and issubclass(item, BaseModel):
+                value = [unflatten(item, v) for v in value]
+        if optional and (name not in out or _empty(value)):
+            out[name] = None
+        elif name in out:
+            out[name] = value
+    return out
+
+
+class FlatWire(StrictModel):
+    """A model whose JSON schema is sent flattened (`flatten`: within the provider's limits,
+    `PROVIDER_UNION_LIMIT` and `PROVIDER_OPTIONAL_LIMIT`, by construction) and read back in its
+    own shape (`unflatten`): the code that reads the answer reads it as it always did. Put it
+    first among a schema's bases."""
+
+    @classmethod
+    def model_json_schema(cls, *args, **kw):
+        return flatten(super().model_json_schema(*args, **kw))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_wire(cls, data):
+        return unflatten(cls, data)
 
 
 def schema_for(model, provider: str = profiles.ANTHROPIC) -> dict:

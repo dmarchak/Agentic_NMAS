@@ -97,7 +97,12 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   never anyone's: it is **by Mercury's self-healing · policy set by <name>**, never "you".
   A card the page opens for a run you left says whose run it is and when, in your zone: "Your
   run, started 13:01", or "<name>'s run, started 13:01", and "finished … while you were
-  elsewhere" once it has.
+  elsewhere" once it has. An **AI troubleshooting** investigation is listed the same way: its
+  badge says how it ended (**plan proposed**, **no plan**, or **failed**) and its line the
+  reason in a few words, then "Details on the card" ("The AI was not asked. Details on the
+  card"); **Open the result** opens the incident's page, whose Fixing it card says the whole
+  reason, kept with the incident, so it is there after any reload. Every line in the list is
+  one line: a longer one is cut with "…", and its whole words are on its hover.
 - **Unread**: the tool could not read what runs in a network. That is not the same as nothing
   running there, and the chip says which network and why.
 

@@ -180,7 +180,7 @@ def test_allow_writes_who_when_and_why_and_turn_off_empties_it(networks, no_send
 
 
 def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, monkeypatch):
-    from modules.ai import anthropic_adapter, calls
+    from modules.ai import anthropic_adapter, calls, connection
     from modules.secrets_store import set_secret
 
     set_secret("anthropic_api_key", KEY)
@@ -190,6 +190,14 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
 
     def echo(body, key):
         sent.append(json.dumps(body))
+        if "echo" not in json.dumps(body["output_config"]):
+            # Premise corrected (the operator, 2026-11-15): the Test also sends each AI
+            # troubleshooting schema once (`connection.compile_check`); its call stops at
+            # max_tokens, as a compiled schema's does.
+            return anthropic_adapter.Reply(
+                status=200, body={"content": [{"type": "text", "text": "{"}],
+                                  "stop_reason": "max_tokens",
+                                  "usage": {"input_tokens": 90, "output_tokens": 64}})
         word = body["messages"][0]["content"].split("\n")[1]
         return anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text", "text": json.dumps({"echo": word})}],
@@ -199,9 +207,17 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
     r, html = _post(networks, "/v2/settings/installation/card/ai/test")
     card = _card(html)
     assert r.status_code == 200 and "Test passed" in card and "answered" in card
-    assert len(sent) == 1 and KEY not in sent[0]
-    (row,) = calls.read()["rows"]
+    # The ping, then one call per troubleshooting schema; none carries the key.
+    assert len(sent) == 1 + len(connection.compiled_schemas())
+    assert all(KEY not in s for s in sent)
+    rows = calls.read()["rows"]
+    (row,) = [r for r in rows if r.get("prompt") == "ping.v1"]
+    compiled = [r for r in rows if r is not row]
     assert row["verdict"] == "ok" and row["feature"] == "connection_check" and row["actor"]
+    assert [c["verdict"] for c in compiled] == ["max_tokens"] * len(compiled)
+    # On troubleshooting's own model, the compile check's task (the operator, 2026-11-15).
+    assert [c["feature"] for c in compiled] == ["compile_check"] * len(compiled)
+    assert all(c["actor"] == row["actor"] for c in compiled)
     assert "ai_calls" in r.headers.get("X-NMAS-Invalidates", "")
 
 

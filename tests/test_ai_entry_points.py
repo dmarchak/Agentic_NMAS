@@ -215,6 +215,9 @@ SDN_PAGES = {"sdn_classify": ["/v2/sdn/responses?list=Default",
 #: A background feature with no control drawn (board H, H8): what it kept is drawn by a
 #: can't-fix row's block when the item opens: `test_a_cant_fix_s_analysis_calls_no_model`'s.
 HEAL_PAGES = {"heal_analysis": ["/v2/attention/heal-analysis/Lab/hi-000000000000"]}
+#: Run inside the AI card's Test, whose mark (`ai_card_test`) is the one drawn there (the
+#: operator, 2026-11-15: the Test checks each troubleshooting schema compiles).
+INSIDE_THE_TEST_PAGES = {"ai_card_compile_check": ["/v2/settings/installation?tab=ai"]}
 #: Drawn on an SDN detection's pack card (the replan's item 4: its own task, Haiku):
 #: `test_an_sdn_pack_s_card_calls_no_model`'s, on tests/test_ai_sdn_explain.py's pack.
 SDN_EXPLAIN_PAGES = {"sdn_explain": ["/v2/monitoring/alerts/pack/ep-" + "5d" * 10]}
@@ -283,7 +286,8 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     pages = _pages(world)
     assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) | set(DEPLOY_PAGES) | set(
         HEAL_PAGES) | set(SDN_EXPLAIN_PAGES) | set(SDN_ANALYSE_PAGES) | set(
-        SDN_POLICY_PAGES) | set(FIXIT_PAGES) == set(controls.CONTROLS), \
+        SDN_POLICY_PAGES) | set(FIXIT_PAGES) | set(INSIDE_THE_TEST_PAGES) == set(
+        controls.CONTROLS), \
         "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"

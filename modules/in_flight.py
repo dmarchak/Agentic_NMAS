@@ -375,10 +375,23 @@ def page_finished_row(job: dict, viewer: str):
     it as the row's link; None when this server no longer holds its result."""
     from modules.nsot import capture_job
 
+    from modules import troubleshoot_job
+
     got = capture_job.get(job["job"])
     if got is None:
         return None
     payload = got.get("payload") or {}
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(job.get("finished_at") or 0))
+    what = job.get("kind") or "an operation"
+    if what == troubleshoot_job.KIND:
+        # An investigation's answer in its own words (`troubleshoot_job.outcome`): a plan is
+        # done, never "failed"; ONE line, its reason's first clause and "Details on the card",
+        # the whole on its hover (the operator, 2026-11-15).
+        o = troubleshoot_job.outcome(got)
+        return {"device": what, "list": job["list"], "card": "", "name": o["line"],
+                "full": o["full"], "level": o["level"], "outcome": OUTCOMES[o["level"]],
+                "words": o["badge"], "at": _clock(at), "who": _who(job.get("actor", ""), viewer),
+                "run": "", "job": job["job"], "steps": 0, "href": job["page"]}
     if got.get("state") == "failed":
         level, words = "danger", "failed: " + (got.get("error") or "no reason was recorded")
     elif "state" in payload:
@@ -392,8 +405,6 @@ def page_finished_row(job: dict, viewer: str):
         level, words = "ok", "ready to read"
     else:
         level, words = "danger", "refused: " + (payload.get("error") or "no reason")[:120]
-    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(job.get("finished_at") or 0))
-    what = job.get("kind") or "an operation"
     return {"device": what[:1].upper() + what[1:], "list": job["list"], "card": "",
             "name": "its result waits on its page", "level": level,
             "outcome": OUTCOMES[level], "words": words,

@@ -885,7 +885,7 @@ def _stepped(network: str, out: dict, keep: bool) -> dict:
         return out
     said = out.get("reads_said") or {}
     words = said.get("words") or out.get("words") or ""
-    if out.get("state") in ("off", "capped") and "nothing was sent" not in words:
+    if out.get("state") in steplog.ADVISORY_NOT_RUN and "nothing was sent" not in words:
         words += "; nothing was sent"
     steps = out.get("steps") or [{"step": "pass 1", "result": out.get("state") or "",
                                   "words": out.get("words") or ""}]

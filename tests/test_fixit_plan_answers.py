@@ -59,7 +59,7 @@ class TestThePlan:
         sec = sec_of(html)
         assert "The AI proposes a plan of 1 step" in sec, sec
         (line,) = lines(iid)
-        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v7"
+        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v9"  # v7 flattened
         assert [s["operation"] for s in line["steps"]] == ["telemetry-resubscribe"]
 
     @pytest.mark.parametrize("ans,why", [

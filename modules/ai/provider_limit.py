@@ -54,7 +54,7 @@ NAME = "ai_provider_limit.json"
 KIND = "workspace_limit"
 #: The tasks a hold does not refuse: the AI card's Test, the way an admin tells Mercury the
 #: limit was raised (the module's docstring).
-RECHECKS = ("connection_check",)
+RECHECKS = ("connection_check", "compile_check")
 #: How long a hold lasts when the provider names no moment, seconds: 600 (10 minutes). Not
 #: measured: no such refusal has been seen. Derived from what each side costs. Shorter, and
 #: an unattended background feature asks the provider more often while it stays refused: at

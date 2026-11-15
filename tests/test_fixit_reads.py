@@ -404,7 +404,7 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     from modules.ai import fixit_troubleshoot as FT
     rows = {r["id"]: r for r in calls.read()["rows"]}
     asked = f"{FT.FEATURE}.v{FT.PROMPT_PLAN_READS[1]}"
-    assert asked == "fixit_troubleshoot.v8"
+    assert asked == "fixit_troubleshoot.v10"  # v8 flattened (2026-11-15)
     first_row = [r for r in rows.values() if r.get("feature") == "fixit_troubleshoot"
                  and r.get("prompt") == asked]
     assert len(first_row) == 1 and first_row[0]["schema"] == asked

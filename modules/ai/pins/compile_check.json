@@ -1,0 +1,13 @@
+{
+  "words": "Check each AI troubleshooting request compiles (the AI card's Test)",
+  "model": "claude-sonnet-5-5",
+  "max_prompt_tokens": 4000,
+  "max_tokens": 64,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {
+    "model": "AI troubleshooting's own (modules/ai/pins/fixit_troubleshoot.json; the operator, 2026-11-15: the schema check runs on the model the feature uses, never only the cheap one, since the morning's failure came from an untested assumption). tests/test_ai_card_compile_check.py holds the two equal.",
+    "max_prompt_tokens": "The largest schema sent, v10's 3,173 characters, plus the check's prompt (about 400 characters), at the gateway's 1.8 characters a token is about 2,000; 4,000 is about twice that, and a request over the bound is refused, never trimmed.",
+    "max_tokens": "The check needs no answer: the provider compiles the schema before it writes, so a call cut at 64 tokens shows the schema compiled, and a schema it cannot compile is refused with HTTP 400 before any output."
+  }
+}

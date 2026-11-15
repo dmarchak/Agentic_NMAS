@@ -122,6 +122,7 @@ TYPED_PARTS = {
     "change_record": (),              # a deploy preview's shape: Mercury's own data (the
                                       # stated reasons a person typed are never sent)
     "connection_check": (),           # a word Mercury chose
+    "compile_check": (),              # nothing: the check's schemas are Mercury's own
     "assistant": ("question",),       # the toolbar assistant (P7): the question as typed; the
                                       # passages are the manual's, published with the product
     "fixit_troubleshoot": ("note",),  # AI troubleshooting on an incident's page (S5): the note

@@ -232,7 +232,13 @@ steps Mercury took: stopped at <step> · N steps · Show**, which opens the same
 decision's steps, the one it stopped at named); the team's notice carries each step and its
 result ([Notifications](notifications)). The decision worked: it decided that a person is
 needed, so its Decided stage reads **Can't fix: needs a person**, in amber, and its Decide step
-"needs a person", never "failed" in red.
+"needs a person", never "failed" in red. A decision a guard or hold stopped (held, halted, or
+self-healing off) worked too: its stage reads **Held at <step>** in grey, the step "held by a
+guard, as designed" with why on its line, and the steps after it not reached, never "failed"
+in red. An incident decided more than once (held by a hold, then decided when it ended) draws
+the decision it stands on; every decision's steps stay in The record. On the incident's page,
+What Mercury has done's chip for a hold or a can't-fix is grey too, the decision's words on
+its hover; red is only for a run that failed.
 
 ## The records {#records}
 

@@ -53,8 +53,10 @@ HEALED = ("healed", "bounced", "cleared", "dampened")
 #: The outcomes drawn amber: something landed, and not all of it is shown true.
 PARTLY = ("symptom_remains", "partial", "unverified", "still_flapping", "not_formed",
           "reverted", "repaired", "not_back", "reset")
-#: A decision's results that end it without a heal (drawn red on its step).
-DECISION_BAD = ("held", "halted", "off")
+#: A decision's results that end it without a heal: a guard or hold stopping it, working as
+#: designed (the operator, 2026-11-15, R2: "no red "Check guards failed" ... for a decision
+#: working as designed"), drawn ``held`` on its step, neutral, never red.
+DECISION_HELD = ("held", "halted", "off")
 #: A decision's results that worked and hand the incident to a person: a can't-fix decided
 #: that a person is needed, and its stage reads "Can't fix: needs a person", amber, never
 #: "Decide failed" in red (the GUI review's item 6, C3454; docs/UI_RULES.md, "The stepper never
@@ -431,7 +433,7 @@ def decision_phase(steps: list, *, now: float = None, prefix: str = "d-",
 
     return run_stepper.from_record(
         decide.STEPS, _drawn(steps), ended=True, now=now, prefix=prefix, good=DECISION_GOOD,
-        bad=DECISION_BAD, needs=DECISION_NEEDS,
+        held=DECISION_HELD, needs=DECISION_NEEDS,
         labels=run_stepper.labels_for(decide.STEP_LABELS, device=host or "the device"))
 
 
@@ -446,6 +448,13 @@ def steps_card(host: str, entry: dict) -> dict:
         return None
     decided = [s for s in steps if s.get("row") in ("decision", None)]
     acted = [s for s in steps if s.get("row") not in ("decision", None)]
+    # The standing decision's steps alone (the operator, 2026-11-15, R2): an incident decided
+    # again (held by a topology hold, then decided when the hold ended) draws the decision it
+    # stands on, never an earlier one's hold as this one's; every decision's steps stay in The
+    # record. Steps that name no decision (an older row's) are kept as they were.
+    newest = next((s.get("decision") for s in reversed(decided) if s.get("decision")), "")
+    if newest:
+        decided = [s for s in decided if s.get("decision") in (newest, None, "")]
     phases = [decision_phase(decided, host=host)] if decided else []
     if acted:
         phases.append(act_phase(acted, ended=entry.get("state") != "applying", prefix="a-",

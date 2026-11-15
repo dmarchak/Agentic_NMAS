@@ -381,8 +381,9 @@ CARDS = {
                       "again (a zone follows its daylight-saving changes)")),
         "secret": ("anthropic_api_key", "API key"), "secret_at": 0, "with_id": None,
         "integration": None, "test": "ai",
-        "note": "Test sends one small call to the model, through the mask and the caps, and "
-                "records it under History › AI calls.",
+        "note": "Test sends one small call to the model, then one per AI troubleshooting "
+                "request's answer format to check the provider accepts it, through the mask "
+                "and the caps, and records each under History › AI calls.",
     },
     # AI troubleshooting on an incident's page (the operator's order of 2026-11-12, overnight
     # item 6: "a per-incident cap of $1.00", "AI mode Manual by default"; C3193): its mode and
@@ -925,7 +926,8 @@ def test_card(name: str, client=None, actor: str = "") -> dict:
     if spec.get("test") == "ai":
         from modules.ai import connection, triggers
         # A person's press of Test or Replace… (their routes pass the request's actor).
-        got = connection.check(actor=actor, trigger=triggers.person(actor))
+        # The ping, then each AI troubleshooting schema once (`connection.card_test`).
+        got = connection.card_test(actor=actor, trigger=triggers.person(actor))
         now = _now()
         return {"ok": bool(got.get("ok")), "message": got.get("detail") or "",
                 "error": "" if got.get("ok") else

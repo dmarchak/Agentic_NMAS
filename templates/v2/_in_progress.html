@@ -35,7 +35,7 @@
     <p class="ip-head">Running now · {{ ip.running | length }}</p>
     {%- for r in ip.running %}
     <div class="ip-row">
-      <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
+      <span class="ip-what" title="{{ r.device }} · {{ r.name }} · {{ r.step }}"><span class="ip-line"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}</span>
         <small>{{ r.step }} · {{ r.who | people }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
       {%- if r.href %}
       <a class="btn btn-small" href="{{ r.href }}">Open its card</a>
@@ -57,7 +57,10 @@
     <p class="ip-head">Finished, not opened yet · {{ ip.finished | length }}</p>
     {%- for f in ip.finished %}
     <div class="ip-row">
-      <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
+      {#- Each line ONE line, never overflowing its box (the operator, 2026-11-15): cut with an
+          ellipsis by the stylesheet (`.ip-line`, and the row's small line), the whole on the
+          row's hover. -#}
+      <span class="ip-what" title="{{ f.full or (f.words ~ ' · ' ~ f.device ~ ' · ' ~ f.name) }}"><span class="ip-line">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}</span>
         <small>{{ f.outcome }}{% if f.at %} at {{ clock(f.at) }}{% endif %} · {{ f.who | people }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
       {#- C3081: opening or dismissing it is kept for this person (`seen_runs`), so it leaves
           their list and chip for good; with nobody verified, or the store unreadable, there

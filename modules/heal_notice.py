@@ -1008,8 +1008,8 @@ def incident_link(network: str, incident_id: str, device: str) -> str:
 
 
 #: A decision's step results that are a guard or hold stopping it, working as designed
-#: (`decide`'s stops; `run_card.DECISION_BAD`, which the stepper draws), said as the hold's plain
-#: line in a message (`steps_said`).
+#: (`decide`'s stops; `run_card.DECISION_HELD`, which the stepper draws held), said as the
+#: hold's plain line in a message (`steps_said`).
 HOLD_RESULTS = ("held", "halted", "off")
 
 

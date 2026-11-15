@@ -5267,6 +5267,12 @@ def _incident_page(client, _lab, _mp):
         SL.record_diagnosis("Lab", _adjacency_diagnosis(busy["page"]))
         diagnosed = get(busy["page"])
         assert 'data-diagnosis="done"' in diagnosed and "Check the link" in diagnosed
+        # An analysis not run, kept by the step log's own writer (the feature off: nothing was
+        # sent): one closed line, never drawn as the AI's analysis (the operator, 2026-11-15).
+        SL.record_advisory("Lab", busy["page"], device="r3", state="off", steps=[],
+                           words="AI analysis: not run: feature_off: the background feature "
+                                 "is off for the network; nothing was sent")
+        assert 'data-advisory="not-run"' in get(busy["page"])
         assert 'data-state="open"' in get(busy["related"])
         get(busy["folded"], 302)
         assert "No incident hi-000000000000 is recorded" in get("hi-000000000000", 404)

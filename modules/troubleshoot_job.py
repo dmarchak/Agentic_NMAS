@@ -90,6 +90,57 @@ def record_failure(incident, key: str, words: str, *, trigger: str, by: str = ""
         log.error("fixit job: %s's failure was not kept: %s", incident.id, exc)
 
 
+#: What an investigation's answer (its payload's ``state``, `fixit_troubleshoot.troubleshoot`'s
+#: and R1's) is as a finished row under In progress: its level and its badge's word. A plan is
+#: the answer asked for; an answer with no plan (a gap, no fix, the evidence cannot say, a
+#: plan refused) is partial, never green; anything not named here is partial too, never red
+#: by resemblance. A job that raised is failed (`outcome`).
+OUTCOMES = {"proposed": ("ok", "plan proposed"),
+            "healed_by_script": ("ok", "healed by a saved script"),
+            "script_running": ("ok", "a saved script runs"),
+            "failed": ("danger", "failed")}
+NO_PLAN = ("warn", "no plan")
+#: The most words a finished row's reason says before "Details on the card" (the operator,
+#: 2026-11-15: "one line per item ("Failed: request rejected. Details on the card"), never
+#: overflowing"); the whole reason is the row's hover.
+REASON_WORDS = 8
+
+
+def outcome(got: dict) -> dict:
+    """A finished investigation's job (`capture_job.get`'s) as In progress's finished row says
+    it: ``{"level", "badge", "line", "full"}``: its level and badge word (`OUTCOMES`), ONE line
+    (its reason's first clause, at most `REASON_WORDS` words, then "Details on the card", which
+    holds the whole, kept in the incident's record by `record_failure`), and the full words
+    for the row's hover. A read of the job only."""
+    from modules import run_stepper
+
+    payload = (got or {}).get("payload") or {}
+    if (got or {}).get("state") == "failed":
+        level, badge = OUTCOMES["failed"]
+        why = str(got.get("error") or "the job failed, giving no reason")
+    else:
+        level, badge = OUTCOMES.get(payload.get("state"), NO_PLAN)
+        why = str(payload.get("words") or "")
+    clauses = [c.strip(" .;:") for c in why.strip().replace("; ", ": ").replace(". ", ": ")
+               .split(": ") if c.strip(" .;:")]
+    # Its first clause, past a lone name (an exception's type: "Refused: <what>"), which the
+    # hover leaves out too.
+    named = len(clauses) > 1 and " " not in clauses[0]
+    # Past "The AI didn't answer" too, to what happened (the operator, 2026-11-15: "Failed:
+    # request rejected. Details on the card"): the badge already says it failed.
+    from modules.ai.fixit_troubleshoot import NOT_ANSWERED
+    lead = len(clauses) > 1 and clauses[0] == NOT_ANSWERED
+    first = clauses[1] if named or lead else (clauses or [""])[0]
+    if named:
+        why = why.strip().split(": ", 1)[-1]
+    reason = run_stepper.bounded(first, REASON_WORDS) if first else ""
+    if reason:
+        reason = reason[:1].upper() + reason[1:] + (" " if reason.endswith("…") else ". ")
+    line = reason + "Details on the card"
+    return {"level": level, "badge": badge, "line": line,
+            "full": f"{badge[:1].upper()}{badge[1:]}" + (f": {why}" if why else "")}
+
+
 def done_words(job_id: str):
     """The finished job's own words (its payload's), or None while it runs: a press whose job
     ended before its answer was drawn says what it found."""

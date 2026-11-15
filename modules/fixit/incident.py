@@ -759,8 +759,9 @@ def repeat_of(incident: Incident, op: str, params, resolved: float = None, *,
 def calls_of(incident: Incident) -> dict:
     """*incident*'s AI calls, each read from the record of AI calls by the ids its proposals
     name, each time: ``{"state": "ok"|"partial"|"unreadable", "calls", "missing", "error"}``,
-    *calls* in the order the record first names them, each ``{"id", "usd", "joined"}``
-    (``joined``: a call that joined another's and cost nothing of its own). Read within the
+    *calls* in the order the record first names them, each ``{"id", "usd", "joined",
+    "about_other"}`` (``joined``: a call that joined another's and cost nothing of its own;
+    ``about_other``: a call about another incident, or one that joined one). Read within the
     incident (`calls.rows_since` from when it was detected), never the whole record; no
     proposal naming a call reads nothing. ``unreadable`` (this record or the calls') holds no
     calls, never none in their place; ``partial`` when the calls' record holds no row for an
@@ -786,9 +787,24 @@ def calls_of(incident: Incident) -> dict:
                           f"{incident.id}'s {len(ids)} call(s) cost is not known")}
     rows = {r.get("id"): r for r in got["rows"]}
     missing = [c for c in ids if c not in rows]
+
+    def about(row) -> str:
+        subject = (row or {}).get("subject")
+        return str(subject.get("id") or "") if isinstance(subject, dict) else ""
+
+    def other(row) -> bool:
+        # A call about another incident, or one that joined such a call (C3771: before its
+        # fix, the turn-on's catch-up joined three incidents' first calls to a fourth's, and
+        # each kept the fourth device's answer): its answer is not this incident's.
+        mine = about(row)
+        target = rows.get(row.get("joined")) if row.get("joined") else None
+        return bool((mine and mine != incident.id)
+                    or (target is not None and about(target) not in ("", incident.id)))
+
     return {"state": "partial" if missing else "ok",
             "calls": [{"id": c, "usd": float(rows[c].get("cost_usd") or 0),
-                       "joined": rows[c].get("verdict") == calls.JOINED}
+                       "joined": rows[c].get("verdict") == calls.JOINED,
+                       "about_other": other(rows[c])}
                       for c in ids if c in rows],
             "missing": missing,
             "error": (f"the record of AI calls holds no row for {len(missing)} of the "

@@ -81,6 +81,17 @@ CONTROLS = {
         "screen": "Settings › Installation › AI, AI (hosted)",
         "beside": "the card's Save, Replace… and Allow",
     },
+    # The same Test's second part (the operator, 2026-11-15): each AI troubleshooting schema
+    # sent once on the feature's own model (`connection.compile_check`). No control of its own:
+    # it runs inside the Test, whose mark (`ai_card_test`) is the one drawn.
+    "ai_card_compile_check": {
+        "task": "compile_check",
+        "words": "Test (the AI card): each troubleshooting request compiles",
+        "endpoints": ("settings_v2.install_test",),
+        "template": None,
+        "screen": "Settings › Installation › AI, AI (hosted)",
+        "beside": "the card's Save, Replace… and Allow",
+    },
     "intent_in_words": {
         "task": "intent_patch",
         "words": "An intent change in words",

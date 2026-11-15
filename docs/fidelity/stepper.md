@@ -75,7 +75,17 @@ person by display name; no element moves. Compared by the template's diff
 (tests/test_actors_drawn_by_name.py); logged once (docs/STANDING_APPROVAL_LOG.md, "Records name
 people by display name on every v2 screen (C3715)"). Templates sha256 before:
 `7e5b020eaff14e1fe23ae92d02ab2bd4af1964084912c46c2b7f81ecbd1c0566`.
-Templates sha256: `ba93278e838ddda3a67c5530cc1ee3fd44f126cc6e7107cf3e8928685e1a46c1`
+Compared again 2026-11-15 (the operator: "no red "Check guards failed" ... for a decision
+working as designed"; R2; C3738, C3540): modules/run_stepper.py gains the `held` state, a guard
+or hold stopping a decision (a heal's held, halted, off: `run_card.DECISION_HELD`), "held by a
+guard, as designed", its mark and border `--ink-3` and its step's words `--ink-2`, never red;
+the steps after it are not reached, and its stage says "Held at <step>", its why on the step's
+line one level down. It is the `needs` state's precedent (2026-11-13, above) for the other
+decisions that worked. `_run_stepper.html` and `nmas_stepper.js` are byte for byte as they
+were; nothing the macro lays out moved, so no region's verdict changed. Read from the diff and
+tests/test_incident_page_once.py (`TestADecisionWorkingAsDesignedIsNeverRed`), not a new shot.
+Templates sha256 before: `ba93278e838ddda3a67c5530cc1ee3fd44f126cc6e7107cf3e8928685e1a46c1`.
+Templates sha256: `5963585698efd022a2c1b16561f510750d1fece881e74abbd551fdd64aebff08`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each

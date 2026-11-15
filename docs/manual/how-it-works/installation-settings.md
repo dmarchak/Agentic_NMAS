@@ -123,7 +123,13 @@ count starts again, "resets 18:00 MDT (00:00 UTC)": your own time first, from yo
 and UTC's beside it. It is the same instant the gateway counts by. The card's **Test**
 is one small, real call: the model is given a word Mercury chose and must give it back, so a
 passing Test means the allowance, the key, the mask, the caps, the model and the record all
-held. It costs a fraction of a cent and is recorded like any call.
+held. Then it sends each answer format AI troubleshooting asks for (its two passes), once
+each, on the model troubleshooting itself uses, as a call cut short at 64 tokens: the
+provider turns a format into a grammar before it
+writes anything and refuses one too large for it, so a format it accepts passes and one it
+refuses fails the Test, named with the provider's own words. Fakes in the tests accept any
+format, so this is the check that the real provider does; run it before each rehearsal. The
+three calls cost about a cent together, each recorded like any call.
 
 ## The day cap {#ai-cap}
 

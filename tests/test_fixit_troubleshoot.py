@@ -154,7 +154,7 @@ class TestThePress:
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
         assert line["source"] == "ai" and line["operation"] == "telemetry-resubscribe"
         assert line["params"]["subs"] == ["101", "102"]
-        assert line["prompt"] == "fixit_troubleshoot.v7"  # the plain pass, v7 since C3755
+        assert line["prompt"] == "fixit_troubleshoot.v9"  # the plain pass: v7 flattened (2026-11-15)
         assert line["shown"]["hypotheses"][0]["cites"] == ["attempt:1"]
         (call,) = line["calls"]
         rows = calls.read()["rows"]

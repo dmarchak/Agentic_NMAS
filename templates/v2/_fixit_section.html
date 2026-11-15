@@ -288,9 +288,13 @@
   {%- set PP = PO if po_has else (x.ai_answer if aa_has else (PO or x.ai_answer or {})) %}
   {%- set sh = POsh if po_has else (AAsh if aa_has else {}) %}
   {%- if po_has or aa_has %}
-  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP %} open{% endif %}>
-    <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}</summary>
+  {#- The operator, 2026-11-15: during a new investigation the previous answer is labelled, and
+      collapsed; one about another incident is superseded, its content withheld. -#}
+  {%- set prev = (PP.previous or PP.superseded) and true %}
+  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP and not prev %} open{% endif %}>
+    <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}{% if prev %} (previous answer){% endif %}</summary>
     <div class="fixit-ai-answer">
+      {%- if prev %}<p class="small muted" data-answer-label>Previous answer{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}, superseded{% endif %}</p>{% endif %}
       {%- if sh.rationale %}<p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>{% endif %}
       {%- if sh.hypotheses %}
       <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span>{% if h.unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ h.unverified_words }}</span>{% endif %}{% if h.confirm %}<br><span class="muted">To confirm: <span class="mono">{{ h.confirm }}</span></span>{% endif %}</li>{% endfor %}</ol>
@@ -314,6 +318,7 @@
   {%- elif PP.calls %}
   {#- Nothing of the answer to draw (its words, on the status line, say why): its calls, and no
       rating of nothing. -#}
+  {%- if PP.superseded or PP.previous %}<p class="small muted" data-answer-label>Previous answer{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}: {{ PP.superseded }}{% endif %}</p>{% endif %}
   <p class="small muted fixit-ai-calls" data-ai-nothing>{{ PP.calls | length }} AI call{{ 's' if PP.calls | length != 1 }}{% if PP.ai_usd %}, {{ PP.ai_usd }}{% endif %}{% if PP.prompt %} · prompt {{ PP.prompt }}{% endif %} · <a href="{{ url_for('v2.history_page', call=PP.calls[-1]) }}">the call on History</a></p>
   {%- endif %}
   {%- if S != 'none' and T %}
@@ -343,14 +348,28 @@
   {%- endif %}
   {#- A can't-fix's AI analysis in full (C3488; board H, H8: `heal_analysis.drawn`, a read of
       what it kept, never a call), advisory, one level down. -#}
-  {%- if (x.cant_fix and x.analysis) or x.advisories %}
+  {#- An advisory that was not run (`ran` false: the feature off, a cap reached; nothing was sent)
+      is no analysis (the operator, 2026-11-15: "drop "heal_analysis not run: feature_off" ...
+      noise from the default view (details only)"): one plain closed line, its recorded words
+      on the hover; the summary says "not run" when nothing else is there. -#}
+  {%- set ran_adv = (x.advisories or []) | rejectattr('ran', 'false') | list %}
+  {%- set unrun_adv = (x.advisories or []) | selectattr('ran', 'false') | list %}
+  {#- The kept analysis drawn in full when it answered or cannot be read; one that holds no
+      answer (pending, off, capped) says nothing an advisory not run does not say better. -#}
+  {%- set AN = (x.analysis if x.cant_fix and x.analysis else none) %}
+  {%- set an_said = AN and (AN.state != 'ok' or (AN.block or {}).state not in ('pending', 'off', 'capped')) %}
+  {%- set any_analysis = an_said or ran_adv %}
+  {%- if any_analysis or unrun_adv or AN %}
   <details class="fixit-more inc-analysis" id="inc-analysis" data-keep="fixit-analysis-{{ x.id }}" data-more="analysis">
-    <summary>The AI's analysis</summary>
-    {%- if x.cant_fix and x.analysis %}
+    <summary>The AI's analysis{% if not any_analysis %} <span class="muted" data-analysis="not-run">· {{ 'not run' if unrun_adv else 'none yet' }}</span>{% endif %}</summary>
+    {%- if AN and (an_said or not unrun_adv) %}
     {%- with got=x.analysis, incident=x.id %}{% include "v2/_heal_analysis.html" %}{% endwith %}
     {%- endif %}
-    {%- for a in x.advisories or [] %}
+    {%- for a in ran_adv %}
     <p class="inc-advisory"><strong>AI analysis (advisory; self-healing never reads it)</strong>{% if a.at %}, {{ clock(a.at) }}{% endif %}: {{ a.words }}</p>
+    {%- endfor %}
+    {%- for a in unrun_adv %}
+    <p class="small muted inc-advisory-not-run" data-advisory="not-run" title="{{ a.words }}">The background AI analysis was not run{% if a.at %} ({{ clock(a.at) }}){% endif %}: nothing was sent.</p>
     {%- endfor %}
   </details>
   {%- endif %}
