@@ -102,8 +102,14 @@ class Sources:
         return dev or {}
 
     def golden(self, device: str, dev: dict) -> dict:
-        """``{"text", "commit", "state", "words"}``: the committed golden and whether it is the
-        approved state (N5)."""
+        """``{"text", "commit", "state", "words", "lines", "adds", "removes"}``: the committed
+        golden and whether it is the approved state (N5). When it departs, *lines* are the exact
+        lines it departs by, as `intent_match` gives them (``- x`` on the device and not in
+        intent, ``+ x`` in intent and not on the device; masked there, once, for every reader),
+        so guard 4's hold can say each line and its way out (C3581; the operator, 2026-11-14:
+        "A departure row ... shows the exact lines"). Where the newest measurement stands, that
+        is one comparison of this device's golden with its intent, read live: the heal pipeline
+        reads live (CLAUDE.md, "Display only")."""
         from modules import device_list, goldens
         from modules.nsot import intent_match
 
@@ -121,15 +127,23 @@ class Sources:
         reads = device_list.reads(repo, only=device)
         entry = (reads.get("history") or {}).get(device) or {}
         intent = device_list.intent_state(device, reads)
-        if intent.get("state") in ("at_intent", "departs"):
+        if intent.get("state") == "at_intent":
             return {"text": rec["text"], "commit": entry.get("commit", ""),
-                    "state": intent["state"], "words": intent.get("words", "")}
+                    "state": "at_intent", "words": intent.get("words", ""), "lines": [],
+                    "adds": 0, "removes": 0}
         got = intent_match.intent_match(repo, self.network, device, rec["text"])
+        lines = list(got.get("lines") or []) if got.get("state") == "differs" else []
+        counts = {"lines": lines, "adds": int(got.get("adds") or 0) if lines else 0,
+                  "removes": int(got.get("removes") or 0) if lines else 0}
+        if intent.get("state") == "departs":
+            # The measurement's state stands; the comparison gives its lines.
+            return dict({"text": rec["text"], "commit": entry.get("commit", ""),
+                         "state": "departs", "words": intent.get("words", "")}, **counts)
         state = {"match": "at_intent", "differs": "departs"}.get(got["state"], "unknown")
         why = intent.get("why") or intent.get("words") or intent.get("state")
-        return {"text": rec["text"], "commit": entry.get("commit", ""), "state": state,
-                "words": (f"its newest measurement does not stand ({why}); compared now: "
-                          f"{intent_match.words(got)}")}
+        return dict({"text": rec["text"], "commit": entry.get("commit", ""), "state": state,
+                     "words": (f"its newest measurement does not stand ({why}); compared now: "
+                               f"{intent_match.words(got)}")}, **counts)
 
     def intended(self, device: str, platform: str) -> dict:
         from modules.nsot import intent_match
@@ -330,7 +344,8 @@ STOP_WORDS = {"held": "Self-healing holds {device}: ",
               "deferred": "Checked again later: "}
 
 
-def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None) -> dict:
+def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None,
+               batch: dict = None) -> dict:
     """The decision for one claimed incident: a record (not yet written) ``{"incident",
     "device", "outcome", "mode", "guard", "words", "outcome_words", "cause", "kind", "tier",
     "units", "program", "program_hash", "removal_ids", "departure", "policy", "person",
@@ -339,7 +354,7 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     *words* state it first, then *outcome_words*, what Mercury did or would do."""
     from modules.heal import said
 
-    d = _decide_one(network, incident, now=now, sources=sources, mode=mode)
+    d = _decide_one(network, incident, now=now, sources=sources, mode=mode, batch=batch)
     d["outcome_words"] = d.get("words") or ""
     try:
         d["cause"] = said.cause_of(judged_triggers(incident), d)
@@ -352,12 +367,60 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     elif (d.get("person") or {}).get("words") and d.get("outcome") in SAYS_CAUSE:
         d["words"] += (f"; the change was made outside Mercury "
                        f"({d['person']['words']})")
+    # The incident's classified problem, when it has one (G7's err-disabled port): kept on the
+    # decision, so its headline says a state problem as one, drawn again from the record.
+    from modules.heal import errdisable
+    got = errdisable.problem_fields(d.get("device") or "", errdisable.of_record(incident))
+    if got:
+        d["problem"] = {"condition": got["condition"], "object": got["object"]}
     d["headline"] = said.headline(d, network, incident.get("triggers") or [])
     return d
 
 
-def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None) -> dict:
-    """`decide_one`'s decision, its words what Mercury did or would do."""
+#: Guard 6's batch (G6, the operator's design of 2026-11-14): the guards a person's approval of
+#: the previewed batch resolves for its incidents. Guard 6 (many devices at once) is resolved
+#: for that batch; the grace (guard 8) is dropped once approved, unless it found the device
+#: unreadable or unjudgeable (a can't-fix stays one). Guard 10 still counts every heal.
+BATCH_RESOLVES = (6, 8)
+#: What the grace may have said that a batch approval does not drop.
+GRACE_KEPT = ("not_checkable", "unreadable")
+#: The fields of the decision past guard 6 a guard-6 hold carries for the batch's preview
+#: (``beyond``): what the decision would be were guard 6 resolved, with the program it would
+#: send and its hash, so the batch card shows the exact program before the press.
+BEYOND_FIELDS = ("outcome", "words", "kind", "tier", "program", "program_hash",
+                 "removal_ids", "departure", "dangerous", "guard")
+
+
+def _resolves(batch, g: dict, incident: dict) -> bool:
+    """Whether *batch* (an approval, `heal.batch`, or the preview's own reckoning) resolves
+    guard hit *g* for *incident*."""
+    if not batch or not g or g.get("guard") not in BATCH_RESOLVES:
+        return False
+    if g["guard"] == 8:
+        return (incident.get("settled") or {}).get("how") not in GRACE_KEPT
+    return True
+
+
+def _beyond(network, incident, *, now, sources, mode) -> dict:
+    """The decision were guard 6 resolved for *incident* (the batch's preview, G6): decided as
+    in AUTO, so its outcome says whether the batch's press would heal it. Never recorded on its
+    own; a failure is said, never raised."""
+    try:
+        got = _decide_one(network, incident, now=now, sources=sources,
+                          mode=dict(mode, mode="auto"), batch={"preview": True})
+    except Exception as exc:                          # noqa: BLE001 (the hold stands, said)
+        return {"outcome": "unknown", "words": f"the batch's preview could not be made "
+                                               f"({type(exc).__name__}: {exc})"}
+    out = {k: got.get(k) for k in BEYOND_FIELDS}
+    out["units"] = len(got.get("units") or [])
+    return out
+
+
+def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=None,
+                batch: dict = None) -> dict:
+    """`decide_one`'s decision, its words what Mercury did or would do. *batch*: the person's
+    approval of guard 6's batch holding this incident (`heal.batch.approve`), or the preview's
+    reckoning (``{"preview": True}``): guards 6 and 8 are resolved for it (`BATCH_RESOLVES`)."""
     from modules.drift_check import departure, drift_diff
     from modules.heal import decisions, guards, incidents, kinds, policy
     from modules.heal.guards import value
@@ -456,9 +519,23 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
               guards.g7_person(incident, now, value(mode, "heal_person_working_changes"),
                                value(mode, "heal_person_working_minutes")),
               guards.g8_grace(incident)) + rates:
+        if _resolves(batch, g, incident):
+            continue
         if g:
-            return stop(g)
-    passed("guards", "no topology hold, not many devices at once, no person working, the grace "
+            held = stop(g)
+            if g["guard"] == 6 and not batch:
+                # G6: the hold carries what the batch's press would send for this incident.
+                held["beyond"] = _beyond(network, incident, now=now, sources=src, mode=mode)
+            return held
+    batch_words = ""
+    if batch and not batch.get("preview"):
+        base["batch"] = {"id": batch.get("id"), "by": batch.get("by"),
+                         "hash": batch.get("hash")}
+        # C2817: the step's words name no id or hash, and a person by display name only.
+        batch_words = (f"many devices at once resolved, and the grace dropped, by "
+                       f"{batch.get('by_shown') or 'a person'}'s approval of the batch; ")
+    passed("guards", batch_words +
+           "no topology hold, not many devices at once, no person working, the grace "
                      "period settled, " + (
                          "and no rate counted: its read found it at its golden, so there is "
                          "nothing to heal" if at_golden else
@@ -669,6 +746,57 @@ def _log_steps(network: str, d: dict, now: float) -> None:
                   d.get("id"), type(exc).__name__, exc)
 
 
+#: The decisions a saved self-heal script may fire on (C3696; Gate 1b's review): the heal
+#: neither acted (``heal``, ``would_heal``), nor proposed (``propose``), nor was held
+#: (``held``, ``halted``, ``off``, ``deferred``), nor found nothing (``nothing``): Mercury's
+#: code has no fix for it.
+SCRIPT_OUTCOMES = ("cant_fix",)
+
+
+def script_hold(network: str, incident: dict, *, now: float = None, sources=None):
+    """The heal guard that holds a promoted script's run on *incident*'s device now, as
+    `_decide_one` judges each (guard 1 the kill switch, 2 the mode and a halt, 3 planned work,
+    4 the device Mercury's to change, 5 a topology hold, 6 many devices at once, 7 a person
+    working, 9 and 10 the rates), its `guards.hit` shape; None when none does. A read."""
+    from modules.heal import decisions, guards, incidents, policy
+    from modules.heal.guards import value
+    from modules.inventory.management import refusal_for
+
+    now = time.time() if now is None else float(now)
+    src = sources or Sources(network)
+    device = incident.get("device") or ""
+    mode = policy.current(network, now)
+    try:
+        halt = decisions.halted(network)
+    except Exception as exc:
+        halt = {"unreadable": str(exc)}
+    for g in (guards.g1_kill_switch(mode), guards.g2_mode(mode, halt),
+              guards.g3_planned(network, device, now)):
+        if g:
+            return g
+    why = refusal_for(network, device, what="a saved script")
+    if why:
+        return guards.hit(4, "held", f"heal off for this device: {why}", {})
+    try:
+        rows = decisions.decisions(network)
+    except Exception as exc:
+        return guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a rate "
+                                        "that cannot be counted holds", {})
+    grace_s = float(value(mode, "heal_grace_seconds") or 900)
+    for g in (guards.g5_topology(src.topology(device, now), now),
+              guards.g6_many(incidents.read(network)["incidents"], now, grace_s,
+                             value(mode, "heal_max_devices_drifting")),
+              guards.g7_person(incident, now, value(mode, "heal_person_working_changes"),
+                               value(mode, "heal_person_working_minutes")),
+              guards.g9_device_rate(rows, device, "heal", now,
+                                    value(mode, "heal_max_per_device_hour")),
+              guards.g10_network_rate(rows, network, "heal", now,
+                                      value(mode, "heal_max_per_network_hour"))):
+        if g:
+            return g
+    return None
+
+
 def run(network: str, *, now: float = None, sources=None, by: str = "heal to intent") -> dict:
     """Decide every ready incident of *network* under its heal lock. ``{"ran", "decided":
     [{"incident", "decision", "outcome"}], "busy", "failed"}``."""
@@ -677,6 +805,7 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
 
     now = time.time() if now is None else float(now)
     out = {"ran": False, "network": network, "decided": [], "busy": "", "failed": []}
+    decided_records = []
     try:
         with incidents.HealLock(network, actor="Mercury", trigger=f"the decision ({by})"):
             try:
@@ -688,7 +817,9 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                 try:
                     made = decide_one(network, claimed, now=now, sources=sources)
                     steps, phase = made.pop("steps", []), made.pop("phase", "decide")
-                    d = decisions.record(network, made, now)
+                    # Recorded under the one lock G6's batch counts guard 10 under too.
+                    with filestore.PathLock(decisions.rate_lock_path(network)):
+                        d = decisions.record(network, made, now)
                     _act(network, claimed, d, now)
                     _log_steps(network, dict(d, steps=steps, phase=phase), now)
                 except Exception as exc:
@@ -701,8 +832,30 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                     continue
                 out["decided"].append({"incident": inc["id"], "decision": d["id"],
                                        "outcome": d["outcome"]})
+                if d["outcome"] in SCRIPT_OUTCOMES:
+                    decided_records.append(claimed)
     except incidents.HealBusy as exc:
         return dict(out, busy=str(exc))
+    # C3696: a saved self-heal script whose R4 match an incident's problem holds fires from the
+    # decision, under self-healing's mode (`saved_plans.fire_matching`: Dry run records what it
+    # would run; a promoted script in Auto runs through the runner on its authority, after the
+    # heal guards for its device, `script_hold`), whatever the AI's switch says: only where
+    # the heal neither acted nor was held and no code fix exists (`SCRIPT_OUTCOMES`). After
+    # the heal lock: a run holds its own device. The problem is classified from the incident
+    # as its page resolves it, as the card and the investigation classify it.
+    out["scripts"] = []
+    from modules import incident_page
+    from modules.nsot import saved_plans
+    for rec in decided_records:
+        try:
+            found = incident_page.resolve(network, rec.get("id") or "")
+            if found.get("found") != "page":
+                found = {"incident": rec, "entry": {}}
+            out["scripts"] += saved_plans.fire_matching(network, found)
+        except Exception as exc:                      # noqa: BLE001 (said; the next is tried)
+            log.error("heal: %s's saved scripts did not fire on %s: %s", network,
+                      rec.get("id"), exc)
+            out["failed"].append(f"saved scripts on {rec.get('id')}: {exc}")
     if out["decided"]:
         try:
             from modules import invalidation

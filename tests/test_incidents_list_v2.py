@@ -2,7 +2,7 @@
 ~/Documents/nmas-reports/boards/troubleshooting-nav.html; the GUI review's proposal 17 and its
 finding IN9; provisional, operator review pending, the operator 2026-11-13).
 `modules/incidents_list.py`, `routes/incidents_v2.py`, `templates/v2/incidents.html`,
-`templates/v2/_incidents_chip.html`, and the sidebar in `templates/v2/base.html`.
+`templates/v2/_heal_auto_chip.html`, and the sidebar and top bar in `templates/v2/base.html`.
 
 On the heal's lab (tests/test_incident_page.py's `client`), every incident planted from
 tests/fixtures/incident_page/ (the stores as the heal modules' own writers left them: a heal
@@ -18,16 +18,23 @@ a related one watching). No device, no network.
   carry the strict policy; the page draws the viewer through `identity.viewer()`.
 - **Drawn:** the template, rendered from the model, says an unreadable store and an empty
   network; 900 incidents draw a summary and closed groups, at most `SHOWN` rows a group, no
-  long expanded list (test_large_fleets' scan). The chips say the open count, the mode, and a
-  store they cannot read.
+  long expanded list (test_large_fleets' scan).
+- **The top bar's Self-healing chip** (the operator, 2026-11-14: "a status chip in the top bar
+  beside the AI chip, shown only while Auto is in force ... Nothing in the normal state"):
+  nothing in dry run, off, an expired Auto or under the stop switch; in Auto, amber, "Self-
+  healing: Auto until" the expiry in the viewer's zone by the clock (UTC on hover), linking to
+  the network's Self-healing tab, reading itself again once at the expiry; several networks
+  say how many and name the soonest; an unreadable answer is said.
 - **Pressed, in Firefox** (where one runs; skipped naming why elsewhere): the sidebar's
-  Troubleshooting section is above OBSERVE with the board's two entries, and each opens its
-  page; on the list, Closed, a row's title, the incident page's breadcrumb back to its tab,
-  and the search narrowing the rows.
+  Troubleshooting section is above OBSERVE with the board's two entries and no chip, and each
+  opens its page; on the list, Closed, a row's title, the incident page's breadcrumb back to
+  its tab, and the search narrowing the rows; the Auto chip drawn beside the AI chip, before
+  it (after it on a phone), at 1440, 1280 and 500 px, inside the bar, without moving it.
 """
 import json
 import os
 import re
+import time
 
 import pytest
 
@@ -93,14 +100,6 @@ def drawn(p: dict, **context) -> str:
                                **context)
 
 
-def chip(**context) -> str:
-    import app as APP
-    from flask import render_template
-
-    with APP.app.test_request_context(f"/v2/incidents/count?list={NET}"):
-        return render_template("v2/_incidents_chip.html", **context)
-
-
 def listed(p: dict) -> dict:
     """The model's rows: {incident id: row}."""
     return {r["id"]: r for g in p["groups"] for r in g["rows"]}
@@ -149,7 +148,10 @@ class TestTheRows:
         assert p["unreadable"] and "decisions cannot be read" in p["unreadable"][0]
         body = drawn(p)
         assert "couldn't be read" in body and "may be short" in body
-        assert L.open_count(NET)["ok"] is False
+        # Premise corrected (board T, 2026-11-14: the sidebar's open count removed with
+        # `open_count`): the nearest live read, the rows every count was made from, says the
+        # store it could not read, never a count of none.
+        assert any("decisions cannot be read" in u for u in L.rows(NET)["unreadable"])
 
 
 class TestPageSpeedAndReads:
@@ -204,7 +206,7 @@ class TestPageSpeedAndReads:
         from modules import csp, identity
 
         before = {p: open(p, "rb").read() for p in _stores().values()}
-        for path in ("/v2/incidents", "/v2/incidents/count", "/v2/incidents/heal-mode"):
+        for path in ("/v2/incidents", "/v2/incidents/heal-auto"):
             r = client.get(f"{path}?list={NET}")
             assert r.status_code == 200, path
             assert r.headers["Content-Security-Policy"] == csp.STRICT_POLICY, path
@@ -218,27 +220,146 @@ class TestPageSpeedAndReads:
         assert identity.viewer() is other
 
 
+CHIP = "/v2/incidents/heal-auto"
+
+
+def auto_on(now=None, hours=2):
+    """Auto confirmed on the lab's network by a person, from *now* for *hours* (the policy's
+    own writer, tests/test_heal_policy.py's `auto`): its expiry as the policy now reads it."""
+    from modules.heal import policy
+    from tests.test_heal_policy import auto
+
+    now = time.time() if now is None else now
+    auto(NET, now=now, hours=hours)
+    return policy.current(NET)
+
+
+def chip_of(client) -> str:  # noqa: F811
+    r = client.get(f"{CHIP}?list={NET}")
+    assert r.status_code == 200, r.status_code
+    return r.get_data(as_text=True)
+
+
+class TestTheAutoChip:
+    def test_nothing_is_drawn_in_dry_run_or_off(self, client):  # noqa: F811
+        from modules.heal import policy
+
+        # The lab is in dry run (tests/test_heal_decide.py's `lab`).
+        assert policy.current(NET)["mode"] == "dry_run"
+        assert chip_of(client).strip() == ""
+        policy.turn_off(NET, actor="op@example.com", actor_verified="access")
+        assert policy.current(NET)["mode"] == "off"
+        assert chip_of(client).strip() == ""
+
+    def test_in_auto_it_is_amber_says_until_in_local_time_and_opens_the_tab(self, client):  # noqa: F811
+        cur = auto_on()
+        assert cur["mode"] == "auto", cur["words"]
+        body = chip_of(client)
+        link = re.search(r'<a class="heal-auto-chip" href="([^"]+)"[^>]*>(.*?)</a>', body, re.S)
+        assert link, body
+        # C3748 (the operator, 2026-11-15): the chip opens Needs attention's control strip
+        # for its network, where Self-healing and AI troubleshooting are switched.
+        assert link.group(1) == f"/v2/?list={NET}#control-strip"
+        words = link.group(2)
+        assert re.sub(r"<[^>]+>", "", words).startswith("Self-healing: Auto until ")
+        # The expiry is the policy's own, drawn by THE clock: its instant in `datetime`, the
+        # UTC on its hover, the words in the viewer's zone.
+        stamp = re.search(r'<time class="clock" datetime="([^"]+)"[^>]*title="([^"]+)"', words)
+        assert stamp and stamp.group(1) == cur["until"], (stamp and stamp.group(1), cur["until"])
+        assert "UTC" in stamp.group(2)
+        # It reads itself again once, at the expiry.
+        delay = int(re.search(r'hx-trigger="load delay:(\d+)s"', body).group(1))
+        assert 2 * 3600 - 120 <= delay <= 2 * 3600 + 2, delay
+        # Amber: the warn tokens, which have their dark values (tests/test_v2_theme.py).
+        css = open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "css",
+                                "nmas-v2.css"), encoding="utf-8").read()
+        rule = re.search(r"^\.heal-auto-chip \{(.*?)\}", css, re.S | re.M).group(1)
+        assert "var(--warn-soft)" in rule and "var(--warn)" in rule and "var(--warn-line)" in rule
+
+    def test_an_auto_not_in_force_draws_nothing(self, client):  # noqa: F811
+        from modules.heal import policy
+
+        expired = auto_on(now=time.time() - 3 * 3600, hours=1)
+        assert (expired["mode"], expired["expired"]) == ("dry_run", True)
+        assert chip_of(client).strip() == ""
+        auto_on()
+        assert policy.current(NET)["mode"] == "auto"
+        policy.stop(actor="op@example.com", actor_verified="access", why="a test")
+        assert policy.current(NET)["mode"] == "off"
+        assert chip_of(client).strip() == ""
+
+    def test_several_networks_in_auto_say_how_many_and_name_the_soonest(self, monkeypatch):
+        from modules import integration_groups
+        from modules.heal import policy
+        from tests.test_heal_policy import iso
+
+        now = time.time()
+        held = {"A": {"mode": "auto", "until": iso(now + 7200)},
+                "B": {"mode": "dry_run", "until": ""},
+                "C": {"mode": "auto", "until": iso(now + 600)}}
+        monkeypatch.setattr(integration_groups, "network_names", lambda: list(held))
+        monkeypatch.setattr(policy, "current", lambda net, now=None, kill=None: held[net])
+        got = L.heal_auto(now)
+        assert (got["on"], got["network"], got["until"], got["n"], got["networks"]) == (
+            True, "C", held["C"]["until"], 2, ["C", "A"])
+        assert got["reread_s"] in (600, 601)
+        import app as APP
+        from flask import render_template
+        with APP.app.test_request_context(f"{CHIP}?list={NET}"):
+            body = render_template("v2/_heal_auto_chip.html", a=dict(got, error=""))
+        assert "Self-healing: Auto on 2 networks until" in re.sub(r"<[^>]+>", "", body)
+        # C3748: the chip opens the soonest network's control strip on Needs attention.
+        assert 'href="/v2/?list=C#control-strip"' in body and "on C, A:" in body
+
+    def test_a_mode_that_cannot_be_read_is_said(self, client, monkeypatch):  # noqa: F811
+        """The route's own answer when the read raises (called in a request, its template
+        drawn): said, never drawn as nothing."""
+        import app as APP
+        from routes import incidents_v2
+
+        def unreadable(now=None):
+            raise OSError("the registry")
+        monkeypatch.setattr(L, "heal_auto", unreadable)
+        with APP.app.test_request_context(f"{CHIP}?list={NET}"):
+            body = incidents_v2.heal_auto().get_data(as_text=True)
+        assert "Self-healing: mode not known" in body and "could not be read (OSError)" in body
+
+
 class TestTheChipsAndTheEmptyList:
     def test_the_chips_say_the_open_count_and_the_mode(self, planted, client):  # noqa: F811
-        # Expected through the incident page: the incidents whose page is not resolved.
-        ids = [planted["healed"]["page"], planted["failed"]["page"], planted["busy"]["page"],
-               planted["busy"]["related"]]
-        n = sum(1 for i in ids if not IP.page(NET, i, attention={})["resolved"])
-        assert n == 3 and L.open_count(NET) == {"n": n, "ok": True}
-        count = client.get(f"/v2/incidents/count?list={NET}").get_data(as_text=True)
-        assert re.search(rf">\s*{n} open\s*<", count), count
-        # The lab is in dry run (tests/test_heal_decide.py's `lab`): what runs is said.
+        """Premise corrected (the operator, 2026-11-14, board T: "Remove the 'N open' chip from
+        Incidents in the sidebar ... no Self-healing chip in the sidebar at all; the sidebar is
+        navigation only. Instead, a status chip in the top bar"; the name predates it): the
+        sidebar draws no count chip and no mode chip, whatever is open, and the top bar's chip
+        says the mode, from the policy itself: nothing in dry run, "Auto until" in Auto."""
         from modules.heal import policy
-        assert policy.current(NET)["mode"] == "dry_run"
-        mode = client.get(f"/v2/incidents/heal-mode?list={NET}").get_data(as_text=True)
-        assert re.search(r">\s*Dry run\s*<", mode) and 'title="Self-healing: dry run' in mode
+        page = client.get(f"/v2/incidents?list={NET}").get_data(as_text=True)
+        nav = page.split('<nav', 1)[1].split('</nav>', 1)[0]
+        assert L.page(NET, "open")["total"] >= 1, "incidents are open"
+        assert "nav-chip" not in nav and not re.search(r">\s*\d+ open\s*<", nav), nav
+        assert policy.current(NET)["mode"] == "dry_run" and L.heal_auto()["auto"] is False
+        assert chip_of(client).strip() == ""
+        cur = auto_on()
+        assert cur["mode"] == "auto" and L.heal_auto()["network"] == NET
+        assert "Self-healing: Auto until " in re.sub(r"<[^>]+>", "", chip_of(client))
 
-    def test_a_chip_says_a_store_it_cannot_read(self, planted):
-        tear("incidents")
-        c = L.open_count(NET)
-        assert c["ok"] is False
-        body = chip(chip="count", c=c, list_name=NET)
-        assert "nav-chip-unread" in body and re.search(r">\s*\?\s*<", body)
+    def test_a_chip_says_a_store_it_cannot_read(self, planted, client, monkeypatch):  # noqa: F811
+        """Premise corrected (board T, the operator 2026-11-14: the sidebar's chips removed;
+        the name predates it): the top bar's chip, its store unreadable (the installation's
+        settings, where the stop switch is kept), says so, never drawn as nothing."""
+        from modules.config import SettingsUnreadable
+        from modules.heal import policy
+
+        def torn(*_a, **_k):
+            raise SettingsUnreadable("user_settings.json: torn")
+        monkeypatch.setattr(policy, "stopped", torn)
+        with pytest.raises(SettingsUnreadable):
+            L.heal_auto()
+        before = {k: open(p, "rb").read() for k, p in _stores().items()}
+        body = chip_of(client)
+        assert {k: open(p, "rb").read() for k, p in _stores().items()} == before, \
+            "the chip's read wrote nothing"
+        assert "Self-healing: mode not known" in body and "could not be read" in body, body
 
     def test_an_empty_network_says_so(self, client):  # noqa: F811
         p = L.page(NET, "open")
@@ -279,9 +400,17 @@ class TestPressedInARealBrowser:
                                     "'nav.sidebar a.nav-item.active span').textContent,"
                                     " document.querySelector('.inc-list-sum').textContent"
                                     ".trim()]")
-                count = b.wait_for("var c = document.getElementById('incidents-count');"
-                                   " return c && /open/.test(c.textContent)"
-                                   " && c.textContent.trim()")
+                # Navigation only: each item of the section is its icon and its label (the
+                # operator, 2026-11-14: no chip on either).
+                kids = b.js("return Array.prototype.map.call(document.querySelectorAll("
+                            "'nav.sidebar a.nav-item[href^=\"/v2/incidents\"],"
+                            " nav.sidebar a.nav-item[href*=\"tab=heal\"]'), function (a) {"
+                            " return Array.prototype.map.call(a.children, function (c) {"
+                            " return c.tagName.toLowerCase(); }).join(' '); })")
+                # Premise corrected (board T, 2026-11-14: the sidebar's "N open" chip removed):
+                # the open count is the page's own Open tab's, read in the browser.
+                count = b.wait_for("var t = document.querySelector('a.tab[data-tab=open]');"
+                                   " return t && t.textContent.trim()")
                 b.click('nav.sidebar a.nav-item[href*="tab=heal"]')
                 heal = b.wait_for("return location.pathname.indexOf('/v2/settings/network/')"
                                   " === 0 && " + self.WHERE[7:])
@@ -293,7 +422,8 @@ class TestPressedInARealBrowser:
         section = before[before.index("TROUBLESHOOTING") + 1:before.index("OBSERVE")]
         assert section == ["Incidents", "Self-healing"], section
         assert landed[1] == "Incidents" and landed[2].startswith("3 open"), landed
-        assert count == "3 open"
+        assert kids == ["svg span", "svg span"], kids
+        assert count == "Open · 3", count
         assert heal == f"/v2/settings/network/{NET}?tab=heal", heal
 
     def test_a_row_opens_its_incident_whose_breadcrumb_leads_back_and_search_narrows(
@@ -331,3 +461,105 @@ class TestPressedInARealBrowser:
         assert on_page == ["Incidents", "Closed"], on_page
         assert back == [healed], back
         assert found == [busy["related"]], found
+
+
+class TestTheAutoChipInARealBrowser:
+    """In Firefox: in Auto the chip is drawn in the top bar just before the AI chip, inside the
+    bar and the screen, amber, at 1440, 1280 and 500 px (its words above 1366 px, "Auto" alone
+    up to it), and the AI chip is where it is without it (the bar read once nothing in it is
+    still changing)."""
+
+    #: The boxes read: the chip's, the AI chip's, the bar's, the screen's width and the words
+    #: the chip shows (its visible part).
+    BOXES = ("var w = window, d = document, c = d.querySelector('#nmas-heal-auto .heal-auto-chip'),"
+             " ai = d.getElementById('nmas-ai'), bar = d.querySelector('header.topbar');"
+             " if (!c || !ai || /reading/.test(ai.textContent)) return null;"
+             " function box(e) { var r = e.getBoundingClientRect();"
+             " return [r.left, r.right, r.top, r.bottom]; }"
+             " var shown = Array.prototype.filter.call(c.children, function (k) {"
+             " return k.getBoundingClientRect().width > 1; }).map(function (k) {"
+             " return k.textContent.trim(); });"
+             " return {chip: box(c), ai: box(ai), bar: box(bar), width: w.innerWidth,"
+             " shown: shown, bg: getComputedStyle(c).backgroundColor,"
+             " warn: (function () { var p = d.createElement('span');"
+             " p.style.background = 'var(--warn-soft)'; d.body.appendChild(p);"
+             " var v = getComputedStyle(p).backgroundColor; p.remove(); return v; })()};")
+    #: The bar once nothing in it is still changing: every item's box and the Live word, read
+    #: twice 0.3 s apart and equal (Live's word and the strip's arrive on their own).
+    BAR = ("return JSON.stringify([Array.prototype.map.call(document.querySelectorAll("
+           "'header.topbar > *'), function (e) { var r = e.getBoundingClientRect();"
+           " return [r.left, r.right]; }), document.querySelector('.live-word').textContent])")
+    REMOVE = "document.getElementById('nmas-heal-auto').innerHTML = ''; return 1"
+    AI = ("var r = document.getElementById('nmas-ai').getBoundingClientRect();"
+          " return [r.left, r.right, r.top, r.bottom];")
+
+    def settled(self, b, bound=10.0):
+        """The bar (`BAR`) once two reads 0.3 s apart agree; fails naming the reads."""
+        reads, deadline = [b.js(self.BAR)], time.monotonic() + bound
+        while True:
+            time.sleep(0.3)
+            reads.append(b.js(self.BAR))
+            if reads[-1] == reads[-2]:
+                return reads[-1]
+            if time.monotonic() > deadline:
+                raise AssertionError(f"the top bar did not settle within {bound} s: {reads}")
+
+    #: A desktop, a laptop (the bar full: 5 px free at 1280, measured 2026-11-14) and a phone
+    #: (500 px, the narrowest window geckodriver makes; tests/browser.py).
+    @pytest.mark.parametrize("width", [1440, 1280, 500])
+    def test_it_is_before_the_ai_chip_inside_the_bar_and_moves_nothing(self, client, width):  # noqa: F811
+        browser = _browser()
+        import app as APP
+
+        cur = auto_on()
+        assert cur["mode"] == "auto"
+        with browser.Served(APP.app) as srv, browser.Browser() as b:
+            try:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 900})
+                b.go(srv.url(f"/v2/devices?list={NET}"))
+                b.wait_for(self.BOXES, 15)
+                bar_with = self.settled(b)
+                got = b.js(self.BOXES)
+                b.js(self.REMOVE)
+                bar_without = self.settled(b)
+                without = b.js(self.AI)
+                got["items"] = (bar_with, bar_without)
+                # Pressed, it opens Needs attention's control strip for the network. Premise
+                # corrected (C3748, the operator, 2026-11-15: "a top-bar status chip only while
+                # Auto or the AI toggle is on, opening the strip"): it opened Settings ›
+                # Self-healing before the strip.
+                b.go(srv.url(f"/v2/devices?list={NET}"))
+                b.wait_for("return !!document.querySelector('#nmas-heal-auto .heal-auto-chip')",
+                           15)
+                b.click("#nmas-heal-auto a.heal-auto-chip")
+                opened = b.wait_for("return location.pathname === '/v2/' && "
+                                    "!!document.getElementById('control-strip') && "
+                                    "location.pathname + location.search + location.hash", 15)
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()
+        assert opened == f"/v2/?list={NET}#control-strip", opened
+        auto, ai, bar = got["chip"], got["ai"], got["bar"]
+        assert got["width"] == width, got
+        if width > 640:
+            # Just before the AI chip, the bar's gap between them.
+            assert auto[1] <= ai[0] <= auto[1] + 17, f"the chip is not before the AI chip: {got}"
+        else:
+            # A phone's bar is packed from the left: just after it, so it never moves it.
+            assert ai[1] <= auto[0] <= ai[1] + 17, f"the chip is not after the AI chip: {got}"
+        assert bar[0] <= auto[0] and auto[1] <= got["width"], f"outside the bar: {got}"
+        assert bar[2] <= auto[2] and auto[3] <= bar[3], f"outside the bar's height: {got}"
+        assert all(abs(a - b) < 0.5 for a, b in zip(ai, without)), (
+            f"the AI chip moved: {ai} with the chip, {without} without; the bar's items "
+            f"(left, right) with and without: {got['items']}")
+        # Nothing in the bar runs past the screen with the chip drawn.
+        boxes = [x for x in __import__("json").loads(got["items"][0])[0] if x[1] > x[0]]
+        assert max(r for _l, r in boxes) <= got["width"], got["items"][0]
+        assert got["bg"] == got["warn"], f"not amber: {got['bg']} against {got['warn']}"
+        if width > 1366:
+            assert len(got["shown"]) == 1 and got["shown"][0].startswith(
+                "Self-healing: Auto until "), got["shown"]
+        else:
+            # Up to 1366 px "Auto" alone, as Update says "Update" (its words on hover).
+            assert got["shown"] == ["Auto"], got["shown"]

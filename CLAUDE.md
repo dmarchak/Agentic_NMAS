@@ -140,6 +140,14 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   improves on it at enterprise scale; a feature without one is questioned first (the
   operator, 2026-10-25; MERCURY_CHARTER "The test for every feature", PHASE8_PLAN section 3's
   card). [not mechanised]
+- **Never duplicate what already exists: every build report and every review states "Reused"
+  (the existing functions, pipelines or modules the build uses for its purpose) and "New"
+  (each piece written new, one line each on why nothing existing could serve); the review
+  checks for duplicated purpose, two code paths doing one job ("two entry points share one
+  code path"), and blocks on it; similar-looking code with different purposes is not a
+  finding** (the operator, 2026-11-15). Cost: two short sections per report and a check per
+  review. Prevents: a second code path for a job one already does, which drifts from the
+  first. [not mechanised]
 
 ### Git, the gate and deploys
 
@@ -389,7 +397,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   tests/test_approval_queue_store.py, tests/test_store_integrity_c158_c160.py,
   tests/test_settings_concurrency.py; open items: docs/CONCURRENCY_AUDIT.md] [why](docs/LESSONS.md#many-people-tabs-and-processes)
 - **Reads across devices run concurrently (`fanout.read_each`); a serial loop states why;** the
-  deploy batch is sequential for its circuit breaker. [tests/test_device_loops_state_why.py] [why](docs/LESSONS.md#concurrent-reads-across-devices)
+  deploy batch is sequential for its circuit breaker, and a heal batch a person approved as one
+  runs one device first, verified, then the rest in parallel, each held and verified, starting no
+  new device after the first failure (the operator, 2026-11-14). [tests/test_device_loops_state_why.py] [why](docs/LESSONS.md#concurrent-reads-across-devices)
 - **One owner per piece of state; one home per action** (one resolver, one table, one write path;
   two entry points share one code path). [tests/test_one_home_per_action.py (device effects);
   tests/test_platform_keying.py; tests/test_one_template_resolver.py; otherwise not mechanised] [why](docs/LESSONS.md#one-owner-one-home)

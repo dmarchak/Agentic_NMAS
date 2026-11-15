@@ -781,8 +781,13 @@ class TestTheSetting:
         assert re.findall(r"<option([^>]*)>([^<]*)</option>", select) == [
             (' value="manual" selected', "Manual"), (' value="off"', "Off")], select
         # No lower-case mode is left in the card's words (its note names each mode too).
-        words = re.sub(r"<[^>]+>", " ", card.split("</select>", 1)[1])
-        assert "Manual: an AI troubleshoot runs only when a person presses it" in words
+        from html import unescape
+        # The card's words as a person reads them (the page escapes an apostrophe).
+        words = unescape(re.sub(r"<[^>]+>", " ", card.split("</select>", 1)[1]))
+        # Premise corrected (C3769, the operator, 2026-11-15: the old words said "never on its
+        # own" while a network's automatic AI troubleshooting starts by itself under Manual).
+        assert "Manual: a person's press on an incident's page starts AI troubleshooting" \
+            in words and "never on its own" not in words
         assert not re.search(r"\bmanual\b", words), words
         r = web.post("/v2/settings/installation/card/fixit/save", headers=HX,
                      data={"ai_troubleshoot_mode": "off", "ai_cap_usd_per_incident": "1.00",

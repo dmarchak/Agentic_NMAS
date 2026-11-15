@@ -1,0 +1,4 @@
+{#- Where the incident's saved plans are drawn (Gate 1b; board saved-plans, artboard S): asked in
+    place once the section is drawn, so the section waits on nothing (`saved_plans_v2.card`, a
+    read of records). Included by templates/v2/_fixit_section.html, one line. -#}
+<div id="saved-plans-{{ x.id }}" class="saved-plans-slot" hx-get="{{ url_for('saved_plans_v2.card', incident=x.id, list=x.network) }}" hx-trigger="load" hx-swap="outerHTML" hx-select="unset"><p class="faint small">Reading what this incident offers to save…</p></div>

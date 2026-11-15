@@ -27,7 +27,7 @@
       deployed, the links both ways between an intent change and its deploys. -#}
   <p class="muted small hist-count">{% if h.events %}Commit <span class="mono">{{ f.commit[:12] }}</span> and the deploys that sent it: {{ h.events | length }} row{{ '' if h.events | length == 1 else 's' }}, among the newest {{ h.limit }} of each record{% else %}No row of commit <span class="mono">{{ f.commit[:12] }}</span> among the newest {{ h.limit }} of each record{% endif %} · <a href="{{ url_for('v2.history_page') }}">Every record</a></p>
   {%- elif not h.events and not h.errors %}
-  <p class="cov-head">{{ icon('info') }} Nothing matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person }}{% endif %}{% if f.kinds %}, the kinds chosen{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}{% if f.before_at %} before {{ stamp(f.before_at) }}{% elif f.on %} on or before {{ f.on }}{% endif %}.{% if f.before or f.on %} <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
+  <p class="cov-head">{{ icon('info') }} Nothing matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person | people }}{% endif %}{% if f.kinds %}, the kinds chosen{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}{% if f.before_at %} before {{ stamp(f.before_at) }}{% elif f.on %} on or before {{ f.on }}{% endif %}.{% if f.before or f.on %} <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
   {%- elif h.events %}
   {#- Board D's count; the place a page starts at (Load more's, or a day jumped to) said with
       the way back to the newest. -#}

@@ -1049,6 +1049,112 @@ def _attention_withheld(client, _lab, _mp):
         mp.undo()
 
 
+def _attention_departure(client, _lab, _mp):
+    """Needs attention with a guard-4 hold on r4 whose golden departs from its intent (C3581;
+    provisional, operator review pending): its departing lines drawn on the row, one on each
+    side, each side with its two ways out. The row is self-healing's own builder's
+    (`attention._heal_held_rows`), from a decision as guard 4 records it (r4's real line, and
+    one in intent), offered as Needs attention's one source for this provider alone."""
+    import time as _time
+
+    import pytest
+
+    from modules import attention
+    from modules.heal import guards
+
+    g = guards.g4_golden({"state": "departs", "words": "departs (+1 -1)", "commit": "c0ffee",
+                          "lines": ["- privilege exec level 3 show telemetry ietf",
+                                    "+ logging host 192.0.2.10"], "adds": 1, "removes": 1})
+    decision = {"id": "hd-0123456789ab", "outcome": "held", "device": "r4",
+                "epoch": _time.time() - 60, "guard": {k: g[k] for k in
+                                                       ("guard", "name", "words", "operands")}}
+    rows = attention._heal_held_rows("Lab", [decision])
+    assert rows and rows[0].get("departure"), rows
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(attention, "SOURCES", [lambda: attention.source_result(
+            "heal", "Self-healing", read_at=_time.time(), took_ms=0, rows=rows,
+            checked="list Lab: 1 hold a person resolves")])
+        r = client.get("/v2/attention?list=Lab")
+        assert r.status_code == 200, r.status_code
+        body = r.get_data(as_text=True)
+        assert "Remove it from the device…" in body and "Remove it from intent…" in body, \
+            "the departure's ways out are not drawn"
+    finally:
+        mp.undo()
+
+
+def batch_fixture(now: float = None):
+    """G6's batch as Needs attention draws it: three devices held by guard 6, two whose fix
+    previews (the lab's cosmetic departures: a description and a banner, the demo's own
+    faults) and one that cannot (its fix would remove a unit), and one open incident with no
+    fix the press starts the AI on (s5's port security). ``(decisions, incidents_doc,
+    ai_items)``, each in its store's shape; `heal.batch.preview` reads them as given."""
+    import time as _time
+
+    now = _time.time() if now is None else now
+    g6 = {"guard": 6, "name": "many devices at once",
+          "words": "3 devices of the network departed within 120 s (r1, r3, r6), more than 2: "
+                   "a fleet-wide departure is escalated, never healed",
+          "operands": {"devices": 3, "heal_max_devices_drifting": 2, "within_seconds": 120}}
+    beyond = {
+        "r1": {"outcome": "heal", "words": "r1's description restored", "kind": "description",
+               "tier": 1, "units": 1, "program_hash": "a" * 64,
+               "program": ["interface GigabitEthernet2", " description to-r2"]},
+        "r3": {"outcome": "heal", "words": "r3's banner restored", "kind": "banner", "tier": 1,
+               "units": 1, "program_hash": "b" * 64,
+               "program": ["banner motd ^CAuthorised access only^C"]},
+        "r6": {"outcome": "cant_fix", "words": "the heal would remove 2 units, more than 1",
+               "program": [], "program_hash": ""}}
+    decisions = [{"id": f"hd-{n}0000000000{n}", "row": "decision", "outcome": "held",
+                  "device": d, "incident": f"hi-{n}0000000000{n}", "epoch": now - 60,
+                  "guard": g6, "beyond": beyond[d]}
+                 for n, d in enumerate(("r1", "r3", "r6"), start=1)]
+    doc = {"state": "ok", "incidents": [
+        {"id": d["incident"], "device": d["device"], "state": "standing",
+         "standing": {"decision": d["id"], "outcome": "held"}} for d in decisions]}
+    ai = [{"id": "hi-50000000005", "device": "s5",
+           "title": "s5 Gi0/3 err-disabled by port security", "why": "no fix Mercury can run"}]
+    return decisions, doc, ai
+
+
+def _attention_batch(client, _lab, _mp):
+    """G6: Needs attention with guard 6's batch card (`_heal_batch.html`), its preview drawn
+    before the press: two devices fixed with their programs, one held with why, one incident
+    for the AI, and a can't-fix row of that incident folded under the card."""
+    import time as _time
+
+    import pytest
+
+    from modules import attention
+    from modules.heal import batch
+
+    decisions, doc, ai = batch_fixture()
+    p = batch.preview("Lab", decisions, ai_items=ai, incidents_doc=doc)
+    assert p["on"] and p["fixable"] == 2, p
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(batch, "preview", lambda *_a, **_k: p)
+        rows = attention._heal_held_rows("Lab", decisions)
+        cant = attention.row(source="heal", kind="cant_fix", key="hd-5", level="danger",
+                             event="hd-50000000005",
+                             what="Mercury cannot fix s5 by itself", cause="no fix",
+                             action={"label": "Start AI troubleshooting"}, devices=["s5"])
+        cant["incident_page"] = {"id": ai[0]["id"], "list": "Lab"}
+        rows = attention._fold_into_batch(rows + [cant])
+        assert rows and rows[0].get("batch") and rows[0]["batch_folded"], rows
+        mp.setattr(attention, "SOURCES", [lambda: attention.source_result(
+            "heal", "Self-healing", read_at=_time.time(), took_ms=0, rows=rows,
+            checked="list Lab: 1 hold a person resolves")])
+        r = client.get("/v2/attention?list=Lab")
+        assert r.status_code == 200, r.status_code
+        body = r.get_data(as_text=True)
+        assert "Turn on self-healing and fix all" in body and "Mercury can fix 2." in body, \
+            "the batch card is not drawn"
+    finally:
+        mp.undo()
+
+
 def _attention_alike(client, _lab, _mp):
     """Needs attention with alike rows (the GUI review's item 10, C3457): three failing jobs
     are one row, Open the list on its line, each job inside it as itself."""
@@ -2984,15 +3090,25 @@ def _settings_ai_catch_up(client, _lab, _mp):
                                              "reason": "the walk's catch-up"}})["ok"]
         base = "/v2/settings/installation/ai/background/Lab/fixit_auto"
         hx = {"HX-Request": "true", "Accept": "text/html"}
+        # Gate 2 (C3769): the read-only list for audit, then the card's limits acknowledged and
+        # its Automatic pressed (the strip's switch is the same route), then Manual again.
         form = unescape(client.get(f"{base}/on", headers=hx).get_data(as_text=True))
-        assert "Starts on these 2 open incidents" in form
-        shown = re.search(r'name="shown" value="([0-9a-f]{64})"', form).group(1)
-        each = re.search(r'name="catch_up_each" value="([0-9.]+)"', form).group(1)
-        r = client.post(f"{base}/on", headers=hx, data={
-            "shown": shown, "day_cap_usd": "0.50", "month_cap_usd": "5", "accept": "on",
-            "listed": list(ids), "start": [ids[0]], "catch_up_each": each})
-        assert r.status_code == 200 and 'data-result="catch-up"' in r.get_data(as_text=True)
-        assert client.post(f"{base}/off", headers=hx).status_code == 200
+        assert "Starts on these 2 open incidents" in form and 'data-audit="read-only"' in form
+        page = unescape(client.get("/v2/settings/installation?tab=ai&network=Lab")
+                        .get_data(as_text=True))
+        est = re.search(r'name="estimate_digest" value="([0-9a-f]{64})"', page).group(1)
+        line = re.search(r'name="line_digest" value="([0-9a-f]*)"', page).group(1)
+        ts = "/v2/settings/installation/ai/troubleshoot/Lab"
+        r = client.post(f"{ts}/limits", headers=hx, data={
+            "estimate_digest": est, "incident_cap_usd": "1.00", "day_cap_usd": "0.50",
+            "month_cap_usd": "5", "accept": "on"})
+        assert r.status_code == 200 and 'data-result="ts-set"' in r.get_data(as_text=True)
+        r = client.post(f"{ts}/level", headers=hx, data={"level": "automatic",
+                                                         "line_digest": line})
+        assert r.status_code == 200 and "started on 1 open incident now" in unescape(
+            r.get_data(as_text=True))
+        assert client.post(f"{ts}/level", headers=hx,
+                           data={"level": "manual", "line_digest": ""}).status_code == 200
     finally:
         assert write_settings(before)["ok"]
         mp.undo()
@@ -4260,6 +4376,111 @@ def _heal_and_notify(client, _lab, _mp):
         mp.undo()
 
 
+def _saved_plans(client, _lab, _mp):
+    """Gate 1b's saved plans on an incident's card (board saved-plans S), in each state it
+    draws: after a recovery that passed its own verify, both saves with the match and the
+    parameters; a script saved (its answer), then Promote and its answer; a waiting shape and
+    its Approve; a viewer lacking both rights (each refusal beside its control); and nothing to
+    save. The incident's readers are stood in for this provider alone (as
+    tests/test_saved_plans_v2.py does); the run, the scripts and the shape are removed after."""
+    import os as _os
+
+    import pytest
+
+    from modules import config, identity
+    from modules import problem as P
+    from modules.nsot import command_policy, privileged, reads
+    from modules.nsot import saved_plans as S
+    from tests.test_saved_plans import BPDU
+
+    hx = {"HX-Request": "true"}
+    mp = pytest.MonkeyPatch()
+    mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+    rec = {"id": reads.new_id(), "list": "Lab", "device": "s1", "key": "errdisable-recover",
+           "kind": "command_plan", "state": "done", "outcome": "done", "actor": "a person",
+           "at": "2026-11-15T10:00:00Z", "title": "Recover s1 Gi0/2, err-disabled by bpduguard",
+           "params": {"device": "s1", "interface": "GigabitEthernet0/2", "cause": "bpduguard"}}
+    inc = "hi-abcdef12"
+    run_path = _os.path.join(config.get_list_data_dir("Lab"), "privileged", f"{rec['id']}.json")
+    shapes = _os.path.join(config.get_list_data_dir("Lab"), command_policy.STORE)
+    attempts = {"attempts": [{"operation": "errdisable-recover", "passed": True,
+                              "run": rec["id"]}]}
+    rights = {}
+    real_setting = identity._setting
+    try:
+        privileged.record("Lab", rec)
+        mp.setattr("modules.incident_page.resolve", lambda network, iid: {
+            "found": "page", "incident": {"id": iid, "device": "s1"}})
+        mp.setattr("modules.fixit.section.incident_of", lambda network, found: {
+            "incident": object(), "why": ""})
+        mp.setattr("modules.fixit.incident.attempts", lambda i, *a, **kw: attempts)
+        mp.setattr(P, "classify", lambda found: BPDU)
+        mp.setattr(S, "_incidents_problems", lambda network: [(inc, BPDU)])
+        mp.setattr(identity, "_setting", lambda key, default=None: (
+            rights if key == "access_rights" else real_setting(key, default)))
+        base = f"/v2/saved-plans/{inc}"
+        body = client.get(f"{base}/card?list=Lab", headers=hx).get_data(as_text=True)
+        assert "Save as a self-heal script" in body, body[:400]
+        r = client.post(f"{base}/save-script?list=Lab", headers=hx,
+                        data={"name": "BPDU guard recovery", "keep_cause": "1"})
+        assert "Saved BPDU guard recovery" in r.get_data(as_text=True), r.status_code
+        r = client.post(f"{base}/promote?list=Lab", headers=hx,
+                        data={"key": "script-bpdu-guard-recovery"})
+        assert "Promoted BPDU guard recovery" in r.get_data(as_text=True), r.status_code
+        assert command_policy.propose("Lab", "cisco_ios",
+                                      "interface {interface} > description {description}",
+                                      by="ai:fixit", why="a clumsy fix")["ok"]
+        client.get(f"{base}/card?list=Lab", headers=hx)
+        rights.update(admin=["someone-else@example.invalid"],
+                      self_healing=["someone-else@example.invalid"])
+        r = client.post(f"{base}/approve-shape?list=Lab", headers=hx, data={
+            "dialect": "cisco_ios", "shape": "interface {interface} > description {description}"})
+        assert r.status_code == 403, r.status_code
+        rights.clear()
+        r = client.post(f"{base}/approve-shape?list=Lab", headers=hx, data={
+            "dialect": "cisco_ios", "shape": "interface {interface} > description {description}"})
+        assert r.status_code == 200, r.status_code
+        attempts["attempts"] = []
+        none = client.get(f"{base}/card?list=Lab", headers=hx).get_data(as_text=True)
+        assert "Nothing to save yet" in none, none[:400]
+        # Board saved-plans D: a saved action on one of r2's interfaces, its list, its preview,
+        # its run and a refusal, the runner's preview and run stood in at their seams.
+        from modules.nsot import command_plan as CP
+        from modules.nsot import command_plan_run as CR
+        from tests.test_saved_plans_v2 import BOUNCE
+
+        def add(doc):
+            doc["plans"][BOUNCE["key"]] = {"key": BOUNCE["key"], "kind": "action",
+                                           "name": "Bounce interface", "template": BOUNCE}
+        S._update(add)
+        mp.setattr("modules.nsot.hostvars.read_committed", lambda repo, host: {
+            "interfaces": [{"name": "GigabitEthernet0/2"}]})
+        mp.setattr(CP, "preview", lambda network, key, values, **kw: {
+            "ok": True, "hash": "h-bounce", "title": "Bounce r2 GigabitEthernet0/2",
+            "refusals": [], "drawn": {"program": ["interface GigabitEthernet0/2"],
+                                      "preconditions": [{"name": "an access port"}],
+                                      "verify": [{"name": "connected"}]}})
+        mp.setattr(CR, "run", lambda network, key, values, **kw: {"id": kw["run_id"],
+                                                                     "state": "done"})
+        mp.setattr("modules.nsot.capture_job.start",
+                   lambda lst, label, actor, work, **kw: (work("j-1"), "j-1")[1])
+        dev = "/v2/saved-plans/device/r2"
+        assert "Preview Bounce interface" in client.get(
+            f"{dev}/actions?list=Lab", headers=hx).get_data(as_text=True)
+        q = f"{dev}/actions?list=Lab&key={BOUNCE['key']}&interface=GigabitEthernet0/2"
+        assert "Bound to h-bounce" in client.get(q, headers=hx).get_data(as_text=True)
+        with identity.as_ai("assistant"):
+            client.get(q, headers=hx)
+        r = client.post(f"{dev}/run?list=Lab", headers=hx, data={
+            "key": BOUNCE["key"], "interface": "GigabitEthernet0/2", "hash": "h-bounce"})
+        assert r.status_code == 200, r.status_code
+    finally:
+        mp.undo()
+        for path in (run_path, shapes, S._path()):
+            if _os.path.exists(path):
+                _os.remove(path)
+
+
 def _resubscribe(client, _lab, _mp):
     """C2838: a lost telemetry stream's Re-subscribe card on r3, in each state it draws: the
     preview (r2's real intent standing in for r3's: its two subscriptions), one of them
@@ -5187,7 +5408,16 @@ def _fixit_section(client, _lab, _mp):
                         "calls": ["ai-walk00000000"], "note": "", "prompt": "",
                         "shown": {"rationale": "r3's old session stands.",
                                   "hypotheses": [{"claim": "The collector holds r3's session.",
-                                                  "cites": ["attempt:1"]}]},
+                                                  "cites": ["attempt:1"]}],
+                                  # Each step with its why and its mark, as the troubleshoot
+                                  # keeps them (`fixit_troubleshoot.shown`, 2026-11-15).
+                                  "steps": [{"n": 1, "operation": R.COLLECTOR_KEY,
+                                             "why": "Its session outlived attempt 1.",
+                                             "cites": ["attempt:1", "history:99"],
+                                             "unverified_words": (
+                                                 "unverified (cites history:99, not in the "
+                                                 "evidence)"),
+                                             "only_unverified": False}]},
                         "steps": [{"n": 1, "operation": R.COLLECTOR_KEY,
                                    "words": "Close the collector's stale session for r3",
                                    "params": "subs: 101, 102", "hash": "b" * 64,
@@ -5196,6 +5426,8 @@ def _fixit_section(client, _lab, _mp):
                                                     proposal=planted_plan, state="proposed"))
         held = client.get(page).get_data(as_text=True)
         assert "fixit-hold" in held and "The collector holds r3" in held, held[:400]
+        assert "Its session outlived attempt 1." in held and "history:99, not in the" in held, \
+            "the AI's step and its mark are drawn"
         # A plan refused at its preflight as a repeat: The record keeps what was refused, by
         # hash (the refused plan's, and its step's parameter hash with the attempt it repeats).
         refused_plan = dict(planted_plan, hash="", refused_hash="c" * 16, approvable=False,
@@ -5255,7 +5487,7 @@ def _fixit_section(client, _lab, _mp):
 
 def _incidents_list(client, _lab, _mp):
     """Troubleshooting › Incidents (board T; provisional, operator review pending) on Lab, its
-    two tabs with rows, a search and a device filter, and the sidebar's two chips, from the
+    two tabs with rows, a search and a device filter, and the top bar's Self-healing chip, from the
     stores tests/fixtures/incident_page/ keeps (real captures, one edit: the device edge-b named
     r3, as `_incident_page` does): a heal done with no human, a heal rolled back, and a
     can't-fix that took another device's incident in, with a related one watching. Lab's three
@@ -5287,8 +5519,9 @@ def _incidents_list(client, _lab, _mp):
         for url, words in (("/v2/incidents?list=Lab", "3 open</strong>"),
                            ("/v2/incidents?tab=closed&list=Lab", "1 closed</strong>"),
                            ("/v2/incidents?list=Lab&q=r3&device=r3", "2 of 3 match"),
-                           ("/v2/incidents/count?list=Lab", "3 open"),
-                           ("/v2/incidents/heal-mode?list=Lab", "heal-mode-chip")):
+                           # The top bar's Self-healing chip: nothing while no network is in
+                           # Auto (the operator, 2026-11-14).
+                           ("/v2/incidents/heal-auto?list=Lab", "")):
             r = client.get(url)
             assert r.status_code == 200 and words in r.get_data(as_text=True), (url, r.status_code)
     finally:
@@ -5308,7 +5541,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_heal_analysis,
-                   _attention_withheld, _attention_alike,
+                   _attention_withheld, _attention_alike, _attention_departure, _attention_batch,
                    _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
@@ -5324,7 +5557,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _settings_ai_catch_up, _ai_feedback,
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
+                   _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section, _saved_plans,
                    _incidents_list,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,

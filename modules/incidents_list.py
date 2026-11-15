@@ -37,6 +37,10 @@ written.
 most `SHOWN` rows and counting the rest, a search over title, device and id, and a device
 filter. 900 incidents draw no long expanded list.
 
+**The top bar's Self-healing chip** (`heal_auto`; the operator, 2026-11-14): drawn only while
+some network's self-healing runs in Auto. The sidebar is navigation only, so neither
+Incidents nor Self-healing carries a chip there; Needs attention's badge is the one count.
+
 **What it does not hold, said so it is not read as held:** an incident folded into another
 is not a row of its own (its page redirects to the one it joined; the count is said); an
 alert incident (``al-``) and an SDN incident (``resp-``) are not listed until their pages land
@@ -70,7 +74,7 @@ CLOSED_GROUPS = (("fixed_mercury", "Fixed by Mercury", "ok"),
                  ("cancelled", "Declined", "muted"))
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
-         "ended", "ttr", "by", "drill", "acknowledged")
+         "ended", "ttr", "by", "drill", "acknowledged", "ai")
 #: A state's badge kind, as the incident's own page colours its state.
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
@@ -113,14 +117,47 @@ def _fixit_ids(network: str) -> set:
 def _fixit_state(network: str, found: dict) -> str:
     """The incident's troubleshooting section state (`fixit.section.view`), as its page asks
     it for its one state; "" when it cannot be read (the incident's own records then say)."""
+    return _fixit_of(network, found)["state"]
+
+
+#: Gate 2 (the operator, 2026-11-15): what a row says of the AI's investigation.
+AI_STATES = ("investigating", "ended")
+
+
+def _fixit_of(network: str, found: dict) -> dict:
+    """``{"state", "ai"}``: the incident's troubleshooting section state (`fixit.section.view`,
+    "" when it cannot be read) and what its rows say of the AI (Gate 2): ``{"state":
+    "investigating", "since", "words"}`` while an investigation runs (*since* its start line's
+    time), ``{"state": "ended", "since", "words"}`` once one ended (*words* the section's own
+    one-line status: what it found, or why it stopped), or None when the AI never started on
+    it. From the section's view and the incident's start lines: a read of its records."""
+    from modules.fixit import incident as F
     from modules.fixit import section
 
     try:
-        return section.view(network, found)["state"]
+        v = section.view(network, found)
     except Exception as exc:                            # noqa: BLE001 (a row still draws)
         log.warning("incidents list: %s's troubleshooting of %s cannot be read (%s)",
                     network, found.get("id"), type(exc).__name__)
-        return ""
+        return {"state": "", "ai": None}
+    ai = None
+    try:
+        inc = section.incident_of(network, found)["incident"]
+        starts = [s for s in (F.starts(inc)["starts"] if inc is not None else [])
+                  if s.get("state") in ("started", "failed")]
+    except Exception as exc:                            # noqa: BLE001 (the row says nothing)
+        log.warning("incidents list: %s's AI starts of %s cannot be read (%s)", network,
+                    found.get("id"), type(exc).__name__)
+        starts = []
+    if starts:
+        last = starts[-1]
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(last.get("epoch") or 0)))
+        if v.get("state") == "investigating":
+            ai = {"state": "investigating", "since": since, "words": "AI investigating"}
+        else:
+            ai = {"state": "ended", "since": since,
+                  "words": v.get("status") or "The AI's investigation ended"}
+    return {"state": v.get("state") or "", "ai": ai}
 
 
 def _group(st: dict, tl: dict) -> str:
@@ -145,8 +182,9 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     inc, entry, decisions = found["incident"], found["entry"], found["decisions"]
     device = (inc or {}).get("device") or entry.get("device") or ""
     heal = IP.state_of(inc, entry, decisions)
-    fixit = (_fixit_state(network, found)
-             if heal not in IP.RESOLVED and found["id"] in fixit_ids else "")
+    fx = (_fixit_of(network, found) if heal not in IP.RESOLVED and found["id"] in fixit_ids
+          else {"state": "", "ai": None})
+    fixit = fx["state"]
     st = IP.status(inc, entry, decisions, fixit)
     tl = IP.timeline(inc, entry, decisions)
     resolved = st["state"] in IP.RESOLVED
@@ -175,7 +213,11 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
                                                   if d.get("id")],
             "acknowledged": "",
             # R2 (the operator, 2026-11-14): its bottom line, from Mercury's own table.
-            "bluf": bluf_of(found, st["why"])}
+            "bluf": bluf_of(found, st["why"]),
+            # Gate 2 (the operator, 2026-11-15): "AI investigating" with its start while an
+            # investigation runs, its one-line outcome once it ended (`_fixit_of`); redrawn
+            # when the job announces its start and end (`troubleshoot_job`, ``drift``).
+            "ai": fx["ai"]}
 
 
 #: The next action a Needs attention row about an incident names, by why its page says it
@@ -341,41 +383,59 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
     return display_names.people_payload(steplog.masked(model))
 
 
-#: The sidebar's Self-healing chip: the mode that runs now (`heal.policy.current`'s ``mode``,
-#: after the kill switch, the confirmation, the expiry and the stage guard), in the board's
-#: words (Off / Dry run / Auto).
-MODE_CHIP = {"off": "Off", "dry_run": "Dry run", "auto": "Auto"}
+#: The longest wait the top bar's chip schedules for its one re-read at Auto's expiry (htmx's
+#: ``load delay``): a week, the longest Auto the Self-healing tab offers (its quick choices,
+#: docs/UI_RULES.md "A time limit is never a typed UTC string"); a later expiry is re-read
+#: then, and again at each announcement.
+REREAD_MAX_S = 7 * 86400
 
 
-def heal_mode(network: str) -> dict:
-    """``{"mode", "words", "why"}``: *network*'s self-healing mode as it runs now, its chip's
-    word, and the policy's own sentence for the hover (`policy.current`'s ``words``). A policy
-    that cannot be read is Off, as `current` reads it."""
+def heal_auto(now: float = None) -> dict:
+    """The top bar's Self-healing chip (the operator, 2026-11-14: "a status chip in the top bar
+    beside the AI chip, shown only while Auto is in force: amber "Self-healing: Auto until
+    <local time>", opening Settings › Self-healing. Nothing in the normal state"):
+    ``{"on", "network", "until", "n", "networks", "reread_s"}``. *on* is whether any network's
+    self-healing runs in Auto NOW, read from the policy itself (`heal.policy.current`'s
+    ``mode``, after the installation's stop switch, the confirmation, the expiry and the stage
+    guard), never from the stored setting; *network* and *until* are the Auto whose expiry
+    comes first, *n* how many networks are in Auto, *networks* their names in expiry order, and
+    *reread_s* the seconds until that first expiry (the chip reads itself again then, once).
+    A policy that cannot be read is not Auto (`current` reads it as off, and Needs attention
+    says it cannot be read). One read of the stop switch for every network."""
+    from modules import integration_groups
     from modules.heal import policy
 
-    cur = policy.current(network)
-    mode = cur["mode"] if cur["mode"] in MODE_CHIP else "off"
-    return {"mode": mode, "words": MODE_CHIP[mode], "why": str(cur.get("words") or "")}
-
-
-def open_count(network: str) -> dict:
-    """The sidebar's Incidents chip: ``{"n", "ok"}``, the open incidents of *network* (the
-    Open tab's count), from the same three reads and the same incidents (`_found`); *ok* False
-    when a store could not be read (the chip then says so, never a count that may be short).
-    Whether an incident is resolved is `incident_page.state_of`'s answer alone (`status` says
-    RESOLVED exactly when it does; troubleshooting only moves an unresolved one between
-    needing a person and Mercury working), so no troubleshooting record is read here."""
-    from modules import incident_page as IP
-    from modules.heal import decisions as HD
-    from modules.heal import incidents, steplog
-
-    got, entries = incidents.read(network), steplog.incidents(network)
-    ok = got["state"] != "unreadable" and entries["state"] != "unreadable"
-    try:
-        decided = HD.decisions(network)
-    except RuntimeError:
-        decided, ok = [], False
-    found, _folded = _found(got["incidents"], entries["entries"], decided)
-    n = sum(1 for f in found
-            if IP.state_of(f["incident"], f["entry"], f["decisions"]) not in IP.RESOLVED)
-    return {"n": n, "ok": ok}
+    now = time.time() if now is None else float(now)
+    kill = policy.stopped()
+    auto = []
+    for net in integration_groups.network_names():
+        cur = policy.current(net, now, kill=kill)
+        if cur["mode"] != "auto":
+            continue
+        try:
+            ends = policy.parse_until(cur["until"])
+        except policy.PolicyRefused:
+            # `current` read it as Auto in force only before a parseable expiry; kept safe.
+            ends = now
+        auto.append((ends, net, str(cur["until"] or "")))
+    auto.sort()
+    # C3748: the chip also shows while AI troubleshooting starts by itself on a network (its
+    # switch, `fixit.auto.switch`), and opens Needs attention's control strip.
+    from modules.fixit import auto as A
+    ai = []
+    for net in integration_groups.network_names():
+        try:
+            if A.switch(net)["on"]:
+                ai.append(net)
+        except Exception as exc:                      # noqa: BLE001 (the strip says it)
+            # The chip is drawn by exception only; a switch that cannot be read is said on
+            # the network's control strip ("cannot be read"), never drawn here as on.
+            log.info("incidents: %s's AI troubleshooting switch could not be read (%s)",
+                     net, type(exc).__name__)
+    if not auto:
+        return {"on": bool(ai), "auto": False, "network": ai[0] if ai else "", "until": "",
+                "n": 0, "networks": [], "reread_s": 0, "ai": ai}
+    ends, net, until = auto[0]
+    return {"on": True, "auto": True, "network": net, "until": until, "n": len(auto),
+            "networks": [a[1] for a in auto], "ai": ai,
+            "reread_s": int(min(max(ends - now, 0), REREAD_MAX_S)) + 1}

@@ -110,6 +110,32 @@ closes).
   nothing sideways when the page begins to scroll (C3468, `scrollbar-gutter: stable` on the
   page): tests/test_no_control_moves.py; every other control: not mechanised]
 
+## Rules added 2026-11-14 (the operator, on board T)
+
+- **The sidebar is navigation only; status lives in the top bar, by exception** (the
+  operator, 2026-11-14: "no Self-healing chip in the sidebar at all; the sidebar is navigation
+  only. Instead, a status chip in the top bar beside the AI chip, shown only while Auto is in
+  force"). A sidebar item is a link and its label; the one exception is Needs attention's
+  badge (the next rule). A state a person should notice is a top-bar chip drawn only while it
+  holds: Self-healing's amber "Self-healing: Auto until <local time>", before the AI chip,
+  opening Settings › Self-healing, and nothing at all in dry run or off. Cost: a state that is
+  normal is drawn nowhere outside its own page. Prevents: a sidebar that reads as a status
+  board, and chips that say "all is normal" until nobody reads them. [The sidebar's words are
+  its items and headings and Needs attention's count alone: tests/test_v2_pages.py
+  (`TestTheSidebar`); the Auto chip absent in dry run and off, present and amber in Auto with
+  its local time and link: tests/test_incidents_list_v2.py (`TestTheAutoChip`); in a real
+  browser at 1440, 1280 and 500 px, beside the AI chip without moving it and inside the
+  screen: `TestTheAutoChipInARealBrowser`]
+- **No duplicate counts; status chips by exception** (the operator, 2026-11-14: "Remove the "N
+  open" chip from Incidents in the sidebar. Needs attention is the one inbox and its badge the
+  one count. Make the rule a test: every open incident that needs a person appears on Needs
+  attention (healing ones as the Healing… card), so nothing is only on Incidents"). One count
+  of what needs a person, Needs attention's badge; a list page (Incidents) draws its own counts
+  on itself, never as a second badge elsewhere. Cost: Incidents' open count is read on its page,
+  not from every page. Prevents: two counts of one thing that disagree, and an incident a
+  person must act on that only a second list shows. [Every open incident that needs a person
+  (`incident_page.status`'s *needs*) has a Needs attention item: tests/test_incidents_on_needs_attention.py]
+
 ## Proposed by the GUI review of the recorded screens (2026-11-13)
 
 The review of the screens the course lab's video records (Needs attention, the incident page,

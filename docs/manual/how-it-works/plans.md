@@ -33,6 +33,89 @@ exactly its parameters, each of its shape); anything else is refused, and nothin
   approved; it is its own approval, on the device's page. The one-time credential is
   Mercury's: minted at Create, never in a plan, never shown to the assistant.
 
+## Intent changes and their deploys, in an incident's fix
+
+An incident's fix is a plan too, approved on the incident's page. Besides Mercury's catalog
+operations, its steps may be these two, each held to the incident's own device, to Mercury
+being allowed to change that device, and to planned work, holds and windows on it (a step on
+another device, or under one of those, is refused, naming it):
+
+- **Change a device's intent**: any field intent models, given as changes, each a field's
+  path (`interfaces.GigabitEthernet2.shutdown`), the value intent holds there now and the
+  value it becomes. Each value now must be what is committed, and the changed document must
+  pass the Intent tab's whole check, or the step is refused, naming the field and both values.
+  The preview draws the change to the intent document and to its render, masked. Approved, it
+  is committed as the Intent tab commits an edit, as you, with your reason, on the version
+  previewed, and read back from its commit. It sends nothing to the device by itself. What it
+  takes out of intent stays on the device after a merge-only deploy, and the step names each
+  such line.
+- **Deploy a device's intent**: the device's deploy, planned as **Deploy…** plans it. After an
+  intent change in the same plan, it is planned from the changed intent, so the program you
+  approve is the one that change will send: its hash binds that exact program and the captured
+  config it was compared with, and the preview draws the program, masked. When the step runs,
+  after the intent is committed, the program is planned again from what is committed; if it is
+  not the one you approved (another commit landed, or the device's capture moved), the step
+  stops, naming what moved and both hashes, and nothing is sent. Then it deploys exactly as
+  Deploy… does: merge-only, held, verified, rolled back on failure, with its receipt. A line
+  comes off the device only when the step names that line's removal (Mode B), and only where
+  the removal's shape is measured; your reason at Approve is recorded as the reason for each
+  line that needs one. A deploy that sends nothing, or would cut Mercury's path to a device,
+  is refused.
+
+The incident's page draws a fix holding these steps as it draws any other: each step checked
+before it is drawn, in words, and everything its hash binds. A step that already ran in this
+incident and failed is refused, naming that attempt, unless what it is compared by differs (an
+intent change's changes; a deploy's removals and its program), which the step then names.
+**Not built yet:** nothing proposes these steps yet (the AI's fix names catalog operations
+only), so no screen offers them today.
+
+## Saved plans: self-heal scripts and reusable actions
+
+A command plan that ran and passed its own verify can be saved, its parameters left open:
+
+- **As a self-heal script**, for one network: the plan, the problem it matches (only the
+  classified problem's fields: its condition, cause, port role and whether the cause has
+  cleared; never an alert's name or a raw line), and where each parameter comes from in that
+  problem (the device from the problem's device, an interface from its object). It starts in
+  **Dry run**: when an incident's problem matches, Mercury fills the parameters, previews the
+  plan without asking the device, and records what it would have run on the script's own
+  record. A person with self-healing rights promotes it; from then on, when it matches, it
+  runs through the same runner, on that person's standing approval, before the AI is asked,
+  and an incident it heals says "Healed by saved script <name>: no AI used".
+- **As a reusable action**, for every network: a named entry ("Bounce interface") that the
+  catalog lists beside the plans Mercury ships, so it can be a step of a fix and the AI may
+  propose it. Only an admin saves one.
+
+**Who approves what.** Running a plan: any verified person. Saving or promoting a self-heal
+script: a person with self-healing rights. Saving a reusable action, or adding a line's shape
+to Mercury's rule for raw lines: an admin. Until the installation names who holds a right,
+every verified person holds it. The AI may propose each of these and approves none.
+**Where.** On an incident's page, at the foot of **Fixing it**, once a command plan has run
+there and passed its own verify: **Save as a self-heal script** (tick the problem's fields it
+matches on; the condition is always kept; how many open incidents it would match now is said;
+each parameter is shown as it will be filled, a choice through a map you can read, and a
+problem value the map does not name is refused by name when it fires) and **Save as a reusable
+action** (its name and what it does). Below them, each saved script this incident's problem
+matches, with **Promote <name>**, and the network's line shapes waiting on an admin, each with who
+proposed it, why, and what its first run measured, with **Approve the shape**. A right you do
+not hold is said beside its button, which is drawn disabled.
+
+**When a script fires.** After each self-healing decision, and again before the AI is asked
+on an incident, every saved script of the network whose match the incident's problem holds
+fires once for that incident, under self-healing's mode: while self-healing is off, nothing;
+in Dry run, it records what it would run; in Auto, a promoted script runs, and one in Dry run
+records. It never calls the AI.
+
+**On a device's page.** A reusable action whose parameters one interface fills (a device and
+an interface, as Bounce interface takes) is offered on the device's **Overview**, under
+**Saved actions on an interface**: choose the interface, press **Preview <action>…** to read
+what it sends and checks, asking nothing of the device, then **Run <title>**, bound to that
+preview. It runs as a job, the device held, through the same runner as every command plan,
+and its record is on History. Any verified person may run one.
+
+**Not built yet:** a page listing every saved script with its record, a page of every
+network's waiting shapes, and the screen that sets who holds each right.
+
 ## Approve the plan
 
 **Approve the plan on <network>: <title>** takes a reason of at least three words, recorded with
@@ -62,8 +145,13 @@ The card in the assistant's panel draws the outcome first, then each step and wh
 stopped part-way leaves the steps before it done (each is its own operation's change, put right
 as that operation's own is), and names the step that stopped it.
 
-**What it never does.** No plan takes a secret, and the assistant never types one. No plan sends
-anything to a device: each step is an operation that writes Mercury's own records (Kea's
-reservations, committed intent). Add a device by ZTP's Create also commits the device's
+**What it never does.** No plan takes a secret, and the assistant never types one. The
+assistant's plans send nothing to a device: each step is an operation that writes Mercury's own
+records (Kea's reservations, committed intent). Only an incident's fix sends to a device, and
+only through Mercury's own operations: a catalog operation, or a deploy of intent as Deploy…
+sends it. The AI acts under its own identity, with an engineer's role: it may propose a plan
+and draft an intent change, and it never changes a setting, a user or role, a credential or a
+notification, and never approves anything. A plan the AI proposes holding a step a person
+would take through one of those is refused before it is drawn, naming why. Add a device by ZTP's Create also commits the device's
 identity and mints its one-time credential, which Mercury stores and never shows; it has no
 rollback: **Abandon** on the device's page is its undo.

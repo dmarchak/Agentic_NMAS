@@ -27,6 +27,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable, List, NamedTuple
 
+from modules import identity
+
 log = logging.getLogger(__name__)
 
 #: The same cap as the capture's reads (C188): one worker per device at the
@@ -59,4 +61,42 @@ def read_each(fn: Callable[[Any], Any], items: Iterable, *, name: str = "read",
 
     workers = max(1, min(max_workers, len(items)))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix=name) as pool:
-        return list(pool.map(one, items))
+        # Inside an AI entry point each worker acts as the AI too (`identity.ai_carried`).
+        return list(pool.map(identity.ai_carried(one), items))
+
+
+#: What `each_until_failure` answers for an item it never started.
+NOT_STARTED = "not_started"
+
+
+def each_until_failure(fn: Callable[[Any], Any], items: Iterable, ok: Callable[[Any], bool], *,
+                       name: str = "batch", max_workers: int = MAX_WORKERS) -> List[Any]:
+    """A WRITE across devices a person approved as one (the heal batch, CLAUDE.md "Reads across
+    devices run concurrently", its heal-batch clause, the operator 2026-11-14): every item at
+    once, bounded as `read_each`, starting NO new item once one has failed (*ok* False on its
+    result, or it raised); an item never started answers `NOT_STARTED`. The items' order is
+    kept. The caller runs the first device alone, verified, before this."""
+    import threading
+
+    items = list(items)
+    if not items:
+        return []
+    failed = threading.Event()
+
+    def one(item):
+        if failed.is_set():
+            return NOT_STARTED
+        try:
+            got = fn(item)
+        except Exception as exc:              # noqa: BLE001
+            log.debug("%s: one item failed: %s", name, exc)
+            failed.set()
+            return Failed(exc)
+        if not ok(got):
+            failed.set()
+        return got
+
+    workers = max(1, min(max_workers, len(items)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix=name) as pool:
+        # Inside an AI entry point each worker acts as the AI too (`identity.ai_carried`).
+        return list(pool.map(identity.ai_carried(one), items))

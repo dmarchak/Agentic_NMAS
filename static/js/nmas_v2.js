@@ -410,9 +410,14 @@
     // check again's "Checking…" under the pointer that pressed it) is drawn with its answer,
     // never kept busy until the pointer moves and another redraw comes (C3360).
     if (el && el.disabled) el = null;
+    // A switch (the control strip's toggles, C3748) draws a state: held under the pointer it
+    // would show the state from before a change made elsewhere, a wrong thing looking right.
+    // It moves no row, so it is never held; its press sends the change it names.
+    if (el && el.getAttribute && el.getAttribute('role') === 'switch') el = null;
     if (el && region.contains(el)) return el;
     var a = root.document.activeElement;
-    return a && a.tagName === 'BUTTON' && a !== region && region.contains(a) ? a : null;
+    return a && a.tagName === 'BUTTON' && a.getAttribute('role') !== 'switch' && a !== region &&
+      region.contains(a) ? a : null;
   }
 
   /* Whether a part a person is working in is at or after *ref* among its siblings, in the
@@ -1408,6 +1413,8 @@
   function relayDeviceHolds() { relay('device_holds'); }
   function relayRotation() { relay('rotation'); }
   function relayPrivileged() { relay('privileged'); }
+  // Gate 1b: the incident card's saved plans redraw when one is saved, promoted or approved.
+  function relaySavedPlans() { relay('saved_plans'); }
   function relayReload() { relay('reload'); }
   function relayDiagnosis() { relay('diagnosis'); }
   function relayPersistRead() { relay('persist_read'); }
@@ -1684,6 +1691,7 @@
     NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
     NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
+    NMAS.subscribe('saved_plans', 'v2SavedPlans', relaySavedPlans);
     NMAS.subscribe('reload', 'v2Reload', relayReload);
     NMAS.subscribe('diagnosis', 'v2Diagnosis', relayDiagnosis);
     NMAS.subscribe('persist_read', 'v2PersistRead', relayPersistRead);

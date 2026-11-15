@@ -52,15 +52,16 @@
   <a class="nav-item{% if active_nav == 'history' %} active{% endif %}" href="{{ url_for('v2.history_page') }}"{% if active_nav == 'history' %} aria-current="page"{% endif %}>{{ icon('history') }}<span>History</span></a>
   {#- Board T, the sidebar's Troubleshooting section (provisional, operator review pending; the
       operator, 2026-11-13), above OBSERVE: Incidents, the incident's own home (its Open and
-      Closed tabs, its count of open incidents), and Self-healing, which opens the network's
-      Self-healing tab in Settings until its own page is built (its mode as the chip). The
-      board's suggested Problems tab, Drills and Reports have no page yet, so they are not
-      drawn. -#}
+      Closed tabs are the page's own, not repeated here), and Self-healing, which opens the
+      network's Self-healing tab in Settings until its own page is built. Navigation only, no
+      chip on either (the operator, 2026-11-14: "Needs attention is the one inbox and its badge
+      the one count"; "the sidebar is navigation only; status lives in the top bar, by
+      exception": Auto's chip is the top bar's, `_heal_auto_chip.html`). The board's suggested
+      Problems tab, Drills and Reports have no page yet, so they are not drawn. -#}
   {%- set heal_net = list_name if list_name and list_name != '(unreadable)' else '' %}
   <div class="nav-head">TROUBLESHOOTING</div>
-  <a class="nav-item{% if active_nav == 'incidents' %} active{% endif %}" href="{{ url_for('incidents_v2.page') }}"{% if active_nav == 'incidents' %} aria-current="page"{% endif %}>{{ icon('incidents') }}<span class="grow">Incidents</span>{% with initial=True, chip='count' %}{% include "v2/_incidents_chip.html" %}{% endwith %}</a>
-  <div class="nav-sub"><a href="{{ url_for('incidents_v2.page', tab='open') }}">Open</a><span aria-hidden="true">·</span><a href="{{ url_for('incidents_v2.page', tab='closed') }}">Closed</a></div>
-  <a class="nav-item" href="{{ url_for('settings_v2.network', list_name=heal_net, tab='heal') if heal_net else url_for('settings_v2.index') }}">{{ icon('heal') }}<span class="grow">Self-healing</span>{% with initial=True, chip='mode' %}{% include "v2/_incidents_chip.html" %}{% endwith %}</a>
+  <a class="nav-item{% if active_nav == 'incidents' %} active{% endif %}" href="{{ url_for('incidents_v2.page') }}"{% if active_nav == 'incidents' %} aria-current="page"{% endif %}>{{ icon('incidents') }}<span>Incidents</span></a>
+  <a class="nav-item" href="{{ url_for('settings_v2.network', list_name=heal_net, tab='heal') if heal_net else url_for('settings_v2.index') }}">{{ icon('heal') }}<span>Self-healing</span></a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
   <a class="nav-item{% if active_nav == 'topology' %} active{% endif %}" href="{{ url_for('topology_v2.page') }}"{% if active_nav == 'topology' %} aria-current="page"{% endif %}>{{ icon('topology') }}<span>Topology</span></a>
@@ -112,6 +113,11 @@
     <span class="ip-slot" id="nmas-in-progress" hx-get="{{ url_for('operations.in_flight') }}" hx-trigger="load, nmas:in_progress from:body, nmas:device_holds from:body, nmas:device_progress from:body" hx-swap="innerHTML"></span>
     <span class="update-slot" id="nmas-update" hx-get="{{ url_for('device_v2.update_available') }}" hx-trigger="load, nmas:app_version from:body" hx-swap="innerHTML"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
+    {#- Self-healing in Auto (the operator, 2026-11-14; provisional, operator review pending):
+        before the AI chip, drawn only while some network's self-healing runs in Auto, nothing
+        in dry run or off. Read on load, again when self-healing announces (`drift`) or a
+        setting is saved (`settings`), and once at Auto's expiry (`_heal_auto_chip.html`). -#}
+    <span class="heal-auto-slot" id="nmas-heal-auto" hx-get="{{ url_for('incidents_v2.heal_auto') }}" hx-trigger="load, nmas:drift from:body, nmas:settings from:body" hx-swap="innerHTML"></span>
     {#- Boards AI1 and AI2 (C1843; PHASE8_PLAN 18.3 rule 10): the AI chip after the integrations
         strip and before Live, never blank, read on load and again on each recorded call
         (`ai_calls`) or settings change (`settings`), never on a timer. It opens the spend

@@ -36,7 +36,7 @@
     {%- for r in ip.running %}
     <div class="ip-row">
       <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
-        <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
+        <small>{{ r.step }} · {{ r.who | people }}{% if r.since %} · since {{ clock(r.since) }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
       {%- if r.href %}
       <a class="btn btn-small" href="{{ r.href }}">Open its card</a>
       {%- elif r.run %}
@@ -58,7 +58,7 @@
     {%- for f in ip.finished %}
     <div class="ip-row">
       <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
-        <small>{{ f.outcome }}{% if f.at %} at {{ clock(f.at) }}{% endif %} · {{ f.who }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
+        <small>{{ f.outcome }}{% if f.at %} at {{ clock(f.at) }}{% endif %} · {{ f.who | people }} · {{ f.list }}{% if f.steps %} · {{ f.steps }} step{{ 's' if f.steps != 1 }} recorded{% endif %}</small></span>
       {#- C3081: opening or dismissing it is kept for this person (`seen_runs`), so it leaves
           their list and chip for good; with nobody verified, or the store unreadable, there
           is nothing to keep, and Open the result is the page's own link. -#}

@@ -1,0 +1,3 @@
+interface GigabitEthernet0/3
+ switchport port-security mac-address aabb.cc00.8007
+ switchport port-security

@@ -35,6 +35,9 @@ an audit trail that leaks the identity it is recording has traded one problem
 for another.
 """
 
+import contextlib
+import contextvars
+import functools
 import logging
 import threading
 import time
@@ -475,6 +478,228 @@ GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote",
                  "configure", "break_glass")
 
 
+# ---------------------------------------------------------------------------
+# The AI's own identity and its role (the operator, 2026-11-15; C3596, C3597 as far as Gate 1
+# needs: "the AI acts under its own identity with an engineer-level role ... Every
+# settings/admin route refuses that identity")
+# ---------------------------------------------------------------------------
+
+#: The AI's kind beside ``person`` and ``service`` (`Identity.kind`), and its actor's prefix:
+#: ``ai:<feature>``, never a person's name, so a record says the AI did it.
+AI_KIND = "ai"
+AI_ACTOR_PREFIX = "ai:"
+#: The AI's role: an engineer's, without a person's authority. It may read every page and
+#: read devices through the read engine, propose plans, draft intent changes and record a
+#: missing capability; every gated action is a person's (`GATED_ACTIONS`): it never changes a
+#: setting, approves, confirms, reveals or publishes.
+AI_ROLE = "engineer"
+AI_ROLE_MAY = ("read every page", "read devices through the read engine", "propose a plan",
+               "draft an intent change", "record a missing capability")
+#: What is never the AI's, by the gate kind a route is declared under (`route_gates.GATES`):
+#: the tool's own settings, its users and roles, credentials and secrets and notifications
+#: (``configure``), revealing a secret, publishing, the break-glass terminal; and approving
+#: anything (``approve`` and ``confirm`` are a person's press, always).
+AI_NEVER = {"configure": "system settings, users and roles, credentials and secrets, and "
+                         "notifications (the AI's on/off, its spend caps, automatic "
+                         "troubleshooting, self-healing's mode and limits among them)",
+            "reveal": "revealing a secret or a device's configuration",
+            "publish_remote": "publishing a network's history",
+            "break_glass": "typed device commands",
+            "approve": "approving anything (a template, intent, a plan)",
+            "confirm": "approving anything that changes a device"}
+#: The routes an AI may never PROPOSE a step through though their kind is a person's approval
+#: of a proposal (template approval: what renders every device's configuration).
+AI_NEVER_ENDPOINTS = {"templates_v2.approve": "approving a template",
+                      "templates_v2.revoke": "revoking a template's approval"}
+
+
+#: The approval rights (the operator, 2026-11-15, Gate 1b): running a plan is any engineer's
+#: (any verified person); saving or promoting a self-heal script needs self-healing rights;
+#: saving a reusable action or adding a shape to Mercury's rule for raw lines is an admin's.
+#: The AI proposes each and approves none. Each right's holders: `access_rights`.
+RIGHTS = {"run_plan": "running a plan (any engineer)",
+          "self_healing": "saving or promoting a self-heal script (self-healing rights)",
+          "admin": "saving a reusable action or adding a shape to Mercury's rule for raw lines "
+                   "(an admin)"}
+#: The rights a list in `access_rights` may narrow; running a plan is every verified person's.
+LISTED_RIGHTS = ("self_healing", "admin")
+
+
+def right_refusal(right: str, *, actor: str, actor_verified: str, person: bool) -> str:
+    """``""``, or why *actor* (verified as *actor_verified*; *person* the caller's word that a
+    person pressed) may not do what *right* covers (`RIGHTS`): the one chokepoint each approval
+    asks. Refused: an unknown right; the AI's identity, as the actor named or acting now
+    (`acting_ai`); anyone not a verified person; and, for a right whose list in
+    `access_rights` names anyone, anyone it does not name (a list not set is every verified
+    person's, the behaviour before rights existed)."""
+    if right not in RIGHTS:
+        return f"Refused: {right!r} is no right Mercury knows ({', '.join(RIGHTS)})"
+    what = RIGHTS[right]
+    if is_ai(actor) or acting_ai() is not None:
+        who = actor if is_ai(actor) else acting_ai().actor
+        return (f"Refused: {who} may not approve {what}: the AI acts with the {AI_ROLE} role, "
+                "which proposes and never approves")
+    if not (person is True and actor and actor != UNVERIFIED
+            and actor_verified in REQUEST_VERIFICATIONS):
+        return (f"Refused: {what} is approved by a verified person, and this request is not "
+                f"one (actor {actor or 'none'}, verified {actor_verified or 'none'})")
+    if not holds(right, actor):
+        return (f"Refused: {actor} does not hold the {right.replace('_', '-')} right "
+                f"({what}); its holders are {', '.join(sorted(holders(right)))} "
+                "(Settings' access_rights)")
+    return ""
+
+
+def holders(right: str) -> list:
+    """The people `access_rights` names for *right* (one of `LISTED_RIGHTS`), or ``[]``: its
+    list not set, so every verified person holds it."""
+    if right not in LISTED_RIGHTS:
+        return []
+    return list((_setting("access_rights", {}) or {}).get(right) or [])
+
+
+def holds(right: str, actor: str) -> bool:
+    """Whether *actor* holds *right* by `access_rights` (a list not set is every verified
+    person's): the one reading of the setting, asked by `right_refusal` and by anything that
+    checks a right held earlier still holds (a promoted script's promoter)."""
+    named = holders(right)
+    return not named or actor in named
+
+
+def rights_unset() -> list:
+    """The listed rights (`LISTED_RIGHTS`) `access_rights` names no one for: every verified
+    person holds each, and a screen offering one says so."""
+    return [r for r in LISTED_RIGHTS if not holders(r)]
+
+
+def ai_identity(feature: str) -> "Identity":
+    """The AI's own identity for *feature* (``ai:<feature>``): identified, with the engineer
+    role (`AI_ROLE`), and never a request's verification (`verification_of` reads ``none``),
+    so nothing it does is recorded as a verified person's."""
+    return Identity(actor=f"{AI_ACTOR_PREFIX}{feature}", email="", kind=AI_KIND, verified=True,
+                    outcome="ok", peer_trusted=True, verification="")
+
+
+#: The AI's identity while an AI entry point runs (`as_ai`): a context variable, so it is the
+#: running code's own, never a request's, and the person a request verified stays recorded
+#: as that person (`request_actor`, `actor_verification` read only the request and `carried`).
+_AI_ACTING = contextvars.ContextVar("identity_ai_acting", default=None)
+
+
+@contextlib.contextmanager
+def as_ai(feature: str):
+    """Inside the block, Mercury acts for the AI (`ai_identity` of *feature*): what it proposes
+    is the AI's, and an Approve, a confirm or a settings write is refused (`ai_acting_refusal`,
+    `may`, `ai_refusal`)."""
+    token = _AI_ACTING.set(ai_identity(feature))
+    try:
+        yield _AI_ACTING.get()
+    finally:
+        _AI_ACTING.reset(token)
+
+
+def acts_as_ai(feature: str):
+    """Decorator: the function is an AI entry point and runs under `as_ai` (*feature*); the
+    function carries ``acts_as_ai`` naming it."""
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            with as_ai(feature):
+                return fn(*args, **kwargs)
+        inner.acts_as_ai = feature
+        return inner
+    return wrap
+
+
+def acting_ai():
+    """The AI's identity when an AI entry point is running (`as_ai`), else None."""
+    return _AI_ACTING.get()
+
+
+def ai_carried(fn):
+    """*fn*, to run in another thread (a job, a fan-out's worker) as the AI when it is handed
+    over inside an AI entry point (`as_ai`): the one helper a thread starter uses to carry it,
+    used today by the capture job (`capture_job`) and the fan-out (`fanout.read_each`) only. A
+    thread started any other way (heal_notice's notice threads,
+    reader_wakes, nsot/hooks) runs without the AI's identity, so what it records is Mercury's,
+    not the AI's; nothing it approves is a person's either, since every approval asks for a
+    verified person (`right_refusal`). The review of Gate 1b found no gated action an AI entry
+    point reaches that way; a new one carries it through here. Each
+    call runs in a fresh context (`contextvars.Context`) holding the AI's identity alone, never
+    a copy of the whole context (`contextvars.copy_context`), which would also carry Flask's
+    request (a context variable since Flask 2.3) into a thread that outlives it; outside an AI
+    entry point *fn* is returned as it is."""
+    ai = acting_ai()
+    if ai is None:
+        return fn
+
+    @functools.wraps(fn)
+    def inner(*args, **kwargs):
+        ctx = contextvars.Context()
+        ctx.run(_AI_ACTING.set, ai)
+        return ctx.run(fn, *args, **kwargs)
+    return inner
+
+
+def ai_acting_refusal(what: str = "approve or confirm anything") -> str:
+    """``""``, or why nothing a person approves may happen now: an AI entry point is running
+    (`as_ai`), and the AI proposes and never approves."""
+    ai = acting_ai()
+    return f"Refused: {ai.actor} may not {what}: {ai_role_words('approve')}" if ai else ""
+
+
+def is_ai(who) -> bool:
+    """Whether *who* (an `Identity`, or an actor's name) is the AI's."""
+    if isinstance(who, Identity):
+        return who.kind == AI_KIND or str(who.actor or "").startswith(AI_ACTOR_PREFIX)
+    return isinstance(who, str) and who.startswith(AI_ACTOR_PREFIX)
+
+
+def ai_role_words(action: str) -> str:
+    """Why the AI's role refuses *action* (one of `GATED_ACTIONS`)."""
+    return (f"the AI acts under its own identity with the {AI_ROLE} role, which may "
+            f"{', '.join(AI_ROLE_MAY)}, and never {AI_NEVER.get(action, action)}")
+
+
+def acting() -> "Identity":
+    """Who is acting now: the AI while an AI entry point runs (`as_ai`), else this request's
+    identity, else the one a job carries (`carried`), else none (unverified)."""
+    if acting_ai() is not None:
+        return acting_ai()
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            return request_identity()
+    except Exception:                                   # noqa: BLE001
+        pass
+    return getattr(_CARRIED, "ident", None) or Identity()
+
+
+def ai_refusal(what: str, actor: str = "") -> str:
+    """``""``, or why the AI may not do *what* (a setting written, a user changed): when
+    *actor* is the AI's, or the identity acting now is (`acting`), the AI's role refuses it,
+    naming *what*. The store's own check, beside the route gate's (`may`)."""
+    if not (is_ai(actor) or is_ai(acting())):
+        return ""
+    who = actor if is_ai(actor) else acting().actor
+    return f"Refused: {who} may not change {what}: {ai_role_words('configure')}"
+
+
+def ai_never_proposes(endpoint: str, gate_kind: str, gate_reason: str = "") -> str:
+    """``""``, or why the AI may not propose a step a person would take through *endpoint*
+    (declared under *gate_kind*, `route_gates.GATES`): a kind the AI never touches through a
+    proposal (`AI_NEVER`, all but a person's own approval of the proposal: ``approve`` and
+    ``confirm``), or a route `AI_NEVER_ENDPOINTS` names."""
+    what = AI_NEVER_ENDPOINTS.get(endpoint) or (
+        AI_NEVER.get(gate_kind) if gate_kind not in ("approve", "confirm") else "")
+    if not gate_kind:
+        what = "a change whose route declares no gate"
+    if not what:
+        return ""
+    return (f"the AI acts with the {AI_ROLE} role and never proposes {what}: this step is "
+            f"{endpoint}" + (f" ({gate_reason})" if gate_reason else ""))
+
+
 def actor_verification(actor: str) -> str:
     """How *actor* on a commit was established (register D10, P.3 step 10).
 
@@ -689,6 +914,12 @@ def may(ident: "Identity", action: str, operation: str = "") -> tuple:
     time, and so the diagnostic answers the same question the gate does, using
     the same code.
     """
+    if is_ai(ident) or acting_ai() is not None:
+        # The AI's own identity (its engineer role), or an AI entry point running: no gated
+        # action is its, whatever a setting says, since each is a person's or a granted
+        # service's.
+        return False, ai_role_words(action)
+
     if not ident.is_identified:
         if not _setting(f"require_identity_for_{action}", True):
             return True, ""
@@ -763,6 +994,10 @@ def require(request, action: str = "reveal", operation: str = ""):
             log.info("identity: service permitted for operation=%s action=%s",
                      operation, action)
         return ident, None
+
+    if is_ai(ident) or acting_ai() is not None:
+        return ident, {"ok": False, "error": f"Refused: {reason}.", "outcome": "ai_role",
+                       "requires_person": True, "actor_kind": AI_KIND, "reason": reason}
 
     if ident.is_identified and ident.kind == "service":
         what = f" for {operation!r}" if operation else ""

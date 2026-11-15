@@ -31,7 +31,11 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `ac5f63296228f8a71f8347d8224fb23239f2dddec385bdeb658e8c8e07fbdc29`
+Compared again 2026-11-15 (C3715): THE stepper's step lines name each person by display name;
+no element moves. Compared by the template's diff (tests/test_actors_drawn_by_name.py); logged
+once (docs/STANDING_APPROVAL_LOG.md, "Records name people by display name on every v2 screen
+(C3715)"). Templates sha256 before: `ac5f63296228f8a71f8347d8224fb23239f2dddec385bdeb658e8c8e07fbdc29`.
+Templates sha256: `e4e04c2df3b444a4174877e218dec7655d2e8d4d966f04dcedebbf99564c4c2c`
 
 **Hashed again 2026-11-13 for the one stepper's stages** (C3454, docs/fidelity/stepper.md): a
 stage draws its whole sentence one level down where its line was cut. This page draws the

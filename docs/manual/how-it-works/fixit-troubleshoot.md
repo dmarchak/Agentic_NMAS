@@ -195,20 +195,33 @@ It runs these steps, one investigation:
    catalogue operation fills, is recorded as a **missing capability** for people to review
    (History, kind AI missing capabilities); Mercury never acts on one. With the class off, no
    read is asked for.
-6. `check`: the answer is checked against what was sent: every reference it cites must be
-   there (a past incident Seen before does not hold is refused), every confirming step must be
-   a read-only read, a device it names must be cited, and its fix must be exactly one catalogue
-   operation with that operation's parameters, each of its shape, acting only on the incident's
-   own device and subscriptions (never one a read or the note named). An answer that fails is
-   drawn "couldn't be checked, so it isn't shown", with why; its cost still counts.
-7. `propose`: a fix passes the same check as Mercury's own proposal (the incident's scope, the
-   heal guards, committed intent through the operation's own preview), and a repeat of a failed
-   attempt is flagged. When no catalogue operation does what the fix needs, the answer is a
-   **gap**: said, with no Approve.
-8. `record`: one proposal line is kept in the incident's troubleshooting record: the operation
-   and its parameters (or why there is none), its AI calls, who pressed, your note, and what the
-   AI said (its rationale and each hypothesis with what it cites). The call's own record on
-   History says what became of its answer and links back to the incident's page.
+6. `check`: the answer is checked against what was sent: every confirming step must be a
+   read-only read, a device it names must be cited, and each step of its fix must be one of
+   Mercury's steps with exactly its parameters, each of its shape, acting only on the
+   incident's own device and subscriptions (never one a read or the note named). An answer that
+   fails is drawn "couldn't be checked, so it isn't shown", with why; its cost still counts.
+   **A reference that is not in what was sent** (a past incident Seen before does not hold, a
+   pack label this incident's pack lacks, a read that did not run) never discards the answer:
+   each hypothesis, step or gap resting on it is kept and marked "unverified (cites X, not in
+   the evidence)", and the rest is shown. Mercury then asks the AI **once more**, naming each
+   such reference, when one more call keeps the investigation within the worst case drawn
+   before the press and the incident within its cap; a second answer that cites only what was
+   sent replaces the first, and one that still does not is shown marked. A step resting only on
+   unverified references is never approvable: its preflight says so.
+7. `propose`: a plan passes the same check as Mercury's own proposal (the incident's scope, the
+   heal guards, committed intent through each step's own preview), and a repeat of a failed
+   attempt is flagged. When nothing Mercury has can do what the fix needs, not even in several
+   steps, the answer is a **gap**: said, with no Approve. A gap for a problem a step of
+   Mercury's fixes, not yet tried in the incident (an err-disabled port, which the built-in
+   recovery fixes), is **flagged**: the card names the step, and its missing-capability row
+   says so; Ask the AI again asks for the plan.
+8. `record`: one proposal line is kept in the incident's troubleshooting record: the steps and
+   their parameters (or why there are none), its AI calls, who pressed, your note, and what the
+   AI said (its rationale, each hypothesis with what it cites and how to confirm it, and each
+   step with its why). The card's **What the AI found** draws it for every outcome, a plan, a
+   gap, no fix or a partial answer, with Was this right? beside it; an answer with nothing to
+   show is its calls alone, never a rating of nothing. The call's own record on History says
+   what became of its answer and links back to the incident's page.
 
 Nothing runs. A proposed plan is drawn with its steps and **Approve**, **Modify…** and
 **Deny…**; it runs only when you approve it by its hash. If it fails, the card says so, and the

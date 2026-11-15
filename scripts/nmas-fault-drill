@@ -5,6 +5,13 @@
     nmas-fault-drill <network> <device> --minutes 10 --expects "..." --script "rehearsal F1"
         --reason "tonight's rehearsal"
     nmas-fault-drill <network> <device> --end
+    nmas-fault-drill <network> --exercise <device>,<device>[,...] --minutes 60
+        --expects "the rehearsal's err-disable drills" [--yes]
+
+A drill EXERCISE (G7, C3712) is one declaration over several devices with its own duration (60
+minutes by default, at most 120): without --yes its preview is shown and nothing is declared;
+with --yes the exercise that preview shows is declared, its words kept in the record
+(`fault_drills.record_exercise`). A single drill keeps its 15-minute bound.
 
 An incident Mercury opens on the device before the drill's end (now plus --minutes, at most
 15) is tagged a fault drill when it opens, in the same write. Self-healing treats it exactly
@@ -48,9 +55,16 @@ adopt(__name__)
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("network", help="the network the device is in")
-    ap.add_argument("device", help="the device's hostname")
-    ap.add_argument("--minutes", type=int, default=10,
-                    help="how long the drill lasts, 1 to 15 (default 10)")
+    ap.add_argument("device", nargs="?", default="",
+                    help="the device's hostname (none with --exercise)")
+    ap.add_argument("--minutes", type=int, default=None,
+                    help="how long the drill lasts, 1 to 15 (default 10); an exercise 1 to 120 "
+                         "(default 60)")
+    ap.add_argument("--exercise", default="",
+                    help="a drill exercise: its devices, comma-separated; shows its preview, "
+                         "and declares it only with --yes")
+    ap.add_argument("--yes", action="store_true",
+                    help="with --exercise: declare the exercise the preview shows")
     ap.add_argument("--expects", default=None,
                     help="the fault, in three words or more (needed to declare)")
     ap.add_argument("--script", default="", help="the injecting script's name and step")
@@ -65,6 +79,11 @@ def main(argv=None) -> int:
         return _end(args, fault_drills, host_actor())
     if args.expects is None:
         ap.error("--expects is needed to declare a drill (or --end to end the open one)")
+    if args.exercise:
+        return _exercise(args, fault_drills, host_actor())
+    if not args.device:
+        ap.error("a drill names its device (or --exercise its devices)")
+    args.minutes = fault_drills.DEFAULT_MINUTES if args.minutes is None else args.minutes
     out = fault_drills.record_declared(args.network, args.device, minutes=args.minutes,
                                        expects=args.expects, by=host_actor(),
                                        actor_verified="host-shell", via="nmas-fault-drill",
@@ -78,6 +97,33 @@ def main(argv=None) -> int:
     print(f"inject the fault now: an incident on {r['device']} that opens before {r['until']} "
           "is a drill (guards 9 and 11 do not hold it; every other guard, the verify and the "
           "rollback do), and its heal is counted as a drill's")
+    return 0
+
+
+def _exercise(args, fault_drills, by) -> int:
+    """``--exercise``: a drill exercise's preview, and with ``--yes`` the exercise that preview
+    shows, recorded with its words (`fault_drills.record_exercise`)."""
+    devices = [d for d in args.exercise.split(",") if d.strip()]
+    minutes = fault_drills.EXERCISE_MINUTES if args.minutes is None else args.minutes
+    seen = fault_drills.exercise_preview(args.network, devices, minutes=minutes,
+                                         expects=args.expects)
+    if not seen["ok"]:
+        print(f"refused: {seen['error']}", file=sys.stderr)
+        return 1
+    print(f"preview: {seen['words']} (from {seen['from']} until {seen['until']})")
+    if not args.yes:
+        print("nothing is declared: run again with --yes to declare this exercise")
+        return 0
+    out = fault_drills.record_exercise(args.network, devices, minutes=minutes,
+                                       expects=args.expects, by=by, previewed=seen["words"],
+                                       actor_verified="host-shell", via="nmas-fault-drill",
+                                       script=args.script, reason=args.reason)
+    if not out["ok"]:
+        print(f"refused: {out['error']}", file=sys.stderr)
+        return 1
+    r = out["record"]
+    print(f"declared: drill exercise {r['id']} on {', '.join(r['devices'])} in {r['list']} "
+          f"from {r['from']} until {r['until']}, by {r['by']}")
     return 0
 
 

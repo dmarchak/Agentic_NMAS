@@ -111,16 +111,26 @@ def g3_planned(network: str, device: str, now: float, *, explained=None, holder=
 
 # ── 4: the golden departs from intent (N5) ──────────────────────────────────────────────────
 
+#: How many of the departing lines guard 4 records in its operands (the rest counted): the
+#: lines its Needs attention row draws, each with its way out (C3581).
+G4_LINES = 10
+
+
 def g4_golden(golden: dict):
-    """*golden* is ``{"state": "at_intent"|"departs"|"unknown", "words", "commit"}``: the
-    approved state is the device's last golden that matched its intent."""
+    """*golden* is ``{"state": "at_intent"|"departs"|"unknown", "words", "commit", "lines",
+    "adds", "removes"}`` (`decide.Sources.golden`): the approved state is the device's last
+    golden that matched its intent. Its operands carry the departing lines as `intent_match`
+    gave them (masked), the first `G4_LINES`, and how many more there are."""
     if golden.get("state") == "at_intent":
         return None
+    lines = [str(x) for x in golden.get("lines") or []]
+    total = max(len(lines), int(golden.get("adds") or 0) + int(golden.get("removes") or 0))
     return hit(4, "held", (f"heal off for this device: its golden departs from its intent "
                            f"({golden.get('words') or golden.get('state')}), so there is no "
                            "approved state to heal to; a person resolves it first (adopt the "
                            "change into intent, or capture after a revert)"),
-               {"golden_commit": golden.get("commit", ""), "intent_match": golden.get("state")})
+               {"golden_commit": golden.get("commit", ""), "intent_match": golden.get("state"),
+                "lines": lines[:G4_LINES], "lines_more": max(0, total - len(lines[:G4_LINES]))})
 
 
 # ── 5: the topology hold (N3) ───────────────────────────────────────────────────────────────

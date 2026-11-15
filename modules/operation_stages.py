@@ -128,6 +128,14 @@ STAGES = {
     # on the incident's page, approved once by the plan's hash (``hash``); each step is
     # Re-subscribe's own apply, so its verify, its put-back and its record are Re-subscribe's,
     # the plan's own record beside them.
+    # G6's Turn on self-healing and fix all (routes/control_v2.py, modules/heal/batch.py): the
+    # batch previewed on Needs attention's card, bound by its hash (``hash``); each device is
+    # THE heal act's own (`act.apply_decision`: the deploy's nine stages, its verify and its
+    # rollback, which undoes what landed), recorded in the step log; the batch's own rows in
+    # the network's heal decisions beside them.
+    "control_v2.fix_all": Stages(
+        "v2.landing", "hash", "modules.heal.act.apply_decision",
+        "modules.pipeline.roll_back_after", "modules.heal.steplog.record_act"),
     "fixit_v2.approve": Stages(
         "incident_v2.incident", "hash", "modules.heal.resubscribe.verify",
         "modules.heal.resubscribe.put_back", "modules.plan_engine._record"),
@@ -139,6 +147,30 @@ STAGES = {
         "the device's identity and intent and mints its stored one-time credential, has no "
         "rollback: Abandon is its undo), and nothing is retried",
         "modules.plan_engine._record"),
+    # Gate 1b (C3696, C3763): a verified run saved as a self-heal script (Dry run first) or a
+    # reusable action, a script promoted, a shape approved; each a record a later run acts on.
+    "saved_plans_v2.save_script": Stages(
+        "saved_plans_v2.card", "n/a: saved from the verified run the card names, read again",
+        NO_DEVICE, "n/a: a saved script starts in Dry run and runs nothing until promoted",
+        "modules.nsot.saved_plans.save_script"),
+    # A saved action run on one interface from its device's page (board saved-plans D): the
+    # runner's own preview, Run bound to its hash, the runner's verify and its net-zero check
+    # (any difference rolled back), its record the operations' record.
+    "saved_plans_v2.device_run": Stages(
+        "saved_plans_v2.device_actions", "hash", "modules.nsot.command_plan_run.plan_verify",
+        "modules.nsot.command_plan_run.net_zero", "modules.nsot.command_plan_run.run"),
+    "saved_plans_v2.save_action": Stages(
+        "saved_plans_v2.card", "n/a: saved from the verified run the card names, read again",
+        NO_DEVICE, "n/a: an action runs only as a step a person approves by its hash",
+        "modules.nsot.saved_plans.save_action"),
+    "saved_plans_v2.promote": Stages(
+        "saved_plans_v2.card", "n/a: the promotion binds the plan's digest",
+        NO_DEVICE, "n/a: each run it makes rolls itself back on a failed verify (the runner)",
+        "modules.nsot.saved_plans.promote"),
+    "saved_plans_v2.approve_shape": Stages(
+        "saved_plans_v2.card", "n/a: the shape is the one proposed, named whole",
+        NO_DEVICE, "n/a: its first approved run measures it",
+        "modules.nsot.command_policy.approve_as"),
     "resubscribe_v2.close_confirm": Stages(
         "resubscribe_v2.preview", "program",
         "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
@@ -516,6 +548,8 @@ JOBS = {
 NOT_A_DEVICE = "n/a: changes the app, a list or its settings, never one device's record"
 TEMPLATE = "n/a: changes a template or its approval, never one device's record"
 PROFILE = "n/a: changes the network's monitoring profile, which no device's record holds"
+SAVED = ("n/a: a saved plan, never one device's record; the installation's saved plans keep it "
+         "(modules/nsot/saved_plans.py), each script's fires on its own track")
 
 HISTORY = {
     # ---- confirm: sends to a device
@@ -592,9 +626,17 @@ HISTORY = {
     "resubscribe_v2.readd": ("privileged",),
     "resubscribe_v2.close_confirm": ("privileged",),
     "plans_v2.approve": ("privileged",),
+    "saved_plans_v2.save_script": SAVED,
+    "saved_plans_v2.device_run": ("privileged",),
+    "saved_plans_v2.save_action": SAVED,
+    "saved_plans_v2.promote": SAVED,
+    "saved_plans_v2.approve_shape": ("n/a: a shape of Mercury's rule for raw lines, never one "
+                                     "device's record; the network's shape store keeps it"),
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
+    # G6's batch: each device's heal (its step log, receipt and golden), as an approved heal.
+    "control_v2.fix_all": ("heal", "receipts", "golden"),
     "heal_proposal_v2.decline": ("heal",),
     # Lift the halt (board H artboard E, C2471): kept in the network's heal decisions with who,
     # when and why; a network's halt, never one device's record.
@@ -701,6 +743,8 @@ HISTORY = {
     # device's record.
     "heal_v2.policy_confirm": NOT_A_DEVICE,
     "heal_v2.turn_off": NOT_A_DEVICE,
+    # The control strip's Self-healing toggle (C3748): the network's settings record.
+    "control_v2.heal": NOT_A_DEVICE,
     "ai_classes_v2.device_state_on": NOT_A_DEVICE,
     "ai_classes_v2.device_state_off": NOT_A_DEVICE,
     "heal_v2.notify_save": NOT_A_DEVICE,
@@ -819,6 +863,10 @@ HISTORY = {
     "settings_v2.ai_on": ("installation_settings",),
     "settings_v2.ai_off": ("installation_settings",),
     "settings_v2.ai_caps": ("installation_settings",),
+    # Gate 2 (C3769): a network's AI troubleshooting, in the same record; each start Automatic
+    # makes in its incident's.
+    "settings_v2.ai_ts_level": ("installation_settings",),
+    "settings_v2.ai_ts_limits": ("installation_settings",),
     "settings_v2.install_ratify": NOT_A_DEVICE,
     "settings_v2.platforms_preview": NOT_A_DEVICE,
     "settings_v2.platforms_apply": NOT_A_DEVICE,

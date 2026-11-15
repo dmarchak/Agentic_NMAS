@@ -22,18 +22,7 @@
   {%- if turned_on %}
   {%- set e = turned_on.entry %}
   <div class="notice notice-ok set-result" role="status" data-result="on">{{ icon('tick', 16) }}<div>
-    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by | people }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps {{ e.day_cap_usd | usd }} a day, {{ e.month_cap_usd | usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.
-    {%- set cu = turned_on.caught_up %}
-    {%- if cu %}
-    {#- The catch-up's answer (C3732): what each ticked open incident did, each linked. -#}
-    <ul class="ai-catchup-done" data-result="catch-up">
-      {%- if cu.started %}<li>AI troubleshooting started on {{ cu.started | length }} open incident{{ '' if cu.started | length == 1 else 's' }}, each as its own job (In progress): {% for i in cu.started %}<a href="{{ url_for('incident_v2.incident', incident_id=i, list=ai.network) }}" class="mono">{{ i }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>{% endif %}
-      {%- if cu.capped %}<li>Not started, a cap would be passed (each page says which): {% for i in cu.capped %}<a href="{{ url_for('incident_v2.incident', incident_id=i, list=ai.network) }}" class="mono">{{ i }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>{% endif %}
-      {%- if cu.off %}<li>Not started, AI troubleshooting or hosted AI is off (each page offers Start AI troubleshooting): {% for i in cu.off %}<a href="{{ url_for('incident_v2.incident', incident_id=i, list=ai.network) }}" class="mono">{{ i }}</a>{{ ', ' if not loop.last }}{% endfor %}.</li>{% endif %}
-      {%- for s in cu.skipped + cu.failed %}<li>Not started: <a href="{{ url_for('incident_v2.incident', incident_id=s.id, list=ai.network) }}" class="mono">{{ s.id }}</a>, {{ s.why }}.</li>{% endfor %}
-    </ul>
-    {%- endif %}
-    {%- if turned_on.unticked %}<p class="small muted">{{ turned_on.unticked }} open incident{{ '' if turned_on.unticked == 1 else 's' }} left unticked keep{{ 's' if turned_on.unticked == 1 }} Start AI troubleshooting on {{ 'its' if turned_on.unticked == 1 else 'their' }} page.</p>{% endif %}</div></div>
+    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by | people }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps {{ e.day_cap_usd | usd }} a day, {{ e.month_cap_usd | usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if turned_off %}
   <div class="notice notice-muted set-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
@@ -51,6 +40,9 @@
   {%- if ai.spend_state == 'unreadable' %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The record of AI calls could not be read</strong> ({{ ai.spend_error }}), so each feature's spend is unknown and the gateway refuses every background call until it can be read.</div></div>
   {%- endif %}
+  {#- C3769 (Gate 2): the network's one AI troubleshooting control, its limits and their
+      estimate, in place of automatic AI troubleshooting's row in the list below. -#}
+  {%- include "v2/_settings_ai_troubleshoot.html" %}
   <div class="ai-features" role="list" aria-label="Background features on network {{ ai.network }}">
   {%- for f in ai.features %}
   {%- set s = f.summary %}

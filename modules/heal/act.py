@@ -1270,6 +1270,26 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
         return dict(out, failed=out["failed"] + [f"{network}'s heal decisions cannot be read: "
                                                  f"{exc}"])
     for d in pending:
+        if d.get("batch"):
+            # G6: a decision of a batch a person approved is its batch job's to take, one
+            # device first and verified, then the rest (`heal.batch.run`); never started here
+            # all at once. One its job left untaken past the batch's bound (the job ended) is
+            # refused with nothing sent, so it never waits for ever or heals later unwatched.
+            from modules.heal import batch as B
+            if now - float(d.get("epoch") or now) < B.UNTAKEN_S:
+                continue
+            words = (f"its batch's job ended before it took it (decided {d.get('at')}, more "
+                     f"than {B.UNTAKEN_S} s ago). Nothing was sent")
+            try:
+                decisions.take(network, d["id"], by=f"{by}: refusing an untaken batch heal",
+                               now=now)
+                decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
+                incidents.close(network, d["incident"], f"refused: {words} (decision "
+                                                         f"{d['id']})", now)
+            except Exception as exc:                  # noqa: BLE001 (said; read again next)
+                out["failed"].append(f"{d.get('device')}: {type(exc).__name__}: {exc}")
+            out["refused"].append(f"{d.get('device')}: {words}")
+            continue
         try:
             interrupted.hold(network, d["id"], d.get("device") or "", by)
         except (interrupted.Busy, OSError) as exc:

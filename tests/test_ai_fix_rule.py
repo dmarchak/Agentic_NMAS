@@ -221,8 +221,9 @@ class TestTheDoor:
     CASES = {
         # ── an operation not in the catalog
         "another operation": (answer(operation="reload-device"), "not_in_catalog",
-                              ["an operation of the catalog (telemetry-collector-resubscribe, "
-                               "telemetry-readd and telemetry-resubscribe)",
+                              ["an operation of the catalog (errdisable-recover, "
+                               "telemetry-collector-resubscribe, telemetry-readd and "
+                               "telemetry-resubscribe)",
                                "this one names 'reload-device'"]),
         "the re-add, given the re-subscribe's parameters": (
             answer(operation="telemetry-readd"), "unknown_parameter",
@@ -434,13 +435,20 @@ def app():
 
 class TestTheCatalog:
     def test_it_holds_re_subscribe_and_each_entry_is_whole(self, app):
+        from modules.heal import errdisable as E
         from modules.heal import resubscribe as R
 
-        # Re-subscribe, its one-step Re-add the receiver, and Re-subscribe with the collector
-        # step (C3078), by their own module's keys.
+        # Re-subscribe, its one-step Re-add the receiver and Re-subscribe with the collector
+        # step (C3078), by their own modules' keys. Recover an err-disabled interface (G7,
+        # C3712) is a built-in command plan a proposal names beside them (C3757, path 2),
+        # never an operation of the catalog: its run is tests/test_command_plan.py's.
         assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY, R.COLLECTOR_KEY} == {
             KEY, "telemetry-readd", "telemetry-collector-resubscribe"}
+        assert set(catalog.COMMAND_PLANS) == {E.KEY} == {"errdisable-recover"}
         endpoints = {r.endpoint for r in app.url_map.iter_rules()}
+        for op in catalog.COMMAND_PLANS.values():
+            assert {op.preview_endpoint, op.confirm_endpoint} <= endpoints
+            assert inspect.isfunction(_resolve(op.runs)), op.runs
         for key, op in catalog.CATALOG.items():
             assert op.key == key
             assert [f for f in op.__dataclass_fields__] == [
@@ -580,7 +588,8 @@ class CollectorDrive(ResubscribeDrive):
         return type(self)(again=True, series=seq([ABSENT]), after=IDLE)
 
 
-#: How each catalog entry's run is driven; an entry with no drive fails (`TestToARun`).
+#: How each catalog entry's run is driven; an entry with no drive fails (`TestToARun`). A
+#: built-in command plan's run (G7's recovery) is driven in tests/test_command_plan.py.
 DRIVES = {KEY: ResubscribeDrive, "telemetry-readd": ReaddDrive,
           "telemetry-collector-resubscribe": CollectorDrive}
 

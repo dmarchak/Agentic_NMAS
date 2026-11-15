@@ -82,9 +82,12 @@ def month_start(day: str, zone: str = None):
 
 
 def _of_feature(row: dict, network: str, feature: str) -> bool:
-    t = row.get("trigger")
-    return (isinstance(t, dict) and t.get("kind") == "background"
-            and t.get("feature") == feature and t.get("network") == network)
+    """Whether *row*'s call counts toward *feature*'s spend on *network*: a background call of
+    it, or a person's call that counts for it (C3751: a turn-on catch-up's investigations are
+    the person's trigger and the feature's spend, `triggers.counted_feature`)."""
+    from modules.ai import triggers
+
+    return triggers.counted_feature(row.get("trigger")) == (feature, network)
 
 
 def feature_spent(network: str, feature: str, day: str = None, rows=None,

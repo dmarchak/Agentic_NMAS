@@ -42,6 +42,8 @@ import time
 
 from modules.ai.schemas import StrictModel, register
 
+from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
+
 log = logging.getLogger(__name__)
 
 FEATURE = "assistant"
@@ -133,9 +135,16 @@ def plan_of(words) -> tuple:
             return None, f"its plan names the parameter {p.name!r} twice"
         given[p.name] = p.value
     try:
-        plan, held, _steps = plan_engine.checked(ask.plan, given)
+        plan, held, steps = plan_engine.checked(ask.plan, given)
     except plan_engine.Refused as exc:
         return None, f"its plan is refused: {exc}"
+    # The AI proposes under its engineer role (`identity.AI_NEVER`): a step a person would
+    # take through a settings, users, credentials, notifications or template-approval route
+    # is never the AI's to propose (`plan_engine.ai_step_refusal`).
+    for s in steps:
+        never = plan_engine.ai_step_refusal(s["kind"])
+        if never:
+            return None, f"its plan is refused: step {s['n']}: {never}"
     return {"plan": plan.key, "params": held, "title": plan.title(held)}, ""
 
 
@@ -212,6 +221,7 @@ def prepare(question: str, *, screen: str = "") -> dict:
                         "subject": subject(screen)}}
 
 
+@acts_as_ai("assistant")
 def answer(question: str, *, screen: str = "", actor: str, trigger: dict, send=None,
            today: str = None) -> dict:
     """A person's question answered from the manual, or why not: ``{"ok", "state", "error",

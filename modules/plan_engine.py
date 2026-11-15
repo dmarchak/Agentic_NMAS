@@ -51,6 +51,7 @@ import ipaddress
 import json
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 
@@ -63,7 +64,9 @@ KEY = "plan"
 JOB_KIND = "plan"
 #: What a plan's end tells open pages: its record, and what its steps write (a reservation;
 #: intent and its remote), through its own declared announcer (`invalidation.ANNOUNCERS`).
-ANNOUNCE_KEYS = ("privileged", "dhcp", "intent", "remote", "pending", "credentials", "in_progress")
+ANNOUNCE_KEYS = ("privileged", "dhcp", "intent", "remote", "pending", "credentials", "in_progress",
+                 # A deploy step's (C3646): what Deploy's own job announces at its end.
+                 "deploy_job", "device_state", "baselines", "drift", "rolled_back", "goldens")
 ANNOUNCER = "plan"
 #: The most steps a plan holds.
 MOST_STEPS = 10
@@ -225,6 +228,19 @@ class StepKind:
     #: Its apply is a device operation that refuses anyone but a verified person itself (a
     #: catalog operation's, `resubscribe.apply`): it is handed how the approver was verified.
     as_person: bool = False
+    #: Its preview takes ``candidate`` (C3646): ``{device: intent text}``, the intent an earlier
+    #: step of the same plan would commit, so a deploy step's program is computed from it
+    #: (`hostvars.proposed`) and an intent step refuses a second change to one device.
+    candidate: bool = False
+    #: The announcer of the job its by-hand route starts, when that route itself only starts
+    #: a job (`invalidation.Nothing`): Deploy's job announces what a deploy changes.
+    job_announcer: str = ""
+    #: In an incident's fix (`FIX_ADMITTED`): the values an attempt of it is compared by, each
+    #: ``(name, kind)`` in `fixit.incident.canonical`'s kinds, and ``attempt_of(params,
+    #: resolved) -> {name: value}``, those values from its parameters and what its preview
+    #: resolved, so a step that already ran and failed is refused unless one differs.
+    attempt_params: tuple = ()
+    attempt_of: object = None
 
 
 # ── Where an address lives in Mercury's DHCP (B1: derived by code, never asked for) ─────────
@@ -825,7 +841,590 @@ def _catalog_kinds() -> tuple:
                  for k, op in CATALOG.items())
 
 
-STEP_KINDS = {k.key: k for k in (
+# ── Intent changes and their deploys (the operator, 2026-11-15; C3646, C3756) ──────────────
+#
+# "Lasting changes: the AI proposes an intent patch (YAML), and the existing intent -> Jinja ->
+# deploy path does the rest. No new device-writing code." Two step kinds, each one of Mercury's
+# existing paths:
+#
+# - **``intent-edit``**: a device and an intent patch, bulk intent's compare-and-set steps
+#   (`bulk_intent`: each ``{path, before, after}``, its paths and their keying, a list item by
+#   its ``name``), for any field the intent schema models. The path is held to the schema
+#   (`bulk_intent.unknown_paths`), each *before* to what is COMMITTED, and the patched document
+#   to the editor's whole check (`intent_edit.validate`, through `intent_edit.preview`: every
+#   key where intent reads it, the feature packs, the secret guard, the sign-in account's
+#   reference). Previewed as the masked intent diff and the render's; committed through the
+#   editor's one write path (`intent_edit.commit`: `repo.save_host_vars`, so `repo.commit`,
+#   its ``Actor:`` the approving person and ``Actor-Verified:`` how they were verified, as the
+#   job carries it), on the version previewed; verified by reading committed intent back.
+#   **A removal from intent** (a line the patched render no longer holds) is marked: the step
+#   names each line a merge-only deploy leaves on the device (``device_keeps``, the editor's
+#   ``diffs.not_removed``); it reaches the device only through a deploy step naming that
+#   line's removal by its id (Mode B), with the approving person's reason.
+# - **``intent-deploy``**: a device's deploy by THE deploy's planner (`routes.deploy.
+#   plan_devices`, the same function), computed from the CANDIDATE intent when an earlier step
+#   of the same plan changes that device's intent (`hostvars.proposed`: the patched document
+#   read as committed), else from committed intent; its hash binds the program (unmasked,
+#   `deploy.command_fingerprint` with the removals selected) and the capture it was compared
+#   with, and the preview draws the program masked. At run time, after the intent commit, the
+#   program is computed again from what is committed and the step refuses, naming what moved,
+#   when it differs (`_run`, `_moved_parts`); then THE apply (`routes.deploy.apply_batch`)
+#   exactly as a person's Deploy: merge-only, the selected removals (Mode B: only a shape
+#   measured to remove exactly itself, `removal.with_removals`), each line needing a reason
+#   (a removal, a dangerous line) given the approving person's reason (as heal's Approve
+#   does, `heal.propose`), the device held, verify, rollback on failure, the receipt.
+#
+# In an incident's fix (`INCIDENT_FIX`) each is held to the incident's scope (its own device)
+# and the heal guards a person's proposal is held to (`fixit.validate.check`: the device
+# managed by Mercury, guard 3's planned work, holds and windows); a deploy that would cut
+# Mercury's path to a device is refused, as heal's is.
+
+#: The most compare-and-set changes one intent step holds: a person reads each at the preview.
+MOST_CHANGES = 32
+#: The most removals one deploy step selects.
+MOST_REMOVALS = 64
+#: The intent change's commit `Source:` (the description step's too).
+PLAN_SOURCE = "plan"
+#: The step kinds an incident's fix admits beside the catalog's operations.
+FIX_ADMITTED = ("intent-edit", "intent-deploy")
+_REMOVAL_ID = re.compile(r"[0-9a-f]{12}\Z")
+
+
+def changes_of(value) -> tuple:
+    """``(changes, why)``: an intent patch as a list of ``{"path": [names], "before", "after"}``
+    (bulk intent's compare-and-set steps), or ``(None, why)``. *value* is the list, or its YAML
+    text (the assistant's parameters are text). A path is a dotted text or a list of names; an
+    absent value is bulk intent's ``{"__absent__": true}``. The path's place in the schema is
+    the preview's to judge (`bulk_intent.unknown_paths`), naming it. Reads nothing."""
+    if isinstance(value, str):
+        import yaml
+        try:
+            value = yaml.safe_load(value)
+        except yaml.YAMLError as exc:
+            mark = getattr(exc, "problem_mark", None)
+            return None, ("YAML that does not parse" + (
+                f" (line {mark.line + 1}, column {mark.column + 1})" if mark else ""))
+    if not isinstance(value, list):
+        return None, kind_of(value)
+    if not 1 <= len(value) <= MOST_CHANGES:
+        return None, f"a list of {len(value)} changes, past 1 to {MOST_CHANGES}"
+    out, seen = [], set()
+    for n, c in enumerate(value, 1):
+        if not isinstance(c, dict) or set(c) != {"path", "before", "after"}:
+            return None, f"a list whose change {n} is not exactly {{path, before, after}}"
+        path = c["path"].split(".") if isinstance(c["path"], str) else c["path"]
+        if (not isinstance(path, list) or not path
+                or not all(isinstance(k, str) and k for k in path)):
+            return None, f"a list whose change {n}'s path is not a path of names"
+        if tuple(path) in seen:
+            return None, f"a list whose change {n} decides {'.'.join(path)} a second time"
+        seen.add(tuple(path))
+        out.append({"path": list(path), "before": c["before"], "after": c["after"]})
+    return out, ""
+
+
+def _changes_refusal(value) -> str:
+    return changes_of(value)[1]
+
+
+def removal_ids(value) -> tuple:
+    """``(ids, why)``: the removals a deploy step selects (Mode B), each by the id the deploy's
+    preview gives its line (`removal.unit_id`, twelve hex digits): a list of them, or a text of
+    them separated by commas or spaces; empty for none."""
+    if isinstance(value, str):
+        value = [v for v in re.split(r"[,\s]+", value) if v]
+    if not isinstance(value, list):
+        return None, kind_of(value)
+    if len(value) > MOST_REMOVALS:
+        return None, f"a list of {len(value)} removals, past {MOST_REMOVALS}"
+    if not all(isinstance(v, str) and _REMOVAL_ID.match(v) for v in value):
+        return None, "a list holding something that is not a removal's id"
+    if len(set(value)) != len(value):
+        return None, "a list naming one removal twice"
+    return list(value), ""
+
+
+def _removal_refusal(value) -> str:
+    return removal_ids(value)[1]
+
+
+def _or_empty(base: Param) -> Param:
+    """*base*, or empty: a step's incident and proposal, given only in an incident's fix."""
+    def refusal(value) -> str:
+        return "" if value == "" else base.refusal(value)
+    return Param(base.name, f"{base.takes}, in an incident's fix only (else left out)", refusal)
+
+
+CHANGES = Param("changes", (
+    f"the intent patch: 1 to {MOST_CHANGES} changes (a list, or its YAML text), each exactly "
+    "{path, before, after}: the path of a field intent models (dotted names, a list item by its "
+    "name: interfaces.GigabitEthernet2.shutdown), the value intent holds there now, and the "
+    "value it becomes; an absent value is {__absent__: true}"), _changes_refusal)
+REMOVE = Param("remove", (
+    f"optional: the lines the deploy removes (Mode B), at most {MOST_REMOVALS}, each by the id "
+    "the deploy's preview gives it; only a shape measured to remove exactly itself is removed, "
+    "with the approving person's reason"), _removal_refusal)
+STEP_INCIDENT, STEP_PROPOSAL = _or_empty(INCIDENT), _or_empty(PROPOSAL)
+
+
+def _incident_scope(network: str, p: dict, what: str) -> str:
+    """Why a step of an incident's fix may not act (``""`` outside one, or when it may): the
+    incident has a page and names *p*'s device (a fix acts on its incident's own device), the
+    device is Mercury's to change, and guard 3 (planned work, holds and windows) does not hold
+    it: the checks a person's proposal is held to (`fixit.validate.check`). A read."""
+    if not p.get("incident"):
+        return ""
+    from modules.fixit import plan as FP
+    from modules.heal import guards
+    from modules.inventory.management import refusal_for
+
+    incident, why = FP._incident_for(network, p["incident"])   # noqa: SLF001 (the one lookup)
+    if incident is None:
+        return why
+    device = p["device"]
+    if not incident.device:
+        return f"{incident.id} names no device, and {what} acts on one ({device} was proposed)"
+    if device != incident.device:
+        return (f"the step names the device {device}, and {incident.id} is {incident.device}'s: "
+                "a step of an incident's fix acts on its incident's own device")
+    why = refusal_for(network, device, what=what)
+    if why:
+        return why.removesuffix(" Nothing was sent.")
+    g = guards.g3_planned(network, device, time.time())
+    if g:
+        return f"guard {g['guard']} ({g['name']}) holds {device}: {g['words']}"
+    return ""
+
+
+def _value_words(value) -> str:
+    from modules.nsot import bulk_intent as B
+
+    if B._is_absent(value):                           # noqa: SLF001 (bulk intent's own test)
+        return "nothing (absent)"
+    text = json.dumps(value, sort_keys=True, default=str)
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
+def _masked(text: str) -> str:
+    from modules.redact import redact_text
+
+    return redact_text(text or "")
+
+
+def _reads_as_secret(value) -> bool:
+    """Whether any text inside *value* (a patch's values, at any depth) is one the mask changes
+    (`redact_text`), so a screen would draw it masked."""
+    if isinstance(value, str):
+        return _masked(value) != value
+    if isinstance(value, dict):
+        return any(_reads_as_secret(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_reads_as_secret(v) for v in value)
+    return False
+
+
+def _authority_refusal(network: str, device: str) -> str:
+    """The Intent tab's own authority check (`sdn.authority`): a device only its SDN controller
+    configures is never changed here, naming its controller; an unreadable inventory refuses."""
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+    from modules.sdn import authority
+    try:
+        rows = load_saved_devices(listref.resolve(network).csv_path)
+    except Exception as exc:                          # noqa: BLE001 (refused, said)
+        return (f"{network}'s inventory could not be read ({type(exc).__name__}), so who "
+                f"configures {device} is not known")
+    managed = authority.refusal(network, [device], rows)
+    return managed["error"] if managed else ""
+
+
+def _intent_edit_preview(network: str, p: dict, *, candidate: dict = None) -> dict:
+    """The intent change's own preview: the patch held to the schema and to what is committed,
+    the patched document through the editor's preview (its whole check, and the render against
+    what is committed and against the device's capture), masked. Its hash binds the version
+    patched, the patch and the patched text; ``candidate`` is that text, for a deploy step of
+    the same plan (never drawn). Writes nothing."""
+    import copy
+    import difflib
+
+    from modules.nsot import bulk_intent as B
+    from modules.nsot import hostvars, intent_edit
+
+    device = p["device"]
+    changes, why = changes_of(p["changes"])
+    if why:
+        return {"ok": False, "refused": f"the intent patch is {why}"}
+    if device in (candidate or {}):
+        return {"ok": False, "refused": (
+            f"an earlier step of this plan changes {device}'s intent already: one intent change "
+            "per device in a plan, every change to it in that one step")}
+    bad = B.unknown_paths(changes)
+    if bad:
+        return {"ok": False, "refused": _masked(
+            "the intent patch names a path the intent schema does not model: "
+            + ", ".join(".".join(path) for path in bad))}
+    for refusal in (_incident_scope(network, p, "an intent change"),
+                    _authority_refusal(network, device)):
+        if refusal:
+            return {"ok": False, "refused": refusal}
+    opened = intent_edit.open_doc(network, device)
+    if not opened["ok"]:
+        return {"ok": False, "refused": opened.get("error") or "no committed intent"}
+    text, base = opened["yaml"], opened["base"]
+    doc = hostvars.from_yaml(text)
+    if not isinstance(doc, dict) or hostvars.to_yaml(doc) != text:
+        return {"ok": False, "refused": (
+            f"{device}'s committed intent is hand-formatted: it does not round-trip through "
+            "Mercury's serialiser, so writing the patch would silently drop its comments or "
+            "layout. Normalise the formatting… on its Intent tab first")}
+    moved = [c for c in changes if B._norm(B.get_path(doc, c["path"])) != B._norm(c["before"])]
+    if moved:
+        return {"ok": False, "refused": _masked("the intent patch expects what intent no longer "
+                                                "holds: " + "; ".join(
+            f"{'.'.join(c['path'])}: the patch expects {_value_words(c['before'])}, and "
+            f"{device}'s committed intent ({base[:12]}) holds "
+            f"{_value_words(B.get_path(doc, c['path']))}" for c in moved[:6]))}
+    after = copy.deepcopy(doc)
+    unset = [".".join(c["path"]) for c in changes if not B.set_path(after, c["path"], c["after"])]
+    if unset:
+        return {"ok": False, "refused": _masked(
+            "the intent patch cannot be placed at " + ", ".join(unset) + f": {device}'s intent "
+            "holds no item of that name there (a patch never invents an interface)")}
+    if B._norm(after) == B._norm(doc):
+        return {"ok": False, "refused": f"{device}'s committed intent already holds the patch"}
+    try:
+        new_text = hostvars.canonical(hostvars.to_yaml(after), device)
+    except ValueError as exc:
+        return {"ok": False, "refused": _masked(str(exc))}
+    if _reads_as_secret([[c["before"], c["after"]] for c in changes]):
+        # Masked on every screen, so a person would approve a value they never saw.
+        return {"ok": False, "refused": "the intent patch holds a value that reads as a secret: "
+                                        "it would be masked, so approved unseen"}
+    shown = intent_edit.preview(network, device, new_text)
+    if not shown.get("ok"):
+        where = (f" (line {shown['line']}, column {shown.get('column')})"
+                 if shown.get("line") else "")
+        return {"ok": False, "refused": _masked(
+            f"the patched intent is refused by the editor's check{where}: "
+            f"{shown.get('error') or shown.get('message') or 'refused'}")}
+    diffs = shown.get("diffs") or {}
+    keeps = [r["text"] for r in diffs.get("not_removed") or []
+             if r.get("kind") == "keep" and r.get("text")]
+    doc_diff = "".join(difflib.unified_diff(
+        text.splitlines(True), new_text.splitlines(True), fromfile=f"committed ({device})",
+        tofile=f"patched ({device})"))
+    not_done = [f"deploys nothing by itself: {device} changes only when a deploy step of this "
+                "plan, or a person's Deploy…, sends this intent"]
+    if keeps:
+        not_done.append(
+            f"a merge-only deploy leaves on {device} what this removes from intent: "
+            + "; ".join(keeps[:8]) + (f"; and {len(keeps) - 8} more" if len(keeps) > 8 else "")
+            + ". A deploy step takes a line off only when its removals name that line's id "
+            "(Mode B), with the approving person's reason")
+    repeat, differs = _repeat_check(network, p, "intent-edit")
+    if repeat:
+        return {"ok": False, "refused": repeat, "code": "repeat"}
+    if differs:
+        not_done.append(differs)
+    return {"ok": True, "base": base, "candidate": {device: new_text}, "device_keeps": keeps,
+            "hash": _digest({"base": base, "changes": changes, "text": new_text}),
+            "drawn": {
+                "title": f"{device}'s intent: {len(changes)} change"
+                         f"{'s' if len(changes) != 1 else ''}",
+                "change": _masked("; ".join(
+                    f"{'.'.join(c['path'])} from {_value_words(c['before'])} to "
+                    f"{_value_words(c['after'])}" for c in changes)),
+                "diff": _masked(doc_diff), "render": _masked(shown.get("vs_intent") or ""),
+                "device_keeps": keeps,
+                "checks": [f"intent's version {base[:12]}, the one patched",
+                           "the editor's check passed: every key where intent reads it, the "
+                           "feature packs, the secret guard"]
+                + ([] if shown.get("deployable", True) else [
+                    "its render is not deployable as it stands: "
+                    + "; ".join(shown.get("blocking_reasons") or [])]),
+                "not_done": not_done}}
+
+
+def _intent_edit_apply(network: str, p: dict, confirmed: str, *, actor: str,
+                       reason: str) -> dict:
+    """The editor's own commit (`intent_edit.commit`, as *actor*, the reason its subject), on
+    the version previewed and only when the preview is the one approved; verified by reading
+    committed intent back: it must be the patched text, byte for byte."""
+    from modules.nsot import hostvars, intent_edit
+
+    device = p["device"]
+    now = _intent_edit_preview(network, p)
+    if not now.get("ok") or now.get("hash") != confirmed:
+        return {"ok": False, "outcome": "moved", "receipt": {}, "words": (
+            f"{device}'s intent change is not the one approved (approved {confirmed}, now "
+            f"{now.get('hash') or now.get('refused')}): nothing was committed")}
+    text = now["candidate"][device]
+    got = intent_edit.commit(network, device, text, reason, now["base"], actor,
+                             source=PLAN_SOURCE)
+    receipt = {"commit": got.get("commit") or "", "stage": got.get("stage") or ""}
+    if not got.get("ok") or not got.get("commit"):
+        return {"ok": False, "outcome": "failed", "receipt": receipt, "words": _masked(
+            got.get("error") or got.get("message") or "intent's commit refused it")}
+    # Read back from the commit itself, never from HEAD, which a later commit may have moved
+    # (that is the deploy step's to see, by its program).
+    back = hostvars.committed_at(intent_edit._repo_for(network), device, receipt["commit"])
+    if back != hostvars.from_yaml(text):
+        return {"ok": False, "outcome": "unverified", "receipt": receipt, "words": (
+            f"committed ({receipt['commit'][:12]}), and {device}'s intent read back from that "
+            "commit is not the patched intent")}
+    return {"ok": True, "outcome": "done", "receipt": receipt, "words": (
+        f"{device}'s intent change committed ({receipt['commit'][:12]}), read back")}
+
+
+def _deploy_entry(network: str, device: str, ids: list, texts: dict = None,
+                  authorise: list = None) -> dict:
+    """THE deploy's plan for *device* (`routes.deploy.plan_devices`), with *texts* (``{device:
+    intent text}``) read as its committed intent (`hostvars.proposed`), the removals *ids*
+    selected and *authorise* given. A read: contacts no device, writes nothing."""
+    from modules.nsot import hostvars, intent_edit
+    from routes.deploy import plan_devices
+
+    with hostvars.proposed(intent_edit._repo_for(network), texts or {}):
+        return plan_devices(network, [device], remove={device: ids} if ids else None,
+                            authorise={device: authorise} if authorise else None)[0]
+
+
+def _program_of(entry: dict) -> tuple:
+    """``(program, ids, keys)``: the program's hash with its removals and no authorisation
+    (C1434's ``program_hash``: the reasons come at Approve), the removals' ids and the keys of
+    the lines they remove."""
+    from modules.nsot.deploy import command_fingerprint
+
+    rm = entry.get("removals") or {}
+    ids, keys = list(rm.get("ids") or []), list(rm.get("keys") or [])
+    return command_fingerprint(list(entry.get("commands") or []), [], ids, []), ids, keys
+
+
+def _deploy_preview(network: str, p: dict, *, candidate: dict = None) -> dict:
+    """The deploy step's own preview: THE deploy's plan (`_deploy_entry`) from the candidate
+    intent an earlier step of the plan would commit, else from committed intent; refused when
+    the deploy's plan refuses it, sends nothing, would cut Mercury's path, or (in an incident's
+    fix) acts outside the incident's scope or under a guard. Its hash binds the program, the
+    removals, the lines needing a reason and the capture; ``resolved`` names the program's and
+    the capture's hashes (so a run that moved says which); drawn masked. Writes nothing."""
+    from modules import pipeline
+    from modules.nsot import authorisation
+
+    device = p["device"]
+    ids, why = removal_ids(p.get("remove") or [])
+    if why:
+        return {"ok": False, "refused": f"the removals are {why}"}
+    why = _incident_scope(network, p, "a deploy")
+    if why:
+        return {"ok": False, "refused": why}
+    texts = {device: candidate[device]} if device in (candidate or {}) else {}
+    entry = _deploy_entry(network, device, ids, texts)
+    if entry.get("refused") or entry.get("error"):
+        return {"ok": False, "refused": _masked(
+            f"the deploy's plan refuses it: {entry.get('refused') or entry.get('error')}")}
+    if not entry.get("deployable", True) or entry.get("blocking_reasons"):
+        return {"ok": False, "refused": _masked("the deploy's plan refuses it: " + "; ".join(
+            entry.get("blocking_reasons") or ["not deployable"]))}
+    commands = list(entry.get("commands") or [])
+    if not commands:
+        return {"ok": False, "refused": (
+            f"the deploy of {device} sends nothing: the device already holds what a merge-only "
+            "deploy of " + ("the patched" if texts else "its committed") + " intent carries")}
+    lost = (entry.get("expected_effects") or {}).get("reach_lost") or {}
+    if lost.get("cut") or (p.get("incident") and lost and lost.get("state") != "known"):
+        return {"ok": False, "refused": (
+            "the deploy would cut Mercury's path (" + (", ".join(lost.get("cut") or [])
+                                                     or str(lost.get("why") or "unknown"))
+            + "), and a change to that path needs a repair route independent of it")}
+    program, ids, keys = _program_of(entry)
+    flagged = authorisation.flagged(commands, keys)
+    capture = entry.get("capture_hash") or ""
+    pending = 0
+    if texts:
+        had = set(_deploy_entry(network, device, []).get("to_add") or [])
+        pending = len([line for line in entry.get("to_add") or [] if line in had])
+    dangerous = pipeline.dangerous_commands(commands)
+    residue = [str(r) for r in entry.get("residue_in_context") or entry.get(
+        "removal_warnings") or []]
+    removed = list((entry.get("removals") or {}).get("removed") or [])
+    checks = [("the deploy's own plan from the patched intent of an earlier step of this plan "
+               "(not yet committed): at run time it is computed again from what is committed "
+               "and refused, naming what moved, when it differs") if texts else
+              "the deploy's own plan from committed intent",
+              f"compared with {device}'s captured config ({capture})",
+              f"its program's hash {program}: what is approved is what is sent, byte for byte"]
+    if pending:
+        checks.append(f"{pending} of the lines it sends were pending before this plan's "
+                      "change (committed earlier, or changed on the device): they ride along")
+    if removed:
+        checks.append(f"removes (Mode B): {len(removed)} line(s) selected by id")
+    if flagged:
+        checks.append(f"{len(flagged)} line(s) need a stated reason ({len(keys)} removed, "
+                      f"{len(dangerous)} dangerous): your reason at Approve is recorded as each "
+                      "one's")
+    not_done = ["verify, rollback on failure and the receipt are the deploy's own"]
+    if residue:
+        not_done.append(f"a merge-only deploy leaves on {device} {len(residue)} line(s) intent "
+                        "does not hold, none removed unless selected by id: "
+                        + "; ".join(residue[:5]) + ("; …" if len(residue) > 5 else ""))
+    repeat, differs = _repeat_check(network, p, "intent-deploy", {"program": program})
+    if repeat:
+        return {"ok": False, "refused": repeat, "code": "repeat"}
+    if differs:
+        checks.append(differs)
+    return {"ok": True, "flagged": flagged, "ids": ids,
+            "resolved": {"program": program, "capture": capture},
+            "hash": _digest({"device": device, "program": program, "capture": capture,
+                             "remove": ids, "flagged": flagged}),
+            "drawn": {"title": f"Deploy {device}: {len(commands)} line"
+                               f"{'s' if len(commands) != 1 else ''}"
+                               + (", from this plan's intent change" if texts else ""),
+                      "change": _masked("sends: " + "; ".join(c.strip() for c in commands)),
+                      "program": [_masked(c) for c in commands],
+                      "checks": checks, "not_done": not_done}}
+
+
+def _deploy_apply(network: str, p: dict, confirmed: str, *, actor: str, reason: str,
+                  actor_verified: str = "", person: bool = False) -> dict:
+    """THE apply (`routes.deploy.apply_batch`) as the approving person: the deploy's plan
+    computed again from what is committed now, refused, naming what moved, unless it is the one
+    approved; each line needing a reason given the approver's; then held, sent, verified,
+    rolled back on failure and recorded by the deploy's own pipeline, as a person's Deploy."""
+    from modules.nsot.deploy import DEPLOYED
+    from routes.deploy import apply_batch
+
+    device = p["device"]
+    why = person_refusal(actor, actor_verified, person)
+    if why:
+        return {"ok": False, "outcome": "refused", "receipt": {}, "words": why}
+    now = _deploy_preview(network, p)
+    if not now.get("ok") or now.get("hash") != confirmed:
+        return {"ok": False, "outcome": "moved", "receipt": {}, "words": (
+            f"{device}'s deploy is not the one approved (approved {confirmed}, now "
+            f"{now.get('hash') or now.get('refused')}"
+            + _moved_parts({"program": p.get("program"), "capture": p.get("capture")},
+                           now.get("resolved")) + "): nothing was sent")}
+    ids = now["ids"]
+    authorise = [{"line": k, "reason": reason} for k in now["flagged"]]
+    entry = _deploy_entry(network, device, ids, authorise=authorise)
+    if _program_of(entry)[0] != now["resolved"]["program"]:
+        return {"ok": False, "outcome": "moved", "receipt": {}, "words": (
+            f"{device}'s program moved while the reasons were given: nothing was sent")}
+    if entry.get("authorisation_ok") is False:
+        return {"ok": False, "outcome": "refused", "receipt": {}, "words": _masked(
+            f"the deploy's authorisation check refused it: {entry.get('authorisation_error')}")}
+    report = apply_batch(network, {device: entry.get("capture_hash")},
+                         {device: entry.get("command_hash")},
+                         authorise={device: authorise} if authorise else None,
+                         remove={device: ids} if ids else None, actor=actor,
+                         actor_kind="person", stop_at_first=True,
+                         hold_detail="a plan's deploy step")
+    got = next((r for r in report.get("results") or [] if r.get("device") == device), {})
+    ok = got.get("outcome") == DEPLOYED and (got.get("verify") or {}).get("ok") is not False
+    receipt = {"outcome": got.get("outcome") or "", "rolled_back": bool(got.get("rolled_back")),
+               "golden": str((report.get("golden") or {}).get("commit") or "")
+               if isinstance(report.get("golden"), dict) else ""}
+    words = (f"{device} deployed and verified ({len(entry.get('commands') or [])} line(s)), "
+             "its receipt written" if ok else _masked(
+                 f"{device} did not deploy and verify: {got.get('outcome') or 'no result'}"
+                 + (f" ({got.get('reason') or got.get('error')})"
+                    if got.get("reason") or got.get("error") else "")))
+    return {"ok": ok, "outcome": "done" if ok else (got.get("outcome") or "failed"),
+            "receipt": receipt, "words": words}
+
+
+def ai_step_refusal(key) -> str:
+    """``""``, or why the AI may not propose a step of kind *key*: the AI's engineer role
+    (`identity.ai_never_proposes`) judged by the gate the step's own by-hand route is declared
+    under (`route_gates.GATES`), so a step a person would take through a settings, users,
+    credentials, notifications or template-approval route is refused at preflight whatever its
+    kind. A kind the engine does not have is the schema's to refuse (``""`` here)."""
+    from modules import identity, route_gates
+
+    kind = STEP_KINDS.get(key) if isinstance(key, str) else None
+    if kind is None:
+        return ""
+    gate = route_gates.GATES.get(kind.by_hand)
+    return identity.ai_never_proposes(kind.by_hand, gate.kind if gate else "",
+                                      gate.reason if gate else "")
+
+
+def _edit_attempt(p: dict, resolved: dict) -> dict:
+    return {"changes": changes_of(p["changes"])[0] or []}
+
+
+def _deploy_attempt(p: dict, resolved: dict) -> dict:
+    return {"remove": removal_ids(p.get("remove") or [])[0] or [],
+            "program": str((resolved or {}).get("program") or "")}
+
+
+def _repeat_check(network: str, p: dict, key: str, resolved: dict = None) -> tuple:
+    """``(refusal, differs)`` for a step of an incident's fix: the catalog's repeat rule
+    (`fixit.plan.admitted_repeat`, `fixit.incident.repeat_of`) on the values the step kind
+    compares an attempt by (`StepKind.attempt_of`): an attempt that ran with the same values
+    and failed refuses it, naming the attempt; one that ran with other values names what
+    differs. ``("", "")`` outside an incident's fix."""
+    if not p.get("incident"):
+        return "", ""
+    from modules.fixit import plan as FP
+
+    return FP.admitted_repeat(network, p, key, STEP_KINDS[key].attempt_of(p, resolved or {}))
+
+
+def _moved_parts(approved, now) -> str:
+    """What moved between a step's approved preview and its preview now, by what each resolved
+    (a deploy's program and capture): ``"; its program: approved X, now Y"``, or ``""``."""
+    approved, now = dict(approved or {}), dict(now or {})
+    moved = [k for k in approved if approved.get(k) and approved.get(k) != now.get(k)]
+    return "".join(f"; its {k}: approved {approved[k]}, now {now.get(k) or 'none'}"
+                   for k in moved)
+
+
+class _StepKinds(dict):
+    """The step kinds: a dict that, read in any way, first registers the saved reusable actions
+    as the store holds them now (`_sync_saved`, the store's identity compared each time), so
+    the kinds are never a process's stale copy."""
+
+    def _synced(self):
+        _sync_saved(self)
+        return self
+
+    def __getitem__(self, key):
+        return dict.__getitem__(self._synced(), key)
+
+    def __contains__(self, key):
+        return dict.__contains__(self._synced(), key)
+
+    def get(self, key, default=None):
+        return dict.get(self._synced(), key, default)
+
+    # The sync changes the dict under `_KINDS_LOCK`, and every walk is over a copy taken under
+    # it, so a sync in one thread never changes a dict another thread is iterating.
+    def _copy(self) -> dict:
+        self._synced()
+        with _KINDS_LOCK:
+            return dict(dict.items(self))
+
+    def __iter__(self):
+        return iter(self._copy())
+
+    def __len__(self):
+        return dict.__len__(self._synced())
+
+    def keys(self):
+        return self._copy().keys()
+
+    def values(self):
+        return self._copy().values()
+
+    def items(self):
+        return self._copy().items()
+
+
+_KINDS_LOCK = threading.RLock()
+
+
+STEP_KINDS = _StepKinds({k.key: k for k in (
     StepKind("dhcp-reservation", "Add a DHCP reservation (Kea, the network's own)",
              (MAC, ADDRESS, HOSTNAME, SUBNET), _reservation_preview, _reservation_apply,
              "dhcp_v2.reservation_confirm", announces=("dhcp",), optional=("subnet",)),
@@ -836,7 +1435,25 @@ STEP_KINDS = {k.key: k for k in (
              _ztp_preview, _ztp_apply, "onboard_v2.create", done_level="partial",
              done_words="created and pending: Verify is its own approval",
              announces=("pending", "intent", "credentials", "remote", "in_progress")),
-) + _catalog_kinds()}
+    # The general intent change (the operator, 2026-11-15): any field intent models, by its
+    # schema; the description step above is one of its cases, kept as it was.
+    StepKind("intent-edit", "Change a device's intent (any field intent models, held to its "
+                            "schema and to what is committed)",
+             (DEVICE, CHANGES, STEP_INCIDENT, STEP_PROPOSAL), _intent_edit_preview,
+             _intent_edit_apply, "intent_v2.commit", announces=("intent", "remote"),
+             optional=("incident", "proposal"), candidate=True,
+             attempt_params=(("changes", "doc"),), attempt_of=_edit_attempt),
+    # C3646: a deploy bound by its hash, its program from the candidate intent.
+    StepKind("intent-deploy", "Deploy a device's intent (the deploy's own plan, bound by its "
+                              "hash: merge-only, Mode B removals by id, verify, rollback)",
+             (DEVICE, REMOVE, STEP_INCIDENT, STEP_PROPOSAL), _deploy_preview, _deploy_apply,
+             "device_v2.deploy_confirm",
+             announces=("deploy_job", "device_state", "baselines", "drift", "rolled_back",
+                        "goldens", "remote"),
+             optional=("remove", "incident", "proposal"), as_person=True, candidate=True,
+             job_announcer="deploy-job", attempt_params=(("remove", "set"), ("program", "one")),
+             attempt_of=_deploy_attempt),
+) + _catalog_kinds()})
 
 
 # ── The plans: each an ordered list of step kinds, derived from its own parameters ──────────
@@ -867,9 +1484,10 @@ def _as(name: str, base: Param) -> Param:
 
 
 def _fix_steps_refusal(value) -> str:
-    """What an incident plan's ``steps`` is instead of a list of 1 to `MOST_STEPS` catalog
-    operations, each exactly ``{operation, params}`` held to the catalog's schema
-    (`catalog.checked`), or ``""``."""
+    """What an incident plan's ``steps`` is instead of a list of 1 to `MOST_STEPS` steps, each
+    exactly ``{operation, params}``: a catalog operation held to the catalog's schema
+    (`catalog.checked`), or an intent change or a deploy (`FIX_ADMITTED`, C3756) held to its
+    step kind's schema less the incident and proposal the plan gives it; or ``""``."""
     from modules.heal import catalog
 
     if not isinstance(value, list):
@@ -883,6 +1501,17 @@ def _fix_steps_refusal(value) -> str:
                     "collector step's session)")
         if "session" in s and _session_refusal(s["session"]):
             return f"a list whose step {n} names no session ({_session_refusal(s['session'])})"
+        if s["operation"] in FIX_ADMITTED:
+            if "session" in s:
+                return f"a list whose step {n} ({s['operation']}) names a session"
+            kind = STEP_KINDS[s["operation"]]
+            try:
+                _held(s["params"], tuple(p for p in kind.params
+                                         if p.name not in ("incident", "proposal")),
+                      f"step {n} ({s['operation']})", kind.optional)
+            except Refused as exc:
+                return f"a list whose step {n} the plan engine refuses ({exc})"
+            continue
         try:
             catalog.checked(s["operation"], s["params"])
         except catalog.Refused as exc:
@@ -890,12 +1519,14 @@ def _fix_steps_refusal(value) -> str:
     return ""
 
 
-FIX_STEPS = Param("steps", f"1 to {MOST_STEPS} operations of Mercury's catalog, in order, each "
-                           "exactly {operation, params} held to its schema", _fix_steps_refusal)
+FIX_STEPS = Param("steps", f"1 to {MOST_STEPS} steps, in order, each exactly {{operation, "
+                           "params}: a catalog operation, intent-edit or intent-deploy, held to "
+                           "its schema", _fix_steps_refusal)
 
 
 def _fix_steps(p: dict) -> list:
-    """An incident plan's steps: each catalog operation with the incident and its proposal."""
+    """An incident plan's steps: each catalog operation, intent change or deploy with the
+    incident and its proposal."""
     return [(s["operation"], dict({"incident": p["incident"], "proposal": p["proposal"]},
                                   **s["params"], **({"session": s["session"]}
                                                     if s.get("session") else {})))
@@ -930,7 +1561,7 @@ PLANS = {p.key: p for p in (
     # C3694 (the operator's R1, 2026-11-14): an incident's fix, a plan of catalog operations
     # the AI (or Mercury's diagnosis) proposed, each step held to its incident's scope and the
     # heal guards at its own preview (`fixit.plan.step_preview`).
-    Plan(INCIDENT_FIX, "Fix an incident: the catalog operations its proposal names, in order",
+    Plan(INCIDENT_FIX, "Fix an incident: the steps its proposal names, in order",
          (INCIDENT, PROPOSAL, FIX_STEPS), _fix_steps,
          lambda p: (f"Fix {p['incident']}: {len(p['steps'])} step"
                     f"{'s' if len(p['steps']) != 1 else ''}")),
@@ -1023,8 +1654,15 @@ def preview(network: str, plan, params) -> dict:
     from modules.redact import redact_payload
 
     refused = ""
+    # The intent each intent step would commit (C3646), handed to every later step that takes
+    # it: a deploy step's program is computed from it, never from intent as committed before.
+    candidate = {}
     for s in steps:
-        got = STEP_KINDS[s["kind"]].preview(network, s["params"])
+        kind = STEP_KINDS[s["kind"]]
+        got = kind.preview(network, s["params"],
+                           **({"candidate": dict(candidate)} if kind.candidate else {}))
+        if got.get("ok"):
+            candidate.update(got.get("candidate") or {})
         s.update(words=STEP_KINDS[s["kind"]].words, ok=bool(got.get("ok")),
                  hash=got.get("hash") or "", drawn=redact_payload(got.get("drawn") or {}),
                  refused=got.get("refused") or "", resolved=dict(got.get("resolved") or {}),
@@ -1053,7 +1691,8 @@ def step_labels(steps: list) -> list:
 STEP_LABELS = {"dhcp-reservation": "DHCP reservation", "intent-description": "Set a description",
                "ztp-create": "Create by ZTP", "telemetry-resubscribe": "Re-subscribe telemetry",
                "telemetry-readd": "Re-add the receiver",
-               "telemetry-collector-resubscribe": "Close, then re-subscribe"}
+               "telemetry-collector-resubscribe": "Close, then re-subscribe",
+               "intent-edit": "Change intent", "intent-deploy": "Deploy intent"}
 #: A run's outcome -> its one row's group on THE stepper (never done over a partial or a stop).
 ROW_GROUP = {"running": "running", "done": "done", "partial": "partial", "stopped": "failed",
              "refused": "failed", "failed": "failed"}
@@ -1091,6 +1730,11 @@ def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
     request's identity is established, `identity.REQUEST_VERIFICATIONS`)."""
     from modules import identity
 
+    # The AI proposes and never approves (its engineer role): no plan is approved while an AI
+    # entry point runs (`identity.as_ai`), whoever the approval names.
+    never = identity.ai_acting_refusal("approve a plan")
+    if never:
+        return never + ": nothing ran"
     if (person is True and actor and actor != identity.UNVERIFIED
             and isinstance(actor_verified, str)
             and actor_verified in identity.REQUEST_VERIFICATIONS):
@@ -1124,6 +1768,8 @@ def run(network: str, plan, params, confirmed: str, *, actor: str, actor_verifie
     refusal is a record too, with nothing run."""
     from modules import op_progress
     from modules.nsot import reads
+
+    refresh_saved_kinds()
 
     now = clock()
     rec = {"id": run_id or reads.new_id(), "key": KEY, "list": network, "plan": str(plan)[:64],
@@ -1206,9 +1852,12 @@ def _run(network, plan, params, confirmed, rec, step, finish, *, actor, actor_ve
         again = kind.preview(network, s["params"])
         if (not again.get("ok") or again.get("hash") != s["hash"]
                 or dict(again.get("resolved") or {}) != dict(s.get("resolved") or {})):
+            # Naming what moved, by what its preview resolved (C3646: a deploy step's program,
+            # computed again from what the earlier steps committed, and its capture).
             words = (f"step {s['n']} ({s['words']}) moved since the plan was approved "
                      f"(approved {s['hash']}, now "
-                     f"{again.get('hash') or again.get('refused') or 'refused'}): it and "
+                     f"{again.get('hash') or again.get('refused') or 'refused'}"
+                     f"{_moved_parts(s.get('resolved'), again.get('resolved'))}): it and "
                      "every step after it did not run")
             kept.update(state="refused", outcome="moved", words_said=words)
             step(name, "refused", words)
@@ -1248,6 +1897,7 @@ def start(network: str, plan, params, confirmed: str, *, actor: str, actor_verif
     is the run's id when the caller recorded it first (an incident's approve line)."""
     from modules.nsot import capture_job, reads
 
+    refresh_saved_kinds()
     why = person_refusal(actor, actor_verified, person)
     if why:
         return {"refused": why, "not_a_person": True}
@@ -1299,3 +1949,80 @@ def record_of(network: str, run_id: str):
     except (ValueError, OSError):
         return None
     return rec if isinstance(rec, dict) and rec.get("key") == KEY else None
+
+
+# ── Command plans as steps (C3757, path 2: "One execution path: G7's recovery becomes the
+# first built-in command plan on path 2") ─────────────────────────────────────────────────
+#
+# An incident's plan admits a built-in command plan as a step beside the catalog's operations
+# (`catalog.COMMAND_PLANS`, each a template shipped with Mercury, declared as a
+# `catalog.PlanStep`): previewed by the fix-it check, as a catalog step is
+# (`fixit.plan.step_preview`: the incident's scope, the heal guards, then the declaration's own
+# preview validating its parameters against Mercury's model and holding its lines to
+# Mercury's rule for raw lines), and applied ONLY through its declaration's ``apply`` (the one
+# contract; it enters the deploy pipeline), as the approver, its hash the one approved, its run
+# naming the incident's attempt. The runner holds the device and re-reads the preconditions at
+# apply; one device per step, and the engine stops on the first step that does not pass. No
+# branch of `_catalog_apply` reaches it.
+
+def _declared_apply(key: str):
+    """The step's apply: its declaration's own (`catalog.COMMAND_PLANS[key].apply`), looked up
+    when the step runs, so the declaration is the one way in."""
+    def apply(network: str, p: dict, confirmed: str, *, actor: str, reason: str,
+              actor_verified: str = "", person: bool = False) -> dict:
+        from modules.heal.catalog import entries
+
+        # A built-in command plan or a saved reusable action: one declaration's shape each.
+        step = entries()[key]
+        return step.apply(network, p, confirmed, actor=actor, reason=reason,
+                          actor_verified=actor_verified, person=person)
+    return apply
+
+
+def _command_plan_kinds(plans=None) -> dict:
+    from modules.heal.catalog import COMMAND_PLANS
+
+    return {k: StepKind(k, op.words, (INCIDENT, PROPOSAL) + tuple(op.params),
+                        _catalog_preview(k), _declared_apply(k), op.confirm_endpoint,
+                        announces=("privileged",), as_person=True)
+            for k, op in (COMMAND_PLANS if plans is None else plans).items()}
+
+
+#: The saved reusable actions registered as step kinds now (`refresh_saved_kinds`).
+_SAVED_KINDS = set()
+
+
+def _sync_saved(kinds: dict) -> None:
+    """The reusable actions people saved (`catalog.saved_actions`, the store as it is now),
+    registered in *kinds* as step kinds by the same declaration as the built-in command plans
+    (`_command_plan_kinds`), and a removed one's kind removed. Asked by `STEP_KINDS` on every
+    read (`_StepKinds`), so a save in any process is a step kind at once."""
+    from modules.heal.catalog import saved_actions
+
+    now = saved_actions()
+    with _KINDS_LOCK:
+        for key in list(_SAVED_KINDS - set(now)):
+            dict.pop(kinds, key, None)
+            STEP_LABELS.pop(key, None)
+            _SAVED_KINDS.discard(key)
+        for key, kind in _command_plan_kinds({k: v for k, v in now.items()
+                                              if k not in _SAVED_KINDS}).items():
+            dict.__setitem__(kinds, key, kind)
+            STEP_LABELS[key] = "Run a saved action"
+            _SAVED_KINDS.add(key)
+
+
+def refresh_saved_kinds() -> None:
+    """The saved reusable actions registered as step kinds now (`_sync_saved`)."""
+    _sync_saved(STEP_KINDS)
+
+
+def _command_plan_labels() -> dict:
+    from modules.nsot import command_plan
+
+    return {t.key: "Run reviewed commands" for t in command_plan.builtin().values()}
+
+
+STEP_KINDS.update(_command_plan_kinds())
+STEP_LABELS.update(_command_plan_labels())
+refresh_saved_kinds()

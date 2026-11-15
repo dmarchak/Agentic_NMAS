@@ -11,9 +11,43 @@ on… pressed on `sdn_classify`, its frequency unknown; `settings-ai-on-refused`
 a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_v2.py's world.
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
-Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html
+Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html, templates/v2/_install_card.html, templates/v2/_settings_ai_troubleshoot.html, templates/v2/_settings_ai_audit.html
 Compared again 2026-11-13 (the operator's approved rules: "“Manual” capitalised", "money shown as $", "“The day begins at” as a time-zone picker"): in `_install_card.html`, the AI troubleshooting card's AI mode draws "Manual" and "Off" (the option's value stays the stored `manual` or `off`; a choice with no words is drawn as stored, as before); a field that takes an amount (Cap per day, AI spend per incident) draws its "$" inside the field and its value to the cent ("1.50" where it drew "1.5"); the prices table and Spent today draw through the `usd` filter ("$0.10 / $0.50" where it drew "$0.1 / $0.5", "$0.00" where it drew "$0.0000"); and The day begins at is the one zone picker (`_macros.zone_picker`: the viewer's own zone first, then UTC, then every zone the host holds) with "midnight in <zone>: next <the instant>" beside it, through `clock`. `_settings_ai_bg.html`, `_settings_ai_caps.html` and `_settings_ai_on.html` draw each cap, estimate and spend through the same filter, and their cap fields carry the "$". Boards AI3 and AI3b draw the amounts their own way and the day's start as typed text: **deviation**, logged (docs/STANDING_APPROVAL_LOG.md: "Money through one formatter", "AI mode reads Manual and Off", "The day begins at is the zone picker"). No element moves but the picker's line, and no region's verdict in the table moved; compared by the templates' diff and from new shots at 1280 (~/Documents/nmas-reports/captures/gui-overnight-2/fixes/1-settings-ai-before.png and -after.png). Templates sha256 before: `4be2bd09e581b39d075af5be18677488dccf781d43c3e8d0a85bf0fae47a4efe`.
-Templates sha256: `71d377d15402ab7bf8c14c57bb4e6342bebb311e63f2a3133a16200e5d1e37f2`
+Compared again 2026-11-15 (C3748): Turn on…'s form for automatic AI troubleshooting opens in
+place under the control strip's AI switch as well, posting the same route with
+``answer=strip``, its Cancel redrawing the strip; the offered caps' amounts are said beside
+"offered" ("twice the estimate ($X a day)", the month's). Compared by the template's diff and
+tests/test_heal_batch.py's strip, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
+"Board G2: the control strip and Turn on self-healing and fix all (C3748, C3749, G6)").
+Templates sha256 before: `71d377d15402ab7bf8c14c57bb4e6342bebb311e63f2a3133a16200e5d1e37f2`.
+Compared again 2026-11-15 (Gate 2, C3769; board G2b): the AI troubleshooting card for one
+network, `_settings_ai_troubleshoot.html`, joins the compared templates, drawn at the top of
+`_settings_ai_bg.html`'s section; automatic AI troubleshooting's row leaves the list (its Turn
+on… form opens in the card for audit, the same form) and the retired analysis's row is drawn
+only while on. Compared by the templates' diff and tests/test_ai_troubleshoot_control.py's
+pages, not by new shots. Templates sha256 before (without the card):
+`61170c38df4e5ee1ff677024522a43dee4028acd6bb50c62d3bdf86c53c32553`.
+Compared again 2026-11-15 (Gate 2's follow-up, C3769): automatic AI troubleshooting's list
+for audit is its own read-only template, `_settings_ai_audit.html` (no tick, no cap typed, no
+Turn on; Close), the catch-up block leaves `_settings_ai_on.html`, Turn on…'s answer no longer
+lists a catch-up, and the card's estimate says the calls a day are unbound and the cost per call
+acknowledged. Compared by the templates' diff and tests/test_ai_troubleshoot_control.py's
+pages, not by new shots; logged (docs/STANDING_APPROVAL_LOG.md, "The list Automatic would
+start on is read-only (C3769)"). Templates sha256 before:
+`4cc8bd32d8dd46cca723eb4d03dfa0013f00036ffc7e0f0390912c05263582ac`.
+Compared again 2026-11-15 (the combined gate's review fixes): the templates' one change is the
+AI troubleshooting card's comment, naming the control's module where it now lives
+(modules/troubleshoot_control.py); nothing drawn changed. Compared by the templates' diff, not
+by new shots; every region's verdict unchanged. Templates sha256
+before: `4b67b9c4c81588d474078206c80d8d091d617f7454c3666c5a3e6947acc7fc65`.
+Compared again 2026-11-15 (the manual's check of controls named only by data): each of the
+AI troubleshooting card's Off, Manual and Automatic buttons says on hover what it sets, "AI
+troubleshooting: Automatic, …" where it said "Automatic: …"; and Turn on…'s form names its
+route in its own `action` and `hx-post` again, where a variable held it (the same address, so
+tests/test_route_reachability.py sees the page reach it). Nothing drawn moved. Compared by the
+templates' diff, not by new shots; every region's verdict unchanged. Templates sha256 before:
+`8f939df5d3d38ce3b1caa5b0cb4f82691b308211730287ee98cd344d1444b6ba`.
+Templates sha256: `489c620f8efa0996c539f6e2a04bf7e217d5459fb539fba1fc08c0be903981f8`
 
 **Compared again 2026-11-15 (C3745, every cap counted at the catch-up):** in `_settings_ai_on.html`, the list's region adds one line under the incidents: what fits under the caps ("2 of the 4 ticked fit under the caps; the later 2 would pass this feature's day cap: …", or "All 4 ticked fit under every cap.") and the room under each (the day cap left today, this feature's day and month caps as typed), redrawn as the ticks or the typed caps change; each checkbox carries whether its incident's cap allows it, and the note under the list names the feature's caps. No region moved; the list's row above stands as a deviation, logged with it. Compared by the template's diff and tests/test_fixit_catch_up.py's real-browser test of the typed caps. Templates sha256 before: `c497a3b6b25cb90b66a46c1473c8b7dbe75b72e7d38e625326ab0ece2c3edb24`.
 
@@ -81,6 +115,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | AI troubleshooting (2026-11-12, C3193) | not drawn (the incident's AI troubleshooting came later, board recurring-fixes v2) | a second card under AI (hosted), drawn by the same card template: AI mode (manual or off) and AI spend per incident ($1.00 by default, a positive amount, no "no cap"), each with its note, saved by Save and recorded old and new; the templates are unchanged (one more entry in the cards' table) | **deviation** (log: Board recurring-fixes v2 built, 9) |
 | No cap's confirmation and notice (2026-10-29) | not drawn (no cap was drawn without a board, 2026-10-27) | the confirmation asks for `no cap` typed and a one-line reason, kept with who and when and drawn on History; a press missing either refused in place naming each; the notice while no cap is set names who chose it, when and why | **deviation** (log: The AI card's no cap asks for a reason) |
 | Features a person presses | a table with a switch per feature | not drawn | **deviation** (log: Settings › AI built: the features a person presses have no switches yet) |
+| AI troubleshooting on a network (Gate 2, C3769) | board G2b (g2-control-strip.html part 5): Off / Manual / Automatic, the spending limits with the estimate beside them and its acknowledgement, "What would Automatic start, and why…" | the same, `_settings_ai_troubleshoot.html`, at the top of the background section; the three levels one segmented control | **deviation** (log: Settings › AI's AI troubleshooting card built from board G2b (C3769)) |
 | Background features' head | "Background features", Network ▾, "How does this work?" | the same; the (i) opens the manual's section | **same** |
 | Their lead | the board's sentence | the same sentence, with the approval's 14 days added | **same** |
 | A feature's row | a table row: the feature with its state chip, who, when and "approval until"; trigger; caps with today and the month; estimate against actual; Change caps…, Turn off or Turn on… | the same five parts as a row of a list, each control busy on itself with its (i), stacked at phone width | **deviation** (log: Settings › AI built: each feature a row of five parts, stacked at phone width) |

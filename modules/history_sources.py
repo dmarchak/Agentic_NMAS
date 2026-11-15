@@ -883,25 +883,32 @@ def fault_drills(ctx):
         return _out(errors=[str(exc)])
     events = []
     for r in rows:
-        if not _mine(ctx, r.get("device") or ""):
+        # G7 (C3712): a drill exercise is one declaration over several devices.
+        devs = [d for d in r.get("devices") or [r.get("device") or ""] if d]
+        devs = [d for d in devs if _mine(ctx, d)]
+        if not devs:
             continue
+        what = "Fault drill exercise" if r.get("kind") == "exercise" else "Fault drill"
+        on = ", ".join(devs)
         expects = redact_text(r.get("expects") or "")
         ended = iso(r.get("ended_at")) if r.get("ended_at") else ""
         if _recent(ctx, r.get("from")):
             events.append(_event(r.get("from"), "fault_drill",
-                                 f"Fault drill declared on {r.get('device')}: {expects}",
-                                 [r.get("device") or ""], who=r.get("by", ""),
+                                 f"{what} declared on {on}: {expects}",
+                                 devs, who=r.get("by", ""),
                                  detail=redact_text(r.get("reason") or ""),
                                  record=[("Declaration", r.get("id")),
                                          ("From", iso(r.get("from"))),
                                          ("Until", iso(r.get("until"))), ("Ended", ended),
                                          ("Expects", expects),
                                          ("Script", redact_text(r.get("script") or "")),
-                                         ("Via", r.get("via"))]))
+                                         ("Via", r.get("via"))]
+                                 + ([("Preview", redact_text(r.get("preview") or ""))]
+                                    if r.get("preview") else [])))
         if ended and _recent(ctx, r.get("ended_at")):
             events.append(_event(r.get("ended_at"), "fault_drill",
-                                 f"Fault drill ended on {r.get('device')}: {expects}",
-                                 [r.get("device") or ""], who=r.get("ended_by", ""),
+                                 f"{what} ended on {on}: {expects}",
+                                 devs, who=r.get("ended_by", ""),
                                  record=[("Declaration", r.get("id")), ("Ended", ended),
                                          ("Its bound", iso(r.get("until"))),
                                          ("Via", r.get("ended_via"))]))
@@ -1565,6 +1572,10 @@ SETTING_WORDS = {
     "ai_background_on": "a background AI feature turned on",
     "ai_background_off": "a background AI feature turned off",
     "ai_background_caps": "a background AI feature's caps changed",
+    # Gate 2 (C3769; modules/troubleshoot_control.py): a network's AI troubleshooting.
+    "ai_troubleshoot_limits": "AI troubleshooting's spending limits set and their estimate "
+                              "acknowledged",
+    "ai_troubleshoot_mode": "AI troubleshooting's mode set for a network",
 }
 
 
@@ -2743,8 +2754,48 @@ def heal(ctx):
                          if got_mark else None)}
         if len(events) >= ctx["limit"]:
             break
+    # G6 (Gate 2's review): Turn on self-healing and fix all's approval and its outcome, from
+    # the network's heal decisions (`heal.batch`'s ``batch`` and ``batch_done`` rows), each a
+    # row on History: who approved which batch, and how it ended.
+    events.extend(_heal_batches(ctx))
     return _out(events, cut=[f"the self-healing step log's newest {ctx['limit']} incidents"]
                 if len(events) >= ctx["limit"] else [])
+
+
+def _heal_batches(ctx) -> list:
+    """G6's batch rows on History (`heal`): an approval (``batch``: who, the hash, each device)
+    and its outcome (``batch_done``), for the network's devices or the one asked for. A heal
+    decisions store that cannot be read gives none here; the heal row's own read says it."""
+    from modules import identity
+    from modules.heal import decisions as HD
+
+    got = HD.read(ctx["ref"].name)
+    if got["state"] != "ok":
+        return []
+    out = []
+    for r in got["rows"]:
+        if r.get("row") not in ("batch", "batch_done") or not _recent(ctx, r.get("at")):
+            continue
+        devs = [i.get("device") for i in r.get("items") or r.get("devices") or []
+                if isinstance(i, dict)]
+        if not any(_mine(ctx, d) for d in devs) and (ctx["device"] or devs):
+            continue
+        if r["row"] == "batch":
+            out.append(_event(r.get("at"), "heal", (
+                f"Turn on self-healing and fix all approved: {len(devs)} device(s), "
+                f"batch {r.get('id')}"), devs, who=identity.display_name(r.get("by") or ""),
+                record=[("Batch", r.get("id")), ("Hash", r.get("hash")),
+                        ("Approved by", r.get("by")), ("How verified", r.get("actor_verified")),
+                        ("Devices", ", ".join(d for d in devs if d)),
+                        ("AI started on", ", ".join(r.get("ai") or []))]))
+        else:
+            out.append(_event(r.get("at"), "heal", (
+                f"Turn on self-healing and fix all {r.get('outcome') or 'ended'}: "
+                f"{r.get('words') or ''}"), devs, who="Mercury's self-healing",
+                outcome=r.get("outcome") or "",
+                record=[("Batch", r.get("batch")), ("Outcome", r.get("outcome")),
+                        ("Devices", ", ".join(d for d in devs if d))]))
+    return out
 
 
 def _action_lines(e: dict, m) -> list:

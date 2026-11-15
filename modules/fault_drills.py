@@ -57,6 +57,15 @@ FIELD = "fault_drill"
 #: onset (a heartbeat's 300 s plus the rule's 60 s evaluation), as the board's I1 states.
 MAX_MINUTES = 15
 DEFAULT_MINUTES = 10
+#: A declared drill EXERCISE (G7, C3712; the operator, 2026-11-14): one declaration over several
+#: devices that sets its own duration, so a rehearsal that starts late keeps its faults drills
+#: (guards 9 and 11 passed, the records saying Drill). The demo's 60 minutes by default; at most
+#: twice that, reasoned (a late start of the recording), never measured. A single drill keeps
+#: `MAX_MINUTES`.
+EXERCISE_MINUTES = 60
+EXERCISE_MAX_MINUTES = 120
+#: The most devices one exercise names.
+EXERCISE_MOST_DEVICES = 20
 #: The expected fault in words, at least this many: "the EEM heartbeat applet removed". A
 #: script's free text only; the card's choice is words enough (C3405).
 EXPECTS_WORDS = 3
@@ -176,11 +185,17 @@ def _open(d: dict, now: float) -> bool:
     return float(d.get("until_epoch") or 0) >= float(now)
 
 
+def _on(d: dict, device: str) -> bool:
+    """Is *device* declaration *d*'s: its one device, or one of a drill exercise's devices
+    (`record_exercise`)?"""
+    return bool(device) and (d.get("device") == device or device in (d.get("devices") or []))
+
+
 def covering(network: str, device: str, at: float) -> dict:
     """The declaration covering *device* at *at* (its from to its effective end), or ``{}``.
     An unreadable record raises."""
     for r in reversed(_merge(_rows(network))):
-        if r.get("device") == device and _covers(r, at):
+        if _on(r, device) and _covers(r, at):
             return r
     return {}
 
@@ -191,7 +206,7 @@ def open_on(network: str, device: str, now: float = None) -> dict:
     unreadable record raises, never "no drill"."""
     now = time.time() if now is None else float(now)
     for r in reversed(_merge(_rows(network))):
-        if r.get("device") == device and _open(r, now):
+        if _on(r, device) and _open(r, now):
             return r
     return {}
 
@@ -326,7 +341,7 @@ def record_declared(network: str, device: str, *, minutes, expects: str = "", by
             return {"ok": False, "error": (f"whether {device} already has an incident or a "
                                            f"drill cannot be told ({exc}), so no drill is "
                                            "declared")}
-        open_drill = next((r for r in reversed(_merge(rows)) if r.get("device") == device
+        open_drill = next((r for r in reversed(_merge(rows)) if _on(r, device)
                            and _open(r, now)), None)
         if open_drill:
             from modules import display_names           # board E2a: a person by display name
@@ -391,7 +406,7 @@ def record_ended(network: str, drill_id: str, *, by: str, actor_verified: str = 
             return {"ok": False, "error": (f"{network} has no fault drill "
                                            f"{drill_id or '(none named)'} declared, so none is "
                                            "ended")}
-        if device and d.get("device") != device:
+        if device and not _on(d, device):
             return {"ok": False, "error": (f"{drill_id} is a drill on {d.get('device')}, not on "
                                            f"{device}, so it is not ended from {device}")}
         if d.get("ended_at"):
@@ -415,6 +430,127 @@ def record_ended(network: str, drill_id: str, *, by: str, actor_verified: str = 
              drill_id, row["device"], network, row["ended_at"], d.get("until"), via)
     drill = next(x for x in _merge(rows + [row]) if x.get("id") == drill_id)
     return {"ok": True, "record": row, "drill": drill}
+
+
+def _exercise_checks(network: str, devices, minutes, expects: str, now: float, inventory,
+                     rows: list) -> tuple:
+    """``(devices, minutes, text, error)`` for a drill exercise, *error* naming both operands
+    of the first check that refuses (`exercise_preview`'s order)."""
+    from modules.nsot import listref
+
+    if not network or not listref.exists(network):
+        return [], 0, "", f"{network or 'no network'} is no network, so no exercise is declared"
+    names = list(dict.fromkeys(str(d).strip() for d in devices or [] if str(d).strip()))
+    if not 2 <= len(names) <= EXERCISE_MOST_DEVICES:
+        return [], 0, "", (f"a drill exercise names 2 to {EXERCISE_MOST_DEVICES} devices, and "
+                           f"{len(names)} were given (one device is a single drill)")
+    try:
+        minutes = int(minutes)
+    except (TypeError, ValueError):
+        return [], 0, "", (f"the exercise's duration is a whole number of minutes, 1 to "
+                           f"{EXERCISE_MAX_MINUTES}, not {minutes!r}")
+    if not 1 <= minutes <= EXERCISE_MAX_MINUTES:
+        return [], 0, "", (f"a drill exercise lasts 1 to {EXERCISE_MAX_MINUTES} minutes, and "
+                           f"{minutes} was asked")
+    text = " ".join((expects or "").split())
+    if len(text.split()) < EXPECTS_WORDS:
+        return [], 0, "", (f"the faults expected are said in {EXPECTS_WORDS} words or more, and "
+                           f"{len(text.split())} were given")
+    for d in names:
+        try:
+            (inventory or _inventory_device)(network, d)
+        except Exception as exc:                      # noqa: BLE001 (named)
+            return [], 0, "", f"{d} is not a device of {network}: {exc}"
+        held = next((r for r in reversed(_merge(rows)) if _on(r, d) and _open(r, now)), None)
+        if held:
+            return [], 0, "", (f"{d} has a fault drill declared until {held.get('until')} "
+                               f"({held.get('id')}): one drill per device at a time, so the "
+                               "exercise is not declared")
+        inc = _open_incident(network, d)
+        if inc:
+            return [], 0, "", (f"{d} already has an incident open ({inc.get('id')}, opened "
+                               f"{inc.get('opened_at')}), before this exercise at {_iso(now)}: "
+                               "a declaration after the fault never makes it a drill")
+    return names, minutes, text, ""
+
+
+def exercise_words(devices: list, minutes: int, text: str) -> str:
+    """What a drill exercise's preview says, and its record keeps word for word (its from and
+    until are the declaration's own, kept beside them)."""
+    from modules.heal.catalog import listed
+
+    return (f"A drill exercise on {listed(devices)} for {minutes} minutes from its "
+            f"declaration: {text}. Each incident opened on them in it is a drill: guards 9 and "
+            "11 do not hold it; every other guard, the verify and the rollback do, and its heal "
+            "is counted as a drill's")
+
+
+def exercise_preview(network: str, devices, *, minutes=EXERCISE_MINUTES, expects: str,
+                     now: float = None, inventory=None) -> dict:
+    """A drill exercise's preview, before anything is recorded: ``{"ok": True, "devices",
+    "minutes", "from", "until", "words"}`` (*words* the preview the record keeps), or
+    ``{"ok": False, "error"}``. Refused, naming both operands: no network, fewer than two or
+    more than `EXERCISE_MOST_DEVICES` devices, a duration outside 1 to `EXERCISE_MAX_MINUTES`,
+    the faults under `EXPECTS_WORDS` words, a device not of the network, a drill open or an
+    incident already open on any of them. Reads only."""
+    now = time.time() if now is None else float(now)
+    try:
+        rows = _rows(network)
+    except Exception as exc:                          # noqa: BLE001 (named)
+        return {"ok": False, "error": f"the fault drills cannot be read ({exc}), so no "
+                                      "exercise is declared"}
+    names, minutes, text, err = _exercise_checks(network, devices, minutes, expects, now,
+                                                 inventory, rows)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True, "devices": names, "minutes": minutes, "from": _iso(now),
+            "until": _iso(now + minutes * 60), "words": exercise_words(names, minutes, text)}
+
+
+def record_exercise(network: str, devices, *, minutes=EXERCISE_MINUTES, expects: str, by: str,
+                    previewed: str, actor_verified: str = "", via: str, script: str = "",
+                    reason: str = "", now: float = None, inventory=None) -> dict:
+    """Declare a drill exercise (the module's `EXERCISE_MINUTES`): the checks of
+    `exercise_preview` again under the file's lock, refused unless *previewed* is the words the
+    preview shows now (a device, a duration or a time that moved is a new preview), then ONE
+    row naming every device, its own duration and the preview's words, append-only. ``{"ok":
+    True, "record"}`` or ``{"ok": False, "error"}``. Silences nothing, holds nothing."""
+    from modules import filestore
+    from modules.config import open_secure
+
+    now = time.time() if now is None else float(now)
+    if not by or actor_verified == "none":
+        return {"ok": False, "error": "a drill exercise is declared by a person, and this "
+                                      f"request names none (actor {by or 'none'})"}
+    with filestore.PathLock(path(network)):
+        try:
+            rows = _rows(network)
+        except Exception as exc:                      # noqa: BLE001 (named)
+            return {"ok": False, "error": f"the fault drills cannot be read ({exc}), so no "
+                                          "exercise is declared"}
+        names, minutes, text, err = _exercise_checks(network, devices, minutes, expects, now,
+                                                     inventory, rows)
+        if err:
+            return {"ok": False, "error": err}
+        words = exercise_words(names, minutes, text)
+        if " ".join(str(previewed or "").split()) != words:
+            return {"ok": False, "error": ("the exercise is not the one previewed: the preview "
+                                           f"confirmed said \"{previewed or 'nothing'}\", and "
+                                           f"now it says \"{words}\". Nothing is declared; "
+                                           "preview again")}
+        row = {"id": "fx-" + uuid.uuid4().hex[:10], "list": network, "kind": "exercise",
+               "device": "", "devices": names, "expects": text, "detail": "",
+               "minutes": minutes, "from": _iso(now), "from_epoch": now,
+               "until": _iso(now + minutes * 60), "until_epoch": now + minutes * 60,
+               "by": by, "actor_verified": actor_verified or "", "via": via,
+               "script": (script or "").strip(), "reason": (reason or "").strip(),
+               "preview": words, "recorded_at": _iso(time.time())}
+        os.makedirs(os.path.dirname(path(network)), exist_ok=True)
+        with open_secure(path(network), "a") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    log.info("fault drills: %s declared a drill exercise on %s in %s until %s via %s", by,
+             ", ".join(names), network, row["until"], via)
+    return {"ok": True, "record": row}
 
 
 def declared(network: str) -> list:

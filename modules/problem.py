@@ -28,13 +28,26 @@ what it is handed.
 
 from dataclasses import asdict, dataclass
 
-#: The problem's fields, exactly (`Problem`).
-FIELDS = ("device", "object", "condition", "cause", "port_role", "affected", "cause_cleared")
-#: The checks a problem's cause clears by, each a read Mercury makes.
+#: The problem's fields, exactly (`Problem`). G7 (C3712; the operator's walk item 3,
+#: 2026-11-15) appends ``cleared`` (whether the cause has cleared: ``true``, ``false`` or
+#: ``unknown``, `CLEARED`) and ``cleared_at`` (when that was read, an ISO instant).
+FIELDS = ("device", "object", "condition", "cause", "port_role", "affected", "cause_cleared",
+          "cleared", "cleared_at")
+#: Whether a problem's cause has cleared, as ``cleared`` says it.
+CLEARED = ("true", "false", "unknown", "")
+#: What a saved script matches on (R4, the operator, 2026-11-15): the classified problem's
+#: fields, never an alert's name or a raw line (C3696 builds the match on these).
+MATCH_FIELDS = ("condition", "cause", "port_role", "cleared")
+#: The checks a problem's cause clears by, each a read Mercury makes. G7 appends an
+#: err-disabled port's two (`heal.errdisable.CLEARED_CHECKS`).
 CLEARED_CHECKS = ("stream_back", "neighbour_up", "matches_intent", "link_up", "port_passing",
-                  "session_up", "alert_resolved", "logs_quiet", "")
+                  "session_up", "alert_resolved", "logs_quiet", "", "no_bpdu_since",
+                  "violator_gone")
 #: The lost telemetry stream's signal kind.
 LOST_STREAM = "lost_stream"
+#: An err-disabled switch port's signal kind (G7, `heal.errdisable.SIGNAL`): classified from
+#: the device's err-disable line and the Interface down alert, kept on the incident's record.
+ERR_DISABLE = "err_disable"
 
 #: Each condition (a problem's kind): its default object in words, and its cause-cleared check.
 CONDITIONS = {
@@ -64,6 +77,9 @@ CONDITIONS = {
     "bgp_session_stuck": ("a BGP session", "session_up"),
     "ospf_neighbour_stuck": ("an OSPF neighbour", "neighbour_up"),
     "port_flapping": ("a port", "port_passing"),
+    # G7 (C3712): a switch port err-disabled by BPDU guard or port security; its check is the
+    # cause's own (`heal.errdisable.CLEARED_CHECKS`), set by the classification.
+    "err_disabled": ("a switch port", ""),
 }
 
 #: Every signal kind Mercury raises, to its problem's condition: the heal's trigger kinds, the
@@ -82,6 +98,7 @@ CONDITION_OF = {
     "management_path": "management_path_changed", "multi_device": "multi_device_change",
     "port_bounce": "port_stuck", "session_clear": "bgp_session_stuck",
     "ospf_reset": "ospf_neighbour_stuck", "dampening_proposal": "port_flapping",
+    ERR_DISABLE: "err_disabled",
 }
 
 
@@ -94,6 +111,8 @@ class Problem:
     port_role: str = ""
     affected: str = ""
     cause_cleared: str = ""
+    cleared: str = ""
+    cleared_at: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -105,7 +124,7 @@ def declared_signals() -> tuple:
     from modules.heal import incidents, kinds
 
     return (tuple(incidents.CAUSE_KINDS) + tuple(incidents.SYMPTOM_KINDS) + (LOST_STREAM,)
-            + tuple(kinds.TIER))
+            + tuple(kinds.TIER) + (ERR_DISABLE,))
 
 
 def _listed(items) -> str:
@@ -136,11 +155,16 @@ def _object(condition: str, record: dict, triggers: list) -> str:
 def classify(found: dict) -> Problem:
     """The problem the incident `incident_page.resolve` *found* is (the module's docstring);
     ``condition`` ``""`` when nothing it holds names one."""
-    from modules.heal import diagnose_stream
+    from modules.heal import diagnose_stream, errdisable
 
     record, entry = found.get("incident") or {}, found.get("entry") or {}
     device = record.get("device") or entry.get("device") or ""
-    triggers = [t for t in record.get("triggers") or entry.get("triggers") or []
+    # G7 (C3712): an err-disabled port its own evidence classified (`errdisable.classify`, kept
+    # on the record by `errdisable.reclassify_step`) is the most specific of all.
+    port = errdisable.problem_fields(device, errdisable.of_record(record))
+    if port:
+        return Problem(**port)
+    triggers =[t for t in record.get("triggers") or entry.get("triggers") or []
                 if isinstance(t, dict)]
     signal = ""
     if diagnose_stream.target_from(record):
@@ -170,4 +194,7 @@ def evidence(found: dict) -> list:
         words = (said.symptom_words(t, device) if kind in incidents.SYMPTOM_KINDS
                  else incidents.KIND_WORDS.get(kind) or t.get("words") or kind)
         out.append({"kind": kind, "words": words, "at": t.get("at") or ""})
-    return out
+    # G7 (the operator's walk item 2, 2026-11-15): an err-disabled port's device confirmation
+    # read (which port, which cause, when it was read) and the lines it was classified from.
+    from modules.heal import errdisable
+    return errdisable.evidence_rows(record) + out

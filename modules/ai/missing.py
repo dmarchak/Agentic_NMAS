@@ -16,9 +16,12 @@ Each row: when, the feature, the network, what was wanted (the read's operation 
 or the gap's words), why (the request's why, or the gap's evidence), Mercury's reason, and what
 it was for (``incident`` or ``question``).
 
-**Listed for review, never acted on.** `rows` lists them (History › AI missing capabilities,
-`history_sources.ai_missing`); nothing in Mercury reads a row to do anything, and the AI is
-never shown one. Kept beside the record of AI calls (`calls._path`), owner-only from creation,
+**Listed for review; one thing acts on a row** (C3733, the operator, 2026-11-15): `rows` lists
+them (History › AI missing capabilities, `history_sources.ai_missing`), and the AI is never
+shown one. A gap keeps what it wanted (``wants``: its incident's problem condition, and the
+steps Mercury could propose then); once a step that fixes that condition exists (registered
+and deployed, `available`), R1's reader (`fixit.auto.capability_failures`) offers its incident
+ONE restart, keyed to the row's id, within its caps. Nothing else reads a row to do anything. Kept beside the record of AI calls (`calls._path`), owner-only from creation,
 append-only, one line per want, under the store's lock across processes, masked at rest
 (`redact.redact_payload`).
 
@@ -69,10 +72,53 @@ def lacking(reason: str) -> bool:
     return any(w in (reason or "") for w in LACKING)
 
 
-def wanted(answer, records, *, feature: str, network: str, about: tuple) -> list:
+def row_id(about: dict, kind: str, what: str) -> str:
+    """A row's stable id: what it was for and what it wanted (C3733: a restart is keyed to it,
+    so one want restarts its incident once)."""
+    import hashlib
+
+    text = json.dumps([about.get("kind"), about.get("id"), kind, what], sort_keys=True)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def capabilities() -> dict:
+    """What Mercury can propose now, by key, with the problem conditions each fixes, through
+    the one door that holds the catalog (`fix_proposal.capabilities`)."""
+    from modules.ai import fix_proposal
+
+    return fix_proposal.capabilities()
+
+
+def available(row: dict, now_has: dict = None) -> list:
+    """The steps that fix what *row* wanted and that it lacked when it was recorded (C3733):
+    each key `capabilities` gives that fixes its ``wants`` condition and was not among the
+    ``known`` keys of that moment, sorted; ``[]`` for a row that wanted no condition (a read,
+    or an incident with no classified problem)."""
+    wants = (row or {}).get("wants") or {}
+    condition = wants.get("condition") or ""
+    if not condition:
+        return []
+    known = set(wants.get("known") or ())
+    have = capabilities() if now_has is None else now_has
+    return sorted(k for k, fixes in have.items() if condition in fixes and k not in known)
+
+
+def for_incident(incident_id: str) -> list:
+    """The rows recorded for *incident_id*'s investigations, newest first; ``[]`` when the
+    store is absent or cannot be read (an unread store restarts nothing)."""
+    got = rows()
+    return [r for r in got["rows"] if (r.get("about") or {}).get("kind") == "incident"
+            and (r.get("about") or {}).get("id") == incident_id]
+
+
+def wanted(answer, records, *, feature: str, network: str, about: tuple,
+           condition: str = "") -> list:
     """The rows one checked answer makes: each refused read Mercury lacks (`lacking`), and the
     answer's gap, if any. *records* are the read loop's records; *about* is ``(kind, id)``,
-    kind one of `ABOUT`."""
+    kind one of `ABOUT`. Each row has its stable `row_id`; a gap of an incident whose problem's
+    *condition* is known also keeps what it wanted (``wants``: that condition, and the keys
+    Mercury could propose then, `capabilities`), so it restarts once when a step that fixes it
+    exists (`available`, C3733)."""
     out = []
     for r in records or ():
         if r.get("verdict") != "refused" or not lacking(r.get("reason") or ""):
@@ -87,9 +133,12 @@ def wanted(answer, records, *, feature: str, network: str, about: tuple) -> list
         out.append({"kind": KIND_OPERATION, "what": _one_line(gap.what), "device": "",
                     "why": _one_line("cites " + ", ".join(list(gap.evidence_refs)[:6])),
                     "reason": "no catalog operation does it"})
+        if condition:
+            out[-1]["wants"] = {"condition": condition, "known": sorted(capabilities())}
     kind, ident = about
-    return [dict(row, feature=feature, network=network, about={"kind": kind, "id": str(ident)})
-            for row in out[:MOST_PER_ASK]]
+    ab = {"kind": kind, "id": str(ident)}
+    return [dict(row, feature=feature, network=network, about=ab,
+                 id=row_id(ab, row["kind"], row["what"])) for row in out[:MOST_PER_ASK]]
 
 
 def record(rows, now: float = None) -> dict:

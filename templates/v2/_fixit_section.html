@@ -65,6 +65,15 @@
 {%- elif S == 'resolved' %}{% if not x.attempts and not x.handovers and x.ended == 'fixed' %}Not needed: Mercury fixed it without AI. No AI call is recorded for this incident.{% elif not x.attempts and not x.handovers %}Not needed: no fix was tried in this incident, and no AI call is recorded for it.{% else %}Resolved: read-only. The attempts, their costs and each hand-over are kept as recorded.{% endif %}
 {%- endif %}
 {%- endmacro -%}
+{#- The operator, 2026-11-15: every sentence naming the automatic-troubleshooting switch links
+    straight to it (the AI toggle on Needs attention's control strip for this network,
+    `section.switch_href`, C3748). -#}
+{%- macro switch_linked(text) -%}
+{%- set phrase = 'automatic troubleshooting' -%}
+{%- set href = (x.auto or {}).switch_href -%}
+{%- if href and phrase in text -%}{%- set parts = text.split(phrase, 1) -%}{{ parts[0] | times }}<a href="{{ href }}" data-switch="fixit_auto">{{ phrase }}</a>{{ parts[1] | times }}
+{%- else -%}{{ text | times }}{%- endif -%}
+{%- endmacro -%}
 {#- The state's own words, for a section drawn before `x.status` existed. -#}
 {%- macro legacy_status() -%}
 {%- if S in ('none', 'resolved') %}{{ ai_said() }}
@@ -170,7 +179,7 @@
   {%- if x.unreadable %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's troubleshooting record couldn't be read:</strong> {{ x.unreadable }}. Nothing is written to it until it can be; what else could be read is drawn below.</div></div>
   {%- endif %}
-  <p class="fixit-status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}>{{ (x.status or legacy_status()) | times }}{% if S == 'running' %} <a href="{{ run_href(x.device, x.network, x.stop.run) }}">Open the run</a>{% endif %}</p>
+  <p class="fixit-status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}>{% if x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'running' %} <a href="{{ run_href(x.device, x.network, x.stop.run) }}">Open the run</a>{% endif %}</p>
   {%- if x.composed and S not in ('none', 'resolved') and not (S == 'proposed' and OLD and OLD.operation) %}<p class="fixit-said" data-said="{{ S }}">{{ legacy_status() | times }}</p>{% endif %}
   {%- if S in ('none', 'resolved') and x.status %}<p class="small muted fixit-ai-said">{{ ai_said() }}</p>{% endif %}
   {%- if F.kind == 'item' and item_more is defined and item_more | trim %}{{ item_more }}{% endif %}
@@ -189,6 +198,8 @@
       {%- for st in NP.steps %}
       {%- set pf = st.preflight or {} %}
       <li class="fixit-plan-item fixit-plan-item-{{ 'ok' if pf.ok else 'refused' }}" data-step="{{ st.n }}" value="{{ st.n }}"{% if pf.code %} data-refused-by="{{ pf.code }}"{% endif %}><span title="{{ st.params }}">{{ st.words | times }}</span>
+        {#- A built-in command plan's step (C3757): its How it works page beside it. -#}
+        {%- if st.operation == 'errdisable-recover' %}{{ how('errdisable-recover', 'the-run-step-by-step', compact=True, op='the recovery') }}{% endif %}
         {%- if pf.ok %} <span class="fixit-pre" data-preflight="ok">· preflight passed</span>
         {%- else %} <span class="fixit-pre fixit-pre-refused" data-preflight="refused">· refused at its preflight: {{ pf.refused or 'no reason was recorded' }}</span>{% endif %}</li>
       {%- endfor %}
@@ -262,18 +273,36 @@
       with it (`shown`), its calls and Was this right?. A plan drawn with no `shown` says its
       found line above and its calls here. -#}
   {#- An answer that proposed no operation (a gap, no fix) is drawn from `x.ai_answer`. -#}
-  {%- set PP = NP or OLD or x.ai_answer or {} %}
-  {%- set sh = (PP.shown if PP.shown is defined else none) or {} %}
-  {%- if sh.rationale or sh.hypotheses or PP.calls %}
-  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why">
-    <summary>{{ 'Why the AI proposes this' if (NP or OLD or (x.ai_answer or {}).has_plan) else 'What the AI found' }}</summary>
+  {#- The operator, 2026-11-15: "The AI's findings, hypotheses and next steps must always appear
+      on the incident card ('What the AI found'), whatever the outcome (plan, no fix, gap,
+      partial) ... Don't show the rating without content." The answer drawn is the newest
+      with content: the plan's when its line kept one, else `x.ai_answer` (a gap, no fix, a
+      plan refused); open when there is no plan to read first. A part resting on a citation
+      Mercury could not find is marked in words naming it. An answer with nothing to draw is
+      one line of its calls, with no rating. -#}
+  {%- set PO = NP or OLD %}
+  {%- set POsh = ((PO.shown if PO and PO.shown is defined else none) or {}) %}
+  {%- set AAsh = ((x.ai_answer.shown if x.ai_answer and x.ai_answer.shown is defined else none) or {}) %}
+  {%- set po_has = (POsh.rationale or POsh.hypotheses or POsh.steps or POsh.gap or POsh.why) and true %}
+  {%- set aa_has = (AAsh.rationale or AAsh.hypotheses or AAsh.steps or AAsh.gap or AAsh.why) and true %}
+  {%- set PP = PO if po_has else (x.ai_answer if aa_has else (PO or x.ai_answer or {})) %}
+  {%- set sh = POsh if po_has else (AAsh if aa_has else {}) %}
+  {%- if po_has or aa_has %}
+  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP %} open{% endif %}>
+    <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}</summary>
     <div class="fixit-ai-answer">
       {%- if sh.rationale %}<p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>{% endif %}
       {%- if sh.hypotheses %}
-      <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span></li>{% endfor %}</ol>
+      <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span>{% if h.unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ h.unverified_words }}</span>{% endif %}{% if h.confirm %}<br><span class="muted">To confirm: <span class="mono">{{ h.confirm }}</span></span>{% endif %}</li>{% endfor %}</ol>
       {%- endif %}
-      {%- if sh.why %}<p class="small">Why this fix: {{ sh.why }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
-      {%- if sh.gap %}<p class="small">What the fix needs, which no Mercury operation does yet: {{ sh.gap }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
+      {%- if sh.steps %}
+      <p class="small"><strong>{{ 'The steps it proposes' if sh.steps | length != 1 else 'The step it proposes' }}:</strong></p>
+      <ol class="small fixit-ai-steps">{% for st in sh.steps %}<li data-ai-step="{{ st.n }}"><span class="mono">{{ st.operation }}</span>: {{ st.why | times }} <span class="mono faint">{{ (st.cites or []) | join(' · ') }}</span>{% if st.unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ st.unverified_words }}{% if st.only_unverified %}: not approvable{% endif %}</span>{% endif %}</li>{% endfor %}</ol>
+      {%- elif sh.why %}<p class="small">Why this fix: {{ sh.why }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span></p>{% endif %}
+      {%- if sh.gap %}<p class="small">What the fix needs, which no Mercury operation does yet: {{ sh.gap }} <span class="mono faint">{{ (sh.cites or []) | join(' · ') }}</span>{% if sh.gap_unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ sh.gap_unverified_words }}</span>{% endif %}</p>
+      {%- if sh.gap_overlooked %}<p class="small warn-text" data-gap-overlooked>Flagged: {{ sh.gap_overlooked }}.</p>{% endif %}
+      {%- endif %}
+      {%- if sh.retry and sh.retry.words %}<p class="small muted" data-retry="{{ 'asked' if sh.retry.asked else 'not-asked' }}">Its citations: {{ sh.retry.words }}.</p>{% endif %}
       {%- if PP.calls %}
       <p class="small muted">{{ PP.calls | length }} AI call{{ 's' if PP.calls | length != 1 }}{% if sh.passes %} over {{ sh.passes }} pass{{ 'es' if sh.passes != 1 }}{% endif %}{% if PP.ai_usd %}, {{ PP.ai_usd }}{% endif %}{% if PP.prompt %} · prompt {{ PP.prompt }}{% endif %}{% if sh.reads %} · {{ sh.reads }}{% endif %} · <a href="{{ url_for('v2.history_page', call=PP.calls[-1]) }}">the call on History</a></p>
       {%- set fcall = PP.calls[-1] %}
@@ -282,6 +311,10 @@
       {%- if NP and NP.note %}<p class="small">Your note, kept with this proposal and for the hand-over: “{{ PP.note }}”</p>{% endif %}
     </div>
   </details>
+  {%- elif PP.calls %}
+  {#- Nothing of the answer to draw (its words, on the status line, say why): its calls, and no
+      rating of nothing. -#}
+  <p class="small muted fixit-ai-calls" data-ai-nothing>{{ PP.calls | length }} AI call{{ 's' if PP.calls | length != 1 }}{% if PP.ai_usd %}, {{ PP.ai_usd }}{% endif %}{% if PP.prompt %} · prompt {{ PP.prompt }}{% endif %} · <a href="{{ url_for('v2.history_page', call=PP.calls[-1]) }}">the call on History</a></p>
   {%- endif %}
   {%- if S != 'none' and T %}
   <details class="fixit-more" data-keep="fixit-costs-{{ x.id }}" data-more="costs">
@@ -294,7 +327,7 @@
     {%- set au = x.auto or {} %}
     {%- if au.feature %}
     {%- set ae = au.estimate or {} %}
-    <p class="small fixit-auto" data-auto="{{ 'on' if au.on else 'off' }}" data-feature="{{ au.feature }}"><strong>{{ au.words }}:</strong> {% if au.on %}on for {{ x.network }}{% if au.by %}, turned on by {{ au.by | people }}{% endif %}{% if au.at %} {{ clock(au.at) }}{% endif %}{% if au.ends %}, until {{ clock(au.ends, 'date') }}{% endif %}{% else %}off for {{ x.network }}{% endif %} ({{ au.trigger_words }}).
+    <p class="small fixit-auto" data-auto="{{ 'on' if au.on else 'off' }}" data-feature="{{ au.feature }}"><strong>{{ au.words }}:</strong> {% if au.on %}<a href="{{ au.switch_href }}" data-switch="fixit_auto">on for {{ x.network }}</a>{% if au.by %}, turned on by {{ au.by | people }}{% endif %}{% if au.at %} {{ clock(au.at) }}{% endif %}{% if au.ends %}, until {{ clock(au.ends, 'date') }}{% endif %}{% else %}<a href="{{ au.switch_href }}" data-switch="fixit_auto">off for {{ x.network }}</a>{% endif %} ({{ au.trigger_words }}).
       {%- if ae.error %} Its estimate couldn't be made: {{ ae.error }}.
       {%- else %} <span title="{{ ae.frequency_basis }}{% if ae.cost_basis %}; {{ ae.cost_basis }}{% endif %}{% if ae.digest %} (estimate {{ ae.digest[:8] }}){% endif %}">{{ ae.label | capitalize }}: {% if ae.calls_per_day is not none %}about {{ ae.calls_per_day }} call{{ '' if ae.calls_per_day == 1 else 's' }} a day, {{ ae.usd_per_day | usd }} a day, {{ ae.usd_per_month | usd }} a month{% else %}not measured yet{% endif %}</span>{% if ae.suggested %}; caps suggested {{ ae.suggested.day_cap_usd | usd }} a day, {{ ae.suggested.month_cap_usd | usd }} a month{% endif %}{% endif %}{% if au.incident_cap %} · per incident at most {{ au.incident_cap }}{% endif %}{% if au.day_cap %} · the day cap {{ au.day_cap }}{% endif %} · <a href="{{ au.settings_href }}">Open Settings › AI</a></p>
     {%- endif %}
@@ -306,7 +339,7 @@
   </details>
   {%- endif %}
   {%- if x.handovers %}
-  <p class="small fixit-versions">Hand-overs: {% for h in x.handovers %}<a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=h.version, list=x.network) }}">version {{ h.version }}</a> ({{ h.by }}, {{ clock(h.at) }}{% if h.kept != 'ok' %}, its write-up {{ 'not kept' if h.kept == 'absent' else 'unreadable' }}{% endif %}){% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="small fixit-versions">Hand-overs: {% for h in x.handovers %}<a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=h.version, list=x.network) }}">version {{ h.version }}</a> ({{ h.by | people }}, {{ clock(h.at) }}{% if h.kept != 'ok' %}, its write-up {{ 'not kept' if h.kept == 'absent' else 'unreadable' }}{% endif %}){% if not loop.last %} · {% endif %}{% endfor %}</p>
   {%- endif %}
   {#- A can't-fix's AI analysis in full (C3488; board H, H8: `heal_analysis.drawn`, a read of
       what it kept, never a call), advisory, one level down. -#}
@@ -321,6 +354,7 @@
     {%- endfor %}
   </details>
   {%- endif %}
+  {%- include "v2/_saved_plans_slot.html" %}
 </section>
 {#- The modals the BLUF's choices open, anchored to them (`_modal.html`). -#}
 {%- if NP and (ACT.modify or {}).offered %}

@@ -135,10 +135,14 @@ class TestARunThatStoppedBeforeTheSendSentNothing:
         assert row["sent"] is True
 
     def test_the_stages_before_the_send_are_the_pipeline_s_up_to_deploy(self):
-        from modules.pipeline import STAGE_NAMES
+        from modules.pipeline import PRE_APPLY, STAGE_NAMES
+        # And the pre-apply checks a run declares between stage 5 and the send (C3757): a run
+        # they refuse sent nothing.
         assert receipts.stages_before_send() == (
-            "netbox_query", "template_render", "ci_gate", "pre_snapshot", "config_diff")
-        assert set(receipts.stages_before_send()) < set(STAGE_NAMES)
+            "netbox_query", "template_render", "ci_gate", "pre_snapshot", "config_diff",
+            PRE_APPLY)
+        assert set(receipts.stages_before_send()[:-1]) < set(STAGE_NAMES)
+        assert PRE_APPLY not in STAGE_NAMES
 
     def test_every_stage_before_the_send_has_words_to_name_it(self):
         """`_nothing_sent` names the stage by its words with no fallback, so each stage before

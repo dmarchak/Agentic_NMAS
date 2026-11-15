@@ -392,10 +392,14 @@ CARDS = {
     "fixit": {
         "group": "ai_troubleshoot", "title": "AI troubleshooting", "tab": "ai",
         "fields": (_f("ai_troubleshoot_mode", "AI mode", "choice",
-                      "Manual: an AI troubleshoot runs only when a person presses it on an "
-                      "incident's page, never on its own; Off: none is offered, and Mercury's "
-                      "own diagnosis still proposes a fix", _fixit_policy.MODES,
-                      _fixit_policy.MODE_WORDS),
+                      "every network's default, for a network with no mode of its own: each "
+                      "network is Off, Manual or "
+                      "Automatic under AI troubleshooting below (and Automatic on the control "
+                      "strip). Manual: a person's press on an incident's page starts AI "
+                      "troubleshooting, and nothing starts by itself unless that network is "
+                      "Automatic, within its spending limits; Off: none is offered or started, "
+                      "and Mercury's own diagnosis still proposes a fix (C3769)",
+                      _fixit_policy.MODES, _fixit_policy.MODE_WORDS),
                    _f("ai_cap_usd_per_incident", "AI spend per incident", "usd",
                       "what one incident's AI calls may cost: spent plus the next attempt's "
                       "worst case, refused past it, naming both; there is no \"no cap\", and "
@@ -411,8 +415,9 @@ CARDS = {
                       {"mercury": "Mercury's account",
                        "read_only": "The read-only account (hardened)"})),
         "secret": None, "with_id": None, "integration": None,
-        "note": "Per installation, every network. An incident's page draws its spend against "
-                "this cap; the day cap above still holds every call.",
+        "note": "Every network's defaults: a network's own mode and spending limits, under AI "
+                "troubleshooting below, take their place for it. An incident's page draws its "
+                "spend against its network's cap; the day cap above still holds every call.",
     },
     # Notifications' email relay (board H, artboard B; H9): the installation's one relay, on
     # the Notifications tab beside the webhooks and teams, drawn by its own template

@@ -475,8 +475,13 @@ def _page(template: str, **ctx):
 
 @bp.route("/", methods=["GET"])
 def landing():
-    """Needs attention: what is wrong and what needs a person, worst first."""
-    return _page("v2/landing.html", a=_attention(), recent=_recent(), active_nav="attention")
+    """Needs attention: what is wrong and what needs a person, worst first; the control strip
+    (C3748) for the page's network above it."""
+    from modules import control_strip
+    from routes.device_v2 import _page_ref
+
+    return _page("v2/landing.html", a=_attention(), recent=_recent(), active_nav="attention",
+                 strip=control_strip.view(_page_ref().name))
 
 
 @bp.route("/recent", methods=["GET"])
@@ -2029,16 +2034,47 @@ def heal_analysis_of(network: str, incident_id: str) -> dict:
     iid = str(incident_id or "")[:40]
     if not _HEAL_INCIDENT.match(iid) or not listref.exists(str(network or "")[:80]):
         return {"state": "unknown", "error": "", "block": {}, "provenance": {}}
-    return heal_analysis.drawn(network[:80], iid)
+    got = heal_analysis.drawn(network[:80], iid)
+    # C3769 (Gate 2): the can't-fix analysis is folded into AI troubleshooting's investigation.
+    # Where no analysis answered and the AI investigated this incident, its findings are drawn
+    # in the analysis's place; an analysis kept before stays readable, drawn as it was.
+    if (got.get("block") or {}).get("state") != "answered":
+        inv = investigation_of(network[:80], iid)
+        if inv:
+            return {"state": "investigation", "error": "", "block": {}, "provenance": {},
+                    "investigation": inv}
+    return got
+
+
+def investigation_of(network: str, incident_id: str) -> dict:
+    """The AI's investigation of *incident_id* as a row draws it (`incidents_list._fixit_of`'s
+    ``ai``: investigating since its start, or its one-line outcome), with its incident's page;
+    ``{}`` when the AI never started on it or it cannot be read (the analysis's own state is
+    drawn then). A read of the incident's records."""
+    from modules import incident_page, incidents_list, troubleshoot_job
+
+    try:
+        found = incident_page.resolve(network, incident_id)
+        if found.get("found") != "page":
+            return {}
+        ai = incidents_list._fixit_of(network, found)["ai"]
+    except Exception as exc:                          # noqa: BLE001 (the analysis's state is drawn)
+        log.warning("v2: %s's investigation could not be read: %s", incident_id, exc)
+        return {}
+    return dict(ai, href=troubleshoot_job.page_of(network, incident_id)) if ai else {}
 
 
 def with_heal_analysis(section: dict) -> dict:
     """An incident's AI troubleshooting section (`fixit.section.drawn`'s) with its kept AI
     analysis in full (``analysis``), where the section says the incident is a can't-fix
     (``cant_fix``; C3488, the GUI review's item 2): the page drew only its one advisory line,
-    and the answer itself only on the incident's Needs attention row. Changed in place."""
+    and the answer itself only on the incident's Needs attention row. Changed in place. Where
+    the analysis is folded into the AI's investigation (C3769), the section itself is the
+    investigation's findings, so no analysis is added beside it."""
     if section.get("cant_fix"):
-        section["analysis"] = heal_analysis_of(section.get("network"), section.get("id"))
+        got = heal_analysis_of(section.get("network"), section.get("id"))
+        if got.get("state") != "investigation":
+            section["analysis"] = got
     return section
 
 

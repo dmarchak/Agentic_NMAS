@@ -11,7 +11,6 @@ device.
 
 import json
 import logging
-import re
 
 from flask import Blueprint, render_template, request
 from modules.outbound import no_store
@@ -490,9 +489,24 @@ def _ai_section(network: str, status: int = 200, **ctx):
     return _fragment("v2/_settings_ai_bg.html", status, ai=settings_view.view(network), **ctx)
 
 
+def _on_strip() -> bool:
+    """Pressed on the control strip (C3748, ``?answer=strip``): answered with the strip, its
+    AI toggle's form or result in place; the write and its gate are this route's either way
+    (one home for turning a feature on or off)."""
+    return request.args.get("answer") == "strip"
+
+
+def _strip_answer(network: str, status: int = 200, **ctx):
+    from routes.control_v2 import _strip
+
+    return _strip(network, status, **ctx)
+
+
 def _ai_form(network: str, feature: str, status: int = 200, **ctx):
     """The section with Turn on…'s form open on the feature's row (a refusal's answer): the
-    estimate measured now, so a moved one is drawn to accept again."""
+    estimate measured now, so a moved one is drawn to accept again. For automatic AI
+    troubleshooting, its read-only list for audit, in its card (Gate 2: the control strip
+    opens no form; its switch is AI troubleshooting's own control)."""
     from modules.ai import background, settings_view
 
     try:
@@ -500,6 +514,17 @@ def _ai_form(network: str, feature: str, status: int = 200, **ctx):
     except background.Refused as exc:
         return _ai_section(network, 404, refused=str(exc))
     return _ai_section(network, status, open_on=o, **ctx)
+
+
+def _ts_person() -> str:
+    """"" when this request may change a network's AI troubleshooting, else why not: the ONE
+    check the control strip's toggles ask (`heal.batch.may_press`: a verified person allowed to
+    change those settings, `identity.may` ``configure``), so its switch and the Settings card
+    are refused alike (Gate 2's review)."""
+    from modules import identity
+    from modules.heal import batch
+
+    return batch.may_press(identity.verified_identity())
 
 
 def _ai_person() -> str:
@@ -537,19 +562,30 @@ def ai_on(network, feature):
     """Board AI3b: turn *feature* on for *network* with the estimate the person saw (its
     digest, ``shown``), their acceptance and their caps; refused, naming why, with nothing
     changed, when they are not a verified person, did not accept, gave a cap out of range, or
-    the estimate moved (both digests named, the estimate now drawn to accept again)."""
+    the estimate moved (both digests named, the estimate now drawn to accept again).
+
+    Automatic AI troubleshooting (``fixit_auto``) is never turned on here (Gate 2, C3769; the
+    operator, 2026-11-15: "Keep tonight's detailed form reachable from Settings for audit ('what
+    will this start, and why'), not on the main path"): its form is read-only, and a post is
+    refused, naming the one place it is turned on (`settings_v2.ai_ts_level`: AI
+    troubleshooting's control and the control strip's switch, after the network's limits and
+    their estimate are acknowledged), with nothing changed."""
     from modules import identity
     from modules.ai import background
     from modules.ai.settings_view import caps_value, drawn_entry, pick
+    from modules.fixit import auto as A
 
     form = request.form
     kept = {"day_typed": form.get("day_cap_usd", ""), "month_typed": form.get("month_cap_usd", "")}
     why = _ai_person()
+    if not why and feature == A.FEATURE:
+        why = ("automatic AI troubleshooting is turned on with AI troubleshooting's own "
+               "control (Automatic, on this tab or the control strip), after the network's "
+               "spending limits and their estimate are acknowledged; this list is for audit and "
+               "turns nothing on; nothing was changed")
     if not why and form.get("accept") != "on":
         why = ("the estimate was not accepted: tick “I have read the estimate” to turn it on; "
                "nothing was changed")
-    catch_up, why_list = (None, "") if why else _catch_up_chosen(network, feature, form)
-    why = why or why_list
     if why:
         return _ai_form(network, feature, 403 if "verified person" in why else 409,
                         form_refused=why, **kept)
@@ -558,66 +594,12 @@ def ai_on(network, feature):
                                  day_cap_usd=caps_value(form.get("day_cap_usd")),
                                  month_cap_usd=caps_value(form.get("month_cap_usd")),
                                  shown=form.get("shown", ""),
-                                 actor=identity.request_actor(), verified=_verified(),
-                                 catch_up=catch_up)
+                                 actor=identity.request_actor(), verified=_verified())
     except background.Refused as exc:
         return _ai_form(network, feature, 409, form_refused=str(exc), **kept)
-    caught = None
-    if catch_up is not None and catch_up["ticked"]:
-        # The person's choice, started now: each ticked incident once, as its own job, under
-        # its failure's own key and the person's trigger (`heal_notice.start_catch_up`).
-        from modules import heal_notice
-        from modules.ai.settings_view import chosen
-        caught = heal_notice.start_catch_up(chosen(network), catch_up["ticked"],
-                                            actor=identity.request_actor(),
-                                            verified=_verified())
     return _ai_section(network, turned_on=dict(
         pick(out, "recorded", "record_error"), feature=feature,
-        entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd"),
-        caught_up=caught, unticked=len(catch_up["unticked"]) if catch_up else 0))
-
-
-#: An incident's id as the catch-up's form sends it (`heal.incidents`' ``hi-`` ids).
-_INCIDENT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
-
-
-def _catch_up_chosen(network: str, feature: str, form):
-    """``(catch_up, why)``: the person's choice from Turn on…'s list of open incidents
-    (automatic AI troubleshooting only; the operator, 2026-11-15): ``{"ticked", "unticked",
-    "usd_each", "usd_total"}``, every incident the form listed (``listed``) either ticked
-    (``start``) or not, and the estimate, computed here as the form computed it
-    (`settings_view.catch_up_view`), never taken from what the browser sent; or a refusal,
-    naming what was sent, when a ticked one was not listed, an id is out of shape, or the
-    estimate the form drew (``catch_up_each``) is not the one computed now. None for another
-    feature."""
-    from modules.fixit import auto as A
-
-    if feature != A.FEATURE:
-        return None, ""
-    listed = list(dict.fromkeys(form.getlist("listed")))
-    ticked = list(dict.fromkeys(form.getlist("start")))
-    bad = [i for i in listed + ticked if not _INCIDENT_ID.match(i)]
-    if bad:
-        return None, (f"an incident is named by its id, and {bad[0][:70]!r} is not one; "
-                      "nothing was changed")
-    extra = [i for i in ticked if i not in listed]
-    if extra:
-        return None, (f"{', '.join(extra)} was ticked and is not on the list drawn "
-                      f"({', '.join(listed) or 'none'}); nothing was changed")
-    from modules.ai.settings_view import catch_up_view, chosen
-
-    # No list drawn, no estimate shown for it: nothing to compute or record.
-    each = float(catch_up_view(chosen(network)).get("usd_each") or 0.0) if listed else 0.0
-    sent = (form.get("catch_up_each") or "").strip()
-    try:
-        drawn = round(float(sent), 6) if sent else None
-    except ValueError:
-        drawn = None
-    if ticked and drawn != round(each, 6):
-        return None, (f"the estimate drawn was {sent or 'none'} an incident, and it is "
-                      f"{each:.6g} now; read the list again; nothing was changed")
-    return {"ticked": ticked, "unticked": [i for i in listed if i not in ticked],
-            "usd_each": each, "usd_total": round(each * len(ticked), 6)}, ""
+        entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd")))
 
 
 def _ai_spend_panel(network: str, status: int = 200, **ctx):
@@ -694,6 +676,70 @@ def ai_caps(network, feature):
     return _ai_section(network, 403 if "verified person" in why else 409, open_caps=feature,
                        form_refused=why, day_typed=form.get("day_cap_usd", ""),
                        month_typed=form.get("month_cap_usd", ""))
+
+
+@bp.route("/installation/ai/troubleshoot/<network>/level", methods=["POST"])
+def ai_ts_level(network):
+    """C3769 (Gate 2): the network's ONE AI troubleshooting control, Off, Manual or Automatic
+    (``level``), as a verified person: the Settings card's three choices and the control
+    strip's switch (``?answer=strip``: Automatic on, or off back to Manual) are this one route
+    and one path (`troubleshoot.set_level`). Automatic is refused, linking the limits card,
+    until the network's limits and their estimate are acknowledged and unchanged since, and
+    when the open incidents it starts on moved since the line drawn beside it (``shown``); on,
+    it starts on each of them within the caps."""
+    from modules import identity
+    from modules import troubleshoot_control as troubleshoot
+
+    level = request.form.get("level") or ""
+    why = _ts_person()
+    if why:
+        if _on_strip():
+            return _strip_answer(network, 403,
+                                 refused=f"AI troubleshooting was not changed: {why}")
+        return _ai_section(network, 403, ts_refused=why)
+    try:
+        got = troubleshoot.set_level(network, level, shown=request.form.get("line_digest") or "",
+                                     actor=identity.request_actor(), verified=_verified())
+    except troubleshoot.Refused as exc:
+        if _on_strip():
+            return _strip_answer(network, 409, refused=str(exc), refused_href=exc.href)
+        return _ai_section(network, 409, ts_refused=str(exc))
+    if _on_strip():
+        return _strip_answer(network, ai_set=got["words"])
+    return _ai_section(network, ts_set=got["words"])
+
+
+@bp.route("/installation/ai/troubleshoot/<network>/limits", methods=["POST"])
+def ai_ts_limits(network):
+    """C3769 (Gate 2; the operator's item 2): the network's spending limits, per incident, per
+    day and per month, set with the estimate drawn beside them acknowledged (``shown``, its
+    digest; ``accept``), as a verified person; refused, naming why, with nothing changed, when
+    not acknowledged, a limit is out of range, or the estimate moved. Recorded with both
+    values; the one place the background-AI estimate is acknowledged for the network."""
+    from modules import identity
+    from modules import troubleshoot_control as troubleshoot
+    from modules.ai.settings_view import caps_value
+
+    form = request.form
+    typed = {"incident": form.get("incident_cap_usd", ""), "day": form.get("day_cap_usd", ""),
+             "month": form.get("month_cap_usd", "")}
+    why = _ts_person()
+    if not why:
+        try:
+            troubleshoot.set_limits(network, incident_usd=caps_value(typed["incident"]),
+                                    day_usd=caps_value(typed["day"]),
+                                    month_usd=caps_value(typed["month"]),
+                                    shown=form.get("estimate_digest", ""),
+                                    accepted=form.get("accept") == "on",
+                                    actor=identity.request_actor(), verified=_verified())
+        except troubleshoot.Refused as exc:
+            why = str(exc)
+        else:
+            return _ai_section(network, ts_set=(
+                "The spending limits are set and their estimate acknowledged: Automatic may be "
+                "turned on"))
+    return _ai_section(network, 403 if ("verified" in why or "may not" in why) else 409, ts_refused=why,
+                       ts_typed=typed)
 
 
 @bp.route("/installation/netbox/writes-off", methods=["POST"])

@@ -2692,7 +2692,12 @@ def _member(inst: dict, inv) -> dict:
         note = "the rule names no device"
     if inv is None:
         note += " (the inventory could not be read, so the name is unchecked)"
+    labels = inst.get("labels") or {}
     return {"rule": inst.get("rule"), "kind": inst.get("kind"), "device": device,
+            # C3731: the interface its labels name (`heal.triggers.INTERFACE_LABELS`), so a
+            # port problem's own alerts fold under its incident.
+            "interface": next((str(labels[k]) for k in ("ifDescr", "ifName")
+                               if labels.get(k)), ""),
             "device_from": source, "device_note": note, "state": inst.get("state"),
             "fingerprint": inst.get("fingerprint"), "starts_at": inst.get("starts_at"),
             "onset": _iso(inst["onset"]), "onset_basis": inst["onset_basis"],
@@ -6586,6 +6591,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                    f"{exc}")
     out += halted
     _link_incident_pages(lst, out, rows)
+    out = _fold_into_batch(out)
     return source_result("heal", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=out,
                          checked=(f"list {lst}: {marked} dry-run record(s) to mark, "
@@ -6597,6 +6603,33 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"waiting or not ended dampened, {cant_fix_n} can't-fix "
                                   f"incident(s), {len(halted)} halt(s) in force"
                                   + "".join(f"; {w}" for w in said)))
+
+
+def _fold_into_batch(rows: list) -> list:
+    """G6: one card for the batch (the demo plan, T-8: "one card ... Nothing else"). A
+    self-healing row about an incident the batch card lists (a device it fixes, a held one it
+    cannot, or an incident the press starts the AI on) is folded under the card, its action the
+    card's one press; each is still its incident's page, listed on the card. No batch, nothing
+    moves."""
+    card = next((r for r in rows if r.get("batch")), None)
+    if card is None:
+        return rows
+    p = card["batch"]
+    mine = ({i["incident"] for i in p.get("items") or []}
+            | {o["incident"] for o in p.get("others") or []}
+            | {a["id"] for a in p.get("ai") or []})
+    kept, folded = [], []
+    for r in rows:
+        iid = (r.get("incident_page") or {}).get("id")
+        if r is not card and iid in mine:
+            folded.append({"what": r.get("what"), "incident": iid, "level": r.get("level")})
+        else:
+            kept.append(r)
+    card["batch_folded"] = folded
+    # The card is as severe as the worst it folds: a Critical row is never read as a Warning.
+    if any(f["level"] == "danger" for f in folded):
+        card["level"] = "danger"
+    return kept
 
 
 def _link_incident_pages(lst: str, rows: list, decisions: list = ()) -> None:
@@ -6722,6 +6755,11 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
         iid = str((r.get("incident_page") or {}).get("id") or "")
         if not iid or (r["incident_page"].get("list") or lst) != lst or iid not in by_id:
             return True
+        # Gate 2 (the operator, 2026-11-15): a row about an incident says "AI investigating"
+        # while its investigation runs, and its one-line outcome once it ended, from THE
+        # incident state Incidents draws (`incidents_list._fixit_of`).
+        if by_id[iid].get("ai"):
+            r["ai_status"] = by_id[iid]["ai"]
         if iid in needs:
             linked.add(iid)
             return True
@@ -6757,16 +6795,126 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
                         "href": inc.get("href") or ""},
                 operands={"list": lst, "incident": iid})
         r["incident_page"] = {"id": iid, "list": lst}
+        if inc.get("ai"):
+            r["ai_status"] = inc["ai"]
         out.append(r)
     return out
+
+
+def _incidents_listed(lst: str = None):
+    """`incidents_list.rows` for the page's network, read once for both `_incidents_agree` and
+    `_fold_signals_into_problems`; None when it raised (each then reads, or changes nothing)."""
+    from modules import incidents_list
+
+    try:
+        return incidents_list.rows(lst or _page_network())
+    except Exception as exc:                        # noqa: BLE001 (the rows stay as they are)
+        log.warning("attention: the incidents could not be read: %s", exc)
+        return None
+
+
+#: The problem conditions whose object is one port of one device (`modules/problem.py`), whose
+#: port the incident's classification may hold more exactly than the problem's object
+#: (`heal.errdisable.of_record`). Since C3731's widening (the operator, 2026-11-15) EVERY open
+#: incident's problem folds its own signals, whatever its kind: a Grafana signal on its device
+#: naming its object (an interface label the same interface), or one of the incident's own
+#: alerts, is the problem's evidence, never a row of its own; one naming another object, or not
+#: the incident's, stays a row.
+PORT_PROBLEMS = ("err_disabled",)
+#: A Needs attention row's level for an incident's severity (`bluf.severity`, R2: critical only
+#: for a network outage).
+SEVERITY_LEVEL = {"critical": "danger", "warning": "warning", "info": "unknown"}
+
+
+def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
+                                read=None) -> list:
+    """C3731 (measured on the host 2026-11-15 03:08 UTC: two switches' err-disabled ports each
+    drawn as a Grafana "Interface down" row AND the incident's row, both danger): R4 folds
+    related signals into the one problem. For each OPEN incident with a problem on a device (its
+    BLUF's ``problem``, any kind since the widening of 2026-11-15), its row (the one linking it)
+    says the problem's title, the same words as Troubleshooting › Incidents, the page's heading
+    and the BLUF, at the level its impact gives (`SEVERITY_LEVEL`); and every Grafana row of the
+    problem's device each of whose alerts names the problem's object (an interface label the same
+    interface; a port problem's port its classification's, `PORT_PROBLEMS`) or, naming no
+    interface, is one of the incident's own triggers folds under it, as its evidence (``folded``,
+    ``folded_evidence``). An alert naming another object, or naming none and not one of the
+    incident's, stays a row. *listed* is `incidents_list.rows`'s answer and *read* the
+    incidents' read (tests). An unreadable store changes nothing."""
+    from modules.heal import errdisable
+    from modules.heal import incidents as INC
+
+    lst = lst or _page_network()
+    got = listed if listed is not None else _incidents_listed(lst)
+    if not got or got.get("unreadable"):
+        return rows
+    problems = {}
+    for r in got.get("rows") or []:
+        p = (r.get("bluf") or {}).get("problem") or {}
+        if not r.get("resolved") and p.get("condition") and p.get("device"):
+            problems[r["id"]] = (r, p)
+    if not problems:
+        return rows
+    try:
+        held = (read or INC.read)(lst)
+    except Exception as exc:                        # noqa: BLE001 (the rows stay as they are)
+        log.warning("attention: %s's incidents could not be read to fold: %s", lst, exc)
+        return rows
+    records = {i.get("id"): i for i in held.get("incidents") or []}
+    parents = {}
+    for top in rows:
+        iid = str((top.get("incident_page") or {}).get("id") or "")
+        if iid in problems and iid not in parents:
+            parents[iid] = top
+    taken = set()
+    for iid, top in parents.items():
+        r, p = problems[iid]
+        b = r.get("bluf") or {}
+        top["what"] = b.get("what") or top["what"]
+        # The incident's severity sets the row's level, except "info" (unknown): a row that
+        # needs a person's decision is never drawn unknown, so it keeps its own level, and only
+        # a folded member's higher severity raises it (below).
+        sev = SEVERITY_LEVEL.get(b.get("severity"))
+        if sev and sev != "unknown":
+            top["level"] = sev
+        rec = records.get(iid) or {}
+        port = ((errdisable.of_record(rec).get("port") if p.get("condition") in PORT_PROBLEMS
+                 else "") or p.get("object") or "")
+        rules = {t.get("rule") for t in rec.get("triggers") or []
+                 if isinstance(t, dict) and t.get("kind") == "alert" and t.get("rule")}
+        folded = []
+        for other in rows:
+            if other is top or id(other) in taken or other.get("source") != "grafana":
+                continue
+            members = (other.get("operands") or {}).get("members") or []
+            # An alert naming a port folds when it names the problem's; one naming none, when
+            # it is one of the incident's own triggers.
+            if members and other.get("devices") == [p["device"]] and all(
+                    m.get("device") == p["device"]
+                    and (errdisable.same_port(m.get("interface") or "", port)
+                         if m.get("interface") else m.get("rule") in rules)
+                    for m in members):
+                folded.append(other)
+                taken.add(id(other))
+        if folded:
+            top["folded"] = list(top.get("folded") or []) + folded
+            top["folded_evidence"] = len(folded)
+            # A fold never hides a worse signal (the review of Gate 1a): the row is at least
+            # as severe as the most severe row folded under it (`LEVELS`, most severe first).
+            worst = min((LEVELS.index(x["level"]) for x in [top] + folded
+                         if x.get("level") in LEVELS), default=None)
+            if worst is not None:
+                top["level"] = LEVELS[worst]
+    return [r for r in rows if id(r) not in taken]
 
 
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
 #: incident's page draw a control for.
 FIRST_ACTIONS = ("run", "alike", "start", "ai_spend_panel", "heal_proposal", "heal_halt",
-                 "heal_mark", "resubscribe", "update_page", "likely", "device", "href", "")
-#: The actions whose control is a card drawn in place when it is pressed.
-IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe")
+                 "heal_mark", "resubscribe", "heal_batch", "update_page", "likely", "device",
+                 "href", "")
+#: The actions whose control is a card drawn in place when it is pressed. G6's batch card
+#: (``heal_batch``) is drawn open, its preview on it before the press.
+IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe", "heal_batch")
 
 
 def row_device_networks(r: dict, device) -> list:
@@ -7369,6 +7517,47 @@ HEAL_HELD_ACTIONS = {
 }
 
 
+#: A departing line's two sides, by its sign in `intent_match`'s lines, in the words the row
+#: says (the operator, 2026-11-14, C3581), and the ways out of each: what each asks of
+#: `intent_match.resolutions` (its words and what each asserts) and where it is done on v2
+#: (`open`: ``deploy``, the device's Deploy plan, Mode B for a line on the device;
+#: ``intent_edit``, its intent editor). The controls' words are the template's
+#: (templates/v2/_attention.html, by the side's sign).
+DEPARTURE_SIDES = {
+    "-": ("on the device, not in intent", {"state": "differs", "removes": 1},
+          ("deploy", "intent_edit")),
+    "+": ("in intent, not on the device", {"state": "differs", "adds": 1},
+          ("deploy", "intent_edit")),
+}
+
+
+def heal_departure(lst: str, host: str, lines: list, more: int = 0) -> dict:
+    """What a guard-4 hold draws of *host*'s departure (C3581; the operator, 2026-11-14: "A
+    departure row ... shows the exact lines: each with "in intent, not on the device" or "on
+    the device, not in intent", and the action that resolves each"): ``{"list", "device",
+    "lines", "groups", "more", "total"}``. *lines* are `intent_match`'s, as guard 4 recorded
+    them (masked there): each ``{"line", "side"}``; *groups* one per side present, in the
+    lines' order, each with its sign, its lines and its two ways out (``{"open", "do",
+    "asserts", "note"}``, the words `intent_match.resolutions`'s own). Nothing here decides:
+    which way out is a person's choice."""
+    from modules.nsot import intent_match
+
+    drawn, groups = [], {}
+    for raw in lines:
+        sign, text = str(raw)[:1], str(raw)[2:]
+        if sign not in DEPARTURE_SIDES:
+            continue
+        side, asked, opens = DEPARTURE_SIDES[sign]
+        drawn.append({"line": text, "side": side})
+        if side not in groups:
+            ways = intent_match.resolutions(asked)
+            groups[side] = {"side": side, "sign": sign, "lines": [], "actions": [
+                dict(w, open=o) for o, w in zip(opens, ways)]}
+        groups[side]["lines"].append(text)
+    return {"list": lst, "device": host, "lines": drawn, "groups": list(groups.values()),
+            "more": int(more or 0), "total": len(drawn) + int(more or 0)}
+
+
 def _heal_held_rows(lst: str, rows: list) -> list:
     """Board H, H9 (docs/HEAL_TO_INTENT.md section 9's table, C2401): ONE row per device whose
     NEWEST decision is held by a guard a person resolves (`HEAL_HELD_ACTIONS`: 4, its golden
@@ -7390,20 +7579,53 @@ def _heal_held_rows(lst: str, rows: list) -> list:
             fleet.append(d)
             continue
         label, href, _one = HEAL_HELD_ACTIONS[g["guard"]]
-        out.append(row(
+        ops = dict(g.get("operands") or {})
+        # C3581: guard 4's departing lines are drawn on the row, each with its side and its
+        # ways out (`heal_departure`), so not again under Details for the record.
+        lines, more = ops.pop("lines", None) or [], ops.pop("lines_more", 0)
+        r = row(
             source="heal", kind="held", key=d.get("id") or "?", level="warning",
             event=d.get("id"), devices=[host], since=float(d.get("epoch") or 0) or None,
             what=f"Self-healing holds {host} on {lst}: {g.get('name') or 'a guard applied'}",
             cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. Self-healing "
                    f"sends nothing to {host} for this until it is resolved"),
             action={"label": label.format(host=host), "href": href.format(host=host)},
-            operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
-                      **(g.get("operands") or {})}))
+            operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"), **ops})
+        if g.get("guard") == 4 and lines:
+            r["departure"] = heal_departure(lst, host, lines, more)
+        out.append(r)
     if fleet:
         d = max(fleet, key=lambda x: float(x.get("epoch") or 0))
         g = d.get("guard") or {}
         hosts = sorted(x.get("device") for x in fleet)
         label, href, _one = HEAL_HELD_ACTIONS[6]
+        # G6 (the operator's design, 2026-11-14): the hold is the batch card, "N devices have
+        # faults. Mercury can fix M.", its preview on it before the press and its one action
+        # Turn on self-healing and fix all (`heal.batch`), whenever a fix can be previewed.
+        try:
+            from modules import control_strip
+            from modules.heal import batch as HB
+            p = control_strip.batch_preview(lst, rows)
+        except Exception as exc:                      # noqa: BLE001 (the hold's row stands)
+            log.warning("attention: %s's batch could not be previewed: %s", lst, exc)
+            p = {"on": False}
+        if p.get("on") and p.get("items"):
+            out.append(row(
+                source="heal", kind="held", key=d.get("id") or "?", level="warning",
+                event=d.get("id"), devices=sorted({i["device"] for i in p["items"]}
+                                                  | {o["device"] for o in p["others"]}
+                                                  | {a["device"] for a in p["ai"]}),
+                since=float(d.get("epoch") or 0) or None, what=p["lead"],
+                cause=(f"{p['hold']} Guard {g.get('guard')}, {g.get('name')}: "
+                       f"{g.get('words')}"),
+                action={"label": HB.BUTTON, "open": "heal_batch", "list": lst,
+                        "hash": p["hash"]},
+                operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                          "devices": len(hosts), "batch": p["hash"][:12],
+                          **(g.get("operands") or {})}))
+            # The card's model: what it draws (whether there is a batch is the row itself).
+            out[-1]["batch"] = {k: v for k, v in p.items() if k not in ("on", "state")}
+            return out
         out.append(row(
             source="heal", kind="held", key=d.get("id") or "?", level="warning",
             event=d.get("id"), devices=hosts, since=float(d.get("epoch") or 0) or None,
@@ -8975,7 +9197,10 @@ def assemble(results: list) -> dict:
     _link_stream_incidents(rows)
     # C3701: every link held to the incident's own state, and an incident that needs a person
     # never only on Incidents.
-    rows = _incidents_agree(rows)
+    listed = _incidents_listed()
+    rows = _incidents_agree(rows, listed=listed)
+    # C3731: a Grafana signal of a classified port problem folds under its incident's row.
+    rows = _fold_signals_into_problems(rows, listed=listed)
     # The acknowledgement record and its current list read ONCE for both uses (C3230).
     held = _acknowledgements_now()
     rows, acknowledged, ack_result = _without_acknowledged(rows, held)

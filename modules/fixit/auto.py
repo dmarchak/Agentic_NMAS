@@ -241,6 +241,32 @@ def plan_failures(network: str, incident) -> list:
     return out
 
 
+def capability_failures(network: str, incident, now: float = None) -> list:
+    """C3733 (the operator, 2026-11-15): *incident*'s investigations that ended in a missing
+    capability (`ai.missing`'s gap rows keyed to it) whose wanted step now exists, registered
+    and deployed (`missing.available`): each a failure keyed by its row's id
+    (``capability:<row id>``), so the incident restarts ONCE for it, whoever asks, within its
+    caps (`incident.claim_start` takes the key; `heal_notice.run_fixit` asks). Its time is now:
+    the capability became available to this pass. A read."""
+    from modules.ai import missing
+
+    at = time.time() if now is None else float(now)
+    out, seen = [], set()
+    for row in missing.for_incident(incident.id):
+        rid = str(row.get("id") or "")
+        if not rid or rid in seen or row.get("network") not in (network, None, ""):
+            continue
+        seen.add(rid)
+        now_has = missing.available(row)
+        if not now_has:
+            continue
+        out.append({"key": key_of("capability", rid), "kind": "capability", "id": rid,
+                    "incident": incident.id, "device": incident.device,
+                    "outcome": "available", "epoch": at, "at": _iso(at), "now": now_has,
+                    "wanted": str(row.get("what") or "")})
+    return out
+
+
 def open_incidents(network: str) -> dict:
     """``{incident id: its record}`` for the network's incidents still open (`OPEN`)."""
     from modules.heal import incidents
@@ -291,7 +317,7 @@ def pending(network: str) -> dict:
         if inc is None:
             continue
         try:
-            fs = fs + plan_failures(network, inc)
+            fs = fs + plan_failures(network, inc) + capability_failures(network, inc)
         except Exception as exc:                      # said; the next read asks again
             failed.append(f"{iid}: {type(exc).__name__}: {exc}")
             continue
@@ -311,7 +337,10 @@ WHY = {("decision", "cant_fix"): ("no_fix", "Mercury has no fix of its own for i
        ("act", "refused"): ("failed", "Mercury's fix was refused before it sent anything"),
        ("act", "interrupted"): ("failed", "Mercury's fix was interrupted"),
        ("run", "stopped"): ("failed", "an approved plan stopped at a step"),
-       ("run", "failed"): ("failed", "an approved plan failed")}
+       ("run", "failed"): ("failed", "an approved plan failed"),
+       # C3733: an investigation that lacked a step, which now exists.
+       ("capability", "available"): ("no_fix", "a step its last investigation lacked now "
+                                               "exists")}
 
 
 def catch_up(network: str, now: float = None, bound_s: float = None) -> dict:

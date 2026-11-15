@@ -483,13 +483,20 @@ FIELDS = {
         "form.<named at run time>": "a secret's own fields, kept in the secrets store; the "
                                     "connection check it runs sends Mercury's word"},
     "settings_v2.install_test": {},
-    # C3732: Settings › AI's Turn on for automatic AI troubleshooting starts each open incident
-    # the person ticked (`heal_notice.start_catch_up`); nothing typed reaches the AI.
-    "settings_v2.ai_on": {
-        "form.<whole>": ("the turn-on's choices (the estimate's digest, the caps, the acceptance, "
-                         "the incident ids listed and ticked, the estimate drawn), checked and "
-                         "recorded; none is sent"),
+    # C3769 (Gate 2): AI troubleshooting's one control, Off, Manual or Automatic, on Settings ›
+    # AI and the control strip; Automatic starts on each open incident listed beside it
+    # (`heal_notice.start_catch_up`); nothing typed reaches the AI. Settings › AI's Turn on no
+    # longer turns automatic AI troubleshooting on, so it reaches no AI call.
+    "settings_v2.ai_ts_level": {
+        "form.level": "Off, Manual or Automatic, a choice Mercury drew",
+        "form.line_digest": "the digest of the open incidents listed beside Automatic (a hash "
+                            "Mercury computed), compared at the press; never sent",
+        "args.answer": "where the answer is drawn (``strip`` for the control strip), a token",
         "args.tab": "the Settings tab drawn back (a token), never sent"},
+    # The control strip's Turn on self-healing and fix all (G6): bound to the batch's hash as
+    # previewed; it starts AI troubleshooting on the incidents the batch lists, nothing typed.
+    "control_v2.fix_all": {
+        "form.hash": "the batch's hash as previewed (a hash Mercury computed)"},
     # Lab 9 B2 (board lab9-sdn E): SDN › Policies' Draft the policy; the person's answer to
     # Mercury's own question (which host a word means) continues the same sentence.
     "sdn_policies_v2.draft": {

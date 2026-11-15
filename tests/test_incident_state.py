@@ -366,6 +366,9 @@ class TestTheOneResolver:
          "Lift the halt…"),
         ({"action": {"open": "heal_mark", "decision": "hd-1"}, "devices": ["r1"]}, "heal_mark",
          "Was that right?"),
+        # G6 (C3748): guard 6's batch row: its line jumps to the batch card's one button.
+        ({"action": {"open": "heal_batch", "list": NET, "hash": "0" * 64},
+          "devices": ["r1", "r3"]}, "heal_batch", "Turn on self-healing and fix all…"),
         ({"action": {"open": "resubscribe", "device": "r1", "subs": ["101"]},
           "devices": ["r1"], "networks": {"r1": [NET]}}, "resubscribe",
          "Re-subscribe r1's telemetry (101)…"),

@@ -1,0 +1,3 @@
+%SPANTREE-2-BLOCK_BPDUGUARD: Received BPDU on port Gi1/0 with BPDU Guard enabled. Disabling port.
+%PM-4-ERR_DISABLE: bpduguard error detected on Gi1/0, putting Gi1/0 in err-disable state
+%LINK-3-UPDOWN: Interface GigabitEthernet1/0, changed state to down

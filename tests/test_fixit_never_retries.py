@@ -6,7 +6,8 @@ there is no control for it").
 - **By parsing:** every definition in the program that reaches a proposer (`modules/fixit/
   proposers.py`, Mercury's own, and the AI's, `modules/ai/fixit_troubleshoot.troubleshoot`,
   S5) is exactly a person's presses (`PERSON_CALLERS`: Start AI troubleshooting, Ask the AI again
-  and Modify; since C3732, Settings › AI's turn-on with its catch-up, `TURN_ON_CATCH_UP`) and,
+  and Modify; since C3732, the turn-on's catch-up, `TURN_ON_CATCH_UP`: since Gate 2, C3769, AI
+  troubleshooting's control set to Automatic and the control strip's Fix all) and,
   since the operator's R1 (2026-11-14), the notifier's
   automatic start (`AUTO_START`), reached only from its pass, which takes each failure once
   under the incident record's lock; each route is served by POST alone and declared in
@@ -59,11 +60,20 @@ AUTO_START = ("modules.heal_notice", "fixit_investigation")
 PERSON_CALLERS = {("routes.fixit_v2", "_ask"), ("routes.fixit_v2", "ask_again"),
                   ("routes.fixit_v2", "modify"), ("routes.fixit_v2", "start")}
 #: The turn-on's catch-up (C3732; the operator, 2026-11-15: "Turning it on shows the list
-#: first ... each tickable, and records what was chosen"): a person's press too, Settings › AI's
-#: Turn on with automatic AI troubleshooting's open incidents ticked, each started once under
-#: its failure's key (`claim_start`) with the person's trigger.
-TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_on"), ("modules.heal_notice", "start_catch_up"),
+#: first ... each tickable, and records what was chosen"): a person's press too, each open
+#: incident started once under its failure's key (`claim_start`) with the person's trigger.
+#: Since Gate 2 (C3769) it is pressed in one of two places, never Settings › AI's Turn on: AI
+#: troubleshooting's one control set to Automatic (`settings_v2.ai_ts_level`, through
+#: `troubleshoot_control.set_level`), and G6's Turn on self-healing and fix all on the control
+#: strip (`control_v2.fix_all`, through `control_strip.fix_all`), bound to the batch's hash.
+TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_ts_level"),
+                    ("modules.troubleshoot_control", "set_level"),
+                    ("routes.control_v2", "fix_all"), ("modules.control_strip", "fix_all"),
+                    ("modules.heal_notice", "start_catch_up"),
                     ("modules.heal_notice", "catch_up_investigation")}
+#: The definitions that name the catch-up's start: the two presses' own paths.
+CATCH_UP_CALLERS = {("modules.troubleshoot_control", "set_level"),
+                    ("modules.control_strip", "fix_all")}
 
 
 def reaching(planted: str = "", without=()) -> set:
@@ -98,8 +108,7 @@ class TestByParsing:
         assert ("modules.fixit.incident", "claim_start") in refs[("modules.heal_notice",
                                                                   "start_catch_up")]
         assert {k for k, named in refs.items()
-                if ("modules.heal_notice", "start_catch_up") in named} == {
-            ("routes.settings_v2", "ai_on")}
+                if ("modules.heal_notice", "start_catch_up") in named} == CATCH_UP_CALLERS
         # And the automatic start is reached only through the notifier's pass, which takes
         # each failure once before it starts one (`claim_start`, by reference).
         refs = FI.program()["refs"]
@@ -116,14 +125,17 @@ class TestByParsing:
 
     @pytest.mark.parametrize("endpoint", ["fixit_v2.modify",
                                           "fixit_v2.ask_again", "fixit_v2.start",
-                                          "settings_v2.ai_on"])
+                                          "settings_v2.ai_on", "settings_v2.ai_ts_level",
+                                          "control_v2.fix_all"])
     def test_the_retry_route_is_a_post_a_person_makes(self, endpoint):
         import app as A
         from modules.route_gates import GATES
         rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == endpoint]
         assert len(rules) == 1
         assert rules[0].methods - {"OPTIONS"} == {"POST"}
-        assert GATES[endpoint].kind == "configure"
+        # Fix all is bound to the batch's hash as previewed: a confirm, a person's too.
+        assert GATES[endpoint].kind == ("confirm" if endpoint == "control_v2.fix_all"
+                                        else "configure")
 
     @pytest.mark.parametrize("planted", [
         # a GET route

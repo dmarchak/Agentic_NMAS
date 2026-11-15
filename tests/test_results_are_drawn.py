@@ -91,6 +91,24 @@ TOAST_ENOUGH = {}
 #: strict policy, so the evidence is the template's source, as the
 #: component's is its function's.
 PAGE_RECORD = {
+    # Gate 1b's saved plans (board saved-plans S): each answer drawn in place above the card,
+    # the card holding still while it is read; the scripts, their fires and the waiting shapes
+    # read again on the incident's page.
+    **{f"saved_plans_v2.{name}": ("templates/v2/_saved_plans_saves.html",
+                                  ('data-holds-live="review"', "c.said.words", "c.scripts",
+                                   "c.shapes"), "incident_v2.incident")
+       for name in ("save_script", "save_action", "promote", "approve_shape")},
+    # A saved action run on a device's interface (board saved-plans D): its state in place from
+    # the run's record, redrawn as the runner announces; the run read again on History.
+    "saved_plans_v2.device_run": ("templates/v2/_saved_actions_device.html",
+                                  ("c.run.state", "c.run.outcome", "c.run.why",
+                                   "device_v2.history"), "device_v2.history"),
+    # G6's Turn on self-healing and fix all (routes/control_v2.fix_all): its answer drawn on
+    # the control strip in place (what started), the run on THE stepper under it while it runs
+    # and after, each device's row with its outcome; the strip re-reads it (`control_v2.strip`).
+    "control_v2.fix_all": ("templates/v2/_control_strip.html",
+                           ('data-answer="fix-all"', "an.pressed.fixable", "s.run.stepper",
+                            "s.run.words"), "control_v2.strip"),
     # Approve on an incident's plan (the operator's R2, 2026-11-14; routes/fixit_v2.approve):
     # its answer drawn under the BLUF's buttons in place, its runs as the incident's attempts
     # in the one card, each with its run's record; the incident's page re-reads them.

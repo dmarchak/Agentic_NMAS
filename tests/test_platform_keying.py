@@ -83,6 +83,11 @@ KEYING = {
     # The change-record cases' CAPTURE_BANNERS: a capture's banner to its parser's platform,
     # read from the capture, never from the device's name (2026-10-29).
     "modules/ai/cases.py":                  "dialect",
+    # C3757: Mercury's rule for raw lines, its measured shapes per config dialect (`MEASURED`),
+    # compared with a command plan's platform_for_device(); the plan's template check names
+    # one dialect only to phrase a refusal its rule makes whatever the dialect.
+    "modules/nsot/command_policy.py":       "dialect",
+    "modules/nsot/command_plan.py":         "dialect",
 }
 
 

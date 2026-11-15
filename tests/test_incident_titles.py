@@ -172,7 +172,10 @@ class TestTheTitle:
     def test_needs_attention_leads_with_the_same_words(self, client, monkeypatch,  # noqa: F811
                                                        measured, name):  # noqa: F811
         """ONE builder: a decision's row on Needs attention leads with what happened as its
-        incident's page titles it (an open incident's title has no ending)."""
+        incident's page titles it (an open incident's title has no ending). Premise corrected
+        (C3731, the operator, 2026-11-15: "Needs attention draws it as ONE row with that title
+        and its one action"): the row of an open incident is its title, the same words as
+        Troubleshooting › Incidents and the incident's page; the outcome is its own line."""
         from modules import attention
 
         S.with_its_item(monkeypatch)
@@ -180,7 +183,7 @@ class TestTheTitle:
         title = IP.title(*T.model(iid))
         (row,) = [r for r in attention.needs_attention()["rows"]
                   if (r.get("incident_page") or {}).get("id") == iid]
-        assert row["what"].startswith(title + ". "), (row["what"], title)
+        assert row["what"] == title, (row["what"], title)
 
     @pytest.mark.parametrize("name", ["cant_fix", "busy"])
     def test_history_leads_with_the_same_words(self, client, name):
@@ -226,7 +229,8 @@ class TestTheTitle:
         assert HD.decisions(NET)[-1]["headline"] == old, "the older record is what is read"
         (row,) = [r for r in attention.needs_attention()["rows"]
                   if (r.get("incident_page") or {}).get("id") == iid]
-        assert row["what"].startswith(title + ". "), (row["what"], title)
+        # Premise corrected (C3731): an open incident's row is its title (see above).
+        assert row["what"] == title, (row["what"], title)
         (event,) = [e for e in HS.heal(_ctx())["events"]
                     if ("Incident", iid) in list(e.get("record") or [])]
         assert event["what"].startswith(title + ". "), (event["what"], title)

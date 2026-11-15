@@ -34,7 +34,7 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-dark-page-1440`; `landing-phone-board-LandingPhone-390` and `-NavPhone-390` beside
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
-Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html
+Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html, templates/v2/_control_strip.html, templates/v2/_heal_batch.html
 Templates sha256 then (local times' included): `6bd7a689cdf2a7a2164120e15e5288b691024e5160e11a14e545fd50c26e8440`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_attention.html` and `_heal_analysis.html`, a row's "Clears when … (by …)" time, a Grafana silence's end, Seen before's times and the can't-fix analysis's call time are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; a row's words that Python builds keep theirs (C3290). Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`.
@@ -142,8 +142,88 @@ in a 390 px frame.
 | The counts (C3457) | "Critical · 2", items counted | items counted still, the rows said beside them where a group draws several | **same** |
 
 Templates sha256 before: `1ff25f10f89a3ffdcb20e0bf1e96809fdedf7be51165a2e6830bf45a9ea5f538`.
-Templates sha256: `9a37296dcbfc479e9eab5a6f8db17aa4960451e05c1f00f2a9009becec35c8a4`
-(before the R2 row lead and the lost stream's Start, 2026-11-14, below: `bb8ff923d1b36b02e3f82ff791115e205a3c636c050f46880958bf2b921b0b8a`)
+
+**Compared again 2026-11-14 05:0x UTC (C3581, the operator, 2026-11-14: "A departure row ...
+shows the exact lines: each with "in intent, not on the device" or "on the device, not in
+intent", and the action that resolves each"; provisional, operator review pending):** a
+guard-4 hold's opened row draws, under its cause and above What to do, "<device> departs from
+its intent by N lines:", each line with its side in those words, and for each side its two ways
+out as controls (on the device: Remove it from the device… and Adopt it into intent…; in
+intent: Deploy it… and Remove it from intent…), what each asserts on hover, the first ten lines
+and the rest counted with the Intent tab linked. Every other row and region is unchanged.
+Compared by the template's diff and the page tests/test_heal_departure_lines.py and the walk's
+provider draw (`_attention_departure`), not by new shots.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A hold's departing lines (C3581) | not on board NA-R (its held row drew the guard's words and one action) | each line on the row with its side, each side's two ways out, the rest counted | **deviation** (log: Needs attention: a hold's departing lines on the row) |
+
+**Compared again 2026-11-15 04:25 UTC (C3731, G7; the operator's walk item 1, 2026-11-15: "Needs
+attention shows one row per incident, and the Grafana alerts ... fold under it as evidence";
+provisional, operator review pending):** an incident whose problem is one port's (an
+err-disabled port) is one row in the problem's title, at its impact's level, and its own alerts
+are drawn folded under it, closed, under the heading "N alerts under this incident, as its
+evidence", where C2970's fold says "N devices under this item". Every other row and region is
+unchanged. Compared by the template's diff (one heading branch) and
+tests/test_errdisable.py's fold, not by new shots.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A port problem's alerts (C3731) | not on board NA-R (each alert its own row) | folded under the incident's row as its evidence, with their count | **deviation** (log: Needs attention: a port problem's alerts folded under its incident) |
+
+**Compared again 2026-11-15 (Gate 2: C3748, G6, C3715), with board G2**
+(~/Documents/nmas-reports/boards/g2-control-strip.html, self-signed): the control strip and
+the batch card are new regions, compared by the templates' diff and the pages
+tests/test_heal_batch.py draws (its browser test at 1280 presses the strip's switch), not by
+new shots; a person drawn by display name moves no element. Templates sha256 before:
+`f9e8d4283371321b028cf825525d134f10233531df047f24c02ce6b1e9454cd1`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The control strip | board G2 parts 1 and 3 as amended (Gate 2): Self-healing and "AI troubleshooting: Automatic", each a switch with (i) and a gear, the AI switch's one line before it and its refusal linking the limits card | the same, `_control_strip.html` | **same** |
+| A row's AI investigation (Gate 2) | no board: "AI investigating since HH:MM", then its one-line outcome, after the row's headline | the same, `_attention.html`, from the incidents list's one state | **deviation** (log: Incidents' and Needs attention's rows say "AI investigating since HH:MM", then the AI's one-line outcome (Gate 2)) |
+| The can't-fix row's analysis, folded (C3769) | board H, H8: the AI analysis, advisory | the AI's investigation in its place where no analysis answered, `_heal_analysis.html` | **deviation** (log: The can't-fix analysis folded into the investigation, on the page side (C3769)) |
+| The batch card | board G2 part 1: the counts, guard 6's words, each fix (masked), the held, the AI's incidents, one button, the folded items | the same, `_heal_batch.html`, drawn open above the severity sections | **deviation** (log: Needs attention: the control strip and guard 6's batch card (G6, C3748)) |
+| The run | board G2 part 2: the steps on THE stepper under the strip | the same, then one row per device | **same** |
+
+**Compared again 2026-11-15 (Gate 2, C3769; board G2 part 3 as amended):** in
+`_control_strip.html`, the AI switch is "AI troubleshooting: Automatic", posting the one
+control's route, its one line beside it and its refusal's link; in `_attention.html`, a row
+about an incident the AI investigated draws one small line after its headline; in
+`_heal_analysis.html`, the investigation in the analysis's place where none answered. Compared
+by the templates' diff and tests/test_ai_troubleshoot_control.py's pages, not by new shots.
+Templates sha256 before: `3c49aac631a0604bf8d6d5dab3a1def555476c972be950e3059c3823322916e2`.
+
+Compared again 2026-11-15 (Gate 2's follow-up): a guard 6 batch row's line names its card's one
+button ("Turn on self-healing and fix all…", jumping to the card), and the strip no longer
+opens Turn on…'s form under its AI switch. Compared by the templates' diff and
+tests/test_incident_state.py's line, not by new shots. Templates sha256 before:
+`ee37a42c334a78e860cc2c45369388e87ea3b9a8c1b4363d02b98e0228c507fe`.
+
+Compared again 2026-11-15 (the combined gate's reviews): a folded alert member's line names its
+port after the device ("Interface down (alert) on s1 GigabitEthernet1/0", C3731's fold carrying
+the port it folds by), and the batch card ends "Approving fixes them all now, without the usual
+grace." (G6, the operator's "no grace once approved"). Compared by the templates' diff and
+tests/test_v2_context_is_drawn.py's and tests/test_heal_batch.py's pages, not by new shots; every
+other region's verdict unchanged. Templates sha256 before:
+`95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`.
+
+Compared again 2026-11-15 (tests/test_next_steps_act.py): a row's What to do names the batch's
+action (`heal_batch`) as its card's, drawn open above the sections, where it would have said
+its control is not on these pages yet; and the control strip is a card for its help links
+(tests/test_v2_layout_in_a_browser.py: one in words, "How does the Self-healing toggle
+work?", the AI switch's the (i) alone), its padding, gap and corner kept as the strip's
+(`.ctl-strip.card`). No region moves; the Self-healing toggle's help link gains its words.
+Compared by the templates' diff and the browser's help-link measurement, not by new shots;
+every region's verdict unchanged. Templates sha256 before:
+`6dff64c0b455b85ea7fd65bbcdbfededea26394753e2426c6bf88653029fab82`.
+
+Templates sha256: `8a194fb20d7fc8ba29ec8ce5d9beffcda2f1494080a38655259567d5df230d5f`
+(before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
+(before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
+(before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)
+(before the R2 row lead, 2026-11-14, below: `99f2936b9cc484169664a01e8e7ed69aea47471522f01cd64c8894fd8872aaab`)
+(before this comparison: `bb8ff923d1b36b02e3f82ff791115e205a3c636c050f46880958bf2b921b0b8a`)
 
 **Hashed again 2026-11-12 for Run the check again's two findings** (the operator's test of item
 2 on the NMAS host; C3360, C3361). The control's span now carries its row's id and

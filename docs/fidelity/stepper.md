@@ -70,7 +70,12 @@ its fix in plain words (`said.fix_title`). Read from the diff and the pages
 tests/test_incident_titles.py and tests/test_run_outcomes.py draw, not a new shot; logged
 (docs/STANDING_APPROVAL_LOG.md, "Incident page: each fact once"). Templates sha256 before:
 `ab3c2064ea0636b7c9fb3603ac87749f266a8f7e7d0ba2a175c6701366e3b019`.
-Templates sha256: `7e5b020eaff14e1fe23ae92d02ab2bd4af1964084912c46c2b7f81ecbd1c0566`
+Compared again 2026-11-15 (C3715): the step lines, a step's hover and its note name each
+person by display name; no element moves. Compared by the template's diff
+(tests/test_actors_drawn_by_name.py); logged once (docs/STANDING_APPROVAL_LOG.md, "Records name
+people by display name on every v2 screen (C3715)"). Templates sha256 before:
+`7e5b020eaff14e1fe23ae92d02ab2bd4af1964084912c46c2b7f81ecbd1c0566`.
+Templates sha256: `ba93278e838ddda3a67c5530cc1ee3fd44f126cc6e7107cf3e8928685e1a46c1`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each

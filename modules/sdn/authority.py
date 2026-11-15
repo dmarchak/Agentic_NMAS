@@ -64,6 +64,9 @@ DIRECT = {
     "v2.history_reapply_confirm": ("json_keys", "confirmations"),
     # Board R: the read-only account's rollout deploys each device the form names.
     "credential_profiles_v2.read_account_rollout_confirm": ("form_list", "device"),
+    # Gate 1b: a saved action run on one interface of the device its address names, through
+    # the command-plan runner.
+    "saved_plans_v2.device_run": ("view", "device"),
 }
 
 NOT_DIRECT = {
@@ -85,6 +88,20 @@ NOT_DIRECT = {
     "heal_proposal_v2.approve": "the request names a recorded proposal, not a device; its "
                                 "device is the proposal's own, read from its record, one "
                                 "the drift check read and compared with its intent",
+    # G6 (C3696): the request names the batch's hash, never a device; its devices are guard 6's
+    # holds, read in its job, each healed through THE heal act as a proposal's is (C2477).
+    "control_v2.fix_all": "the request names the batch's hash, not a device; its devices are "
+                          "guard 6's holds, read in its job, each healed through the heal act",
+    # Gate 1b: saving and promoting record a network's scripts, actions and line shapes; none
+    # configures a device (a saved action's own run is DIRECT above, `device_run`; a promoted
+    # script's runs are self-healing's, as a proposal's are, C2477).
+    "saved_plans_v2.save_script": "records a self-heal script in Dry run; configures no device",
+    "saved_plans_v2.save_action": "records a reusable action in the catalog; configures no "
+                                  "device",
+    "saved_plans_v2.promote": "changes a saved script's mode and binds its plan's digest; "
+                              "configures no device (its runs are self-healing's)",
+    "saved_plans_v2.approve_shape": "approves a line shape into Mercury's rule for raw lines; "
+                                    "configures no device",
     "adopt_v2.confirm": "adoption names an address, not an inventory device",
     "oob_onboard_v2.confirm": "out-of-band onboarding names a console port, not an inventory "
                               "device",

@@ -103,6 +103,8 @@ PAGES = (
     ("heal-proposal", "Approve or decline a self-healing proposal", H,
      "how-it-works/heal-proposal.md"),
     ("heal", "Self-healing: a device restored to its intent", H, "how-it-works/heal.md"),
+    ("heal-batch", "Turn on self-healing and fix all, and the control strip", H,
+     "how-it-works/heal-batch.md"),
     ("fault-drill", "Declare a fault drill", H, "how-it-works/fault-drill.md"),
     ("incident-timeline", "An incident's timeline and its time to repair", H,
      "how-it-works/incident-timeline.md"),
@@ -116,6 +118,8 @@ PAGES = (
     ("plans", "A plan of operations, approved once", H, "how-it-works/plans.md"),
     ("telemetry-resubscribe", "Re-subscribe a lost telemetry stream", H,
      "how-it-works/telemetry-resubscribe.md"),
+    ("errdisable-recover", "Recover an err-disabled interface", H,
+     "how-it-works/errdisable-recover.md"),
     ("controller-app-deploy", "Deploy apps to an SDN controller", H,
      "how-it-works/controller-app-deploy.md"),
     ("nsot-export", "Commit a network's NSOT export", H, "how-it-works/nsot-export.md"),
@@ -338,10 +342,15 @@ OPERATIONS = {
     "telemetry-readd": ("modules.heal.resubscribe", "READD_STEPS"),
     # C3078: the re-subscribe with the collector step, on the same page.
     "telemetry-collector-resubscribe": ("modules.heal.resubscribe", "COLLECTOR_STEPS"),
+    # G7 (C3712): an err-disabled switch port recovered, the first built-in command plan, run
+    # by the command-plan runner (C3757, path 2): its steps are the runner's.
+    "errdisable-recover": ("modules.nsot.command_plan_run", "STEPS"),
     # The plan engine: a plan approved once by its hash, each step its own operation.
     "plans": ("modules.plan_engine", "STEPS"),
     # Board H, H10: the heal loop (its pass, its decision and its act) and its notices.
     "heal": ("modules.heal.decide", "STEPS"),
+    # G6 and C3748: guard 6's batch fixed by one press, and the control strip's toggles.
+    "heal-batch": ("modules.heal.batch", "STEPS"),
     "heal-detect": ("modules.heal.detect", "STEPS"),
     "heal-act": ("modules.heal.act", "STEPS"),
     # Board H's amendment, H20 (19.4): the port bounce's decision and its act.

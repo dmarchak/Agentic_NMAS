@@ -363,6 +363,13 @@ def write(list_name: str, updates: dict, actor: str = "") -> dict:
 
     if not isinstance(updates, dict) or not updates:
         return {"ok": False, "error": "nothing to write", "written": [], "refused": []}
+    # Never the AI's (`identity.AI_NEVER`): refused naming each setting and the network.
+    from modules import identity
+    why = identity.ai_refusal(
+        ("the setting " if len(updates) == 1 else "the settings ")
+        + ", ".join(sorted(map(str, updates))) + f" of {list_name}", actor=actor)
+    if why:
+        return {"ok": False, "error": why, "written": [], "refused": sorted(map(str, updates))}
     refused = sorted(k for k in updates if SCOPES.get(k, (None,))[0] != NETWORK)
     if refused:
         return {"ok": False, "refused": refused, "written": [], "error": (

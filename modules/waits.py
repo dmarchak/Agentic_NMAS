@@ -106,6 +106,14 @@ WAITS = {
         "within VERIFY_BOUND_S, 2.5 times the 116 s measured from the re-add to the stream's "
         "data (MEASURED_BACK_S, 2026-11-08); ends as soon as the checks pass",
         "measured", True, ("POLL_S", "DIRECT_POLL_S", "VERIFY_BOUND_S")),
+    # C3757 (path 2): a command plan's verify, each read polled or waited by a bound its
+    # template names from PLAN_BOUNDS below (G7's recovery the first; never the bounce's 600 s).
+    "modules/nsot/command_plan_run.py::_verify_item": _w(
+        "one verify read of a command plan to hold: read every `poll` seconds until it holds "
+        "within its `within` bound, or read once `after` its wait",
+        "each bound is a PLAN_BOUNDS entry the plan's template names, its own why and basis "
+        "there; a poll ends as soon as the read holds",
+        "reasoned", True, ("PLAN_BOUNDS",)),
     "modules/heal_notice.py::_cleared": _w(
         "an incident's symptom to stay quiet through the network's flap window before it is "
         "called cleared by itself",
@@ -362,4 +370,23 @@ WAITS = {
     "scripts/nmas-workers::hold_full": _w(
         "free memory for the workers, asked every WAIT_EVERY_S", "within the caller's bound_s",
         "caller", True, ("WAIT_EVERY_S",)),
+}
+
+
+def _b(seconds: float, why: str, basis: str) -> dict:
+    return {"seconds": seconds, "why": why, "basis": basis}
+
+
+#: The bounds a command plan's verify names (`modules/nsot/command_plan.py`: ``poll``,
+#: ``within``, ``after``), each declared here with its why, never a number in a template.
+PLAN_BOUNDS = {
+    # G7's recovery (C3712), carried from its own verify unchanged.
+    "errdisable-poll": _b(3, "how often the recovered port's status is read", "reasoned"),
+    "errdisable-connect": _b(
+        30, "an access link comes up within seconds of no shutdown, so 30 s bounds it with "
+            "room; reasoned, not measured: the first live run keeps took_s on its "
+            "verify step and measures it", "reasoned"),
+    "errdisable-quiet": _b(
+        10, "five 2 s BPDU hellos: a guard that trips again does so inside it; reasoned, not "
+            "measured", "reasoned"),
 }

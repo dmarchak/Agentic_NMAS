@@ -109,7 +109,9 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
         _announce(job_id, state == "done")
         _announce_moved()
 
-    t = threading.Thread(target=run, name=f"{announcer}-{job_id[:8]}", daemon=True)
+    # Started inside an AI entry point, the job acts as the AI too (`identity.ai_carried`).
+    t = threading.Thread(target=identity.ai_carried(run), name=f"{announcer}-{job_id[:8]}",
+                         daemon=True)
     with _lock:
         _jobs[job_id]["thread"] = t
     t.start()

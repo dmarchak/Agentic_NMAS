@@ -89,9 +89,21 @@ class TestStableLabels:
 class TestTheCataloguePart:
     def test_it_is_the_catalog_each_operation_with_its_parameters_shapes(self, lab):  # noqa
         part = PL.pack(inc(), now=LATER)["parts"]["catalogue"]
-        assert [p["operation"] for p in part] == sorted(catalog.CATALOG)
+        from modules import plan_engine as PE
+        # The catalog's operations and built-in command plans, then the plan engine's intent
+        # change and deploy (C3755, C3764), each read from the code.
+        assert [p["operation"] for p in part] == sorted(catalog.entries()) + sorted(
+            PE.FIX_ADMITTED)
         for p in part:
-            op = catalog.CATALOG[p["operation"]]
+            if p["kind"] == "intent_step":
+                kind = PE.STEP_KINDS[p["operation"]]
+                assert p["words"] == kind.words
+                assert p["params"] == [{"name": x.name, "takes": x.takes} for x in kind.params
+                                       if x.name not in ("incident", "proposal")]
+                continue
+            op = catalog.entries()[p["operation"]]
+            assert p["kind"] == ("command_plan" if catalog.is_command_plan(p["operation"])
+                                 else "operation")
             assert p["words"] == op.words
             assert p["params"] == [{"name": x.name, "takes": x.takes} for x in op.params]
         assert "@" not in json.dumps(part)

@@ -20,8 +20,9 @@ class TestEveryProblemHasItsThreeLines:
     def test_the_population_is_the_codes_own_and_has_its_floor(self):
         from modules.heal import incidents, kinds
         got = B.declared_kinds()
+        # G7 (C3712): the err-disabled port's signal is declared beside the lost stream's.
         assert set(got["signals"]) == (set(incidents.CAUSE_KINDS) | set(incidents.SYMPTOM_KINDS)
-                                       | {P.LOST_STREAM} | set(kinds.TIER))
+                                       | {P.LOST_STREAM, P.ERR_DISABLE} | set(kinds.TIER))
         assert len(got["signals"]) >= 25 and len(got["conditions"]) >= 20
         assert {"telemetry_lost", "neighbour_down", "changed_outside_mercury",
                 "departs_from_golden", "link_down"} <= set(got["conditions"])

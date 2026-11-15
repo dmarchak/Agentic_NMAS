@@ -23,7 +23,7 @@
     (`held_run`); the right side of the line, and What to do, hold Open the run alone
     (`held_open`). -#}
 {%- macro held_run(r) -%}
-<span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: the row's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
+<span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: the row's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by | people }}</span>
 {%- endmacro -%}
 {%- macro held_open(r) -%}
 <a class="btn btn-small btn-outline" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
@@ -41,6 +41,7 @@
     reason and its button, drawn in the row. -#}
 {%- elif first == 'heal_halt' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-proposal" data-next-acts="heal_halt" href="#heal-halt-{{ r.action.halt }}">Lift the halt…</a>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}
 {#- C2817 (mock 2): a dry-run record's question opens the row to its Right / Wrong. -#}
+{%- elif first == 'heal_batch' %}<a class="btn btn-small btn-outline att-jump" data-op="heal-batch" data-next-acts="heal_batch" href="#heal-batch-{{ r.action.list }}">Turn on self-healing and fix all…</a>{{ how('heal-batch', 'fix-all', compact=True, op='Turn on self-healing and fix all') }}
 {%- elif first == 'heal_mark' %}<a class="btn btn-small btn-outline att-jump" data-op="heal" data-next-acts="heal_mark" href="#heal-mark-{{ r.action.decision }}">Was that right?</a>{{ how('heal', 'mark', compact=True, op='marking a dry-run record') }}
 {#- C2838: a lost telemetry stream's Re-subscribe… opens the row to its card, drawn in it. -#}
 {%- elif first == 'start' %}<a class="btn btn-small btn-outline" data-op="fixit-troubleshoot" data-next-acts="start" href="{{ url_for('incident_v2.incident', incident_id=r.incident_page.id, list=r.incident_page.list) }}#inc-bluf">Start AI troubleshooting…</a>{{ how('fixit-troubleshoot', 'start', compact=True, op='AI troubleshooting') }}
@@ -99,9 +100,11 @@
     {%- for x in a.expected or [] %} · {% if x.device %}<a href="{{ url_for('device_v2.device', name=x.device) }}">{{ x.words }}</a>{% else %}{{ x.words }}{% endif %}{% endfor -%}
   </p>
   {%- if rows %}
+  {#- G6: guard 6's batch, its card drawn open above the sections (`_heal_batch.html`). -#}
+  {%- for r in rows if r.batch %}{% include "v2/_heal_batch.html" %}{% endfor %}
   <div class="att-list">
     {%- for level in ('danger', 'warning', 'unknown') %}
-    {%- set group = rows|selectattr('level', 'equalto', level)|list %}
+    {%- set group = rows|selectattr('level', 'equalto', level)|rejectattr('batch')|list %}
     {%- if group %}
     <details class="att-grp att-grp-{{ level }}" data-keep="att-grp-{{ level }}"{% if level != 'danger' %} data-remember="att-grp-{{ level }}"{% endif %} open>
       {%- set inlevel = namespace(n=0) %}{% for top in group %}{% set inlevel.n = inlevel.n + (top.alike.count if top.alike else 1) %}{% endfor %}
@@ -112,6 +115,9 @@
       <summary class="att-line">
         <span class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
         <h2 class="att-what" title="{{ r.what }}">{{ r.what }}</h2>
+        {#- Gate 2 (the operator, 2026-11-15): the AI's investigation of the row's incident, from
+            the incidents list's one state; live, as the job announces its start and end. -#}
+        {%- if r.ai_status %}<span class="att-ai small" data-ai="{{ r.ai_status.state }}">{% if r.ai_status.state == 'investigating' %}{{ r.ai_status.words }} since {{ clock(r.ai_status.since) }}{% else %}AI: {{ r.ai_status.words }}{% endif %}</span>{% endif %}
         {%- if r.held %}{{ held_run(r) }}{% endif %}
         <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted" title="Its source does not record when the condition began; the row stands while the condition holds, and its reading's age is below.">start not tracked</span>{% endif %}</span>
         <span class="att-primary">{{ primary(r, nets) }}</span>
@@ -165,6 +171,30 @@
           said on hover for a finding of Mercury's own, as provenance is). -#}
       <p class="att-cause att-wrong"{% if not r.packs %} title="Written by Mercury from its own record: no AI."{% endif %}>{{ r.cause }}</p>
       {%- endif %}
+      {#- C3581 (the operator, 2026-11-14; provisional, operator review pending): a hold on a
+          golden that departs from intent draws the exact lines on the row, never only under
+          Details: each line with its side, and for each side its two ways out
+          (`attention.heal_departure`, `intent_match.resolutions`' own words, what each asserts
+          on hover), each the control where it is done on v2 (the device's Deploy plan, its
+          intent editor). Which one is a person's decision. -#}
+      {%- if r.departure %}
+      {%- set dep = r.departure %}
+      <div class="att-departs" data-device="{{ dep.device }}">
+        <p class="small"><strong>{{ dep.device }} departs from its intent by {{ dep.total }} line{{ 's' if dep.total != 1 }}:</strong></p>
+        {%- for grp in dep.groups %}
+        <ul class="att-dep-lines">{% for l in dep.lines if l.side == grp.side %}<li><code>{{ l.line }}</code> <span class="att-dep-side">{{ l.side }}</span></li>{% endfor %}</ul>
+        {%- set to_deploy, to_edit = grp.actions[0], grp.actions[1] %}
+        {%- set deploy_hover = to_deploy.do ~ ': ' ~ to_deploy.asserts ~ ('. ' ~ to_deploy.note if to_deploy.note else '') %}
+        {%- set edit_hover = to_edit.do ~ ': ' ~ to_edit.asserts ~ ('. ' ~ to_edit.note if to_edit.note else '') %}
+        <p class="att-dep-ways small" data-side="{{ grp.side }}" data-opens="{{ to_deploy.open }} {{ to_edit.open }}" title="{{ grp.lines | length }} line(s) {{ grp.side }}">
+          {%- if grp.sign == '-' %}<a class="btn btn-small btn-outline" data-op="deploy" data-next-acts="deploy_card" href="{{ url_for('device_v2.device', name=dep.device, list=dep.list, op='deploy') }}" title="{{ deploy_hover }}">Remove it from the device…</a>{{ how('deploy', compact=True, op='deploy') }} <a class="btn btn-small btn-outline" data-op="edit-intent" data-next-acts="intent_edit" href="{{ url_for('device_v2.device', name=dep.device, list=dep.list, tab='intent', edit=1) }}" title="{{ edit_hover }}">Adopt it into intent…</a>{{ how('edit-intent', compact=True, op='editing intent') }}
+          {%- else %}<a class="btn btn-small btn-outline" data-op="deploy" data-next-acts="deploy_card" href="{{ url_for('device_v2.device', name=dep.device, list=dep.list, op='deploy') }}" title="{{ deploy_hover }}">Deploy it…</a>{{ how('deploy', compact=True, op='deploy') }} <a class="btn btn-small btn-outline" data-op="edit-intent" data-next-acts="intent_edit" href="{{ url_for('device_v2.device', name=dep.device, list=dep.list, tab='intent', edit=1) }}" title="{{ edit_hover }}">Remove it from intent…</a>{{ how('edit-intent', compact=True, op='editing intent') }}
+          {%- endif %}
+        </p>
+        {%- endfor %}
+        {%- if dep.more %}<p class="small muted">and {{ dep.more }} more line{{ 's' if dep.more != 1 }}, on {{ dep.device }}'s <a href="{{ url_for('device_v2.device', name=dep.device, list=dep.list, tab='intent') }}">Intent tab</a>.</p>{% endif %}
+      </div>
+      {%- endif %}
       <div class="att-todo">
       <h3>What to do</h3>
       <div class="att-action">
@@ -202,6 +232,9 @@
         {%- elif r.action.open == 'ai_spend_panel' %}<a class="btn btn-small btn-outline" data-op="getting-started" data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">Open the spend panel</a>{{ how('getting-started', 'ai-spend', compact=True, op='the spend panel') }}{% if r.action.href and r.action.href.startswith('/v2/') %} <a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
         {#- A self-healing proposal's controls are on its card, drawn below. -#}
         {%- elif r.action.open == 'heal_proposal' %}
+        {#- G6: guard 6's batch has one press, Turn on self-healing and fix all, on its card
+            (`_heal_batch.html`), drawn open above the sections. -#}
+        {%- elif r.action.open == 'heal_batch' %}
         {#- A halt's Lift the halt is its card, drawn below. -#}
         {%- elif r.action.open == 'heal_halt' %}
         {#- A dry-run record's Right / Wrong, drawn below (C2817, mock 2). -#}
@@ -295,6 +328,9 @@
         {#- Item 10 (C3457): a group of alike rows, its members' list (Open the list's target). -#}
         {%- if r.alike %}
         <h3 id="{{ r.alike.anchor }}">{{ r.alike.count }} {{ r.alike.noun }} in this group</h3>
+        {#- C3731: a port problem's own alerts, folded under its incident as its evidence. -#}
+        {%- elif r.folded_evidence %}
+        <h3>{{ r.folded_evidence }} alert{{ '' if r.folded_evidence == 1 else 's' }} under this incident, as its evidence</h3>
         {%- else %}
         <h3>{{ r.folded|length }} device{{ '' if r.folded|length == 1 else 's' }} under this item</h3>
         {%- endif %}
@@ -434,7 +470,7 @@
             basis are drawn as today's panel drew them; the alert's own identity (fingerprint,
             Alertmanager's start, where its device came from, the silencing ids) and each
             silence's id and matchers are its provenance, on hover. -#}
-        {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
+        {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.interface %} <span class="mono" data-member-port>{{ m.interface }}</span>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
           {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
           {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ (s.created_by or 'an unnamed account') | people }} until {{ clock(s.ends_at, 'date', missing='an unrecorded time') }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
         </li>{% endfor %}

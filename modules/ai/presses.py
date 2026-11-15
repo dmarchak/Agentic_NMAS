@@ -9,7 +9,7 @@ the folder beside the record of AI calls (`calls._path`'s folder, ``ai_presses/`
 1. **A press carries a key, and a key already seen returns its call.** The page sends a fresh
    key with every press (`X-NMAS-Press`, made in the browser per request:
    static/js/nmas_v2.js, `pressKey`). The n-th call a request makes under a key is slot
-   ``key-<sha256(actor, key, n)>``: a second request with the same key (a retry, a resent
+   ``key-<sha256(actor, key, n)>`` (with its subject and work, below): a second request with the same key (a retry, a resent
    form) waits while the first's n-th call is in flight, then returns that call; one that
    arrives later returns it at once. Nothing is sent again. The slot records the access scope
    the call was made under (`identity.access_scope`): a retry under another scope (a gate
@@ -37,9 +37,21 @@ validated again by its schema).
 (`in_flight`), naming the bound, and nothing is sent. A holder that dies releases its lock with
 its process (`flock`), its slot still marked running, and the waiter then makes its own call.
 
-The slots hold only call ids, never a request or an answer; files older than `KEEP_S` are
-removed as new ones are written.
+**A key names its subject** (C3771; the first real run of automatic troubleshooting,
+2026-11-15: the turn-on's catch-up started four investigations in one request, each in its own
+job, so each counted its calls from 1 again, and three of the four devices' first calls each
+found the fourth's slot done and took its answer). A call about a subject (the gateway's ``subject``, an incident,
+an alert, a device) has the subject in its key's slot, and so has a work inside the press that
+`within` names (one investigation of one incident for one failure): one press's calls about
+different subjects, or for different works, never share a slot. **A join is refused unless its
+subject is the same**: the call a slot names is joined only when its own row's subject is this
+call's (`_same_subject`); otherwise this press makes its own call, logged. A press with no
+subject (the connection check) keys as before.
+
+The slots hold only call ids and subjects' digests, never a request or an answer; files older
+than `KEEP_S` are removed as new ones are written.
 """
+import contextlib
 import hashlib
 import json
 import logging
@@ -99,9 +111,10 @@ def request_digest(feature: str, body: dict, about: dict) -> str:
 
 
 def current_press(actor: str):
-    """``{"slot", "n"}`` for the request being served: its key's slot for this call (its n-th
-    through the gateway), or None outside a request or with no key (a script, a test client
-    sending none, a form posted without the page's script)."""
+    """``{"slot", "n", "within"}`` for the request being served: its key's slot for this call
+    (its n-th through the gateway, within the work `within` names, if any), or None outside a
+    request or with no key (a script, a test client sending none, a form posted without the
+    page's script). The call's subject is added by `once` (`subject_key`)."""
     from flask import g, has_request_context, request
 
     if not has_request_context():
@@ -111,7 +124,52 @@ def current_press(actor: str):
         return None
     n = int(g.get("nmas_ai_press_n", 0)) + 1
     g.nmas_ai_press_n = n
-    return {"slot": "key-" + _sha(actor, key, n), "n": n}
+    work = str(g.get(WITHIN, "") or "")
+    return {"slot": "key-" + (_sha(actor, key, work, n) if work else _sha(actor, key, n)),
+            "n": n, "within": work}
+
+
+#: Where `within` keeps the work a press's calls are made for, on the request's `g`.
+WITHIN = "nmas_ai_press_within"
+
+
+@contextlib.contextmanager
+def within(work: str):
+    """The calls made inside are for one *work* of the press (C3771: one investigation of one
+    incident for one failure, ``"<incident>:<failure key>"``): their slots name it, and they
+    are counted from 1 again. Wraps the work in the thread that does it; outside a request it
+    does nothing."""
+    from flask import g, has_request_context
+
+    if not has_request_context():
+        yield
+        return
+    saved = (g.get(WITHIN, None), g.get("nmas_ai_press_n", None))
+    setattr(g, WITHIN, str(work or ""))
+    g.nmas_ai_press_n = 0
+    try:
+        yield
+    finally:
+        for name, value in zip((WITHIN, "nmas_ai_press_n"), saved):
+            if value is None:
+                g.pop(name, None)
+            else:
+                setattr(g, name, value)
+
+
+def subject_key(subject) -> str:
+    """A call's subject as its slots name it: ``""`` for none (the connection check), else the
+    sha256 of its JSON (sorted keys), so equal subjects are one whatever order they were built
+    in."""
+    if not subject:
+        return ""
+    return _sha(json.dumps(subject, sort_keys=True, ensure_ascii=True, default=str))
+
+
+def _same_subject(row: dict, subject: str) -> bool:
+    """Whether the recorded call *row* is about the subject *subject* (`subject_key`): the one
+    test a join passes (C3771)."""
+    return subject_key((row or {}).get("subject") or {}) == subject
 
 
 class _Slot:
@@ -190,16 +248,22 @@ def _done_call(marker) -> str:
     return ""
 
 
-def _join(call_id: str, rebuild, actor: str, why: str):
+def _join(call_id: str, rebuild, actor: str, why: str, subject: str = ""):
     """The call *call_id*'s own result, rebuilt by *rebuild* (the gateway's, which records the
-    joiner's own row); None when its row cannot be read (the press then makes its own call,
-    which the caps judge against the record as ever)."""
+    joiner's own row); None when its row cannot be read, or when it is about another subject
+    than *subject* (`subject_key`, C3771: a join is refused unless its subject is the same):
+    the press then makes its own call, which the caps judge against the record as ever."""
     from modules.ai import calls
 
     found = calls.find(call_id)
     if not found.get("row"):
         log.warning("ai presses: the call %s to join is not in the record (%s); a new call is "
                     "made", call_id, found.get("error") or found.get("state"))
+        return None
+    if not _same_subject(found["row"], subject):
+        log.warning("ai presses: %s did not join call %s: it is about %s, and this call is "
+                    "about another subject (%s); a new call is made", actor, call_id,
+                    found["row"].get("subject") or "no subject", subject[:12] or "none")
         return None
     log.info("ai presses: %s joined call %s (%s)", actor, call_id, why)
     return dict(rebuild(found["row"], why), joined=call_id)
@@ -216,6 +280,11 @@ def once(feature: str, body: dict, *, about: dict, actor: str, make, rebuild, re
     press = current_press(actor)
     digest = request_digest(feature, body, about)
     scope = about["scope"]
+    subject = subject_key(about.get("subject"))
+    if press and subject:
+        # The key's slot names the call's subject (C3771): one press's calls about two
+        # incidents never share a slot.
+        press = dict(press, slot="key-" + _sha(press["slot"], subject))
     slots = []
     try:
         if press:
@@ -232,7 +301,9 @@ def once(feature: str, body: dict, *, about: dict, actor: str, make, rebuild, re
                               "sent")
             if seen:
                 got = _join(seen, rebuild, actor, "the same press sent again: its key was seen "
-                            f"(call {press['n']} of the press)")
+                            f"(call {press['n']} of the press"
+                            + (f", {press['within']}" if press.get("within") else "") + ")",
+                            subject)
                 if got is not None:
                     return got
         same = _Slot("req-" + digest)
@@ -242,7 +313,7 @@ def once(feature: str, body: dict, *, about: dict, actor: str, make, rebuild, re
             seen = _done_call(same.marker())
             got = (_join(seen, rebuild, actor, "the same request was in flight: "
                          f"{feature}, the same network, subject, data, prompt, model and "
-                         "access scope") if seen else None)
+                         "access scope", subject) if seen else None)
             if got is not None:
                 if press:
                     slots[0].mark(state="done", call_id=seen, scope=scope)

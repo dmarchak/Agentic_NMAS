@@ -41,9 +41,30 @@ NONE_WORDS = ("names no trigger: every AI call says what started it, a person's 
               "(background); nothing was read or sent")
 
 
-def person(actor: str) -> dict:
-    """A person's press, as *actor* (the request's verified actor)."""
-    return {"kind": PERSON, "by": actor}
+def person(actor: str, counts_for: dict = None) -> dict:
+    """A person's press, as *actor* (the request's verified actor). *counts_for* (C3751):
+    ``{"feature", "network"}``, a background feature whose spend the call counts toward as well
+    (a catch-up started when ``fixit_auto`` was turned on: the person's choice, so the person's
+    trigger, and the feature's spend for its day and month caps, so a later automatic start the
+    same day sees it). It changes no gate: the call is still a person's."""
+    out = {"kind": PERSON, "by": actor}
+    if counts_for:
+        out["counts_for"] = {"feature": str(counts_for.get("feature") or ""),
+                             "network": str(counts_for.get("network") or "")}
+    return out
+
+
+def counted_feature(trigger: dict):
+    """``(feature, network)`` whose spend a call with *trigger* counts toward: a background
+    call's own, a person's ``counts_for`` (C3751), else ``("", "")``."""
+    if not isinstance(trigger, dict):
+        return "", ""
+    if trigger.get("kind") == BACKGROUND:
+        return trigger.get("feature") or "", trigger.get("network") or ""
+    c = trigger.get("counts_for") if trigger.get("kind") == PERSON else None
+    if isinstance(c, dict) and c.get("feature") and c.get("network"):
+        return c["feature"], c["network"]
+    return "", ""
 
 
 def evaluation(actor: str) -> dict:
@@ -105,8 +126,20 @@ def _person(trigger: dict) -> dict:
     if by != verified:
         return _refused(f"the person trigger names {by!r}, and this request's verified "
                         f"actor is {verified!r}")
-    return {"ok": True, "why": "", "trigger": {"kind": PERSON, "by": by,
-                                                "verified": identity.actor_verification(by)}}
+    out = {"kind": PERSON, "by": by, "verified": identity.actor_verification(by)}
+    counts = trigger.get("counts_for")
+    if counts is not None:
+        # C3751: only a known background feature on a named network, kept as its folder name.
+        from modules.ai import background as B
+        from modules.config import list_slug
+
+        name = counts.get("feature") if isinstance(counts, dict) else None
+        net = counts.get("network") if isinstance(counts, dict) else None
+        if name not in B.FEATURES or not isinstance(net, str) or not net.strip():
+            return _refused(f"a person trigger's counts_for names a background feature Mercury "
+                            f"knows and a network; {counts!r} is not one")
+        out["counts_for"] = {"feature": name, "network": list_slug(net)}
+    return {"ok": True, "why": "", "trigger": out}
 
 
 def _evaluation(trigger: dict) -> dict:

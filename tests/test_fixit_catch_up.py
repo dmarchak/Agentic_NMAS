@@ -118,18 +118,40 @@ def get(w, path):
 
 
 def form_of(w):
+    """Gate 2 (C3769): the read-only list for audit (what Automatic would start, and why), the
+    digest of the control strip's line (what its press is bound to) and one investigation's
+    estimate: ``(audit html, line digest, each)``."""
+    import re
+
+    from modules.ai import fixit_troubleshoot as AIT
     r, html = get(w, f"{BASE}/{NET}/fixit_auto/on")
     assert r.status_code == 200, html
+    strip = unescape(w.client.get(f"/v2/control/strip?list={NET}").get_data(as_text=True))
+    shown = re.search(r'name="line_digest" value="([0-9a-f]*)"', strip).group(1)
+    return html, shown, f"{AIT.estimate()['usd']:.6f}"
+
+
+def post(w, shown, each, day="1.50", month="10.00", incident=None):
+    """Turn Automatic on the one way (Gate 2): the network's limits set with the estimate
+    acknowledged (Settings › AI's card), then the control strip's switch pressed, bound to the
+    line it drew (*shown*). Every listed incident starts (no ticks). *each* is unused by the
+    server, kept so the callers read as before."""
     import re
-    shown = re.search(r'name="shown" value="([0-9a-f]{64})"', html).group(1)
-    each = re.search(r'name="catch_up_each" value="([0-9.]+)"', html)
-    return html, shown, each.group(1) if each else ""
 
-
-def post(w, shown, each, listed, ticked, day="1.50", month="10.00"):
-    data = {"shown": shown, "day_cap_usd": day, "month_cap_usd": month, "accept": "on",
-            "listed": list(listed), "start": list(ticked), "catch_up_each": each}
-    r = w.client.post(f"{BASE}/{NET}/fixit_auto/on", data=data, headers={"HX-Request": "true"})
+    from modules.fixit import policy as P
+    page = unescape(w.client.get(f"/v2/settings/installation?tab=ai&network={NET}")
+                    .get_data(as_text=True))
+    est = re.search(r'class="ai-ts-limits".*?name="estimate_digest" value="([0-9a-f]{64})"',
+                    page, re.S).group(1)
+    inc = incident if incident is not None else f"{P.cap_usd()['usd']:.6f}"
+    r = w.client.post(f"/v2/settings/installation/ai/troubleshoot/{NET}/limits",
+                      headers={"HX-Request": "true"},
+                      data={"estimate_digest": est, "incident_cap_usd": inc, "day_cap_usd": day,
+                            "month_cap_usd": month, "accept": "on"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    r = w.client.post(f"/v2/settings/installation/ai/troubleshoot/{NET}/level?answer=strip",
+                      headers={"HX-Request": "true"},
+                      data={"level": "automatic", "line_digest": shown})
     return r, unescape(r.get_data(as_text=True))
 
 
@@ -194,14 +216,13 @@ class TestTheForm:
         assert float(each) == pytest.approx(est, abs=1e-6)
         assert f"Starts on these 4 open incidents, about {usd(est * 4)}" in html
         for k in LISTED:
-            assert f'name="start" value="{got[k]}" checked' in html, k
-            assert f'name="listed" value="{got[k]}"' in html, k
+            assert f'data-incident="{got[k]}"' in html, k
         for k in ("waits", "dry", "closed", "started", "capped"):
             assert got[k] not in html, k
         assert "held by guard 4: heal off for this device" in html
         assert "r4" in html and f"about {usd(est)}" in html
-        # Pressed with every box as drawn (all ticked): each drawn one starts, once.
-        r, out = post(world, shown, each, [got[k] for k in LISTED], [got[k] for k in LISTED])
+        # Turned on (the strip's switch, Gate 2): each listed one starts, once.
+        r, out = post(world, shown, each)
         assert r.status_code == 200, out
         assert sorted(i for i, _k, _kw in counted) == sorted(got[k] for k in LISTED)
         (rec,) = record(world)
@@ -209,9 +230,9 @@ class TestTheForm:
 
     def test_none_qualifying_says_so_and_turns_on_as_before(self, world, counted):
         html, shown, each = form_of(world)
-        assert "No open incident to start on." in html and 'name="start"' not in html
-        r, out = post(world, shown, each, (), ())
-        assert r.status_code == 200 and "fixit_auto is on for" in out, out
+        assert "No open incident to start on." in html and 'data-incident=' not in html
+        r, out = post(world, shown, each)
+        assert r.status_code == 200 and "Automatic is on" in out, out
         (rec,) = record(world)
         assert rec["catch_up"] == {"ticked": [], "unticked": [], "usd_each": 0.0,
                                    "usd_total": 0.0}
@@ -233,57 +254,73 @@ class TestTheForm:
 
 class TestTheChoice:
     def test_the_ticks_are_recorded_and_only_the_ticked_start_once(self, world, counted):
+        """Premise corrected (Gate 2, C3769; the operator, 2026-11-15: "All open eligible
+        incidents start, within the caps ... no ticks"; the name predates it): every listed
+        incident is recorded with the turn-on and starts once, in the person's name, each
+        counting toward the feature (C3751) under its own planned reservation (C3752)."""
         got = planted()
         html, shown, each = form_of(world)
         listed = [got[k] for k in LISTED]
-        ticked = [got["stream"], got["held4"]]
-        r, out = post(world, shown, each, listed, ticked)
+        r, out = post(world, shown, each)
         assert r.status_code == 200, out
         (rec,) = record(world)
-        assert rec["catch_up"]["ticked"] == ticked
-        assert rec["catch_up"]["unticked"] == [got["cant_fix"], got["failed"]]
-        assert rec["catch_up"]["usd_total"] == pytest.approx(float(each) * 2, abs=1e-6)
+        assert sorted(rec["catch_up"]["ticked"]) == sorted(listed)
+        assert rec["catch_up"]["unticked"] == []
+        assert rec["catch_up"]["usd_total"] == pytest.approx(float(each) * 4, abs=1e-6)
         assert rec["actor"] == TEST_PERSON
-        assert [(i, k) for i, k, _kw in counted] == [(got["stream"], f"decision:{got['stream']}"),
-                                                    (got["held4"], f"held:{got['held4']}")]
-        assert all(kw == {"actor": TEST_PERSON, "verified": "access"} for *_x, kw in counted)
+        assert sorted((i, k) for i, k, _kw in counted) == sorted(
+            [(got["stream"], f"decision:{got['stream']}"),
+             (got["cant_fix"], f"decision:{got['cant_fix']}"),
+             (got["held4"], f"held:{got['held4']}"),
+             (got["failed"], "act:hd-00000000ac7d")])
+        assert all({k: kw[k] for k in ("actor", "verified", "counts")} == {
+            "actor": TEST_PERSON, "verified": "access", "counts": True}
+            and str(kw.get("planned") or "").startswith("fixit-start-")
+            for *_x, kw in counted), counted
         (line,) = F.starts(inc_of(got["held4"]))["starts"]
         assert (line["start"], line["trigger"], line["state"], line["words"], line["by"]) == (
             f"held:{got['held4']}", "person", "started", A.CATCH_UP_WORDS, TEST_PERSON)
-        assert F.starts(inc_of(got["cant_fix"]))["starts"] == [], "unticked: nothing taken"
-        assert "AI troubleshooting started on 2 open incidents" in out
-        assert "2 open incidents left unticked keep Start AI troubleshooting" in out
-        # Turned on again (its renewal), neither ticked one is listed again.
+        assert "started on 4 open incidents now" in out
+        # Read again, none of them is listed again (each start took its failure's key).
         _html, shown, each = form_of(world)
-        assert got["stream"] not in _html and got["held4"] not in _html
-        assert got["cant_fix"] in _html
+        assert all(got[k] not in _html for k in LISTED)
 
     def test_the_automatic_pass_never_starts_one_again_for_that_failure(self, world, counted):
         got = planted()
         _html, shown, each = form_of(world)
-        post(world, shown, each, [got[k] for k in LISTED], [got["stream"]])
-        # Its investigation answered (a proposal line), so nothing is in flight.
-        F.record_proposal(inc_of(got["stream"]), "mercury", words="nothing", now=NOW + 1)
+        post(world, shown, each)
+        # Their investigations answered (a proposal line each), so nothing is in flight.
+        for k in LISTED:
+            F.record_proposal(inc_of(got[k]), "mercury", words="nothing", now=NOW + 1)
         out, started = run(NOW + 60)
         assert out["started"] == [] and started == [], out
-        assert len(counted) == 1
+        assert len(counted) == 4
 
     def test_a_ticked_one_not_listed_is_refused_and_nothing_changes(self, world, counted):
+        """Premise corrected (Gate 2, C3769: no ticks; the name predates the change): an
+        incident that leaves the list between the line drawn and the press (here resolved) is
+        not started, and nothing else changes: the press is refused by the line's digest,
+        naming both, with nothing recorded and nothing started."""
+        from modules.heal import incidents
         got = planted()
         _html, shown, each = form_of(world)
-        r, out = post(world, shown, each, [got["stream"]], [got["stream"], got["waits"]])
-        assert r.status_code == 409 and "is not on the list drawn" in out, out
+        incidents.close(NET, got["cant_fix"], "cleared", now=NOW)
+        r, out = post(world, shown, each)
+        assert r.status_code == 409 and "moved since the line was drawn" in out, out
         assert record(world) == [] and counted == []
+        assert F.starts(inc_of(got["cant_fix"]))["starts"] == []
 
     def test_an_estimate_the_server_did_not_compute_is_refused(self, world, counted):
-        # The second review of the verify-speed gate, 2026-11-15: the estimate recorded with
-        # the turn-on is the server's own, never what the browser sent.
-        got = planted()
+        """The second review of the verify-speed gate, 2026-11-15: what turning on records and
+        starts is the server's own, never what the browser sent. Premise corrected (Gate 2,
+        C3769; the name predates it): the press is bound to the line's digest, the open
+        incidents and their estimate as drawn."""
+        planted()
         _html, shown, each = form_of(world)
-        r, out = post(world, shown, "0.000001", [got["stream"]], [got["stream"]])
-        assert r.status_code == 409 and "the estimate drawn was 0.000001" in out, out
+        r, out = post(world, "0" * 64, each)
+        assert r.status_code == 409 and "moved since the line was drawn" in out, out
         assert record(world) == [] and counted == []
-        r, out = post(world, shown, each, [got["stream"]], [got["stream"]])
+        r, out = post(world, shown, each)
         assert r.status_code == 200, out
 
 
@@ -296,8 +333,8 @@ class TestTheCaps:
         assert write_settings({"ai_cap_usd_per_incident": 0.0001})["ok"]
         _html, shown, each = form_of(world)
         assert "its incident's AI cap would be passed" in _html
-        r, out = post(world, shown, each, [got[k] for k in LISTED], [got["cant_fix"]])
-        assert r.status_code == 200 and "Not started, a cap would be passed" in out, out
+        r, out = post(world, shown, each)
+        assert r.status_code == 200 and "a cap would be passed" in out, out
         assert counted == [] and world.sent == []
         (line,) = F.starts(inc_of(got["cant_fix"]))["starts"]
         assert (line["state"], line["which"], line["trigger"]) == ("capped", "incident",
@@ -310,27 +347,32 @@ class TestTheCaps:
                                                                             counted):
         # Premise corrected (the operator, C3745, 2026-11-15: "Catch-up starts count against
         # every cap ... The builder's test that expects a start at a $0.01 feature cap is
-        # wrong"): at a $0.01 feature day cap the one ticked is refused, naming that cap.
+        # wrong"): at a $0.01 day limit every listed one is refused, naming that cap. And
+        # (Gate 2, C3769; the name predates it): the cap is the limit acknowledged on the
+        # card, not one typed in the turn-on form.
         got = planted()
         _html, shown, each = form_of(world)
-        r, out = post(world, shown, each, [got[k] for k in LISTED], [got["stream"]],
-                      day="0.01", month="0.10")
-        assert r.status_code == 200 and "Not started, a cap would be passed" in out, out
+        r, out = post(world, shown, each, day="0.01", month="0.10")
+        assert r.status_code == 200 and "a cap would be passed" in out, out
         assert counted == [] and world.sent == []
         (line,) = F.starts(inc_of(got["stream"]))["starts"]
         assert (line["state"], line["which"], line["trigger"]) == ("capped", "day", "person")
         assert "fixit_auto's spend on" in line["words"] and "day cap $0.0100" in line["words"]
 
     def test_three_ticked_room_for_two_under_the_features_day_cap(self, world, counted):
+        """Premise corrected (Gate 2, C3769: no ticks; the name predates it): with room for two
+        under the feature's day limit, the first two listed start, in the list's order, and the
+        third is refused at that limit, naming the starts ahead of it."""
         from modules.ai import fixit_troubleshoot as AIT
-        got = planted()
+        from modules import troubleshoot_control as T
+        planted()
         _html, shown, each = form_of(world)
-        three = [got["stream"], got["cant_fix"], got["held4"]]
+        order = T.catch_up_line(NET)["ids"]
         day = f"{AIT.worst_usd() * 2 + 0.01:.2f}"
-        r, out = post(world, shown, each, [got[k] for k in LISTED], three, day=day)
+        r, out = post(world, shown, each, day=day)
         assert r.status_code == 200, out
-        assert [i for i, _k, _kw in counted] == three[:2], "2 start, in tick order"
-        (line,) = F.starts(inc_of(got["held4"]))["starts"]
+        assert [i for i, _k, _kw in counted] == order[:2], "2 start, in the list's order"
+        (line,) = F.starts(inc_of(order[2]))["starts"]
         assert (line["state"], line["which"]) == ("capped", "day")
         assert (f"day cap ${float(day):.4f}" in line["words"]
                 and "reserved by its 2 call(s) in flight" in line["words"]), line["words"]
@@ -338,22 +380,26 @@ class TestTheCaps:
     @pytest.mark.parametrize("room, ticked, starts", [(2, 3, 2), (1, 2, 1)])
     def test_only_the_overall_day_cap_binds(self, world, counted, room, ticked, starts):
         """Today's spend elsewhere leaves room for *room* under the installation's $1.50 day
-        cap, with the feature's own day cap at $1.50 holding five: the later ones are refused
-        at the day cap, naming today's spend and the starts ahead of them."""
+        cap, with the feature's own day limit at $1.50 holding five: the later ones are refused
+        at the day cap, naming today's spend and the starts ahead of them. Premise corrected
+        (Gate 2, C3769: no ticks; the ids predate it): every listed incident is pressed, at
+        least *ticked* of them, and *starts* (the room) start, the rest refused."""
         from modules.ai import calls
         from modules.ai import fixit_troubleshoot as AIT
-        got = planted()
+        from modules import troubleshoot_control as T
+        planted()
         spent = round(1.50 - AIT.worst_usd() * room - 0.001, 4)
         assert calls.record({"id": calls.new_id(), "feature": "explain", "actor": TEST_PERSON,
                              "model": "m", "cost_usd": spent, "tokens": {"in": 1, "out": 1},
                              "trigger": {"kind": "person", "by": TEST_PERSON}})["recorded"]
         _html, shown, each = form_of(world)
         assert f"{room} under the day cap" in _html, "the list says the room first"
-        picked = [got[k] for k in LISTED][:ticked]
-        r, out = post(world, shown, each, [got[k] for k in LISTED], picked)
+        order = T.catch_up_line(NET)["ids"]
+        assert len(order) >= ticked > starts == room
+        r, out = post(world, shown, each)
         assert r.status_code == 200, out
-        assert [i for i, _k, _kw in counted] == picked[:starts]
-        for iid in picked[starts:]:
+        assert [i for i, _k, _kw in counted] == order[:starts]
+        for iid in order[starts:]:
             (line,) = F.starts(inc_of(iid))["starts"]
             assert (line["state"], line["which"]) == ("capped", "day")
             assert f"today's AI spend ${spent:.2f}" in line["words"], line["words"]
@@ -383,7 +429,7 @@ class TestThePerson:
         from modules.ai import calls
         got = {"stream": plant()}
         _html, shown, each = form_of(world)
-        post(world, shown, each, [got["stream"]], [got["stream"]])
+        post(world, shown, each)
         assert world.sent, "the ticked one's investigation asked the provider"
         rows = [r for r in calls.read()["rows"] if r.get("feature") == "fixit_troubleshoot"]
         assert rows and all(r["trigger"]["kind"] == "person" for r in rows), rows
@@ -431,52 +477,33 @@ class TestTheHold:
 
 
 class TestInABrowser:
-    def test_unticking_changes_the_total(self, world):
+    def test_unticking_changes_the_total(self, world, counted):
+        """Premise corrected (Gate 2, C3769: no ticks; the name predates the change): in a real
+        browser, Settings › AI's AI troubleshooting card's Automatic, pressed once the
+        network's limits are acknowledged, turns Automatic on and starts every listed open
+        incident, the total the list drew (the read-only list for audit has no Turn on)."""
         from tests import browser
         ok, why = browser.available()
         if not ok:
             pytest.skip(f"no real browser here ({why}); the tests above still run")
         import app as nmas
-        from modules.money import usd
+        from modules import troubleshoot_control as troubleshoot
+        from modules.ai import background
         got = planted()
-        _html, _shown, each = form_of(world)
-        each = float(each)
+        est = background.estimate(background._network(NET), A.FEATURE)
+        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=1.5, month_usd=10.0,
+                                shown=est["digest"], accepted=True, actor=TEST_PERSON,
+                                verified="access")
         with browser.Served(nmas.app) as srv, browser.Browser() as b:
             try:
-                # Settings › AI, then Turn on… on the feature's row, as a person opens it.
                 b.go(srv.url(f"/v2/settings/installation?tab=ai&network={NET}"))
-                on = f'#bg-fixit_auto a[href$="/{NET}/fixit_auto/on"]'
+                on = '#ai-ts button[name="level"][value="automatic"]'
                 b.wait_for("return !!window.Alpine && !!window.htmx && "
                            "!!document.querySelector(arguments[0])", 20, on)
                 b.click(on)
-                b.wait_for("return !!document.querySelector('.ai-catchup-pick strong')", 20)
-                lead = "return document.querySelector('.ai-catchup-pick strong').innerText"
-                assert b.js(lead) == f"Starts on these 4 open incidents, about {usd(each * 4)}"
-                # What fits follows the caps as they are typed (C3745), key by key.
-                fit = "return document.querySelector('.ai-catchup-fit strong').innerText"
-                for name, typed in (("month_cap_usd", "10"), ("day_cap_usd", "0.60")):
-                    b.js("document.querySelector('input[name=' + arguments[0] + ']').value = '';"
-                         " return 1", name)
-                    b.type(f"input[name={name}]", typed)
-                b.wait_for(fit + ".indexOf('2 of the 4') === 0", 10)
-                assert b.js(fit) == ("2 of the 4 ticked fit under the caps; the later 2 would "
-                                     "pass this feature's day cap: refused before anything "
-                                     "starts, each page naming the cap.")
-                b.js("document.querySelector('input[name=day_cap_usd]').value = '';"
-                     " return 1")
-                b.type("input[name=day_cap_usd]", "1.50")
-                b.wait_for(fit + ".indexOf('All 4') === 0", 10)
-                assert b.js(fit) == "All 4 ticked fit under every cap."
-                b.click(f'input[name="start"][value="{got["held4"]}"]')
-                b.wait_for(lead + ".indexOf('these 3') >= 0", 10)
-                assert b.js(lead) == f"Starts on these 3 open incidents, about {usd(each * 3)}"
-                for k in ("stream", "cant_fix", "failed"):
-                    b.click(f'input[name="start"][value="{got[k]}"]')
-                b.wait_for(lead + ".indexOf('none') >= 0", 10)
-                assert b.js(lead).startswith("Starts on none of these open incidents")
-                b.click(f'input[name="start"][value="{got["failed"]}"]')
-                b.wait_for(lead + ".indexOf('this open') >= 0", 10)
-                assert b.js(lead) == f"Starts on this open incident, about {usd(each)}"
+                b.wait_for("return !!document.querySelector('[data-result=ts-set]')", 20)
+                assert A.switch(NET)["on"]
+                assert sorted(i for i, _k, _kw in counted) == sorted(got[k] for k in LISTED)
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()

@@ -1,0 +1,59 @@
+# Recover an err-disabled interface (G7, C3712): the first built-in command plan (C3757, path
+# 2). Run by modules/nsot/command_plan_run.py on the deploy pipeline's engine; its lines held by
+# modules/nsot/command_policy.py (the shapes as sent by G7's recovery, measured at its first run).
+kind: command_plan
+key: errdisable-recover
+title: "Recover {device} {interface_short}, err-disabled by {cause}"
+words: >-
+  Recover an err-disabled interface: for a switch port the device lists in show interfaces
+  status err-disabled by bpduguard or psecure-violation, once the cause has cleared (no BPDU
+  since; the violating MAC gone from the port); never where the switch's own errdisable
+  recovery covers the cause
+net_zero: true
+parameters:
+  device:
+    type: device
+    words: one name the network's inventory holds
+  interface:
+    type: interface
+    words: >-
+      one interface's name, as the device's committed intent names it (GigabitEthernet1/0) or as
+      IOS shortens it (Gi1/0): an access port, never the management path
+    access_port: true
+    not_management: true
+  cause:
+    type: choice
+    words: "the device's own reason: bpduguard or psecure-violation"
+    of: [bpduguard, psecure-violation]
+preconditions:
+  - name: The port is err-disabled by the cause now
+    read: show interfaces status err-disabled
+    expect: errdisable.port_listed
+  - name: The switch does not recover the cause itself
+    read: show running-config | include errdisable recovery
+    expect: errdisable.not_recovering_itself
+  - name: The cause has cleared
+    expect: errdisable.cause_cleared
+steps:
+  - mode: config
+    commands:
+      - "interface {interface}"
+      - " shutdown"
+      - " no shutdown"
+verify:
+  - name: The port reads connected
+    read: show interfaces status
+    expect: errdisable.port_connected
+    poll: errdisable-poll
+    within: errdisable-connect
+  - name: No new err-disable
+    read: show interfaces status err-disabled
+    expect: errdisable.port_not_listed
+    after: errdisable-quiet
+reason: >-
+  Recover an err-disabled interface: the port is shut and no shut in one batch to clear its
+  err-disable, never saved; the configuration after equals the one before
+on_finish: errdisable.notify
+# The problem it fixes (modules/problem.py): an investigation that lacked it restarts once it
+# exists (C3733).
+fixes: [err_disabled]

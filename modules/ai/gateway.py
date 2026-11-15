@@ -856,6 +856,12 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     day = today or calls.today()
     trig = row["trigger"]
     is_background = trig["kind"] == triggers.BACKGROUND
+    # A person's call that counts for a feature (C3751, a turn-on catch-up's) is held to that
+    # feature's day and month caps as a background call is (Gate 2's review: each call of the
+    # investigation, its second included, never only the start's plan).
+    counted, counted_net = triggers.counted_feature(trig)
+    capped_as = (trig if is_background else
+                 {"feature": counted, "network": counted_net} if counted else None)
 
     def judge(held):
         """Inside the reservations' lock: the spend read, then every cap against the spend,
@@ -870,9 +876,9 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                 f"today's spend ${spent['usd']:.4f} plus ${flying['usd']:.4f} reserved by "
                 f"{flying['calls']} call(s) in flight plus this call's worst case "
                 f"${worst:.4f} is over the day cap ${cap['per_day']:.4f}")}
-        if is_background:
-            over = background.over_cap(trig, worst, day, reserved=reservations.in_flight(
-                held, feature=trig["feature"], network=trig["network"]))
+        if capped_as:
+            over = background.over_cap(capped_as, worst, day, reserved=reservations.in_flight(
+                held, feature=capped_as["feature"], network=capped_as["network"]))
             if over:
                 return {"kind": over["kind"], "why": over["why"], "cap_kind": over["cap"],
                         "worst_usd": worst}
@@ -880,11 +886,14 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
 
     ttl = reservation_ttl_s()
     # A background call's reservation names its background feature and network (what its own
-    # caps count, `reservations.in_flight`); a person's or an evaluation's, its task.
+    # caps count, `reservations.in_flight`); a person's call that counts for a feature (C3751,
+    # a turn-on catch-up) names that feature and network, counted; a person's or an
+    # evaluation's otherwise, its task.
+    counts = bool(counted) and not is_background
     held = reservations.reserve(row["id"], worst, judge=judge, ttl_s=ttl,
-                                feature=trig["feature"] if is_background else feature,
-                                network=trig["network"] if is_background else "",
-                                background=is_background, day=day)
+                                feature=counted if counted else feature,
+                                network=counted_net if counted else "",
+                                background=is_background, day=day, counts=counts)
     if not held["ok"]:
         said = dict(held["refusal"])
         return refuse(said.pop("kind"), said.pop("why"), **said)

@@ -1,0 +1,67 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Saved plans on the incident card (Gate 1b; board saved-plans, artboard S; routes/saved_plans_v2.py,
+    modules/nsot/saved_plans.py): after a command plan that ran and passed its own verify, Save
+    as a self-heal script (its R4 match only, previewed on the open incidents, its open
+    parameters) and Save as a reusable action (an admin's); the scripts whose match this
+    problem holds, each with Promote (self-healing rights); the network's provisional shapes,
+    each with Approve (an admin's). Each control is busy on itself, its answer drawn in place;
+    a right the viewer lacks is said beside its control, which is drawn disabled. -#}
+<div class="heal-prop saved-plans" id="saved-plans-{{ c.incident }}" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list) }}" hx-trigger="nmas:saved_plans from:body" hx-swap="outerHTML" hx-select="unset"{% if c.said and c.said.words %} data-holds-live="review"{% endif %}>
+{%- if c.said and c.said.words %}
+  <div class="notice notice-{{ 'muted' if c.said.level == 'ok' else 'danger' }} set-result" role="{{ 'status' if c.said.level == 'ok' else 'alert' }}">{{ icon('tick' if c.said.level == 'ok' else 'warn', 16) }}<p>{{ c.said.words | people }}</p></div>
+{%- endif %}
+{%- if c.unset %}
+  <p class="faint small" data-rights="unset">Until Settings' access_rights names who holds them, every verified person holds {% for r in c.unset %}{{ r | replace('_', '-') }}{{ ' and ' if not loop.last }}{% endfor %} rights.</p>
+{%- endif %}
+{%- if c.state == 'ready' %}
+  <p><strong>{{ c.plan }} ran and passed its own verify.</strong> Save it, its parameters left open, to use again. {{ how('plans', compact=True, op='a saved plan') }}</p>
+  <form id="saved-script-{{ c.incident }}" class="small" data-save="script">
+    <input type="hidden" name="list" value="{{ c.list }}">
+    <fieldset><legend>Save as a self-heal script (starts in Dry run)</legend>
+      <label class="heal-field" for="script-name-{{ c.incident }}">Name<input id="script-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="BPDU guard recovery"></label>
+      <p>It matches the problem's fields, never an alert's name:</p>
+      <ul class="tl-record">
+        <li data-match="condition">condition: {{ c.match.condition }} (always)</li>
+        {%- for k in c.optional if c.match[k] is defined %}
+        <li data-match="{{ k }}"><label><input type="checkbox" name="keep_{{ k }}" value="1" checked> {{ k | replace('_', ' ') }}: {{ c.match[k] }}</label></li>
+        {%- endfor %}
+      </ul>
+      <p class="faint" data-preview="match">{{ c.preview.matched }} of the {{ c.preview.read }} open incidents' problems hold this match now.</p>
+      <p>Its parameters, filled from the problem when it fires:</p>
+      <ul class="tl-record">{% for name, f in c.fills.items() %}<li data-fill="{{ name }}">{{ name }}: {% if f is string %}the problem's {{ f | replace('_', ' ') }}{% else %}{% set m = f.map if f.map is defined else f %}{% for k, v in m.items() %}{{ k }} as {{ v }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}</li>{% endfor %}</ul>
+      {%- if c.rights.script %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.save_script', incident=c.incident, list=c.list) }}" hx-include="#saved-script-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save as a self-heal script</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+    </fieldset>
+  </form>
+  <form id="saved-action-{{ c.incident }}" class="small" data-save="action">
+    <input type="hidden" name="list" value="{{ c.list }}">
+    <fieldset><legend>Save as a reusable action (for every network)</legend>
+      <label class="heal-field" for="action-name-{{ c.incident }}">Name<input id="action-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="Bounce interface"></label>
+      <label class="heal-field" for="action-words-{{ c.incident }}">What it does<input id="action-words-{{ c.incident }}" name="words" type="text" autocomplete="off"></label>
+      <p>Its parameters: {{ c.fills.keys() | join(', ') }}.</p>
+      {%- if c.rights.action %}<p class="small bluf-refused" data-refused="action">{{ c.rights.action | people }}</p>{% endif %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.save_action', incident=c.incident, list=c.list) }}" hx-include="#saved-action-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.action %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save as a reusable action</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+    </fieldset>
+  </form>
+{%- elif c.why %}
+  <p class="faint small" data-offer="none">Nothing to save yet: {{ c.why }}.</p>
+{%- endif %}
+{%- if c.scripts %}
+  <p class="small"><strong>Saved self-heal scripts this problem matches</strong></p>
+  <ul class="small tl-record">
+  {%- for s in c.scripts %}
+    <li data-script="{{ s.key }}">{{ s.name }}: {{ 'Auto, promoted by ' ~ (s.promoted_by | people) if s.mode == 'auto' else 'Dry run' }}; fired {{ s.fired }} time{{ 's' if s.fired != 1 }}
+    {%- if s.mode != 'auto' %} <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": s.key, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled title="{{ c.rights.script | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ s.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>{% endif %}</li>
+  {%- endfor %}
+  </ul>
+{%- endif %}
+{%- if c.shapes %}
+  <p class="small"><strong>Line shapes waiting on an admin</strong></p>
+  <ul class="small tl-record">
+  {%- for s in c.shapes %}
+    <li data-shape="{{ s.dialect }}: {{ s.shape }}"><code>{{ s.shape }}</code> ({{ s.dialect }}), proposed by {{ s.proposed_by | people }}: {{ s.why }}; {% if s.measured %}its first run measured on {{ s.measured.device }}: {{ s.measured.outcome }}{% else %}not measured yet: its first approved run measures it{% endif %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.approve_shape', incident=c.incident, list=c.list) }}" hx-vals='{{ {"dialect": s.dialect, "shape": s.shape, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.action %} disabled title="{{ c.rights.action | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Approve the shape</span><span class="op-busy">Approving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span></li>
+  {%- endfor %}
+  </ul>
+{%- endif %}
+</div>

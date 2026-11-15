@@ -557,6 +557,31 @@ def record_read(network: str, incident_id: str, device: str, got: dict) -> dict:
     return _mutate(network, change)
 
 
+#: The classifications an incident's record may keep, by field (R4: a problem classified from
+#: the incident's own evidence; G7's err-disabled port, `heal.errdisable.FIELD`).
+PROBLEM_FIELDS = ("errdisable",)
+
+
+def record_problem(network: str, incident_id: str, field: str, classified: dict) -> dict:
+    """Keep the problem *incident_id*'s own evidence was classified as (R4) under *field*, one
+    of `PROBLEM_FIELDS`, on its record: the classification and the device read confirming it,
+    never a configuration's text. A closed incident is not changed."""
+    if field not in PROBLEM_FIELDS:
+        raise Refused(f"an incident keeps a classification under {', '.join(PROBLEM_FIELDS)}, "
+                      f"and {field!r} was given")
+    keep = json.loads(json.dumps(classified or {}))
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if inc.get("state") not in OPEN_STATES:
+            raise Refused(f"{incident_id} is {inc.get('state')}, so its problem is not "
+                          "classified again")
+        inc[field] = keep
+        return inc
+
+    return _mutate(network, change)
+
+
 def settle(network: str, incident_id: str, judged: dict, now: float = None) -> dict:
     """The grace period settled *incident_id* (`grace.judge`'s answer, a settled state): it is
     ``ready`` for the decision."""

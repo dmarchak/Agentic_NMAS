@@ -461,9 +461,15 @@ CANT_FIX = ("edge-d: access list added on GigabitEthernet2 outside Mercury. Merc
             "it by itself: it needs a person")
 WOULD_HEAL = ("edge-b: static route added outside Mercury. Mercury would have put it back "
               "itself, but Default is watching only (dry run), so nothing was sent")
+#: Premise corrected (C3731, the operator, 2026-11-15: "Needs attention draws it as ONE row with
+#: that title and its one action"): a row about an open incident leads with the incident's own
+#: title, the words Troubleshooting › Incidents and the incident's page draw, and its outcome is
+#: the line beneath it; History and the device's page keep the decision's sentence.
 DRAWS = {
-    "needs_attention": (CANT_FIX, "Mercury has a fix that restarts OSPF on edge-c: it needs your "
-                                  "decision", WOULD_HEAL, "Approve and run on edge-c"),
+    "needs_attention": ("edge-d: access list added on GigabitEthernet2 outside Mercury",
+                        "Mercury cannot fix this yet",
+                        "edge-c: OSPF router-id changed outside Mercury",
+                        "Mercury proposes a fix", WOULD_HEAL, "Approve and run on edge-c"),
     "history": (WOULD_HEAL, CANT_FIX),
     "device": (WOULD_HEAL, CANT_FIX),
     # Premise corrected (the GUI review of 2026-11-13, item 9, EM1: the can't-fix's email

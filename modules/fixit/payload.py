@@ -44,14 +44,75 @@ def unnamed(text, actors=()) -> str:
     return display_names.unnamed(text, actors)
 
 
-def catalogue_part() -> list:
-    """The operations a proposal may name, each with its parameters' shapes in words, as the
-    catalog declares them (`catalog.CATALOG`): what the model is told it may propose."""
+#: The intent steps in a few words each, for an incident's own catalogue (`catalogue_part` with
+#: an incident): their parameters' shapes say the rest.
+INTENT_WORDS = {"intent-edit": "Change the device's committed intent",
+                "intent-deploy": "Deploy the device's committed intent (merge-only; a removal "
+                                 "by its id from the deploy's preview)"}
+#: The intent steps' parameters in short words, for an incident's own catalogue (the step
+#: kinds' own words, `plan_engine.STEP_KINDS`, hold them whole; the plan engine holds each).
+INTENT_TAKES = {
+    "changes": ("1 to 32 changes as YAML text, each {path, before, after}: a dotted path of a "
+                "field intent models (a list item by its name), the value now and the value it "
+                "becomes ({__absent__: true} for none)"),
+    "remove": "optional: at most 64 line ids from the deploy's preview to remove (Mode B)"}
+#: A step's device parameter in an incident's own catalogue: always the incident's.
+DEVICE_TAKES = "the incident's device"
+#: The parameters an incident must name for a step taking them: its subscriptions.
+NEEDS_SUBSCRIPTIONS = ("subscriptions", "subscription")
+
+
+def _fits(key: str, op, incident, condition: str, fixes: dict) -> bool:
+    """Whether the step *key* (*op*'s) can take its parameters from *incident*: one naming
+    subscriptions only where the incident names some; a built-in command plan only where it
+    fixes the incident's problem *condition* (the err-disable plan for an err-disabled port,
+    whose interface and cause the problem gives). A reusable action people saved is offered
+    as before (its own match is the problem's, `saved_plans`)."""
     from modules.heal import catalog
 
-    return [{"operation": op.key, "words": op.words,
-             "params": [{"name": p.name, "takes": p.takes} for p in op.params]}
-            for _key, op in sorted(catalog.CATALOG.items())]
+    names = {p.name for p in op.params}
+    if names & set(NEEDS_SUBSCRIPTIONS) and not getattr(incident, "subscriptions", ()):
+        return False
+    if key in catalog.COMMAND_PLANS:
+        return bool(condition) and condition in (fixes.get(key) or ())
+    return True
+
+
+def catalogue_part(incident=None, condition: str = "") -> list:
+    """The operations a proposal may name, each with its parameters' shapes in words, as the
+    catalog declares them (`catalog.entries`: its operations and the built-in command plans,
+    C3757), and the plan engine's intent change and deploy (`plan_engine.FIX_ADMITTED`, each its
+    step kind's own parameters, the incident and proposal the plan gives it left out): what the
+    model is told it may propose, read from the code each time, never typed into a prompt.
+    Each says its ``kind``: ``operation``, ``command_plan`` or ``intent_step``.
+
+    With *incident* (and its problem's *condition*, `problem.classify`), only the steps that
+    incident's device can take (`_fits`), the device parameter said once as the incident's,
+    and the intent steps and their parameters in a few words (`INTENT_WORDS`, `INTENT_TAKES`):
+    the request's fixed size kept
+    inside its bound (the gate's measurement, 2026-11-15: the whole catalogue was 3,648
+    characters of every request). Without one, everything, as before."""
+    from modules import plan_engine as PE
+    from modules.heal import catalog
+
+    own = incident is not None
+    fixes = catalog.capabilities() if own else {}
+
+    def takes(p):
+        return DEVICE_TAKES if own and p.name == "device" else p.takes
+
+    out = [{"operation": op.key, "words": op.words,
+            "kind": "command_plan" if catalog.is_command_plan(key) else "operation",
+            "params": [{"name": p.name, "takes": takes(p)} for p in op.params]}
+           for key, op in sorted(catalog.entries().items())
+           if not own or _fits(key, op, incident, condition, fixes)]
+    out += [{"operation": key, "words": (INTENT_WORDS.get(key) if own else None)
+             or PE.STEP_KINDS[key].words, "kind": "intent_step",
+             "params": [{"name": p.name, "takes": (INTENT_TAKES.get(p.name) if own else None)
+                         or takes(p)} for p in PE.STEP_KINDS[key].params
+                        if p.name not in ("incident", "proposal")]}
+            for key in sorted(PE.FIX_ADMITTED)]
+    return out
 
 
 def tried_parts(incident, resolved: float = None, *, now: float = None) -> dict:
@@ -68,7 +129,7 @@ def tried_parts(incident, resolved: float = None, *, now: float = None) -> dict:
     actors = sorted({a["actor"] for a in got["attempts"] if a["actor"]})
     parts = {}
     for a in got["attempts"]:
-        op = catalog.CATALOG.get(a["operation"])
+        op = catalog.entries().get(a["operation"])
         parts[f"tried:{a['n']}"] = {
             "operation": a["operation"], "operation_words": op.words if op else "",
             "params": dict(a["params"]), "outcome": a["outcome"], "passed": a["passed"],

@@ -126,6 +126,7 @@ VOCABULARY = {
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
     "reads": "a Show commands run (Ask the device, Show commands): finished, its answers ready by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
+    "saved_plans": "the saved self-heal scripts, reusable actions and line shapes waiting on an admin (Gate 1b): saved, promoted or approved",
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
     "diagnosis": "a diagnosis Diagnose… ran from the Device page (board H, H16): finished, ready to read by id",
@@ -196,7 +197,9 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     # modules/plan_engine.py: a plan's end, its record and what its steps wrote.
-    "plan": ("privileged", "dhcp", "intent", "remote", "pending", "credentials", "in_progress"),
+    "plan": ("privileged", "dhcp", "intent", "remote", "pending", "credentials", "in_progress",
+             # A deploy step's (C3646): what a deploy changes, as Deploy's own job announces it.
+             "deploy_job", "device_state", "baselines", "drift", "rolled_back", "goldens"),
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     "diagnosis": ("diagnosis",),  # modules/heal/diagnose_page.py: a diagnosis run's end (H16)
     "fleet-change": ("fleet_change",),     # modules/nsot/fleet_change.py: a plan's end
@@ -248,6 +251,10 @@ ANNOUNCERS = {
     # modules/heal/act.py (board H, H4): a heal's job ended, sent through THE apply or refused:
     # what a deploy changes on its one device.
     "heal-act": ("drift", "goldens", "remote", "baselines", "device_state", "rolled_back"),
+    # modules/heal/batch.py (G6): a batch's job ended: Auto turned on, and what its heals
+    # changed on each device (each heal's own job announces as `heal-act` too).
+    "heal-batch": ("drift", "goldens", "remote", "baselines", "device_state", "rolled_back",
+                   "settings"),
     # modules/heal/dampening.py (board H's amendment, H22): an approved dampening proposal's
     # job ended: the intent it committed (or put back) and what its deploy changed.
     "heal-dampening": ("drift", "goldens", "remote", "baselines", "device_state",
@@ -341,7 +348,14 @@ DECLARED = {
     # The plan engine: its record, and what each step's own operation changes (a reservation;
     # intent and its remote).
     "plans_v2.approve": ("privileged", "dhcp", "intent", "remote", "pending", "credentials",
-                         "in_progress"),
+                         "in_progress", "deploy_job", "device_state", "baselines", "drift",
+                         "rolled_back", "goldens"),
+    # Gate 1b: the saved plans an incident's card draws (and a saved action's catalog entry).
+    "saved_plans_v2.save_script": ("saved_plans",),
+    "saved_plans_v2.device_run": Nothing("starts a job and answers at once; the runner ANNOUNCES privileged as the run records each step and ends (command_plan_run.ANNOUNCE_KEYS)"),
+    "saved_plans_v2.save_action": ("saved_plans",),
+    "saved_plans_v2.promote": ("saved_plans",),
+    "saved_plans_v2.approve_shape": ("saved_plans",),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),
@@ -399,6 +413,12 @@ DECLARED = {
     # kill switch are settings.
     "heal_v2.policy_confirm": ("settings",),
     "heal_v2.turn_off": ("settings",),
+    # The control strip's Self-healing toggle (C3748): the network's heal policy, a setting.
+    "control_v2.heal": ("settings",),
+    # G6's Turn on self-healing and fix all: Auto turned on (a setting), the AI's starts on
+    # the incidents with no fix (their troubleshooting records), and the batch's job, which
+    # announces what its heals change at its end (`heal-batch`).
+    "control_v2.fix_all": ("settings", "drift"),
     # The device state class's switch (board H artboard N, H28): a network setting.
     "ai_classes_v2.device_state_on": ("settings",),
     "ai_classes_v2.device_state_off": ("settings",),
@@ -703,6 +723,10 @@ DECLARED = {
     "settings_v2.ai_on": ("settings", "drift"),
     "settings_v2.ai_off": ("settings",),
     "settings_v2.ai_caps": ("settings",),
+    # Gate 2 (C3769): Automatic starts investigations on open incidents (drift: the incident
+    # pages and their rows draw "AI investigating").
+    "settings_v2.ai_ts_level": ("settings", "drift"),
+    "settings_v2.ai_ts_limits": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
     "settings_v2.network_source_preview": Nothing("reads NetBox with proposed filters for the preview; writes nothing"),
     "settings_v2.network_create_preview": Nothing("checks a new network's name and the folder it derives; writes nothing"),

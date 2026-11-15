@@ -21,6 +21,7 @@
     <p class="sub">{{ p.network }}: every self-healing incident, what is open now and how each closed one ended.</p>
   </div>
 </div>
+{%- if strip %}{% with s = strip %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
 <nav class="tabs" aria-label="Incidents">
   {%- for t in p.tabs %}
   <a class="tab{{ ' on' if t.key == p.tab }}" href="{{ url_for('incidents_v2.page', tab=t.key, list=p.network) }}"{% if t.key == p.tab %} aria-current="page"{% endif %} data-tab="{{ t.key }}">{{ t.words }} · {{ t.n }}</a>
@@ -63,7 +64,9 @@
         {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
         <span class="inc-row-sub muted">{{ r.device or 'no device recorded' }}
           {%- if p.tab == 'open' %}{% if r.waits %} · {{ r.waits }}{% endif %}
-          {%- else %}{% if r.by %} · fixed by {{ r.by }}{% endif %}{% if r.ttr %} · time to repair {{ r.ttr }}{% endif %}{% endif %}</span>
+          {%- else %}{% if r.by %} · fixed by {{ r.by | people }}{% endif %}{% if r.ttr %} · time to repair {{ r.ttr }}{% endif %}{% endif %}</span>
+        {#- Gate 2: the AI's investigation, live (the job announces its start and end). -#}
+        {%- if r.ai %}<span class="inc-row-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>{% endif %}
       </span>
       <span class="inc-row-when muted">
         {%- if p.tab == 'open' %}since {{ clock(r.since, 'date') }}

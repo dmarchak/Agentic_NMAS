@@ -539,7 +539,12 @@ def test_the_investigation_records_what_it_lacked(lab, monkeypatch):
 
 def test_nothing_reads_a_missing_capability_to_act_on_it():
     """Only the store itself, the investigation that writes it and History's listing name the
-    module: no route, job or AI feature reads a row to do anything (C3663: never acted on)."""
+    module: no route, job or AI feature reads a row to do anything (C3663: never acted on).
+    One exception, the operator's (C3733, 2026-11-15: "An incident that ended in 'missing
+    capability' restarts automatically when the missing operation is deployed ... once, within
+    its cap"): `fixit.auto` reads an incident's rows and asks whether the step each wanted now
+    exists, and nothing else of the module, so a row's own words never become an action."""
+    import ast
     import os
     import re
 
@@ -552,4 +557,10 @@ def test_nothing_reads_a_missing_capability_to_act_on_it():
                          fh.read()):
                 users.append(os.path.relpath(path, ROOT))
     users.sort()
-    assert users == ["modules/ai/fixit_troubleshoot.py", "modules/history_sources.py"], users
+    assert users == ["modules/ai/fixit_troubleshoot.py", "modules/fixit/auto.py",
+                     "modules/history_sources.py"], users
+    with open(os.path.join(ROOT, "modules", "fixit", "auto.py"), encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    named = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+             and isinstance(node.value, ast.Name) and node.value.id == "missing"}
+    assert named == {"for_incident", "available"}, sorted(named)

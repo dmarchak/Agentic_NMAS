@@ -419,6 +419,12 @@ DEFAULTS: dict = {
     #: `credential_rotation` by name — one kind, chosen deliberately, rather
     #: than a flag that opens all of them at once.
     "service_allowed_operations": [],
+    #: Who holds each approval right beyond running a plan (the operator, 2026-11-15, Gate
+    #: 1b): ``{"self_healing": [actors], "admin": [actors]}``. A right with no list set (the
+    #: default) is every verified person's, the behaviour before rights existed
+    #: (NSOT_AUTHORIZATION's any_person); once its list names anyone, only they hold it. The
+    #: AI holds none, whatever is listed (`identity.right_refusal`).
+    "access_rights": {},
 
     #: VRFs whose addresses and prefixes the NetBox import does NOT model: a
     #: management VRF whose addresses repeat on every device (an emulator's,
@@ -794,6 +800,13 @@ DEFAULTS: dict = {
     # AUTO only by name in `heal_kinds_auto`. Its fingerprint counts it only once it is not its
     # default (`heal.policy.LATER_KEYS`), so a policy confirmed before it keeps its fingerprint.
     "heal_security_revert_adjacency": False,
+    # C3749 (the operator, 2026-11-15): how many hours a one-press Auto lasts (the control
+    # strip's Self-healing toggle, G6's Turn on self-healing and fix all), per network: 1 hour
+    # (the default) or 8 hours. Not part of the heal policy (no fingerprint counts it): N8's
+    # 7 days still bound every Auto, and "until turned off" is C3750's, not offered yet. The
+    # Self-healing tab's own quick choices are unchanged. No release before it turned Auto on
+    # in one press, so its default changes nothing earlier.
+    "heal_auto_default_hours": 1,
     # Who is told about a network's self-healing (board H, artboard A's "Who is told";
     # docs/HEAL_TO_INTENT.md section 10's `heal_notify_*`): the team (its id in the teams store,
     # modules/notify/teams.py) and the events that notify it. Each network's own, never
@@ -1116,6 +1129,9 @@ SCHEMA: dict = {
         "require_person_for_configure": _BOOL,
         "require_person_for_break_glass": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
+        "access_rights": {"type": "object", "additionalProperties": False,
+                          "properties": {"self_healing": {"type": "array", "items": _STR},
+                                         "admin": {"type": "array", "items": _STR}}},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
         "settings_not_applicable": {
             "type": "object",
@@ -1292,6 +1308,7 @@ SCHEMA: dict = {
         "heal_flap_minutes": {"type": "integer", "minimum": 1, "maximum": 60},
         "heal_bounce_per_port_hour": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_security_revert_adjacency": _BOOL,
+        "heal_auto_default_hours": {"type": "integer", "enum": [1, 8]},
         "heal_stopped": _BOOL,
         "heal_notify_team": {"type": "string", "pattern": r"^(|[0-9a-f]{12})$"},
         "heal_notify_events": {"type": "array", "uniqueItems": True, "items": {
@@ -1485,6 +1502,15 @@ def write_settings(updates: dict, actor: str = "") -> dict:
     if not isinstance(updates, dict):
         return {"ok": False, "error": "updates must be a mapping",
                 "written": [], "refused": []}
+    # Never the AI's (its engineer role, `identity.AI_NEVER`): a setting the AI's own identity
+    # writes, as the actor named or the identity acting now, is refused naming each setting.
+    from modules import identity
+    why = identity.ai_refusal(
+        ("the setting " if len(updates) == 1 else "the settings ")
+        + ", ".join(sorted(map(str, updates))), actor=actor)
+    if why:
+        log.warning("settings: refused an AI write of %s", ",".join(sorted(map(str, updates))))
+        return {"ok": False, "error": why, "written": [], "refused": sorted(map(str, updates))}
 
     refused = [k for k in updates if k not in DEFAULTS]
     if refused:

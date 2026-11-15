@@ -171,17 +171,6 @@ a { color: var(--accent); }
 /* May be out of date (live updates stopped, or a source past its promise): a quiet mark on
    the number, never a confident wrong one. The title says why. */
 .count-maybe { opacity: 0.55; outline: 1px dashed currentColor; outline-offset: 1px; }
-/* Board T (the sidebar's Troubleshooting section; provisional, operator review pending):
-   Incidents' open count and Self-healing's mode, each outlined, a count of things or a state,
-   never an alarm (Needs attention keeps the one filled badge); Auto in the accent's ink. The
-   Incidents tabs' row under its item, smaller and muted. */
-.nav-chip { border: 1px solid var(--side-ink-2); color: var(--side-ink-2); border-radius: 10px; font-size: 11px;
-  font-weight: 600; padding: 0 6px; white-space: nowrap; }
-.nav-chip-auto { border-color: var(--side-ink); color: var(--side-ink); }
-.nav-chip-unread { border-style: dashed; }
-.nav-sub { display: flex; gap: 6px; padding: 0 10px 4px 38px; font-size: 12px; color: var(--side-ink-2); }
-.nav-sub a { color: var(--side-ink-2); text-decoration: none; }
-.nav-sub a:hover { color: var(--side-ink); text-decoration: underline; }
 .icon-btn.menu-btn { display: none; }   /* after .icon-btn's display, or it never hides */
 .scrim { display: none; }
 
@@ -291,6 +280,70 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ai-chip[data-state="off"] { color: var(--ink-3); background: var(--surface-2); }
 .ai-nc { font-size: 11px; border-radius: 4px; padding: 0 4px; background: var(--warn-soft); color: var(--warn); }
 .ai-short { display: none; }
+/* Self-healing in Auto, before the AI chip (the operator, 2026-11-14; provisional, operator
+   review pending): amber, by exception, and nothing at all otherwise. */
+.heal-auto-slot:empty { display: none; }
+.heal-auto-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12.5px;
+  padding: 3px 10px; border-radius: 14px; border: 1px solid var(--warn-line); background: var(--warn-soft);
+  color: var(--warn); text-decoration: none; }
+.heal-auto-chip:hover { border-color: var(--warn-mark); }
+.heal-auto-chip .clock { color: inherit; }
+.heal-auto-unknown { border-style: dashed; }
+.heal-auto-short { display: none; }
+/* The control strip (C3748; board G2, self-signed): Needs attention's and Incidents' top, one
+   row of two toggles each with its gear, the answer and the batch's run under it. A toggle is
+   a switch drawn as a pill with its knob; on reads in the accent, Auto's words beside it. */
+.ctl-strip { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+/* The strip is a card for its help links (one in words, the rest the (i) alone), drawn as the
+   strip: its own padding, gap and corner over `.card`'s, which is set later. */
+.ctl-strip.card { gap: 8px; padding: 10px 14px; border-radius: 10px; }
+.ctl-row { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center; }
+.ctl-item { display: flex; align-items: center; gap: 8px; margin: 0; }
+.ctl-item form { display: inline-flex; margin: 0; }
+.ctl-name { font-weight: 600; font-size: 13.5px; }
+.ctl-switch { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 13px;
+  padding: 3px 12px 3px 4px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--ink-2); cursor: pointer; }
+.ctl-switch .ctl-knob { width: 16px; height: 16px; border-radius: 50%; background: var(--ink-3); }
+.ctl-switch[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft);
+  color: var(--ink); }
+.ctl-switch[aria-checked="true"] .ctl-knob { background: var(--accent); }
+.ctl-switch:disabled { cursor: not-allowed; opacity: .65; }
+.ctl-switch.htmx-request:disabled { cursor: progress; opacity: .8; }
+.ctl-gear { color: var(--ink-2); }
+.ctl-why { margin: 0; }
+/* Gate 2 (C3769): the AI switch's one line before turning Automatic on. */
+.ctl-line { color: var(--ink); opacity: .8; }
+/* Gate 2: a row's "AI investigating since" or its outcome (Incidents, Needs attention). */
+.inc-row-ai, .att-ai { display: block; color: var(--accent); font-size: 12.5px; }
+.att-ai { display: inline; margin-left: 8px; }
+/* Gate 2: Settings › AI's AI troubleshooting card for one network (board G2b). */
+.ai-ts { border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 14px;
+  margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
+.ai-ts-head { display: flex; align-items: center; gap: 8px; }
+.ai-ts-head h3, .ai-ts-sub { margin: 0; font-size: 14px; }
+.ai-ts-level { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
+.ai-ts-limits { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.ai-ts-grid { display: grid; grid-template-columns: max-content 7em minmax(0, 1fr); gap: 6px 10px;
+  align-items: center; }
+@media (max-width: 640px) { .ai-ts-grid { grid-template-columns: max-content minmax(0, 1fr); }
+  .ai-ts-grid .set-origin { grid-column: 1 / -1; } }
+.ctl-strip .set-result { margin: 0; }
+.ctl-run { display: flex; flex-direction: column; gap: 6px; }
+/* G6's batch card, open above Needs attention's sections: the counts first, guard 6's words,
+   the preview, the one button. */
+.att-batch { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid var(--warn-line); border-left-width: 4px; border-radius: 8px;
+  background: var(--surface); }
+.att-batch.att-danger { border-color: var(--danger); }
+.att-batch-lead { margin: 0; font-size: 15px; }
+.att-batch-hold { margin: 0; }
+.att-batch-list { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column;
+  gap: 2px; }
+.att-batch-prog { margin: 4px 0; max-height: 200px; overflow: auto; }
+.att-batch-act { margin: 4px 0 0; }
+@media (max-width: 640px) { .ctl-row { flex-direction: column; align-items: flex-start; } }
 .ai-spend[open] .ai-chip { box-shadow: 0 0 0 2px var(--accent-soft); }
 /* C2123: the panel is held inside the screen and scrolls within, its scroll its own. It hangs
    from the sticky top bar, so scrolling the page never moves it, and a panel taller than the
@@ -327,7 +380,16 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
    says "Update" up to 1366 px, its words on hover and to a reader. */
 @media (max-width: 1366px) {
   .update-pill .strip-words { display: none; }
+  /* Self-healing's Auto chip says "Auto" up to 1366 px, as Update does, its words on hover
+     and to a reader (measured 2026-11-14: at 1280 the bar had 5 px free, and the chip's
+     words, 257 px, squeezed the jump box, the strip and the name chip and moved the AI chip
+     44 px). */
+  .heal-auto-words { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .heal-auto-short { display: inline; }
 }
+/* While the Auto chip is drawn, the AI chip and everything after it keep their widths, so the
+   chip's room comes from the items before it and the AI chip stays where it was. */
+.topbar:has(.heal-auto-chip) > .heal-auto-slot ~ * { flex-shrink: 0; }
 @media (max-width: 1100px) {
   /* Board AI1 case 8, from below laptop width down (PHASE8_PLAN 18.3 rule 10a, "compact at
      laptop and phone widths"): the figure and its colour, the background count in the panel;
@@ -680,6 +742,11 @@ time.clock { white-space: nowrap; }
      label names it), measured by test_v2_layout_in_a_browser at 430, 390 and 360 px. */
   .topbar-name { display: none; }
   .topbar-brand + .net { border-left: none; padding-left: 0; }   /* the mark alone stands apart */
+  /* The bar is packed from the left here (no spacer, no jump box), so Self-healing's Auto chip
+     sits just after the AI chip, never moving it (measured 2026-11-14 at 500 px: before it,
+     the chip moved the AI chip 54 px). */
+  .topbar:has(.heal-auto-chip) > .heal-auto-slot { order: 1; }
+  .topbar:has(.heal-auto-chip) > .ai-spend ~ * { order: 2; }
 }
 /* The narrowest phones (320 px, measured): with "Update available" drawn the avatar ran 14 px
    past the edge; tighter gaps make room without hiding anything. */
@@ -768,6 +835,14 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-unknown .att-level { color: var(--ink-2); }
 .att-what { margin: 0; font-size: 15px; font-weight: 600; }
 .att-cause { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+/* C3581: a hold's departing lines on the row, each with its side, then that side's two ways
+   out (provisional, operator review pending). */
+.att-departs { display: flex; flex-direction: column; gap: 4px; }
+.att-departs p { margin: 0; }
+.att-dep-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.att-dep-lines code { overflow-wrap: anywhere; }
+.att-dep-side { color: var(--ink-2); font-size: 12.5px; }
+.att-dep-ways { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .att-ops { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--ink-2); }
 .att-ops > div { display: flex; gap: 4px; }
 .att-ops dt::after { content: ":"; }

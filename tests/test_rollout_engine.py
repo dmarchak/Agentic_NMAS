@@ -142,7 +142,9 @@ class TestEveryBatchDeployUsesTheEngine:
 
     #: The callers of `apply_batch` that are no batch deploy, each with why.
     SINGLE = {("modules/heal/act.py", "apply"): "a heal's one device, its own decision",
-              ("modules/heal/dampening.py", "apply"): "a heal's one device, its own decision"}
+              ("modules/heal/dampening.py", "apply"): "a heal's one device, its own decision",
+              ("modules/plan_engine.py", "_deploy_apply"): "a plan's deploy step: the one "
+                                                          "device the approved step names"}
 
     def _apply_callers(self):
         from tests import source_index

@@ -48,7 +48,7 @@
   {%- endif %}
   <div class="heal-q heal-lead"><strong>What happened.</strong>
   {%- if v.cause %}{{ heal_cause(v.cause) }}
-  {%- else %} {{ v.headline or ('A change on ' ~ host ~ ' that Mercury can put back with a person’s decision') }}.{% if v.person %} The change it would fix: {{ v.person }}.{% endif %}{% endif %}</div>
+  {%- else %} {{ v.headline or ('A change on ' ~ host ~ ' that Mercury can put back with a person’s decision') }}.{% if v.person %} The change it would fix: {{ v.person | people }}.{% endif %}{% endif %}</div>
   {#- C2839 (the operator, 2026-11-09): a security control added or changed outside intent, or
       an ACL, is a person's choice of two: Remove it (back to intent), this card's approval,
       or Keep it: add it to intent, the device's intent editor (the one write path for intent);
@@ -134,7 +134,7 @@
       <dt>Policy</dt><dd><span class="mono">{{ v.policy.fingerprint or 'no fingerprint recorded' }}</span>{% if v.policy.by %}, confirmed by {{ v.policy.by | people }}{% if v.policy.reason %} (“{{ v.policy.reason }}”){% endif %}{% endif %}</dd>
       <dt>Proposed</dt><dd>{{ clock(v.at, 'date-seconds', missing='not recorded') }}</dd>
       <dt>The decision</dt><dd>{{ (v.words or 'No words are recorded with this decision.') | times }}{% if v.outcome_words and v.outcome_words != v.words %} ({{ v.outcome_words }}){% endif %}</dd>
-      {%- if v.person %}<dt>The change's person</dt><dd>{{ v.person }}</dd>{% endif %}
+      {%- if v.person %}<dt>The change's person</dt><dd>{{ v.person | people }}</dd>{% endif %}
       {%- if v.triggers %}<dt>What raised it</dt><dd><ul class="set-list small">{% for t in v.triggers %}<li>{{ t | times }}</li>{% endfor %}</ul></dd>{% endif %}
       <dt>What approving runs</dt><dd><ol class="set-list small">{% for s in v.steps %}<li>{{ s }}</li>{% endfor %}</ol></dd>
     </dl>

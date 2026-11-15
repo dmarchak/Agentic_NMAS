@@ -202,10 +202,11 @@ a non-expert approves, and the checks that prove it.
   a person's press. **A hold a person must resolve counts as no fix Mercury can run alone**
   (the operator, 2026-11-15; a guard-4, 6 or 9 hold): the AI diagnoses and proposes within
   its catalog, and where the fix needs a person's approval (a template bring-in) it says so
-  as its finding and offers Hand over. **In every mode of self-healing** (the
-  operator, 2026-11-15: "the AI only proposes, and nothing runs without a person's approval,
-  so it investigates in Dry run too"). The AI's NEVERs stand: it proposes, and a person
-  approves by hash. **Cost:** one background AI call per failure where a person turned
+  as its finding and offers Hand over. **In every mode of self-healing** (the operator, 2026-11-15: "the AI only
+  proposes, and nothing runs without a person's approval, so it investigates in Dry run
+  too"). **An incident that ended in a missing capability starts again by itself, once,
+  within its cap, when the missing operation is deployed.** The AI's NEVERs stand: it
+  proposes, and a person approves by hash. **Cost:** one background AI call per failure where a person turned
   it on, inside the caps. **Prevents:** an incident waiting for a person to press a button
   whose outcome was already decided, and spend no person approved.
 - **R2. BLUF, bottom line up front, on every screen, card and notification.** The top is three

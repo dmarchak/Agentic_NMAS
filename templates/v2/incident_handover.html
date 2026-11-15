@@ -17,7 +17,7 @@
 <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>No write-up {{ version }} is kept for this incident:</strong> {{ why }}. <a href="{{ url_for('incident_v2.incident', incident_id=incident_id, list=network) }}">Open the incident</a></div></div>
 {%- else %}
 <section class="card handover-doc" aria-label="The write-up">
-  <p class="inc-line">{{ badge('kept, never written over', 'muted') }} <span>Handed over {{ doc.at }} by {{ doc.by }}{% if doc.teams %} to {{ doc.teams | join(', ') }}{% else %}, sent to no team{% endif %}</span> <span class="muted">Built from Mercury's records, with no AI call.</span></p>
+  <p class="inc-line">{{ badge('kept, never written over', 'muted') }} <span>Handed over {{ doc.at }} by {{ doc.by | people }}{% if doc.teams %} to {{ doc.teams | join(', ') }}{% else %}, sent to no team{% endif %}</span> <span class="muted">Built from Mercury's records, with no AI call.</span></p>
   {%- for s in doc.sections %}
   <h2 class="handover-h">{{ loop.index }}. {{ s.title }}</h2>
   <ul class="set-list handover-lines">

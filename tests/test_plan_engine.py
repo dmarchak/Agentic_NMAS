@@ -412,7 +412,13 @@ class TestTheReviewsFixes:
         plan's announcer and its route declare every one."""
         from modules import invalidation
         for kind in E.STEP_KINDS.values():
-            assert set(kind.announces) <= set(invalidation.DECLARED[kind.by_hand]), kind.key
+            declared = invalidation.DECLARED[kind.by_hand]
+            if isinstance(declared, invalidation.Nothing):
+                # A by-hand route that only starts a job (Deploy…): its job's announcer
+                # declares what the operation changes, and the step names that announcer.
+                assert kind.job_announcer, kind.key
+                declared = invalidation.ANNOUNCERS[kind.job_announcer]
+            assert set(kind.announces) <= set(declared), kind.key
             assert set(kind.announces) <= set(invalidation.ANNOUNCERS["plan"]), kind.key
             assert set(kind.announces) <= set(invalidation.DECLARED["plans_v2.approve"])
         assert set(E.STEP_KINDS["ztp-create"].announces) == {

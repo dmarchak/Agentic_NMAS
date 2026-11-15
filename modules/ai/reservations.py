@@ -152,16 +152,19 @@ def _record_late(entry: dict):
 
 def in_flight(held: dict, *, feature: str = None, network: str = None) -> dict:
     """``{"usd", "calls"}``: what *held* reserves, all of it, or a background feature's on a
-    network (*feature* and *network* given: only background reservations of both)."""
+    network (*feature* and *network* given: only the reservations of both that count toward
+    the feature: a background call's, a person's call that counts for it (``counts``, C3751),
+    and a catch-up's planned start (C3752))."""
     rows = [h for h in held.values()
-            if feature is None or (h.get("background") and h.get("feature") == feature
+            if feature is None or ((h.get("background") or h.get("counts"))
+                                   and h.get("feature") == feature
                                    and h.get("network") == network)]
     return {"usd": sum(float(h["usd"]) for h in rows), "calls": len(rows)}
 
 
 def reserve(call_id: str, usd: float, *, judge, ttl_s: float, feature: str = "",
             network: str = "", background: bool = False, day: str = "",
-            now=None) -> dict:
+            now=None, counts: bool = False) -> dict:
     """Hold *usd* (the call's worst case) for *call_id* when *judge* allows it.
 
     Under the store's cross-process lock: the open reservations read (an expired one dropped),
@@ -206,6 +209,7 @@ def reserve(call_id: str, usd: float, *, judge, ttl_s: float, feature: str = "",
                 return {"ok": False, "refusal": said}
             live[call_id] = {"usd": float(usd), "feature": feature, "network": network,
                              "background": bool(background), "day": day, "month": day[:7],
+                             **({"counts": True} if counts else {}),
                              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t)),
                              "expires_at": t + ttl_s, "pid": os.getpid()}
             _write(path, live)

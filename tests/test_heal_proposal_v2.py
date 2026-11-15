@@ -101,7 +101,11 @@ def test_needs_attention_draws_review_the_fix_and_the_card_it_opens(app_client, 
     r = app_client.get("/v2/attention")
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
-    assert "Mercury has a fix that restarts OSPF on edge-b: it needs your decision" in html
+    # Premise corrected (C3731, the operator, 2026-11-15: "Needs attention draws it as ONE row
+    # with that title and its one action"): the row leads with its incident's title, the
+    # proposal said beneath it.
+    assert "edge-b: OSPF router-id changed outside Mercury" in html
+    assert "Mercury proposes a fix" in html
     # Review the fix… jumps to the card's slot, naming its opener (tests/test_next_steps_act.py's
     # OPENERS). Premise corrected (the operator, 2026-11-13; the GUI review's item 1, C3449:
     # opened, a row is a summary): the slot was read when the row opened; it is read when its

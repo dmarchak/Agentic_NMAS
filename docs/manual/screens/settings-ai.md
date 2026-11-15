@@ -18,16 +18,22 @@ by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-
 
 ## AI troubleshooting {#ai-troubleshooting}
 
-The second card, **AI troubleshooting**, holds the three settings the AI's investigations are
-held to, for every network:
+AI troubleshooting is ONE control for each network: **Off**, **Manual** or **Automatic**.
 
-- **AI mode**: **Manual** (the default), in which an AI troubleshoot runs only when a person
-  presses it on an incident's page and never on its own, or **Off**, in which none is offered and
-  Mercury's own diagnosis still proposes a fix. There is no automatic mode: a model asked on its
-  own would be a background feature, below.
-- **AI spend per incident**: $1.00 by default. What one incident's AI calls have cost plus the
-  next attempt's worst case is compared with it, and past it Retry is refused, naming both. It
-  is a positive amount; there is no "no cap", and Mercury never raises it.
+- **Off**: nothing is offered or started; Mercury's own diagnosis still proposes a fix.
+- **Manual**: the AI investigates only when a person presses **Start AI troubleshooting** on an
+  incident's page.
+- **Automatic**: Manual, and when Mercury's fix fails the AI investigates by itself, once per
+  failure, within the network's spending limits. It only proposes; a person approves.
+
+The second card, **AI troubleshooting**, holds every network's defaults:
+
+- **AI mode**: every network's default, **Manual** (the default) or **Off**, for a network with
+  no mode of its own. Each network's own choice is set on its AI troubleshooting card, below.
+- **AI spend per incident**: $1.00 by default, for a network with no per-incident limit of its
+  own. What one incident's AI calls have cost plus the next attempt's worst case is compared
+  with its network's limit, and past it Retry is refused, naming both. It is a positive amount;
+  there is no "no cap", and Mercury never raises it.
 - **AI device reads sign in as**: **Mercury's account** (the default), in which the reads the AI
   asks of a device sign in exactly as Show commands does, through the same protections (a read
   of one of the AI's command families, held whole by Mercury's allowlist, its addresses and
@@ -42,9 +48,43 @@ held to, for every network:
 **Save** writes what you changed, recorded with who, when, and each value's old and new, and
 drawn on History. How the section uses them: [AI troubleshooting](fixit-troubleshoot#the-cap).
 
+**AI troubleshooting on a network**, at the top of the section below, for the network chosen:
+
+- **Off / Manual / Automatic**: one press each, busy on itself until its answer, recorded with
+  who and when. The line under it says what the choice does, and whether it is the network's
+  own or the installation's default. With Automatic off and open incidents it would start on,
+  one line says so: "Also starts on N open incidents, about $X".
+- **Spending limits**: per incident, per day and per month, for this network. The per-incident
+  limit starts from the installation's; the day and month limits from twice the estimate. The
+  day limit is within the installation's day cap, which every AI call is held to.
+- **The estimate**, beside the limits: calls a day (how often Mercury's fix failed on this
+  network in the last 7 days, times two calls an investigation), the cost per call (measured,
+  or its worst case said as such) and a month. **Save limits** with **I have read the estimate**
+  ticked sets the limits and acknowledges the estimate, recorded; this is the one place the
+  estimate is acknowledged, so turning Automatic on does not show it again.
+- **What the acknowledgement binds**: the limits and the cost per call it showed, never the
+  calls a day, which move with every new failure and are drawn as they are now. It holds until
+  a limit changes or the measured cost per call passes 1.5 times the acknowledged figure.
+- **Automatic is refused until the limits are acknowledged, and while that no longer holds**:
+  a limit changed another way, or the cost per call past 1.5 times, is named in the refusal,
+  which links here. Turning Automatic on then starts on every open incident it lists, each
+  once, as its own job under **In progress**, in your name, planned against every cap before
+  any starts; one past a cap is refused, and its incident's page names the cap.
+- **What would Automatic start, and why…**: for audit, read-only: each open incident it would
+  start on, why, its estimate, and how many fit under each cap held against the network's
+  limits, opened in place, with **Close**. It has no Turn on: Automatic is turned on only here,
+  with **Automatic**, or with the control strip's switch.
+
+Turning Automatic off goes back to Manual at once; an investigation already running finishes.
+The limits stay acknowledged. How each step runs: [The control strip's AI switch](heal-batch#ai-toggle).
+
 ## Background features {#background-features}
 
-Each background feature Mercury knows is a row:
+Each background feature Mercury knows is a row, except automatic AI troubleshooting, which is
+the AI troubleshooting card's **Automatic** above, and the AI analysis of what self-healing
+could not fix, retired into AI troubleshooting's investigation: its row is drawn only while it
+is still on somewhere, so it can be turned off, and analyses it kept stay readable on their
+incidents.
 
 - **The feature and its state.** **off** (never turned on, or turned off); **on**, with who
   turned it on, when, and the date its approval ends (an approval lasts 14 days); **stopped by
@@ -67,23 +107,18 @@ Each background feature Mercury knows is a row:
   ([Needs attention](needs-attention#sources)); it stays, saying the approval ended, until
   the feature is turned on again or off.
 
-**Turn on…** for **Start AI troubleshooting automatically when Mercury's fix fails** also lists,
-above the caps, every open incident on this network it would have started on had it been on
-when Mercury's fix failed: a fix that ran and did not fix it, a problem Mercury has no fix of its
-own for, or a heal held by a guard a person resolves (for example guard 4, the device's golden
-departing from its intent). Each row names the device, the incident's title (a link to its
-page), why ("held by guard 4: …", "Mercury's fix was rolled back") and about what its
-investigation costs, and each is ticked. The line above them reads "Starts on these N open
-incidents, about $X" and follows your ticks. Turning it on records which you ticked and which
-you left unticked, with the estimate shown, and starts each ticked one once, as its own job
-under **In progress**, in your name, within every cap: its incident's AI cap, this feature's
-day and month caps as you typed them, and the day cap. A line under the list says how many of
-the ticked fit under each cap and follows your ticks and the caps as you type them ("2 of the 4
-ticked fit under the caps; the later 2 would pass this feature's day cap"); the later ones past
-a cap are refused before anything starts, and each one's page says which cap. One you untick keeps **Start AI
-troubleshooting** on its page and never starts by itself for that failure. With none to list,
-the form says "No open incident to start on" and turning it on is as for any feature. After
-that, every new failure starts by itself ([Starting by itself](fixit-troubleshoot#automatic)).
+**What would Automatic start, and why…** lists, read-only, every open incident on this network
+Automatic would start on: one whose fix ran and did not fix it, a problem Mercury has no fix of
+its own for, or a heal held by a guard a person resolves (for example guard 4, the device's
+golden departing from its intent). Each row names the device, the incident's title (a link to
+its page), why ("held by guard 4: …", "Mercury's fix was rolled back") and about what its
+investigation costs. The line above them reads "Starts on these N open incidents, about $X";
+the line under them says how many fit under each cap, held against the network's limits (its words still those of the
+former ticked list: "2 of the 4 ticked fit under the caps; the later 2 would pass this
+feature's day cap"). With none to list it
+says "No open incident to start on". Turning Automatic on starts every one of them, in that
+order, within every cap; after that, every new failure starts by itself
+([Starting by itself](fixit-troubleshoot#automatic)).
 
 A feature on another network that its cap stopped is named under the list, so an admin sees it
 without choosing that network.

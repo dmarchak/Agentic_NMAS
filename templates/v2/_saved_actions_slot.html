@@ -1,0 +1,6 @@
+{#- Where a device's saved actions on an interface are drawn (Gate 1b; board saved-plans,
+    artboard D): asked in place once the Overview is drawn, so the tab waits on nothing
+    (`saved_plans_v2.device_actions`, a read of records). Included by
+    templates/v2/_overview.html, one line. Reopened from In progress (the page's ``run``), the
+    card draws that run's state from its record. -#}
+<div id="saved-actions-{{ device.hostname }}" hx-get="{{ url_for('saved_plans_v2.device_actions', device=device.hostname, list=list_name, run=request.args.get('run') or None) }}" hx-trigger="load" hx-swap="outerHTML" hx-select="unset"></div>

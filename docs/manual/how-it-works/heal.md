@@ -309,8 +309,14 @@ A device is **held** from healing when a guard says a person must resolve someth
 is an item on **Needs attention**, "Self-healing holds <device> on <network>: <the guard>",
 naming the guard and both values it compared, with what to do:
 
-- **its golden departs from its intent**: there is no approved state to heal to. Adopt the
-  change into the device's intent, or capture the device after reverting it;
+- **its golden departs from its intent**: there is no approved state to heal to. The item
+  shows each line it departs by, the first ten and how many more, each said as **on the
+  device, not in intent** or **in intent, not on the device**, and the two ways out of each:
+  for a line on the device, **Remove it from the device…** (the device's Deploy plan, where
+  you tick it in Mode B with a reason) or **Adopt it into intent…** (its intent editor, where
+  you add it and commit); for a line in intent, **Deploy it…** (the Deploy plan sends it) or
+  **Remove it from intent…** (the editor). Each says on hover what choosing it asserts: which
+  is right, the device or its intent. Which way is yours to choose;
 - **healed past its rate** (more heals of the device in an hour than the policy allows): read
   why it keeps departing on its History, and fix what changes it;
 - **many devices at once** (more devices departed within one grace period than the policy

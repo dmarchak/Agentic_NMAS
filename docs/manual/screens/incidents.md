@@ -6,9 +6,14 @@ incident's home: every row opens the [incident's own page](incident), and that p
 breadcrumb leads back here, to **Incidents**, then **Open** or **Closed**. Opening the list
 starts nothing and changes nothing; nothing on it acts on a device.
 
-The sidebar's **Incidents** item counts the open incidents ("3 open"), outlined: a count of
-things, not an alarm. [Needs attention](needs-attention) keeps the one red badge, and stays
-where a person looks first: each of its items about an incident links to that incident's page.
+The sidebar is navigation only: its **Incidents** item carries no count. [Needs
+attention](needs-attention) is the one inbox and its badge the one count, and every open
+incident that needs a person is on it, its item linking to that incident's page. Incidents is
+where an incident lives, open or closed; Needs attention is where a person looks first.
+
+The page opens with the same control strip as Needs attention, for this network: the
+**Self-healing** and **Start AI troubleshooting automatically** switches, each with its gear
+([the control strip](heal-batch#self-healing-toggle)).
 
 ## Open and Closed {#tabs}
 
@@ -41,7 +46,10 @@ its page, its device, and:
 
 - on **Open**, what it waits for ("a fix waits for a person's approval") and when it began;
 - on **Closed**, who fixed it, its time to repair, and when it ended (a fixed incident when its
-  fix was verified, a declined one when the fix was declined, a cleared one when it closed).
+  fix was verified, a declined one when the fix was declined, a cleared one when it closed);
+- where the AI investigated it, **AI investigating since** its start while it runs, and its
+  one-line outcome once it ended (what it proposes, or why it stopped), updated as the
+  investigation starts and ends, with no reload.
 
 Times are in your own time zone, with UTC on hover. Select the title to open the incident's
 page, which has the whole story: its timeline, what Mercury did, and what to do.
@@ -72,6 +80,6 @@ Searching reads the list again and changes nothing.
 
 The sidebar's **Self-healing** item, under Incidents, opens the network's
 [Self-healing tab in Settings](settings#self-healing), where its policy and who is told are
-set. Its chip says the mode that runs now: **Off**, **Dry run** (every step but the apply) or
-**Auto**, after the installation's stop switch, the policy's confirmation and its expiry, with
-the policy's own sentence on hover.
+set. The item carries no chip. While a network's self-healing runs in **Auto**, the top bar
+says so instead ([the Self-healing chip](getting-started#self-healing-auto)); in dry run or
+off nothing is drawn.

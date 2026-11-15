@@ -42,6 +42,15 @@ HOMES = {
                                    "via": "modules.dhcp_reservations"},
     ("step", "intent-description"): {"endpoint": "intent_v2.commit",
                                      "via": "modules.nsot.intent_edit"},
+    # The general intent change: the Intent tab's commit; the deploy step: Deploy…'s confirm,
+    # by the same planner and apply (`routes.deploy`).
+    ("step", "intent-edit"): {"endpoint": "intent_v2.commit", "via": "modules.nsot.intent_edit"},
+    ("step", "intent-deploy"): {"endpoint": "device_v2.deploy_confirm", "via": "routes.deploy"},
+    # The saved reusable actions (Gate 1b), one family: a person approves one as a step of the
+    # incident's plan, by the plan engine (its own button on the interface view is not built).
+    ("step", "saved action"): {"endpoint": "fixit_v2.approve", "via": "modules.plan_engine"},
+    ("catalog", "saved action"): {"endpoint": "saved_plans_v2.save_action",
+                                  "via": "modules.nsot.saved_plans"},
     ("step", "ztp-create"): {"endpoint": "onboard_v2.create", "via": "modules.nsot.onboard"},
     ("step", "telemetry-resubscribe"): {"endpoint": "resubscribe_v2.confirm",
                                         "via": "modules.heal.resubscribe"},
@@ -49,6 +58,12 @@ HOMES = {
                                            "via": "modules.heal.resubscribe"},
     ("step", "telemetry-collector-resubscribe"): {"endpoint": "resubscribe_v2.close_confirm",
                                                   "via": "modules.heal.resubscribe"},
+    # A built-in command plan (C3757, path 2; G7's recovery the first): its home is its
+    # incident's card, where a person approves the incident's plan by its hash, the AI's
+    # proposal and a person's reaching one engine (the plan engine's step, through the plan's
+    # declaration, `catalog.PlanStep.apply`).
+    ("step", "errdisable-recover"): {"endpoint": "fixit_v2.approve",
+                                     "via": "modules.plan_engine"},
     # The catalog's operations: Re-subscribe's card, the one a person confirms.
     ("catalog", "telemetry-resubscribe"): {"endpoint": "resubscribe_v2.confirm",
                                            "via": "modules.heal.resubscribe"},
@@ -81,8 +96,14 @@ def tools() -> list:
     out = [("command", op.name) for op in router_reads.COMMAND_OPS]
     out += [("own", name) for name, _w, _c in fixit_reads.OWN]
     out += [("local", op.name) for op in fixit_reads.LOCAL]
-    out += [("step", key) for key in plan_engine.STEP_KINDS]
+    # The saved reusable actions' keys are people's (`nsot.saved_plans`): one family each way,
+    # declared by the code (`saved_plans.FAMILY`), its members never named here.
+    from modules.nsot import saved_plans
+
+    saved = set(catalog.saved_actions())
+    out += [("step", key) for key in plan_engine.STEP_KINDS if key not in saved]
     out += [("catalog", key) for key in catalog.CATALOG]
+    out += [("step", saved_plans.FAMILY), ("catalog", saved_plans.FAMILY)]
     return out
 
 

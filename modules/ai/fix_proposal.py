@@ -42,6 +42,8 @@ calls `proposal` itself yet (Explain's proposal, step 3, is a later slice).
 
 import logging
 
+from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
+
 log = logging.getLogger(__name__)
 
 #: The fields a proposal holds, exactly.
@@ -106,6 +108,7 @@ def _call_refusal(call_id) -> tuple:
     return "", ""
 
 
+@acts_as_ai("fix-proposal")
 def proposal(answer, *, network: str, call_id: str, actor: str, actor_verified: str,
              sources=None) -> dict:
     """What an AI call's *answer* proposes for *network*, held to the catalog (the module's
@@ -155,6 +158,7 @@ def held(answer) -> str:
     return ""
 
 
+@acts_as_ai("fix-proposal")
 def for_incident(answer, incident, *, call_id: str, calls=(), actor: str,
                  actor_verified: str, note: str = "", shown: dict = None, prompt: str = "",
                  now: float = None, sources=None, planned=None, resolved: float = None) -> dict:
@@ -210,6 +214,177 @@ def for_incident(answer, incident, *, call_id: str, calls=(), actor: str,
         return got
     return dict(got, recorded=_record(call_id, got["code"], got["refused"], incident.network,
                                       actor, actor_verified))
+
+
+# ── A plan of steps (C3755, C3764; fixit_troubleshoot v7) ───────────────────────────────────
+
+def capabilities() -> dict:
+    """Every step a proposal may name, with the problem conditions it fixes
+    (`catalog.capabilities`): what a missing capability's restart compares (C3733,
+    `ai.missing.available`). A read of the code."""
+    from modules.heal import catalog
+
+    return catalog.capabilities()
+
+
+def most_steps() -> int:
+    """The most steps a plan holds: the plan engine's (`plan_engine.MOST_STEPS`)."""
+    from modules import plan_engine as PE
+
+    return PE.MOST_STEPS
+
+
+def step_held(step) -> str:
+    """Why *step* is not one of Mercury's plan steps held to its schema, or ``""``: one
+    proposal's shape (`_shape`), then the plan engine's own check of an incident's plan's steps
+    (`plan_engine._fix_steps_refusal`: a catalog operation or a built-in command plan held to
+    the catalog's schema, or an intent change or a deploy held to its step kind's), then the
+    AI's never-list (`plan_engine.ai_step_refusal`: a settings, users, credentials,
+    notifications or template-approval step, whatever its kind). Reads nothing."""
+    from modules import plan_engine as PE
+
+    code, words = _shape(step)
+    if code:
+        return words
+    why = PE._fix_steps_refusal([step])                    # noqa: SLF001 (the engine's own check)
+    if why:
+        return why
+    return PE.ai_step_refusal(step["operation"])
+
+
+def _attempt_form(step: dict) -> dict:
+    """*step* as an incident's plan line keeps it (`fixit.incident.record_proposal`): a
+    catalog operation's or command plan's parameters as an attempt's (`validate.as_attempt`),
+    an intent change's or deploy's its own, the device (the incident's) left out."""
+    from modules import plan_engine as PE
+    from modules.fixit import validate
+    from modules.heal import catalog
+
+    if step["operation"] in PE.FIX_ADMITTED:
+        return {"operation": step["operation"],
+                "params": {k: v for k, v in step["params"].items() if k != "device"}}
+    _op, held_ = catalog.checked(step["operation"], step["params"])
+    return {"operation": step["operation"],
+            "params": validate.as_attempt(step["operation"], held_)}
+
+
+def _command_plan_reads(network: str, steps: list) -> dict:
+    """Each built-in command plan step's preconditions read NOW, through the read engine,
+    inside the job making the proposal (`catalog.PlanStep.preflight` with *reads*), so the page
+    draws them from the record and never waits: ``{"<n>": {"ok", "refused", "hash"}}``."""
+    from modules.heal import catalog
+
+    out = {}
+    for n, s in enumerate(steps, 1):
+        if not catalog.is_command_plan(s["operation"]):
+            continue
+        try:
+            got = catalog.COMMAND_PLANS[s["operation"]].preflight(network, s["params"],
+                                                                  reads=True)
+        except Exception as exc:                          # noqa: BLE001 (kept, never raised)
+            got = {"ok": False, "refused": f"its preconditions could not be read "
+                                           f"({type(exc).__name__})", "hash": ""}
+        out[str(n)] = {"ok": bool(got.get("ok")), "refused": str(got.get("refused") or ""),
+                       "hash": str(got.get("hash") or "")}
+    return out
+
+
+def _propose_shapes(network: str, shapes, call_id: str) -> list:
+    """Each shape a shorter command plan would need, proposed to Mercury's rule for raw lines
+    (`command_policy.propose`: held PROVISIONAL until an admin approves it; the AI approves
+    none): ``[{"dialect", "shape", "state", "words"}]``."""
+    from modules.nsot import command_policy
+
+    out = []
+    for s in shapes or ():
+        got = command_policy.propose(network, s.get("dialect") or "", s.get("shape") or "",
+                                     by=f"the AI (call {call_id or 'not recorded'})",
+                                     why=s.get("why") or "")
+        out.append({"dialect": s.get("dialect") or "", "shape": s.get("shape") or "",
+                    "state": got.get("state") or "", "words": got.get("words") or ""})
+    return out
+
+
+def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=(),
+                      actor: str, actor_verified: str, note: str = "", shown: dict = None,
+                      prompt: str = "", now: float = None, alternative_of: str = "") -> dict:
+    """What an AI call's plan proposes in *incident*: *steps* ``[{"operation", "params"}]`` in
+    order, each held to this door (`step_held`), then kept as the incident's proposal line with
+    its steps (`fixit.incident.record_proposal`), whose preflight on the page (`fixit.plan.
+    preflight`) holds each step to the incident's scope, the heal guards, committed intent and
+    the AI's never-list, a refused step drawn refused and the plan then not approvable. Inside
+    this job: each collector step's session and each command plan step's preconditions read
+    once (`plan_engine.read_sessions`, `_command_plan_reads`), kept with the line; each shape
+    the *improvement* names proposed provisional (`_propose_shapes`); and the improvement's
+    shorter route, when it names steps, kept as a second line beside the first
+    (``alternative``), the person choosing. ``{"ok", "steps", "line", "alternative",
+    "shapes", "refused", "code"}``. Never runs, holds, opens or starts anything."""
+    from modules import plan_engine as PE
+    from modules.fixit import incident as F
+
+    ids = [c for c in calls or () if c] or ([call_id] if call_id else [])
+    verified_person = bool(actor_verified) and actor_verified != "none"
+    kept = {"by": actor if verified_person else "",
+            "verified": actor_verified if verified_person else "", "note": note}
+    code, words = _call_refusal(call_id)
+    steps = list(steps or [])
+    if not code and not 1 <= len(steps) <= most_steps():
+        code, words = "steps", f"a plan is 1 to {most_steps()} steps, and {len(steps)} were given"
+    for n, s in enumerate(steps, 1):
+        if code:
+            break
+        why = step_held(s)
+        if why:
+            code, words = "step_refused", f"step {n} ({s.get('operation')}): {why}"
+        elif (s.get("params") or {}).get("device") != incident.device:
+            code, words = "another_device", (
+                f"step {n} names the device {(s.get('params') or {}).get('device')}, and "
+                f"{incident.id} is {incident.device}'s: a plan acts on its incident's device")
+    if code:
+        words += ". Nothing was previewed, and nothing runs"
+        try:
+            line = F.record_proposal(incident, "ai", calls=ids, prompt=prompt, now=now,
+                                     words=f"Mercury's check refused the AI's plan: {words}",
+                                     shown=shown or {}, **kept)
+        except (F.Refused, OSError, ValueError) as exc:
+            log.error("fix_proposal: %s's refused plan was not kept: %s", incident.id, exc)
+            line = {}
+        return {"ok": False, "code": code, "refused": words, "line": line, "steps": [],
+                "alternative": {}, "shapes": [],
+                "recorded": _record(call_id, code, words, incident.network, actor,
+                                    actor_verified)}
+    imp = improvement.model_dump(mode="json") if hasattr(improvement, "model_dump") else (
+        dict(improvement) if isinstance(improvement, dict) else {})
+    shapes = _propose_shapes(incident.network, imp.get("shapes") or [], call_id)
+    sessions = PE.read_sessions(incident.network, steps, now=now) or None
+    shown_ = dict(shown or {})
+    reads = _command_plan_reads(incident.network, steps)
+    if reads:
+        shown_["preconditions_read"] = reads
+    if shapes:
+        shown_["shapes"] = shapes
+    if alternative_of:
+        shown_["alternative_of"] = alternative_of
+    line = F.record_proposal(incident, "ai", steps=[_attempt_form(s) for s in steps],
+                             calls=ids, prompt=prompt, now=now, sessions=sessions,
+                             shown=shown_, **kept)
+    alt = {}
+    if imp.get("steps") and not alternative_of:
+        alt_steps = [{"operation": s["operation"],
+                      "params": {k: v for k, v in (s.get("params") or {}).items()
+                                 if v is not None}} for s in imp["steps"]]
+        got = plan_for_incident(alt_steps, incident, call_id=call_id, calls=calls, actor=actor,
+                                actor_verified=actor_verified, note=note,
+                                shown={"why": imp.get("what") or "",
+                                       "improvement": {"what": imp.get("what") or "",
+                                                       "saves": imp.get("saves") or ""}},
+                                prompt=prompt, now=now,
+                                alternative_of=str(line.get("proposal") or ""))
+        alt = got.get("line") or {}
+    log.info("fixit: %s: an AI plan of %d step(s) kept as %s", incident.id, len(steps),
+             line.get("proposal"))
+    return {"ok": True, "code": "", "refused": "", "steps": steps, "line": line,
+            "alternative": alt, "shapes": shapes, "proposal": line.get("proposal", "")}
 
 
 def _record(call_id, code: str, words: str, network: str, actor: str,

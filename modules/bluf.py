@@ -129,6 +129,12 @@ TABLE = {
                                "button", "degraded"),
     "port_flapping": _e("{device}: {object} keeps going up and down",
                         "Traffic over it drops each time it flaps", "approve", "degraded"),
+    # G7 (C3712; the operator's walk item 1, 2026-11-15): "<device> Gi1/0 err-disabled by BPDU
+    # guard: <host> is offline", the same words on the Incidents list, the page's heading, the BLUF
+    # and Needs attention; a warning, since one host down is not a network outage (R2).
+    "err_disabled": _e("{device} {object} err-disabled by {cause}: {affected} is offline",
+                       "{affected} has no network until the port is recovered; the rest of the "
+                       "network is unaffected", "button", "degraded"),
 }
 
 #: A guard or hold working as designed, as one plain line (`hold_line`), by guard number

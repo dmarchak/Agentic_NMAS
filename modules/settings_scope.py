@@ -113,7 +113,12 @@ SCOPES: dict = {
         "alert_history_retention_days",
         # C1999: how long an SDN incident awaits a person before Needs attention escalates it.
         # A group of one on the generic card, so it is set in Mercury, never by a host edit.
-        "sdn_escalate_after_minutes")},
+        "sdn_escalate_after_minutes",
+        # C3749: how long the control strip's Self-healing toggle (and G6's Turn on
+        # self-healing and fix all) turns Auto on for. A group of one on the generic card,
+        # NOT in the heal policy's group: it is no part of the confirmed policy, only the
+        # duration a one-press Auto asks the policy's own write for (N8 still bounds it).
+        "heal_auto_default_hours")},
     # ── Host-wide ─────────────────────────────────────────────────────────────────────────
     **_group(HOST, "netbox_connection", "netbox_url", "netbox_token", "netbox_auth_scheme",
              "netbox_verify_tls", "netbox_allow_writes"),
@@ -122,6 +127,7 @@ SCOPES: dict = {
              "proxmox_backup_storage", "proxmox_backup_vmids"),
     **_group(HOST, "identity", "cf_access_aud", "cf_access_jwks_ttl", "cf_access_service_labels",
              "cf_access_team_domain", "cf_access_trusted_peers", "service_allowed_operations",
+             "access_rights",
              "allowed_host_names", "require_same_origin_writes", "local_account_enabled",
              *(f"require_{w}_for_{a}" for w in ("identity", "person")
                for a in ("approve", "break_glass", "configure", "confirm", "publish_remote",
@@ -233,6 +239,7 @@ GROUP_LABELS: dict = {
     "monitoring_profile": "Monitoring profile", "s3_archive": "S3 archive",
     "verify_settle_windows": "Verify settle windows", "deploy_max_workers": "Deploy workers",
     "deploy_verify_failure_limit": "Deploy failure limit",
+    "heal_auto_default_hours": "Self-healing: Auto lasts (hours)",
     "nsot_device_tag_retention": "Golden tags kept", "nsot_config_read_timeout":
     "Configuration read timeout", "netbox_excluded_vrfs": "NetBox excluded VRFs",
     "reads_answer_cap_kib": "Show commands: answer cap (KiB)",

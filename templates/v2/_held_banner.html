@@ -8,5 +8,5 @@
     when a hold is released (`device.html`'s `#device-held`), so it comes and goes without a
     reload. `routes/device_v2.held_banner`. -#}
 {%- if held %}
-<div class="notice notice-warning held-banner" role="status" data-held="{{ device.hostname }}">{{ icon('warn', 16) }}<p><strong>{{ device.hostname }} is held:</strong> {% if held.unread %}{{ held.words }}{% else %}{{ held.name }} since {{ clock(held.since) }}, by {{ held.by }}{% endif %} · <a href="{{ run_href(device.hostname, list_name) }}">Open the run</a></p></div>
+<div class="notice notice-warning held-banner" role="status" data-held="{{ device.hostname }}">{{ icon('warn', 16) }}<p><strong>{{ device.hostname }} is held:</strong> {% if held.unread %}{{ held.words }}{% else %}{{ held.name }} since {{ clock(held.since) }}, by {{ held.by | people }}{% endif %} · <a href="{{ run_href(device.hostname, list_name) }}">Open the run</a></p></div>
 {%- endif %}

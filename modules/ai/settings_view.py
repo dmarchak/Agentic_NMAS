@@ -44,6 +44,14 @@ TURN_ON_STEPS = (("estimate", "the estimate is shown, labelled, with its digest"
                               "started once, as its own job, within the caps"))
 
 
+#: Background features drawn elsewhere than this list (C3769): automatic AI troubleshooting
+#: is the AI troubleshooting card's Automatic.
+HIDDEN = ("fixit_auto",)
+#: Background features retired from this list (C3769): drawn only while one is still on, so it
+#: can be turned off.
+RETIRED = ("heal_analysis",)
+
+
 def _iso(epoch) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)) if epoch else ""
 
@@ -115,6 +123,13 @@ def view(network: str = "", now=None) -> dict:
     for fname, spec in background.FEATURES.items():
         entry = raw.get(fname)
         on = isinstance(entry, dict) and entry.get("on") is True
+        # C3769 (Gate 2): automatic AI troubleshooting is no row of its own here: it is the
+        # AI troubleshooting card's Automatic, with its limits (`troubleshoot.view`, drawn
+        # above). The can't-fix analysis is retired from this list (folded into the
+        # investigation's findings): drawn only while a switch of it is still on, so it can be
+        # turned off; its kept records stay readable.
+        if fname in HIDDEN or (fname in RETIRED and not on):
+            continue
         ends = background.approval_ends(entry) if on else None
         s = sums.get((slug, fname))
         if not on:
@@ -145,7 +160,14 @@ def view(network: str = "", now=None) -> dict:
     elsewhere = [dict(pick(s, "words", "stopped", "stopped_at"), network_name=named.get(n, n))
                  for (n, _f), s in sorted(sums.items())
                  if n != slug and (s["stopped"]["day"] or s["stopped"]["month"])]
-    return {"network": name, "slug": slug, "networks": every,
+    # C3769: the network's one AI troubleshooting control, its limits and their estimate.
+    from modules import troubleshoot_control as troubleshoot
+    try:
+        ts = troubleshoot.view(name, now=now)
+    except Exception as exc:                                    # noqa: BLE001 (said in place)
+        ts = {"error": f"{type(exc).__name__}: {exc}", "network": name,
+              "card_id": troubleshoot.CARD_ID}
+    return {"network": name, "slug": slug, "networks": every, "troubleshoot": ts,
             "hosted_allowed": bool(gateway.hosted_allowed()["allowed"]),
             "day_cap": gateway.day_cap(),
             "spend_state": "ok" if readable else "unreadable",
@@ -169,14 +191,22 @@ def turn_on_form(network: str, feature: str, now=None) -> dict:
     spec = background._spec(feature)
     est = background.estimate(listref.network_id(name), feature, now)
     sug = est.get("suggested") or {}
+    day, month = sug.get("day_cap_usd"), sug.get("month_cap_usd")
+    audit = feature == A.FEATURE
+    if audit:
+        # Gate 2 (C3769): for automatic AI troubleshooting this form is read-only, for audit:
+        # what Automatic would start and why, held against the network's own limits as set
+        # on its AI troubleshooting card (none set: the estimate's suggestion, said so).
+        caps = background.caps_of(background.record_of(listref.network_id(name), feature))
+        if caps["day"] and caps["month"]:
+            day, month = caps["day"], caps["month"]
     return {"network": name, "feature": feature, "words": spec.get("words", feature),
             "trigger_words": spec.get("trigger_words", ""), "est": est,
             "day_cap": gateway.day_cap(), "prices_as_of": profiles.PRICES_AS_OF,
-            "day_value": sug.get("day_cap_usd"), "month_value": sug.get("month_cap_usd"),
+            "day_value": day, "month_value": month,
             "ends_iso": _iso(time.time() + background.APPROVAL_DAYS * 86400),
             "approval_days": background.APPROVAL_DAYS, "renew_days": background.RENEW_DAYS,
-            "catch_up": (catch_up_view(name, sug.get("day_cap_usd"), sug.get("month_cap_usd"))
-                         if feature == A.FEATURE else None)}
+            "catch_up": catch_up_view(name, day, month) if audit else None}
 
 
 def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
@@ -210,7 +240,7 @@ def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
                                     "its incident's AI cap would be passed, so it would not "
                                     "start"),
                       "href": troubleshoot_job.page_of(network, i["id"])})
-    cap = P.cap_usd()
+    cap = P.cap_usd(network)
     day = gateway.day_cap()
     room = catch_up_room(network)
     rooms = rooms_of(room, day_typed, month_typed)
@@ -242,19 +272,30 @@ def catch_up_room(network: str) -> dict:
     less today's spend (None with no day cap; 0 when the spend cannot be read, as a start is
     then refused), and this feature's spend today and this month on *network*, which the caps
     typed in the form are measured against. A read of the settings and the record of calls."""
-    from modules.ai import calls, gateway, spend
+    from modules.ai import calls, gateway, reservations, spend
     from modules.fixit import auto as A
     from modules.nsot import listref
 
+    # C3753: the calls in flight are counted, as the gateway and the start count them; an
+    # unreadable store leaves no room (a start is then refused), never read as none.
+    open_ = reservations.open_reservations()
+    readable = open_["state"] == "ok"
+    flying = reservations.in_flight(open_["held"]) if readable else {"usd": 0.0}
+    net = listref.network_id(network)
+    mine_flying = (reservations.in_flight(open_["held"], feature=A.FEATURE, network=net)
+                   if readable else {"usd": 0.0})
     cap = gateway.day_cap()
     day = None
     if cap is not None:
         got = calls.spent_usd(calls.today())
-        day = max(0.0, cap - float(got["usd"])) if got.get("usd") is not None else 0.0
-    mine = spend.feature_spent(listref.network_id(network), A.FEATURE)
-    ok = mine.get("state") != "unreadable"
-    return {"day": day, "feature_day_spent": float(mine.get("day_usd") or 0) if ok else None,
-            "feature_month_spent": float(mine.get("month_usd") or 0) if ok else None}
+        day = (max(0.0, cap - float(got["usd"]) - float(flying["usd"]))
+               if got.get("usd") is not None and readable else 0.0)
+    mine = spend.feature_spent(net, A.FEATURE)
+    ok = mine.get("state") != "unreadable" and readable
+    held = float(mine_flying["usd"])
+    return {"day": day,
+            "feature_day_spent": float(mine.get("day_usd") or 0) + held if ok else None,
+            "feature_month_spent": float(mine.get("month_usd") or 0) + held if ok else None}
 
 
 def rooms_of(room: dict, day_typed, month_typed) -> list:

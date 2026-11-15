@@ -383,6 +383,14 @@ def _loop() -> None:
                 log.error("heal: %s's detect pass failed: %s: %s", name,
                           type(exc).__name__, exc)
             try:
+                # R4 and G7 (C3712): each open incident's own evidence classified into its
+                # problem (an err-disabled port), the standing ones included, never re-injected.
+                from modules.heal import errdisable
+                errdisable.reclassify_step(name)
+            except Exception as exc:
+                log.error("heal: %s's incidents could not be classified: %s: %s", name,
+                          type(exc).__name__, exc)
+            try:
                 # H3: each incident the pass settled is decided, under the same lock, after it.
                 from modules.heal import decide
                 decide.run(name)

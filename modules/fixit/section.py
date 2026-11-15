@@ -289,7 +289,16 @@ def short_words(operation: str, device: str, params: dict) -> str:
     if operation == R.COLLECTOR_KEY:
         subs = ", ".join(map(str, params.get("subs") or [])) or "no subscription"
         return R.COLLECTOR_TITLE.format(device=device) + f" ({subs})"
-    return operation
+    from modules.heal import catalog
+    if catalog.is_command_plan(operation):
+        # A built-in command plan (C3757): its own title with the attempt's values.
+        from modules.nsot import command_plan
+        return command_plan.title_of(operation, dict(params, device=device))
+    # Any other step of an incident's plan (an intent change, a deploy): the plan engine's own
+    # words for its kind, never its key (R2), with the device.
+    from modules import plan_engine
+    words = plan_engine.words_of(operation)
+    return f"{words} ({device})" if words != operation and device else words
 
 
 def outcome_words(outcome: str, words: str = "") -> str:
@@ -400,7 +409,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     tried = F.attempts(inc, resolved, now=now)
     calls = F.calls_of(inc)
     cost = F.cost_so_far(inc)
-    cap = P.cap_usd()
+    cap = P.cap_usd(network)
     day = today()
     usd = {c["id"]: c["usd"] for c in calls["calls"]}
     proposals = {ln["proposal"]: ln for ln in rec["lines"] if "proposal" in ln}
@@ -409,7 +418,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         attempts=drawn[-SHOWN:], more=max(0, len(drawn) - SHOWN),
         incomplete=tried["error"] if tried["state"] != "ok" else "",
         unreadable=rec["error"] if rec["state"] == "unreadable" else "",
-        mode={"state": P.mode()["state"], "refused": P.ai_refusal()},
+        mode={"state": P.mode(network)["state"], "refused": P.ai_refusal(network)},
         totals={"spent": P.money(cost["usd"]) if cost["usd"] is not None else "",
                 "spent_error": cost["error"],
                 "cap": P.money(cap["usd"]) if cap["state"] == "ok" else "",
@@ -482,7 +491,7 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         "drawn_spent": "" if cs["spent"] is None else f"{cs['spent']:.6f}",
         "drawn_cap": "" if cs["cap"] is None else f"{cs['cap']:.6f}",
         "sent": _what_is_sent(drawn, rec["lines"])}
-    out["ai"] = ai_offer(state, cs)
+    out["ai"] = ai_offer(state, cs, network)
     out["teams"] = H.offered(network)
     _contract(out, network, found, inc, rec, tried, drawn, cs, resolved, now)
     return _stated(out, found)
@@ -582,7 +591,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         "has_plan": bool(newest_ai.get("operation")), "calls": list(newest_ai.get("calls") or []),
         "prompt": newest_ai.get("prompt") or "", "at": newest_ai.get("at") or "",
         "note": newest_ai.get("note") or ""}
-    off = P.ai_refusal()
+    off = P.ai_refusal(network)
     capped = cs is not None and cs["state"] != "allowed"
     starts = [ln for ln in rec["lines"] if "start" in ln]
     last_start = starts[-1] if starts else None
@@ -704,14 +713,23 @@ def auto_model(network: str, sw: dict = None) -> dict:
                     "usd_per_month": est.get("usd_per_month"), "error": ""}
     except Exception as exc:                          # noqa: BLE001 (said in place)
         estimate = {"error": f"the estimate could not be made ({type(exc).__name__}: {exc})"}
-    cap = P.cap_usd()
+    cap = P.cap_usd(network)
     ends = background.approval_ends(sw["entry"]) if sw.get("entry") else None
     return {"feature": A.FEATURE, "words": spec["words"], "trigger_words": spec["trigger_words"],
             "on": bool(sw["on"]), "by": sw.get("by") or "", "at": sw.get("at") or "",
             "ends": _iso(ends) if ends else "", "estimate": estimate,
             "incident_cap": P.money(cap["usd"]) if cap["state"] == "ok" else "",
             "day_cap": (P.money(gateway.day_cap()) if gateway.day_cap() is not None else ""),
-            "settings_href": SETTINGS_AI_HREF}
+            "settings_href": SETTINGS_AI_HREF, "switch_href": switch_href(network)}
+
+
+def switch_href(network: str) -> str:
+    """Where the network's automatic troubleshooting switch is (the operator, 2026-11-15:
+    every sentence naming it links straight to it): the AI toggle on Needs attention's control
+    strip for *network* (C3748, `control_strip`)."""
+    from urllib.parse import quote
+
+    return f"/v2/?list={quote(network or '', safe='')}#ctl-ai"
 
 
 def _status(state: str, inc, network: str, plan, failed: list, last_start, legacy: dict,
@@ -829,7 +847,7 @@ def analysed(found: dict) -> bool:
 AI_IN = ("ready",) + RETRY_IN
 
 
-def ai_offer(state: str, cs: dict) -> dict:
+def ai_offer(state: str, cs: dict, network: str = None) -> dict:
     """Whether the section offers the AI for a section in *state* whose cap comparison is *cs*
     (`policy.cap_state` at the AI's worst case): ``{"offered", "in_state", "refused",
     "estimate", "worst", "measured", "basis"}``. Offered only in `AI_IN`, the mode Manual
@@ -839,7 +857,7 @@ def ai_offer(state: str, cs: dict) -> dict:
     from modules.ai import fixit_troubleshoot as AIT
     from modules.fixit import policy as P
 
-    off = P.ai_refusal()
+    off = P.ai_refusal(network)
     est = AIT.estimate()
     return {"offered": state in AI_IN and not off and cs["state"] == "allowed",
             "in_state": state in AI_IN, "refused": off or (

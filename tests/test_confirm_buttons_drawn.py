@@ -2062,6 +2062,52 @@ class TestHealProposalCards(_Cards):
         return html
 
 
+# ── G6: guard 6's batch card on Needs attention ───────────────────────────────────────────────
+
+class TestHealBatchCards(_Cards):
+    """On tests/test_heal_decide.py's lab: guard 6's batch (tests/v2_context.py's
+    `batch_fixture`: two devices whose fix previews, one held, one incident for the AI)
+    previewed by the real `heal.batch.preview`, its row built by the real producer
+    (`attention._heal_held_rows`), and Needs attention read by the real route: Turn on
+    self-healing and fix all is pressable. Blocked: a verified service, whom `may` refuses,
+    draws it disabled."""
+    from tests import test_heal_decide as _hd
+    from tests import test_sdn_connections as _sc
+    networks, lab = hosted(_sc.networks), hosted(_hd.lab)
+
+    CASES = {"fix_all": ("_heal_batch.html", "Turn on self-healing and fix all",
+                         r"Turn on self-healing and fix all", "viewer")}
+
+    def _page(self, request, monkeypatch):
+        import time as _time
+
+        import app as A
+        from modules import attention
+        from modules.heal import batch
+        from tests.v2_context import batch_fixture
+        request.getfixturevalue("lab")
+        decisions, doc, ai = batch_fixture()
+        p = batch.preview("Lab", decisions, ai_items=ai, incidents_doc=doc)
+        assert p["on"] and p["fixable"] == 2, p
+        monkeypatch.setattr(batch, "preview", lambda *_a, **_k: p)
+        rows = attention._heal_held_rows("Lab", decisions)
+        assert rows and rows[0].get("batch"), "floor: the producer builds the batch's row"
+        monkeypatch.setattr(attention, "SOURCES", [lambda: attention.source_result(
+            "heal", "Self-healing", read_at=_time.time(), took_ms=0, rows=rows,
+            checked="list Lab: 1 hold a person resolves")])
+        html = _text(A.app.test_client().get("/v2/attention"))
+        assert "Mercury can fix 2." in html and 'name="hash"' in html, \
+            "floor: the batch card is drawn with its preview"
+        return html
+
+    def drawn_fix_all(self, request):
+        return self._page(request, request.getfixturevalue("monkeypatch"))
+
+    def blocked_fix_all(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._page(request, monkeypatch)
+
+
 # ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
 
 class TestSdnOperationCards(_Cards):
@@ -2527,6 +2573,101 @@ class TestPlanCards(_Cards):
         return html
 
 
+class TestSavedPlansCards(_Cards):
+    """Gate 1b's saved plans on an incident's card (routes/saved_plans_v2.py), on
+    tests/test_saved_plans_v2.py's incident: a recovery that passed its own verify draws both
+    saves; a saved script this problem matches, Promote; a waiting shape, Approve. Blocked: a
+    viewer without the right sees each drawn disabled with why (a save), or no script and no
+    shape is waiting (Promote, Approve)."""
+    from tests import test_saved_plans as _sp, test_saved_plans_v2 as _spv
+    store, card = hosted(_sp.store), hosted(_spv.card)
+    SHAPE = "interface {interface} > description {description}"
+
+    CASES = {
+        "script": ("_saved_plans_saves.html", "Save as a self-heal script",
+                   r"Save as a self-heal script", "data: the viewer lacks self-healing rights"),
+        "action": ("_saved_plans_saves.html", "Save as a reusable action",
+                   r"Save as a reusable action", "data: the viewer is no admin"),
+        "promote": ("_saved_plans_saves.html", "Promote {{ s.name }}",
+                    r"Promote BPDU guard recovery", "data: no saved script matches"),
+        "shape": ("_saved_plans_saves.html", "Approve the shape", r"Approve the shape",
+                  "data: no shape waits on an admin"),
+        "run": ("_saved_actions_device.html", "Run {{ p.title }}",
+                r"Run Bounce r2 GigabitEthernet0/2", "data: the AI's identity is acting"),
+    }
+    device = hosted(_spv.device)
+
+    def _device(self, request):
+        c = request.getfixturevalue("device")
+        return _text(c["client"].get(
+            "/v2/saved-plans/device/r2/actions?list=Lab&key=action-bounce-interface"
+            "&interface=GigabitEthernet0/2"))
+
+    def drawn_run(self, request):
+        html = self._device(request)
+        assert "Bound to h-bounce" in html, "floor: the runner's preview is drawn"
+        return html
+
+    def blocked_run(self, request, monkeypatch):
+        from modules import identity
+        with identity.as_ai("assistant"):
+            html = self._device(request)
+        assert 'data-refused="run"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def _get(self, request):
+        c = request.getfixturevalue("card")
+        return c, _text(c["client"].get(f"/v2/saved-plans/{self._spv.INC}/card?list=Lab"))
+
+    def drawn_script(self, request):
+        html = self._get(request)[1]
+        assert "ran and passed its own verify" in html, "floor: the verified run is drawn"
+        return html
+
+    def blocked_script(self, request, monkeypatch):
+        c = request.getfixturevalue("card")
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._get(request)[1]
+        assert 'data-refused="script"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def drawn_action(self, request):
+        return self.drawn_script(request)
+
+    def blocked_action(self, request, monkeypatch):
+        c = request.getfixturevalue("card")
+        c["rights"]["admin"] = ["other@example.invalid"]
+        html = self._get(request)[1]
+        assert 'data-refused="action"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def drawn_promote(self, request):
+        from modules.nsot import saved_plans as S
+        c = request.getfixturevalue("card")
+        S.save_script("Lab", run_id=c["run"](), name="BPDU guard recovery",
+                      match=self._sp.MATCH, fills=self._sp.FILLS, **self._sp.WHO)
+        html = self._get(request)[1]
+        assert 'data-script="script-bpdu-guard-recovery"' in html, "floor: the script is drawn"
+        return html
+
+    def blocked_promote(self, request, monkeypatch):
+        html = self._get(request)[1]
+        assert "ran and passed its own verify" in html, "floor: the card is drawn"
+        return html
+
+    def drawn_shape(self, request):
+        from modules.nsot import command_policy
+        request.getfixturevalue("card")
+        assert command_policy.propose("Lab", "cisco_ios", self.SHAPE, by="ai:fixit",
+                                      why="a clumsy fix")["ok"]
+        html = self._get(request)[1]
+        assert "Line shapes waiting on an admin" in html, "floor: the shape is drawn"
+        return html
+
+    def blocked_shape(self, request, monkeypatch):
+        return self.blocked_promote(request, monkeypatch)
+
+
 class TestFixitPlanCards(_Cards):
     """An incident's proposal as a plan (C3694; routes/fixit_v2.py's approve), on
     tests/test_fixit_section_v2.py's world (r2's real configuration and intent, a lost-stream
@@ -2645,9 +2786,13 @@ class TestThePopulation:
         until board R's Update N devices' intent, C3583, 2026-11-14; 92 until the collector
         step's Close the collector's stale session for <device>, then re-subscribe (<ids>), C3078,
         2026-11-14; 93 until the plan engine's Approve the plan on <network>: <title>, 2026-11-14;
-        94 until an incident's plan's Approve, C3694, 2026-11-14)."""
+        94 until an incident's plan's Approve, C3694, 2026-11-14; 95 until Gate 1b's saved
+        plans' four on an incident's card, Save as a self-heal script, Save as a reusable
+        action, Promote <script> and Approve the shape, 2026-11-15; 99 until a saved action's
+        Run <title> on a device's Overview, 2026-11-15; 100 until G6's Turn on self-healing and
+        fix all on guard 6's batch card, 2026-11-15)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 95, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 101, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

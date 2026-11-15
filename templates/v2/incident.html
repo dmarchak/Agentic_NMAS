@@ -101,7 +101,7 @@
   {%- set opener = 'inc-open-' ~ p.id %}
   <div class="inc-act" data-first="{{ it.first }}" data-item="{{ it.state }}">
     {%- if it.first == 'run' %}
-    <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by }}</span>
+    <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by | people }}</span>
     <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
     {%- elif it.first == 'start' %}
     {#- The item's action is Start AI troubleshooting, the BLUF's own button above: never a
@@ -163,7 +163,7 @@
     <div class="inc-time inc-time-{{ c.state }}" data-cell="{{ c.name | lower }}"{% if c.hover %} title="{{ c.hover }}"{% endif %}><dt>{{ c.name }}</dt><dd>{{ cell(c) }}</dd></div>
     {%- endfor %}
     <div class="inc-time inc-ttr{{ ' inc-ttr-repaired' if p.ttr.seconds is not none }}" data-cell="ttr"{% if p.ttr.hover %} title="{{ p.ttr.hover }}"{% endif %}><dt>TIME TO REPAIR {{ info('incident-timeline', 'time-to-repair', label='How time to repair is measured') }}</dt>
-      <dd><strong class="inc-ttr-n">{{ p.ttr.words }}</strong>{% if p.ttr.span %} <span class="muted">({{ p.ttr.span }})</span>{% endif %}{% if p.ttr.who %} <span class="inc-by"{% if p.ttr.no_human %} title="{{ p.ttr.no_human }}"{% endif %}>· {{ p.ttr.who }}</span>{% endif %}</dd></div>
+      <dd><strong class="inc-ttr-n">{{ p.ttr.words }}</strong>{% if p.ttr.span %} <span class="muted">({{ p.ttr.span }})</span>{% endif %}{% if p.ttr.who %} <span class="inc-by"{% if p.ttr.no_human %} title="{{ p.ttr.no_human }}"{% endif %}>· {{ p.ttr.who | people }}</span>{% endif %}</dd></div>
   </dl>
   {%- for a in p.attempts %}
   <p class="inc-attempt inc-attempt-{{ a.state }}" data-attempt="{{ a.n }}">Attempt {{ a.n }}:
@@ -171,7 +171,7 @@
     {%- elif a.state == 'verified' %} applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verified {% if a.at %}{{ at(a.at) }}{% else %}at an unrecorded time{% endif %}
     {#- Its state alone: why it failed is said once, in the stage it failed in (C3454). -#}
     {%- else %} <strong>applied {% if a.applied %}{{ at(a.applied) }}{% else %}at an unrecorded time{% endif %} · verify failed</strong>
-    {%- endif %}{% if a.who %} · {{ a.who }}{% endif %}</p>
+    {%- endif %}{% if a.who %} · {{ a.who | people }}{% endif %}</p>
   {%- endfor %}
 </details>
 {%- if p.events %}
@@ -297,7 +297,7 @@
   {#- C3290: a record's value that is an instant, or words with instants in them ("… · <iso>"),
       is drawn by the clock (`times`); its identities stay as recorded, so no `people`. -#}
   <dl class="tl-record">{% for k, v in p.record %}<dt>{{ k }}</dt><dd>{{ v | times }}</dd>{% endfor %}
-    {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}
+    {%- for h in (p.fixit.handovers or []) %}<dt>Hand-over {{ h.version }}</dt><dd><a href="{{ url_for('fixit_v2.handover_page', incident_id=p.id, version=h.version, list=p.network) }}">Open the write-up</a> · {{ h.at }} · {{ h.by | people }} · {{ h.teams | join(', ') if h.teams else 'sent to no team' }}</dd>{% endfor %}
     {#- The proposed fix's parameter hash (the GUI review's AI3, C3455): the proposal's warning
         says only that it repeats; the hash it was compared by is here. -#}
     {%- set fxp = p.fixit.proposal or {} %}{% if fxp.flag and fxp.flag.params_hash %}<dt>Proposed fix's parameter hash</dt><dd><span class="mono">{{ fxp.flag.params_hash }}</span> · proposal {{ fxp.id }}{% if fxp.flag.kind == 'repeat' %} · the same as attempt {{ fxp.flag.attempt }}'s{% endif %}</dd>{% endif %}

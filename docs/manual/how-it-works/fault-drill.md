@@ -38,6 +38,22 @@ the same writer.
    drill declared". The card answers in place: "Declared: a drill on <device> until HH:MM:
    <the fault>. Inject the fault now; an incident on <device> before HH:MM is a drill."
 
+## A drill exercise over several devices {#exercise}
+
+A rehearsal that injects several faults over an hour declares them once, as a **drill
+exercise**: one declaration over several devices, with its own duration (60 minutes by default,
+at most 120), so a late start still keeps every fault a drill. A single drill keeps its
+15-minute bound. On the host, as Mercury's user, run `scripts/nmas-fault-drill <network>
+--exercise <device>,<device> --minutes 60 --expects "<the faults in words>"`: it shows the
+exercise's preview ("A drill exercise on … for 60 minutes from its declaration: …") and declares
+nothing; run it again with `--yes` and the exercise that preview shows is declared, the
+preview's words kept in its record. The same checks as a drill's are made for every device (a
+device of the network, no drill and no incident already open on it), each refusal naming the
+device; an exercise that is not the one previewed is refused, naming both. Each incident opened
+on one of its devices before its end is a drill, exactly as for a single drill, and History
+draws it as "Fault drill exercise declared". It ends as a drill does, at its end or by `--end`
+on any of its devices.
+
 ## Ending it early {#end}
 
 A drill lasts until its end unless you end it first. End it once its fault is healed, so a
@@ -86,5 +102,6 @@ only stops the drill's exemption early. On the host, as Mercury's user, run
 ## What it does not do {#not}
 
 - It does not inject the fault: you do, after declaring it.
-- It cannot be made after the fault, and it cannot be made for longer than 15 minutes.
+- It cannot be made after the fault, and it cannot be made for longer than 15 minutes (a drill
+  exercise, over several devices, for longer than 120).
 - It is not a planned-restart window: it explains no restart and holds no Needs attention row.

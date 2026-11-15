@@ -103,8 +103,9 @@ VERSION = 1
 
 #: The operations whose runs are an incident's attempts: the catalog's own keys
 #: (`modules/heal/catalog.py`), the telemetry re-subscribe and its one-step re-add, each the
-#: key its module records a run under.
-CATALOGUE_KEYS = tuple(_catalog.CATALOG)
+#: key its module records a run under; and the built-in command plans (C3757), each run
+#: recorded under its plan's key by the command-plan runner.
+CATALOGUE_KEYS = tuple(_catalog.CATALOG) + tuple(_catalog.COMMAND_PLANS)
 
 #: Each catalogue operation's parameters as an attempt is compared by, and their kinds:
 #: ``set`` (its members, in no order), ``flag`` (true or false; absent is false) and ``one``
@@ -117,7 +118,9 @@ PARAMETERS = {RESUBSCRIBE_KEY: (("subs", "set"), ("collector_step", "flag")),
               READD_KEY: (("sub", "one"),),
               # C3078: the re-subscribe with the collector step, its runs recorded under its
               # own key (`resubscribe.COLLECTOR_KEY`, each record's ``collector_step`` true).
-              COLLECTOR_KEY: (("subs", "set"),)}
+              COLLECTOR_KEY: (("subs", "set"),),
+              # G7 (C3712): Recover an err-disabled interface, by its port and cause.
+              "errdisable-recover": (("interface", "one"), ("cause", "one"))}
 #: Given with a proposal and no parameter of it: the incident names the device, and the reason
 #: is the person's words, so a changed reason is the same fix proposed again.
 NOT_PARAMETERS = ("device", "reason")
@@ -318,23 +321,59 @@ def _scalar(value, operation: str, name: str) -> str:
     return str(value).strip()
 
 
+def parameters_of(operation: str):
+    """What an attempt of *operation* is compared by: the catalogue's (`PARAMETERS`), or, for a
+    plan step kind an incident's fix admits beside it (`plan_engine.FIX_ADMITTED`: an intent
+    change, a deploy), the step kind's own declaration (`StepKind.attempt_params`); None for
+    anything else."""
+    if operation in PARAMETERS:
+        return PARAMETERS[operation]
+    if _catalog.is_command_plan(operation):
+        # A command plan the catalog lists (a saved reusable action, `nsot.saved_plans`): its
+        # own typed parameters, each one value, the device the incident's (`NOT_PARAMETERS`).
+        return tuple((p.name, "one") for p in _catalog.entries()[operation].params
+                     if p.name != "device")
+    from modules import plan_engine as PE
+
+    if operation in PE.FIX_ADMITTED:
+        return tuple(PE.STEP_KINDS[operation].attempt_params)
+    return None
+
+
+def _doc(value) -> str:
+    """A structured value (a ``doc`` parameter: an intent patch) as one canonical text: its
+    JSON with sorted keys; a text is read as the JSON it holds, when it holds one."""
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return value.strip()
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def canonical(operation: str, params) -> dict:
-    """*params* in *operation*'s canonical form: its declared parameters only (`PARAMETERS`),
-    a set's members sorted, a flag true or false, an absent one at its default. A name the
-    operation does not declare is refused by name (`NOT_PARAMETERS` aside)."""
-    if operation not in PARAMETERS:
+    """*params* in *operation*'s canonical form: its declared parameters only (`parameters_of`),
+    a set's members sorted, a flag true or false, a document its canonical text, an absent one
+    at its default. A name the operation does not declare is refused by name
+    (`NOT_PARAMETERS` aside)."""
+    declared_params = parameters_of(operation)
+    if declared_params is None:
         raise Refused(f"{operation!r} is no catalogue operation (the catalogue holds "
                       f"{', '.join(CATALOGUE_KEYS)})")
     given = dict(params or {})
-    declared = dict(PARAMETERS[operation])
+    declared = dict(declared_params)
     unknown = sorted(k for k in given if k not in declared and k not in NOT_PARAMETERS)
     if unknown:
         raise Refused(f"{operation} has no parameter {', '.join(map(repr, unknown))}: its "
                       f"parameters are {', '.join(declared)}")
     out = {}
-    for name, kind in PARAMETERS[operation]:
+    for name, kind in declared_params:
         value = given.get(name)
-        if kind == "flag":
+        if kind == "doc":
+            out[name] = _doc(value)
+        elif kind == "flag":
             if value is not None and not isinstance(value, bool):
                 raise Refused(f"{operation}'s {name} is true or false, and {value!r} was "
                               "given")
@@ -362,6 +401,16 @@ def _run_params(run: dict) -> dict:
     """What *run* (a catalogue operation's record) was run with, read from the record itself:
     its subscriptions (each one's own record; before those are kept, the program's
     subscription headers) and, once the collector step exists, its flag."""
+    if run.get(PLAN_STEP):
+        # A step of an incident's plan (`plan_engine.FIX_ADMITTED`), as `_plan_step_runs`
+        # read it: the values its kind compares an attempt by.
+        return canonical(run["key"], run.get("params") or {})
+    if _catalog.is_command_plan(run.get("key")):
+        # A command plan (C3757; G7's recovery the first): its validated values, as the
+        # runner's record keeps them, each one the plan's attempt is compared by.
+        names = [n for n, _kind in parameters_of(run["key"]) or ()]
+        values = run.get("params") or {}
+        return canonical(run["key"], {n: str(values.get(n) or "") for n in names})
     subs = [str(s.get("sub")) for s in run.get("subscriptions") or []
             if isinstance(s, dict) and s.get("sub") not in (None, "")]
     if not subs:
@@ -470,7 +519,12 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
         raise Refused("a proposal's sessions are {step number: the session read}, and "
                       f"{sessions!r:.80} was given")
     sessions = {k: {f: v.get(f) for f in SESSION_FIELDS} for k, v in (sessions or {}).items()}
-    more = {k: v for k, v in (("by", by), ("verified", verified),
+    # Made while an AI entry point runs (`identity.as_ai`): the proposal is the AI's, its
+    # identity kept beside the person who pressed (``by``), who stays that person.
+    from modules import identity
+    ai = identity.acting_ai()
+    more = {k: v for k, v in (("ai", ai.actor if ai else ""),
+                              ("by", by), ("verified", verified),
                               ("sessions", sessions),
                               ("note", typed),
                               ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
@@ -530,6 +584,43 @@ def _cut(incident: Incident):
     return cut if cut and cut.get("epoch", 0) > incident.detected else None
 
 
+#: Marks a run read from a step of an incident's plan (`_plan_step_runs`), never a record's.
+PLAN_STEP = "_plan_step"
+#: A plan step's states that ran (its own apply was reached), and the one that passed.
+PLAN_STEP_RAN = ("done", "failed")
+
+
+def _plan_step_runs(run: dict, incident: Incident) -> list:
+    """Each step of *run* (a plan engine run record, `plan_engine.KEY`, of an incident's fix)
+    that is a step kind the fix admits beside the catalogue (`plan_engine.FIX_ADMITTED`), names
+    *incident* and ran, as a run of its own the attempts read: its kind as the operation, the
+    values its kind compares an attempt by (`StepKind.attempt_of`, from its parameters and what
+    its preview resolved), its state ``done`` only when it passed, and the plan run's id, actor
+    and times. ``[]`` for any other record."""
+    from modules import plan_engine as PE
+
+    if run.get("key") != PE.KEY or run.get("plan") != PE.INCIDENT_FIX:
+        return []
+    out = []
+    for st in run.get("plan_steps") or []:
+        p = st.get("params") if isinstance(st, dict) else None
+        if (not isinstance(p, dict) or st.get("kind") not in PE.FIX_ADMITTED
+                or p.get("incident") != incident.id or st.get("state") not in PLAN_STEP_RAN):
+            continue
+        kind = PE.STEP_KINDS[st["kind"]]
+        out.append({PLAN_STEP: True, "key": st["kind"], "id": run.get("id"),
+                    "device": p.get("device") or "", "started_at": run.get("started_at"),
+                    "finished_at": run.get("finished_at"), "actor": run.get("actor"),
+                    "actor_verified": run.get("actor_verified"),
+                    "outcome": st.get("outcome") or "",
+                    "state": PASSED_STATE if st.get("state") == "done" else "failed",
+                    "why": st.get("words_said") or "",
+                    "params": kind.attempt_of(p, st.get("resolved") or {}),
+                    RUN_FIELD: {"incident": incident.id,
+                                "proposal": str(p.get("proposal") or "")}})
+    return out
+
+
 def attempts(incident: Incident, resolved: float = None, *, now: float = None,
              limit: int = RUNS_READ) -> dict:
     """*incident*'s attempts, derived from the operations' own run records each time:
@@ -565,8 +656,9 @@ def attempts(incident: Incident, resolved: float = None, *, now: float = None,
     bad = [n for n in got["unreadable"]
            if _stamp(n) is None or incident.detected <= _stamp(n) <= end]
     found = []
-    for r in runs:
-        if r.get("key") not in CATALOGUE_KEYS:
+    for r in [s for run in runs for s in _plan_step_runs(run, incident)] + runs:
+        if (r.get("key") not in CATALOGUE_KEYS and not r.get(PLAN_STEP)
+                and not _catalog.is_command_plan(r.get("key"))):
             continue
         named, proposal = _named(r)
         if named and named != incident.id:
@@ -657,7 +749,7 @@ def repeat_of(incident: Incident, op: str, params, resolved: float = None, *,
                            else hit["started_at"]))
     if hit and not same:
         out["changed"] = [{"name": name, "before": hit["params"].get(name), "after": mine[name]}
-                          for name, _kind in PARAMETERS[op]
+                          for name, _kind in parameters_of(op)
                           if hit["params"].get(name) != mine[name]]
     return out
 

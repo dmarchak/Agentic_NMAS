@@ -18,9 +18,9 @@
 <ul class="run-lines">
   {%- for ln in lines %}
   {%- if ln.summary %}
-  <li class="run-line run-reads-said">{{ ln.words }}</li>
+  <li class="run-line run-reads-said">{{ ln.words | people }}</li>
   {%- else %}
-  <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
+  <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
   {%- endif %}
   {%- endfor %}
 </ul>
@@ -29,7 +29,7 @@
   <summary>{{ m.title }}</summary>
   <ol class="run-lines">
     {%- for ln in m.reads %}
-    <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
+    <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
     {%- endfor %}
   </ol>
 </details>
@@ -41,7 +41,7 @@
   {%- if x.steps %}
   <ol class="run-steps" aria-label="{{ x.name }}'s steps">
     {%- for s in x.steps %}
-    <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.title or s.note %} title="{{ s.title or s.note }}"{% endif %}{% if s.state == 'running' %} aria-current="step"{% endif %}><span class="run-dot"></span><span class="run-words">{{ s.words }}{% if s.state_words %}<span class="sr-only"> ({{ s.state_words }})</span>{% endif %}</span><span class="run-took"{% if s.state == 'running' and s.since %} data-run-since="{{ s.since }}"{% endif %}>{% if s.took_s is not none and s.state in ('done', 'running', 'failed', 'partial') %}{{ s.took_s }} s{% endif %}</span>{% if s.note %}<span class="run-note">{{ s.note }}</span>{% endif %}</li>
+    <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.title or s.note %} title="{{ (s.title or s.note) | people }}"{% endif %}{% if s.state == 'running' %} aria-current="step"{% endif %}><span class="run-dot"></span><span class="run-words">{{ s.words }}{% if s.state_words %}<span class="sr-only"> ({{ s.state_words }})</span>{% endif %}</span><span class="run-took"{% if s.state == 'running' and s.since %} data-run-since="{{ s.since }}"{% endif %}>{% if s.took_s is not none and s.state in ('done', 'running', 'failed', 'partial') %}{{ s.took_s }} s{% endif %}</span>{% if s.note %}<span class="run-note">{{ s.note | people }}</span>{% endif %}</li>
     {%- endfor %}
   </ol>
   {%- else %}

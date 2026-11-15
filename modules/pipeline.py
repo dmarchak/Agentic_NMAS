@@ -315,6 +315,21 @@ class PipelineContext:
     #: "lines"}]`` (`deploy.device_against_capture`, C1383): for the receipt.
     new_hardware:        dict = field(default_factory=dict)
 
+    # ---- A command plan (C3757, path 2; modules/nsot/command_plan_run.py) ------------------
+    #: A transient plan's run (a bounce, a clear: net zero, the operator, 2026-11-15): its
+    #: lines leave no configuration line, so verify reads none of them back (the plan's
+    #: net-zero check stands for it, in :attr:`plan_verify`), and stage 8.2 and 8.5 do not run
+    #: (nothing to save, nothing new to record as a golden).
+    transient:           bool = False
+    #: Checks run AFTER stage 5 and before the send (``hook(ctx) -> why or ""``, in order): a
+    #: why stops the run there, nothing sent, recorded as the stage ``pre_apply``. A command
+    #: plan's preconditions are the first; a later layer (a sandbox dry run) adds its own.
+    pre_apply:           list = None
+    #: ip -> the plan's verify (``hook(ctx, ip, pre, post) -> {"issues", "unreadable", ...}``),
+    #: run inside stage 8 after its own checks: an issue fails verify and rolls back like any
+    #: other; an unreadable read neither passes nor fails.
+    plan_verify:         dict = None
+
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
     stages_failed:    list[str] = field(default_factory=list)
@@ -405,6 +420,10 @@ STAGE_WORDS = {
                              "passed; a verify that did not pass holds it for a person"),
     "save_golden": ("Record golden", "the golden recorded from what was sent"),
     "audit_log": ("Audit", "the receipt written"),
+    # Not a stage of the table: the checks a run declares between stage 5 and the send
+    # (`PipelineContext.pre_apply`, C3757), named by these words when they refuse.
+    "pre_apply": ("Pre-apply checks", "the checks the run declares before the send (a command "
+                                      "plan's preconditions, read again holding the device)"),
 }
 #: The stepper's declared steps (`device_actions.stepper`): ``(key, words, waits, names)``;
 #: verify answers to either name it is noted under, its waits chosen by the one noted.
@@ -482,6 +501,17 @@ class PipelineRunner:
             for idx, handler in enumerate(_handlers):
                 name, on_failure = _STAGE_TABLE[idx]
                 self._assert_order(idx)
+                if name == "deploy" and self.ctx.pre_apply:
+                    # The pre-apply checks (C3757): the last word before the send; a refusal
+                    # stops the run with nothing sent (`receipts.stages_before_send`).
+                    device_ops.note(PRE_APPLY)
+                    refused = _pre_apply(self.ctx)
+                    if refused:
+                        self.ctx.stages_failed.append(PRE_APPLY)
+                        self.ctx.error = refused
+                        self.ctx.final_status = "failed"
+                        log.error("pipeline: pre-apply refused, nothing sent: %s", refused)
+                        break
                 device_ops.note(_verify_note(self.ctx) if name == "verify" else name)
                 try:
                     handler(self.ctx)
@@ -540,6 +570,24 @@ class PipelineRunner:
                 f"Stage '{got_name}' (#{expected_idx + 1}/{len(STAGE_NAMES)}) invoked out of order; "
                 f"'{expected_name}' (#{self._next_expected + 1}/{len(STAGE_NAMES)}) must run first."
             )
+
+
+#: The pre-apply checks' place in the record (C3757): after stage 5, before the send.
+PRE_APPLY = "pre_apply"
+
+
+def _pre_apply(ctx: PipelineContext) -> str:
+    """Each of :attr:`PipelineContext.pre_apply` in order: the first why, or ``""``. A check
+    that raises refuses too, naming it (a check that cannot answer never passes)."""
+    for hook in ctx.pre_apply or ():
+        try:
+            why = hook(ctx)
+        except Exception as exc:                      # noqa: BLE001 (refused, said)
+            log.exception("pipeline: a pre-apply check raised")
+            why = f"a pre-apply check could not answer ({_why(exc)}): nothing was sent"
+        if why:
+            return str(why)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1991,6 +2039,10 @@ def _stage_verify(ctx: PipelineContext) -> None:
         post_cfg = post.get("running_config") or ""
         if not sent:
             pass                                    # nothing sent: nothing to read back
+        elif ctx.transient:
+            # A transient plan's lines leave no line (C3757): its net-zero check, in the
+            # plan's verify below, is what reads the configuration after it.
+            pass
         elif not post_cfg:
             cant_read.append("new lines: `show running-config`: "
                              + (post.get("running_config_error") or "nothing was read"))
@@ -2027,6 +2079,20 @@ def _stage_verify(ctx: PipelineContext) -> None:
                     issues.append(f"IP SLA: the device shows `{line}`, which its intent does "
                                   "not have")
 
+        # ── A command plan's own verify (C3757): its reads and its net-zero check, after
+        # the pipeline's own; not waited out over a hard failure already visible (C506).
+        plan_checked = None
+        hook = (ctx.plan_verify or {}).get(ip)
+        if hook is not None and not hard:
+            try:
+                plan_checked = hook(ctx, ip, pre, post) or {}
+            except Exception as exc:                  # noqa: BLE001 (neither pass nor fail)
+                log.exception("pipeline[8/verify]: %s: the plan's verify raised", hostname)
+                plan_checked = {"unreadable": [f"the plan's verify could not answer "
+                                               f"({_why(exc)})"]}
+            issues += list(plan_checked.get("issues") or [])
+            cant_read += list(plan_checked.get("unreadable") or [])
+
         ctx.verify_result[ip] = {
             "ok":     (not issues and not unmet and not cant_read
                        and not (read_back or {}).get("missing")),
@@ -2038,6 +2104,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # C713: the IP SLA operations against rendered intent, both ways; None when this
             # deploy sends no IP SLA line in a scope that checks it.
             "ip_sla_against_intent": ip_sla_differs,
+            # C3757: a command plan's verify reads and its net-zero check; None for any other.
+            "plan_checks": plan_checked,
             # Read after the change and not trustworthy (C272): verify did not
             # pass, did not fail on them, and rolled nothing back for them.
             "unreadable": cant_read,
@@ -2550,6 +2618,10 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
         # The paired deploy saves both ends together once the link verifies (`save_held`).
         log.info("pipeline[save_startup]: held for the link's verify (the paired deploy)")
         return
+    if ctx.transient:
+        # A transient plan (C3757) is net zero, verified line for line: nothing to save.
+        log.info("pipeline[save_startup]: a transient plan is never saved")
+        return
     # Sequential: one device per run (`routes/deploy.py` `_deploy_one`), and the batch above
     # it is sequential for its circuit breaker.
     for dev in ctx.selected_devices:
@@ -2662,6 +2734,10 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
     from modules.nsot import manifest as _manifest
     from modules.nsot.repo import GoldenItem, save_golden, stage_post_deploy
 
+    if ctx.transient:
+        # A transient plan (C3757) leaves the configuration as it was: no new golden.
+        ctx.golden_result = {"ok": True, "commit": "", "changed": [], "transient": True}
+        return
     repo = _os.path.join(get_list_data_dir(_list_of(ctx)), "config_repo")
     rolled_back = set(ctx.rolled_back_ips or [])
     failed_ips = {f.get("ip") for f in (ctx.deploy_failures or [])

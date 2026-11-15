@@ -1,0 +1,2 @@
+%PORT_SECURITY-2-PSECURE_VIOLATION: Security violation occurred, caused by MAC address aabb.cc00.8099 on port GigabitEthernet0/3.
+%PM-4-ERR_DISABLE: psecure-violation error detected on Gi0/3, putting Gi0/3 in err-disable state

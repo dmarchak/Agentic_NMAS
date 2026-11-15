@@ -47,10 +47,32 @@ def start(network: str, incident_id: str, actor: str, work, *, label: str = "",
     (C3161)."""
     from modules.nsot import capture_job
 
-    return capture_job.start(network, label or f"AI troubleshooting {incident_id}", actor,
-                             work, kind=KIND, announce_keys=ANNOUNCE_KEYS,
-                             announcer=ANNOUNCER, page=page_of(network, incident_id),
-                             actor_kind=actor_kind)
+    job = capture_job.start(network, label or f"AI troubleshooting {incident_id}", actor,
+                            work, kind=KIND, announce_keys=ANNOUNCE_KEYS,
+                            announcer=ANNOUNCER, page=page_of(network, incident_id),
+                            actor_kind=actor_kind)
+    _announce_start()
+    return job
+
+
+#: What an investigation's start announces (Gate 2, the operator, 2026-11-15: Incidents' rows
+#: and Needs attention's say "AI investigating" while it runs, live): the incident pages' key,
+#: so they read the start line its caller has already taken. Its end is the job's own.
+START_KEYS = ("drift",)
+
+
+def _announce_start() -> None:
+    """Tell open pages an investigation started. Never raised: with no emitter (a script, a
+    test) there is nobody to tell; any other failure is logged, and the next announcement or
+    page load draws it."""
+    from modules import invalidation
+
+    try:
+        invalidation.announce(START_KEYS, by=ANNOUNCER, ok=True)
+    except RuntimeError:
+        pass
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("an AI investigation's start was not announced: %s", exc)
 
 
 def record_failure(incident, key: str, words: str, *, trigger: str, by: str = "",

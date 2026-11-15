@@ -793,6 +793,130 @@ class TestNothingHereStartsAnything:
             RELAY_CALLERS
 
 
+# ── No AI module reaches a device session, transport or credential (C3757's invariant) ─────
+#
+# The operator, 2026-11-15: "the AI never interacts with devices, no session, transport or
+# credential; it may produce commands, but anything reaching a device goes through Mercury's
+# code". The same reference scan as the fix-it package's (`program`, `references`, `starting`),
+# over every module under modules/ai/: no definition there reaches a device-changing send (the
+# device effects' homes), a session, the device hold or a credential resolver, except through
+# one of Mercury's declared ways in, each a definition that stops the scan there.
+
+#: What the AI never reaches by itself: every device effect's home (`effect_homes`), and these.
+AI_REACHES_NOTHING_OF = (
+    ("modules.connection", "open_ssh"),               # a device session (its one opener)
+    ("modules.nsot.device_ops", "hold"),              # the device hold an apply takes
+    ("modules.credentials", "resolve"),               # a device's sign-in credential
+    ("modules.credentials", "resolve_read"),          # the read-only account's
+    ("modules.credentials", "get_template_secret"),   # a stored secret's value
+    ("modules.credentials", "device_credential_values"),
+    # A plan's run: it applies each step through its kind's declared apply, looked up at run
+    # time (`STEP_KINDS`), which a reference scan cannot follow; so the run itself is held.
+    ("modules.plan_engine", "run"))
+#: Mercury's declared ways in: each reached from an AI module is Mercury's own code, held to
+#: its own gates, and the scan stops there. Each says why it may hold what it holds.
+AI_WAYS_IN = {
+    ("modules.nsot.reads", "run"): "the read engine: the allowlist decides the whole command, "
+                                   "as Mercury's account, its output masked (C3757 (1))",
+    ("modules.nsot.reads", "read_account_for"): "the read engine's own choice of the account a "
+                                                "read signs in with; it hands no value out",
+    ("modules.plan_engine", "start"): "the approved plan's start: a verified person's Approve "
+                                      "by the plan's hash (person_refusal), never the AI's",
+    ("modules.redact", "known_secret_values"): "the mask: it reads stored values only to take "
+                                               "them out of what leaves Mercury",
+    ("modules.nsot.hostvars", "hydrate_secrets"): "intent's render: values in memory for the "
+                                                  "render, its output masked "
+                                                  "(rendered_masked)",
+    ("modules.nsot.hostvars", "assert_no_secret_values"): "the secret guard: it compares a "
+                                                          "document with stored values to "
+                                                          "refuse one holding them",
+    # Read 2026-11-15: `resubscribe.plan` with ``collector`` reads the inventory and committed
+    # intent (`Sources.device`, `Sources.intents`) and, in `_close_plan`, Mercury's HOST only:
+    # the collector's sockets (`Sources.collector` -> `diagnose_stream.read_collector`, /proc
+    # and `ss` on this host) and the close helper's dry run (`Sources.close` ->
+    # `collector_close.request`, sudo on this host). It opens no device session: the scan
+    # reaches `open_ssh` only because `Sources` is one class definition, and its `opener` is
+    # the apply's, never `plan`'s.
+    ("modules.plan_engine", "read_sessions"): "the proposal's preflight read of a collector "
+                                              "session (the operator, 2026-11-15, C3725): "
+                                              "Mercury's host only, never the device "
+                                              "(resubscribe._close_plan), closing nothing",
+}
+
+
+def ai_reaching(planted: str = "", ways_in=None) -> list:
+    """The definitions of modules/ai/ that reach a device effect, a session, the device hold
+    or a credential resolver other than through `AI_WAYS_IN`; with *planted*, a module's text,
+    as if modules/ai/planted.py held it."""
+    got = program()
+    refs = dict(got["refs"])
+    if planted:
+        one = {"modules/ai/planted.py": planted}
+        refs.update(references(one, module_names(dict(got["sources"], **one))))
+    stops = set(AI_WAYS_IN if ways_in is None else ways_in)
+    cut = {k: v for k, v in refs.items() if k not in stops}
+    reached = starting(cut, set(got["homes"]) | set(AI_REACHES_NOTHING_OF))
+    return sorted(k for k in reached if k[0].startswith("modules.ai"))
+
+
+AI_PLANTED = {
+    "a session": ("from modules import connection\n\n"
+                  "def fix(i):\n    return connection.open_ssh({})\n"),
+    "the device hold": ("from modules.nsot import device_ops\n\n"
+                        "def fix(i):\n"
+                        "    with device_ops.hold(i.network, i.device, 'x', 'y'):\n"
+                        "        pass\n"),
+    "a credential": ("def fix(i):\n    from modules import credentials\n"
+                     "    return credentials.resolve(i.address)\n"),
+    "an operation's apply": ("from modules.heal import resubscribe\n\n"
+                             "def fix(i):\n"
+                             "    return resubscribe.apply(i.network, i.device, [])\n"),
+    "the plan engine's run, not its start": ("from modules import plan_engine\n\n"
+                                             "def fix(i):\n"
+                                             "    return plan_engine.run(i.network, 'p', {}, "
+                                             "'h', actor='a', actor_verified='', "
+                                             "person=False, reason='')\n"),
+    "the deploy's apply": ("def fix(i):\n    from routes.deploy import apply_batch\n"
+                           "    return apply_batch(i.network, {}, {}, actor='a', "
+                           "actor_kind='')\n"),
+    "through its own helper": ("from modules import connection\n\n"
+                               "def _go(i):\n    return connection.open_ssh({})\n\n"
+                               "def fix(i):\n    return _go(i)\n"),
+}
+
+
+class TestNoAIModuleReachesADevice:
+    def test_the_scans_population_and_seeds_are_there(self):
+        sources, refs = program()["sources"], program()["refs"]
+        ai = [rel for rel in sources if rel.startswith("modules/ai/")]
+        assert len(ai) >= 40, len(ai)
+        assert len([k for k in refs if k[0].startswith("modules.ai")]) >= 600
+        assert all(s in refs for s in AI_REACHES_NOTHING_OF), [
+            s for s in AI_REACHES_NOTHING_OF if s not in refs]
+        assert all(w in refs for w in AI_WAYS_IN), [w for w in AI_WAYS_IN if w not in refs]
+        # Without the ways in, AI modules reach the seeds (the scan can find them), and each
+        # way in guards something: it reaches a seed itself, so it is no name that stops
+        # nothing.
+        open_ = ai_reaching(ways_in=())
+        assert len(open_) >= 20, open_
+        seeds = set(program()["homes"]) | set(AI_REACHES_NOTHING_OF)
+        guarding = starting(refs, seeds)
+        assert all(w in guarding for w in AI_WAYS_IN), [w for w in AI_WAYS_IN
+                                                       if w not in guarding]
+
+    def test_no_ai_module_reaches_one_but_through_a_way_in(self):
+        assert ai_reaching() == []
+
+    @pytest.mark.parametrize("how", sorted(AI_PLANTED))
+    def test_a_planted_reach_is_found(self, how):
+        assert ("modules.ai.planted", "fix") in ai_reaching(AI_PLANTED[how])
+
+    def test_a_planted_read_through_the_read_engine_is_not(self):
+        assert ai_reaching("from modules.nsot import reads\n\n"
+                           "def look(i):\n    return reads.run(i.network, i.device, [])\n"
+                           ) == []
+
+
 # ── Hand over and the save choice: the line only ────────────────────────────────────────────
 
 class TestTheOtherChoices:

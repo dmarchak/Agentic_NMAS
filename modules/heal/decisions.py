@@ -74,6 +74,14 @@ def path(network: str) -> str:
     return os.path.join(_dir(network), FILE)
 
 
+def rate_lock_path(network: str) -> str:
+    """The one lock, across processes, a heal decision is recorded under where guard 10 counts
+    heals (Gate 2's review): decide's record step and G6's batch, whose devices are counted
+    again and recorded at once, so no two recorders, in any process, count against the same
+    record."""
+    return path(network) + ".rate.lock"
+
+
 def _append(network: str, row: dict) -> dict:
     from modules import filestore
     from modules.config import open_secure

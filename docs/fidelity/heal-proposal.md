@@ -16,7 +16,11 @@ template and tests/test_heal_proposal_v2.py.
 Templates compared: templates/v2/_heal_proposal.html, templates/v2/_heal_halt.html
 Compared again 2026-11-13 (C3290, the words Python builds): in the proposal's record (`_heal_proposal.html`), Proposed and the reset's measured time are `_macros.clock`'s (date and seconds), in the viewer's kept zone with the UTC instant on hover, where they drew the raw ISO instant; the decision's words and what raised it are drawn through the `times` filter (routes/v2.py). No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `dca9ac32a9dc6ca2f4dbf136852fd08fee86dfdb1e272d68e38b92ad031f5711`.
 Compared again 2026-11-13 (the operator's approved rule, "raw UTC anywhere left"; C3290): `_heal_proposal.html` draws a diagnosis hypothesis's claim and next step, and a step's words, through `times` (routes/v2.py), so an instant in them is `_macros.clock`'s. No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `c19404f2b3284e7a5bbc5faf50656e84875403060b50b136166763757cc414d6`.
-Templates sha256: `10cec229b75fe4112b58389adfb7822c1e6ee8e5275a2ddb0ae720eb3214c103`
+Compared again 2026-11-15 (C3715): the change's person drawn by display name; no element
+moves. Compared by the template's diff (tests/test_actors_drawn_by_name.py); logged once
+(docs/STANDING_APPROVAL_LOG.md, "Records name people by display name on every v2 screen
+(C3715)"). Templates sha256 before: `10cec229b75fe4112b58389adfb7822c1e6ee8e5275a2ddb0ae720eb3214c103`.
+Templates sha256: `e69542e5d251967380be0929d0b9b04eee93ca8c3fe9fd8dd415e367086e9061`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person

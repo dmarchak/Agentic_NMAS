@@ -147,6 +147,61 @@ def switches() -> dict:
             for n, fs in raw.items() if isinstance(fs, dict)}
 
 
+#: Gate 2 (C3769, the operator's minimal design of 2026-11-15): automatic AI troubleshooting's
+#: entry is also the network's AI troubleshooting record (`modules/troubleshoot_control.py`): its own
+#: mode (``mode``, Off or Manual; absent, the installation's), its per-incident cap
+#: (``incident_cap_usd``; absent, the installation's) and the acknowledgement of its limits and
+#: estimate (``limits_ack``), beside the day and month caps it already held. They are kept
+#: across a turn-off and a turn-on, with ``on`` False while it is off (`kept_of`); an entry
+#: holding none of them is removed at turn-off, as before. No second store.
+OWN_FIELDS = ("mode", "incident_cap_usd", "limits_ack")
+KEPT = OWN_FIELDS + ("day_cap_usd", "month_cap_usd", "caps_by", "caps_at")
+
+
+def kept_of(entry) -> dict:
+    """The fields of *entry* a turn-off or a turn-on keeps (`KEPT`): none unless it holds one of
+    the network's own (`OWN_FIELDS`), so a feature turned on before Gate 2 is removed at
+    turn-off as before."""
+    if not isinstance(entry, dict) or not any(k in entry for k in OWN_FIELDS):
+        return {}
+    return {k: entry[k] for k in KEPT if k in entry}
+
+
+def record_of(network: str, feature: str) -> dict:
+    """*feature*'s entry on *network* (its id) as stored, on or off, ``{}`` when there is none:
+    the read of the network's own fields (`OWN_FIELDS`) whatever the switch says."""
+    got = switches().get(network, {}).get(feature)
+    return dict(got) if isinstance(got, dict) else {}
+
+
+def update_record(network: str, feature: str, updates: dict, *, kind: str, actor: str,
+                  verified: str, **extra) -> dict:
+    """Merge *updates* into *feature*'s entry on *network* (an admin's decision), under the
+    settings lock: read, merge and write in one hold, ``on`` False when there was no entry, so
+    nothing here turns a feature on. Recorded as *kind* with *extra* and the fields' values
+    before. ``{"ok", "entry", "before", "recorded", ...}``; raises Refused naming why."""
+    from modules.config import settings_lock
+    from modules.settings_schema import write_settings
+
+    _person(actor)
+    _spec(feature)
+    slug = _network(network)
+    with settings_lock():
+        every = switches()
+        mine = dict(every.get(slug, {}))
+        was = dict(mine.get(feature) or {"on": False})
+        entry = dict(was, **updates)
+        entry["on"] = was.get("on") is True
+        mine[feature] = entry
+        every[slug] = mine
+        out = write_settings({SETTING: every}, actor="")
+    if not out["ok"]:
+        raise Refused(out["error"])
+    before = {k: was.get(k) for k in updates}
+    rec = _record(kind, slug, feature, actor, verified, before=before, **extra)
+    return dict(rec, ok=True, entry=entry, before=before)
+
+
 def approval_ends(entry: dict):
     """When *entry*'s approval ends, as an epoch: its ``at`` plus `APPROVAL_DAYS` days; None
     when ``at`` is not a time Mercury wrote (such an entry is never in force)."""
@@ -453,7 +508,8 @@ def _record(kind: str, network: str, feature: str, actor: str, verified: str, **
 
 
 def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: str,
-            actor: str, verified: str, now=None, catch_up: dict = None) -> dict:
+            actor: str, verified: str, now=None, catch_up: dict = None,
+            limits=None) -> dict:
     """Turn *feature* on for *network* (an admin's decision): the caps checked, the estimate
     recomputed and compared with the *shown* digest (refused, naming both, when it moved),
     then written with who, when and that estimate, and recorded. *catch_up* (``fixit_auto``'s
@@ -470,11 +526,31 @@ def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: st
         raise Refused(f"the estimate moved since it was shown (shown {shown[:12] or 'none'}, "
                       f"now {est['digest'][:12]}): look at it again and accept it; nothing "
                       "was changed")
+    from modules.config import settings_lock
+
     at = _iso(_now())
-    entry = {"on": True, "by": actor, "verified": verified, "at": at, "estimate": est,
-             "day_cap_usd": caps["day"], "month_cap_usd": caps["month"],
-             "caps_by": actor, "caps_at": at}
-    _write(slug, feature, entry)
+    # Gate 2 (C3769): the network's own AI troubleshooting mode and acknowledged limits ride
+    # in the same entry and outlive a turn-on, as they outlive a turn-off (`KEPT`). *limits*
+    # (``(digest, digest_of)``: the acknowledged limits' digest the caller read, and how a
+    # record's limits are digested) is checked against the record as it is under the
+    # settings lock, in the same hold as the write: limits changed between the caller's read
+    # and this write refuse, naming both, with nothing changed (Gate 2's review).
+    with settings_lock():
+        was = switches().get(slug, {}).get(feature)
+        if limits is not None:
+            want, digest_of = limits
+            ack = (was or {}).get("limits_ack") if isinstance(was, dict) else None
+            now_digest = digest_of(was or {})
+            if not isinstance(ack, dict) or ack.get("limits_digest") != want \
+                    or now_digest != want:
+                raise Refused(f"the limits changed since they were read (read {want[:12]}, now "
+                              f"{str(now_digest)[:12]}, acknowledged "
+                              f"{str((ack or {}).get('limits_digest') or 'none')[:12]}): "
+                              "nothing was changed")
+        entry = {**kept_of(was), "on": True, "by": actor, "verified": verified, "at": at,
+                 "estimate": est, "day_cap_usd": caps["day"], "month_cap_usd": caps["month"],
+                 "caps_by": actor, "caps_at": at}
+        _write(slug, feature, entry)
     rec = _record("ai_background_on", slug, feature, actor, verified, estimate=est,
                   day_cap_usd=caps["day"], month_cap_usd=caps["month"],
                   **({"catch_up": dict(catch_up)} if catch_up is not None else {}))
@@ -492,7 +568,10 @@ def turn_off(network: str, feature: str, *, actor: str, verified: str) -> dict:
     was = switches().get(slug, {}).get(feature)
     if not isinstance(was, dict) or was.get("on") is not True:
         return {"ok": True, "nothing": True, "recorded": True}
-    _write(slug, feature, None)
+    # Gate 2 (C3769): a network's own mode and acknowledged limits stay, switched off; an
+    # entry holding neither is removed, as before.
+    kept = kept_of(was)
+    _write(slug, feature, dict(kept, on=False) if kept else None)
     rec = _record("ai_background_off", slug, feature, actor, verified, was_on_by=was.get("by"),
                   was_on_at=was.get("at"))
     log.info("ai background: %s turned %s off for %s", actor, feature, slug)

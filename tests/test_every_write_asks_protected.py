@@ -109,6 +109,12 @@ NOT_A_CONTROLLER = {
     ("modules/plan_engine.py", "kind.apply"): "a plan step's own operation (a DHCP "
                                               "reservation in Kea, an intent commit, Add "
                                               "device's Create), never a controller",
+    # C3757 (path 2): a built-in command plan's declared apply (`catalog.PlanStep.apply`), the
+    # command-plan runner on the deploy pipeline's engine, whose device send is the
+    # pipeline's own push (`pipeline._push_via_netmiko`, CONFIG_TASKS), never a controller.
+    ("modules/plan_engine.py", "step.apply"): "a built-in command plan's declared apply: the "
+                                              "command-plan runner, a device op through the "
+                                              "deploy pipeline, never a controller",
 }
 
 #: The one place an HTTP write may be made in the SDN, app and job code.

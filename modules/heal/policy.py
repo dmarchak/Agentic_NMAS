@@ -581,6 +581,21 @@ def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_v
             "at": confirmation["at"]}
 
 
+def apply_planned(network: str, proposed: dict, *, actor: str, actor_verified: str,
+                  person: bool, reason: str, now: float = None) -> dict:
+    """A change made in one press with no dialog (the control strip's Self-healing toggle and
+    G6's Turn on self-healing and fix all, C3748): planned now and applied under that plan's
+    own fingerprint, so every gate `plan` holds is judged (AUTO only on a network marked lab,
+    its expiry within N8, a Tier 1 kind named) and the change is recorded with who and *reason*
+    exactly as a confirmed one is (`apply`). Its preview is the control itself, which names
+    what it does. Raises `PolicyRefused` naming the gate that failed."""
+    now = _now(now)
+    p = plan(network, proposed, now)
+    return apply(network, proposed, p["fingerprint"], actor=actor,
+                 actor_verified=actor_verified, person=person, reason=reason, now=now,
+                 seen=p["operands"])
+
+
 # ── Turn off: one press, no confirm ─────────────────────────────────────────────────────────
 
 def turn_off(network: str, *, actor: str, actor_verified: str = "", now: float = None) -> dict:

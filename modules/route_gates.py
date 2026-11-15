@@ -139,11 +139,22 @@ GATES = {
     # C2838: re-subscribe a lost telemetry stream (modules/heal/resubscribe.py), from its Needs
     # attention row.
     "resubscribe_v2.confirm": _g(C, "re-subscribes a device's lost telemetry streams: for each subscription ticked, removes its receiver (Mode B, the person's reason in the hash) and adds it back from committed intent, holding the device, bound to each subscription's previewed hash; verified by the device, the stream's series and the collector, recorded", "telemetry_resubscribe"),
-    "resubscribe_v2.readd": _g(C, "adds a telemetry subscription's receiver back from committed intent (Re-add the receiver), holding the device, bound to its previewed hash; verified and recorded", "telemetry_resubscribe"),
+    "resubscribe_v2.readd": _g(C,"adds a telemetry subscription's receiver back from committed intent (Re-add the receiver), holding the device, bound to its previewed hash; verified and recorded", "telemetry_resubscribe"),
     # The operator's R1 (2026-11-14, C3694): an incident's proposal, a plan of catalog
     # operations, approved once by its hash on the incident's page (routes/fixit_v2.py).
+    # G6 (the operator's design, 2026-11-14; routes/control_v2.py, modules/heal/batch.py):
+    # guard 6's batch, one press by a verified person who may change self-healing settings.
+    "control_v2.fix_all": _g(C, "Turn on self-healing and fix all, bound to guard 6's batch's hash as previewed, as a verified person who may change self-healing: self-healing turned on in Auto for the network's default duration through the policy's own write (recorded with who and why), the batch approved by its hash and recorded, guard 6 resolved and the grace dropped for that batch only (guard 10 still counts it), one device first through THE heal act (held, the deploy's nine stages, verified, rolled back on failure, recorded) then the rest at once, each held and verified, starting none after a failure, all as a job; and AI troubleshooting started on each open incident with no fix as the person's press under the incident's cap, the day cap and the calls in flight", "heal_batch"),
     "fixit_v2.approve": _g(C, "approves the plan waiting in one incident by its preflighted hash, as a verified person: the plan engine's incident-fix plan, each catalog operation in order through its own preview (held to the incident's scope and the heal guards), its own apply re-checking its own hash and holding the device, its verify and its record, the first that does not pass stopping it, nothing retried; one approve line in the incident's troubleshooting record", "plan"),
-    "plans_v2.approve": _g(C, "runs a plan of Mercury's operations approved once by its hash (modules/plan_engine.py): each step in order through its own operation's preview, apply, verify and record (a DHCP reservation, an interface description in intent, and Add device's Create for a device by ZTP, which commits its identity and intent and mints its stored one-time credential), the first that does not pass stopping it, nothing retried", "plan"),
+    # Gate 1b (C3696, C3763): saved plans, each through the approval rights' one chokepoint
+    # (`identity.right_refusal`): a script's save and promotion the self-healing right's, an
+    # action's save and a shape's approval the admin's; the AI approves none.
+    "saved_plans_v2.device_run": _g(C, "runs a saved reusable action on one of a device's interfaces, as the verified person, bound to the runner's previewed hash: the command-plan runner as a job, the device held, the preconditions read again, sent, verified, any difference rolled back, recorded (any engineer)", "plan"),
+    "saved_plans_v2.save_script": _g(A,"saves an incident's verified command-plan run as a self-heal script of its network, in Dry run, its match the classified problem's fields and its parameters open (self-healing rights)"),
+    "saved_plans_v2.save_action": _g(A, "saves an incident's verified command-plan run as a reusable action, a catalog entry and a plan step for every network (an admin's)"),
+    "saved_plans_v2.promote": _g(A, "promotes a saved self-heal script from Dry run to Auto, binding its plan's digest (self-healing rights)"),
+    "saved_plans_v2.approve_shape": _g(A, "approves a provisional line shape into Mercury's rule for raw lines (an admin's); its first approved run measures it"),
+    "plans_v2.approve": _g(C,"runs a plan of Mercury's operations approved once by its hash (modules/plan_engine.py): each step in order through its own operation's preview, apply, verify and record (a DHCP reservation, an interface description in intent, and Add device's Create for a device by ZTP, which commits its identity and intent and mints its stored one-time credential), the first that does not pass stopping it, nothing retried", "plan"),
     "resubscribe_v2.close_confirm": _g(C, "closes the collector's one stale session from a device (the root-owned close helper, the session its dry run named in the previewed hash), then re-subscribes the device's lost telemetry streams as Re-subscribe does, holding the device; verified by the device, the stream's series and the collector, recorded with the helper's receipt (C3078)", "telemetry_resubscribe"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
     # PHASE8_PLAN 17.1 S8 and S16 (C1912): the flow-operation core, modules/sdn/flow_ops.py.
@@ -265,6 +276,9 @@ GATES = {
     # send off the host for one network.
     "ai_classes_v2.device_state_on": _g(K, "turns the device state class on for one network (the AI read set's answers may then leave the host, masked), as a verified person with a reason of at least three words; recorded in the network's settings record; sends nothing to a device"),
     "ai_classes_v2.device_state_off": _g(K, "turns the device state class off for one network at once, one press, no confirm; recorded with who and when; sends nothing"),
+    # The control strip's Self-healing toggle (C3748; routes/control_v2.py): one press, no
+    # dialog, as a verified person who may change self-healing settings.
+    "control_v2.heal": _g(K, "the control strip's Self-healing toggle: on turns one network's self-healing to Auto for its default duration (heal_auto_default_hours), off to Dry run, through the heal policy's own write (planned and applied under that plan's fingerprint: AUTO only on a network marked lab, at most 7 days, a Tier 1 kind named), as a verified person, recorded in the network's settings record with who and why; acts on new problems only; sends nothing to a device"),
     "heal_v2.turn_off": _g(K,"turns self-healing off for one network at once, one press, no confirm; recorded with who and when; a heal already applying finishes its own verify and rollback"),
     "heal_v2.notify_save": _g(K, "names the team told about one network's self-healing and the events that tell it (the Self-healing tab's Who is told), refused when the team does not exist or another person changed it since the card drew it; recorded in the network's settings record; sends nothing"),
     "heal_v2.stop_everywhere": _g(K, "stops self-healing on every network at once (the installation's kill switch), one press, no confirm; recorded with who, when and why"),
@@ -396,11 +410,26 @@ GATES = {
     # anyone but a verified person too, whatever configure's settings allow a service.
     "settings_v2.ai_on": _g(K, "turns a background AI feature on for one network, bound to the "
                                "estimate the person was shown and accepted, with its day and "
-                               "month caps; recorded with who, when and the estimate; for "
-                               "automatic AI troubleshooting, each open incident the person "
-                               "ticked started once as its own job, within the caps (C3732)"),
+                               "month caps; recorded with who, when and the estimate; never "
+                               "automatic AI troubleshooting, whose list here is for audit and "
+                               "is refused, nothing changed (C3769: it is turned on by "
+                               "settings_v2.ai_ts_level)"),
     "settings_v2.ai_off": _g(K, "turns a background AI feature off for one network, its next "
                                 "call refused at once; recorded"),
+    # Gate 2 (C3769): a network's ONE AI troubleshooting control and its spending limits. The
+    # routes refuse anyone but a verified person too, whatever configure's settings allow.
+    "settings_v2.ai_ts_level": _g(K, "sets one network's AI troubleshooting to Off, Manual or "
+                                     "Automatic (the Settings card and the control strip's "
+                                     "switch); Automatic refused until the network's spending "
+                                     "limits and their estimate are acknowledged and unchanged "
+                                     "since, and bound to the line of open incidents it also "
+                                     "starts on, each started once as its own job within the "
+                                     "caps; recorded with who and when"),
+    "settings_v2.ai_ts_limits": _g(K, "sets one network's AI troubleshooting spending limits, "
+                                      "per incident, per day and per month, within the "
+                                      "installation's day cap, with the estimate shown beside "
+                                      "them acknowledged by its digest; recorded with both "
+                                      "values"),
     "settings_v2.ai_caps": _g(K, "changes an on background AI feature's day and month caps on "
                                  "one network, within the installation's day cap; recorded with "
                                  "both values"),

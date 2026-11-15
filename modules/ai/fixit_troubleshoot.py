@@ -35,6 +35,17 @@ sent.
   said), cited ``note:1``;
 - the **catalog** the fix may name (`fixit.payload.catalogue_part`), in the cached context.
 
+**Since v7 and v8 (C3755, C3764, 2026-11-15) the answer is a PLAN** (`TroubleshootPlan`): its
+steps in order, each a catalog operation, a built-in command plan (its typed parameters) or the
+plan engine's intent change or deploy (`StepParams`), and an ``improvement`` note beside a
+clumsy plan (the steps and time a shorter route saves, the shorter route's own steps kept as a
+second line beside the first, and each raw-line shape it would need proposed provisional to
+Mercury's rule for raw lines). It comes through the one door's `plan_for_incident`, each step
+held there (`fix_proposal.step_held`: the plan engine's schema, the AI's never-list) and on the
+page's preflight (`fixit.plan.preflight`). The catalogue it is sent is read from the code
+(`fixit.payload.catalogue_part`). What follows is v1 to v6's, kept: ``fix`` is still taken as a
+plan of one.
+
 **The answer's schema** (`Troubleshoot`, shape B plus one fix): a rationale, at most three
 hypotheses each citing what was sent, then ``fix`` (ONE catalog operation with its parameters,
 or null), ``gap`` (what the fix would need that no catalog operation does, or null; never both)
@@ -85,6 +96,8 @@ from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
 from modules.ai.schemas import StrictModel, register
 
+from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
+
 log = logging.getLogger(__name__)
 
 #: The task (`profiles.TASKS`'s pin) and its prompts: v1 the plain pass (no read class on), v4
@@ -109,7 +122,14 @@ PROMPT_READS = (FEATURE, 5)
 #: 7,632 characters of a request over its bound), a cut section said, and the reads as v5 names them. v3 stays
 #: as it shipped; both answer by v3's schema (`TroubleshootSecond`).
 PROMPT_SECOND_V3 = (FEATURE, 3)
-PROMPT_SECOND = (FEATURE, 6)
+PROMPT_SECOND_V6 = (FEATURE, 6)
+#: v7 and v8 (C3755, C3764, 2026-11-15): the answer a plan of Mercury's steps (catalog
+#: operations, built-in command plans, intent changes and deploys) with an improvement note; v7
+#: the plain pass and the second, v8 the reads pass. v1, v5 and v6 stay as they shipped, with
+#: their schemas, so a call recorded under them stays readable; none is asked now.
+PROMPT_PLAN = (FEATURE, 7)
+PROMPT_PLAN_READS = (FEATURE, 8)
+PROMPT_SECOND = PROMPT_PLAN
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
 PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "observed", "health",
                  "observer", "logs", "tried", "diagnosis")
@@ -217,8 +237,83 @@ class TroubleshootEngineerReads(Troubleshoot):
     reads: list[EngineerReadAsk] = []
 
 
+class StepParams(StrictModel):
+    """A plan step's parameters (C3755, C3764): every parameter some step kind the plan may name
+    takes, the ones the named kind does not take null (`plan_step_kinds`; `as_door` keeps only
+    those given): a catalog operation's device and subscriptions, a built-in command plan's
+    typed ones (an interface, a cause), an intent change's patch as its YAML text, a deploy's
+    removals by their ids."""
+    device: str
+    subscriptions: Optional[list[str]]
+    subscription: Optional[str]
+    interface: Optional[str]
+    cause: Optional[str]
+    changes: Optional[str]
+    remove: Optional[list[str]]
+
+
+class PlanStepAnswer(StrictModel):
+    """One step of the answer's plan: a step kind Mercury has, with its parameters, why and
+    what it rests on."""
+    operation: str
+    params: StepParams
+    why: str
+    evidence_refs: list[str]
+
+
+class ShapeAsk(StrictModel):
+    """A raw configuration line a shorter command plan would need that Mercury has not measured,
+    as Mercury writes a shape (`command_policy.shapes`): proposed to Mercury's rule for raw lines,
+    held provisional until an admin approves it."""
+    dialect: str
+    shape: str
+    why: str
+
+
+class Improvement(StrictModel):
+    """Beside a plan that works but is clumsy: what a shorter route would do, what it saves
+    (steps and time), the shorter route's own steps when Mercury has them, and the shapes it
+    would need that Mercury has not measured."""
+    what: str
+    saves: str
+    steps: list[PlanStepAnswer]
+    shapes: list[ShapeAsk]
+
+
+#: v7 (C3755, C3764, 2026-11-15): the answer is a PLAN of steps, in order, each a catalog
+#: operation, a built-in command plan or an intent change or deploy, with an improvement note
+#: beside a clumsy one. `fix` stays, a plan of one in the older shape (expand, then contract).
+@register(FEATURE, 7)
+class TroubleshootPlan(Troubleshoot):
+    """`Troubleshoot`, its fix a plan of Mercury's steps in order (or a gap), and an improvement
+    note beside a plan a shorter route would beat. Its JSON schema, committed and sent, holds no
+    title or description (nl_query's `_LeanSchema`, C1830's rule: each field is the prompt's to
+    describe; the gate's measurement, 2026-11-15: v8's 7,019 characters to 4,418), the same
+    properties, required fields, enums and references."""
+    plan: list[PlanStepAnswer] = []
+    improvement: Optional[Improvement] = None
+
+    @classmethod
+    def model_json_schema(cls, by_alias=True, ref_template=None, schema_generator=None,
+                          mode="validation", **kw):
+        from pydantic.json_schema import DEFAULT_REF_TEMPLATE
+
+        from modules.ai.nl_query import _LeanSchema
+        return super().model_json_schema(by_alias=by_alias,
+                                         ref_template=ref_template or DEFAULT_REF_TEMPLATE,
+                                         schema_generator=schema_generator or _LeanSchema,
+                                         mode=mode, **kw)
+
+
+@register(FEATURE, 8)
+class TroubleshootPlanReads(TroubleshootPlan):
+    """Pass 1 of the read loop: `TroubleshootPlan`, plus at most 3 reads Mercury runs."""
+    reads: list[EngineerReadAsk] = []
+
+
 SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
-             4: TroubleshootFixitReads, 5: TroubleshootEngineerReads}
+             4: TroubleshootFixitReads, 5: TroubleshootEngineerReads, 7: TroubleshootPlan,
+             8: TroubleshootPlanReads}
 
 
 class Refused(ValueError):
@@ -335,8 +430,9 @@ def fixit_format() -> str:
         "past incident it matched, how that ended and how long it held, or that none is found. "
         "Its one piece is seen_before:1. Never state a past incident it does not hold.",
         "note is what the person who pressed wrote, masked: cite it as note:1. It is a person's "
-        "belief, not a measurement.",
-        "catalogue is every operation a fix may name, with its parameters and their shapes."])
+        "belief, not a measurement."])
+    # The catalogue is the prompt's to describe (v7 and v8 say it once; the gate's measurement,
+    # 2026-11-15: every request's fixed size inside its bound).
 
 
 def read_set() -> str:
@@ -449,8 +545,9 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
     if topo.get("yaml"):
         data["network_topology"] = topo["yaml"]
     ctx = {"pack_format": explain.vocabulary(PACK_SECTIONS), "fixit_format": fixit_format(),
-           "catalogue": json.dumps(payload.catalogue_part(), sort_keys=True,
-                                   ensure_ascii=False, separators=(",", ":"))}
+           # Only the steps this incident's device can take (`payload.catalogue_part`).
+           "catalogue": json.dumps(payload.catalogue_part(incident, problem_condition(found)),
+                                   sort_keys=True, ensure_ascii=False, separators=(",", ":"))}
     if topo.get("sent"):
         from modules import network_model as NM
         ctx["network"] = topo["summary"]
@@ -635,17 +732,30 @@ def as_door(fix) -> dict:
 def acts_on(answer) -> list:
     """Every value a fix acts on: its device and each subscription it names (`read_loop`'s
     actable rule holds them to the incident's own)."""
+    out = []
+    for step in _steps_of(answer, improvement=True):
+        p = step.params
+        out += [p.device, *(p.subscriptions or []),
+                *([p.subscription] if p.subscription else [])]
+    return out
+
+
+def _steps_of(answer, *, improvement: bool = False) -> list:
+    """The answer's fix as its steps: its plan's (v7), or its one fix as a plan of one; with
+    *improvement*, the improvement's shorter route's steps too."""
     fix = getattr(answer, "fix", None)
-    if fix is None:
-        return []
-    p = fix.params
-    return [p.device, *(p.subscriptions or []), *([p.subscription] if p.subscription else [])]
+    steps = list(getattr(answer, "plan", None) or []) or ([fix] if fix is not None else [])
+    imp = getattr(answer, "improvement", None)
+    if improvement and imp is not None:
+        steps += list(imp.steps)
+    return steps
 
 
 def cites(answer) -> list:
-    """Every reference an answer makes: each hypothesis's, the fix's and the gap's."""
+    """Every reference an answer makes: each hypothesis's, the fix's (each plan step's) and the
+    gap's."""
     out = [r for h in getattr(answer, "hypotheses", None) or [] for r in h.evidence_refs]
-    for part in (getattr(answer, "fix", None), getattr(answer, "gap", None)):
+    for part in _steps_of(answer, improvement=True) + [getattr(answer, "gap", None)]:
         if part is not None:
             out += list(part.evidence_refs)
     return out
@@ -661,11 +771,91 @@ def _unresolved(refs, sections) -> str:
     return ""
 
 
-def check(answer, pack: dict, sections: list, topo: dict) -> str:
+# ── Unverified citations (the operator, 2026-11-15) ─────────────────────────────────────────
+#
+# "Never discard a whole answer for a bad citation: mark that claim 'unverified (cites X, not
+# in the evidence)' and still show the rest. Then retry once automatically, telling the AI which
+# citation failed, within the incident cap." A citation that resolves to nothing sent is no
+# reason to refuse the answer (`check`'s *unverified*): each hypothesis, the fix, the gap and
+# each step resting on one is kept, marked in words naming it (`unverified_words`), and the
+# investigation asks once more, naming them (`RETRY_PART`), when the incident's cap leaves room
+# for one more call; a step resting ONLY on unverified citations is never approvable (the
+# page's preflight, `fixit.plan.preflight`, refuses it by the kept marks).
+
+#: The part a retry adds, naming the citations Mercury's check could not find (Mercury's own
+#: words, a fact about the answer, never an instruction: the prompt says what data is).
+RETRY_PART = "citation_check"
+
+
+def _listed(refs) -> str:
+    refs = list(refs)
+    return refs[0] if len(refs) == 1 else ", ".join(refs[:-1]) + " and " + refs[-1]
+
+
+def unverified_words(refs) -> str:
+    """How a claim, a hypothesis or a step resting on *refs* (citations not in what was sent)
+    is marked: ``unverified (cites history:3, not in the evidence)``."""
+    return f"unverified (cites {_listed(refs)}, not in the evidence)"
+
+
+def _parts(answer) -> list:
+    """``[(name, part)]``: the answer's fix, gap, plan steps and improvement steps by the names
+    `check` gives them (a part None left out)."""
+    plan = list(getattr(answer, "plan", None) or [])
+    imp = getattr(answer, "improvement", None)
+    out = [("fix", getattr(answer, "fix", None)), ("gap", getattr(answer, "gap", None))]
+    out += [(f"plan's step {n}", s) for n, s in enumerate(plan, 1)]
+    out += [(f"improvement's step {n}", s) for n, s in enumerate((imp.steps if imp else []), 1)]
+    return [(name, p) for name, p in out if p is not None]
+
+
+def unverified(answer, sections: list, topo: dict) -> dict:
+    """``{part: [citation, ...]}``: each citation of *answer* that resolves to nothing sent
+    (*sections*, this incident's own and the reads that ran among them) nor to the topology
+    sent, by the part citing it (``hypothesis <i>``, ``fix``, ``gap``, ``plan's step <n>``,
+    ``improvement's step <n>``); ``{}`` when every one resolves. A hypothesis's citations are
+    read as Explain's check reads them (`explain.normalised`)."""
+    from modules import evidence_pack as EP
+    from modules.ai import explain
+
+    ids = set(topo["ids"] if topo.get("sent") else ())
+    sent = {"sections": list(sections)}
+    normal, _written = explain.normalised(answer, sent, tuple(ids))
+
+    def bad(refs):
+        return [r for r in dict.fromkeys(refs) if EP.resolve(sent, r) is None and r not in ids]
+
+    out = {}
+    for i, h in enumerate(normal.hypotheses, 1):
+        if bad(h.evidence_refs):
+            out[f"hypothesis {i}"] = bad(h.evidence_refs)
+    for name, part in _parts(answer):
+        if bad(part.evidence_refs):
+            out[name] = bad(part.evidence_refs)
+    return out
+
+
+def _flat(marks: dict) -> list:
+    return sorted({r for refs in (marks or {}).values() for r in refs})
+
+
+def retry_words(marks: dict) -> str:
+    """What a retry tells the model (`RETRY_PART`): Mercury's check of its previous answer,
+    each citation it could not find and the part that made it."""
+    each = "; ".join(f"{part} cites {_listed(refs)}" for part, refs in marks.items())
+    return ("Mercury's check of the previous answer to this request: these references it cited "
+            f"are not in what was sent, so what rests on them was marked unverified: {each}. "
+            "The references sent are the pack's, this incident's own sections', the note's and "
+            "the reads' that ran, exactly as written in them.")
+
+
+def check(answer, pack: dict, sections: list, topo: dict, unverified=()) -> str:
     """"" when *answer* stands against what was sent (*sections*, this incident's own among
     them), else why not, the first that does not (the module's docstring): Explain's check of
     the hypotheses; a fix and a gap not both; the fix's and the gap's references resolved; the
-    fix held to the catalog's schema. The actable rule is the read loop's (`acts_on`)."""
+    fix held to the catalog's schema. The actable rule is the read loop's (`acts_on`). A
+    citation in *unverified* (`unverified`'s, marked by the caller) is no reason to refuse."""
+    unv = set(unverified or ())
     # Explain's validation of an answer against what was sent (no call to the model), named
     # apart from the gateway's own entries, which tests/test_ai_triggers.py reads by name.
     from modules.ai.explain import check as explain_answer_check
@@ -681,32 +871,51 @@ def check(answer, pack: dict, sections: list, topo: dict) -> str:
     added = explain.mercury_cites(normal, sent, explain.sent_names(names, ids),
                                   pack.get("device") or "")
     why = explain_answer_check(normal, pack, ids, sections=sections, names=names,
-                               added=[a["ref"] for a in added])
+                               added=[a["ref"] for a in added], unverified=unv)
     if why:
         return why
     if len(answer.hypotheses) > MAX_HYPOTHESES:
         return f"{len(answer.hypotheses)} hypotheses; at most {MAX_HYPOTHESES} are taken"
+    plan = list(getattr(answer, "plan", None) or [])
+    imp = getattr(answer, "improvement", None)
     if answer.outcome.value == "refuse":
-        if answer.fix is not None or answer.gap is not None:
+        if answer.fix is not None or answer.gap is not None or plan or imp is not None:
             return "the answer says the evidence cannot say, and still names a fix or a gap"
         return ""
     if answer.fix is not None and answer.gap is not None:
         return ("the answer names both a fix and a gap: a fix is one catalog operation, and a "
                 "gap is what no catalog operation does, never both")
-    for name, part in (("fix", answer.fix), ("gap", answer.gap)):
+    if plan and (answer.fix is not None or answer.gap is not None):
+        return ("the answer names a plan and also a " + ("fix" if answer.fix is not None
+                                                         else "gap")
+                + ": a plan is the fix, and a gap is what nothing within Mercury's policy can "
+                  "do, never both")
+    if imp is not None and not plan:
+        return ("the answer gives an improvement note and no plan: an improvement is beside a "
+                "plan that works")
+    parts = [("fix", answer.fix), ("gap", answer.gap)] + [
+        (f"plan's step {n}", s) for n, s in enumerate(plan, 1)] + [
+        (f"improvement's step {n}", s) for n, s in enumerate((imp.steps if imp else []), 1)]
+    for name, part in parts:
         if part is None:
             continue
         if not part.evidence_refs:
             return f"the {name} cites nothing that was sent"
-        ref = _unresolved(part.evidence_refs, sections)
+        ref = _unresolved([r for r in part.evidence_refs if r not in unv], sections)
         if ref and ref not in set(ids or ()):
             return f"the {name} cites {ref[:40]!r}, which is not in what was sent"
-    if answer.fix is not None:
-        from modules.ai import fix_proposal
+    from modules.ai import fix_proposal
 
+    if answer.fix is not None:
         why = fix_proposal.held(as_door(answer.fix))
         if why:
             return f"the fix is not one catalog operation with its parameters: {why}"
+    for name, part in parts[2:]:
+        why = fix_proposal.step_held(as_door(part))
+        if why:
+            return f"the {name} is not one of Mercury's steps with its parameters: {why}"
+    if len(plan) > fix_proposal.most_steps():
+        return f"the plan has {len(plan)} steps; at most {fix_proposal.most_steps()} are taken"
     return ""
 
 
@@ -718,15 +927,35 @@ def _scope(network: str, incident, actor: str, collector=None, series=None) -> d
     return FR.scope_for(network, incident, actor=actor, collector=collector, series=series)
 
 
-def record_missing(got: dict, incident, network: str) -> dict:
+def problem_condition(found) -> str:
+    """The incident's problem condition (`problem.classify`), or ``""`` when it cannot be
+    told: what a gap wanted, so it restarts once a step that fixes it exists (C3733)."""
+    from modules import problem
+
+    try:
+        return str(problem.classify(found).condition or "") if found else ""
+    except Exception as exc:                          # noqa: BLE001 (no condition, said)
+        log.info("fixit troubleshoot: the problem could not be classified: %s", exc)
+        return ""
+
+
+def record_missing(got: dict, incident, network: str, found=None, overlooked=()) -> dict:
     """What the investigation wanted that Mercury lacks, recorded for review (C3663,
-    `modules/ai/missing.py`): each read it asked for that Mercury lacks, and its gap. Never
-    acted on; a store that cannot be written is logged and the answer stands."""
+    `modules/ai/missing.py`): each read it asked for that Mercury lacks, and its gap, with its
+    incident's problem condition (*found*'s) so the gap restarts once a step that fixes it
+    exists (C3733), and, when Mercury has steps for that problem not yet tried in it
+    (*overlooked*, `overlooked_steps`), those steps on the gap's row (``overlooked``), so a
+    reviewer reads it as a plan the AI did not compose, not a capability Mercury lacks. A store
+    that cannot be written is logged and the answer stands."""
     from modules.ai import missing
 
     try:
         rows = missing.wanted(got.get("answer"), got.get("reads") or [], feature=FEATURE,
-                              network=network, about=("incident", incident.id))
+                              network=network, about=("incident", incident.id),
+                              condition=problem_condition(found))
+        if overlooked:
+            rows = [dict(r, overlooked=list(overlooked)) if r.get("kind") ==
+                    missing.KIND_OPERATION else r for r in rows]
         return missing.record(rows)
     except Exception as exc:                          # noqa: BLE001 (the answer stands)
         log.error("fixit troubleshoot: %s's missing capabilities were not recorded: %s",
@@ -751,20 +980,57 @@ def _cut(text) -> str:
     return text if len(text) <= SHOWN_CHARS else text[:SHOWN_CHARS - 1] + "…"
 
 
-def shown(answer, said: dict = None, pass_: int = 1, fit=()) -> dict:
-    """What the section draws of a checked answer: the rationale, each hypothesis's claim and
-    what it cites, the fix's why or the gap's what, and what the reads did. Kept with the
-    proposal line (masked at rest)."""
+def _marked(refs, marks_of_part) -> dict:
+    """A part's citations and its unverified mark (`unverified_words`): ``{"cites",
+    "unverified_words", "only_unverified"}``, the last True when every citation it makes is
+    unverified."""
+    cited = list(dict.fromkeys(refs))
+    bad = [r for r in cited if r in set(marks_of_part or ())]
+    return {"cites": cited[:8], "unverified_words": unverified_words(bad) if bad else "",
+            "only_unverified": bool(cited) and len(bad) == len(cited)}
+
+
+def shown(answer, said: dict = None, pass_: int = 1, fit=(), marks: dict = None,
+          retry: dict = None) -> dict:
+    """What the section draws of a checked answer: the rationale, each hypothesis's claim, what
+    it cites and its next step (its confirming read), each step of the fix with its why and
+    what it cites, the gap's what, and what the reads did; each part resting on a citation not
+    in what was sent marked in words naming it (*marks*, `unverified`), and what the retry did
+    (*retry*, ``{"asked", "words"}``). Kept with the proposal line (masked at rest)."""
+    marks = dict(marks or {})
+    hyps = []
+    for i, h in enumerate(answer.hypotheses[:MAX_HYPOTHESES], 1):
+        m = _marked(h.evidence_refs, marks.get(f"hypothesis {i}"))
+        hyps.append({"claim": _cut(h.claim), "cites": list(h.evidence_refs)[:8],
+                     "unverified_words": m["unverified_words"],
+                     "confirm": _cut(h.confirm_with)})
     out = {"rationale": _cut(answer.rationale), "needs_human": bool(answer.needs_human),
-           "hypotheses": [{"claim": _cut(h.claim), "cites": list(h.evidence_refs)[:8]}
-                          for h in answer.hypotheses[:MAX_HYPOTHESES]],
-           "passes": pass_}
+           "hypotheses": hyps, "passes": pass_}
+    plan = list(getattr(answer, "plan", None) or [])
+    # The fix's steps, each with its why, its citations and its mark: the page's preflight
+    # refuses a step resting only on unverified citations by these (`fixit.plan.preflight`).
+    named = ([(f"plan's step {n}", s) for n, s in enumerate(plan, 1)] if plan else
+             [("fix", answer.fix)] if answer.fix is not None else [])
+    if named:
+        out["steps"] = [dict(_marked(s.evidence_refs, marks.get(name)), n=n,
+                             operation=s.operation, why=_cut(s.why))
+                        for n, (name, s) in enumerate(named, 1)]
+    if retry:
+        out["retry"] = {"asked": bool(retry.get("asked")), "words": _cut(retry.get("words"))}
     if answer.fix is not None:
         out["why"] = _cut(answer.fix.why)
         out["cites"] = list(answer.fix.evidence_refs)[:8]
+    if plan:
+        out["why"] = _cut("; ".join(s.why for s in plan))
+        out["cites"] = list(dict.fromkeys(r for s in plan for r in s.evidence_refs))[:8]
+    imp = getattr(answer, "improvement", None)
+    if imp is not None:
+        out["improvement"] = {"what": _cut(imp.what), "saves": _cut(imp.saves)}
     if answer.gap is not None:
         out["gap"] = _cut(answer.gap.what)
         out["cites"] = list(answer.gap.evidence_refs)[:8]
+        out["gap_unverified_words"] = (unverified_words(marks["gap"]) if marks.get("gap")
+                                       else "")
     if said and said.get("asked"):
         out["reads"] = _cut(said.get("words"))
     if fit:
@@ -786,17 +1052,132 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
     three passes' prompts and schemas, the press's own check (with the reads that ran as
     ``mercury_reads``), what an answer cites and acts on. `troubleshoot` and `preview` share
     it."""
+    kept = prep.setdefault("marks", [])
+
     def check_(answer, *, read_ids):
         sections = list(prep["checked_sections"])
         if read_ids:
             sections.append({"ref": READS_SECTION, "name": READS_SECTION, "state": "ok",
                              "pieces": [{"ref": r} for r in read_ids]})
-        return check(answer, prep["pack"], sections, prep["topo"])
+        # A citation not in what was sent is marked, never a reason to refuse the answer
+        # (the operator, 2026-11-15); the marks are kept beside the answer they belong to.
+        marks = unverified(answer, sections, prep["topo"])
+        why = check(answer, prep["pack"], sections, prep["topo"], unverified=_flat(marks))
+        if not why:
+            kept.append((answer, marks))
+        return why
 
-    return RL.LoopFeature(task=FEATURE, first=(PROMPT_READS, TroubleshootEngineerReads),
-                          second=(PROMPT_SECOND, TroubleshootSecond),
-                          plain=(PROMPT, Troubleshoot), check=check_, cites=cites,
+    def cites_(answer):
+        # A read's citation is judged by `check_` too (a read that did not run is a citation
+        # not in what was sent, marked), so the loop's own read-id check does not refuse the
+        # whole answer for it.
+        return [r for r in cites(answer) if not str(r).startswith("read:")]
+
+    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootPlanReads),
+                          second=(PROMPT_PLAN, TroubleshootPlan),
+                          plain=(PROMPT_PLAN, TroubleshootPlan), check=check_, cites=cites_,
                           acts_on=acts_on, first_only=("read_set",))
+
+
+def marks_of(prep: dict, answer) -> dict:
+    """The unverified citations `loop_feature`'s check kept for *answer* (this very answer,
+    by identity), or ``{}``."""
+    return next((m for a, m in reversed(prep.get("marks") or []) if a is answer), {})
+
+
+def retry_once(prep: dict, feature, got: dict, incident, *, ask, network: str, actor: str,
+               trigger: dict, send=None, today: str = None) -> dict:
+    """When the loop's answer (*got*'s, `read_loop.run`'s) cites what was not sent: ask once
+    more, the final pass's request with `RETRY_PART` naming each such citation, if one more
+    call keeps the investigation within its worst case drawn before the press (`worst_usd`)
+    and the incident within its cap (`fixit.policy.cap_state`); the second answer, checked as
+    the loop checks pass 2, replaces the first, marked again if it still cites what was not
+    sent; a second answer not had or refused leaves the first, marked. *got*'s ``answer``,
+    ``call_ids`` and ``cost_usd`` are updated in place. ``{}`` when nothing was marked, else
+    ``{"asked", "accepted", "marks", "words", "call_id"}``, *marks* those of the answer kept."""
+    from modules.ai import profiles
+    from modules.fixit import policy as P
+
+    answer = got.get("answer")
+    marks = marks_of(prep, answer) if answer is not None else {}
+    if got.get("state") not in ("answered", "first_pass") or not marks:
+        return {}
+    out = {"asked": False, "accepted": False, "marks": marks, "words": "", "call_id": ""}
+    spent = round(float(got.get("cost_usd") or 0.0), 6)
+    one = profiles.cap_per_call(FEATURE)
+    worst = worst_usd()
+    if spent + one > worst:
+        out["words"] = (f"not asked again: this investigation has cost {P.money(spent)}, and one "
+                        f"more call costs at most {P.money(one)}, which would pass the "
+                        f"{P.money(worst)} drawn for it before the press")
+        return out
+    cs = P.cap_state(incident, round(spent + one, 6))
+    if cs["state"] != "allowed":
+        out["words"] = "not asked again: " + cs["words"].replace("Retry isn't available: ", "", 1)
+        return out
+    records = got.get("reads") or []
+    ran = [r for r in records if r.get("verdict") == "run"]
+    if ran:
+        prompt, schema, parts, ctx = RL.second_request(feature, prep["data"], prep["ctx"],
+                                                       records)
+    else:
+        prompt, schema, parts, ctx = RL.first_request(feature, prep["data"], prep["ctx"],
+                                                      None, plain=True)
+    parts[RETRY_PART] = retry_words(marks)
+    r = ask(FEATURE, prompt, schema, parts, trigger=trigger, context=ctx or None,
+            actor=actor, subject=prep["subject"], network=network, send=send, today=today)
+    out.update(asked=True, call_id=r.get("call_id") or "")
+    got["call_ids"] = list(got.get("call_ids") or []) + [out["call_id"]]
+    got["cost_usd"] = float(got.get("cost_usd") or 0.0) + float(r.get("cost_usd") or 0.0)
+    if not r.get("ok"):
+        out["words"] = (f"asked once more, naming {_listed(_flat(marks))}, and not answered "
+                        f"({r.get('error')}: {(r.get('detail') or '')[:160]}); the first "
+                        "answer is shown, marked")
+        return out
+    why = RL.second_check(feature, r["output"], records, prep["actable"])
+    if why:
+        out["words"] = (f"asked once more, naming {_listed(_flat(marks))}; Mercury's check "
+                        f"refused the second answer ({why}), so the first is shown, marked")
+        return out
+    again = marks_of(prep, r["output"])
+    got["answer"] = r["output"]
+    out.update(accepted=True, marks=again, words=(
+        f"asked once more, naming {_listed(_flat(marks))}: "
+        + ("every citation of the second answer is in what was sent" if not again else
+           "the second answer still cites what was not sent, and is shown marked")))
+    return out
+
+
+def overlooked_steps(answer, found, incident=None) -> list:
+    """The steps Mercury has for the incident's problem when *answer* reports a gap: each step
+    a proposal may name that fixes its condition (`fix_proposal.capabilities`, by
+    `problem_condition`) and that no attempt in *incident* already ran and failed. A plan of
+    them may exist, so the gap is flagged (C3755: the AI composes a plan before it reports a
+    gap), its missing-capability row marked so; ``[]`` otherwise."""
+    if answer is None or getattr(answer, "gap", None) is None:
+        return []
+    condition = problem_condition(found)
+    if not condition:
+        return []
+    from modules.ai import fix_proposal
+
+    failed = set()
+    if incident is not None:
+        from modules.fixit import incident as F
+        try:
+            failed = {a["operation"] for a in F.attempts(incident)["attempts"]
+                      if not a.get("passed")}
+        except Exception as exc:                      # noqa: BLE001 (none excluded, said)
+            log.info("fixit troubleshoot: %s's attempts could not be read: %s",
+                     getattr(incident, "id", "?"), exc)
+    return sorted(k for k, fixes in fix_proposal.capabilities().items()
+                  if condition in fixes and k not in failed)
+
+
+def overlooked_words(keys) -> str:
+    """Why a gap is flagged: the steps Mercury has for its problem, not yet tried in it."""
+    return (f"Mercury's catalogue has {_listed(keys)} for this incident's problem, not yet "
+            "tried here, so a plan of Mercury's own steps may do it; Ask the AI again for it")
 
 
 def reads_context() -> dict:
@@ -824,12 +1205,15 @@ def _person(actor: str, actor_verified: str, person: bool) -> str:
             ". Nothing was sent")
 
 
+@acts_as_ai("fixit-troubleshoot")
 def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verified: str,
                  person: bool, note: str = "", resolved: float = None, send=None,
                  today: str = None, now: float = None, sources=None, planned=None,
                  seen: dict = None, loki=None, prometheus=None, collector=None,
-                 series=None, trigger: dict = None) -> dict:
+                 series=None, trigger: dict = None, counts_for: dict = None) -> dict:
     """One investigation of *incident* (a `fixit.incident.Incident`, the one *found* resolves),
+    a person's press counting toward a background feature's spend too when *counts_for* names
+    it (``{"feature", "network"}``, C3751: a turn-on catch-up's, `triggers.person`),
     asked by *actor*, a person verified as *actor_verified* (`STEPS`), or, with *trigger*, by
     the background feature ``fixit_auto`` on a failure (`background_trigger`, R1): *actor* is
     then the trigger's job (``job:<id>``), no person is named on its line, and the gateway
@@ -858,7 +1242,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         why = _person(actor, actor_verified, person)                             # person
         if why:
             raise Refused(why, 403)
-    off = P.ai_refusal()                                                         # mode
+    off = P.ai_refusal(network)                                                  # mode
     if off:
         raise Refused(f"Not asked: {off}. Nothing was sent")
     cs = P.cap_state(incident, worst_usd())                                      # cap
@@ -885,14 +1269,22 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     net_id = listref.network_id(network)
     plain = bool(RL.reads_off(FR.FAMILY, net_id))
     scope = None if plain else _scope(network, incident, actor, collector, series)
+    trig = trigger if background else triggers.person(actor, counts_for=counts_for)
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
-                 data=prep["data"], actor=actor,
-                 trigger=trigger if background else triggers.person(actor),
+                 data=prep["data"], actor=actor, trigger=trig,
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,
                  reads_context=reads_context())
+    # A citation not in what was sent: asked once more, naming it, within the investigation's
+    # worst case and the incident's cap (the operator, 2026-11-15).
+    retry = retry_once(prep, feature, got, incident, ask=ask, network=net_id, actor=actor,
+                       trigger=trig, send=send, today=today)
+    marks = retry.get("marks", {}) if retry else marks_of(prep, got.get("answer"))
     said = reads_said(got)
-    record_missing(got, incident, network)
+    # A gap for a problem a step Mercury has, not yet tried here, fixes is flagged on the card
+    # and on its missing-capability row (C3755: the AI composes a plan before it reports one).
+    overlooked = overlooked_steps(got.get("answer"), found, incident)
+    record_missing(got, incident, network, found=found, overlooked=overlooked)
     ids = [c for c in got.get("call_ids") or [] if c]
     first = got.get("first") or {}
     out = {"state": "failed", "words": "", "proposal": {}, "checked": None, "call_ids": ids,
@@ -901,7 +1293,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
            # What was left out or cut to fit the prompt's bound (`fit`), in order.
            "fit": list(prep["said"].get("fit") or ())}
     links = {"page": f"/v2/incident/{incident.id}?list={network}", "anchor": "inc-ai"}
-    version = (PROMPT_SECOND if got["pass"] == 2 else PROMPT if plain else PROMPT_READS)[1]
+    version = (PROMPT_PLAN if got["pass"] == 2 or plain or (retry or {}).get("accepted")
+               else PROMPT_PLAN_READS)[1]
     # A background investigation names no person on its line (both or neither are kept): its
     # trigger, the job, is on its calls' rows.
     common = {"calls": ids, "prompt": f"{FEATURE}.v{version}",
@@ -923,7 +1316,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         if ids and RL.left_host(first):
             out["proposal"] = keep(words)
         return out
-    final_call = ((got.get("second") or {}).get("call_id") if got["pass"] == 2
+    final_call = ((retry or {}).get("call_id") if (retry or {}).get("accepted") else
+                  (got.get("second") or {}).get("call_id") if got["pass"] == 2
                   else first.get("call_id")) or (ids[-1] if ids else "")
     if got["state"] == "refused_by_check":
         why = got.get("why") or ""
@@ -933,7 +1327,13 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         out.update(state="unchecked", words=words, proposal=keep(words))
         return out
     answer = got["answer"]
-    out["shown"] = shown(answer, said, got["pass"], fit=prep["said"].get("fit") or ())
+    out["shown"] = shown(answer, said, got["pass"], fit=prep["said"].get("fit") or (),
+                         marks=marks, retry=retry)
+    if overlooked:
+        out["shown"]["gap_overlooked"] = overlooked_words(overlooked)
+    marked = (f" Marked unverified: {len(marks)} part{'s' if len(marks) != 1 else ''} of the "
+              "answer cite what was not sent; a step resting only on those is not approvable."
+              if marks else "")
     if answer.outcome.value == "refuse":
         calls.record_use(final_call, "shown: the evidence cannot say", actor=actor,
                          detail=answer.why_not[:200], links=links)
@@ -954,20 +1354,52 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             out.update(state="proposed", words=(
                 "The AI proposes one fix, checked against this incident, the heal guards and "
                 "committed intent: it is below with its operation's card. Nothing runs until "
-                "you approve it there."))
+                "you approve it there." + marked))
         else:
             out.update(state="refused_fix", words=(
                 f"The AI proposed a fix Mercury's check refused: {door['refused']}"))
+        return out
+    if getattr(answer, "plan", None):                                            # propose
+        # v7 (C3755, C3764): a plan of Mercury's steps, through the same door, and the
+        # improvement's shorter route beside it, the person choosing.
+        door = fix_proposal.plan_for_incident(
+            [as_door(s) for s in answer.plan], incident, improvement=answer.improvement,
+            call_id=final_call, calls=ids, actor=actor, actor_verified=actor_verified,
+            note=note, shown=out["shown"], prompt=common["prompt"], now=now)
+        out["checked"] = door
+        out["proposal"] = door.get("line") or {}
+        if door["ok"]:
+            calls.record_use(final_call, "shown: a plan, preflighted on the incident's page",
+                             actor=actor, detail=", ".join(s["operation"] for s in door["steps"]),
+                             links=links)
+            out.update(state="proposed", words=(
+                f"The AI proposes a plan of {len(door['steps'])} step"
+                f"{'s' if len(door['steps']) != 1 else ''}, each preflighted against this "
+                "incident, the heal guards and committed intent: it is below. Nothing runs "
+                "until you approve it by its hash."
+                + (" A shorter route is proposed beside it; you choose."
+                   if door.get("alternative") else "") + marked))
+        else:
+            out.update(state="refused_fix", words=(
+                f"The AI proposed a plan Mercury's check refused: {door['refused']}"))
         return out
     if answer.gap is not None:
         calls.record_use(final_call, "shown: a gap, no operation proposed", actor=actor,
                          detail=answer.gap.what[:200], links=links)
         words = (f"No Mercury operation does what the fix needs yet (a gap): "
-                 f"{_cut(answer.gap.what)}")
+                 f"{_cut(answer.gap.what)}" + marked)
+        if overlooked:
+            # C3755: a plan within policy exists for this problem, so the gap is flagged and
+            # never recorded as a missing capability; Ask the AI again asks for the plan.
+            words = (f"The AI reported a gap, and Mercury's check flags it: "
+                     f"{overlooked_words(overlooked)}. Its gap is not recorded as a missing "
+                     f"capability. What it said: {_cut(answer.gap.what)}" + marked)
         out.update(state="gap", words=words, proposal=keep(words, shown=out["shown"]))
+        if overlooked:
+            out["overlooked"] = list(overlooked)
         return out
     calls.record_use(final_call, "shown: no fix named", actor=actor, links=links)
-    words = "The AI named no fix: " + (_cut(answer.rationale) or "it gave no reason")
+    words = "The AI named no fix: " + (_cut(answer.rationale) or "it gave no reason") + marked
     out.update(state="no_fix", words=words, proposal=keep(words, shown=out["shown"]))
     return out
 

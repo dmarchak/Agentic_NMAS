@@ -24,8 +24,13 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 `tab-overview-folded-board-1440` and `-390` beside `tab-overview-folded-page-1440` and `-390`
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
-Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
-Templates sha256: `455491cc42b30316756f6cd0fafcf8905d9233daa3f791a96b500447b00dd4ee`
+Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html, templates/v2/_saved_actions_slot.html, templates/v2/_saved_actions_device.html
+Templates sha256: `6f77d32897f1e9ab1ca852c02de39463420b1fe588e2581310756cd11bd39ca0`
+Templates sha256 before the saved actions slot passed a reopened run on (2026-11-15, Gate 1b: In progress reopens a saved action's run at the device's Overview with `run=`, and the slot asks for that run's card; nothing drawn differently, every verdict unchanged): `4e998fc3c2d6391b896914b2fb1e4ffb4eac1d34f5caeeea2140fbe131148891`
+(2026-11-15, Gate 1b: `_overview.html` gains one include line after Checks, the saved actions'
+slot, asked in place, and its card compared with board saved-plans D, docs/boards/saved-plans.html,
+by the HTML tests/test_saved_plans_v2.py renders, not by new shots; its rows are the last table
+below. Its hash before: `455491cc42b30316756f6cd0fafcf8905d9233daa3f791a96b500447b00dd4ee`.)
 (2026-11-12, the two comparisons below merged: the tail slice's stale line and local times'
 clock in `_drift_detail.html`, each kept; their own hashes were
 `90dfef7f5f92d4d9fe8883d1d18ad12620cfb45d17dbc8a3ca799445c8a3cd7a` (the tail slice) and
@@ -152,3 +157,14 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Tabs folded | six tabs for edge1: a tab with nothing to show is not drawn, "Why some tabs are not shown", the footnote "Six tabs, not eight" | all eight tabs drawn for every device (`device_v2.BUILT`; the walk's captures show the eight on every device); the rule signed off 2026-09-30 (NSOT_GUI_BRIEF 14.1) is not built | **deviation** (log: Device Overview: empty tabs are not folded into the Overview (a defect, register C650 follow-up)) |
 | Check marks | a green check per passing row; the folded board's "passed" at the right | the check's icon by state (ok, warn, danger, unknown as a dot) and the result's time at the right | **same** |
 | Phone | The difference and Checks only, one column | both cards, one column, every row; the facts card first | **deviation** (log: Device Overview: the records as rows of one facts card) |
+
+**Compared 2026-11-15, a saved action on an interface (Gate 1b; board saved-plans D).**
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| When it is drawn | only when a saved action acts on one interface | the same; nothing is drawn otherwise | **same** |
+| The interface and the action | the interface chosen from committed intent; Preview <action>… | the same, the action's words on its hover | **same** |
+| The preview | the program masked, the checks before and after, the hash | the runner's own preview, in place, asking no device; a refused plan says why, with no Run | **same** |
+| Run | bound to the preview's hash, busy on itself | the same, run by the command-plan runner as a job | **same** |
+| A right the viewer lacks | said beside Run, the button disabled | the same | **same** |
+| The run | running, then its outcome, its record on History | the same, drawn from the run's record as it records each step | **same** |

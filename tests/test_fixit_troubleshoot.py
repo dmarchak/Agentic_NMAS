@@ -19,8 +19,9 @@ gateway sends.
 - **Test 4 ("a repeated proposal is flagged"):** an answer repeating attempt 1 is drawn flagged,
   and opens the operation's own card.
 - **The answer checked:** a subscription the incident does not name, another device, a command
-  where a parameter goes, a past incident Seen before was not sent, and a fix and a gap together
-  are each refused as unchecked, the spend counted and the refusal recorded on the call; a gap
+  where a parameter goes, and a fix and a gap together are each refused as unchecked, the spend
+  counted and the refusal recorded on the call (a citation not in what was sent, a past incident
+  Seen before did not send among them, is marked instead: tests/test_fixit_unverified.py); a gap
   has no Approve; the evidence that cannot say, and an answer naming no fix, each say so.
 - **The note:** a typed part, masked as it leaves and said; it never widens what a fix may act
   on.
@@ -153,7 +154,7 @@ class TestThePress:
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
         assert line["source"] == "ai" and line["operation"] == "telemetry-resubscribe"
         assert line["params"]["subs"] == ["101", "102"]
-        assert line["prompt"] == "fixit_troubleshoot.v1"
+        assert line["prompt"] == "fixit_troubleshoot.v7"  # the plain pass, v7 since C3755
         assert line["shown"]["hypotheses"][0]["cites"] == ["attempt:1"]
         (call,) = line["calls"]
         rows = calls.read()["rows"]
@@ -242,6 +243,26 @@ class TestTheCheck:
         r, html = press(ai, iid)
         sec = sec_of(html)
         assert r.status_code == 200
+        if why == "seen_before:2":
+            # Premise corrected (the operator's rule of 2026-11-15, "never discard a whole
+            # answer for a bad citation"): a past incident Seen before did not send is a
+            # citation not in the evidence. The answer is kept, its hypothesis resting on it
+            # marked naming it, asked once more, and its step refused at the page's preflight,
+            # so it is never approvable. Measured: the step cites attempt:1 (this answer's fix),
+            # so it is not unverified-only; it repeats attempt 1, and is refused as a repeat (a
+            # step resting only on unverified citations: tests/test_fixit_unverified.py).
+            from modules.fixit import plan as FP
+            mark = "unverified (cites seen_before:2, not in the evidence)"
+            assert "couldn't be checked" not in sec and mark in sec, sec
+            assert len(ai.sent) == 2 and "citation_check" in json.dumps(ai.sent[1]["messages"])
+            (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
+            assert line["shown"]["hypotheses"][0]["unverified_words"] == mark
+            assert line["shown"]["steps"][0]["only_unverified"] is False
+            got = FP.preflight(incident(iid), line)
+            assert not got["approvable"] and not got["steps"][0]["preflight"]["ok"]
+            assert got["steps"][0]["preflight"]["code"] == "repeat"
+            assert "/fixit/approve" not in sec_of(page(ai.client, iid)[1])
+            return
         assert "couldn't be checked, so it isn't shown" in sec and why in sec, sec
         assert "Open the fix's card…" not in sec
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]

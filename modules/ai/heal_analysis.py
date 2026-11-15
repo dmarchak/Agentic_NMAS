@@ -80,6 +80,8 @@ from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
 from modules.ai.schemas import StrictModel, register
 
+from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
+
 log = logging.getLogger(__name__)
 
 #: The task (`profiles.TASKS`'s pin) and the background feature (`background.FEATURES`).
@@ -588,6 +590,7 @@ def shown(answer: Analysis, added: list) -> dict:
             "mercury_cites": [{"device": a["device"], "ref": a["ref"]} for a in added]}
 
 
+@acts_as_ai("heal-analysis")
 def analyse(network: str, incident_id: str, *, job: str, send=None, today: str = None,
             now: float = None, keep: bool = True, loki=None, prometheus=None) -> dict:
     """One analysis of a can't-fix incident: ``{"ok", "state", "words", "label", "answer",

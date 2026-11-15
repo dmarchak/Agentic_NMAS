@@ -1,0 +1,461 @@
+{
+  "$defs": {
+    "Fix": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/FixParams"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "params",
+        "why",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "FixParams": {
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "type": "string"
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subscriptions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "device",
+        "subscriptions",
+        "subscription"
+      ],
+      "type": "object"
+    },
+    "FixitReadArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "words": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "FixitReadAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/FixitReadArgs"
+        },
+        "hypothesis": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FixitReadOp"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "args",
+        "why",
+        "hypothesis"
+      ],
+      "type": "object"
+    },
+    "FixitReadOp": {
+      "enum": [
+        "show",
+        "show_config",
+        "ping",
+        "traceroute",
+        "intent",
+        "golden",
+        "neighbours",
+        "history",
+        "logs",
+        "metrics",
+        "collector_sessions",
+        "stream_series"
+      ],
+      "type": "string"
+    },
+    "Gap": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "type": "string"
+        },
+        "confirm_with": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "type": "object"
+    },
+    "Improvement": {
+      "additionalProperties": false,
+      "properties": {
+        "saves": {
+          "type": "string"
+        },
+        "shapes": {
+          "items": {
+            "$ref": "#/$defs/ShapeAsk"
+          },
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/PlanStepAnswer"
+          },
+          "type": "array"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "saves",
+        "steps",
+        "shapes"
+      ],
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "type": "string"
+    },
+    "PlanStepAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/StepParams"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "params",
+        "why",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "ShapeAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "dialect": {
+          "type": "string"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "dialect",
+        "shape",
+        "why"
+      ],
+      "type": "object"
+    },
+    "StepParams": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device": {
+          "type": "string"
+        },
+        "interface": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "remove": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subscriptions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "device",
+        "subscriptions",
+        "subscription",
+        "interface",
+        "cause",
+        "changes",
+        "remove"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "fix": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Fix"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "gap": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Gap"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "type": "array"
+    },
+    "improvement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Improvement"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "needs_human": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "plan": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PlanStepAnswer"
+      },
+      "type": "array"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FixitReadAsk"
+      },
+      "type": "array"
+    },
+    "why_not": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "fix",
+    "gap",
+    "needs_human",
+    "why_not"
+  ],
+  "type": "object"
+}

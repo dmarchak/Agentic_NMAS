@@ -1,0 +1,1 @@
+Gi1/0     h1 - VLAN 10       err-disabled bpduguard

@@ -1,0 +1,40 @@
+{%- from "v2/_macros.html" import icon, how, clock -%}
+{#- Gate 2 (C3769; the operator, 2026-11-15: "Keep tonight's detailed form reachable from
+    Settings for audit ('what will this start, and why'), not on the main path"): what turning
+    automatic AI troubleshooting on would start on this network, and why, READ-ONLY. The
+    estimate, every open incident Automatic would start on (its device, title, why and
+    estimate), how many fit under each cap held against the network's own limits, and Close.
+    No tick, no cap typed, no Turn on: Automatic is turned on only with AI troubleshooting's
+    control (`settings_v2.ai_ts_level`), after the limits are acknowledged. Opened in place of
+    the card's audit link (_settings_ai_troubleshoot.html), from
+    modules/ai/settings_view.turn_on_form. -#}
+{%- set est = o.est -%}
+{%- set cu = o.catch_up -%}
+{%- macro usd(v, places=2) -%}{% if v is none %}unknown{% else %}{{ v | usd(places == 4) }}{% endif %}{%- endmacro -%}
+<div class="ai-audit" id="bg-{{ o.feature }}" data-audit="read-only">
+  <h4 class="ai-ts-sub">What Automatic would start on {{ o.network }}, and why</h4>
+  <p class="small muted">For audit: this list turns nothing on. Trigger: {{ o.trigger_words }}; {{ est.calls_per_finding }} calls an investigation, the task <span class="mono">{{ est.task }}</span> on <span class="mono">{{ est.model }}</span>.</p>
+  {%- if form_refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not turned on:</strong> {{ form_refused }}</div></div>
+  {%- endif %}
+  <div class="ai-catchup" aria-label="Open incidents Automatic would start on" data-state="{{ cu.state }}">
+    {%- if cu.state != 'ok' %}
+    <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The open incidents cannot be listed:</strong> {{ cu.error }}.</div></div>
+    {%- elif not cu.incidents %}
+    <p class="small muted ai-catchup-none" data-catch-up="none">No open incident to start on.</p>
+    {%- else %}
+    {%- set n = cu.incidents | length %}
+    <p class="ai-catchup-lead"><strong>Starts on {{ 'this open incident' if n == 1 else 'these ' ~ n ~ ' open incidents' }}, about {{ cu.usd_total | usd }}</strong> <span class="set-origin" title="{{ cu.basis }}">{{ 'each about ' ~ (cu.usd_each | usd) ~ (', measured' if cu.measured else ', its worst case: none measured yet') }}</span></p>
+    <ul class="ai-catchup-list">
+    {%- for i in cu.incidents %}
+      <li class="ai-catchup-item" data-why="{{ i.why_kind }}" data-incident="{{ i.id }}"><span class="mono">{{ i.device }}</span> · <a href="{{ i.href }}">{{ i.title }}</a> · <span class="muted">{{ i.why }}</span>{% if i.at %} <span class="faint">{{ clock(i.at) }}</span>{% endif %} · about {{ i.usd | usd }}{% if i.cap_words %} · <span class="ai-catchup-cap">{{ i.cap_words }}</span>{% endif %}</li>
+    {%- endfor %}
+    </ul>
+    <p class="ai-catchup-fit" data-fit data-worst="{{ '%.6f' % cu.worst }}" data-day-room="{{ 'none' if cu.room.day is none else '%.6f' % cu.room.day }}" data-feature-day-spent="{{ cu.room.feature_day_spent }}" data-feature-month-spent="{{ cu.room.feature_month_spent }}"><strong>{{ cu.fit_words }}</strong> <span class="set-origin">{{ cu.room_words }}</span></p>
+    <p class="set-origin">Held against {{ o.network }}'s limits{% if o.day_value is not none %} ({{ o.day_value | usd }} a day, {{ o.month_value | usd }} a month){% endif %}, its incident's AI cap{% if cu.incident_cap %} ({{ cu.incident_cap }}){% endif %} and the day cap{% if cu.day_cap %} ({{ cu.day_cap }}){% endif %}{% if o.day_cap is not none %}, within the installation's {{ o.day_cap | usd }} a day{% endif %}; the later ones past a cap would be refused before anything starts, and each page would say which.</p>
+    {%- endif %}
+    {%- for f in cu.failed %}<p class="small faint">Not listed: {{ f }}</p>{% endfor %}
+  </div>
+  <p class="small set-origin">Estimate <span class="mono" title="{{ est.digest }}">{{ est.digest[:8] }}</span>: {% if est.calls_per_day is none %}calls a day unknown{% else %}{{ '%.1f' % est.calls_per_day }} calls a day{% endif %}, {{ usd(est.cost.usd_per_call, 4) }} a call, {{ usd(est.usd_per_month) }} a month ({{ est.label }}; priced as of {{ o.prices_as_of }}, measured {{ clock(est.as_of) }}; {{ est.frequency.basis }}; {{ est.cost.basis }}). An approval of Automatic lasts {{ o.approval_days }} days, until {{ clock(o.ends_iso, 'day') }} if turned on now, asked for again {{ o.renew_days }} days before.</p>
+  <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.installation', tab='ai', network=o.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=o.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Close</a>{{ how('ai-background', 'turn-on', compact=True, op='the list Automatic would start on') }}</span>
+</div>

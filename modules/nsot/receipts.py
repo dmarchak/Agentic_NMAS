@@ -79,7 +79,9 @@ PENDING_WORDS = "commit PENDING: its batch has not recorded it yet"
 SCOPES = {"profile": ("monitoring profile apply", "Monitoring profile applied"),
           "ip_sla": ("IP SLA send", "IP SLA probes sent"),
           "templates": ("monitoring templates deploy", "Monitoring templates deployed")}
-_PAST = {"deploy": "Deployed", "restore": "Restored", "reapply": "Re-applied"}
+_PAST = {"deploy": "Deployed", "restore": "Restored", "reapply": "Re-applied",
+         # C3757: a command plan run on the pipeline's engine (no intent commit).
+         "command_plan": "Ran reviewed commands"}
 
 
 def noun(row: dict) -> str:
@@ -253,9 +255,10 @@ def _saved_startup(result: dict) -> dict:
 
 def stages_before_send() -> tuple:
     """The pipeline's stages that run before the program is sent (`pipeline.STAGE_NAMES` up to
-    `deploy`): a run that stopped at one sent nothing (C1540)."""
-    from modules.pipeline import STAGE_NAMES
-    return tuple(STAGE_NAMES[:STAGE_NAMES.index("deploy")])
+    `deploy`, and the pre-apply checks between them, C3757): a run that stopped at one sent
+    nothing (C1540)."""
+    from modules.pipeline import PRE_APPLY, STAGE_NAMES
+    return tuple(STAGE_NAMES[:STAGE_NAMES.index("deploy")]) + (PRE_APPLY,)
 
 
 def was_sent(result: dict) -> bool:
@@ -386,6 +389,10 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # (its fingerprint, the person who confirmed it and their reason), the person whose
             # change it healed (N12), and its check after verify. Only on a heal's rows.
             **({"heal": _masked(result["heal"])} if result.get("heal") else {}),
+            # A command plan (C3757): the plan, its run, its hash, its validated values and its
+            # net-zero check. Only on a command plan's rows (action ``command_plan``).
+            **({"command_plan": _masked(result["command_plan"])}
+               if result.get("command_plan") else {}),
         })
     return rows
 

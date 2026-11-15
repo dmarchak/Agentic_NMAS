@@ -2,6 +2,22 @@
 
 The landing page answers one question: does anything need you?
 
+## The control strip {#control-strip}
+
+At the top, for the page's network: **Self-healing** (on is Auto until a time, for the
+network's default duration; off is Dry run) and **AI troubleshooting: Automatic** (on, the
+AI investigates by itself when Mercury's fix fails; off, back to Manual), each a switch with a
+gear to its full setting, both showing the state now and usable only by a person who may
+change those settings. With open incidents Automatic would start on, one line beside its
+switch says so ("Also starts on N open incidents, about $X"); it is refused until the
+network's spending limits are acknowledged in Settings, and the refusal links there
+([The AI troubleshooting switch](heal-batch#ai-toggle)). A row about an incident the AI is
+investigating says **AI investigating since** its start, and once the investigation ended, its
+one-line outcome, updated as the investigation starts and ends. When several devices departed at once and self-healing
+holds them (guard 6), one card above the list says how many devices have faults and how many
+Mercury can fix, with each fix, and offers **Turn on self-healing and fix all**; its run is
+drawn on the strip, step by step ([Turn on self-healing and fix all](heal-batch)).
+
 ## What it shows {#what-it-shows}
 
 - **When nothing is wrong**, one line says so, and what was checked is one level down, each

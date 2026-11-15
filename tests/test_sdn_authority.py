@@ -58,8 +58,11 @@ def test_openflow_with_several_controllers_says_none_is_named():
 
 
 def _url(app, endpoint):
+    """The endpoint's address, its device argument (the declared view key, else ``name``) left
+    to fill."""
     rule = next(r for r in app.url_map.iter_rules() if r.endpoint == endpoint)
-    return rule.rule.replace("<name>", "{name}")
+    where, key = A.DIRECT.get(endpoint, ("view", "name"))
+    return rule.rule.replace(f"<{key if where == 'view' else 'name'}>", "{name}")
 
 
 def _post(client, app, endpoint, name):

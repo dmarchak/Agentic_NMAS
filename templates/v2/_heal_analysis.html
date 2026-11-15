@@ -13,6 +13,11 @@
 <p class="small warn-text">The AI analyses cannot be read ({{ got.error }}), so this incident's analysis cannot be shown.</p>
 {%- elif got.state == 'unknown' %}
 <p class="small muted">No incident {{ incident }} on a network Mercury holds, so no analysis is drawn.</p>
+{%- elif got.state == 'investigation' %}
+{#- C3769 (Gate 2): the can't-fix analysis folded into AI troubleshooting: the AI's
+    investigation of this incident, in the analysis's place, with its page. -#}
+{%- set inv = got.investigation %}
+<p class="small" data-ai="{{ inv.state }}"><abbr class="ai-mark" title="AI troubleshooting's investigation">AI</abbr> {% if inv.state == 'investigating' %}{{ inv.words }} since {{ clock(inv.since) }}.{% else %}{{ inv.words }}{% endif %} <a href="{{ inv.href }}">Open the incident</a> for its findings and what to approve.</p>
 {%- elif b.state == 'answered' %}
 <p><abbr class="ai-mark" title="{{ p.task_words }}">AI</abbr> <strong>AI analysis: {{ b.label }}</strong> <span class="small muted" title="{{ b.score }}">{{ b.score }}</span></p>
 {%- if b.rationale %}<p>{{ b.rationale }}</p>{% endif %}

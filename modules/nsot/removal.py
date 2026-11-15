@@ -527,19 +527,64 @@ def _negate(line: str) -> str:
     return indent + "no " + text
 
 
-def _management_interfaces(running: list, mgmt_ip: str) -> set:
-    """Interface headers the tool may reach the device through: the one
-    holding the address the tool connects to, and any addressed by DHCP
-    (whose address is the lease's, so the config cannot show it is not the
-    path)."""
-    out = set()
+def _same_address(text: str, mgmt_ip: str) -> bool:
+    """Whether *text* (an address, perhaps with its ``/len``) is *mgmt_ip*, IPv4 or IPv6,
+    compared as addresses (``2001:DB8::2/64`` is ``2001:db8::2``)."""
+    try:
+        return bool(mgmt_ip) and (ipaddress.ip_address(text.split("/")[0])
+                                  == ipaddress.ip_address(mgmt_ip))
+    except ValueError:
+        return False
+
+
+def management_path(running: list, mgmt_ip: str) -> dict:
+    """THE reading of the interfaces the tool may reach the device through (Mode B's, the heal's
+    and a command plan's, one function): ``{header: how}``, each interface header holding the
+    address the tool connects to (``ip address`` or ``ipv6 address``, compared as addresses), or
+    addressed by DHCP (``ip address dhcp``, ``ipv6 address dhcp``) or by IPv6
+    autoconfiguration, whose address is the lease's, so the config cannot show it is not the
+    path. *running* is ``[(line, chain)]`` (`_chains`)."""
+    out = {}
     for line, chain in running:
-        if len(chain) == 1 and chain[0].startswith("interface "):
-            words = line.split()
-            if words[:2] == ["ip", "address"] and len(words) > 2 and (
-                    words[2] == "dhcp" or (mgmt_ip and words[2] == mgmt_ip)):
-                out.add(chain[0])
+        if len(chain) != 1 or not chain[0].startswith("interface "):
+            continue
+        words = line.split()
+        if len(words) < 3:
+            continue
+        if words[:2] == ["ip", "address"] and (words[2] == "dhcp"
+                                                or _same_address(words[2], mgmt_ip)):
+            out[chain[0]] = words[2] if words[2] == "dhcp" else mgmt_ip
+        elif words[:2] == ["ipv6", "address"] and (words[2] in ("dhcp", "autoconfig")
+                                                    or _same_address(words[2], mgmt_ip)):
+            out[chain[0]] = words[2] if words[2] in ("dhcp", "autoconfig") else mgmt_ip
     return out
+
+
+def _management_interfaces(running: list, mgmt_ip: str) -> set:
+    """Interface headers the tool may reach the device through (`management_path`)."""
+    return set(management_path(running, mgmt_ip))
+
+
+def management_refusal(running: list, mgmt_ip: str, interface: str, *, mode: str = "",
+                       access_vlan: str = "") -> str:
+    """Why *interface* is on the path the tool manages the device through, or ``""``: one of
+    `management_path`'s, or an access port (*mode* ``access``) in the VLAN whose ``interface
+    VlanN`` is one of them (no ``switchport access vlan`` is VLAN 1, IOS's default). Refusing by
+    resemblance is safe."""
+    from modules.nsot import ifnames
+
+    vlan = str(access_vlan or "") or ("1" if mode == "access" else "")
+    for header, how in management_path(running, mgmt_ip).items():
+        name = header.split(None, 1)[1]
+        if ifnames.same_interface(name, interface):
+            return (f"{interface} is the interface the device is managed through (its "
+                    f"configuration gives it {how}), and it is never acted on")
+        m = re.fullmatch(r"[Vv]lan(\d+)", name)
+        if m and vlan and m.group(1) == vlan:
+            return (f"{interface} is an access port in VLAN {vlan}, whose {name} holds the "
+                    f"management address ({how}): it may be the management path, so it is "
+                    "never acted on")
+    return ""
 
 
 def _is_physical(header: str) -> bool:

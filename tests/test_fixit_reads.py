@@ -397,12 +397,18 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     assert len(ai.sent) == 2, "pass 1 and, a read having run, pass 2"
     assert "collector_sessions" in json.dumps(ai.sent[0]["system"]), "the read set is sent"
     assert "mercury_reads" in ai.sent[1]["messages"][0]["content"]
-    # Pass 1 is the new version (prompt and schema v5, C3661), never v4 or S5's v2.
+    # Pass 1 is the version asked now, never an older one. Premise corrected (C3755, C3764,
+    # 2026-11-15): the reads pass is v8 (`fixit_troubleshoot.PROMPT_PLAN_READS`, prompt and
+    # schema, its answer a plan), where it was v5 (C3661); v5 stays readable, never asked.
     from modules.ai import calls
+    from modules.ai import fixit_troubleshoot as FT
     rows = {r["id"]: r for r in calls.read()["rows"]}
+    asked = f"{FT.FEATURE}.v{FT.PROMPT_PLAN_READS[1]}"
+    assert asked == "fixit_troubleshoot.v8"
     first_row = [r for r in rows.values() if r.get("feature") == "fixit_troubleshoot"
-                 and r.get("prompt") == "fixit_troubleshoot.v5"]
-    assert len(first_row) == 1 and first_row[0]["schema"] == "fixit_troubleshoot.v5"
+                 and r.get("prompt") == asked]
+    assert len(first_row) == 1 and first_row[0]["schema"] == asked
+    assert not [r for r in rows.values() if r.get("prompt") == "fixit_troubleshoot.v5"]
     assert "FixitReadAsk" in json.dumps(ai.sent[0]["output_config"])
     (loop,) = read_log.loops()["loops"]
     text = json.dumps(loop)

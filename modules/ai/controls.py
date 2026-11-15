@@ -189,14 +189,19 @@ ALSO_REACHES = {
         "(installation_settings.replace_secret, the irreversible tier); Replace… itself needs "
         "no AI and stays usable, since it is how a key is set. Its Test's refusal after the "
         "fact while hosted AI is off is C1678"),
-    "settings_v2.ai_on": (
-        "Turn on… for automatic AI troubleshooting (fixit_auto) starts each open incident the "
-        "person ticked on its list (C3732), each as its own job under the person's trigger, "
-        "within the per-incident cap, the feature's day and month caps and the overall day "
-        "cap (C3745), a ticked one past a cap refused with the cap named before anything "
-        "starts; Turn on itself needs no AI and stays usable, since it is how the feature is "
-        "turned on, and with hosted AI off the ticked ones start nothing and their cards say "
-        "why"),
+    "settings_v2.ai_ts_level": (
+        "AI troubleshooting's one control (Gate 2, C3769), on Settings › AI and the control "
+        "strip, set to Automatic starts each open incident listed beside it (C3732), each as "
+        "its own job under the person's trigger, within the per-incident cap, the feature's "
+        "day and month caps and the overall day cap (C3745); setting the level itself needs "
+        "no AI and stays usable, since it is how AI troubleshooting is turned on or off, and "
+        "with hosted AI off the listed ones start nothing and their cards say why"),
+    "control_v2.fix_all": (
+        "Turn on self-healing and fix all (G6) runs the batch Mercury previewed, bound to its "
+        "hash, and starts AI troubleshooting on each open incident it lists with no fix of "
+        "Mercury's own, as the person's press under the same caps; the press itself is "
+        "self-healing's and needs no AI: with hosted AI off the batch runs and those "
+        "incidents start nothing, their cards saying why"),
 }
 
 #: Where a viewer who may configure fixes it: the AI (hosted) card.

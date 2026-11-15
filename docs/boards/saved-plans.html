@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Saved plans board</title>
+<!-- Board for Gate 1b (the operator, 2026-11-15, "clumsy processes become tools"; C3696, C3763):
+     the incident card's saved plans. Artboard S: after a command plan ran and passed its own
+     verify, Save as a self-heal script (its R4 match only, previewed on the open incidents, its
+     open parameters) and Save as a reusable action; the scripts the problem matches, each with
+     Promote; the network's line shapes waiting on an admin, each with Approve. S2: the viewer
+     lacks a right. S3: an answer in place. Self-contained: no external fonts or scripts.
+     Example names only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--ok:#0B6B45;--ok-soft:#E7F5EE;--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1040px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.art{width:1040px;margin:0 auto;background:var(--ground);padding:24px 32px;box-sizing:border-box;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+fieldset{border:1px solid var(--line-2);border-radius:6px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+legend{font-weight:600;font-size:13px}
+.btn{display:inline-block;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 10px;font-size:13px}
+.btn[disabled]{opacity:.5}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px}
+.faint{color:var(--ink-3)}.small{font-size:13px}.mono{font-family:var(--mono);font-size:12.5px}
+.refused{color:var(--danger);font-size:13px}
+.notice{border-radius:6px;padding:8px 12px;font-size:13px}.notice.ok{background:var(--muted-soft)}.notice.bad{background:var(--danger-soft)}
+ul{margin:0;padding-left:18px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+</style>
+</head>
+<body>
+<div class="boardhead"><h1>Saved plans, on the incident card (Gate 1b)</h1>
+At the foot of "Fixing it", asked in place once the card is drawn (it waits on nothing). Signed off under the Phase 7 mode
+(docs/STANDING_APPROVAL_LOG.md, "Board saved-plans S").</div>
+
+<div class="artlabel"><strong>S. After a verified run: both saves, the scripts it matches, the shapes waiting</strong></div>
+<div class="art"><div class="card">
+  <p><strong>Recover s1 Gi0/2, err-disabled by bpduguard ran and passed its own verify.</strong> Save it, its parameters left open, to use again. <span class="faint">(i)</span></p>
+  <fieldset><legend>Save as a self-heal script (starts in Dry run)</legend>
+    <label class="field">Name<input placeholder="BPDU guard recovery"></label>
+    <p class="small">It matches the problem's fields, never an alert's name:</p>
+    <ul class="small"><li>condition: err_disabled (always)</li><li><input type="checkbox" checked> cause: BPDU guard</li><li><input type="checkbox" checked> port role: access</li><li><input type="checkbox" checked> cleared: true</li></ul>
+    <p class="faint small">1 of the 3 open incidents' problems hold this match now.</p>
+    <p class="small">Its parameters, filled from the problem when it fires:</p>
+    <ul class="small"><li>device: the problem's device</li><li>interface: the problem's object</li><li>cause: BPDU guard as bpduguard</li></ul>
+    <span><span class="btn">Save as a self-heal script</span></span>
+  </fieldset>
+  <fieldset><legend>Save as a reusable action (for every network)</legend>
+    <label class="field">Name<input placeholder="Bounce interface"></label>
+    <label class="field">What it does<input></label>
+    <p class="small">Its parameters: device, interface, cause.</p>
+    <span><span class="btn">Save as a reusable action</span></span>
+  </fieldset>
+  <p class="small"><strong>Saved self-heal scripts this problem matches</strong></p>
+  <ul class="small"><li>BPDU guard recovery: Dry run; fired 2 times <span class="btn">Promote BPDU guard recovery</span></li></ul>
+  <p class="small"><strong>Line shapes waiting on an admin</strong></p>
+  <ul class="small"><li><span class="mono">interface {interface} &gt; description {description}</span> (cisco_ios), proposed by the AI: a clumsy fix; not measured yet: its first approved run measures it <span class="btn">Approve the shape</span></li></ul>
+  <p class="callout">Each button is busy on itself ("Saving…", "Promoting…", "Approving…"); its answer replaces the card in place.</p>
+</div></div>
+
+<div class="artlabel"><strong>S2. The viewer lacks a right: said beside the control, the control disabled</strong></div>
+<div class="art"><div class="card">
+  <fieldset><legend>Save as a reusable action (for every network)</legend>
+    <p class="refused">Refused: ana@example.com does not hold the admin right (saving a reusable action or adding a shape to Mercury's rule for raw lines (an admin)); its holders are kim@example.com (Settings' access_rights)</p>
+    <span><span class="btn" disabled>Save as a reusable action</span></span>
+  </fieldset>
+</div></div>
+
+<div class="artlabel"><strong>S3. An answer in place, above the card</strong></div>
+<div class="art"><div class="card">
+  <div class="notice ok">Saved BPDU guard recovery as a self-heal script, in Dry run: it records what it would run until a person with self-healing rights promotes it</div>
+  <div class="notice bad">Not saved: Refused: ana@example.com does not hold the self-healing right (…)</div>
+  <p class="faint small">Nothing to save yet: no command plan ran and passed its own verify on this incident.</p>
+</div></div>
+<div class="artlabel"><strong>D. A device's Overview: a saved action on one of its interfaces (shown only when a saved action acts on one interface)</strong></div>
+<div class="art"><div class="card">
+  <h3>Saved actions on an interface <span class="faint">(i)</span></h3>
+  <label class="field">Interface<select><option>GigabitEthernet0/2</option><option>GigabitEthernet0/3</option></select></label>
+  <ul class="small"><li><span class="btn">Preview Bounce interface…</span></li></ul>
+  <p class="callout">Preview… draws the runner's own preview in place, asking no device:</p>
+  <p class="small"><strong>Bounce edge1 Gi0/2</strong>, on edge1. It sends, then puts back as it was:</p>
+  <ul class="small mono"><li>interface GigabitEthernet0/2</li><li> shutdown</li><li> no shutdown</li></ul>
+  <p class="small">Before it: The port is an access port. After it: The port reads connected.</p>
+  <p class="faint small">Bound to 3f2a…: a plan that moved since this preview is refused, naming both.</p>
+  <span><span class="btn">Run Bounce edge1 Gi0/2</span></span>
+  <p class="refused">(S2's rule: a viewer who may not run a plan reads why here, the button disabled.)</p>
+  <p class="small"><strong>Bounce edge1 Gi0/2:</strong> running, the device held; this updates when the run records each step. <a href="#">Its record on History</a></p>
+</div></div>
+</body>
+</html>

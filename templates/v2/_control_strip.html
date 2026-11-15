@@ -1,0 +1,62 @@
+{%- from "v2/_macros.html" import icon, how, clock -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- The control strip (C3748; board G2, ~/Documents/nmas-reports/boards/g2-control-strip.html,
+    self-signed under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md), at the top of Needs
+    attention and Troubleshoot › Incidents, for the page's network (`modules/control_strip.view`,
+    routes/control_v2). Left to right: Self-healing (on: Auto until HH:MM, for the network's
+    default duration; off: Dry run), "AI troubleshooting: Automatic" (Gate 2, board G2 part 3
+    as amended: on, with one line first naming the open incidents it also starts on; off, back
+    to Manual), each with its gear to the full setting; under them the answer of a press (a
+    refusal of Automatic links the limits card), and the network's Turn on self-healing and
+    fix all on THE stepper while it runs and after. Each toggle is busy on itself until its
+    answer arrives and the strip is drawn again in place; it re-reads itself when self-healing
+    announces, a setting is saved or a run moves. A viewer who may not change these settings
+    sees the state with why, the toggles disabled. -#}
+{%- set h, ai = s.heal, s.ai -%}
+{%- set page = 'incidents' if active_nav == 'incidents' else '' -%}
+<section class="ctl-strip card" id="{{ s.anchor }}" aria-label="Self-healing and AI troubleshooting on {{ s.network }}" data-network="{{ s.network }}" hx-disinherit="*" hx-get="{{ url_for('control_v2.strip', list=s.network) }}" hx-trigger="nmas:drift from:body, nmas:settings from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+  <div class="ctl-row">
+    {#- Self-healing: on is Auto for the default duration, off is Dry run; new problems only. -#}
+    <form class="ctl-item" id="ctl-heal" method="post" action="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-post="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="heal" data-state="{{ h.mode }}">
+      <input type="hidden" name="on" value="{{ '0' if h.on else '1' }}">
+      {%- if page %}<input type="hidden" name="page" value="{{ page }}">{% endif %}
+      <span class="ctl-name">Self-healing</span>
+      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes new problems by itself on {{ s.network }} until {{ h.until }} UTC. Turn it off: Dry run, where it only says what it would fix.{% else %}Turn on: Auto for {{ h.hours }} hour{{ '' if h.hours == 1 else 's' }}, until about {{ h.would_until }} UTC. New problems only: open incidents stay as they are.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}Auto until {{ clock(h.until) }}{% elif h.mode == 'dry_run' %}Dry run{% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', op='the Self-healing toggle') }}</span>
+      <a class="ctl-gear icon-btn" href="{{ h.gear }}" title="All of {{ s.network }}'s self-healing settings" aria-label="Self-healing settings">{{ icon('settings', 16) }}</a>
+    </form>
+    {#- AI troubleshooting: Automatic (Gate 2, C3769; the operator's minimal design,
+        2026-11-15). On is one press, bound to the line drawn beside it (the open incidents it
+        also starts on); off goes back to Manual at once. Both through the one control's
+        route. -#}
+    {%- set ts_url = url_for('settings_v2.ai_ts_level', network=s.network, answer='strip') %}
+    <form class="ctl-item" id="ctl-ai" method="post" action="{{ ts_url }}" hx-post="{{ ts_url }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="ai" data-state="{{ 'on' if ai.on else 'off' }}" data-level="{{ ai.level }}">
+      <input type="hidden" name="level" value="{{ 'manual' if ai.on else 'automatic' }}">
+      <input type="hidden" name="line_digest" value="{{ ai.line.digest if ai.line else '' }}">
+      <span class="ctl-name">AI troubleshooting: Automatic</span>
+      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if ai.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not ai.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if ai.on %}On since {{ ai.at }} UTC: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits. Turn it off: back to Manual at once; one already running finishes.{% elif ai.ready %}Turning it on is refused until {{ ai.ready }}.{% else %}Now {{ ai.words }}. Turn on: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{{ 'On' if ai.on else 'Off' if ai.known else 'Not known' }}</span><span class="op-busy">{{ 'Turning off…' if ai.on else 'Turning on…' }}</span></button>{{ how('heal-batch', 'ai-toggle', compact=True, op='the AI troubleshooting switch') }}</span>
+      {%- if not ai.on and ai.line and ai.line.words %}<span class="small ctl-line" data-ctl-line data-n="{{ ai.line.n }}">{{ ai.line.words }}</span>{% endif %}
+      <a class="ctl-gear icon-btn" href="{{ ai.gear }}" title="AI troubleshooting's settings: Off, Manual or Automatic, and the spending limits" aria-label="AI settings">{{ icon('settings', 16) }}</a>
+    </form>
+  </div>
+  {%- if not s.may %}
+  <p class="small muted ctl-why" data-ctl-why>Read only: {{ s.why_not }}.</p>
+  {%- endif %}
+  {%- if not h.known %}<p class="small warn-text">Self-healing's mode cannot be read: {{ h.words }}</p>{% endif %}
+  {%- if ai.error %}<p class="small warn-text">Whether AI troubleshooting starts by itself cannot be read: {{ ai.error }}</p>{% endif %}
+  {%- set an = s.answer or {} %}
+  {%- if an.refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p>{{ an.refused | people }}{% if an.refused_href %} <a href="{{ an.refused_href }}" data-refused-link>Set the spending limits</a>{% endif %}</p></div>
+  {%- elif an.heal_set %}
+  <p class="small set-result" role="status" data-answer="heal">Self-healing: {{ an.heal_set }}.</p>
+  {%- elif an.ai_set %}
+  <p class="small set-result" role="status" data-answer="ai">{{ an.ai_set }}.</p>
+  {%- elif an.pressed %}
+  <p class="small set-result" role="status" data-answer="fix-all">Started: {{ an.pressed.fixable }} device{{ '' if an.pressed.fixable == 1 else 's' }} to fix, one first{% if an.pressed.ai_started %}; the AI started on {{ an.pressed.ai_started }} incident{{ '' if an.pressed.ai_started == 1 else 's' }} with no fix{% endif %}{% if an.pressed.ai_capped %}; {{ an.pressed.ai_capped }} not started by a cap, each page says which{% endif %}{% if an.pressed.ai_skipped %}; {{ an.pressed.ai_skipped }} not started, each page says why{% endif %}.</p>
+  {%- endif %}
+  {%- if s.run %}
+  <div class="ctl-run" data-run-state="{{ s.run.state }}" data-run-outcome="{{ s.run.outcome }}">
+    {{ run_stepper(s.run.stepper) }}
+    {%- if s.run.words %}<p class="small{{ ' warn-text' if s.run.outcome and s.run.outcome != 'fixed' }}">{{ s.run.words | people }}</p>{% endif %}
+  </div>
+  {%- endif %}
+</section>

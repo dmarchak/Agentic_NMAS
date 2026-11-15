@@ -87,6 +87,10 @@ ENTRY_POINTS = {
     # Lab 9 B2: SDN › Policies' words and refusals, masked as redact_text masks.
     "modules/sdn/policy_intent.py:_masked": lambda: (
         __import__("modules.sdn.policy_intent", fromlist=["_masked"])._masked(PLANTED)),
+    # The plan engine's intent step: its refusals, change, diff and render words, masked as
+    # redact_text masks (2026-11-15).
+    "modules/plan_engine.py:_masked": lambda: (
+        __import__("modules.plan_engine", fromlist=["_masked"])._masked(PLANTED)),
     # C1693's keyed-hash comparison masks each line as redact_text does, keeping the values.
     "modules/secret_compare.py:masked_values": lambda: (
         __import__("modules.secret_compare", fromlist=["masked_values"]).masked_values(PLANTED)[0]),

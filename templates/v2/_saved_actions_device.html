@@ -1,0 +1,43 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- A saved reusable action on one of this device's interfaces (Gate 1b; board saved-plans,
+    artboard D; routes/saved_plans_v2.py `device_actions`, `device_run`): each saved action
+    whose parameters an interface fills alone, offered for an interface chosen from the
+    device's committed intent; Preview… draws the runner's own preview in place (asking no
+    device), and Run is bound to its hash, run by the same runner as a job, its state drawn
+    from its record. Running a plan is any verified person's; the viewer's refusal is said
+    beside the control, drawn disabled. Nothing is drawn when no saved action acts on one
+    interface. -#}
+{%- if c.actions and c.interfaces %}
+<section class="card saved-actions" id="saved-actions-{{ c.device }}" hx-get="{{ url_for('saved_plans_v2.device_actions', device=c.device, list=c.list, run=c.run.id if c.run else '') }}" hx-trigger="nmas:saved_plans from:body{{ ', nmas:privileged from:body' if c.run }}" hx-swap="outerHTML" hx-select="unset"{% if (c.said and c.said.words) or c.preview %} data-holds-live="review"{% endif %}>
+  <div class="card-head"><h2>Saved actions on an interface</h2>{{ how('plans', compact=True, op='a saved plan') }}</div>
+  {%- if c.said and c.said.words %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p>{{ c.said.words }}</p></div>
+  {%- endif %}
+  {%- if c.run %}
+  <p class="small" data-run="{{ c.run.state }}"><strong>{{ c.run.title or 'The saved action' }}:</strong> {% if c.run.state == 'running' %}running, the device held; this updates when the run records each step.{% else %}{{ c.run.outcome }}{% if c.run.why %}: {{ c.run.why }}{% endif %}.{% endif %} <a href="{{ url_for('device_v2.history', name=c.device, list=c.list) }}">Its record on History</a></p>
+  {%- elif c.preview %}
+    {%- set p = c.preview %}
+    {%- if p.ok %}
+  <p class="small"><strong>{{ p.title }}</strong>, on {{ c.device }}. It sends, then puts back as it was:</p>
+  <ul class="small mono">{% for line in p.drawn.program or [] %}<li>{{ line }}</li>{% endfor %}</ul>
+  <p class="small">Before it: {% for i in p.drawn.preconditions or [] %}{{ i.name }}{{ '; ' if not loop.last }}{% endfor %}. After it: {% for i in p.drawn.verify or [] %}{{ i.name }}{{ '; ' if not loop.last }}{% endfor %}.</p>
+  <p class="faint small">Bound to {{ p.hash }}: a plan that moved since this preview is refused, naming both.</p>
+  {%- if c.right %}<p class="small bluf-refused" data-refused="run">{{ c.right }}</p>{% endif %}
+  <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('saved_plans_v2.device_run', device=c.device, list=c.list) }}" hx-vals='{{ {"key": c.key, "interface": c.interface, "hash": p.hash} | tojson }}' hx-target="#saved-actions-{{ c.device }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.right %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Run {{ p.title }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+    {%- else %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ p.refusals | join('; ') }}</p></div>
+    {%- endif %}
+  {%- else %}
+  <form id="saved-actions-form-{{ c.device }}" class="small">
+    <label class="heal-field" for="saved-actions-iface-{{ c.device }}">Interface<select id="saved-actions-iface-{{ c.device }}" name="interface">{% for i in c.interfaces %}<option value="{{ i }}">{{ i }}</option>{% endfor %}</select></label>
+    <ul class="tl-record">
+    {%- for a in c.actions %}
+      <li data-action="{{ a.key }}"><span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-get="{{ url_for('saved_plans_v2.device_actions', device=c.device, list=c.list, key=a.key) }}" hx-include="#saved-actions-form-{{ c.device }}" hx-target="#saved-actions-{{ c.device }}" hx-swap="outerHTML" hx-disabled-elt="this" title="{{ a.words }}"><span class="op-idle">Preview {{ a.name }}…</span><span class="op-busy">Previewing…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span></li>
+    {%- endfor %}
+    </ul>
+  </form>
+  {%- endif %}
+</section>
+{%- else %}
+<div id="saved-actions-{{ c.device }}" hidden data-offer="none"></div>
+{%- endif %}

@@ -34,7 +34,9 @@ import time
 log = logging.getLogger(__name__)
 
 #: A catalog parameter's name in an attempt's form (`validate.AS_ATTEMPT`), reversed.
-AS_CATALOG = {"subs": "subscriptions", "sub": "subscription"}
+AS_CATALOG = {"subs": "subscriptions", "sub": "subscription",
+              # G7 (C3712): Recover an err-disabled interface's, by the same names.
+              "interface": "interface", "cause": "cause"}
 #: Why a repeat is refused, the attempt it repeats named.
 REPEAT_WORDS = ("it already failed on this incident as attempt {attempt} ({words}), so it is "
                 "not offered again; it stays in Attempts and under Other actions")
@@ -44,9 +46,19 @@ def as_catalog(operation: str, params: dict, device: str) -> dict:
     """An attempt-form proposal's parameters (`incident.canonical`) as the catalog takes them
     (`catalog.checked`): the incident's *device*, each parameter by the catalog's name, the
     collector flag (an attempt's, never the catalog's) left out."""
+    from modules import plan_engine as PE
     from modules.heal import resubscribe as R
 
     out = {"device": device}
+    if operation in PE.FIX_ADMITTED:
+        # A step kind the fix admits beside the catalog: its own parameters, by their own
+        # names (`StepKind.params`), the incident and proposal the plan gives it left out, and
+        # a value only its preview resolves (a deploy's program) never a parameter.
+        names = {p.name for p in PE.STEP_KINDS[operation].params} - {"device", "incident",
+                                                                    "proposal"}
+        out.update({k: (list(v) if isinstance(v, (list, tuple)) else v)
+                    for k, v in (params or {}).items() if k in names})
+        return out
     for k, v in (params or {}).items():
         if k in AS_CATALOG:
             out[AS_CATALOG[k]] = list(v) if isinstance(v, (list, tuple)) else v
@@ -108,6 +120,51 @@ def _check_one(incident, operation: str, params: dict, *, resolved=None, now=Non
             "code": "", "repeat": rep}
 
 
+def _admitted_one(incident, operation: str, params: dict, candidate: dict) -> dict:
+    """One step of a kind the fix admits beside the catalog (`plan_engine.FIX_ADMITTED`),
+    preflighted by its own step kind's preview (`StepKind.preview`: the incident's scope, the
+    heal guards, the repeat of a failed attempt, then its own checks), on the engine's own
+    parameters, handed *candidate* (the intent an earlier step would commit; updated here with
+    this one's): ``_check_one``'s shape, with what it resolved. A read."""
+    from modules import plan_engine as PE
+
+    kind = PE.STEP_KINDS[operation]
+    got = kind.preview(incident.network, params,
+                       **({"candidate": dict(candidate)} if kind.candidate else {}))
+    if got.get("ok"):
+        candidate.update(got.get("candidate") or {})
+    from modules.redact import redact_payload
+
+    return {"ok": bool(got.get("ok")), "hash": got.get("hash") or "" if got.get("ok") else "",
+            "drawn": redact_payload(got.get("drawn") or {}),
+            "refused": got.get("refused") or "", "code": got.get("code") or (
+                "" if got.get("ok") else "refused"),
+            "repeat": {}, "resolved": dict(got.get("resolved") or {})}
+
+
+def admitted_repeat(network: str, p: dict, operation: str, compared: dict) -> tuple:
+    """``(refusal, differs)``: the catalog's repeat rule (`incident.repeat_of`) for a step of a
+    kind the fix admits beside the catalog, on the values its kind compares an attempt by
+    (*compared*): an attempt of this incident that ran *operation* with the same values and
+    failed refuses it (`REPEAT_WORDS`, naming the attempt); one that ran it with other values
+    is named with each value that differs; ``("", "")`` when none ran it. A read."""
+    from modules.fixit import incident as F
+    from modules.fixit.section import outcome_words
+
+    incident, why = _incident_for(network, p.get("incident") or "")
+    if incident is None:
+        return why, ""
+    got = F.repeat_of(incident, operation, compared)
+    if got["kind"] == "repeat":
+        return REPEAT_WORDS.format(attempt=got["attempt"], words=outcome_words(
+            got["outcome"], got["words"]) or "it did not pass"), ""
+    if got["kind"] == "variation":
+        return "", (f"attempt {got['attempt']} ran it and did not pass; this one differs in "
+                    + "; ".join(f"{c['name']} (was {str(c['before'])[:60] or 'none'}, now "
+                                f"{str(c['after'])[:60] or 'none'})" for c in got["changed"]))
+    return "", ""
+
+
 def _incident_for(network: str, incident_id: str):
     """``(incident, why)``: the incident *incident_id* of *network* as the fix-it record takes
     it, or None with why."""
@@ -153,6 +210,16 @@ def run_link_of(network: str, p: dict) -> dict:
         return F.run_link(incident)
 
 
+def _unverified_mark(line: dict, n: int) -> str:
+    """The words of step *n*'s unverified mark when it rests ONLY on citations not in what was
+    sent (``shown.steps``, kept with an AI line), else ``""``."""
+    shown = line.get("shown") if isinstance(line.get("shown"), dict) else {}
+    for st in shown.get("steps") or ():
+        if isinstance(st, dict) and st.get("n") == n and st.get("only_unverified"):
+            return str(st.get("unverified_words") or "unverified")
+    return ""
+
+
 def preflight(incident, line: dict, *, resolved: float = None, now: float = None,
               sources=None, planned=None) -> dict:
     """*line*'s plan, every step preflighted (the module's docstring), as the section's
@@ -177,14 +244,51 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
         return None
     at = time.time() if now is None else float(now)
     drawn, refused = [], ""
+    # The plan as the engine holds it, read once: a step of a kind the fix admits beside the
+    # catalog (`plan_engine.FIX_ADMITTED`) is preflighted by its own step kind's preview, on
+    # the engine's own parameters, each later one handed the intent an earlier one would
+    # commit (C3646), so the hash drawn is the one Approve's run computes.
+    try:
+        _p, _held, engine = PE.checked(PE.INCIDENT_FIX, plan_params(incident, line))
+    except PE.Refused as exc:
+        engine, not_held = None, f"The plan is not one Mercury runs: {exc}"
+    candidate = {}
     for n, s in enumerate(steps, 1):
-        got = _check_one(incident, s["operation"], s["params"], resolved=resolved, now=at,
-                         sources=sources, planned=planned)
+        never = PE.ai_step_refusal(s["operation"]) if line.get("source") == "ai" else ""
+        if never:
+            got = {"ok": False, "hash": "", "drawn": {}, "refused": never, "code": "ai_role",
+                   "repeat": {}}
+        elif s["operation"] in PE.FIX_ADMITTED:
+            got = _admitted_one(incident, s["operation"], engine[n - 1]["params"], candidate) \
+                if engine else {"ok": False, "hash": "", "drawn": {}, "refused": not_held,
+                                "code": "schema", "repeat": {}}
+        else:
+            got = _check_one(incident, s["operation"], s["params"], resolved=resolved, now=at,
+                             sources=sources, planned=planned)
+            # A built-in command plan's preconditions, read once by the job that made the
+            # proposal (`fix_proposal._command_plan_reads`, C3755): one that did not hold
+            # refuses the step, drawn from the record, never read again on a page draw.
+            pre = ((line.get("shown") or {}).get("preconditions_read") or {}).get(str(n)) or {}
+            if got["ok"] and pre and not pre.get("ok"):
+                got = dict(got, ok=False, hash="", code="preconditions",
+                           refused=f"its preconditions, read when it was proposed: "
+                                   f"{pre.get('refused') or 'they did not hold'}")
+        # A step the AI rests only on citations that are not in what it was sent is never
+        # approvable (the operator, 2026-11-15): drawn from the marks kept with the line
+        # (`fixit_troubleshoot.shown`), the citations named.
+        mark = _unverified_mark(line, n)
+        if got["ok"] and mark:
+            got = dict(got, ok=False, hash="", code="unverified",
+                       refused=f"it rests only on evidence Mercury could not find: {mark}")
         attempt = {AS_ATTEMPT_NAME.get(k, k): v for k, v in s["params"].items()
                    if k != "device"}
         rep = got.get("repeat") or {}
+        own = got.get("drawn") or {}
         drawn.append({"n": n, "operation": s["operation"],
-                      "words": short_words(s["operation"], incident.device, attempt),
+                      "words": (short_words(s["operation"], incident.device, attempt)
+                                if s["operation"] not in PE.FIX_ADMITTED else
+                                ": ".join(x for x in (own.get("title"), own.get("change")) if x)
+                                or PE.words_of(s["operation"])),
                       "params": params_words(attempt), "hash": got["hash"],
                       "preflight": {"ok": got["ok"], "refused": got["refused"],
                                     "code": got["code"]},
@@ -192,7 +296,10 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                       # the attempt it matched, for The record (never the section's words).
                       "repeat": ({"attempt": rep.get("attempt"),
                                   "params_hash": rep.get("params_hash") or ""}
-                                 if got["code"] == "repeat" else {})})
+                                 if got["code"] == "repeat" else {}),
+                      # What the step's own preview resolved (a deploy's program and capture),
+                      # bound by the plan's hash as the engine's run binds it.
+                      "resolved": dict(got.get("resolved") or {})})
         if not got["ok"] and not refused:
             refused = f"Step {n} would be refused: {got['refused']}"
     # Each collector step's session, as read when the plan was proposed (PE.read_sessions):
@@ -224,6 +331,8 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
         else:
             for es, d in zip(engine_steps, drawn):
                 es["hash"] = d["hash"]
+                if d["resolved"]:
+                    es["resolved"] = d["resolved"]
             got_hash = PE.plan_hash(PE.INCIDENT_FIX, held, engine_steps, incident.network)
             plan_hash, refused_hash = ("", got_hash) if refused else (got_hash, "")
             # Everything that hash binds, drawn in the plan before Approve (C3725); a refused

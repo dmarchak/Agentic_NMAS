@@ -72,6 +72,8 @@ from enum import Enum
 from modules.ai.nl_query import Outcome
 from modules.ai.schemas import StrictModel, register
 
+from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
+
 log = logging.getLogger(__name__)
 
 
@@ -886,6 +888,7 @@ def scope_of(list_name: str, sentence: str, devices: list = None) -> dict:
     return {"ok": True, "named": said}
 
 
+@acts_as_ai("intent-words")
 def change(list_name: str, sentence: str, *, actor: str, trigger: dict, send=None,
            today: str = None, devices: list = None, picks: dict = None,
            answer: dict = None) -> dict:

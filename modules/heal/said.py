@@ -411,6 +411,21 @@ def outcome_words(outcome: str, *, units: list, kind: str, tier: int, device: st
             f"is watching only, in dry run (Tier {tier})")
 
 
+#: The problem conditions that are a state of the device, not of its configuration
+#: (`modules/problem.py`), each its object's words and the state, in a person's words.
+STATE_PROBLEMS = {"err_disabled": ("the port", "err-disabled"),
+                  "link_down": ("the link", "down"),
+                  "port_stuck": ("the port", "not passing traffic"),
+                  "port_flapping": ("the port", "flapping")}
+
+
+def state_words(problem) -> str:
+    """``"the port's state is the problem (err-disabled)"`` for a problem whose condition is a
+    state (`STATE_PROBLEMS`), else ``""``."""
+    got = STATE_PROBLEMS.get((problem or {}).get("condition") or "")
+    return f"{got[0]}'s state is the problem ({got[1]})" if got else ""
+
+
 def headline(d: dict, network: str = "", triggers: list = ()) -> str:
     """The one line a row and a History entry lead with (C2817; the mocks' rows): what
     happened on the device, as its incident's title says it (`title`, the one builder: plain
@@ -440,6 +455,13 @@ def headline(d: dict, network: str = "", triggers: list = ()) -> str:
         return f"{lead}. Mercury is putting it back itself"
     if outcome == "cant_fix" and tier >= 3 and kind in ("physical", "unknown_cause"):
         what = title(host, (), triggers, facts) or f"{host} shows a symptom"
+        # The operator, 2026-11-15: where the problem is a state, not a config, say so from the
+        # problem's condition (the decision's ``problem``, `decide`'s, from its incident's
+        # classification; a physical departure is the link's state).
+        state = state_words(d.get("problem") or (
+            {"condition": "link_down"} if kind == "physical" else {}))
+        if state:
+            return f"{what}. {host}'s config is as intended; {state}"
         return f"{what}. {host} itself is as intended, so no fix on {host} can cure it"
     if outcome == "cant_fix" and lead:
         return (f"{lead}. Mercury does not fix {KIND_WORDS.get(kind, kind)} by itself: it "

@@ -43,6 +43,16 @@ re-subscribe with the collector step (C3078, `resubscribe.apply` with ``collecto
 the collector's stale session for <device>, then re-subscribe"), whose proposal never runs the close
 helper (its dry run runs on the person's own card preview). All run the same function, and each is previewed by the
 same card, bound to its own hash.
+
+**A proposal may also name a built-in command plan** (`COMMAND_PLANS`; C3757, path 2: "One
+execution path: G7's recovery becomes the first built-in command plan"): each template that
+ships with Mercury (`modules/nsot/command_plan.py`, `builtin`), by its key, its parameters its
+template's typed ones held by shape here (`command_plan.checked`), its preview the plan's own
+(`command_plan.preview`: the parameters validated against Mercury's model, Mercury's rule for
+raw lines), run by the command-plan runner (`command_plan_run.run`) on the deploy pipeline's
+engine. It is not an operation of the catalog: it sends nothing of its own. It is approved on
+its incident's page, as a step of the incident's plan (`plan_engine`'s command-plan step);
+Recover an err-disabled interface (G7, C3712) is the first.
 """
 
 import logging
@@ -263,15 +273,180 @@ CATALOG = {op.key: op for op in (
 )}
 
 
+# ── The built-in command plans a proposal may name (C3757, path 2) ──────────────────────────
+
+def _plan_param(name: str, spec: dict) -> Param:
+    """A command plan's typed parameter as a proposal's, held by its shape
+    (`command_plan.shape_refusal`); Mercury's model is asked by the plan's own preview."""
+    from modules.nsot import command_plan
+
+    def refusal(value, _spec=dict(spec)):
+        why = command_plan.shape_refusal(_spec, value)
+        return "" if not why else (said(value) if isinstance(value, str) else kind_of(value))
+    return Param(name, str(spec.get("words") or spec["type"]), refusal)
+
+
+@dataclass(frozen=True)
+class PlanStep:
+    """A built-in command plan as a step a proposal names, declared in the action registry's
+    shape (the operator, 2026-11-15: it drops into the generalised registry later without
+    rework), beside `Operation`, which it leaves as it is:
+
+    - ``params``: its typed inputs, as `Param`s;
+    - ``preflight(network, params, *, reads=False, sources=None)``: at proposal time, the plan's
+      own preview (Mercury's rule for raw lines, the parameters against Mercury's model; with
+      *reads*, the preconditions read through the read engine too), ``{"ok", "refused",
+      "drawn", "hash"}``;
+    - ``binds``: the fields its hash binds (`command_plan.BINDS`);
+    - ``apply(network, params, confirmed_hash, *, actor, reason, actor_verified="",
+      person=False) -> dict``: the one contract, which enters the deploy pipeline
+      (`command_plan_run.step_apply`);
+    - ``conditions``: its declared special conditions (``net_zero``).
+
+    ``plan`` and ``drawn`` answer the catalog's `preview`; the endpoints are its home, its
+    incident's page (C3718), where it is approved as a step of the incident's plan."""
+    key: str
+    words: str
+    params: tuple
+    preflight: object
+    binds: tuple
+    apply: object
+    conditions: tuple
+    preview_endpoint: str = "incident_v2.incident"
+    confirm_endpoint: str = "fixit_v2.approve"
+    runs: str = "modules.nsot.command_plan_run.run"
+
+    def plan(self, network: str, params: dict, sources=None) -> dict:
+        """The plan's own preview (`command_plan.preview`), as a catalog plan answers."""
+        from modules.nsot import command_plan
+
+        return command_plan.preview(network, self.key, params, sources=sources)
+
+    @staticmethod
+    def drawn(p: dict) -> dict:
+        """What a person reads of the plan before Approve (`command_plan.drawn`, masked)."""
+        return dict(p.get("drawn") or {})
+
+
+def _plan_preflight(key: str):
+    def preflight(network: str, params: dict, *, reads: bool = False, sources=None) -> dict:
+        from modules.nsot import command_plan, command_plan_run
+
+        p = command_plan.preview(network, key, params, sources=sources)
+        refused = "; ".join(p["refusals"])
+        if p["ok"] and reads:
+            got = command_plan_run.preconditions_now(network, key, p)
+            refused = "; ".join(f"{j['name']}: {j['words']}" for j in got
+                                if j["result"] not in command_plan_run.HOLDS)
+        return {"ok": not refused, "refused": refused, "drawn": p["drawn"],
+                "hash": "" if refused else p["hash"]}
+    return preflight
+
+
+def _command_plans(templates=None) -> dict:
+    """Each command plan of *templates* (those that ship with Mercury, by default) as a
+    `PlanStep`: one declaration's shape for a built-in plan and a saved reusable action."""
+    from modules.nsot import command_plan, command_plan_run
+
+    return {t.key: PlanStep(
+        key=t.key, words=t.words,
+        params=tuple(_plan_param(n, s) for n, s in t.parameters.items()),
+        preflight=_plan_preflight(t.key), binds=command_plan.BINDS,
+        apply=command_plan_run.step_apply(t.key),
+        conditions=("net_zero",) if t.net_zero else ())
+        for t in (command_plan.builtin() if templates is None else templates).values()}
+
+
+class _SavedActions:
+    """The reusable actions people saved (`nsot.saved_plans`, an admin's each), registered as
+    `PlanStep`s by the same declaration as the built-in plans (`_command_plans`), so each is a
+    plan step and an entry a proposal may name. Each ask compares the store's identity
+    (`saved_plans.stamp`: inode, size, modification time to the nanosecond) with the one it
+    registered from, so a save in any process is seen at the next ask, never cached past a
+    change. A store that cannot be read registers none, logged. (A registry the catalog asks
+    by attribute: the reference scans of modules/fixit/ and modules/ai/ do not follow it, as
+    they do not follow the plan engine's `STEP_KINDS`; a step's run is held by its runner's
+    own person or authority check, and the AI scan seeds the plan's run.)"""
+
+    def __init__(self):
+        self.seen, self.steps = None, {}
+
+    def current(self) -> dict:
+        from modules.nsot import saved_plans
+
+        try:
+            now = saved_plans.stamp()
+        except OSError:
+            now = None
+        if now != self.seen:
+            try:
+                every = saved_plans.templates()
+                self.steps = _command_plans({k: every[k] for k in saved_plans.actions()
+                                             if k in every})
+            except Exception as exc:                  # noqa: BLE001 (said; none registered)
+                log.error("catalog: the saved actions could not be registered: %s", exc)
+                self.steps = {}
+            self.seen = now
+        return dict(self.steps)
+
+
+#: The saved reusable actions' registry (`_SavedActions`).
+SAVED = _SavedActions()
+
+
+def refresh_saved() -> dict:
+    """The saved reusable actions as the store holds them now (`SAVED.current`)."""
+    return SAVED.current()
+
+
+def saved_actions() -> dict:
+    """The saved reusable actions, by key, as the store holds them now (`SAVED`)."""
+    return SAVED.current()
+
+
+#: The built-in command plans a proposal may name, by key, in the catalog's form.
+COMMAND_PLANS = _command_plans()
+# The saved reusable actions, registered once at import (each save registers again).
+refresh_saved()
+#: The problem conditions each catalog operation fixes (`modules/problem.py`): what an
+#: investigation that lacked it is restarted on once it exists (C3733, `ai.missing.available`).
+FIXES = {resubscribe.KEY: ("telemetry_lost",), resubscribe.READD_KEY: ("telemetry_lost",),
+         resubscribe.COLLECTOR_KEY: ("telemetry_lost",)}
+
+
+def capabilities() -> dict:
+    """Every step a proposal may name, by key, with the problem conditions it fixes: the
+    catalog's operations (`FIXES`) and the built-in command plans (each template's
+    ``fixes``). A read of the code."""
+    from modules.nsot import command_plan
+
+    out = {k: tuple(FIXES.get(k, ())) for k in CATALOG}
+    out.update({t.key: tuple(t.fixes) for t in command_plan.builtin().values()
+                if t.key in COMMAND_PLANS})
+    return out
+
+
+def entries() -> dict:
+    """What a proposal may name: the catalog's operations, the built-in command plans and the
+    reusable actions people saved (`saved_actions`)."""
+    return {**CATALOG, **COMMAND_PLANS, **saved_actions()}
+
+
+def is_command_plan(key) -> bool:
+    return isinstance(key, str) and (key in COMMAND_PLANS or key in saved_actions())
+
+
 def checked(key, params) -> tuple:
-    """``(operation, parameters)`` for a named operation and its parameters, each held to the
-    schema, or raises `Refused`: *key* one of the catalog's; *params* an object giving every
-    parameter the operation takes, each of its shape, and nothing else. Reads nothing."""
-    if not isinstance(key, str) or key not in CATALOG:
+    """``(operation, parameters)`` for a named operation (or built-in command plan) and its
+    parameters, each held to the schema, or raises `Refused`: *key* one of `entries`; *params*
+    an object giving every parameter it takes, each of its shape, and nothing else. Reads
+    nothing."""
+    known = entries()
+    if not isinstance(key, str) or key not in known:
         raise Refused("not_in_catalog", (
-            f"a proposal names an operation of the catalog ({listed(sorted(CATALOG))}), and "
+            f"a proposal names an operation of the catalog ({listed(sorted(known))}), and "
             f"this one names {said(key) if isinstance(key, str) else kind_of(key)}"))
-    op = CATALOG[key]
+    op = known[key]
     names = [p.name for p in op.params]
     if not isinstance(params, dict):
         raise Refused("wrong_type", (

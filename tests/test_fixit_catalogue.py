@@ -53,14 +53,19 @@ def check(incident=None, operation=RESUB, params=None, **kw):
 
 class TestTheCatalogue:
     def test_the_incidents_attempts_are_the_catalogues_operations(self):
-        assert F.CATALOGUE_KEYS == tuple(catalog.CATALOG) == (RESUB, READD, R.COLLECTOR_KEY)
-        assert set(F.PARAMETERS) == set(catalog.CATALOG) == set(V.AS_ATTEMPT)
+        # G7 (C3712) adds Recover an err-disabled interface, a built-in command plan a
+        # proposal names beside the catalog's operations (C3757, path 2).
+        assert F.CATALOGUE_KEYS == tuple(catalog.entries()) == (
+            RESUB, READD, R.COLLECTOR_KEY, "errdisable-recover")
+        assert set(F.PARAMETERS) == set(catalog.entries()) == set(V.AS_ATTEMPT)
 
-    @pytest.mark.parametrize("key", sorted(catalog.CATALOG))
+    # Collected on a parent without `entries` too (its CATALOG's keys), so red-green reads this
+    # test's own body failing there, never a collection error (C2633).
+    @pytest.mark.parametrize("key", sorted(getattr(catalog, "entries", lambda: catalog.CATALOG)()))
     def test_each_parameter_but_the_device_is_an_attempts_parameter(self, key):
         """A proposal's parameters reach the form an attempt is compared by, every one but the
         device (the incident's), each to a parameter the attempt declares."""
-        names = [p.name for p in catalog.CATALOG[key].params]
+        names = [p.name for p in catalog.entries()[key].params]
         assert names[0] == "device" and "device" in F.NOT_PARAMETERS
         mapped = V.AS_ATTEMPT[key]
         assert sorted(mapped) == sorted(names[1:])
@@ -120,8 +125,9 @@ class TestACheckedProposal:
         ("an unknown key", RESUB, {"commands": ["reload"]}, "unknown_parameter", "schema",
          ["takes exactly the parameters device and subscriptions", "also gives 'commands'"]),
         ("an operation the catalog does not hold", "reload-device", {}, "not_in_catalog",
-         "schema", ["an operation of the catalog (telemetry-collector-resubscribe, "
-                    "telemetry-readd and telemetry-resubscribe)", "names 'reload-device'"]),
+         "schema", ["an operation of the catalog (errdisable-recover, "
+                    "telemetry-collector-resubscribe, telemetry-readd and "
+                    "telemetry-resubscribe)", "names 'reload-device'"]),
         ("a re-add of a receiver no run left removed", READD,
          {"device": "r2", "subscription": "101"}, "not_removed", "scope",
          ["a re-add adds back a receiver a run left removed, and the proposal names "

@@ -330,15 +330,22 @@ class TestTheSidebar:
         nav = self._nav()
         nav = re.sub(r'<div class="brand">.*?</div>\s*</div>', "", nav, count=1, flags=re.S)
         nav = re.sub(r'<span id="attention-count".*?</span>', "", nav, count=1, flags=re.S)
-        # Board T's two chips (Incidents' open count, Self-healing's mode), each a count or a
-        # state like Needs attention's, and Incidents' row of its tabs, which says exactly its
-        # two tabs (the board's suggested Problems tab has no page).
-        for chip in ("incidents-count", "heal-mode-chip"):
-            nav, n = re.subn(rf'<span id="{chip}".*?</span>', "", nav, count=1, flags=re.S)
-            assert n == 1, chip
-        tabs = re.search(r'<div class="nav-sub">(.*?)</div>', nav, re.S)
-        assert _text(tabs.group(1)).split() == ["Open", "·", "Closed"]
-        nav = nav.replace(tabs.group(0), "")
+        # Board T's items carry no chip and no row of tabs: Needs attention's count is the one
+        # (the operator, 2026-11-14: "Remove the "N open" chip from Incidents in the sidebar.
+        # Needs attention is the one inbox and its badge the one count"; "no Self-healing chip
+        # in the sidebar at all; the sidebar is navigation only"; "remove the "Open · Closed"
+        # sub-links under Incidents in the sidebar; they duplicate the Incidents page's tabs").
+        assert "tab=open" not in nav and "tab=closed" not in nav, "the page's tabs, not the nav's"
+        assert "hx-get" not in nav, "the sidebar reads nothing but Needs attention's count"
+        # Premise corrected (board T, 2026-11-14): what the chips and the tabs row said holds
+        # elsewhere: the mode in the top bar's one chip slot, and Incidents' two tabs, exactly
+        # Open and Closed, on its own page.
+        page = _client().get("/v2/").get_data(as_text=True)
+        top = page.split('<nav class="sidebar"', 1)[1].split('</nav>', 1)[1]
+        assert top.count('id="nmas-heal-auto"') == 1 and "/v2/incidents/heal-auto" in top
+        inc = _client().get("/v2/incidents").get_data(as_text=True)
+        tabs = re.findall(r'<a class="tab[^"]*"[^>]*data-tab="([a-z]+)">([A-Za-z]+) ·', inc)
+        assert tabs == [("open", "Open"), ("closed", "Closed")], tabs
         words = _text(nav).split()
         assert words == " ".join(s for s in SIDEBAR if s != "—").split(), words
 

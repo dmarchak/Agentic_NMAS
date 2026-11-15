@@ -593,6 +593,10 @@ def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
     hold are all refused, and nothing here assumes a kind that was not given."""
     from modules import identity
 
+    # The AI proposes and never confirms (its engineer role, `identity.as_ai`).
+    never = identity.ai_acting_refusal("confirm a telemetry re-subscribe")
+    if never:
+        return never
     if (person is True and actor and actor != identity.UNVERIFIED
             and isinstance(actor_verified, str)
             and actor_verified in identity.REQUEST_VERIFICATIONS):

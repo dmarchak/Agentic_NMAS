@@ -297,7 +297,8 @@ def test_with_the_class_off_it_builds_the_reads_pass_and_says_so(ai, reads,  # n
     iid = stopped(ai)
     got = _preview(iid)
     assert got["class"]["now"] == "off" and "an admin turns it on" in got["class"]["why_off"]
-    assert got["first"]["prompt"] == "fixit_troubleshoot.v5"
+    # Pass 1 is the reads pass of the plan answer, v8 since C3755 and C3764 (v5 before).
+    assert got["first"]["prompt"] == "fixit_troubleshoot.v8"
     assert "collector_sessions" in json.dumps(got["first"]["body"]["system"]), "the read set"
     said = " ".join(got["said"])
     assert "is off for" in said and "did not change it" in said and "at most 3" in said

@@ -247,7 +247,7 @@ def _tried(tried: list) -> list:
         return ["Nothing was tried."]
     out = []
     for a in tried[:SHOWN]:
-        op = catalog.CATALOG.get(a["operation"])
+        op = catalog.entries().get(a["operation"])
         params = "; ".join(f"{k} {', '.join(v) if isinstance(v, list) else v}"
                            for k, v in a["params"].items()
                            if v not in ("", [], False))
@@ -312,7 +312,7 @@ def _next(tried: list, diagnosis) -> list:
     from modules.heal import catalog
 
     done = {a["operation"] for a in tried}
-    out = [f"Not tried: {op.words} ({key})" for key, op in sorted(catalog.CATALOG.items())
+    out = [f"Not tried: {op.words} ({key})" for key, op in sorted(catalog.entries().items())
            if key not in done]
     first = ((diagnosis or {}).get("hypotheses") or [{}])[0]
     if first.get("rule_out"):

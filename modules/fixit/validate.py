@@ -55,7 +55,9 @@ log = logging.getLogger(__name__)
 #: never compared (`incident.NOT_PARAMETERS`).
 AS_ATTEMPT = {"telemetry-resubscribe": {"subscriptions": "subs"},
               "telemetry-readd": {"subscription": "sub"},
-              "telemetry-collector-resubscribe": {"subscriptions": "subs"}}
+              "telemetry-collector-resubscribe": {"subscriptions": "subs"},
+              # G7 (C3712): its port and cause, by the same names.
+              "errdisable-recover": {"interface": "interface", "cause": "cause"}}
 #: The checks, in the order they are made, each one's name as a refusal's code says it.
 CHECKS = ("schema", "scope", "guards", "intent")
 DONE = ". Nothing was previewed, and nothing runs"
@@ -70,7 +72,14 @@ def _listed(items) -> str:
 def as_attempt(operation: str, params: dict) -> dict:
     """*params*, a proposal's parameters as the catalog holds them (`catalog.checked`), in the
     form an attempt is compared by (`incident.canonical`)."""
-    names = AS_ATTEMPT[operation]
+    names = AS_ATTEMPT.get(operation)
+    if names is None:
+        # A command plan the catalog lists without its own row here (a saved reusable action,
+        # `nsot.saved_plans`): each of its own parameters by its own name, as
+        # `incident.parameters_of` compares them.
+        from modules.heal import catalog
+        names = {p.name: p.name for p in catalog.entries()[operation].params
+                 if p.name != "device"}
     return {names[k]: v for k, v in params.items() if k in names}
 
 
@@ -126,6 +135,14 @@ def check(incident, operation, params, *, resolved: float = None, now: float = N
             + (f"subscription {_listed(incident.subscriptions)}" if incident.subscriptions
                else "no subscription")
             + ": a proposal acts only on what its incident names"), passed)
+    if op.key == "errdisable-recover":
+        # G7 (C3712): only the port and cause the incident's own problem holds, classified from
+        # its evidence and confirmed by the device read (R4).
+        from modules.heal import errdisable
+        why = errdisable.scope_refusal(network, incident.id, device, held["interface"],
+                                       held["cause"])
+        if why:
+            return _refused("not_named", "scope", why, passed)
     if op.key == R.READD_KEY:
         removed = [r["sub"] for r in R.removed_now(network, device)]
         if subs[0] not in removed:

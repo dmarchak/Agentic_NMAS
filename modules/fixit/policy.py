@@ -8,15 +8,21 @@ STOP with Retry with more information (cost shown first), Cancel or Hand over; a
 cap of $1.00; a repeated failed proposal is flagged; payloads use stable labels. Settings ›
 Background processes, AI mode Manual by default. Section 12's rule stays in force."
 
-**The mode** (`ai_troubleshoot_mode`, `mode`): ``manual``, the default, in which an AI
-troubleshoot runs only on a verified person's press (the press starts the job; the model is
-never called on its own), or ``off``, in which none is offered and Mercury's own proposer still
-is (`modules/fixit/proposers.py`). No automatic mode exists: a model called on its own is a
-background AI feature (CLAUDE.md, "AI cost safety"), turned on only in Settings › AI, per
-network, after its estimate (`modules/ai/background.py`), and none is registered for the fix-it
-path. A mode that cannot be read is said and allows nothing (`ai_refusal`).
+**The mode, per network** (C3769, Gate 2: ONE control, AI troubleshooting Off, Manual or
+Automatic for each network; `mode`): ``off``, none is offered or started and Mercury's own
+proposer still is (`modules/fixit/proposers.py`); ``manual``, an AI troubleshoot runs only on
+a verified person's press; Automatic is Manual with the network's ``fixit_auto`` switch on
+(CLAUDE.md, "AI cost safety"; `modules/fixit/auto.py`), which starts an investigation by itself
+when Mercury's fix fails, within the network's acknowledged limits (`modules/troubleshoot_control.py`
+turns it on and off, from Settings › AI or the control strip). The stored value is Off or
+Manual: Automatic is never stored as a mode, so the switch stays the one owner of whether
+anything starts by itself. **Expand, then contract:** a network's own value rides in its
+``fixit_auto`` record (`background.OWN_FIELDS`); a network with none reads the installation's
+``ai_troubleshoot_mode``, which every release before Gate 2 read alone. A mode that cannot be
+read is said and allows nothing (`ai_refusal`).
 
-**The cap** (`ai_cap_usd_per_incident`, the operator's $1.00; `cap_state`, `cap_refusal`): what
+**The cap** (the incident's network's own per-incident limit, C3769, else the installation's
+`ai_cap_usd_per_incident`, the operator's $1.00; `cap_usd`, `cap_state`, `cap_refusal`): what
 the incident's AI calls cost so far (`incident.cost_so_far`, summed from the record of AI calls
 by the ids the incident's proposals name, each time) plus the next attempt's worst case, against
 the cap, as the gateway's day cap compares a call (`gateway.day_cap`, `controls.cap_state`).
@@ -58,55 +64,125 @@ def money(value) -> str:
     return usd(value, exact=True)
 
 
-def mode() -> dict:
-    """``{"state": "ok"|"unreadable", "mode", "error"}``: the installation's AI troubleshooting
-    mode, `DEFAULT_MODE` when it was never set. A stored value this release does not know (a
-    hand-edited file) is unreadable, never read as either mode."""
+def _own(network) -> tuple:
+    """``(record, error)``: *network*'s AI troubleshooting record (its ``fixit_auto`` entry, on
+    or off: `background.record_of`), ``({}, "")`` for no network, none kept, or a name no
+    network answers to (which can hold no record of its own, so the installation's answers).
+    A settings file that cannot be read is said by the installation's read that follows (the
+    record and the installation's value are in the same file), so ``({}, "")`` then too; *error*
+    is for a record of the wrong shape."""
+    if not network:
+        return {}, ""
+    from modules.ai import background
+    from modules.config import SettingsUnreadable
+    from modules.nsot import listref
+
+    try:
+        slug = listref.network_id(network)
+    except Exception:                                           # noqa: BLE001 (none of its own)
+        return {}, ""
+    try:
+        return background.record_of(slug, "fixit_auto"), ""
+    except SettingsUnreadable:
+        return {}, ""
+
+
+def _mode_of(network) -> dict:
+    """`mode`'s read, always with ``source``."""
     from modules.config import SettingsUnreadable
     from modules.settings_schema import get_setting
 
+    own, why = _own(network)
+    if why:
+        return {"state": "unreadable", "mode": "", "error": why, "source": "network"}
+    if "mode" in own:
+        if own["mode"] not in MODES:
+            return {"state": "unreadable", "mode": "", "source": "network",
+                    "error": (f"{network}'s AI troubleshooting mode holds {own['mode']!r}, and "
+                              f"the modes are {' and '.join(MODE_WORDS[m] for m in MODES)}")}
+        return {"state": "ok", "mode": own["mode"], "error": "", "source": "network"}
     try:
         raw = get_setting("ai_troubleshoot_mode", DEFAULT_MODE)     # MODE_KEY, by name (a scan)
     except SettingsUnreadable as exc:
-        return {"state": "unreadable", "mode": "",
+        return {"state": "unreadable", "mode": "", "source": "installation",
                 "error": f"the AI troubleshooting mode cannot be read ({exc})"}
     if raw not in MODES:
-        return {"state": "unreadable", "mode": "",
+        return {"state": "unreadable", "mode": "", "source": "installation",
                 "error": (f"the AI troubleshooting mode holds {raw!r}, and the modes are "
                           f"{' and '.join(MODE_WORDS[m] for m in MODES)}")}
-    return {"state": "ok", "mode": raw, "error": ""}
+    return {"state": "ok", "mode": raw, "error": "", "source": "installation"}
 
 
-def ai_refusal() -> str:
-    """Why no AI troubleshoot may be offered or run now, or ``""``: the mode is off, or cannot
-    be read. Manual allows a person's press, and only that."""
-    got = mode()
+def _shaped(got: dict, network) -> dict:
+    """*got* as every release before C3769 answered it when no *network* is named (no
+    ``source``: the installation's is the only one), else with *source*."""
+    return got if network else {k: v for k, v in got.items() if k != "source"}
+
+
+def mode(network: str = None) -> dict:
+    """``{"state": "ok"|"unreadable", "mode", "error"}``, and ``source`` when *network* is
+    named: AI troubleshooting's mode for *network* (C3769), its own (``network``), else the
+    installation's (``installation``), `DEFAULT_MODE` when neither was set. With no
+    *network*, the installation's alone, every network's default. A stored value this release
+    does not know (a hand-edited file) is unreadable, never read as either mode."""
+    return _shaped(_mode_of(network), network)
+
+
+def cap_usd(network: str = None) -> dict:
+    """``{"state": "ok"|"unreadable", "usd", "error"}``, and ``source`` when *network* is
+    named: the per-incident cap, a positive amount, *network*'s own limit (C3769, set with its
+    other limits in Settings › AI, ``network``), else the installation's (``installation``).
+    Never set reads as the operator's $1.00; anything stored that is not a positive amount
+    (null, zero, a negative, text, true or false) is unreadable, never "no cap"."""
+    return _shaped(_cap_of(network), network)
+
+
+def ai_refusal(network: str = None) -> str:
+    """Why no AI troubleshoot may be offered or run now on *network*, or ``""``: its mode
+    (`mode`) is off, or cannot be read. Manual allows a person's press, and Automatic the
+    network's switch too. With no *network*, the installation's mode alone."""
+    got = mode(network)
     if got["state"] != "ok":
         return f"AI troubleshooting is not offered: {got['error']}"
     if got["mode"] == "off":
+        if got.get("source") == "network":
+            return (f"AI troubleshooting is off for {network} (its mode is "
+                    f"{MODE_WORDS['off']}): Mercury's own diagnosis still proposes a fix")
         return ("AI troubleshooting is off for this installation (its mode is "
                 f"{MODE_WORDS['off']}): Mercury's own diagnosis still proposes a fix")
     return ""
 
 
-def cap_usd() -> dict:
-    """``{"state": "ok"|"unreadable", "usd", "error"}``: the per-incident cap, a positive
-    amount. Never set reads as the operator's $1.00; anything stored that is not a positive
-    amount (null, zero, a negative, text, true or false) is unreadable, never "no cap"."""
+def _positive(raw) -> bool:
+    return not (isinstance(raw, bool) or not isinstance(raw, (int, float))
+                or not math.isfinite(raw) or raw <= 0)
+
+
+def _cap_of(network) -> dict:
+    """`cap_usd`'s read, always with ``source``."""
     from modules.config import SettingsUnreadable
     from modules.settings_schema import get_setting
 
+    own, why = _own(network)
+    if why:
+        return {"state": "unreadable", "usd": None, "error": why, "source": "network"}
+    if "incident_cap_usd" in own:
+        raw = own["incident_cap_usd"]
+        if not _positive(raw):
+            return {"state": "unreadable", "usd": None, "source": "network",
+                    "error": (f"{network}'s per-incident AI cap holds {raw!r}, and it is a "
+                              "positive amount of US dollars: this cap has no \"no cap\"")}
+        return {"state": "ok", "usd": float(raw), "error": "", "source": "network"}
     try:
         raw = get_setting("ai_cap_usd_per_incident", DEFAULT_CAP_USD)  # CAP_KEY, by name
     except SettingsUnreadable as exc:
-        return {"state": "unreadable", "usd": None,
+        return {"state": "unreadable", "usd": None, "source": "installation",
                 "error": f"the per-incident AI cap cannot be read ({exc})"}
-    if (isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw)
-            or raw <= 0):
-        return {"state": "unreadable", "usd": None,
+    if not _positive(raw):
+        return {"state": "unreadable", "usd": None, "source": "installation",
                 "error": (f"the per-incident AI cap holds {raw!r}, and it is a positive amount "
                           "of US dollars: this cap has no \"no cap\"")}
-    return {"state": "ok", "usd": float(raw), "error": ""}
+    return {"state": "ok", "usd": float(raw), "error": "", "source": "installation"}
 
 
 def cap_state(incident, worst_usd) -> dict:
@@ -127,7 +203,8 @@ def cap_state(incident, worst_usd) -> dict:
         return out
     worst = float(worst_usd)
     out["worst"] = worst
-    cap = cap_usd()
+    # The incident's own network's limit (C3769), else the installation's.
+    cap = cap_usd(getattr(incident, "network", None))
     if cap["state"] != "ok":
         out["words"] = (f"Retry isn't available: {cap['error']}, so the next attempt's worst "
                         f"case of {money(worst)} cannot be compared with it")

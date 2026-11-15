@@ -1,0 +1,336 @@
+"""The first real run of automatic troubleshooting (the operator's findings, 2026-11-15).
+
+- **Each investigation is its own call (C3771):** the turn-on's catch-up started four
+  investigations under one press key, each in its own job; r7's, s1's and r4's first calls
+  each "joined call ai-2c349452c6004b2c: the same press sent again: its key was seen", s2's, so
+  s1's incident showed s2's evidence. Here four incidents started by one turn-on, each job in
+  its own thread as the host's job runner runs it, make four provider requests, each answered
+  from its own request and checked against its own pack, and no answer is shown on another
+  incident. Beside it, the press's own rule (`presses.once`): one press's calls about two
+  subjects never share a slot, and a slot naming a call about another subject is never joined.
+- **The AI composes a plan for s1's err-disabled port (C3755, C3764):** on the real shape of
+  s1's incident hi-e56afd12e1a6 (Gi1/0 err-disabled by BPDU guard, classified from s1's
+  captured lines, tests/fixtures/errdisable/), a model answering with the built-in err-disable
+  command plan and its typed parameters is accepted and proposed as a plan, not a gap; a model
+  answering with a gap for it is flagged, Mercury having that plan.
+- **The estimate takes the first measured calls as measured (E):** s2's two calls on the host,
+  $0.042098 (v5, the reads pass, 2026-11-15T07:13:52Z) and $0.029486 (v6, the second pass,
+  07:14:12Z), as the operator read them from the record of AI calls; the three joins beside
+  them (cost 0, no tokens) are not calls the provider billed.
+
+Through tests/test_fixit_troubleshoot.py's world (the real app and gateway, the provider stood
+in). No device, no network, no live AI.
+"""
+import datetime
+import json
+import re
+import threading
+
+import pytest
+
+from modules.ai import calls, presses
+from tests.conftest import TEST_PERSON
+from tests.test_fixit_catch_up import BASE, LISTED, form_of, planted, world  # noqa: F401
+from tests.test_fixit_section_v2 import NET
+from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
+from tests.test_fixit_troubleshoot import CONFIRM, ai  # noqa: F401 (the fixture)
+from tests.test_heal_resubscribe import DEV
+from tests.test_heal_resubscribe import lab  # noqa: F401 (the fixture `web` builds on)
+from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab` builds on)
+
+#: The press key the turn-on was posted with: one key for the whole press, as the page sends.
+KEY = "k" * 32
+
+
+def own_answer(body: dict, plan=None, gap=None) -> dict:
+    """An answer made from *body*'s own request: its rationale names the request's device and
+    each claim cites a reference the request's own pack holds (its incident section's first
+    piece), so an answer checked against another pack, or shown on another incident, says so."""
+    text = json.dumps(body["messages"])
+    device = re.search(r'name=\\"the_incident\\">\\n.*?\b([rs]\d+)\b', text).group(1)
+    ref = re.search(r'\\"ref\\":\\"(incident:\d+)\\"', text).group(1)
+    return {"outcome": "answer", "rationale": f"{device}'s own incident, from its own pack.",
+            "hypotheses": [{"claim": f"{device}'s incident holds what this rests on.",
+                            "evidence_refs": [ref], "confirm_with": CONFIRM}],
+            "fix": None, "gap": gap, "needs_human": True, "why_not": "",
+            "plan": plan or [], "improvement": None}
+
+
+def provider(ai, monkeypatch, make=own_answer):  # noqa: F811
+    from modules.ai import anthropic_adapter as AD
+    from modules.ai import gateway
+
+    def send(body, key):
+        ai.sent.append(body)
+        return AD.Reply(status=200, body={
+            "content": [{"type": "text", "text": json.dumps(make(body))}],
+            "stop_reason": "end_turn", "usage": {"input_tokens": 9000, "output_tokens": 600}},
+            attempts=1, latency_s=0.2)
+    monkeypatch.setattr(gateway.anthropic_adapter, "send", send)
+
+
+# ── C3771: four investigations, four calls ──────────────────────────────────────────────────
+
+class TestEachInvestigationIsItsOwnCall:
+    @pytest.fixture
+    def threaded(self, monkeypatch):
+        """Each investigation's job runs in its own thread, one after the other (the host's
+        job runner gives each its own thread; `web` runs them in the request's)."""
+        def job(lst, label, actor, work, **kw):
+            t = threading.Thread(target=work, args=("j-1",))
+            t.start()
+            t.join(60)
+            return "j-1"
+        monkeypatch.setattr("modules.nsot.capture_job.start", job)
+
+    def test_four_incidents_started_by_one_turn_on_make_four_calls_each_its_own(
+            self, world, monkeypatch, threaded):  # noqa: F811
+        from modules import incident_page
+        from modules.fixit import incident as F
+        from modules.fixit import section as S
+        provider(world, monkeypatch)
+        got = planted()
+        ticked = [got[k] for k in LISTED]
+        _html, shown, each = form_of(world)
+        # Gate 2 (C3769): turned on the one way, the limits acknowledged then the control
+        # strip's switch pressed, bound to its line; every listed incident starts.
+        from modules import troubleshoot_control as troubleshoot
+        from modules.ai import background
+        est = background.estimate(background._network(NET), "fixit_auto")
+        troubleshoot.set_limits(NET, incident_usd=1.0, day_usd=1.5, month_usd=10.0,
+                                shown=est["digest"], accepted=True,
+                                actor=TEST_PERSON, verified="access")
+        r = world.client.post(
+            f"/v2/settings/installation/ai/troubleshoot/{NET}/level?answer=strip",
+            data={"level": "automatic", "line_digest": shown},
+            headers={"HX-Request": "true", presses.HEADER: KEY})
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        rows = [x for x in calls.read()["rows"] if x.get("feature") == "fixit_troubleshoot"]
+        assert len(world.sent) == 4, "four provider requests, one an investigation"
+        assert not [x for x in rows if x.get("verdict") == calls.JOINED], "no join"
+        assert len({x["id"] for x in rows}) == 4
+        by_id = {x["id"]: x for x in rows}
+        for iid in ticked:
+            inc = S.incident_of(NET, incident_page.resolve(NET, iid))["incident"]
+            (line,) = [ln for ln in F.read(inc)["lines"] if "proposal" in ln]
+            # Answered from its own request, checked against its own pack: nothing marked.
+            assert line["shown"]["rationale"].startswith(f"{inc.device}'s own incident"), line
+            assert not any(h["unverified_words"] for h in line["shown"]["hypotheses"])
+            # And never shown on another incident: each call it shows is about it.
+            assert line["calls"] and all(by_id[c]["subject"]["id"] == iid
+                                         for c in line["calls"]), (iid, line["calls"])
+
+
+class TestThePressKeyNamesItsSubject:
+    """`presses.once` itself: one press (one key, one request), two subjects."""
+
+    @pytest.fixture
+    def once(self, tmp_path, monkeypatch):
+        import app as A
+        from flask import g
+        monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
+        made = []
+
+        def call(subject, *, fresh_thread=False):
+            if fresh_thread:
+                g.pop("nmas_ai_press_n", None)     # a job's own thread counts from 1 again
+
+            def make():
+                row = calls.record({"id": calls.new_id(), "feature": "f", "verdict": "ok",
+                                    "subject": subject, "cost_usd": 0.01})
+                made.append(row["id"])
+                return {"ok": True, "call_id": row["id"]}
+            return presses.once("f", {"b": 1}, about={
+                "network": "n", "subject": subject, "prompt": "p.v1", "model": "m",
+                "scope": "s"}, actor=TEST_PERSON, make=make,
+                rebuild=lambda row, why: {"ok": True, "call_id": row["id"], "why": why},
+                refuse=lambda kind, why: {"ok": False, "error": kind}, wait_s=1.0)
+        with A.app.test_request_context("/x", method="POST", headers={presses.HEADER: KEY}):
+            yield call, made
+
+    def test_two_subjects_under_one_key_are_two_calls(self, once):
+        call, made = once
+        a = call({"kind": "heal_incident", "id": "hi-a"})
+        b = call({"kind": "heal_incident", "id": "hi-b"}, fresh_thread=True)
+        assert len(made) == 2 and a["call_id"] != b["call_id"] and "joined" not in b
+
+    def test_each_subject_keeps_its_own_slot(self, once):
+        """hi-a, hi-b, then hi-a's press sent again: joined to hi-a's own call, never a third
+        call (one slot for both would name hi-b's call, which hi-a cannot join)."""
+        call, made = once
+        a = call({"kind": "heal_incident", "id": "hi-a"})
+        call({"kind": "heal_incident", "id": "hi-b"}, fresh_thread=True)
+        again = call({"kind": "heal_incident", "id": "hi-a"}, fresh_thread=True)
+        assert len(made) == 2 and again["joined"] == a["call_id"]
+
+    def test_two_works_of_one_press_on_one_subject_are_two_calls(self, once):
+        """The work a press's calls are for (`presses.within`: an investigation's incident and
+        failure) is in the slot: two works, two calls."""
+        call, made = once
+        subject = {"kind": "heal_incident", "id": "hi-a"}
+        with presses.within("hi-a:decision:1"):
+            first = call(subject)
+        with presses.within("hi-a:decision:2"):
+            second = call(subject)
+        assert len(made) == 2 and "joined" not in second and first != second
+
+    def test_the_same_subject_sent_again_is_still_joined(self, once):
+        call, made = once
+        a = call({"kind": "heal_incident", "id": "hi-a"})
+        again = call({"kind": "heal_incident", "id": "hi-a"}, fresh_thread=True)
+        assert len(made) == 1 and again["joined"] == a["call_id"]
+
+    def test_a_slot_naming_a_call_about_another_subject_is_never_joined(self, once):
+        from flask import g
+        call, made = once
+        a = call({"kind": "heal_incident", "id": "hi-a"})
+        # The slot hi-b's first call would take, marked done with hi-a's call (a marker an
+        # earlier release wrote, or any slot that came to name another subject's call).
+        g.pop("nmas_ai_press_n", None)
+        slot = presses.current_press(TEST_PERSON)["slot"]
+        sub = presses.subject_key({"kind": "heal_incident", "id": "hi-b"})
+        presses._Slot("key-" + presses._sha(slot, sub)).mark(  # noqa: SLF001
+            state="done", call_id=a["call_id"], scope="s")
+        b = call({"kind": "heal_incident", "id": "hi-b"}, fresh_thread=True)
+        assert len(made) == 2 and "joined" not in b, "its own call, never hi-a's answer"
+
+
+# ── C3755, C3764: s1's err-disabled port, a plan, never a gap ──────────────────────────────
+
+S1 = {"hostname": "s1", "ip": "192.0.2.11", "device_type": "cisco_ios"}
+#: The built-in err-disable command plan as a plan step, its typed parameters as the model
+#: gives them (`fixit_troubleshoot.StepParams`).
+RECOVER = {"operation": "errdisable-recover",
+           "params": {"device": "s1", "interface": "Gi1/0", "cause": "bpduguard",
+                      "subscriptions": None, "subscription": None, "changes": None,
+                      "remove": None},
+           "why": "Gi1/0 is err-disabled by BPDU guard and its cause has cleared.",
+           "evidence_refs": []}
+
+
+class TestTheErrDisabledPort:
+    @pytest.fixture
+    def s1(self, ai, monkeypatch):  # noqa: F811
+        """s1's incident as hi-e56afd12e1a6 stood on the host: opened from "Critical syslog
+        received" and "Interface down" on Gi1/0, classified from s1's captured lines (BPDU guard,
+        Gi1/0, h1) and confirmed by its captured device read (`errdisable.reclassify_step`, the
+        detect loop's own step), in `ai`'s world with s1 in the inventory; the command plan's
+        preconditions read stood in (recorded), so no device is read."""
+        import dataclasses
+
+        from modules.fixit import section
+        from modules.heal import catalog
+        try:
+            from tests import test_errdisable as T
+        except ImportError:
+            # A parent without the err-disable problem: no incident to stand, so each test's
+            # own body fails there (red-green reads its body, never a setup error, C2633).
+            return None
+        rows = [dict(DEV, _netbox_id=7), dict(S1, _netbox_id=11)]
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: list(rows))
+        real = section._identity                    # noqa: SLF001
+        monkeypatch.setattr(section, "_identity", lambda network, device: (
+            real(network, device) if device == "r2" else f"uid:{device}-0001"))
+        iid = T.opened("Critical syslog received")["incident"]
+        T.opened("Interface down", "GigabitEthernet1/0", at=T.AT + 20)
+        assert T.E.reclassify_step(NET, sources=T.Src(), now=T.AT + 600)["classified"] == [iid]
+        asked = []
+
+        def preflight(network, params, *, reads=False, sources=None):
+            asked.append(dict(params))
+            return {"ok": True, "refused": "", "drawn": {}, "hash": "h-recover"}
+        monkeypatch.setitem(catalog.COMMAND_PLANS, RECOVER["operation"], dataclasses.replace(
+            catalog.COMMAND_PLANS[RECOVER["operation"]], preflight=preflight))
+        ai.iid, ai.asked = iid, asked
+        return ai
+
+    @staticmethod
+    def investigate(w, monkeypatch, make):
+        """The troubleshoot path (`fixit_troubleshoot.troubleshoot`, a verified person's press
+        in a request) on s1's incident, the provider answering *make(body)*."""
+        import app as A
+        from modules import incident_page
+        from modules.ai import fixit_troubleshoot as AIT
+        from modules.fixit import section
+        provider(w, monkeypatch, make)
+        found = incident_page.resolve(NET, w.iid)
+        inc = section.incident_of(NET, found)["incident"]
+        with A.app.test_request_context("/x", method="POST"):
+            return AIT.troubleshoot(NET, found, inc, actor=TEST_PERSON, actor_verified="access",
+                                    person=True), found
+
+    def test_its_shape_is_s1s_err_disabled_port(self, s1, monkeypatch):
+        from modules import incident_page, problem
+        p = problem.classify(incident_page.resolve(NET, s1.iid))
+        assert (p.device, p.condition, p.cause) == ("s1", "err_disabled", "BPDU guard")
+
+    def test_a_composed_plan_of_the_built_in_command_plan_is_proposed_not_a_gap(
+            self, s1, monkeypatch):
+        from modules.ai import missing
+
+        def make(body):
+            a = own_answer(body)
+            step = dict(RECOVER, evidence_refs=list(a["hypotheses"][0]["evidence_refs"]))
+            return dict(a, plan=[step])
+        got, _found = self.investigate(s1, monkeypatch, make)
+        assert got["state"] == "proposed", got["words"]
+        assert got["words"].startswith("The AI proposes a plan of 1 step")
+        # The catalogue it was sent offers the err-disable plan (s1's problem is an
+        # err-disabled port) and no telemetry operation (s1's incident names no subscription).
+        system = json.dumps(s1.sent[0]["system"])
+        assert "errdisable-recover" in system and "telemetry-resubscribe" not in system
+        (step,) = got["proposal"]["steps"]
+        assert step["operation"] == "errdisable-recover"
+        assert s1.asked == [{"device": "s1", "interface": "Gi1/0", "cause": "bpduguard"}], \
+            "its typed parameters, read once in the job"
+        assert missing.for_incident(s1.iid) == [], "no missing capability recorded"
+
+    def test_a_gap_for_it_is_flagged_mercury_having_the_plan(self, s1, monkeypatch):
+        from modules.ai import missing
+        gap = {"what": "no operation recovers an err-disabled port", "evidence_refs": []}
+
+        def make(body):
+            a = own_answer(body)
+            return dict(a, gap=dict(gap, evidence_refs=a["hypotheses"][0]["evidence_refs"]))
+        got, _found = self.investigate(s1, monkeypatch, make)
+        assert got["state"] == "gap" and got["overlooked"] == ["errdisable-recover"]
+        assert "Mercury's check flags it" in got["words"] and "errdisable-recover" in got["words"]
+        assert got["shown"]["gap_overlooked"]
+        (row,) = missing.for_incident(s1.iid)
+        assert row["overlooked"] == ["errdisable-recover"], "the row says a plan exists"
+
+
+# ── E: the first measured calls ─────────────────────────────────────────────────────────────
+
+#: s2's two calls at the first real run, as the operator read them from the host's record of AI
+#: calls (2026-11-15): the time, the prompt and the cost each are the measurement; the ids and
+#: the token counts are stand-ins (a sent row carries its tokens; their values were not read).
+FIRST_RUN = (("2026-11-15T07:13:52Z", "fixit_troubleshoot.v5", 0.042098),
+             ("2026-11-15T07:14:12Z", "fixit_troubleshoot.v6", 0.029486))
+#: The three joins of that run (r7's, s1's and r4's): cost 0, no tokens.
+JOINS = ("2026-11-15T07:13:53Z", "2026-11-15T07:13:54Z", "2026-11-15T07:13:55Z")
+#: When the estimate is read: that morning, after the run.
+AFTER = datetime.datetime(2026, 11, 15, 8, 20, tzinfo=datetime.timezone.utc)
+
+
+def test_the_estimate_takes_the_first_measured_calls_as_measured(ai, monkeypatch):  # noqa: F811
+    from modules.ai import background, profiles
+    from modules.ai import fixit_troubleshoot as AIT
+    model = profiles.TASKS["fixit_troubleshoot"]["model"]
+    for n, (at, prompt, usd) in enumerate(FIRST_RUN):
+        calls.record({"id": f"ai-first-run-{n}", "feature": "fixit_troubleshoot", "at": at,
+                      "model": model, "prompt": prompt, "verdict": "ok", "cost_usd": usd,
+                      "tokens": {"input_tokens": 1, "output_tokens": 1}})
+    for n, at in enumerate(JOINS):
+        calls.record({"id": f"ai-join-{n}", "feature": "fixit_troubleshoot", "at": at,
+                      "model": model, "verdict": calls.JOINED, "cost_usd": 0.0,
+                      "joined": "ai-first-run-0"})
+    got = background.measured_cost("fixit_troubleshoot", now=AFTER)
+    assert got["measured"] is True and got["calls"] == 2, got
+    assert got["usd_per_call"] == pytest.approx((0.042098 + 0.029486) / 2)     # $0.035792
+    # The estimate drawn before a press reads the record's last 30 days from the record's own
+    # clock (`calls._now`): that morning's.
+    monkeypatch.setattr(calls, "_now", lambda: AFTER)
+    est = AIT.estimate()
+    assert est["measured"] is True and est["usd"] == pytest.approx(0.071584), est
+    assert est["worst"] == pytest.approx(2 * profiles.cap_per_call("fixit_troubleshoot"))

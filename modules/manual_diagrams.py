@@ -1647,6 +1647,42 @@ def telemetry_resubscribe():
     ])
 
 
+def errdisable_recover():
+    return svg(560, (
+        "Recover an err-disabled interface, a built-in command plan run on the deploy "
+        "pipeline's engine: its parameters are validated against Mercury's model (the port in "
+        "committed intent, an access port, never the management path) and its lines held to "
+        "Mercury's rule for raw lines; you approve by the plan's hash; holding the device, the "
+        "running configuration is read, then each precondition through the read engine (the "
+        "port err-disabled by the cause now, no errdisable recovery for the cause, the cause "
+        "cleared), else nothing is sent; then interface, shutdown and no shutdown, never "
+        "saved; verify reads the port every 3 seconds until connected, up to 30, and no new "
+        "err-disable 10 seconds later, then the running configuration must equal the one "
+        "before, line for line; anything else is rolled back by the pipeline; the receipt and "
+        "the run are recorded and the engineer told the offending MAC, the port, the time and "
+        "the cause."), [
+        lanes(20, 554),
+        doc("box", 14, 40, 186, 36, "The plan", "model, rule for raw lines"), num(14, 40, 1),
+        t(14, 92, "a shape not measured: refused", "sm"),
+        person(14, 104, 186, 30, "You approve by its hash"), num(14, 104, 2),
+        band(150, 330, "The run · the pipeline, the device held"),
+        device(262, 170, 118, 300, "The switch", "never saved", top=True),
+        *rows([
+            (176, "read", 3, "Read before", "running configuration"),
+            (212, "read", 4, "Preconditions", "err-disabled; cleared"),
+            (248, "send", 5, "shutdown, no shutdown", "config mode, one port"),
+            (284, "read", 6, "Connected within 30 s", "read every 3 s"),
+            (320, "clock", 7, "Net zero", "after equals before"),
+            (356, None, 8, "Roll back if not", "the pipeline's rollback"),
+        ]),
+        t(36, 396, "Not cleared: the port stays down,", "sm"),
+        t(36, 409, "said and notified; nothing sent.", "sm"),
+        store(14, 490, 186, 40, "The receipt and run", "MAC, port, time, cause"),
+        num(14, 490, 9),
+        t(14, 546, "History shows it; the engineer is told.", "sm"),
+    ])
+
+
 def telemetry_collector_close():
     """C3078: the re-subscribe with the collector step, the steps it adds before the removals."""
     return svg(470, (
@@ -2565,6 +2601,39 @@ def read_account_probe():
     ])
 
 
+def heal_batch():
+    return svg(540, (
+        "Turn on self-healing and fix all: guard 6 held several devices that departed at once, "
+        "and each hold kept what its fix would send; Needs attention's card says how many "
+        "devices have faults and how many Mercury can fix, with each program, before you "
+        "press; you press once, as a verified person who may change self-healing, bound to "
+        "the card's hash; the AI starts on each incident with no fix, as your press under "
+        "every cap; a job turns on Auto for the network's default duration and records the "
+        "approval, then fixes one device first through the heal, held and verified, and only "
+        "then the rest at once, each held and verified, starting none after a failure; guard "
+        "10 still counts every heal; the outcome is recorded and the strip shows each step."), [
+        lanes(20, 534),
+        doc("box", 14, 40, 186, 36, "Guard 6's hold", "each fix kept, nothing sent"),
+        num(14, 40, 1),
+        doc("box", 14, 96, 186, 36, "The batch card", "N have faults, M fixable"),
+        num(14, 96, 2),
+        person(14, 148, 186, 30, "You press, by its hash"), num(14, 148, 3),
+        t(14, 196, "The AI starts on each with no fix", "sm"),
+        band(214, 170, "The batch · a job, as the policy you turned on"),
+        device(262, 290, 118, 130, "Each device", "its fix", top=True),
+        *rows([
+            (254, None, 4, "Auto on, approval kept", "the default duration"),
+            (304, "read", 5, "One device first", "held, verified"),
+            (354, None, 6, "Then the rest at once", "none after a failure"),
+        ]),
+        store(14, 420, 186, 40, "The batch's record", "who, the hash, each device"),
+        num(14, 420, 7),
+        t(14, 482, "Guard 10 still counts every heal.", "sm"),
+        t(14, 500, "Rollback: each device's own, the", "sm"),
+        t(14, 513, "heal's pipeline undoing what landed.", "sm"),
+    ])
+
+
 #: name -> function drawing it. The file is ``docs/manual/diagrams/<name>.svg``.
 DIAGRAMS = {
     "read-account-rollout": read_account_rollout,
@@ -2629,9 +2698,12 @@ DIAGRAMS = {
     "diagnose": diagnose,
     "privileged": privileged,
     "telemetry-resubscribe": telemetry_resubscribe,
+    # G7 (C3712): Recover an err-disabled interface.
+    "errdisable-recover": errdisable_recover,
     "telemetry-collector-close": telemetry_collector_close,
     "plans": plans,
     "heal-proposal": heal_proposal,
+    "heal-batch": heal_batch,
     "heal": heal,
     "notifications": notifications,
     "sdn-flows": sdn_flows,

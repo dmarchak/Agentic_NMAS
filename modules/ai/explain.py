@@ -828,7 +828,7 @@ def _uncited_words(names: list) -> str:
 
 
 def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
-          names: dict = None, added=()) -> str:
+          names: dict = None, added=(), unverified=()) -> str:
     """"" when every hypothesis cites the pack as sent (*sections*, by default the pack's
     every section) or the topology sent (*topology_ids*) and names an allowed read, every
     piece of evidence the answer says it checked (schema v2) is one of them and was read, and
@@ -836,7 +836,11 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
     the model or by Mercury (*added*, `mercury_cites`'s references) (C1897; *names* the
     network's ids by name, held to the devices the topology sent holds, `sent_names`); else
     why not (the first one that does not, named; every uncited device, named). No fault found
-    holds no hypothesis and cites at least one piece it checked."""
+    holds no hypothesis and cites at least one piece it checked. *unverified* are citations
+    the caller keeps marked instead of refusing the answer for them (AI troubleshooting's,
+    the operator, 2026-11-15: "never discard a whole answer for a bad citation"): one is not
+    a reason here; every other caller passes none."""
+    unverified = set(unverified or ())
     from modules import evidence_pack as EP
     from modules import readonly_commands as R
 
@@ -877,7 +881,7 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
         if not h.evidence_refs:
             return f"hypothesis {i} cites nothing in the pack"
         for ref in h.evidence_refs:
-            if EP.resolve(sent, ref) is None and ref not in known:
+            if EP.resolve(sent, ref) is None and ref not in known and ref not in unverified:
                 return (f"hypothesis {i} cites {ref[:40]!r}, which is not in the pack"
                         + (" or the topology sent" if known else "")
                         + (" as sent" if EP.resolve(pack, ref) is not None else ""))
