@@ -67,6 +67,24 @@ Each background feature Mercury knows is a row:
   ([Needs attention](needs-attention#sources)); it stays, saying the approval ended, until
   the feature is turned on again or off.
 
+**Turn on…** for **Start AI troubleshooting automatically when Mercury's fix fails** also lists,
+above the caps, every open incident on this network it would have started on had it been on
+when Mercury's fix failed: a fix that ran and did not fix it, a problem Mercury has no fix of its
+own for, or a heal held by a guard a person resolves (for example guard 4, the device's golden
+departing from its intent). Each row names the device, the incident's title (a link to its
+page), why ("held by guard 4: …", "Mercury's fix was rolled back") and about what its
+investigation costs, and each is ticked. The line above them reads "Starts on these N open
+incidents, about $X" and follows your ticks. Turning it on records which you ticked and which
+you left unticked, with the estimate shown, and starts each ticked one once, as its own job
+under **In progress**, in your name, within every cap: its incident's AI cap, this feature's
+day and month caps as you typed them, and the day cap. A line under the list says how many of
+the ticked fit under each cap and follows your ticks and the caps as you type them ("2 of the 4
+ticked fit under the caps; the later 2 would pass this feature's day cap"); the later ones past
+a cap are refused before anything starts, and each one's page says which cap. One you untick keeps **Start AI
+troubleshooting** on its page and never starts by itself for that failure. With none to list,
+the form says "No open incident to start on" and turning it on is as for any feature. After
+that, every new failure starts by itself ([Starting by itself](fixit-troubleshoot#automatic)).
+
 A feature on another network that its cap stopped is named under the list, so an admin sees it
 without choosing that network.
 

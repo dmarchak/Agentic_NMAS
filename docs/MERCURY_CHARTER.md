@@ -194,10 +194,18 @@ a non-expert approves, and the checks that prove it.
   switch "Start AI troubleshooting automatically when Mercury's fix fails" is **off by default
   on every network**, offered as one switch in the AI settings with its estimate beside it
   (per incident, the per-incident cap, the day cap), and only a person turns it on or off
-  (the operator, 2026-11-14: "keep CLAUDE.md as it is"). Turning it on never catches up: an
-  incident whose fix failed before it was on starts nothing by itself, and keeps one "Start
-  AI troubleshooting" button for a person's press. The AI's NEVERs stand: it proposes, and a
-  person approves by hash. **Cost:** one background AI call per failure where a person turned
+  (the operator, 2026-11-14: "keep CLAUDE.md as it is"). **Turning it on catches up on the
+  person's choice** (the operator, 2026-11-15): it first lists every open incident whose fix
+  failed or that has no fix ("starts on these N open incidents, about $X"), each tickable,
+  records what was chosen, and starts on those within the caps; after that every new failure
+  starts by itself. An incident left unticked keeps one "Start AI troubleshooting" button for
+  a person's press. **A hold a person must resolve counts as no fix Mercury can run alone**
+  (the operator, 2026-11-15; a guard-4, 6 or 9 hold): the AI diagnoses and proposes within
+  its catalog, and where the fix needs a person's approval (a template bring-in) it says so
+  as its finding and offers Hand over. **In every mode of self-healing** (the
+  operator, 2026-11-15: "the AI only proposes, and nothing runs without a person's approval,
+  so it investigates in Dry run too"). The AI's NEVERs stand: it proposes, and a person
+  approves by hash. **Cost:** one background AI call per failure where a person turned
   it on, inside the caps. **Prevents:** an incident waiting for a person to press a button
   whose outcome was already decided, and spend no person approved.
 - **R2. BLUF, bottom line up front, on every screen, card and notification.** The top is three

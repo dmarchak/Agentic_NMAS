@@ -179,27 +179,38 @@ def approve(incident_id):
             "again. Nothing ran"))
     reason = " ".join((request.form.get("reason") or "").split()) or (
         f"approved plan {plan['hash']} on incident {incident_id}'s page")
-    # The collector step's session, bound now (the close helper's dry run, on this person's
-    # press): the plan run carries it in its hash, and its step refuses, naming both sessions,
-    # if the collector holds another when it runs.
+    # Each collector step's session, read when the plan was proposed and drawn from that
+    # record (C3725; the operator, 2026-11-15), is bound by the plan's hash (`plan_params`).
+    # Approve reads it again now (the close helper's dry run) and refuses, naming both, when
+    # the collector holds another; the step's own preview and apply check it once more.
     params, bound = FP.plan_params(inc, line), plan["hash"]
     from modules.heal import resubscribe as R
     if any(s["operation"] == R.COLLECTOR_KEY for s in params["steps"]):
-        for s in params["steps"]:
+        read = {str(s.get("n")): s for s in plan.get("sessions") or []}
+        for n, s in enumerate(params["steps"], 1):
             if s["operation"] != R.COLLECTOR_KEY:
                 continue
+            kept = read.get(str(n)) or {}
             got = PE.collector_session(network, s["params"]["device"],
                                        s["params"].get("subscriptions") or [])
-            if not got["session"]:
+            if got["session"] != s.get("session"):
+                now = (f"the one from {got['session']}" if got["session"]
+                       else f"none ({got['refused']})")
                 return _section(network, found, 409, refused=(
-                    f"Not approved: the collector step names no session to close now "
-                    f"({got['refused']}). Nothing ran"))
-            s["session"] = got["session"]
+                    f"Not approved: step {n}'s collector session moved since the plan was "
+                    f"proposed: the plan read the session from {s.get('session')} at "
+                    f"{kept.get('at') or 'its proposal'}, and the collector holds {now} now. "
+                    "Ask again for a plan that reads it. Nothing ran"))
         engine = PE.preview(network, PE.INCIDENT_FIX, params)
         if not engine["ok"]:
             return _section(network, found, 409, refused=(
                 f"Not approved: {engine['refused']}. Nothing ran"))
-        bound = engine["hash"]
+        # The run starts only on the hash the person approved: the session is bound by the
+        # preflight's hash now (`plan_params`), so the engine's preview must name the same.
+        if engine["hash"] != plan["hash"]:
+            return _section(network, found, 409, refused=(
+                f"Not approved: you approved the plan {plan['hash']}, and the plan engine "
+                f"previews {engine['hash']} now: it moved since. Read it again. Nothing ran"))
     # The approval is kept BEFORE the run starts, naming the run it starts (its id given to
     # the engine), so a run never exists without the person's approval on the record.
     from modules.nsot import reads

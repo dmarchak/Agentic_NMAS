@@ -483,6 +483,13 @@ FIELDS = {
         "form.<named at run time>": "a secret's own fields, kept in the secrets store; the "
                                     "connection check it runs sends Mercury's word"},
     "settings_v2.install_test": {},
+    # C3732: Settings › AI's Turn on for automatic AI troubleshooting starts each open incident
+    # the person ticked (`heal_notice.start_catch_up`); nothing typed reaches the AI.
+    "settings_v2.ai_on": {
+        "form.<whole>": ("the turn-on's choices (the estimate's digest, the caps, the acceptance, "
+                         "the incident ids listed and ticked, the estimate drawn), checked and "
+                         "recorded; none is sent"),
+        "args.tab": "the Settings tab drawn back (a token), never sent"},
     # Lab 9 B2 (board lab9-sdn E): SDN › Policies' Draft the policy; the person's answer to
     # Mercury's own question (which host a word means) continues the same sentence.
     "sdn_policies_v2.draft": {

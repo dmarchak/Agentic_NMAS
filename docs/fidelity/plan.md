@@ -34,4 +34,16 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 Compared again 2026-11-14 when the run's steps moved onto THE stepper (CI #1720's
 tests/test_one_stepper.py): the Running and The steps' ends regions.
 
-Templates sha256: `75f51171da732c58aaa3b4208983f6b15bf2220f7f693b5c87e02d50dde9beaa`
+Compared again 2026-11-14 (C3725, "everything the hash binds is shown in the preview"): one
+region added under the hash line, collapsed, **What its hash binds** (the network, the plan,
+each parameter, each step's operation and parameters, what its preview found, its own hash and
+the plan's), drawn from the same hash's arguments (`plan_engine.bound_rows`); no other region
+moves. Compared by the template diff and the card tests/test_plan_binds_drawn.py and
+tests/v2_context.py's `_plans` draw, not by new shots. Templates sha256 before:
+`75f51171da732c58aaa3b4208983f6b15bf2220f7f693b5c87e02d50dde9beaa`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| What its hash binds (C3725) | (not on the board: the board draws the hash line alone) | collapsed under the hash line, one row a bound value, keys by their words, before Approve | **deviation** (log: Plan previews: what the hash binds) |
+
+Templates sha256: `3aab0145aed845b7a87f7c843ac13dd0fc79663749eebfce10463be4ec72af1a`

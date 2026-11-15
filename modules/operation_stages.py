@@ -815,6 +815,7 @@ HISTORY = {
     "settings_v2.install_ai_off": ("installation_settings",),
     # Settings › AI's background features (C1843): each change in the installation's settings
     # record (`background._record`), drawn on History.
+    # C3732: the catch-up's choice is in the same record; each start in its incident's.
     "settings_v2.ai_on": ("installation_settings",),
     "settings_v2.ai_off": ("installation_settings",),
     "settings_v2.ai_caps": ("installation_settings",),

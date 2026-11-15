@@ -36,12 +36,14 @@ said locally too (`localised`). A person is named by display name (`display_name
 never by identity, in the text and the webhook's JSON alike: a message has no "identity as
 recorded" line, and the record keeps the identity.
 
-**A can't-fix leads with its outcome and its link** (the GUI review of 2026-11-13, item 9, the
-email rules of docs/UI_RULES.md, approved by the operator). An event that carries a *lead*
-(`heal_notice.facts`: what happened on the device, as its incident page's title says it, then
-the outcome) is drawn inverted: the lead, What to do, and "Open in Mercury" are its first three
-lines; then the facts, the outcome said once (no Outcome line, and a step whose words repeat
-it says only its label and result); the steps recorded in one minute are one line with their
+**A can't-fix leads with its bottom line and its link** (the GUI review of 2026-11-13, item 9,
+the email rules of docs/UI_RULES.md, approved by the operator; R2's BLUF, the operator,
+2026-11-14, C3726). An event that carries a *lead* (`heal_notice.facts`: the problem, as its
+incident page titles it, and its impact, `heal_notice.bottom_line`) is drawn inverted: the
+lead, What to do (the incident's own next action), and "Open in Mercury" are its first three
+lines, and its subject names its *title*; then the facts, the outcome said once on its
+Outcome line (and a step whose words repeat it says only its label and result), a hold that
+stopped a step its plain line, never "failed"; the steps recorded in one minute are one line with their
 time, a step that ended "done" by its label alone (what it recorded is on the incident's
 page, one click away), and the message's foot is when it was sent. An event with no lead
 keeps facts first, then the link. Either way every line is said in plain words (`plain`):
@@ -92,9 +94,11 @@ EVENTS = {"cant_fix": "could not fix", "proposal": "a fix waits for a person",
 #: An event's fields and each one's bound; nothing else is carried.
 #: C2817, C2823: *happened* is what happened, the cause the decision stated (facts first, a
 #: hypothesis labelled), before the outcome; the outcome's bound holds the plain words.
-#: *lead* is the one plain sentence a can't-fix leads with (what happened, then the outcome).
+#: *lead* is the bottom line a can't-fix leads with (R2, C3726: what happened, its impact);
+#: *title* the incident's one title (`bluf.what_of`), which its subject names.
 FIELDS = {"incident": 80, "event": 20, "network": 80, "device": 80, "kind": 80,
-          "lead": 800, "happened": 800, "outcome": 400, "detected": 400, "detected_at": 40,
+          "title": 120, "lead": 800, "happened": 800, "outcome": 400, "detected": 400,
+          "detected_at": 40,
           "steps": 20, "todo": 400, "link": 400, "analysis": 1, "diagnosis": 1}
 #: Mercury's diagnosis block's fields (H17) and each one's bound; its hypotheses at most
 #: `DIAGNOSIS_HYPOTHESES` (the diagnosis's own `MAX_SHOWN`), each `DIAGNOSIS_HYPOTHESIS_FIELDS`;
@@ -423,8 +427,26 @@ def _people(text: str) -> str:
     return display_names.people(text)
 
 
+#: The longest subject a title leads (RFC 5322's 78-character line, less "Subject: "): a header
+#: that fits is never folded.
+SUBJECT_MAX = 69
+
+
 def subject(facts: dict) -> str:
-    """The subject line, unmasked: the sender masks it (`relay.build`)."""
+    """The subject line, unmasked: the sender masks it (`relay.build`). An event that carries
+    the incident's *title* leads with it, its bottom line (R2, C3726): "[Mercury] edge1:
+    telemetry streams 101 and 102 lost: could not fix", its network beside it when the whole still fits
+    `SUBJECT_MAX` (a header that long is never folded, so no reader shows it split), else the
+    title cut with an ellipsis; any other names its device and network."""
+    if facts.get("title"):
+        # Each person by display name, as the body names them (`_people`).
+        title, tail = plain(_people(facts["title"])), f": {EVENTS[facts['event']]}"
+        net = f" ({facts['network']})" if facts.get("network") else ""
+        for got in (f"[Mercury] {title}{net}{tail}", f"[Mercury] {title}{tail}"):
+            if len(got) <= SUBJECT_MAX:
+                return got
+        room = SUBJECT_MAX - len("[Mercury] ") - len(tail) - 1
+        return f"[Mercury] {title[:max(1, room)].rstrip(' ,:;')}…{tail}"
     where = " on ".join(x for x in (facts.get("device"), facts.get("network")) if x)
     return f"[Mercury] {where or 'Mercury'}: {EVENTS[facts['event']]}"
 
@@ -507,6 +529,11 @@ def _led(facts: dict, sent_epoch: float, named: str, detected, said) -> str:
         lines.append(where)
     if facts.get("happened"):
         lines.append(f"What happened: {said(facts['happened'])}")
+    # The bottom line (R2, C3726) is the problem's, so what Mercury decided is said below it,
+    # once, unless the lead already says it.
+    outcome = facts.get("outcome") or ""
+    if outcome and " ".join(outcome.split()) not in " ".join(facts["lead"].split()):
+        lines.append(f"Outcome: {said(outcome)}")
     if facts.get("detected"):
         when = (f" at {local(detected, named)}" if detected is not None else
                 f" at {said(facts['detected_at'])}" if facts.get("detected_at") else "")
@@ -540,6 +567,7 @@ def payload(facts: dict, *, sent_at: float = None) -> dict:
     return display_names.people_payload({"incident": facts["incident"], "event": facts["event"],
             "summary": EVENTS[facts["event"]], "network": facts.get("network", ""),
             "device": facts.get("device", ""), "kind": facts.get("kind", ""),
+            **({"title": plain(facts["title"])} if facts.get("title") else {}),
             **({"lead": plain(facts["lead"])} if facts.get("lead") else {}),
             "outcome": plain(facts.get("outcome", "")),
             "detected": plain(facts.get("detected", "")),

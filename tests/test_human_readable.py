@@ -469,9 +469,11 @@ DRAWS = {
     # Premise corrected (the GUI review of 2026-11-13, item 9, EM1: the can't-fix's email
     # leads with what happened and the outcome, in place of its "Mercury: could not fix" head).
     # And C3453's: the lead is the incident's title in plain words, so no line is withheld.
-    "email": ("edge-d: access list added on GigabitEthernet2 outside Mercury. Mercury cannot "
-              "fix this yet", "What happened: ",
-              "What Mercury tried:", "Open in Mercury:"),
+    # Premise corrected (C3726, the operator's R2 of 2026-11-14: a notification leads with its
+    # bottom line): the lead is the title and its impact, the outcome its own Outcome line.
+    "email": ("edge-d: access list added on GigabitEthernet2 outside Mercury. Traffic the ACL "
+              "matches is filtered differently", "Outcome: Mercury cannot fix this yet",
+              "What happened: ", "What Mercury tried:", "Open in Mercury:"),
 }
 
 

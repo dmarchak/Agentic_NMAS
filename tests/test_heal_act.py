@@ -1057,3 +1057,119 @@ class TestThroughTheRealApply:
         assert wired["state"]["rolled"] and wired["state"]["rolled"][0][1] == "after_verify"
         assert got["outcome"] == "rolled_back"
         assert DS.halted("Lab")["guard"] == 14
+
+
+# ── A cosmetic heal: verified by its read-back, its symptom never waited on (R3) ────────────
+
+class _ReadOnce(FakeAct):
+    """The act's sources with the REAL symptom read (`read_symptom`) over a store answering
+    *doc*, its sleeps and its asks to run counted: what a cosmetic heal waits for is seen."""
+
+    def __init__(self, running, doc, **kw):
+        super().__init__(running, **kw)
+        self.doc, self.slept, self.asked, self.onces = doc, [], [], []
+        self.t = T0 + 7
+
+    def clock(self):
+        return self.t
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.t += s
+
+    def symptom(self, device, triggers, since, once=""):
+        self.symptoms += 1
+        self.onces.append(once)
+        return A.read_symptom("Default", device, triggers, since, once=once,
+                              clock=self.clock, sleep=self.sleep,
+                              read=lambda store: {"state": "ok", "doc": self.doc},
+                              request=lambda store: self.asked.append(store) or True)
+
+
+class TestACosmeticHeal:
+    """R3 (the operator, 2026-11-14): "Cosmetic changes (description, banner, snmp
+    location/contact, alias) are a read-back only. Anything unclassified gets the current full
+    wait (safe by default). The run record shows why it took the time it took"."""
+
+    DOWN = {"list": "Default", "protocol": "OSPF", "devices": ["core-a", "edge-b"]}
+
+    def described(self):
+        return changed((" description to leaf\n", " description to leaf X\n"))
+
+    def test_a_description_heal_reads_its_symptom_once_and_never_waits(self, lab):
+        running = self.described()
+        d = decided(running, triggers=[CFG, ADJ], kinds=("changed_line",))
+        assert d["program"] == ["interface GigabitEthernet2", " description to leaf", "exit"], \
+            d["program"]
+        # The adjacencies store's last read, made BEFORE the heal began: the adjacency up.
+        src = _ReadOnce(running, _adj_doc(T0 - 600))
+        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
+        assert got["outcome"] == "healed", got["words"]
+        assert src.slept == [] and src.asked == [], "no poll, no reader asked to run"
+        assert src.onces == ["descriptions only: read back, 2 s"]
+        (step,) = [s for s in got["steps"] if s["step"] == "symptom"]
+        assert step["words"].startswith("descriptions only: read back, 2 s; the symptom is gone "
+                                        "in its store's last read (not waited on")
+        assert "wait_s" not in step, "no wait declared: none is made"
+
+    def test_a_symptom_still_there_is_said_never_green(self, lab):
+        running = self.described()
+        d = decided(running, triggers=[CFG, ADJ], kinds=("changed_line",))
+        src = _ReadOnce(running, _adj_doc(T0 - 600, self.DOWN))
+        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
+        assert got["outcome"] == "symptom_remains", got["words"]
+        assert "still there in its store's last read" in got["words"]
+        assert src.slept == []
+
+    def test_a_read_from_before_the_symptom_began_is_never_gone(self, lab):
+        """The adjacency dropped at T0 - 900 and its reader has failed since, keeping its last
+        good value from T0 - 1200, which shows nothing down: that read knows nothing of the
+        drop, so the heal is partial, never healed, and the incident is not closed green."""
+        running = self.described()
+        d = decided(running, triggers=[CFG, ADJ], kinds=("changed_line",))
+        src = _ReadOnce(running, _adj_doc(ADJ["epoch"] - 300))
+        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
+        assert got["outcome"] == "partial", got["words"]
+        assert "could not be read in its store" in got["words"] and "stale" in got["words"]
+        assert src.slept == []
+
+    def test_a_store_never_read_is_unreadable_partial(self, lab):
+        running = self.described()
+        d = decided(running, triggers=[CFG, ADJ], kinds=("changed_line",))
+        src = _ReadOnce(running, {})
+        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
+        assert got["outcome"] == "partial" and "could not be read in its store" in got["words"]
+        assert src.slept == []
+
+    def test_any_other_line_keeps_the_symptoms_wait(self, lab):
+        """Unclassified is the full wait: the same heal for a logging host (a management
+        line, not cosmetic: it can clear a log's symptom) reads its symptom as before."""
+        running = changed(("logging host 192.0.2.50\n", ""))
+        d = decided(running, triggers=[CFG, ADJ], kinds=("missing_line",))
+        src = _ReadOnce(running, _adj_doc(T0 - 600))
+        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
+        assert src.onces == [""], "no read-back-only words: the full wait"
+        assert got["outcome"] == "partial", got["words"]   # the store not read since the change
+        assert src.slept and set(src.slept) == {A.POLL_SECONDS}
+
+    @pytest.mark.parametrize("lines, words", [
+        ([(("interface GigabitEthernet2",), " description to leaf")], "descriptions only"),
+        ([(("interface GigabitEthernet2",), " no description")], "descriptions only"),
+        ([((), "snmp-server location rack 4"), ((), "alias exec sib show ip bgp summary")],
+         "SNMP location and aliases only"),
+        ([((), "banner motd ^Cauthorised use only^C"), ((), "logging buffered 64000")],
+         "banners and the logging buffer only"),
+        ([(("interface GigabitEthernet2",), " description to leaf"),
+          (("interface GigabitEthernet2",), " ip ospf cost 10")], ""),
+        ([(("interface GigabitEthernet2",), " ipv6 address 2001:db8::9/64")], ""),
+        ([((), "interface Loopback9")], ""),
+        # A missing interface departs as one stanza unit, its header its own line: never
+        # cosmetic, though its only other line is a description.
+        ([((), "interface Loopback9"), (("interface Loopback9",), " description x")], ""),
+        ([((), "logging host 192.0.2.50")], ""),
+        ([(("router bgp 65001",), " neighbor 192.0.2.9 description x")], ""),
+        ([], ""),
+    ])
+    def test_which_units_are_read_back_only(self, lines, words):
+        units = [{"op": "change", "add": lines, "remove": []}]
+        assert A.readback_only(units) == words

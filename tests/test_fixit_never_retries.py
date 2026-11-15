@@ -6,7 +6,8 @@ there is no control for it").
 - **By parsing:** every definition in the program that reaches a proposer (`modules/fixit/
   proposers.py`, Mercury's own, and the AI's, `modules/ai/fixit_troubleshoot.troubleshoot`,
   S5) is exactly a person's presses (`PERSON_CALLERS`: Start AI troubleshooting, Ask the AI again
-  and Modify) and, since the operator's R1 (2026-11-14), the notifier's
+  and Modify; since C3732, Settings › AI's turn-on with its catch-up, `TURN_ON_CATCH_UP`) and,
+  since the operator's R1 (2026-11-14), the notifier's
   automatic start (`AUTO_START`), reached only from its pass, which takes each failure once
   under the incident record's lock; each route is served by POST alone and declared in
   `modules/route_gates.py` as a verified person's configure gate (the gateway's own entry
@@ -57,6 +58,12 @@ AUTO_START = ("modules.heal_notice", "fixit_investigation")
 #: The person's presses that ask the AI (routes/fixit_v2.py), each a POST.
 PERSON_CALLERS = {("routes.fixit_v2", "_ask"), ("routes.fixit_v2", "ask_again"),
                   ("routes.fixit_v2", "modify"), ("routes.fixit_v2", "start")}
+#: The turn-on's catch-up (C3732; the operator, 2026-11-15: "Turning it on shows the list
+#: first ... each tickable, and records what was chosen"): a person's press too, Settings › AI's
+#: Turn on with automatic AI troubleshooting's open incidents ticked, each started once under
+#: its failure's key (`claim_start`) with the person's trigger.
+TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_on"), ("modules.heal_notice", "start_catch_up"),
+                    ("modules.heal_notice", "catch_up_investigation")}
 
 
 def reaching(planted: str = "", without=()) -> set:
@@ -84,8 +91,15 @@ class TestByParsing:
         assert ("modules.fixit.section", "retry") not in refs
 
     def test_every_caller_of_a_proposer_is_a_persons_press_or_the_automatic_start(self):
-        # With the automatic start taken out, only a person's presses reach a proposer.
-        assert reaching(without=[AUTO_START]) == PERSON_CALLERS
+        # With the automatic start taken out, only a person's presses reach a proposer: the
+        # incident page's, and the turn-on's catch-up (C3732), which takes each failure once.
+        assert reaching(without=[AUTO_START]) == PERSON_CALLERS | TURN_ON_CATCH_UP
+        refs = FI.program()["refs"]
+        assert ("modules.fixit.incident", "claim_start") in refs[("modules.heal_notice",
+                                                                  "start_catch_up")]
+        assert {k for k, named in refs.items()
+                if ("modules.heal_notice", "start_catch_up") in named} == {
+            ("routes.settings_v2", "ai_on")}
         # And the automatic start is reached only through the notifier's pass, which takes
         # each failure once before it starts one (`claim_start`, by reference).
         refs = FI.program()["refs"]
@@ -101,7 +115,8 @@ class TestByParsing:
             ("modules.heal.detect", "_notify_step")}
 
     @pytest.mark.parametrize("endpoint", ["fixit_v2.modify",
-                                          "fixit_v2.ask_again", "fixit_v2.start"])
+                                          "fixit_v2.ask_again", "fixit_v2.start",
+                                          "settings_v2.ai_on"])
     def test_the_retry_route_is_a_post_a_person_makes(self, endpoint):
         import app as A
         from modules.route_gates import GATES

@@ -28,11 +28,14 @@ SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
 ## The header {#header}
 
-The title says what happened in plain words, at most 70 characters on one line: the device,
-then what changed ("edge-b: static route added outside Mercury"), the symptom when nothing
-changed ("edge-b: OSPF neighbour core-a lost"), or what opened it ("edge-b: configuration
-changed outside Mercury"). It never quotes a configuration line, a log's code or an id: the
-line itself is under [What's wrong](#whats-wrong). Once the incident is resolved the title says
+The title is the problem, in plain words, at most 70 characters on one line, and it is the same
+words as the bottom line's **What happened**: the device, then what is wrong with what on it
+("edge-b: telemetry streams 101 and 102 lost"), the change when a decision named one
+("edge-b: static route added outside Mercury"), or the problem's own words for its kind
+("edge-b: its configuration was changed outside Mercury"; an alert Mercury has not classified
+yet says so, never the alert's rule). The alerts and log lines are its evidence, never its
+title. It never quotes a configuration line, a log's code or an id: the line itself is under
+[What's wrong](#whats-wrong). Once the incident is resolved the title says
 how it ended: "and Mercury put it back", "put back by" the person who approved the fix, or "and
 it cleared". The same title is the last step of the breadcrumb above it (after **Incidents**
 and **Open** or **Closed**), cut with "…" where the row is narrow (hover over it for the
@@ -68,8 +71,9 @@ by their display name.
 Three lines, at the top of the page, before anything else:
 
 1. **What happened**: the problem, in an engineer's words ("edge1: telemetry streams 101 and
-   102 lost"), never the alert that raised it nor Mercury's codes. The alerts and log lines it
-   was classified from are its evidence, listed under it.
+   102 lost"), never the alert that raised it nor Mercury's codes: the page's title, word for
+   word. The alerts and log lines it was classified from are its [evidence](#evidence),
+   collapsed under the bottom line.
 2. **Impact**: what it costs the network or Mercury ("Mercury can't see edge1's interfaces or
    CPU; traffic is unaffected"). It comes from Mercury's own table for each kind of problem,
    never from the AI; a problem the table does not hold says the impact is not known.
@@ -90,7 +94,16 @@ here that did not fix it is listed under Fixing it's **Attempts**, with its reco
 incident is open, as a link: it opens its modal over the page ([Hand over](fixit-troubleshoot#hand-over)).
 
 **Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since it
-was drawn is refused, naming what moved. **Modify…** opens a box for what should change; the AI
+was drawn is refused, naming what moved. Everything that hash binds is drawn before you press:
+open the plan's **What its hash binds** for the incident, the proposal, each step's operation,
+its parameters and its own hash. A step that closes the collector's stale session binds that
+session too: Mercury read it when the plan was proposed (the close helper's dry run, which
+closes nothing, inside the job that made the proposal) and kept it with the plan, and it is
+drawn beside Approve from that record, both ends and ports and how long the session was quiet,
+so the page never waits on it. Approve reads it again when you press and is refused, naming
+both sessions and when the plan read its own, if the collector holds another by then; nothing
+runs, and Ask the AI again gets a plan that reads it afresh. A plan whose read named no session
+cannot be approved, and says why. **Modify…** opens a box for what should change; the AI
 returns a revised plan with a new hash, nothing runs, and Approve, Modify… and Deny… come back
 with it (**Revise the plan** sends it; **Cancel** or Escape closes the box with nothing sent).
 **Deny…** records your reason, which is optional (**Deny the plan**; **Keep the plan** closes it
@@ -212,7 +225,11 @@ and what Mercury cannot see until the stream is back.
 
 ## What Mercury has done {#what-mercury-has-done}
 
-Collapsed: open its heading to read it. The outcome, then the same five stages the heal's card on
+Collapsed: open its heading to read it. The outcome is on its heading: green for a fix that
+passed, red only for one that failed; a guard or hold working as designed ("Self-healing (dry
+run): held") is drawn neutral, never as a failure, its plain words on the hover ("Self-healing
+won't write to edge-b until its saved config matches intent (2 lines differ)."). Then the same
+five stages the heal's card on
 the device's page draws: **Detected**, **Decided**, **Fixing**, **Checking** and **Done**,
 each with one sentence of at most 12 words, its time and its state. Open a stage for its
 steps, and for the whole of a sentence that was cut with "…". A failed stage names its step
@@ -246,14 +263,19 @@ nine sections, who handed it over and to which teams, a link back to the inciden
 
 ## Evidence {#evidence}
 
-Collapsed. How many triggers and reads the incident keeps, where its changes are recorded, and
-each device attached to it with the reason it was attached.
+Collapsed, directly under the bottom line: the evidence's one place on the page. Each signal
+the problem was classified from (an alert, a log line, a lost stream), with its time; how many
+triggers were seen beyond those kept; how many reads of the device the detect pass kept (their
+state and time, never configuration text); and each device attached to the incident, with the
+reason it was attached. Each change's record is on the device's History, linked from
+[What Mercury has done](#what-mercury-has-done).
 
 ## The record {#the-record}
 
 Collapsed. The incident's id, its network, its state as its own store keeps it, each
 decision's id, its mode, fix kind and tier (the decision's own where nothing has run yet), the
-program's hash and its lines (masked), the AI plan's hash and each of its steps' hashes, the
+program's hash and its lines (masked), a refused AI plan's hash and its repeating step's
+parameter hash (a plan that can be approved says its hashes in What its hash binds), the
 times behind the timings, every step with its result, words and time, and who acted, by their
 identity as recorded. Every time is in your time zone, its UTC on the hover, as everywhere on
 the page. This is the only place on the page an identity is drawn. Each hand-over is listed

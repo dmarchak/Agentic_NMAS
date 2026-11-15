@@ -158,7 +158,8 @@ def check(incident, operation, params, *, resolved: float = None, now: float = N
 
 def propose(incident, source: str, operation, params, *, calls=(), prompt: str = "",
             resolved: float = None, now: float = None, sources=None, planned=None,
-            by: str = "", verified: str = "", note: str = "", shown: dict = None) -> dict:
+            by: str = "", verified: str = "", note: str = "", shown: dict = None,
+            sessions: dict = None) -> dict:
     """`check`, and the proposal's line in *incident*'s record (`incident.record_proposal`):
     the check's answer with ``proposal``, the line's id, which the operation's confirm carries
     into its run (`incident.run_link`), and ``line``, the line as kept; ``""`` and ``{}`` when
@@ -178,7 +179,7 @@ def propose(incident, source: str, operation, params, *, calls=(), prompt: str =
     if got["ok"]:
         line = F.record_proposal(incident, source, got["operation"],
                                  as_attempt(got["operation"], got["params"]), calls=calls,
-                                 prompt=prompt, now=now, **kept)
+                                 prompt=prompt, now=now, sessions=sessions, **kept)
     elif source == "ai":
         line = F.record_proposal(incident, source, calls=calls, prompt=prompt, now=now,
                                  words=f"Mercury's check refused the AI's fix: {got['refused']}",

@@ -64,6 +64,97 @@
                     (missing === 1 ? '' : 's')};
   }
 
+  /* PURE. US dollars as modules/money.usd writes a figure: "$0.25", grouped, to the cent; one
+     that is not nothing and under a cent to four places ("$0.0011"). */
+  function usd(v) {
+    var four = Math.round(Math.abs(v) * 10000) / 10000;
+    if (four > 0 && four < 0.01) return '$' + four.toFixed(4);
+    var s = (Math.round(Math.abs(v) * 100) / 100).toFixed(2).split('.');
+    return '$' + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + s[1];
+  }
+
+  /* PURE. Settings › AI's catch-up line (C3732; the operator, 2026-11-15: "starts on these N
+     open incidents, about $X"), from the ticked count and their estimates' sum. */
+  function catchUpWords(n, total) {
+    if (!n) return 'Starts on none of these open incidents: each keeps Start AI troubleshooting';
+    return 'Starts on ' + (n === 1 ? 'this open incident' : 'these ' + n + ' open incidents') +
+           ', about ' + usd(total);
+  }
+
+  /* PURE. How many of the ticked fit under the caps (C3745), in tick order: modules/ai/
+     settings_view.catch_up_fit's arithmetic. *oks* each ticked one's own incident cap,
+     *rooms* [[cap, room]], a room null for no cap or NaN when not typed. */
+  var FIT_LABELS = {incident: "its incident's cap", day: 'the day cap',
+                    feature_day: "this feature's day cap", feature_month: 'its month cap'};
+  var ROOM_TAIL = {day: 'left today', feature_day: 'left as typed',
+                   feature_month: 'left as typed'};
+  function catchUpFit(oks, worst, rooms) {
+    var slots = {}, unknown = [], limit = null, i;
+    for (i = 0; i < rooms.length; i++) {
+      var c = rooms[i][0], r = rooms[i][1];
+      if (r === null) { slots[c] = null; continue; }
+      if (typeof r !== 'number' || isNaN(r)) { slots[c] = null; unknown.push(c); continue; }
+      slots[c] = Math.max(0, Math.floor(r / worst + 1e-9));
+      if (limit === null || slots[c] < limit) limit = slots[c];
+    }
+    var start = 0, ri = 0, rc = 0;
+    for (i = 0; i < oks.length; i++) {
+      if (!oks[i]) ri += 1;
+      else if (limit === null || start < limit) start += 1;
+      else rc += 1;
+    }
+    var binding = '';
+    if (rc) {
+      for (i = 0; i < rooms.length; i++) {
+        if (slots[rooms[i][0]] === limit) { binding = rooms[i][0]; break; }
+      }
+    }
+    return {start: start, refused_incident: ri, refused_cap: rc, binding: binding,
+            slots: slots, unknown: unknown};
+  }
+
+  /* PURE. settings_view.fit_words, word for word. */
+  function catchUpFitWords(fit, n) {
+    if (fit.unknown.length) {
+      return "Type this feature's day and month caps to see how many fit under them.";
+    }
+    if (!n) return 'None ticked: nothing starts.';
+    if (!fit.refused_incident && !fit.refused_cap) {
+      return n === 1 ? 'The ticked one fits under every cap.'
+                     : 'All ' + n + ' ticked fit under every cap.';
+    }
+    var parts = [fit.start + ' of the ' + n + ' ticked fit under the caps'];
+    if (fit.refused_cap) {
+      parts.push('the later ' + fit.refused_cap + ' would pass ' + FIT_LABELS[fit.binding]);
+    }
+    if (fit.refused_incident) {
+      parts.push(fit.refused_incident + ' would pass ' +
+                 (fit.refused_incident === 1 ? 'its' : 'their') + " incident's cap");
+    }
+    return parts.join('; ') + ': refused before anything starts, each page naming the cap.';
+  }
+
+  /* PURE. settings_view.room_words, word for word. */
+  function catchUpRoomWords(fit, rooms, worst) {
+    var said = [];
+    for (var i = 0; i < rooms.length; i++) {
+      var c = rooms[i][0], r = rooms[i][1];
+      if (r === null) said.push('no limit under ' + FIT_LABELS[c] + ' (none is set)');
+      else if (typeof r !== 'number' || isNaN(r)) said.push(FIT_LABELS[c] + ': type it');
+      else said.push(fit.slots[c] + ' under ' + FIT_LABELS[c] + ' (' + usd(r) + ' ' +
+                     ROOM_TAIL[c] + ')');
+    }
+    return 'Room, each start at most ' + usd(worst) + ': ' + said.join(', ') + '.';
+  }
+
+  /* PURE. A cap as typed ("$0.50", "1,000") less what was spent: NaN when it is not a positive
+     amount or the spend is unknown (settings_view.rooms_of). */
+  function typedRoom(text, spent) {
+    var v = Number(String(text || '').replace(/[$,\s]/g, ''));
+    if (!(v > 0) || spent === null || isNaN(spent)) return NaN;
+    return Math.max(0, v - spent);
+  }
+
   /* PURE. Which note the preview draws (C883): none until a batch confirmed from it started
      (*locked*), then 'running' while its job card says so, else 'ended'. Before C883 the
      running note was drawn on every preview: `.notice`'s display beat `hidden`. */
@@ -462,6 +553,48 @@
         get detail() { return coverageWords(this.names, this.missing).detail; }
       };
     });
+    /* Turn on… for automatic AI troubleshooting (C3732): each open incident ticked by default,
+       the line above them the ticked count and the sum of their estimates (`data-usd`), redrawn
+       as a tick changes; and how many fit under each cap (C3745), redrawn as a tick or a cap
+       typed in the form changes (the form's own input events). The form sends the ticked ids
+       itself (`start`); nothing is posted here. */
+    root.Alpine.data('catchUpSelect', function () {
+      function num(v) { return v === 'none' ? null : parseFloat(v); }
+      return {
+        n: 0, total: 0, fit: '', room: '',
+        init: function () {
+          var self = this, form = this.$root.closest('form');
+          if (form) form.addEventListener('input', function () { self.recount(); });
+          this.recount();
+        },
+        recount: function () {
+          var all = this.$root.querySelectorAll('input[name=start]'), n = 0, total = 0, oks = [];
+          for (var i = 0; i < all.length; i++) {
+            if (!all[i].checked) continue;
+            n += 1;
+            total += parseFloat(all[i].getAttribute('data-usd')) || 0;
+            oks.push(all[i].getAttribute('data-cap-ok') === '1');
+          }
+          this.n = n;
+          this.total = total;
+          var el = this.$root, form = el.closest('form');
+          var typed = function (name) {
+            var f = form && form.querySelector('input[name=' + name + ']');
+            return f ? f.value : '';
+          };
+          var worst = parseFloat(el.getAttribute('data-worst'));
+          var rooms = [['day', num(el.getAttribute('data-day-room'))],
+                       ['feature_day', typedRoom(typed('day_cap_usd'),
+                                                 num(el.getAttribute('data-feature-day-spent')))],
+                       ['feature_month', typedRoom(typed('month_cap_usd'),
+                                                   num(el.getAttribute('data-feature-month-spent')))]];
+          var fit = catchUpFit(oks, worst, rooms);
+          this.fit = catchUpFitWords(fit, n);
+          this.room = catchUpRoomWords(fit, rooms, worst);
+        },
+        get summary() { return catchUpWords(this.n, this.total); }
+      };
+    });
     root.Alpine.data('ipslaPost', function () {
       return {
         busy: false, error: '',
@@ -518,5 +651,8 @@
   root.NMAS_APPLY = {startedBatch: startedBatch, ipslaBody: ipslaBody,
                      ipslaOutcome: ipslaOutcome, coverageWords: coverageWords,
                      deviceWords: deviceWords, lockNote: lockNote, moved: moved,
-                     slotFor: slotFor, confirmOrder: confirmOrder, movedWords: movedWords};
+                     slotFor: slotFor, confirmOrder: confirmOrder, movedWords: movedWords,
+                     catchUpWords: catchUpWords, usd: usd, catchUpFit: catchUpFit,
+                     catchUpFitWords: catchUpFitWords, catchUpRoomWords: catchUpRoomWords,
+                     typedRoom: typedRoom};
 })(typeof window !== 'undefined' ? window : this);

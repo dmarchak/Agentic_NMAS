@@ -165,7 +165,10 @@ def for_incident(answer, incident, *, call_id: str, calls=(), actor: str,
     proposal line kept), or ``{"ok": False, "code", "refused", "recorded", "line"}``. *calls*
     are every call of the investigation (its cost is the incident's), *call_id* the one whose
     answer this is; *actor* who pressed and *actor_verified* how, kept with the line beside
-    their *note* and the answer as *shown*. Never runs, holds, opens or starts anything."""
+    their *note* and the answer as *shown*. Never runs, holds, opens or starts anything; for
+    the collector step it reads the session it would close once, by the close helper's DRY
+    RUN, which closes nothing (`plan_engine.read_sessions`, C3725), inside the job making the
+    proposal, so the record keeps it and the page draws it without waiting."""
     from modules.fixit import incident as F
     from modules.fixit import validate
 
@@ -191,9 +194,18 @@ def for_incident(answer, incident, *, call_id: str, calls=(), actor: str,
         return {"ok": False, "code": code, "refused": words, "line": line,
                 "recorded": _record(call_id, code, words, incident.network, actor,
                                     actor_verified)}
+    # A collector step's session, read now, inside the job making the proposal, and kept with
+    # it, so the page draws it from the record and never waits (C3725).
+    from modules import plan_engine as PE
+    from modules.heal import resubscribe as R
+
+    sessions = (PE.read_sessions(incident.network, [{
+        "operation": R.COLLECTOR_KEY,
+        "params": dict(answer.get("params") or {}, device=incident.device)}], now=now)
+        if answer.get("operation") == R.COLLECTOR_KEY else None)
     got = validate.propose(incident, "ai", answer["operation"], answer["params"], calls=ids,
                            prompt=prompt, resolved=resolved, now=now, sources=sources,
-                           planned=planned, **kept)
+                           planned=planned, sessions=sessions, **kept)
     if got["ok"]:
         return got
     return dict(got, recorded=_record(call_id, got["code"], got["refused"], incident.network,

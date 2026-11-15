@@ -18,19 +18,30 @@ next action (the operator's rule of 2026-11-14).
 off by default on every network. It is one row among the other background features (Settings ›
 AI, Background features, [Settings › AI](settings-ai)), turned on with **Turn on…** after its
 estimate (per incident, against the per-incident cap and the day cap) and off with **Turn
-off**, each only by a verified person and recorded. It starts anything only while self-healing
-is in **Auto** on the network (its policy in force now, not expired): with self-healing off or
-in Dry run, nobody asked Mercury to fix anything, so nothing starts. While both are on, a code
-fix that fails or does not verify, of a kind Auto allows, or a problem for which no code fix
-exists (a can't-fix, a lost telemetry stream), starts one AI investigation, once per failure,
-within the caps; a cap that would be passed starts nothing,
+off**, each only by a verified person and recorded. It works in every mode of self-healing,
+Dry run included: the AI only proposes, and nothing runs without a person's approval (the
+operator, 2026-11-15). While it is on, a code fix that fails or does not verify, or a problem
+for which no code fix exists (a can't-fix, a lost telemetry stream), starts one AI
+investigation, once per failure, within the caps; a cap that would be passed starts nothing,
 and the card says which cap and offers **Hand over…**. The AI only proposes: a person approves
 every plan by its hash.
 
-Turning it on never catches up, and neither does turning self-healing's Auto on. An incident
-whose fix failed before either was on (or while either was off, or self-healing was in Dry
-run) shows **Start AI troubleshooting** as its next action, a person's press that runs the same
-investigation once.
+A heal held by a guard a person resolves (guards 4, 6 and 9: for example guard 4, the device's
+golden departing from its intent) counts too, as no fix Mercury can run alone; the AI is told the
+hold and its guard, so where the fix needs a person's approval it says so as its finding and the
+card offers **Hand over…**. A guard that only waits (planned work, a person working, the grace)
+and a dry run's decision that would heal start nothing.
+
+Turning it on catches up on your choice. **Turn on…** first lists every open incident it would
+have started on had it been on when the fix failed, each ticked, with its estimate: "Starts on
+these N open incidents, about $X", following your ticks ([Settings › AI](settings-ai#background-features)).
+Turning it on records which you ticked and which you left unticked, and starts each ticked one
+once, as its own job, in your name, within every cap (its incident's, this feature's day and
+month caps as typed, and the day cap); the later ones past a cap are refused before anything
+starts, and each card says which. Its card says "The AI is investigating
+(started at turn-on by" your name, then how long ago. A failure taken this way never starts again by itself.
+An incident you left unticked, or whose fix failed while it was off, shows **Start AI
+troubleshooting** as its next action, a person's press that runs the same investigation once.
 
 ## Approve, Modify and Deny {#approve}
 

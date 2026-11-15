@@ -200,50 +200,39 @@ class TestNoCatchUp:
         assert got["started"] == [f"decision:{iid}"]
 
 
-class TestOnlyWhileSelfHealingIsInAuto:
-    """The operator, 2026-11-14: "R1 fires only while self-healing is in Auto for that problem
-    kind (with self-healing off or in Dry run, nobody asked Mercury to fix anything)"."""
+class TestInEveryModeOfSelfHealing:
+    """The operator, 2026-11-15, replacing 2026-11-14's "R1 fires only while self-healing is in
+    Auto": "Drop 'R1 only while self-healing is in Auto': the AI only proposes, and nothing
+    runs without a person's approval, so it investigates in Dry run too". The switch and its
+    time are the whole condition; the caps and once-per-failure hold as before."""
 
-    @pytest.mark.parametrize("mode", ["dry_run", "off"])
-    def test_dry_run_or_off_with_the_switch_on_starts_nothing(self, ai, clock, mode):
-        clock.set(mode)
-        turn_on(DETECTED - 600)
-        iid = plant()
-        got, started = run()
-        assert got["started"] == [] and started == [] and ai.sent == []
-        assert F.read(incident(iid))["state"] == "absent"
-        from modules import incident_page
-        x = S.view(NET, incident_page.resolve(NET, iid), now=NOW)
-        assert x["actions"]["start"]["offered"], "the person's one press is offered"
-        assert "self-healing is not in Auto" in x["status"]
-
-    def test_auto_starts_once(self, ai, clock):
-        clock.set("auto", at=DETECTED - 900)
+    @pytest.mark.parametrize("mode", ["dry_run", "auto"])
+    def test_dry_run_or_auto_with_the_switch_on_starts_once(self, ai, clock, mode):
+        clock.set(mode, at=DETECTED - 900)
         turn_on(DETECTED - 600)
         iid = plant()
         assert run()[0]["started"] == [f"decision:{iid}"]
-        assert run(NOW + 30)[0]["started"] == []
+        assert run(NOW + 30)[0]["started"] == [], "once per failure, whatever the mode"
 
-    def test_a_failure_before_auto_went_on_starts_nothing(self, ai, clock):
-        clock.set("auto", at=DETECTED + 60)          # Auto confirmed after the stream was lost
-        turn_on(DETECTED - 600)
+    def test_a_failure_before_the_switch_still_starts_nothing_in_dry_run(self, ai, clock):
+        clock.set("dry_run", at=DETECTED - 900)
+        turn_on(DETECTED + 60)                       # turned on after the stream was lost
         iid = plant()
         got, started = run()
-        assert got["started"] == [] and started == []
+        assert got["started"] == [] and started == [] and ai.sent == []
         from modules.fixit import auto as A
         from modules import incident_page
         m = A.manual_start(NET, iid, record=incident_page.resolve(NET, iid)["incident"])
-        assert m["offered"] and "before self-healing's Auto went on" in m["words"]
+        assert m["offered"], "the person's one press is offered"
 
-    def test_a_code_fix_kind_auto_does_not_allow_starts_nothing(self, clock):
+    def test_a_code_fix_of_any_kind_that_failed_starts(self, clock):
         from modules.fixit import auto as A
         f = {"epoch": NOW, "outcome": "rolled_back", "fix_kind": "qos_policy"}
         sw = {"on": True, "epoch": NOW - 10}
-        heal = {"auto": True, "since": NOW - 10, "kinds_auto": ["missing_line"]}
-        assert "does not allow its kind of fix (qos_policy)" in A.eligible(f, sw, heal)
-        assert A.eligible(dict(f, fix_kind="missing_line"), sw, heal) == ""
-        # No code fix exists: Auto alone is enough, whatever the kind.
-        assert A.eligible(dict(f, outcome="cant_fix", fix_kind="physical"), sw, heal) == ""
+        assert A.eligible(f, sw) == ""
+        assert A.eligible(dict(f, outcome="cant_fix", fix_kind="physical"), sw) == ""
+        assert "off" in A.eligible(f, {"on": False, "epoch": NOW - 10})
+        assert "before automatic troubleshooting" in A.eligible(f, {"on": True, "epoch": NOW + 1})
 
 
 def decide(iid, n, outcome, at, guard=None):

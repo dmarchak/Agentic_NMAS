@@ -151,7 +151,15 @@ why.
      A session that was there before and still stands, receiving nothing, is flagged
      **stale half-open**: a flag, not a failure.
 
-   The three are read again every 10 s until each passes or the 290 s end. Every read goes
+   The three are read again every 10 s until each passes or the 290 s end. When the collector's
+   socket read gives each session's bytes received, the verify passes sooner, on two direct
+   checks read every 5 s: the device's new connection, and a new session from the device whose
+   bytes received grew on two reads after its first (one growth can be the connection's own
+   opening). The stream's series is then a note, never a gate, and the step says it passed
+   "on the direct checks". This holds only for the device's one subscription to that
+   receiver: subscriptions to one receiver share one connection, so the collector's bytes
+   cannot tell them apart, and the series stays a gate. Without the bytes, the three checks
+   decide as before, and the step says why. Every read goes
    into the run's record under this step as it is made: when, what was asked, whether it
    passed, was read and did not, or could not be read, and what it found. The record is
    written after each round, so a run still going shows the reads made so far.

@@ -78,6 +78,12 @@ each ``pass``, ``fail`` or ``cant_tell`` (an unreadable read neither passes nor 
     kernel's socket diagnostics are read (`diagnose_stream.read_collector`, `receiving_now`);
     a session that was there before and still stands without receiving is flagged "stale
     half-open" (a flag, not a failure).
+**The direct checks pass it sooner** (R3, the operator, 2026-11-14; `verify`): (a) and a new
+session whose bytes received grew on two reads after its first, read every `DIRECT_POLL_S`;
+the series is then a note, never a gate. Only for the device's ONE subscription to that
+receiver by intent (`plan`'s ``alone``): subscriptions to one receiver share one connection,
+so another's bytes would pass it. Otherwise, or without the bytes, the three checks above
+decide, as before.
 
 **Rollback, and each subscription's own state.** A removal that does not land, takes more than
 its line, or cannot be read back stops the REMOVALS there: the subscriptions after it are never
@@ -156,8 +162,23 @@ WAIT_S = 10
 #: 21:01:37 UTC, 116 s; the verify's bound is 2.5 times that, 290 s.
 MEASURED_BACK_S = 116
 VERIFY_BOUND_S = 290
-#: The verify reads again this often while it waits.
+#: The verify reads again this often while it waits on today's three checks (the collector's
+#: bytes not read: the stream's series in Prometheus is one of them, and it moves at its
+#: scrape interval).
 POLL_S = 10
+#: ... and this often while the collector's bytes are read (the direct checks, R3: "Poll every
+#: few seconds and finish when all pass"): the collector's read is this host's own `ss`, in
+#: well under a second (`diagnose_stream.SS_TIMEOUT_S`'s measurement, 2026-11-10), and the
+#: device's read one show command. REASONED, not measured end to end: half of `POLL_S`, so a
+#: stream back at once is passed within about two reads of its first bytes; the first direct
+#: pass's record (``took`` on its verify step) is the measurement.
+DIRECT_POLL_S = 5
+#: The least a growth of a session's bytes received counts as data, not the connection's own
+#: upkeep (the second review of the verify-speed gate, 2026-11-15): HTTP/2's PING is 17 bytes
+#: on the wire and its WINDOW_UPDATE 13, so two of them in one poll stay under 64, while one
+#: telemetry message is larger. REASONED, not measured (C3746: a dial-out session with an
+#: invalid sensor path, its bytes received read for 290 s, is the measurement).
+MIN_GROWTH_BYTES = 64
 #: The reads engine's kind for the operation's device reads (`reads.run`'s *by*,
 #: `reads.OPERATION`): the operation asks them, never the person as a Show commands run of
 #: their own (the operator, 2026-11-11). Each is the run's (`reads.within`, in `apply`), and
@@ -476,6 +497,17 @@ def plan(network: str, device: str, subs, *, readd: bool = False, collector: boo
         if same and receiver_line(declared[other]):
             out["sharing"].append({"sub": other, "shares": list(same), "address": r["address"],
                                    "port": r["port"]})
+    # The chosen subscriptions that are the device's ONLY one sending to their receiver, by
+    # intent: only these may pass the verify on the collector's bytes (`verify`). Subscriptions
+    # to one receiver share one connection (C2838's measurement), so another's bytes would
+    # pass this one; a subscription whose receiver intent does not let us read may be one.
+    unread = [o for o in declared if o not in asked and receiver_line(declared[o])
+              and receiver_of(declared[o]).get("why")]
+    shared = {(s["address"], s["port"]) for s in out["sharing"]}
+    out["alone"] = [] if unread else [
+        u["sub"] for u in out["units"]
+        if len(chosen[(u["address"], u["port"])]) == 1
+        and (u["address"], u["port"]) not in shared]
     subs_w = _and(u["sub"] for u in out["units"])
     noun = "subscription" if len(out["units"]) == 1 else "subscriptions"
     out.update(ok=True, words=(f"add back {device}'s receiver for telemetry {noun} {subs_w}"
@@ -1571,17 +1603,33 @@ def verify(run: _Run, p: dict, u: dict, before: dict, addresses: list, actor: st
     happens (`_Run.read`), the record written and the card told after every round: a run in
     progress shows the reads made so far, and a finished one each of them, in order, without
     a row of its own anywhere (the operator, 2026-11-11). Its own `_Run.step` ends it in
-    place."""
+    place.
+
+    **The direct checks (R3, the operator, 2026-11-14: "Every check takes only as long as it
+    needs")**: it passes as soon as BOTH (a) holds and the collector holds a new ESTABLISHED
+    session from the device whose bytes received grew since this verify first read it
+    (`_bytes_check`, from the socket diagnostics `read_collector` already reads): bytes
+    arriving on a session the device dialled after the re-add are the stream itself. Then the
+    stream's series is a note ("can't tell", never a gate: Prometheus's scrape and the
+    collector's write lag the bytes), and the reads are every `DIRECT_POLL_S`. While no
+    session carries its bytes (`ss` not read, the collector elsewhere, a host whose `ss` does
+    not print them), the verify is today's three checks every `POLL_S`, which never pass on
+    less evidence, and its words say the bytes were not read."""
     src, device, sub = run.src, p["device"], u["sub"]
     start = src.clock()
     deadline = start + VERIFY_BOUND_S
     checks = {k: {"state": "cant_tell", "words": "not read"} for k in
               ("device", "stream", "collector")}
     stale = []
+    first, direct, bytes_read, last = {}, None, "", {}
+    # Only the device's one subscription to its receiver may pass on the collector's bytes:
+    # subscriptions to one receiver share one connection, so its bytes are any of theirs.
+    alone = sub in (p.get("alone") or [])
     run.part["step"] = "verify"
     step = run.begin("verify", (
-        f"subscription {sub}: reading the device, the stream and the collector every "
-        f"{POLL_S} s until each says it is back, for at most {VERIFY_BOUND_S} s"),
+        f"subscription {sub}: reading the device and the collector every {DIRECT_POLL_S} s "
+        f"while the collector's bytes are read (every {POLL_S} s with the stream's series "
+        f"while they are not) until it is back, for at most {VERIFY_BOUND_S} s"),
         wait_s=VERIFY_BOUND_S, bound=True, sub=sub, reads=[])
     asked = receiver_command(p["dialect"], sub)
     while True:
@@ -1592,11 +1640,16 @@ def verify(run: _Run, p: dict, u: dict, before: dict, addresses: list, actor: st
         if checks["stream"]["state"] != "pass":
             checks["stream"] = _stream_check(device, sub, src.series(device, sub))
             run.read(step, _stream_asked(sub), None, checks["stream"], check="stream")
-        if checks["collector"]["state"] != "pass":
-            checks["collector"], stale = _collector_check(
-                device, u, before["collector"], src.collector(u["address"], u["port"],
-                                                              addresses))
-            run.read(step, _collector_asked(u), None, checks["collector"], check="collector")
+        if checks["collector"]["state"] != "pass" or bytes_read:
+            last = src.collector(u["address"], u["port"], addresses)
+            checks["collector"], stale = _collector_check(device, u, before["collector"], last)
+            if alone:
+                direct, bytes_read = _bytes_check(device, u, before["collector"], last, first)
+            run.read(step, _collector_asked(u), None,
+                     direct if direct and direct["state"] == "pass" else checks["collector"],
+                     check="collector")
+        if checks["device"]["state"] == "pass" and direct and direct["state"] == "pass":
+            break
         if all(c["state"] == "pass" for c in checks.values()) or src.clock() >= deadline:
             break
         # The reads so far: kept in the record (a page opened later, or served by another
@@ -1604,19 +1657,94 @@ def verify(run: _Run, p: dict, u: dict, before: dict, addresses: list, actor: st
         # change takes (`_moved`).
         _record(run.network, run.rec)
         _moved()
-        src.sleep(min(POLL_S, max(0.0, deadline - src.clock())))
+        src.sleep(min(DIRECT_POLL_S if bytes_read else POLL_S,
+                      max(0.0, deadline - src.clock())))
     took = round(src.clock() - start)
+    if checks["device"]["state"] == "pass" and direct and direct["state"] == "pass":
+        checks["collector"] = direct
+        if checks["stream"]["state"] != "pass":
+            checks["stream"] = {"state": "cant_tell", "words": (
+                f"a note, not a gate: {checks['stream']['words']}; the direct checks passed "
+                "first (the series follows the collector's write)")}
+        words = "; ".join(f"{name}: {c['words']}" for name, c in checks.items())
+        run.step("verify", "ok", f"subscription {sub}, {took} s, on the direct checks: {words}",
+                 checks=checks, stale=stale, basis="direct")
+        return {"outcome": "pass", "checks": checks, "stale": stale, "basis": "direct",
+                "words": (f"the device and the collector each say it is back, on the direct "
+                          f"checks ({took} s)")}
     for c in checks.values():
         if c["state"] == "waiting":
             c["state"] = "fail"
     states = [c["state"] for c in checks.values()]
     outcome = "fail" if "fail" in states else "cant_tell" if "cant_tell" in states else "pass"
     words = "; ".join(f"{name}: {c['words']}" for name, c in checks.items())
+    basis = ("today's three checks: the collector's bytes were read and did not grow twice "
+             "on a new session" if bytes_read else
+             (f"today's three checks: {device} sends another subscription to "
+              f"{u['address']} port {u['port']} over the same connection (or intent's "
+              "receivers could not all be read), so the collector's bytes cannot tell "
+              f"subscription {sub}'s own") if not alone else
+             f"today's three checks: the collector's bytes were not read "
+             f"({_bytes_unread(last)})")
     run.step("verify", {"pass": "ok", "fail": "failed", "cant_tell": "unknown"}[outcome],
-             f"subscription {sub}, {took} s: {words}", checks=checks, stale=stale)
+             f"subscription {sub}, {took} s, on {basis}: {words}", checks=checks, stale=stale,
+             basis=basis)
     return {"outcome": outcome, "words": words if outcome != "pass" else
             f"the device, the stream and the collector each say it is back ({took} s)",
-            "checks": checks, "stale": stale}
+            "checks": checks, "stale": stale, "basis": basis}
+
+
+def _bytes_check(device: str, u: dict, was: dict, now: dict, first: dict) -> tuple:
+    """The direct check of the collector: ``(check or None, read)``. *read* is ``"read"`` when
+    the collector's read carries each session's bytes received (`read_collector`'s socket
+    diagnostics), else ``""`` and the check None (today's checks decide). The check passes on
+    a new ESTABLISHED session from the device (by remote port, not there before the operation)
+    whose bytes received GREW TWICE after this verify first read it: two reads, each at least
+    `MIN_GROWTH_BYTES` above the read before it (*first* keeps each session's reads across
+    rounds). One growth can be the connection's own opening (gRPC's HTTP/2 preface, SETTINGS)
+    landing after the first read, and a smaller one its upkeep (a PING, a WINDOW_UPDATE); a
+    second growth of that size is data. The two need not be adjacent reads: a stream's update
+    period can be longer than one poll, and a flat read between pushes is no growth and no
+    failure."""
+    from modules.heal.diagnose_stream import ESTABLISHED
+
+    if now.get("state") != "read" or was.get("state") != "read":
+        return None, ""
+    sessions = now.get("sessions") or []
+    if not any(s.get("bytes_received") is not None for s in sessions):
+        return None, ""
+    where = f"{u['address']} port {u['port']}"
+    old = {(s["remote"], s["rport"]) for s in was.get("sessions") or []}
+    new = [s for s in sessions if s.get("state") == ESTABLISHED
+           and (s["remote"], s["rport"]) not in old and s.get("bytes_received") is not None]
+    for s in new:
+        key = (s["remote"], s["rport"])
+        reads = first.setdefault(key, [])
+        reads.append(int(s["bytes_received"]))
+        grew = [b for a, b in zip(reads, reads[1:]) if b - a >= MIN_GROWTH_BYTES]
+        if len(grew) >= 2:
+            return {"state": "pass", "words": (
+                f"a new session from {s['remote']} port {s['rport']} on {where} received "
+                f"{reads[-1] - reads[0]} bytes, growing on two reads after its first "
+                f"({', '.join(str(b) for b in [reads[0]] + grew[-2:])})")}, "read"
+    if new:
+        s = new[0]
+        return {"state": "waiting", "words": (
+            f"a new session from {s['remote']} port {s['rport']} on {where}, its bytes "
+            f"received not yet grown on two reads ({int(s['bytes_received'])})")}, "read"
+    return {"state": "waiting", "words": f"no new session from {device} on {where}"}, "read"
+
+
+def _bytes_unread(got: dict) -> str:
+    """Why the collector's last read carried no bytes received, in its own words."""
+    if not got:
+        return "the collector was not read"
+    if got.get("state") != "read":
+        return f"the collector at {got.get('address')} was not read here: {got.get('why')}"
+    activity = got.get("activity") or ""
+    if activity and activity != "read":
+        return f"its socket diagnostics were {activity}"
+    return "no session of the device's carried its bytes received"
 
 
 def _device_check(device: str, sub: str, was: dict, now: dict) -> dict:

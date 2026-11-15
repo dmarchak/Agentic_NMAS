@@ -47,6 +47,7 @@ RATCHETS = (
     # ── Known gaps, excused and pending lists: they only shrink ─────────────────────────────
     ("modules/manual.py", "ON_TODAYS_APP", "shrinks"),
     ("modules/manual.py", "UNDECLARED", "shrinks"),
+    ("tests/ai_tool_homes.py", "MISSING", "shrinks"),
     ("tests/conftest.py", "STORE_WRITERS_EXEMPT", "shrinks"),
     ("tests/conftest.py", "STORE_REWRITERS_EXEMPT", "shrinks"),
     ("tests/conftest.py", "READER_STORES_SHARED", "shrinks"),

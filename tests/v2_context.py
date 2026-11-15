@@ -2934,6 +2934,70 @@ def _settings_ai(client, _lab, _mp):
         mp.undo()
 
 
+def _settings_ai_catch_up(client, _lab, _mp):
+    """Turn on… for automatic AI troubleshooting (C3732): its list of open incidents drawn with
+    two, one not listed said, and turned on with one ticked; the answer drawn with one started,
+    one stopped by a cap, one off and one skipped. R1's reader and the catch-up's starter are
+    stood in by planted answers in their own shapes (`auto.catch_up`, `heal_notice.
+    start_catch_up`): the walk's lab holds no failed fix, and tests/test_fixit_catch_up.py
+    reaches each state through the real ones. The settings it changed put back."""
+    import json as _json
+    import time as _time
+    from html import unescape
+
+    import pytest
+
+    from modules import config, heal_notice
+    from modules import settings_schema as S
+    from modules.fixit import auto as A
+    from modules.fixit import incident as F
+    from modules.settings_schema import write_settings
+
+    mp = pytest.MonkeyPatch()
+    lab_reads = S.get_setting
+
+    def reads(key, default=None):
+        if key not in ("ai_hosted", "ai_background"):
+            return lab_reads(key, default)
+        try:
+            with open(config.USER_SETTINGS_FILE, encoding="utf-8") as fh:
+                return _json.load(fh).get(key, default)
+        except (OSError, ValueError):
+            return default
+    mp.setattr(S, "get_setting", reads)
+    before = {k: reads(k, {}) for k in ("ai_hosted", "ai_background")}
+    at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    ids = ("hi-00000000c3a1", "hi-00000000c3a2")
+    items = [{"id": i, "device": d, "title": f"{d}: a planted problem", "why": why,
+              "why_kind": kind, "failure": {"key": f"decision:{i}", "at": at},
+              "incident": F.Incident("Lab", i, "nb:1", d, _time.time(), ()), "found": {}}
+             for i, d, kind, why in ((ids[0], "edge1", "held", "held by guard 4: a planted "
+                                      "hold"), (ids[1], "edge2", "failed",
+                                                "Mercury's fix was rolled back"))]
+    mp.setattr(A, "catch_up", lambda network, now=None, bound_s=None: {
+        "state": "ok", "error": "", "items": items, "failed": ["hi-00000000c3a3: planted"]})
+    mp.setattr(heal_notice, "start_catch_up", lambda network, ticked, **kw: {
+        "started": [ids[0]], "capped": [ids[1]], "off": ["hi-00000000c3a4"],
+        "skipped": [{"id": "hi-00000000c3a5", "why": "a planted skip"}], "failed": []})
+    try:
+        assert write_settings({"ai_hosted": {"by": "v2-context", "at": at,
+                                             "reason": "the walk's catch-up"}})["ok"]
+        base = "/v2/settings/installation/ai/background/Lab/fixit_auto"
+        hx = {"HX-Request": "true", "Accept": "text/html"}
+        form = unescape(client.get(f"{base}/on", headers=hx).get_data(as_text=True))
+        assert "Starts on these 2 open incidents" in form
+        shown = re.search(r'name="shown" value="([0-9a-f]{64})"', form).group(1)
+        each = re.search(r'name="catch_up_each" value="([0-9.]+)"', form).group(1)
+        r = client.post(f"{base}/on", headers=hx, data={
+            "shown": shown, "day_cap_usd": "0.50", "month_cap_usd": "5", "accept": "on",
+            "listed": list(ids), "start": [ids[0]], "catch_up_each": each})
+        assert r.status_code == 200 and 'data-result="catch-up"' in r.get_data(as_text=True)
+        assert client.post(f"{base}/off", headers=hx).status_code == 200
+    finally:
+        assert write_settings(before)["ok"]
+        mp.undo()
+
+
 def _ai_feedback(client, _lab, _mp):
     """Was this right? and the review of answers said wrong (PHASE8_PLAN 16.11 item 1, board
     FB): a planted call with its subject, another person's Yes on it, the walk's person's No
@@ -5154,6 +5218,24 @@ def _fixit_section(client, _lab, _mp):
         assert "Hand-over 1" in again
         w = client.get(f"/v2/incident/{iid}/handover/1?list=Lab")
         assert w.status_code == 200 and "Next steps for an engineer" in w.get_data(as_text=True)
+        # C3725: a person's plan with the collector step, by the record's own writer, which
+        # reads the session it closes when it records the plan (the close helper's dry run at
+        # its seam, as it reads Mercury's host): What its hash binds and the session beside
+        # Approve drawn from that record, the page reading nothing.
+        from modules import plan_engine as PE
+        mp.setattr(PE, "collector_session", lambda network, device, subs: {
+            "session": "192.0.2.3:57001", "local": "192.0.2.60:57500", "quiet_s": 2130,
+            "dry_run": "would close one session (a stand-in)", "refused": ""})
+        F.record_proposal(F.Incident("Lab", iid, "nb:3", "r3", t0 - 3600, ("101", "102")),
+                          "person", steps=[{"operation": R.COLLECTOR_KEY,
+                                            "params": {"subs": ["101", "102"]}}],
+                          sessions=PE.read_sessions("Lab", [{
+                              "operation": R.COLLECTOR_KEY,
+                              "params": {"device": "r3", "subscriptions": ["101", "102"]}}]))
+        mp.setattr(PE, "collector_session", lambda *a, **k: pytest.fail(
+            "a page draw read the collector's session"))
+        planned = client.get(page).get_data(as_text=True)
+        assert "What its hash binds" in planned and "192.0.2.3:57001" in planned, planned[:400]
     finally:
         mp.undo()
         if kept is None:
@@ -5238,7 +5320,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _lab9_sitting_findings,
                    _display_names,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
+                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai,
+                   _settings_ai_catch_up, _ai_feedback,
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,

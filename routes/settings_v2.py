@@ -11,6 +11,7 @@ device.
 
 import json
 import logging
+import re
 
 from flask import Blueprint, render_template, request
 from modules.outbound import no_store
@@ -547,6 +548,8 @@ def ai_on(network, feature):
     if not why and form.get("accept") != "on":
         why = ("the estimate was not accepted: tick “I have read the estimate” to turn it on; "
                "nothing was changed")
+    catch_up, why_list = (None, "") if why else _catch_up_chosen(network, feature, form)
+    why = why or why_list
     if why:
         return _ai_form(network, feature, 403 if "verified person" in why else 409,
                         form_refused=why, **kept)
@@ -555,12 +558,66 @@ def ai_on(network, feature):
                                  day_cap_usd=caps_value(form.get("day_cap_usd")),
                                  month_cap_usd=caps_value(form.get("month_cap_usd")),
                                  shown=form.get("shown", ""),
-                                 actor=identity.request_actor(), verified=_verified())
+                                 actor=identity.request_actor(), verified=_verified(),
+                                 catch_up=catch_up)
     except background.Refused as exc:
         return _ai_form(network, feature, 409, form_refused=str(exc), **kept)
+    caught = None
+    if catch_up is not None and catch_up["ticked"]:
+        # The person's choice, started now: each ticked incident once, as its own job, under
+        # its failure's own key and the person's trigger (`heal_notice.start_catch_up`).
+        from modules import heal_notice
+        from modules.ai.settings_view import chosen
+        caught = heal_notice.start_catch_up(chosen(network), catch_up["ticked"],
+                                            actor=identity.request_actor(),
+                                            verified=_verified())
     return _ai_section(network, turned_on=dict(
         pick(out, "recorded", "record_error"), feature=feature,
-        entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd")))
+        entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd"),
+        caught_up=caught, unticked=len(catch_up["unticked"]) if catch_up else 0))
+
+
+#: An incident's id as the catch-up's form sends it (`heal.incidents`' ``hi-`` ids).
+_INCIDENT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+
+def _catch_up_chosen(network: str, feature: str, form):
+    """``(catch_up, why)``: the person's choice from Turn on…'s list of open incidents
+    (automatic AI troubleshooting only; the operator, 2026-11-15): ``{"ticked", "unticked",
+    "usd_each", "usd_total"}``, every incident the form listed (``listed``) either ticked
+    (``start``) or not, and the estimate, computed here as the form computed it
+    (`settings_view.catch_up_view`), never taken from what the browser sent; or a refusal,
+    naming what was sent, when a ticked one was not listed, an id is out of shape, or the
+    estimate the form drew (``catch_up_each``) is not the one computed now. None for another
+    feature."""
+    from modules.fixit import auto as A
+
+    if feature != A.FEATURE:
+        return None, ""
+    listed = list(dict.fromkeys(form.getlist("listed")))
+    ticked = list(dict.fromkeys(form.getlist("start")))
+    bad = [i for i in listed + ticked if not _INCIDENT_ID.match(i)]
+    if bad:
+        return None, (f"an incident is named by its id, and {bad[0][:70]!r} is not one; "
+                      "nothing was changed")
+    extra = [i for i in ticked if i not in listed]
+    if extra:
+        return None, (f"{', '.join(extra)} was ticked and is not on the list drawn "
+                      f"({', '.join(listed) or 'none'}); nothing was changed")
+    from modules.ai.settings_view import catch_up_view, chosen
+
+    # No list drawn, no estimate shown for it: nothing to compute or record.
+    each = float(catch_up_view(chosen(network)).get("usd_each") or 0.0) if listed else 0.0
+    sent = (form.get("catch_up_each") or "").strip()
+    try:
+        drawn = round(float(sent), 6) if sent else None
+    except ValueError:
+        drawn = None
+    if ticked and drawn != round(each, 6):
+        return None, (f"the estimate drawn was {sent or 'none'} an incident, and it is "
+                      f"{each:.6g} now; read the list again; nothing was changed")
+    return {"ticked": ticked, "unticked": [i for i in listed if i not in ticked],
+            "usd_each": each, "usd_total": round(each * len(ticked), 6)}, ""
 
 
 def _ai_spend_panel(network: str, status: int = 200, **ctx):

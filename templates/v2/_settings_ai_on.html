@@ -24,6 +24,38 @@
   </div>
   <form class="ai-on-form" method="post" action="{{ url_for('settings_v2.ai_on', network=o.network, feature=o.feature) }}" hx-post="{{ url_for('settings_v2.ai_on', network=o.network, feature=o.feature) }}" hx-target="#ai-bg" hx-swap="outerHTML">
     <input type="hidden" name="shown" value="{{ est.digest }}">
+    {%- if o.catch_up is not none %}
+    {#- Automatic AI troubleshooting's catch-up (the operator, 2026-11-15; C3732): the open
+        incidents R1 would have started on had it been on when they failed (`auto.catch_up`),
+        each ticked by default with its estimate, the total following the ticks
+        (nmas_apply.js `catchUpSelect`). Not on board AI3b (STANDING_APPROVAL_LOG). -#}
+    {%- set cu = o.catch_up %}
+    <div class="ai-catchup" aria-label="Open incidents it starts on" data-state="{{ cu.state }}">
+      {%- if cu.state != 'ok' %}
+      <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The open incidents cannot be listed:</strong> {{ cu.error }}. Turning it on starts on none of them; each keeps Start AI troubleshooting on its page.</div></div>
+      {%- elif not cu.incidents %}
+      <p class="small muted ai-catchup-none" data-catch-up="none">No open incident to start on.</p>
+      {%- else %}
+      {%- set n = cu.incidents | length %}
+      {#- What fits under each cap (C3745): the room left under the day cap today and the
+          feature's spend so far, against the caps typed below; redrawn as either changes. -#}
+      <div class="ai-catchup-pick" x-data="catchUpSelect" data-each="{{ '%.6f' % cu.usd_each }}" data-worst="{{ '%.6f' % cu.worst }}" data-day-room="{{ 'none' if cu.room.day is none else '%.6f' % cu.room.day }}" data-feature-day-spent="{{ 'unknown' if cu.room.feature_day_spent is none else '%.6f' % cu.room.feature_day_spent }}" data-feature-month-spent="{{ 'unknown' if cu.room.feature_month_spent is none else '%.6f' % cu.room.feature_month_spent }}">
+        <input type="hidden" name="catch_up_each" value="{{ '%.6f' % cu.usd_each }}">
+        <p class="ai-catchup-lead"><strong x-text="summary">Starts on {{ 'this open incident' if n == 1 else 'these ' ~ n ~ ' open incidents' }}, about {{ cu.usd_total | usd }}</strong> <span class="set-origin" title="{{ cu.basis }}">{{ 'each about ' ~ (cu.usd_each | usd) ~ (', measured' if cu.measured else ', its worst case: none measured yet') }}</span></p>
+        <ul class="ai-catchup-list" aria-label="Untick an incident to leave it for a person">
+        {%- for i in cu.incidents %}
+          <li class="ai-catchup-item" data-why="{{ i.why_kind }}"><input type="hidden" name="listed" value="{{ i.id }}">
+            <label><input type="checkbox" name="start" value="{{ i.id }}" checked data-usd="{{ '%.6f' % i.usd }}" data-cap-ok="{{ '0' if i.cap_words else '1' }}" x-on:change="recount">
+              <span class="mono">{{ i.device }}</span> · <a href="{{ i.href }}">{{ i.title }}</a> · <span class="muted">{{ i.why }}</span>{% if i.at %} <span class="faint">{{ clock(i.at) }}</span>{% endif %} · about {{ i.usd | usd }}{% if i.cap_words %} · <span class="ai-catchup-cap">{{ i.cap_words }}</span>{% endif %}</label></li>
+        {%- endfor %}
+        </ul>
+        <p class="ai-catchup-fit" data-fit><strong x-text="fit">{{ cu.fit_words }}</strong> <span class="set-origin" x-text="room">{{ cu.room_words }}</span></p>
+        <p class="set-origin">Each ticked one starts once, now, as its own job, under your name, within its incident's AI cap{% if cu.incident_cap %} ({{ cu.incident_cap }}){% endif %}, this feature's day and month caps below and the day cap{% if cu.day_cap %} ({{ cu.day_cap }}){% endif %}; the later ones past a cap are refused before anything starts, and each page says which cap. One you untick keeps Start AI troubleshooting on its page and never starts by itself for this failure. After this, every new failure starts by itself.</p>
+      </div>
+      {%- endif %}
+      {%- for f in cu.failed %}<p class="small faint">Not listed: {{ f }}</p>{% endfor %}
+    </div>
+    {%- endif %}
     <div class="ai-caps">
       <label class="ai-cap"><span class="set-label">Day cap for this feature</span>
         <span class="in-usd"><input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else ('%.2f' % o.day_value if o.day_value is not none else '') }}"{% if o.day_value is none and not day_typed %} placeholder="type a cap"{% endif %}></span>
@@ -37,6 +69,6 @@
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="ai-background" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Turn on with this estimate' if known else 'Turn on with no measured estimate' }}</span><span class="op-busy">Turning on…</span></button>{{ how('ai-background', 'turn-on', op='turning ' ~ o.feature ~ ' on') }}</span>
       <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='ai', network=o.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=o.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Cancel</a>
     </div>
-    <p class="set-origin ai-open-note">Records who you are, the time, estimate {{ est.digest[:8] }} and its figures, and the caps, in the installation's settings record (History). If the estimate moves before you press, nothing changes and both are named.</p>
+    <p class="set-origin ai-open-note">Records who you are, the time, estimate {{ est.digest[:8] }} and its figures, and the caps{% if o.catch_up is not none and o.catch_up.incidents %}, and which open incidents you ticked and left unticked{% endif %}, in the installation's settings record (History). If the estimate moves before you press, nothing changes and both are named.</p>
   </form>
 </div>

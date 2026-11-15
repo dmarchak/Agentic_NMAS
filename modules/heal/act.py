@@ -41,7 +41,11 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    A heal that re-applies the heartbeat applet (C3164, `restored_heartbeat`: decided from
    intent's parse and the heartbeat check's own population) has the heartbeat as a symptom
    too: its next heartbeat in Coverage's stored arrivals, within `heartbeat_bound`; none by
-   then is symptom remains;
+   then is symptom remains. A heal whose every line is cosmetic (`readback_only`, R3: a
+   description, an alias, a banner, SNMP's location or contact, the logging buffer) is
+   verified by its read-back: its symptom, which no such line can clear or cause, is read
+   once from its store's last read and never waited on (``once``), and the step says so
+   ("descriptions only: read back, 2 s");
 9. **record**: `decisions.applied` with the outcome (`OUTCOMES`; ``rolled_back`` halts the
    network, guard 14, and so does a program sent and neither verified nor rolled back), and
    `incidents.close`. The receipt carries the heal (its decision, incident, policy, the person
@@ -206,9 +210,9 @@ class Sources:
 
         return drift_check.check_device(self.network, device, by)
 
-    def symptom(self, device, triggers, since) -> dict:
+    def symptom(self, device, triggers, since, once: str = "") -> dict:
         return read_symptom(self.network, device, triggers, since, clock=self.clock,
-                            sleep=self.sleep)
+                            sleep=self.sleep, once=once)
 
     def journal(self, device, dev, decision, outcome, approval=None) -> dict:
         from modules.heal import journal
@@ -446,8 +450,22 @@ def _reader_for(store: str):
     return None
 
 
+def readback_only(units: list) -> str:
+    """R3's cosmetic heal (the operator, 2026-11-14: "Cosmetic changes (description, banner,
+    snmp location/contact, alias) are a read-back only"): ``"descriptions only"`` (each family
+    named) when EVERY line every unit adds or removes is cosmetic
+    (`verify_scope.cosmetic_only`), else ``""``. A unit with any other line, or a stanza whose
+    header departed, is not: it keeps the symptom's wait."""
+    from modules.nsot import verify_scope
+
+    whats = verify_scope.cosmetic_only([(tuple(p[0] or ()), p[1]) for u in units or []
+                                        for p in list(u.get("add") or [])
+                                        + list(u.get("remove") or [])])
+    return f"{' and '.join(whats)} only" if whats else ""
+
+
 def read_symptom(network: str, device: str, triggers: list, since: float, *, clock=time.time,
-                 sleep=time.sleep, read=None, request=None) -> dict:
+                 sleep=time.sleep, read=None, request=None, once: str = "") -> dict:
     """The incident's symptoms read again (``{"state", "words", "checks"}``): each trigger's
     store asked to read now, then read until every symptom is gone or its bound passes. *state*
     is ``none`` (no symptom to read), ``gone``, ``present`` or ``unreadable`` (a store that
@@ -455,14 +473,22 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
     fail). ``reads`` is every read it made, in order, as the act's ``symptom`` step keeps them
     (`reads.read_entry`: when, the store asked, gone, still there or unreadable), so the
     heal's own record says "5 reads, 30 s apart, each still down" (the operator, 2026-11-11);
-    a reader's store is no device read, so each names no run of the reads store."""
+    a reader's store is no device read, so each names no run of the reads store.
+
+    *once* (R3's cosmetic heal, `readback_only`: its words, "descriptions only: read back,
+    2 s"): no line of the change can clear or cause the symptom, so each store is read ONCE,
+    its last good read taken if it was made after the newest symptom began (an older one is
+    stale: unreadable, never gone), no reader asked to run and nothing waited:
+    ``gone``, ``present`` (a symptom the change could not have caused or cleared: symptom
+    remains) or ``unreadable``, each saying *once* and why it was not waited on."""
     from modules import reader_job
     from modules.nsot import reads as reads_store
 
     wanted = symptom_triggers(triggers)
     if not wanted:
         return {"state": "none", "checks": [], "reads": [],
-                "words": "the incident named no symptom beyond the configuration"}
+                "words": (f"{once}; " if once else "")
+                + "the incident named no symptom beyond the configuration"}
     kept = {"reads": []}
     read = read or reader_job.read_cached
 
@@ -473,7 +499,14 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
         reader_job.request_run(reader, by="heal to intent: the symptom read again")
         return True
 
-    request = request or ask
+    request = (lambda store: False) if once else (request or ask)
+    if once:
+        # A read from before the change counts (the change cannot move the symptom), but never
+        # one from before the symptom began: a reader failing since then keeps an older good
+        # value that knows nothing of it. So the newest symptom trigger's time; a trigger
+        # carrying none keeps *since*, the heal's own start (later, so stricter).
+        began = [float(t["epoch"]) for t in wanted if t.get("epoch")]
+        since = max(began) if len(began) == len(wanted) else since
     bound = max(_bound(t) for t in wanted)
     deadline = clock() + bound
     asked = {}
@@ -514,6 +547,8 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
                 + (f": {detail}" if detail else ""),
                 at=_iso(clock())))
         states = {c["state"] for c in checks}
+        if once:
+            return _read_once(checks, kept["reads"], states, once)
         if states == {"gone"}:
             told = "; ".join(c["detail"] for c in checks if c.get("detail"))
             return {"state": "gone", "checks": checks, "reads": kept["reads"],
@@ -539,6 +574,24 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
                               + (f"; {why['detail']}" if why.get("detail") else "")
                               + ")")}
         sleep(POLL_SECONDS)
+
+
+def _read_once(checks: list, reads: list, states: set, once: str) -> dict:
+    """`read_symptom`'s answer for a cosmetic heal: its one read of each store, never waited."""
+    why = "not waited on: no line of it can clear or cause the symptom"
+    if states == {"gone"}:
+        return {"state": "gone", "checks": checks, "reads": reads,
+                "words": f"{once}; the symptom is gone in its store's last read ({why})"}
+    if "present" in states:
+        left = next(c for c in checks if c["state"] == "present")
+        return {"state": "present", "checks": checks, "reads": reads,
+                "words": (f"{once}; the symptom is still there in its store's last read "
+                          f"({left['trigger']}; {why})")}
+    bad = next(c for c in checks if c["state"] != "gone")
+    return {"state": "unreadable", "checks": checks, "reads": reads,
+            "words": (f"{once}; the symptom could not be read in its store ({bad['store']}: "
+                      f"{bad['state']}" + (f"; {bad['detail']}" if bad.get("detail") else "")
+                      + f"; {why})")}
 
 
 # ── The checks after verify ─────────────────────────────────────────────────────────────────
@@ -910,6 +963,14 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
                                "change to that path needs a repair route independent of it"))
 
     applied_at = {"t": now}
+    # R3 (the operator, 2026-11-14): a heal whose every line is cosmetic (`readback_only`: a
+    # description, an alias, a banner, ...) verifies by its read-back; no line of it can clear
+    # or cause a symptom, so the symptom is read ONCE from its store's last read and never
+    # waited on (no `POLL_SECONDS` poll, no reader's cadence). Anything else waits as before.
+    cosmetic = readback_only(c["units"])
+
+    def cosmetic_words():
+        return f"{cosmetic}: read back, {max(0, round(src.clock() - applied_at['t']))} s"
 
     def after_verify(host, result, ctx):
         post = ((result.get("golden_pending") or [{}])[0] or {}).get("config_text") or ""
@@ -929,7 +990,8 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             # Any other symptom decides no rollback, so it is read once the device is saved
             # and released (`_judge`), never while it is held.
             return {"rollback": "", "record": record}
-        s = src.symptom(device, inc.get("triggers") or [], applied_at["t"])
+        s = src.symptom(device, inc.get("triggers") or [], applied_at["t"],
+                        **({"once": cosmetic_words()} if cosmetic else {}))
         record["symptom"] = {"state": s["state"], "words": s["words"]}
         step("symptom", s["state"], s["words"], **symptom_reads(s))
         if s["state"] == "present":
@@ -967,6 +1029,12 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     def read_again(triggers):
         from modules.device_logs import MARKER
 
+        if cosmetic and not any(t.get("kind") == HEARTBEAT_KIND for t in triggers):
+            words = cosmetic_words()
+            begin("symptom", f"{words}; reading the symptom's store once, not waiting on it")
+            s = src.symptom(device, triggers, applied_at["t"], once=words)
+            step("symptom", s["state"], s["words"], **symptom_reads(s))
+            return s
         bound = symptom_bound(triggers)
         waits = ({"wait_for": HEARTBEAT_KIND}
                  if any(t.get("kind") == HEARTBEAT_KIND for t in triggers) else {})

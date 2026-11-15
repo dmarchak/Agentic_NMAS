@@ -263,13 +263,64 @@ class TestThePipelineRunsTheScopedVerify:
 
     def test_a_full_program_still_watches_bgp_to_its_hold_time(self, world):
         ctx, clock = world(_summary(), config=MERGED)
-        ctx.rendered_commands = {"x": ["interface Loopback9", " description x", "exit"]}
+        # A line that can reach a BGP session: a description cannot (R3, the operator,
+        # 2026-11-14), and `test_a_cosmetic_full_program_skips_the_hold_and_says_why` holds it.
+        ctx.rendered_commands = {"x": ["interface Loopback9", " bandwidth 1000", "exit"]}
         pipeline._stage_verify(ctx)
         v = ctx.verify_result["x"]
         assert clock.slept == [170.0] and v["bgp_watch"]["state"] == "converged"
         # C732: a full program's new lines are read back too, from the same read.
         assert v["verify_scope"]["scope"] == "full"
-        assert v["read_back"]["checked"] == 1, v["read_back"]   # the one leaf, description x
+        assert v["read_back"]["checked"] == 1, v["read_back"]   # the one leaf, bandwidth 1000
+        assert "BGP is read again after its hold time" in v["verify_scope"]["why"]
+
+    @pytest.mark.parametrize("program, what", [
+        (["interface Loopback9", " description x", "exit"], "descriptions"),
+        (["interface GigabitEthernet2", " no description", "exit"], "descriptions"),
+        (["interface Loopback9", " description x", "exit", "logging host 192.0.2.10",
+          "alias exec sib show ip bgp summary"], "descriptions, logging, aliases"),
+        (["interface Loopback9", " description x", "exit", "logging host 2001:db8::10"],
+         "descriptions, logging"),
+    ])
+    def test_a_cosmetic_full_program_skips_the_hold_and_says_why(self, world, program, what):
+        """R3 (the operator, 2026-11-14): a description, an alias, the logging buffer, SNMP's
+        location and contact and a banner are a read-back only; with every other line a
+        management family's, no line can reach a BGP session, so the hold is not waited and
+        the record says why. The read-back still runs."""
+        ctx, clock = world(_summary("Idle"), config=MERGED)
+        ctx.rendered_commands = {"x": program}
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert clock.slept == [], f"waited {clock.slept}"
+        assert v["bgp_watch"]["state"] == "skipped"
+        assert v["bgp_watch"]["why"] == (f"every line is {what}: no line here can reach a BGP "
+                                         "session")
+        assert v["verify_scope"]["scope"] == "full"
+        assert "BGP's hold time is not waited out (every line is" in v["verify_scope"]["why"]
+        assert v["read_back"]["checked"] >= 1, "the read-back still runs"
+
+    @pytest.mark.parametrize("program, line", [
+        (["interface Loopback9", " description x", " ip address 192.0.2.9 255.255.255.255",
+          "exit"], "interface Loopback9 > ip address 192.0.2.9 255.255.255.255"),
+        (["interface Loopback9", " description x", " ipv6 address 2001:db8::9/128", "exit"],
+         "interface Loopback9 > ipv6 address 2001:db8::9/128"),
+        (["router bgp 65001", " neighbor 192.0.2.9 description x", "exit"],
+         "router bgp 65001 > neighbor 192.0.2.9 description x"),
+        (["interface Loopback9", "exit"], "interface Loopback9"),
+        (["hostname r3-new"], "hostname r3-new"),
+    ])
+    def test_one_line_that_may_reach_bgp_keeps_the_whole_hold(self, world, program, line):
+        """Anything not named cosmetic, or a header alone (it creates an interface), keeps
+        today's wait: safe by default, naming the line that kept it."""
+        ctx, clock = world(_summary(), config=MERGED)
+        ctx.rendered_commands = {"x": program}
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert clock.slept == [170.0] and v["bgp_watch"]["state"] == "converged"
+        assert V.bgp_reach(program) == {
+            "reaches": True, "lines": [],
+            "why": f"`{line}` is not a management or cosmetic line, so it may reach a BGP "
+                   "session: its hold time is waited out"}
 
     def test_a_full_line_that_did_not_read_back_fails_verify_and_rolls_nothing_back(self, world):
         """C732 (the operator's B9, 2026-10-13): a full program's line the device does not

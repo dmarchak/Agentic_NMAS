@@ -688,18 +688,60 @@ def _catalog_params(key: str) -> tuple:
 
 
 def collector_session(network: str, device: str, subs) -> dict:
-    """``{"session", "refused"}``: the session the collector step would close now, its device's
-    end as the close helper's DRY RUN names it (`resubscribe.plan` with ``collector``: it closes
-    nothing), or why there is none. Asked at Approve and again at the step's preview and apply,
-    each a person's approval or its run, never a page draw."""
+    """``{"session", "refused", "local", "quiet_s", "dry_run"}``: the session the collector step
+    would close now, its device's end as the close helper's DRY RUN names it (`resubscribe.plan`
+    with ``collector``: it closes nothing), with the collector's end, how long it has been
+    quiet and the dry run's own words, or why there is none. Asked when the plan is proposed,
+    inside the job recording it (`read_sessions`, kept with the proposal and drawn
+    from it, C3725), at Approve and again at the step's preview and apply, never on a page
+    draw."""
     from modules.heal import resubscribe as R
 
     got = R.plan(network, device, list(subs), collector=True)
-    remote = str((got.get("close") or {}).get("remote") or "")
+    close = got.get("close") or {}
+    remote = str(close.get("remote") or "")
     if not got.get("ok") or not remote:
         return {"session": "", "refused": "; ".join(got.get("refusals") or [])
-                or "the collector's session could not be named"}
-    return {"session": remote, "refused": ""}
+                or "the collector's session could not be named", "local": "", "quiet_s": None,
+                "dry_run": ""}
+    return {"session": remote, "refused": "", "local": str(close.get("local") or ""),
+            "quiet_s": close.get("quiet_s"),
+            "dry_run": str((close.get("dry_run") or {}).get("words") or "")}
+
+
+def read_sessions(network: str, steps: list, *, now: float = None) -> dict:
+    """The collector session each collector step of a proposed plan closes, read ONCE, when the
+    proposal is made, by the job making it (C3725; the operator, 2026-11-15: "Read the session
+    in the plan's preflight (inside the background job, when the proposal is made), store it
+    with the plan, and draw it from the stored record, so the page never waits"). *steps* are
+    ``[{"operation", "params"}]`` in the catalog's form, the device among each step's
+    parameters; the answer is ``{"<n>": {"session", "local", "quiet_s", "dry_run", "refused",
+    "at"}}`` by step number, ``{}`` for a plan with no collector step, handed to
+    `fixit.incident.record_proposal` (``sessions``), which keeps it and reads nothing. Each is
+    the close helper's DRY RUN (`collector_session`: it closes nothing), its words masked; a
+    read that fails is kept as its reason, never raised, so the proposal is still kept and
+    says why it cannot run."""
+    from modules.heal import resubscribe as R
+    from modules.redact import redact_text
+
+    at = time.time() if now is None else float(now)
+    out = {}
+    for n, s in enumerate(steps or (), 1):
+        if not isinstance(s, dict) or s.get("operation") != R.COLLECTOR_KEY:
+            continue
+        p = s.get("params") or {}
+        try:
+            got = collector_session(network, p["device"], p.get("subscriptions") or [])
+        except Exception as exc:                          # noqa: BLE001 (kept, never raised)
+            log.error("plan engine: step %d's collector session was not read: %s", n, exc)
+            got = {"session": "", "refused": f"the collector's sessions could not be read "
+                                             f"({type(exc).__name__}: {exc})"}
+        out[str(n)] = {"session": str(got.get("session") or ""),
+                       "local": str(got.get("local") or ""), "quiet_s": got.get("quiet_s"),
+                       "dry_run": redact_text(str(got.get("dry_run") or "")),
+                       "refused": redact_text(str(got.get("refused") or "")),
+                       "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))}
+    return out
 
 
 def _catalog_preview(key: str):
@@ -925,6 +967,46 @@ def plan_hash(plan: str, params: dict, steps: list, network: str = "") -> str:
                     "steps": [[s["kind"], s["params"], s.get("hash", "")]
                               + ([s["resolved"]] if s.get("resolved") else [])
                               for s in steps]})
+
+
+def words_of(key) -> str:
+    """A plan's or a step kind's key in a person's words (its own ``words``), else the value
+    itself: a screen names no code key (R2)."""
+    if isinstance(key, str):
+        if key in STEP_KINDS:
+            return STEP_KINDS[key].words
+        if key in PLANS:
+            return PLANS[key].words
+    return str(key)
+
+
+def _said(value) -> str:
+    """A bound value in words: a mapping its ``name: value`` pairs, a list its items, a key of
+    a plan or step kind its words (`words_of`)."""
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {_said(v)}" for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_said(v) for v in value)
+    return words_of(value)
+
+
+def bound_rows(network: str, plan: str, params: dict, steps: list, plan_hash_: str) -> list:
+    """Everything the plan's hash binds (`plan_hash`), as rows a person reads before Approve
+    (C3725: "everything the hash binds is shown in the preview"): ``[(label, words)]``, the
+    network, the plan, each of its parameters, then each step: its operation, each of its
+    parameters, what its preview resolved (a reservation's subnet) and its own hash; and the
+    plan's hash. A key is said by its words (`words_of`), never as a code."""
+    rows = [("Network", str(network)), ("Plan", words_of(plan))]
+    rows += [(f"Its {k}", _said(v)) for k, v in (params or {}).items() if k != "steps"]
+    for s in steps or []:
+        n = s.get("n")
+        rows.append((f"Step {n}", words_of(s.get("kind") or s.get("operation") or "")))
+        rows += [(f"Step {n}'s {k}", _said(v)) for k, v in (s.get("params") or {}).items()]
+        rows += [(f"Step {n}: Mercury found its {k}", _said(v))
+                 for k, v in (s.get("resolved") or {}).items()]
+        rows.append((f"Step {n}'s own hash", str(s.get("hash") or "none")))
+    rows.append(("The plan's hash", str(plan_hash_ or "none")))
+    return rows
 
 
 def preview(network: str, plan, params) -> dict:

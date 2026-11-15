@@ -189,6 +189,14 @@ ALSO_REACHES = {
         "(installation_settings.replace_secret, the irreversible tier); Replace… itself needs "
         "no AI and stays usable, since it is how a key is set. Its Test's refusal after the "
         "fact while hosted AI is off is C1678"),
+    "settings_v2.ai_on": (
+        "Turn on… for automatic AI troubleshooting (fixit_auto) starts each open incident the "
+        "person ticked on its list (C3732), each as its own job under the person's trigger, "
+        "within the per-incident cap, the feature's day and month caps and the overall day "
+        "cap (C3745), a ticked one past a cap refused with the cap named before anything "
+        "starts; Turn on itself needs no AI and stays usable, since it is how the feature is "
+        "turned on, and with hosted AI off the ticked ones start nothing and their cards say "
+        "why"),
 }
 
 #: Where a viewer who may configure fixes it: the AI (hosted) card.

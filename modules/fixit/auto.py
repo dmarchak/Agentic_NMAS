@@ -13,33 +13,46 @@ for the incident's kind, read from its own record, each with its own key (`key_o
 - the heal's decision found no code fix for this kind (`DECISION_FAILURES`: ``cant_fix``):
   ``decision:<incident>``, ONE per incident however often a standing incident is judged again
   (C2813: a re-judged standing incident is the same failure, never a new one that spends
-  again). A hold is NEVER a failure (R2: "a guard or hold working as designed is not a
-  failure"): a guard that waits (the grace, planned work, a recent change, a person working)
-  holds the heal for now, and one that stops it (guard 4's departure) is a person's to resolve;
-  neither starts anything, nor takes the incident's key, so a later can't-fix still does;
+  again);
+- the heal's decision is held by a guard a PERSON resolves (`HELD_FOR_A_PERSON`: guards 4, 6
+  and 9, held with no time to check again, `heal.guards`; e.g. guard 4, the device's golden
+  departs from its intent): no fix Mercury can run alone (the operator, 2026-11-15: "count held
+  incidents (e.g. [a lab router]'s guard-4 hold) as 'no fix Mercury can run alone' ... The AI
+  may only diagnose and propose within its catalog; where the fix needs a person's approval (a
+  template
+  bring-in), it says so as its finding and offers Hand over"): ``held:<incident>``, ONE per
+  incident. A guard that WAITS (the grace, planned work, the topology, a person working: held
+  with a time to check again) is no failure (R2: "a guard or hold working as designed is not a
+  failure"): it starts nothing, nor takes a key, so a later can't-fix or hold still does;
 - the heal's act ended without a verified fix (`ACT_FAILURES`: its symptom remained, it rolled
   back, it failed after sending, it was refused before sending, it was interrupted):
   ``act:<decision>``, one per act;
 - a plan a person approved on the incident's page stopped at a step or failed (the R1 flow's
   step 7: "step 2 runs again with that failure in the evidence"): ``run:<plan run id>``.
 
-**Only while self-healing is in Auto for that problem kind** (the operator, 2026-11-14: "with
-self-healing off or in Dry run, nobody asked Mercury to fix anything"; `heal_auto`, `eligible`):
-the network's heal policy in Auto NOW (`heal.policy.current`: in force, not expired, after the
-kill switch and the stage guard), and, for a failure of a code fix, its kind among the kinds
-Auto allows; a problem with no code fix (a can't-fix, a lost stream) needs only Auto. A failure
-recorded before Auto went on (the policy's confirmation time) never starts by itself either.
+**In every mode of self-healing** (the operator, 2026-11-15, replacing 2026-11-14's "only while
+self-healing is in Auto": "the AI only proposes, and nothing runs without a person's approval,
+so it investigates in Dry run too"; `eligible`): the switch on and the failure recorded after
+it went on are the whole condition. `heal_auto` still reads the policy, for the words a page
+says, never as a gate.
 
 **Once per failure, across processes**: the key is taken by ONE ``start`` line in the incident's
 own record under its lock (`incident.claim_start`), whoever asks first; a second runner, a
 second worker or a restart finds it taken and asks nothing.
 
-**No catch-up** (`switch`, `manual_start`): a failure recorded before the switch's ``at`` (when
-the person turned it on, as `turn_on` recorded it) never starts anything by itself, nor does one
-recorded while it was off: turning it on, or on again after its approval ended, starts nothing
-for the past. Such an incident, still open, offers ONE Start AI troubleshooting, a person's
-press (as for a lab incident whose fix failed before this release). A switch whose ``at``
-Mercury did not write is never in force (`background.in_force`), so nothing starts on it.
+**Nothing in the past starts by itself; turning it on catches up on the person's choice**
+(`switch`, `manual_start`, `catch_up`; the operator, 2026-11-15: "when the switch is turned on,
+it starts on every open incident whose fix failed or that has no fix, within the caps. Turning
+it on shows the list first ... each tickable, and records what was chosen. After that, every
+new failure starts by itself"): a failure recorded before the switch's ``at`` (when the person
+turned it on, as `turn_on` recorded it) never starts anything by itself, nor does one recorded
+while it was off. Turn on… lists what R1 would have started on had the switch been on when it
+failed (`catch_up`, from the same reader as the automatic pass, `pending`); each one the person
+ticks is started once at the turn-on, a person's start under its failure's own key
+(`heal_notice.start_catch_up`), so the automatic pass never starts it again for that failure.
+One left unticked, still open, offers ONE Start AI troubleshooting, a person's press (as for a
+lab incident whose fix failed before this release). A switch whose ``at`` Mercury did not write
+is never in force (`background.in_force`), so nothing starts on it.
 
 Reads, and the start lines; nothing here asks the AI, holds a device, starts a job or sends
 (tests/test_fixit_incident.py's scan of `modules/fixit/`). The pass that asks is the
@@ -55,8 +68,13 @@ log = logging.getLogger(__name__)
 #: The background feature (`background.FEATURES`) and its finding kind.
 FEATURE = "fixit_auto"
 #: The decision outcomes after which no code fix of Mercury's exists for the problem (can't
-#: fix, `heal.decisions.OUTCOMES`). Never ``held``: a hold works as designed (R2).
+#: fix, `heal.decisions.OUTCOMES`). A ``held`` decision is one only by `HELD_FOR_A_PERSON`.
 DECISION_FAILURES = ("cant_fix",)
+#: The guards whose hold a person resolves (`heal.guards`' docstring: "``held`` without
+#: *until*: a person resolves it (4, 6, 9)"; tests/test_fixit_catch_up.py holds it against the
+#: guards themselves): a decision held by one is no fix Mercury can run alone. A guard held
+#: WITH a time to check again (3, 5, 7) waits as designed and is never a failure.
+HELD_FOR_A_PERSON = (4, 6, 9)
 #: The act outcomes that are no verified fix (`heal.act.OUTCOMES`; ``healed`` and ``partial``
 #: are not failures: partial healed and says what it could not show).
 ACT_FAILURES = ("symptom_remains", "rolled_back", "failed", "refused", "interrupted")
@@ -64,6 +82,9 @@ ACT_FAILURES = ("symptom_remains", "rolled_back", "failed", "refused", "interrup
 PLAN_FAILURES = ("stopped", "failed")
 #: The incident states in which a failure may still start an investigation.
 OPEN = ("watching", "ready", "claimed", "standing")
+#: A catch-up's start line's words (`heal_notice.start_catch_up`); its card adds who ticked it,
+#: by display name (`section._status`: "started at turn-on by <name>").
+CATCH_UP_WORDS = "started at turn-on"
 #: How far back a failure's frequency is measured, for the feature's estimate.
 FREQUENCY_DAYS = 7
 
@@ -91,9 +112,7 @@ def switch(network: str) -> dict:
             "entry": entry}
 
 
-#: The failures that need only self-healing in Auto, whatever their kind: no code fix exists for
-#: the problem (a can't-fix, a lost stream). Any other failure needs its fix kind among the
-#: kinds Auto allows (`heal.policy.current`'s ``kinds_auto``).
+#: The failures where no code fix exists for the problem (a can't-fix, a lost stream).
 NO_CODE_FIX = ("cant_fix", "no_code_fix")
 
 
@@ -119,27 +138,25 @@ def heal_auto(network: str, now: float = None) -> dict:
             "words": got.get("words") or ""}
 
 
-def eligible(failure: dict, sw: dict, heal: dict) -> str:
+def eligible(failure: dict, sw: dict, heal: dict = None) -> str:
     """``""`` when *failure* starts an investigation by itself, else why not: the switch on
-    (*sw*, `switch`) and the failure recorded after it went on; self-healing in Auto (*heal*,
-    `heal_auto`) and the failure recorded after Auto went on; and, for a failure of a code
-    fix, its kind among the kinds Auto allows."""
+    (*sw*, `switch`) and the failure recorded after it went on.
+
+    **In every mode of self-healing** (the operator, 2026-11-15, replacing 2026-11-14's "R1
+    fires only while self-healing is in Auto"): "Drop 'R1 only while self-healing is in Auto':
+    the AI only proposes, and nothing runs without a person's approval, so it investigates in
+    Dry run too". *heal* (`heal_auto`) is no longer asked, and is kept only for its callers."""
+    del heal
     if not sw.get("on"):
         return "automatic troubleshooting is off for this network"
     if failure["epoch"] < sw["epoch"]:
         return "it was recorded before automatic troubleshooting was turned on for this network"
-    if not heal.get("auto"):
-        return "self-healing is not in Auto on this network, so nobody asked Mercury to fix it"
-    if failure["epoch"] < heal["since"]:
-        return "it was recorded before self-healing's Auto went on"
-    kind = failure.get("fix_kind") or ""
-    if failure.get("outcome") not in NO_CODE_FIX and kind and kind not in heal["kinds_auto"]:
-        return f"self-healing's Auto does not allow its kind of fix ({kind})"
     return ""
 
 
 def key_of(kind: str, ident: str) -> str:
-    """A failure's key: ``decision:<incident>``, ``act:<decision>`` or ``run:<run id>`` (the
+    """A failure's key: ``decision:<incident>``, ``held:<incident>``, ``act:<decision>`` or
+    ``run:<run id>`` (the
     shape a background trigger's finding id takes: no underscore, no space)."""
     return f"{kind}:{ident}"
 
@@ -160,8 +177,12 @@ def failures(network: str, *, open_ids=None) -> dict:
         if not inc or (open_ids is not None and inc not in open_ids):
             continue
         row, outcome = r.get("row"), r.get("outcome") or ""
+        guard = r.get("guard") if isinstance(r.get("guard"), dict) else {}
         if row == "decision" and outcome in DECISION_FAILURES:
             kind, ident = "decision", inc
+        elif (row == "decision" and outcome == "held"
+              and guard.get("guard") in HELD_FOR_A_PERSON):
+            kind, ident = "held", inc
         elif row == "act" and outcome in ACT_FAILURES and r.get("decision"):
             kind, ident = "act", r["decision"]
         else:
@@ -174,7 +195,9 @@ def failures(network: str, *, open_ids=None) -> dict:
         out.append({"key": key, "kind": kind, "id": ident, "incident": inc,
                     "device": r.get("device") or "", "outcome": outcome, "epoch": epoch,
                     "at": r.get("at") or (_iso(epoch) if epoch else ""),
-                    "fix_kind": r.get("kind") or ""})
+                    "fix_kind": r.get("kind") or "",
+                    **({"guard": {k: guard.get(k) for k in ("guard", "name", "words")}}
+                       if kind == "held" else {})})
     return {"state": "ok", "failures": out, "error": ""}
 
 
@@ -225,6 +248,119 @@ def open_incidents(network: str) -> dict:
     got = incidents.read(network)
     return {i["id"]: i for i in got["incidents"]
             if isinstance(i, dict) and i.get("id") and i.get("state") in OPEN}
+
+
+def pending(network: str) -> dict:
+    """R1's ONE reader of what may start an investigation on *network*: the automatic pass
+    (`heal_notice.run_fixit`) and the catch-up at turn-on (`catch_up`) both read it, so the two
+    never hold two definitions of a failure. ``{"state", "error", "incidents", "failed"}``,
+    *incidents* ``[{"id", "found", "incident", "failures"}]``, each open incident with a page
+    and its failures: its step log's (`failures`), its record's no code fix (`no_code_fix`),
+    oldest first, then its approved plans that stopped (`plan_failures`). An open incident with
+    a troubleshooting record and none of these is listed with none (its plans were read).
+    *failed* names an incident whose plans could not be read. A read."""
+    import os
+
+    from modules import incident_page
+    from modules.config import list_data_path
+    from modules.fixit import incident as F
+    from modules.fixit import section
+
+    opened = open_incidents(network)
+    got = failures(network, open_ids=set(opened))
+    if got["state"] != "ok":
+        return {"state": got["state"], "error": got["error"], "incidents": [], "failed": []}
+    by = {}
+    for f in got["failures"]:
+        by.setdefault(f["incident"], []).append(f)
+    for iid, record in opened.items():
+        lost = no_code_fix(record)
+        if lost and lost["key"] not in {f["key"] for f in by.get(iid, [])}:
+            by.setdefault(iid, []).append(lost)
+            by[iid].sort(key=lambda f: f["epoch"])
+    folder = os.path.join(list_data_path(network), F.STORE_DIR)
+    for iid in opened:
+        if iid not in by and os.path.exists(os.path.join(folder, f"{iid}.json")):
+            by[iid] = []
+    out, failed = [], []
+    for iid, fs in by.items():
+        found = incident_page.resolve(network, iid)
+        if found["found"] != "page":
+            continue
+        inc = section.incident_of(network, found)["incident"]
+        if inc is None:
+            continue
+        try:
+            fs = fs + plan_failures(network, inc)
+        except Exception as exc:                      # said; the next read asks again
+            failed.append(f"{iid}: {type(exc).__name__}: {exc}")
+            continue
+        out.append({"id": iid, "found": found, "incident": inc, "failures": fs})
+    return {"state": "ok", "error": "", "incidents": out, "failed": failed}
+
+
+#: Why an incident is listed at turn-on, in plain words: ``{(failure kind, outcome): words}``
+#: (`failures`, `no_code_fix`, `plan_failures`), and the kind of reason each is (*failed*:
+#: Mercury's fix ran and did not fix it; *no_fix*: no code fix of Mercury's exists for it).
+#: A hold (``held``) is said from its guard: "held by guard <n>: <its words>" (`catch_up`).
+WHY = {("decision", "cant_fix"): ("no_fix", "Mercury has no fix of its own for it"),
+       ("decision", "no_code_fix"): ("no_fix", "no code fix exists for a lost telemetry stream"),
+       ("act", "symptom_remains"): ("failed", "Mercury's fix ran and the problem remained"),
+       ("act", "rolled_back"): ("failed", "Mercury's fix was rolled back"),
+       ("act", "failed"): ("failed", "Mercury's fix failed"),
+       ("act", "refused"): ("failed", "Mercury's fix was refused before it sent anything"),
+       ("act", "interrupted"): ("failed", "Mercury's fix was interrupted"),
+       ("run", "stopped"): ("failed", "an approved plan stopped at a step"),
+       ("run", "failed"): ("failed", "an approved plan failed")}
+
+
+def catch_up(network: str, now: float = None, bound_s: float = None) -> dict:
+    """What turning ``fixit_auto`` on starts on, for the person to tick (the operator,
+    2026-11-15): every open incident R1 would have started an investigation on had the switch
+    been on when its fix failed, from R1's one reader (`pending`), whatever the switch says
+    now. ``{"state", "error", "items", "failed"}``, *items* ``[{"id", "device", "title",
+    "why", "why_kind", "failure", "incident", "found"}]``, *failure* the one R1 starts on (the
+    oldest of its failures no start has taken, as `heal_notice.run_fixit` picks it).
+
+    An incident is left out when no failure of it is new: each was taken by a start already
+    (the automatic pass's, or an earlier turn-on's), or the AI was asked about it since (a
+    person's start or an AI answer newer than every untaken failure), or an investigation is in
+    flight (`in_flight`, *bound_s*). A hold by a guard a person resolves is in it
+    (`HELD_FOR_A_PERSON`); a guard that waits, or a working decision (a dry run's would-heal),
+    never is. A read."""
+    from modules import bluf
+    from modules.fixit import incident as F
+
+    at = time.time() if now is None else float(now)
+    got = pending(network)
+    if got["state"] != "ok":
+        return {"state": got["state"], "error": got["error"], "items": [], "failed": []}
+    items, failed = [], list(got["failed"])
+    for p in got["incidents"]:
+        inc = p["incident"]
+        rec = F.read(inc)
+        if rec["state"] == "unreadable":
+            failed.append(f"{p['id']}: its troubleshooting record cannot be read "
+                          f"({rec['error']})")
+            continue
+        asked = max((float(ln.get("epoch") or 0) for ln in rec["lines"]
+                     if ("start" in ln and ln.get("state") == "started")
+                     or ("proposal" in ln and ln.get("source") == "ai")), default=None)
+        have = {ln.get("start") for ln in rec["lines"] if "start" in ln}
+        new = [f for f in p["failures"] if f["key"] not in have
+               and (asked is None or f["epoch"] > asked)]
+        if not new or (bound_s and in_flight(inc, at, bound_s)):
+            continue
+        f = new[0]
+        kind, words = WHY.get((f["kind"], f["outcome"]), ("failed", "Mercury's fix failed"))
+        if f["kind"] == "held":
+            g = f.get("guard") or {}
+            kind, words = "held", (f"held by guard {g.get('guard')}: "
+                                   f"{g.get('words') or g.get('name') or 'a person resolves it'}")
+        items.append({"id": p["id"], "device": inc.device, "title": bluf.what_of(p["found"]),
+                      "why": words, "why_kind": kind, "failure": f, "incident": inc,
+                      "found": p["found"]})
+    return {"state": "ok", "error": "", "items": items, "failed": failed}
 
 
 def taken(incident) -> set:

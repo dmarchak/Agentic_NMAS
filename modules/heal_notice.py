@@ -55,7 +55,6 @@ may quote the intent section's masked lines: configuration lines are never in a 
 """
 
 import logging
-import os
 import re
 import threading
 import time
@@ -384,12 +383,11 @@ FIXIT_JOB_PREFIX = "fixit-auto"
 #: The steps of the automatic start, as the manual's How it works page names them.
 FIXIT_STEPS = (("switch", "Read the network's switch: off (the default), nothing is read or "
                           "taken; on, only failures recorded after it was turned on count"),
-               ("auto", "Read self-healing's policy: not in Auto now (off, Dry run, expired), "
-                        "nothing starts; in Auto, only failures recorded after Auto went on, "
-                        "and of a fix kind Auto allows unless no code fix exists, count"),
+               ("auto", "Self-healing's mode is not asked: the AI only proposes and a person "
+                        "approves, so it investigates in every mode, Dry run included"),
                ("failures", "Find each new failure of Mercury's fix on an open incident: a "
-                            "can't-fix or a hold, an act that did not verify, an approved "
-                            "plan that stopped"),
+                            "can't-fix, a hold a person resolves, an act that did not verify, "
+                            "an approved plan that stopped"),
                ("choice", "The AI troubleshooting mode Off, or hosted AI off: take it with no "
                           "AI call"),
                ("caps", "Over the incident's cap, the feature's own day or month cap, or the "
@@ -400,18 +398,28 @@ FIXIT_STEPS = (("switch", "Read the network's switch: off (the default), nothing
                           "the incident's link"))
 
 
-def _fixit_state(inc, trigger: dict, now: float) -> tuple:
-    """``(state, which, words)`` an automatic start takes for *inc* now: ``off``, ``capped``
-    (*which* names the cap) or ``started``. Reads the settings and the record of AI calls."""
-    from modules.ai import background, calls, fixit_troubleshoot as AIT, gateway
+def _fixit_state(inc, trigger: dict, now: float, reserved_usd: float = 0.0, *,
+                 feature: dict = None, reserved_calls: int = 0) -> tuple:
+    """``(state, which, words)`` a start takes for *inc* now: ``off``, ``capped`` (*which* names
+    the cap) or ``started``. An automatic start's (*trigger* its background trigger) asks its
+    feature's switch and caps too; a catch-up's at turn-on (a person's trigger) asks the mode,
+    hosted AI, the incident's cap, the feature's own day and month caps (*feature*, the
+    feature's background trigger, its caps the ones the turn-on just recorded) and the day cap,
+    with *reserved_usd* and *reserved_calls* the worst cases of the investigations ahead of it
+    in the same catch-up (the operator, C3745: "Catch-up starts count against every cap"). Reads
+    the settings and the record of AI calls."""
+    from modules.ai import background, calls, fixit_troubleshoot as AIT, gateway, triggers
     from modules.fixit import policy as P
 
+    bg = trigger.get("kind") == triggers.BACKGROUND
+    if feature is None and bg:
+        feature = trigger
     off = P.ai_refusal()
     if off:
         return "off", "", off
     if not gateway.hosted_allowed()["allowed"]:
         return "off", "", "hosted AI is off"
-    why = background.admit(trigger)
+    why = background.admit(trigger) if bg else ""
     if why:
         return "off", "", why
     worst = AIT.worst_usd()
@@ -420,7 +428,11 @@ def _fixit_state(inc, trigger: dict, now: float) -> tuple:
         return "capped", "incident", cs["words"].replace("Retry isn't available", "Not started",
                                                          1)
     day = calls.today()
-    over = background.over_cap(trigger, worst, day)
+    held = float(reserved_usd or 0.0)
+    over = (background.over_cap(feature, worst, day,
+                                reserved={"usd": held, "calls": int(reserved_calls)}
+                                if held or reserved_calls else None)
+            if feature is not None else None)
     if over:
         return ("capped" if over["kind"] == "feature_cap" else "off",
                 over.get("cap") or "day", over["why"])
@@ -430,10 +442,13 @@ def _fixit_state(inc, trigger: dict, now: float) -> tuple:
         if spent.get("usd") is None:
             return "capped", "day", (f"today's AI spend cannot be read ({spent.get('error')}), "
                                      "so it cannot be compared with the day cap")
-        if float(spent["usd"]) + worst > cap:
+        if float(spent["usd"]) + held + worst > cap:
             return "capped", "day", (
-                f"today's AI spend ${float(spent['usd']):.2f} plus this investigation's worst "
-                f"case ${worst:.2f} would pass the day cap of ${cap:.2f}")
+                f"today's AI spend ${float(spent['usd']):.2f}"
+                + (f" plus ${held:.2f} held by the investigations started with it" if held
+                   else "")
+                + f" plus this investigation's worst case ${worst:.2f} would pass the day cap "
+                f"of ${cap:.2f}")
     return "started", "", ""
 
 
@@ -443,54 +458,33 @@ def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
     when the choices are on and the caps allow it, its investigation started as its own
     thread (*starter*, a thread unless given). ``{"network", "started", "capped", "off",
     "failed"}``, each a list of failure keys."""
-    from modules import incident_page
     from modules.ai import fixit_troubleshoot as AIT
-    from modules.config import list_data_path
     from modules.fixit import auto as A
     from modules.fixit import incident as F
-    from modules.fixit import section
 
     at = time.time() if now is None else float(now)
     out = {"network": network, "started": [], "capped": [], "off": [], "failed": []}
     sw = A.switch(network)
     if not sw["on"]:
         # Off (the default on every network): nothing is read further and nothing is taken;
-        # a failure while it is off is before any later turn-on's time, so it never catches up.
+        # a failure while it is off is before any later turn-on's time, so it never starts by
+        # itself (turning it on catches up only on what the person ticks, `start_catch_up`).
         return out
-    heal = A.heal_auto(network, at)
-    if not heal["auto"]:
-        # Self-healing off or in Dry run: nobody asked Mercury to fix anything (the operator,
-        # 2026-11-14), so nothing starts; a failure now is before any later Auto's time.
-        return out
-    opened = A.open_incidents(network)
-    got = A.failures(network, open_ids=set(opened))
+    # In every mode of self-healing (the operator, 2026-11-15: "the AI only proposes, and
+    # nothing runs without a person's approval, so it investigates in Dry run too").
+    heal = None
+    # R1's one reader, the catch-up's too (`auto.pending`).
+    got = A.pending(network)
     if got["state"] != "ok":
         out["failed"].append(got["error"])
         return out
-    by = {}
-    for f in got["failures"]:
-        by.setdefault(f["incident"], []).append(f)
-    for iid, record in opened.items():
-        lost = A.no_code_fix(record)
-        if lost and lost["key"] not in {f["key"] for f in by.get(iid, [])}:
-            by.setdefault(iid, []).append(lost)
-            by[iid].sort(key=lambda f: f["epoch"])
-    folder = os.path.join(list_data_path(network), F.STORE_DIR)
-    for iid in opened:
-        if iid not in by and os.path.exists(os.path.join(folder, f"{iid}.json")):
-            by[iid] = []
+    out["failed"].extend(got["failed"])
     bound = follow_up_wait_s()
-    for iid, fs in by.items():
+    for p in got["incidents"]:
         if len(out["started"]) >= FIXIT_MOST_PER_PASS:
             break
-        found = incident_page.resolve(network, iid)
-        if found["found"] != "page":
-            continue
-        inc = section.incident_of(network, found)["incident"]
-        if inc is None:
-            continue
+        iid, inc, fs = p["id"], p["incident"], p["failures"]
         try:
-            fs = fs + A.plan_failures(network, inc)
             have = A.taken(inc)
             new = [f for f in fs if f["key"] not in have and not A.eligible(f, sw, heal)]
             if not new or A.in_flight(inc, at, bound):
@@ -532,36 +526,152 @@ def fixit_investigation(network: str, incident_id: str, key: str, job: str, *,
     team told (`proposal_notice`). A refusal before anything was sent is kept as the failure's
     second start line (``failed``), so the page says why. *send* replaces the provider and
     *deliver* the relay (tests)."""
-    from modules import incident_page
     from modules.ai import fixit_troubleshoot as AIT
     from modules.ai import triggers
+
+    def ask(found, inc):
+        trigger = AIT.background_trigger(network, job, key)
+        return AIT.troubleshoot(network, found, inc, actor=triggers.actor_of(trigger),
+                                actor_verified="", person=False, trigger=trigger, send=send)
+    return _investigation(network, incident_id, key, ask, deliver=deliver, trigger="auto")
+
+
+def catch_up_investigation(network: str, incident_id: str, key: str, *, actor: str,
+                           verified: str, send=None, deliver=None) -> dict:
+    """One investigation started at the turn-on of ``fixit_auto`` on an incident the person
+    ticked (`start_catch_up`), its start already taken under the failure's own key: the same
+    investigation as the automatic start's (`_investigation`), its trigger the person who ticked
+    it (`triggers.person`: a person's choice, so its calls count as theirs and the gateway
+    checks they are this request's verified person; run inside the turn-on's request context,
+    copied into its job)."""
+    from modules.ai import fixit_troubleshoot as AIT
+
+    def ask(found, inc):
+        return AIT.troubleshoot(network, found, inc, actor=actor, actor_verified=verified,
+                                person=True, send=send)
+    return _investigation(network, incident_id, key, ask, deliver=deliver, trigger="person",
+                          by=actor, verified=verified)
+
+
+def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, trigger: str,
+                   by: str = "", verified: str = "") -> dict:
+    """The one investigation path of a start taken under a failure's key (the automatic start's
+    and the catch-up's): the incident resolved, *ask* ``(found, incident)`` asking AI
+    troubleshooting, a refusal or a failure before anything was sent kept as the failure's
+    ``failed`` start line (as *trigger*, with *by* and *verified* for a person's), and a
+    proposal told to the team (`proposal_notice`)."""
+    from modules import incident_page, troubleshoot_job
+    from modules.ai import fixit_troubleshoot as AIT
     from modules.fixit import section
 
     found = incident_page.resolve(network, incident_id)
     inc = section.incident_of(network, found)["incident"] if found["found"] == "page" else None
     if inc is None:
         return {"state": "failed", "words": f"{incident_id} has no page"}
-    trigger = AIT.background_trigger(network, job, key)
+    who = {"by": by, "verified": verified} if by else {}
     try:
-        got = AIT.troubleshoot(network, found, inc, actor=triggers.actor_of(trigger),
-                               actor_verified="", person=False, trigger=trigger, send=send)
+        got = ask(found, inc)
     except AIT.Refused as exc:
-        from modules import troubleshoot_job
-        troubleshoot_job.record_failure(inc, key, str(exc), trigger="auto")
+        troubleshoot_job.record_failure(inc, key, str(exc), trigger=trigger, **who)
         return {"state": "failed", "words": str(exc)}
     except Exception as exc:                          # noqa: BLE001 (kept, then the job's)
-        from modules import troubleshoot_job
-        troubleshoot_job.record_failure(inc, key, f"{type(exc).__name__}: {exc}", trigger="auto")
+        troubleshoot_job.record_failure(inc, key, f"{type(exc).__name__}: {exc}",
+                                        trigger=trigger, **who)
         raise
     if got.get("state") == "failed" and not got.get("proposal"):
-        from modules import troubleshoot_job
-        troubleshoot_job.record_failure(inc, key, got.get("words") or "", trigger="auto")
+        troubleshoot_job.record_failure(inc, key, got.get("words") or "", trigger=trigger, **who)
     if got.get("state") == "proposed":
         try:
             proposal_notice(network, incident_id, deliver=deliver)
         except Exception as exc:                      # noqa: BLE001 (said; the page has it)
             log.error("fixit auto: %s: its proposal was not told: %s", incident_id, exc)
     return got
+
+
+def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: float = None,
+                   starter=None) -> dict:
+    """Turning ``fixit_auto`` on catches up on the person's choice (the operator, 2026-11-15:
+    "when the switch is turned on, it starts on every open incident whose fix failed or that
+    has no fix, within the caps ... records what was chosen"): each incident in *ticked* (ids)
+    that `auto.catch_up` still lists is taken ONCE under its failure's own key
+    (`incident.claim_start`, a person's start with *actor* and *verified*), so the automatic
+    pass never starts it again for that failure, and, within the mode, hosted AI, the
+    incident's cap, the feature's day and month caps and the day cap (`_fixit_state`, every
+    start planned before any starts, the worst cases of the ones ahead of it held against the
+    feature's caps and the day cap: C3745), its investigation started as its own job
+    (`troubleshoot_job.start`, never in the request) under the person's trigger
+    (`catch_up_investigation`). A cap that would be passed takes the key with no call, its
+    ``which`` the cap, so the incident's card says which. Called inside the turn-on's request.
+    ``{"started", "capped", "off", "skipped", "failed"}``: incident ids, *skipped* and
+    *failed* ``{"id", "why"}``. *starter* ``(network, id, key, work)`` replaces the job
+    (tests)."""
+    from flask import copy_current_request_context
+
+    from modules import troubleshoot_job
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.ai import triggers
+    from modules.fixit import auto as A
+    from modules.fixit import incident as F
+
+    at = time.time() if now is None else float(now)
+    bound = follow_up_wait_s()
+    out = {"started": [], "capped": [], "off": [], "skipped": [], "failed": []}
+    ticked = [t for t in dict.fromkeys(ticked or ())]
+    if not ticked:
+        return out
+    got = A.catch_up(network, now=at, bound_s=bound)
+    listed = {i["id"]: i for i in got["items"]}
+    trigger = triggers.person(actor)
+    worst = AIT.worst_usd()
+    # Every cap first, before anything starts (C3745): in tick order, each start held against
+    # its incident's cap, the feature's day and month caps (the turn-on's, just recorded) and
+    # the day cap, with the worst cases of the ones ahead of it reserved; the later ones past a
+    # cap are refused, naming it.
+    planned, held, n = [], 0.0, 0
+    for iid in ticked:
+        item = listed.get(iid)
+        if item is None:
+            out["skipped"].append({"id": iid, "why": (
+                "no longer one to start on: it was resolved, or started, since the list was "
+                "drawn" if got["state"] == "ok" else f"the list cannot be read ({got['error']})")})
+            continue
+        try:
+            feature = AIT.background_trigger(network, f"catch-up-{iid}", item["failure"]["key"])
+            state, which, words = _fixit_state(item["incident"], trigger, at, held,
+                                               feature=feature, reserved_calls=n)
+        except Exception as exc:                      # noqa: BLE001 (said in the answer)
+            out["failed"].append({"id": iid, "why": f"{type(exc).__name__}: {exc}"})
+            continue
+        planned.append((iid, item, state, which, words))
+        if state == "started":
+            held, n = held + worst, n + 1
+    for iid, item, state, which, words in planned:
+        inc, f = item["incident"], item["failure"]
+        try:
+            line = F.claim_start(inc, f["key"], trigger="person", state=state, which=which,
+                                 words=A.CATCH_UP_WORDS if state == "started" else words,
+                                 by=actor, verified=verified, now=at,
+                                 failure={k: f[k] for k in ("kind", "id", "outcome", "at")},
+                                 busy_s=bound)
+        except Exception as exc:                      # noqa: BLE001 (said in the answer)
+            out["failed"].append({"id": iid, "why": f"{type(exc).__name__}: {exc}"})
+            continue
+        if line is None:
+            out["skipped"].append({"id": iid, "why": (
+                "its start was taken a moment ago, or an investigation of it is running")})
+            continue
+        out[state].append(iid)
+        if state != "started":
+            continue
+        work = copy_current_request_context(
+            lambda i=iid, k=f["key"]: catch_up_investigation(network, i, k, actor=actor,
+                                                             verified=verified))
+        if starter is not None:
+            starter(network, iid, f["key"], work)
+        else:
+            troubleshoot_job.start(network, iid, actor, lambda _j, w=work: w(),
+                                   label=f"AI troubleshooting, started at turn-on: {iid}")
+    return out
 
 
 def proposal_notice(network: str, incident_id: str, *, deliver=None) -> dict:
@@ -631,7 +741,10 @@ def facts(network: str, entry: dict, incident: dict = None) -> dict:
     first = trig[0] if trig else {}
     device = entry.get("device") or ""
     outcome = entry.get("outcome") or "cant_fix"
-    todo = TODO_OUTCOME.get(outcome) or TODO.get(entry.get("kind") or "", TODO_DEFAULT)
+    # R2 (C3726): the bottom line first, from the problem (`bottom_line`): what happened and
+    # its impact, then the incident's own next action, then the rest.
+    bl = bottom_line(network, entry, incident)
+    todo = bl["next"]
     from modules.heal import said as SAID
 
     # C2817, C2823: what happened first, the cause the decision stated (facts, then a
@@ -643,13 +756,91 @@ def facts(network: str, entry: dict, incident: dict = None) -> dict:
     return {"incident": entry.get("incident") or "", "event": EVENT, "network": network,
             "device": device,
             "kind": kinds.KIND_WORDS.get(entry.get("kind"), entry.get("kind") or ""),
-            "lead": EP.withhold(lead(network, entry, incident, words), lines),
+            "title": EP.withhold(bl["what"], lines),
+            "lead": EP.withhold(f"{bl['what']}. {bl['impact']}." if bl["impact"]
+                                else bl["what"], lines),
             **({"happened": EP.withhold(SAID.sentence(cause), lines)} if cause else {}),
             "outcome": EP.withhold(words, lines),
             "detected": EP.withhold(detected_words(first, device, named=not cause), lines),
             "detected_at": first.get("at") or (incident or {}).get("opened_at") or "",
             "steps": steps_said(network, device, entry, lines),
             "todo": todo, "link": incident_link(network, entry.get("incident") or "", device)}
+
+
+#: The incident page's next action as a message says it (`bottom_line`), by the BLUF's fix kind
+#: (`bluf.FIX_KINDS`): the action is pressed on the incident's page, which the message links.
+NEXT_WORDS = {"start": "{label}, on the incident's page",
+              "approve": "{label}, on the incident's page",
+              "button": "{label}, on the incident's page",
+              "hand_over": "hand it over to an engineer, on the incident's page"}
+
+
+def _found_of(network: str, entry: dict, incident: dict) -> dict:
+    """The incident as `incident_page.resolve` names it, from what the notifier holds: its
+    record, its step log entry and its decisions (read here; unread, none)."""
+    from modules.heal import decisions as HD
+
+    iid = entry.get("incident") or ""
+    try:
+        made = [d for d in HD.decisions(network) if d.get("incident") == iid]
+    except Exception as exc:                          # said; the title names the device alone
+        log.warning("heal notice: %s's decisions for %s could not be read: %s", network, iid,
+                    exc)
+        made = []
+    return {"found": "page", "id": iid, "incident": incident or {}, "entry": entry or {},
+            "decisions": made, "unreadable": []}
+
+
+def bottom_line(network: str, entry: dict, incident: dict) -> dict:
+    """The problem's bottom line for a message (R2, C3726): ``{"what", "impact", "next"}``.
+    *what* is THE incident's title (`bluf.what_of`, the one its page's heading, its BLUF and the
+    Incidents list say), *impact* its condition's (`bluf.TABLE`), and *next* the incident's
+    OWN next action: the one its page's BLUF offers (`fixit.section.view`'s ``bluf.fix``: for a
+    lost stream Mercury's fix failed on, Start AI troubleshooting), else what the decision's
+    kind or outcome says to do (`TODO`, `TODO_OUTCOME`), else `TODO_DEFAULT` for a problem that
+    is the decision's own, else a hand-over. Never a guard's or a hold's advice for a problem it
+    is not: a hold is a plain line among the steps (`steps_said`)."""
+    from modules import bluf as B
+    from modules import problem as P
+
+    found = _found_of(network, entry, incident)
+    b = B.bluf(B.model_of(found))
+    fix = {}
+    try:
+        from modules import incident_page
+        from modules.fixit import section
+        view = section.view(network, found)
+        fix = (view.get("bluf") or {}).get("fix") or {}
+        # The page's ONE state governs (`incident_page.with_item`): a page that needs nobody
+        # offers no next action, so neither does its message.
+        if not incident_page.status(found["incident"], found["entry"], found["decisions"],
+                                    view.get("state") or "")["needs"]:
+            fix = {}
+    except Exception as exc:                          # noqa: BLE001 (said; the table's next)
+        log.warning("heal notice: %s's incident %s: its page's next action could not be read "
+                    "(%s)", network, found["id"], type(exc).__name__)
+    kind, label = fix.get("kind") or "", str(fix.get("label") or "")
+    outcome = entry.get("outcome") or "cant_fix"
+    advice = TODO_OUTCOME.get(outcome) or TODO.get(entry.get("kind") or "")
+    own = (b.get("problem") or {}).get("condition") == P.CONDITION_OF.get(entry.get("kind")
+                                                                          or "")
+    if kind in ("start", "approve", "button") and label:
+        nxt = NEXT_WORDS[kind].format(label=label)
+    elif advice:
+        nxt = advice
+    elif own or not (b.get("problem") or {}).get("condition"):
+        nxt = TODO_DEFAULT
+    else:
+        nxt = NEXT_WORDS["hand_over"]
+    return {"what": b["what"], "impact": b.get("impact") or "", "next": nxt}
+
+
+def hold_said(guard: dict, host: str) -> str:
+    """A guard or hold that stopped a step, working as designed, as a message's one plain line
+    (`bluf.hold_line`, without what it says of the fix below a message does not draw)."""
+    from modules import bluf as B
+
+    return B.hold_line(guard, host, tail=False)
 
 
 def lead(network: str, entry: dict, incident: dict, outcome_words: str) -> str:
@@ -698,6 +889,31 @@ def incident_link(network: str, incident_id: str, device: str) -> str:
     return incidents.incident_href(network, incident_id, device=device)
 
 
+#: A decision's step results that are a guard or hold stopping it, working as designed
+#: (`decide`'s stops; `run_card.DECISION_BAD`, which the stepper draws), said as the hold's plain
+#: line in a message (`steps_said`).
+HOLD_RESULTS = ("held", "halted", "off")
+
+
+def _guard_of(network: str, entry: dict, step: dict) -> dict:
+    """The guard record that stopped *step*: its decision's (`decisions.find`, with its
+    operands), else the entry's own."""
+    from modules.heal import decisions as HD
+
+    did = step.get("decision") or ""
+    if did:
+        try:
+            got = (HD.find(network, did) or {}).get("guard")
+        except Exception as exc:                      # said; the entry's guard then
+            log.warning("heal notice: %s's decision %s could not be read: %s", network, did,
+                        exc)
+            got = None
+        if isinstance(got, dict) and got.get("guard"):
+            return got
+    g = entry.get("guard")
+    return g if isinstance(g, dict) else {}
+
+
 def steps_said(network: str, host: str, entry: dict, lines) -> list:
     """The steps taken, as a message lists them (the operator, 2026-11-12, objective 2: "the
     can't-fix email lists the steps taken in plain words, with local times and display
@@ -734,6 +950,12 @@ def steps_said(network: str, host: str, entry: dict, lines) -> list:
             # record by its number, which a message's list does not draw.
             words = re.sub(r"(?:; )?its outcome is step \d+'s$", "", words)
             result = "ended: its outcome is its later line"
+        if s.get("result") in HOLD_RESULTS:
+            # A guard or hold working as designed is one plain line, never "failed" (R2,
+            # C3726): the hold's own words, from the guard record that stopped it, said once
+            # (the step's recorded words name the same guard).
+            said = hold_said(_guard_of(network, entry, s), host).rstrip(".")
+            words, result = ("", said) if said else (words, "held, as designed")
         label = t.get("words") or s.get("step") or ""
         out.append({"what": EP.withhold(f"{s.get('step')}: {words}", lines),
                     "said": EP.withhold(label + (f": {words}" if words else ""), lines),

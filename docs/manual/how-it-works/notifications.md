@@ -6,9 +6,9 @@ heal, and an incident cleared. Who is told, and about which events, is chosen on
 **Self-healing** tab (**Who is told**); the teams, their addresses and webhooks and the email
 relay are on Settings › Installation › **Notifications** ([Notifications](settings#notifications)).
 A message carries Mercury's facts and a link, never a configuration line or a secret; a
-can't-fix's leads with its outcome and the link.
+can't-fix's leads with its bottom line and the link.
 
-![A notification of a can't-fix: the notifier finds each new can't-fix recorded in the last ten minutes and not yet told, and takes it once under the store's lock; if the network's AI analysis is on it starts it as a background call and waits for it at most 60 seconds; it then sends the outcome and the link first, then Mercury's facts, then the analysis or its state (pending, not run, couldn't analyse), to the network's team: an email through the relay and each webhook, signed; each attempt is a row in the delivery log, a failure tried three times and then raised under Needs attention; a pending analysis that arrives later is sent on the same thread. Nothing reaches a device.](diagrams/notifications.svg)
+![A notification of a can't-fix: the notifier finds each new can't-fix recorded in the last ten minutes and not yet told, and takes it once under the store's lock; if the network's AI analysis is on it starts it as a background call and waits for it at most 60 seconds; it then sends the bottom line and the link first (the problem, its impact and the incident's own next action), then Mercury's facts, then the analysis or its state (pending, not run, couldn't analyse), to the network's team: an email through the relay and each webhook, signed; each attempt is a row in the delivery log, a failure tried three times and then raised under Needs attention; a pending analysis that arrives later is sent on the same thread. Nothing reaches a device.](diagrams/notifications.svg)
 
 ## A can't-fix, told {#cant-fix}
 
@@ -45,20 +45,26 @@ After each pass of self-healing's runner, the notifier tells each new can't-fix 
    verified and on. A diagnosis not finished in time is said so, and follows as its own event.
 8. `follow_up`: when a pending analysis arrives, it is sent on the same thread.
 
-The email's subject is "[Mercury] <device> on <network>: could not fix". Its first three
-lines say what you need: what happened and the outcome in one sentence ("edge-b: “(a
-configuration line, withheld)” was added to interface GigabitEthernet2. Mercury cannot fix
-this yet: removing that kind of line has not been measured on IOS-XE; nothing was sent"),
-**What to do**, and **Open in Mercury**, the incident's own page (`/v2/incident/<id>` on its
+The email's subject is the incident's title: "[Mercury] <the problem> (<network>): could not
+fix" ("[Mercury] edge1: telemetry streams 101 and 102 lost: could not fix"; the network left out
+where beside the title the subject would pass 69 characters, a header never folded). Its first
+three lines are the bottom line, as the incident's page draws it: the problem and its impact
+("edge1: telemetry streams 101 and 102 lost. Mercury can't see edge1's interfaces or CPU; traffic is
+unaffected."), **What to do**, the incident's own next action, the one its page offers ("Start
+AI troubleshooting, on the incident's page"; where the page offers nothing to press, what the
+decision's kind says to do), and **Open in Mercury**, the incident's own page (`/v2/incident/<id>` on its
 network, [An incident's page](incident)), which draws the incident's stages from its step log
 after any restart. One function builds that address, so a can't-fix's email, an action's end
 and their webhooks all link the same page. Then the facts: what happened in full (when, and
-who the change's log line names), what was detected and when, the fix kind, Mercury's
+who the change's log line names), the **Outcome**, what Mercury decided, said once, what was
+detected and when, the fix kind, Mercury's
 diagnosis, then **What Mercury tried**: every step the incident's record holds, in order, as
 the device page's stepper labels it ("Read edge-b", "Decide"), the steps recorded in one
 minute on one line with that time, each with its result in words ("done", "failed", "not
-fully done"). A step that ended done is said by its label alone, and a step whose words would
-repeat the outcome by its label and result, since the first line says it once; what each step
+fully done"). A step a guard or hold stopped, working as designed, says the hold in plain words,
+never "failed" ("Find approved state: Self-healing won't write to edge1 until its saved config
+matches intent (2 lines differ)."). A step that ended done is said by its label alone, and a
+step whose words would repeat the outcome by its label and result, since the Outcome line says it once; what each step
 recorded is on the incident's page. Then the AI analysis or its state, and when the email was
 sent.
 The email says it all in plain words: a platform by its name (IOS-XE), never a code key, a

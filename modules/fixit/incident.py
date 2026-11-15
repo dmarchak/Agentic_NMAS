@@ -17,7 +17,8 @@ network's data folder (``fixit/<incident id>.json``), its ``lines`` append-only 
 kinds only:
 
 - a **proposal** line: ``{"proposal": <id>, "source": "mercury"|"ai"|"person", "calls": [the
-  AI calls it came from], "prompt", "operation", "params", "params_hash", "at", "epoch"}``,
+  AI calls it came from], "prompt", "operation", "params", "params_hash", "at", "epoch"}``
+  (and ``sessions``, each collector step's session as read when it was recorded, C3725),
   ``params`` the operation's canonical parameters (`canonical`) beside their hash, so the page
   and the hand-over can name what was proposed (C3195; a line written before it holds the
   hash alone, and is read as naming none). An answer that proposed no operation (a gap, an
@@ -383,12 +384,14 @@ NOTE_CHARS = 2000
 WORDS_CHARS = 500
 #: What is shown of an AI answer, kept with its proposal line, at most (bytes of its JSON).
 SHOWN_BYTES = 8192
+#: What is kept of each collector step's session read (`plan_engine.read_sessions`, C3725).
+SESSION_FIELDS = ("session", "local", "quiet_s", "dry_run", "refused", "at")
 
 
 def record_proposal(incident: Incident, source: str, operation: str = "", params=None, *,
                     calls=(), prompt: str = "", now: float = None, by: str = "",
                     verified: str = "", note: str = "", words: str = "",
-                    shown: dict = None, steps=None) -> dict:
+                    shown: dict = None, steps=None, sessions: dict = None) -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
     `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
@@ -458,7 +461,17 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     from modules.redact import redact_typed
 
     typed = redact_typed(" ".join(str(note or "").split()))[:NOTE_CHARS]
+    # Each collector step's session, read by the job making the proposal
+    # (`plan_engine.read_sessions`) and kept with it, so the page draws it from the record and
+    # never waits (C3725); this record reads nothing.
+    if sessions is not None and (not isinstance(sessions, dict) or not all(
+            isinstance(k, str) and k.isdigit() and isinstance(v, dict)
+            for k, v in sessions.items())):
+        raise Refused("a proposal's sessions are {step number: the session read}, and "
+                      f"{sessions!r:.80} was given")
+    sessions = {k: {f: v.get(f) for f in SESSION_FIELDS} for k, v in (sessions or {}).items()}
     more = {k: v for k, v in (("by", by), ("verified", verified),
+                              ("sessions", sessions),
                               ("note", typed),
                               ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
                               ("shown", dict(shown or {})), ("steps", kept_steps))

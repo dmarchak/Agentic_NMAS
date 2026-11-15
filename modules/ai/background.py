@@ -107,7 +107,9 @@ FEATURES: dict = {
     # record: a decision, an act or an approved plan's run). Off by default per network, as
     # every feature here (the operator, 2026-11-14: CLAUDE.md's AI cost safety rules stand);
     # turned on in Settings › AI after its estimate, and a failure recorded before the switch's
-    # ``at`` never starts anything by itself (no catch-up).
+    # ``at`` never starts anything by itself: turning it on catches up only on the open
+    # incidents the person ticks (the operator, 2026-11-15; `turn_on`'s *catch_up*,
+    # `heal_notice.start_catch_up`).
     "fixit_auto": {
         "task": "fixit_troubleshoot",
         "words": "Start AI troubleshooting automatically when Mercury's fix fails",
@@ -451,10 +453,13 @@ def _record(kind: str, network: str, feature: str, actor: str, verified: str, **
 
 
 def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: str,
-            actor: str, verified: str, now=None) -> dict:
+            actor: str, verified: str, now=None, catch_up: dict = None) -> dict:
     """Turn *feature* on for *network* (an admin's decision): the caps checked, the estimate
     recomputed and compared with the *shown* digest (refused, naming both, when it moved),
-    then written with who, when and that estimate, and recorded. ``{"ok", "entry",
+    then written with who, when and that estimate, and recorded. *catch_up* (``fixit_auto``'s
+    list at Turn on…: ``{"ticked", "unticked", "usd_each", "usd_total"}``, the incident ids the
+    person ticked and left unticked and the estimate shown) is recorded with it, the person's
+    choice (the operator, 2026-11-15: "records what was chosen"). ``{"ok", "entry",
     "recorded", ...}``; raises Refused naming why, with nothing changed."""
     _person(actor)
     _spec(feature)
@@ -471,7 +476,8 @@ def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: st
              "caps_by": actor, "caps_at": at}
     _write(slug, feature, entry)
     rec = _record("ai_background_on", slug, feature, actor, verified, estimate=est,
-                  day_cap_usd=caps["day"], month_cap_usd=caps["month"])
+                  day_cap_usd=caps["day"], month_cap_usd=caps["month"],
+                  **({"catch_up": dict(catch_up)} if catch_up is not None else {}))
     log.info("ai background: %s turned %s on for %s", actor, feature, slug)
     return dict(rec, ok=True, entry=entry)
 

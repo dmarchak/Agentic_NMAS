@@ -388,6 +388,29 @@ def request(network: str, found: dict, incident, *, note: str = "", now: float =
         raise Refused(f"Not asked: {exc}") from None
 
 
+def held_words(network: str, incident) -> str:
+    """``"; self-healing holds it by guard <n> (<name>): <words>; a person resolves that hold,
+    so Mercury cannot fix it alone"`` when R1's failure reader holds a hold a person resolves
+    for *incident* (`fixit.auto.failures`, ``held``: C3732, the operator, 2026-11-15: "where
+    the fix needs a person's approval (a template bring-in), it says so as its finding and
+    offers Hand over"), the newest; else ``""``. The AI is told the hold and its guard, so its
+    finding can say the fix needs a person; its catalogue and its NEVERs are unchanged."""
+    from modules.fixit import auto as A
+
+    try:
+        got = A.failures(network, open_ids={incident.id})
+    except Exception as exc:                                    # noqa: BLE001 (said in the log)
+        log.warning("fixit troubleshoot: %s's hold could not be read: %s", incident.id, exc)
+        return ""
+    held = [f for f in got["failures"] if f["kind"] == "held"]
+    if not held:
+        return ""
+    g = held[-1].get("guard") or {}
+    return (f"; self-healing holds it by guard {g.get('guard')} ({g.get('name') or 'a guard'})"
+            f": {' '.join(str(g.get('words') or '').split())}; a person resolves that hold, so "
+            "Mercury cannot fix it alone")
+
+
 def built_request(network: str, found: dict, incident, *, note: str = "", now: float = None,
                   resolved: float = None, seen: dict = None, loki=None,
                   prometheus=None) -> dict:
@@ -421,6 +444,7 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
             "the_incident": (f"{incident.id} on {incident.device}: "
                              + (f"telemetry subscription(s) {', '.join(incident.subscriptions)}"
                                 " lost" if incident.subscriptions else "no subscription named")
+                             + held_words(network, incident)
                              + "; it stands open, and a person asked you to troubleshoot it")}
     if topo.get("yaml"):
         data["network_topology"] = topo["yaml"]

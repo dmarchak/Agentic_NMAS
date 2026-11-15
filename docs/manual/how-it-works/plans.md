@@ -37,7 +37,10 @@ exactly its parameters, each of its shape); anything else is refused, and nothin
 
 **Approve the plan on <network>: <title>** takes a reason of at least three words, recorded with
 the plan and each step. You approve the whole plan once, by its hash, which names the network
-it acts on: a plan previewed on one network is refused on another. Who can approve it: a
+it acts on: a plan previewed on one network is refused on another. Everything that hash binds is
+drawn before you press: open **What its hash binds**, under the plan's hash line, for the
+network, the plan, each of its parameters, each step's operation and parameters, what each
+step's preview found (a reservation's subnet, from Kea) and each step's own hash. Who can approve it: a
 verified person, as for any confirm. While it runs the card says which step it is on; a step
 that broke while it ran is said as failed, whether it landed unknown, never as not run.
 

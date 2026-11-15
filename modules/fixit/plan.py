@@ -70,9 +70,19 @@ def steps_of(line: dict, device: str) -> list:
 
 def plan_params(incident, line: dict) -> dict:
     """The plan engine's parameters for *line*'s plan in *incident*: ``{"incident",
-    "proposal", "steps"}``."""
-    return {"incident": incident.id, "proposal": line.get("proposal") or "",
-            "steps": steps_of(line, incident.device)}
+    "proposal", "steps"}``. A collector step carries the session read when the plan was
+    proposed (``session``, `plan_engine.read_sessions`, kept on the line), so the plan's
+    hash binds it and What its hash binds draws it; a step whose read named none carries
+    none."""
+    from modules.heal import resubscribe as R
+
+    kept = line.get("sessions") if isinstance(line.get("sessions"), dict) else {}
+    steps = steps_of(line, incident.device)
+    for n, s in enumerate(steps, 1):
+        got = str((kept.get(str(n)) or {}).get("session") or "")
+        if s["operation"] == R.COLLECTOR_KEY and got:
+            s["session"] = got
+    return {"incident": incident.id, "proposal": line.get("proposal") or "", "steps": steps}
 
 
 def _check_one(incident, operation: str, params: dict, *, resolved=None, now=None,
@@ -153,7 +163,10 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
     the plan cannot be held to the engine's schema; *refused_hash* the same hash of a refused
     plan whose every step has its own (a repeat), for The record; a step's *repeat* is
     ``{"attempt", "params_hash"}`` when it repeats a failed attempt, else ``{}``; *approvable*
-    only when every step would run. ``None`` for a line that
+    only when every step would run; *bound* everything that hash binds, as rows a person reads
+    (`plan_engine.bound_rows`, C3725), and *sessions* each collector step's session as read
+    when the plan was proposed (`plan_engine.read_sessions`), bound by the hash. ``None`` for
+    a line that
     proposed nothing. *sources* and *planned* are the check's seams (tests)."""
     from modules import plan_engine as PE
     from modules.fixit.handover import params_words
@@ -182,7 +195,24 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                                  if got["code"] == "repeat" else {})})
         if not got["ok"] and not refused:
             refused = f"Step {n} would be refused: {got['refused']}"
-    plan_hash, refused_hash = "", ""
+    # Each collector step's session, as read when the plan was proposed (PE.read_sessions):
+    # drawn from the line, never read here (a page draw waits on nothing). A step whose read
+    # named no session makes the plan unapprovable, saying why.
+    from modules.heal import resubscribe as R
+    kept = line.get("sessions") if isinstance(line.get("sessions"), dict) else {}
+    sessions = []
+    for d in drawn:
+        if d["operation"] != R.COLLECTOR_KEY:
+            continue
+        s = dict(kept.get(str(d["n"])) or {}, n=d["n"])
+        if not s.get("session"):
+            s["refused"] = s.get("refused") or (
+                "the plan was proposed before Mercury read the session it closes; Ask again "
+                "for a plan that reads it")
+            refused = refused or (f"Step {d['n']} names no collector session to close: "
+                                  f"{s['refused']}")
+        sessions.append(s)
+    plan_hash, refused_hash, bound = "", "", []
     # The plan's hash as Approve would have bound it, kept for The record when a step is
     # refused but every step still has its own hash (a repeat): the record names what was
     # refused; *hash* stays empty, so nothing approves it.
@@ -196,9 +226,21 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                 es["hash"] = d["hash"]
             got_hash = PE.plan_hash(PE.INCIDENT_FIX, held, engine_steps, incident.network)
             plan_hash, refused_hash = ("", got_hash) if refused else (got_hash, "")
+            # Everything that hash binds, drawn in the plan before Approve (C3725); a refused
+            # plan offers no Approve, and its hashes are The record's alone (C3455's AI3).
+            # Masked as the plan card's are (routes/plans_v2.py): each row through the mask.
+            from modules.redact import redact_text
+            bound = [] if refused else [
+                (label, redact_text(words)) for label, words in PE.bound_rows(
+                    incident.network, PE.INCIDENT_FIX, held, engine_steps, got_hash)]
     shown = line.get("shown") if isinstance(line.get("shown"), dict) else {}
     return {"id": line.get("proposal") or "", "hash": plan_hash, "refused_hash": refused_hash,
-            "approvable": not refused and bool(plan_hash), "steps": drawn,
+            "approvable": not refused and bool(plan_hash), "steps": drawn, "bound": bound,
+            # The collector steps' sessions as read when the plan was proposed, each
+            # ``{"n", "session", "local", "quiet_s", "dry_run", "refused", "at"}``: the hash
+            # binds each session (`plan_params`), and Approve reads it again and refuses,
+            # naming both, when it moved since.
+            "sessions": sessions,
             "found": str(shown.get("rationale") or line.get("words") or ""),
             "why_refused": refused, "source": SOURCE_WORDS.get(line.get("source"), ""),
             "by": line.get("by") or "", "at": line.get("at") or "",

@@ -178,6 +178,8 @@ class TestVerifyHonoursThem:
 
     def test_the_same_drop_not_expected_still_fails(self, world):  # noqa: F811
         ctx, clock = world(_summary("Idle"))
-        ctx.rendered_commands = {"x": ["interface Loopback9", " description x", "exit"]}
+        # A line that can reach a BGP session: a description cannot (R3, the operator,
+        # 2026-11-14; `verify_scope.bgp_reach`), so its hold time is no longer watched.
+        ctx.rendered_commands = {"x": ["interface Loopback9", " bandwidth 1000", "exit"]}
         with pytest.raises(pipeline.PipelineStageError):
             pipeline._stage_verify(ctx)

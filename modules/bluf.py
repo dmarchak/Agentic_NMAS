@@ -229,10 +229,54 @@ def _fmt(text: str, problem: P.Problem) -> str:
     return text.format(**fields)
 
 
+#: The longest title: THE title builder's bound (`said.TITLE_MAX`, docs/UI_RULES.md "A title is
+#: a summary of at most 70 characters").
+TITLE_ROOM = 70
+
+
+def what_of(found: dict, room: int = TITLE_ROOM) -> str:
+    """THE incident's title, the problem's (R4; C3727: the Incidents list, the page's heading,
+    its BLUF's first line and its message's lead all say this one string), at most *room*
+    characters. The problem's own words (`TABLE`'s what) when its object is named from the
+    evidence ("edge1: telemetry streams 101 and 102 lost", never "edge1: 2 telemetry streams
+    lost");
+    else the decision's units in plain words, when it has them (`said.title`: "edge-b: static
+    route added outside Mercury", which names what its condition's default object does not);
+    else the table's words for its condition; else, for a problem the table does not hold, what
+    `said.title` makes of its signals. Never the alert that raised it while its problem has
+    words of its own. Reads only what it is handed."""
+    from modules.heal import said
+
+    record, ent = found.get("incident") or {}, found.get("entry") or {}
+    p = P.classify(found)
+    e = entry(p.condition)
+    device = record.get("device") or ent.get("device") or p.device or "A device"
+    trig = [t for t in record.get("triggers") or [] if isinstance(t, dict)]
+    decisions = [d for d in found.get("decisions") or [] if isinstance(d, dict)]
+    newest = decisions[-1] if decisions else {}
+    for d in reversed(decisions):
+        if any(isinstance(u, dict) for u in d.get("units") or []):
+            newest = d
+            break
+    units = [u for u in newest.get("units") or [] if isinstance(u, dict)]
+    facts = ((newest.get("cause") or ent.get("cause") or {}).get("facts")) or []
+    default = P.CONDITIONS.get(p.condition, ("", ""))[0]
+    table = _fmt(e["what"], p) if e else ""
+    if table and p.object and p.object != default:
+        what = table
+    elif units:
+        what = said.title(device, units, trig, facts, room=room)
+    else:
+        what = table or said.title(device, [], trig, facts, room=room)
+    what = what or f"{device}: an incident whose triggers are not kept"
+    return what if len(what) <= room else what[:max(1, room - 1)].rstrip(" ,:;") + "…"
+
+
 def model_of(found: dict, nxt: dict = None) -> dict:
     """The BLUF's model of the incident `incident_page.resolve` *found*: its problem
-    (`problem.classify`), when it began (``since``, an ISO instant: its first trigger's, else
-    when it opened, else its step log's first row), the evidence (`problem.evidence`) and the
+    (`problem.classify`), its title (``what``, `what_of`), when it began (``since``, an ISO
+    instant: its first trigger's, else when it opened, else its step log's first row), the
+    evidence (`problem.evidence`), what its record keeps besides (``kept``, `kept_of`) and the
     next action *nxt*."""
     inc, e = found.get("incident") or {}, found.get("entry") or {}
     trig = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
@@ -242,8 +286,28 @@ def model_of(found: dict, nxt: dict = None) -> dict:
         import time
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(trig[0]["epoch"])))
     since = since or inc.get("opened_at") or e.get("first_at") or ""
-    return {"problem": P.classify(found), "since": str(since or ""),
-            "evidence": P.evidence(found), "next": nxt}
+    return {"problem": P.classify(found), "what": what_of(found), "since": str(since or ""),
+            "evidence": P.evidence(found), "kept": kept_of(found), "next": nxt}
+
+
+#: How many members of an incident its evidence names (the rest counted).
+MEMBERS_SHOWN = 10
+
+
+def kept_of(found: dict) -> dict:
+    """What the incident's record keeps besides the signals listed as its evidence, said under
+    them (C3729: the evidence's one home, under the bottom line): ``{"triggers", "seen",
+    "reads", "members", "more_members"}``, the triggers kept and seen, the detect pass's reads
+    of the device kept (their state and time, never configuration text), and the devices
+    attached to it (``{"device", "why"}``, at most `MEMBERS_SHOWN`)."""
+    inc = found.get("incident") or {}
+    members = [m for m in inc.get("attached") or [] if isinstance(m, dict)]
+    return {"triggers": len(inc.get("triggers") or []),
+            "seen": int(inc.get("triggers_seen") or 0),
+            "reads": len(inc.get("reads") or []),
+            "members": [{"device": m.get("device") or "", "why": m.get("why") or ""}
+                        for m in members[:MEMBERS_SHOWN]],
+            "more_members": max(0, len(members) - MEMBERS_SHOWN)}
 
 
 def bluf(model: dict) -> dict:
@@ -259,23 +323,29 @@ def bluf(model: dict) -> dict:
     if not isinstance(nxt, dict) or nxt.get("kind") not in FIX_KINDS:
         nxt = {"kind": e.get("fix") or "hand_over", "label": ""}
     base = {"fix": nxt, "since": str((model or {}).get("since") or ""), "problem": p.as_dict(),
-            "evidence": list((model or {}).get("evidence") or [])}
+            "evidence": list((model or {}).get("evidence") or []),
+            "kept": dict((model or {}).get("kept") or {})}
+    # THE title (`what_of`), where the model carries it: the list, the heading and the BLUF
+    # say one string (C3727).
+    said = str((model or {}).get("what") or "")
     if not e:
-        what = f"{p.device or 'A device'}: something happened"
+        what = said or f"{p.device or 'A device'}: something happened"
         impact = ("Mercury has no plain description of this problem yet, so its impact is not "
                   "known")
         return dict(base, what=what, impact=impact, severity="warning", title=what)
-    what, impact = _fmt(e["what"], p), _fmt(e["impact"], p)
+    what, impact = said or _fmt(e["what"], p), _fmt(e["impact"], p)
     return dict(base, what=what, impact=impact, severity=severity(
         p.condition, outage_measured=(model or {}).get("outage_measured") is True),
                 title=f"{what}: {impact}")
 
 
-def hold_line(hit: dict, device: str, *, blocks: bool = False) -> str:
+def hold_line(hit: dict, device: str, *, blocks: bool = False, tail: bool = True) -> str:
     """A guard or hold that applied, working as designed, as one plain line (`HOLD_LINES`):
     *hit* is the guard's own record (``{"guard", "operands"}``, `heal.guards.hit`). Guard 4
     counts the lines that differ from its operands (the departing lines and how many more).
-    Unless the hold *blocks* the fix shown, the line ends `NOT_BLOCKING`. ``""`` for no hit."""
+    Unless the hold *blocks* the fix shown, the line ends `NOT_BLOCKING`; without *tail* (a
+    place that draws no fix below it: a message, a chip's hover) it says nothing of the fix.
+    ``""`` for no hit."""
     if not isinstance(hit, dict) or not hit.get("guard"):
         return ""
     try:
@@ -287,4 +357,4 @@ def hold_line(hit: dict, device: str, *, blocks: bool = False) -> str:
     lines = f"{count} line{'s' if count != 1 else ''}" if count else "some lines"
     text = HOLD_LINES.get(n) or "Self-healing is holding {device}."
     text = text.format(device=device or "the device", lines=lines)
-    return f"{text} {BLOCKING if blocks else NOT_BLOCKING}"
+    return f"{text} {BLOCKING if blocks else NOT_BLOCKING}" if tail else text

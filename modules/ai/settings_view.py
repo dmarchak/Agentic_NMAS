@@ -38,7 +38,10 @@ TURN_ON_STEPS = (("estimate", "the estimate is shown, labelled, with its digest"
                            "installation's day cap"),
                  ("compare", "the estimate measured again and compared with the one shown"),
                  ("write", "the switch written with who, when, the estimate and the caps"),
-                 ("record", "the decision recorded in the installation's settings record"))
+                 ("record", "the decision recorded in the installation's settings record, "
+                            "with the open incidents ticked and left unticked"),
+                 ("catch_up", "for automatic AI troubleshooting, each ticked open incident "
+                              "started once, as its own job, within the caps"))
 
 
 def _iso(epoch) -> str:
@@ -160,6 +163,8 @@ def turn_on_form(network: str, feature: str, now=None) -> dict:
     from modules.ai import background, gateway, profiles
     from modules.nsot import listref
 
+    from modules.fixit import auto as A
+
     name = chosen(network)
     spec = background._spec(feature)
     est = background.estimate(listref.network_id(name), feature, now)
@@ -169,7 +174,163 @@ def turn_on_form(network: str, feature: str, now=None) -> dict:
             "day_cap": gateway.day_cap(), "prices_as_of": profiles.PRICES_AS_OF,
             "day_value": sug.get("day_cap_usd"), "month_value": sug.get("month_cap_usd"),
             "ends_iso": _iso(time.time() + background.APPROVAL_DAYS * 86400),
-            "approval_days": background.APPROVAL_DAYS, "renew_days": background.RENEW_DAYS}
+            "approval_days": background.APPROVAL_DAYS, "renew_days": background.RENEW_DAYS,
+            "catch_up": (catch_up_view(name, sug.get("day_cap_usd"), sug.get("month_cap_usd"))
+                         if feature == A.FEATURE else None)}
+
+
+def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
+    """Turn on…'s list for automatic AI troubleshooting (the operator, 2026-11-15: "Turning it
+    on shows the list first ("starts on these N open incidents, about $X"), each tickable"):
+    ``{"state", "error", "incidents", "failed", "usd_each", "usd_total", "measured", "basis",
+    "incident_cap", "day_cap", "worst", "room", "fit_words", "room_words"}`` (the last four how
+    many fit under each cap, C3745, with the feature's caps as *day_typed* and *month_typed*),
+    each incident ``{"id", "device", "title", "why", "why_kind",
+    "at", "usd", "cap_words", "href"}``, ticked by default. The list is R1's own
+    (`auto.catch_up`); each item's estimate is one investigation's (`fixit_troubleshoot.
+    estimate`: the measured mean, or its worst case said), and *cap_words* says when its
+    incident's cap would be passed already. A read: nothing is asked or started."""
+    from modules import troubleshoot_job
+    from modules.ai import fixit_troubleshoot as AIT
+    from modules.ai import gateway
+    from modules.fixit import auto as A
+    from modules.fixit import policy as P
+    from modules.heal_notice import follow_up_wait_s
+
+    got = A.catch_up(network, bound_s=follow_up_wait_s())
+    est = AIT.estimate()
+    worst = AIT.worst_usd()
+    items = []
+    for i in got["items"]:
+        cs = P.cap_state(i["incident"], worst)
+        items.append({"id": i["id"], "device": i["device"], "title": i["title"],
+                      "why": i["why"], "why_kind": i["why_kind"], "at": i["failure"]["at"],
+                      "usd": est["usd"],
+                      "cap_words": ("" if cs["state"] == "allowed" else
+                                    "its incident's AI cap would be passed, so it would not "
+                                    "start"),
+                      "href": troubleshoot_job.page_of(network, i["id"])})
+    cap = P.cap_usd()
+    day = gateway.day_cap()
+    room = catch_up_room(network)
+    rooms = rooms_of(room, day_typed, month_typed)
+    fit = catch_up_fit([not i["cap_words"] for i in items], worst, rooms)
+    return {"state": got["state"], "error": got.get("error") or "", "incidents": items,
+            "failed": list(got.get("failed") or []), "usd_each": est["usd"],
+            "usd_total": round(est["usd"] * len(items), 6), "measured": est["measured"],
+            "basis": est["basis"],
+            "incident_cap": P.money(cap["usd"]) if cap["state"] == "ok" else "",
+            "day_cap": P.money(day) if day is not None else "",
+            # How many fit under each cap (C3745), redrawn by the browser as the ticks and the
+            # typed caps change (nmas_apply.js `catchUpFit`, the same arithmetic).
+            "worst": worst, "room": room,
+            "fit_words": fit_words(fit, len(items)), "room_words": room_words(fit, rooms, worst)}
+
+
+#: Each cap a catch-up start is held against, in the order they are asked (C3745), and how the
+#: list names it. ``incident`` is each incident's own; the others are shared by every start.
+FIT_LABELS = {"incident": "its incident's cap", "day": "the day cap",
+              "feature_day": "this feature's day cap", "feature_month": "its month cap"}
+#: The room words' tail for each shared cap.
+ROOM_TAIL = {"day": "left today", "feature_day": "left as typed",
+             "feature_month": "left as typed"}
+
+
+def catch_up_room(network: str) -> dict:
+    """What is left under each shared cap before the turn-on, for the list (C3745):
+    ``{"day", "feature_day_spent", "feature_month_spent"}``, *day* the installation's day cap
+    less today's spend (None with no day cap; 0 when the spend cannot be read, as a start is
+    then refused), and this feature's spend today and this month on *network*, which the caps
+    typed in the form are measured against. A read of the settings and the record of calls."""
+    from modules.ai import calls, gateway, spend
+    from modules.fixit import auto as A
+    from modules.nsot import listref
+
+    cap = gateway.day_cap()
+    day = None
+    if cap is not None:
+        got = calls.spent_usd(calls.today())
+        day = max(0.0, cap - float(got["usd"])) if got.get("usd") is not None else 0.0
+    mine = spend.feature_spent(listref.network_id(network), A.FEATURE)
+    ok = mine.get("state") != "unreadable"
+    return {"day": day, "feature_day_spent": float(mine.get("day_usd") or 0) if ok else None,
+            "feature_month_spent": float(mine.get("month_usd") or 0) if ok else None}
+
+
+def rooms_of(room: dict, day_typed, month_typed) -> list:
+    """``[(cap, room)]`` for `catch_up_fit`: the day cap's room, and the feature's day and month
+    caps as typed less its spend (``"unknown"`` when not typed as a positive amount, or its
+    spend cannot be read)."""
+    def typed(v, spent):
+        v = caps_value(v) if isinstance(v, str) else v
+        ok = isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+        return max(0.0, float(v) - spent) if ok and spent is not None else "unknown"
+    return [("day", room["day"]), ("feature_day", typed(day_typed, room["feature_day_spent"])),
+            ("feature_month", typed(month_typed, room["feature_month_spent"]))]
+
+
+def catch_up_fit(oks, worst: float, rooms) -> dict:
+    """How many of the ticked fit (C3745), in tick order: *oks* each ticked one's own cap
+    (True when its incident's cap allows it), *rooms* ``[(cap, room)]``, a room None for no cap
+    or ``"unknown"`` (not typed). ``{"start", "refused_incident", "refused_cap", "binding",
+    "slots", "unknown"}``: a start counts against every shared cap, so each cap holds
+    ``floor(room / worst)`` starts; the later ones past the smallest are refused at it
+    (*binding*). The arithmetic `heal_notice.start_catch_up` refuses by, and nmas_apply.js's
+    `catchUpFit` draws by."""
+    import math
+
+    unknown = [c for c, r in rooms if r == "unknown"]
+    slots = {c: (None if r is None or r == "unknown" else
+                 max(0, int(math.floor(float(r) / float(worst) + 1e-9)))) for c, r in rooms}
+    limit = min([s for s in slots.values() if s is not None], default=None)
+    start = ri = rc = 0
+    for ok in oks:
+        if not ok:
+            ri += 1
+        elif limit is None or start < limit:
+            start += 1
+        else:
+            rc += 1
+    binding = next((c for c, _r in rooms if slots[c] == limit), "") if rc else ""
+    return {"start": start, "refused_incident": ri, "refused_cap": rc, "binding": binding,
+            "slots": slots, "unknown": unknown}
+
+
+def fit_words(fit: dict, n: int) -> str:
+    """The list's line of what fits under the caps (C3745): mirrored by nmas_apply.js's
+    `catchUpFitWords`, word for word."""
+    if fit["unknown"]:
+        return "Type this feature's day and month caps to see how many fit under them."
+    if not n:
+        return "None ticked: nothing starts."
+    if not fit["refused_incident"] and not fit["refused_cap"]:
+        return ("The ticked one fits under every cap." if n == 1 else
+                f"All {n} ticked fit under every cap.")
+    parts = [f"{fit['start']} of the {n} ticked fit under the caps"]
+    if fit["refused_cap"]:
+        parts.append(f"the later {fit['refused_cap']} would pass "
+                     f"{FIT_LABELS[fit['binding']]}")
+    if fit["refused_incident"]:
+        parts.append(f"{fit['refused_incident']} would pass "
+                     f"{'its' if fit['refused_incident'] == 1 else 'their'} incident's cap")
+    return "; ".join(parts) + ": refused before anything starts, each page naming the cap."
+
+
+def room_words(fit: dict, rooms, worst: float) -> str:
+    """What is left under each shared cap, and how many starts that holds (C3745): mirrored by
+    nmas_apply.js's `catchUpRoomWords`."""
+    from modules.money import usd
+
+    said = []
+    for cap, room in rooms:
+        if room is None:
+            said.append(f"no limit under {FIT_LABELS[cap]} (none is set)")
+        elif room == "unknown":
+            said.append(f"{FIT_LABELS[cap]}: type it")
+        else:
+            said.append(f"{fit['slots'][cap]} under {FIT_LABELS[cap]} ({usd(room)} "
+                        f"{ROOM_TAIL[cap]})")
+    return f"Room, each start at most {usd(worst)}: " + ", ".join(said) + "."
 
 
 def caps_value(text):

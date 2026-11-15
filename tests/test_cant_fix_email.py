@@ -28,10 +28,11 @@ Each email is read as received (its decoded text) and holds:
 And, the GUI review of 2026-11-13, item 9 (docs/UI_RULES.md, "The can't-fix email", the
 operator's approved rules), it:
 
-- (EM1) leads with the outcome and the link: its first line what happened and the outcome
-  (`heal_notice.lead`), its second What to do, its third "Open in Mercury";
+- (EM1) leads with its bottom line and the link (R2, C3726): its first line the problem and
+  its impact (`heal_notice.bottom_line`), its second What to do (the incident's own next
+  action), its third "Open in Mercury"; its subject the incident's title, never folded;
 - (EM2) names no host command (no ``scripts/``, no ``--shape``);
-- (EM3) says the outcome once (no Outcome line; the Decide step does not repeat it), and the
+- (EM3) says the outcome once (on its Outcome line; the Decide step does not repeat it), and the
   steps recorded in one minute are one line with that time, each step's label in the record's
   order;
 - (EM4) holds no code key or model internal: no platform key (``cisco_iosxe``), no log
@@ -213,17 +214,27 @@ def tried_steps(lines):
 
 def check_email(mail, incident, client):
     text = mail.get_content().replace("\r\n", "\n")   # as a mail reader shows its lines
-    # The subject, unchanged.
-    assert mail["Subject"] == f"[Mercury] {HOST} on {NET}: could not fix"
     lines = text.splitlines()
     path = f"/v2/incident/{incident}?list={NET}"
-    # (EM1) The outcome and the link lead: what happened and the outcome, what to do, the link.
+    # Premise corrected (C3726, the operator's R2 of 2026-11-14: every notification leads with
+    # its bottom line): the subject names the incident's one title (the lead's first sentence,
+    # `bluf.what_of`) and the event, short enough never to be folded.
+    title = lines[0].split(". ", 1)[0]
+    subject = str(mail["Subject"])
+    named = subject[len("[Mercury] "):-len(": could not fix")]
+    assert subject.startswith("[Mercury] ") and subject.endswith(": could not fix"), subject
+    assert named in (f"{title} ({NET})", title) or (
+        named.endswith("…") and title.startswith(named[:-1])), (subject, title)
+    assert len(subject) <= 69 and named.startswith(f"{HOST}: "), subject
+    # (EM1) The bottom line and the link lead: what happened and its impact, what to do, the
+    # link.
     assert lines[0].startswith(f"{HOST}: ") and ". " in lines[0], lines[:3]
     assert lines[1].startswith("What to do: ") and lines[2] == f"Open in Mercury: {BASE}{path}"
-    # (EM3) The outcome said once: no Outcome line, and no step repeats it.
-    outcome = lines[0].split(". ", 1)[1]
+    # (EM3) The outcome said once, and no step repeats it. Premise corrected (C3726, R2): the
+    # lead is the problem and its impact, so the outcome is said on its own Outcome line, once.
+    (said_line,) = [ln for ln in lines if ln.startswith("Outcome: ")]
+    outcome = said_line[len("Outcome: "):]
     assert len(outcome) > 40 and text.count(outcome) == 1, outcome
-    assert not any(ln.startswith("Outcome:") for ln in lines), "the lead says the outcome"
     # (a) Every step taken, in order, in plain words; (EM3) one minute's steps one line, its
     # time said once.
     want = recorded_steps(incident)
@@ -291,10 +302,13 @@ class TestTheCantFixEmail:
         # Premise corrected (the GUI review's item 5, C3453, the approved rule "A title is a
         # summary of at most 70 characters", never a configuration line): the page's title is
         # in plain words, so the lead quotes no line to withhold.
+        # Premise corrected (C3726, the operator's R2 of 2026-11-14): the lead is the bottom
+        # line, the problem and its impact (`bluf.TABLE`'s), and the outcome its own line.
         assert text.startswith(
-            f"{HOST}: access list added on GigabitEthernet2 outside Mercury. Mercury cannot "
-            "fix this yet: removing that kind of line has not been measured on IOS-XE; nothing "
-            "was sent (Tier 2)\n"), text.splitlines()[0]
+            f"{HOST}: access list added on GigabitEthernet2 outside Mercury. Traffic the ACL "
+            "matches is filtered differently from what was intended.\n"), text.splitlines()[0]
+        assert ("\nOutcome: Mercury cannot fix this yet: removing that kind of line has not "
+                "been measured on IOS-XE; nothing was sent (Tier 2)\n") in text, text
         # (EM3) The Decide step says its label and its result; the lead holds why. Premise
         # corrected (the GUI review's item 6, C3454, the approved rule "The stepper never says
         # "failed" for a decision that worked"): a can't-fix's Decide needs a person.

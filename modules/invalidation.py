@@ -698,7 +698,9 @@ DECLARED = {
     "settings_v2.install_ai_allow": ("settings",),
     "settings_v2.install_ai_off": ("settings",),
     # Settings › AI's background features (C1843): the switches are a setting.
-    "settings_v2.ai_on": ("settings",),
+    # Turning automatic AI troubleshooting on also takes a start line in each open incident the
+    # person ticked (C3732): the incident pages' key; each job announces its own end.
+    "settings_v2.ai_on": ("settings", "drift"),
     "settings_v2.ai_off": ("settings",),
     "settings_v2.ai_caps": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),

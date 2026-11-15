@@ -36,6 +36,13 @@
     {%- endfor %}
   </ol>
   <p class="faint small">The plan is bound to {{ P.hash }}: if any step's own preview moves before you approve, nothing runs.</p>
+  {#- Everything the hash binds, before Approve (C3725): each parameter, what each step's
+      preview found (a reservation's subnet) and each step's own hash, one level down. -#}
+  {%- if P.bound %}
+  <details class="small plan-bound" data-keep="plan-bound"><summary>What its hash binds</summary>
+    <dl class="tl-record">{% for label, words in P.bound %}<dt>{{ label }}</dt><dd>{{ words }}</dd>{% endfor %}</dl>
+  </details>
+  {%- endif %}
   <div id="plan-card-form">
     <input type="hidden" name="plan" value="{{ c.plan }}"><input type="hidden" name="params" value="{{ c.params_json }}">
     <label class="heal-field" for="plan-card-why">Reason (recorded with the plan and each step)<input id="plan-card-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ c.reason or '' }}"></label>

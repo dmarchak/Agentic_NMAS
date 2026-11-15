@@ -14,7 +14,8 @@
        for its words (docs/UI_RULES.md, 2026-11-12); Start AI troubleshooting; Hand over…; the
        incident's own Needs attention action (`item_action`, drawn by the page, which has it;
        a post draws the action's link); or nothing to press, said. A press's answer is drawn
-       under the controls, in space kept for it, the controls never moving.
+       under the controls, in space kept for it, the controls never moving. Under it,
+       collapsed, the evidence's one home (`#inc-evidence`, C3729).
     2. **The one card** (`#inc-ai`): What to do and AI troubleshooting as one (R2): a status
        line (`x.status`), then the plan, each step with its preflight (a refused step drawn
        refused with why, and Approve not offered then); below, collapsed: Attempts (what was
@@ -81,9 +82,7 @@
 <div class="inc-fixit" id="inc-fixit" data-state="{{ S }}">
 <section class="card inc-bluf" id="inc-bluf" aria-label="The bottom line" data-inc-state="{{ x.page_state }}" data-fix="{{ F.kind or 'none' }}"{% if B.severity %} data-severity="{{ B.severity }}"{% endif %}{% if item_state is defined %} data-item="{{ item_state }}"{% endif %}>
   <dl class="bluf">
-    <div class="bluf-line" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %}><dt>What happened</dt><dd>{{ (B.what or '') | times }}{% if B.since %} <span class="muted small">since {{ clock(B.since) }}</span>{% endif %}{% if not B.what %}<span class="muted">Not said: this incident's record names nothing that happened.</span>{% endif %}
-      {#- R4: the signals the problem was classified from, listed under it as its evidence. -#}
-      {%- if B.evidence %}<details class="small bluf-evidence" data-keep="bluf-evidence-{{ x.id }}"><summary>Evidence ({{ B.evidence | length }})</summary><ul class="set-list">{% for ev in B.evidence %}<li data-kind="{{ ev.kind }}">{{ ev.words | times }}{% if ev.at %} <span class="muted">{{ clock(ev.at) }}</span>{% endif %}</li>{% endfor %}</ul></details>{% endif %}</dd></div>
+    <div class="bluf-line" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %}><dt>What happened</dt><dd>{{ (B.what or '') | times }}{% if B.since %} <span class="muted small">since {{ clock(B.since) }}</span>{% endif %}{% if not B.what %}<span class="muted">Not said: this incident's record names nothing that happened.</span>{% endif %}</dd></div>
     <div class="bluf-line" data-bluf="impact"><dt>Impact</dt><dd>{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</dd></div>
     <div class="bluf-line" data-bluf="fix"><dt>How to fix it</dt><dd>
       {#- Which control the fix names: its kind, and for a "button" the action whose route it
@@ -97,7 +96,11 @@
         {%- if (ACT.approve or {}).offered and NP.approvable %}
         {#- Approve, THE confirm pattern (tests/test_v2_one_confirm.py): its route named here, the
             plan's hash it binds carried with the press, busy on itself, gated confirm. -#}
-        <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs the plan below exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span></span>
+        <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs the plan below exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span>
+        {#- C3725: each collector step's session, which the plan's hash binds, as read when the
+            plan was proposed (inside its job) and kept with it: drawn from that record, never
+            read on a page draw; Approve reads it again and refuses when it moved. -#}
+        {%- for s in NP.sessions or [] %}{% if s.session %}<span class="bluf-session small" data-session-step="{{ s.n }}" title="Read {{ s.at }} by the close helper's dry run, which closed nothing{% if s.dry_run %}: {{ s.dry_run }}{% endif %}. Approve reads it again and refuses if it moved">Step {{ s.n }} closes the collector's session from {{ x.device }}'s end, <span class="mono">{{ s.session }}</span>{% if s.local %}, to <span class="mono">{{ s.local }}</span>{% endif %}{% if s.quiet_s is not none %}, quiet for {{ s.quiet_s | int }} s{% endif %}.</span>{% endif %}{% endfor %}</span>
         {%- endif %}
         {%- if (ACT.modify or {}).offered %}{{ opener('fixit-modify-' ~ x.id, 'Modify…', 'modify', 'Modify', "Opens a box for what to change: the AI returns a revised plan with a new hash, and nothing runs") }}{% endif %}
         {%- if (ACT.deny or {}).offered %}{{ opener('fixit-deny-' ~ x.id, 'Deny…', 'deny', 'Deny', "Opens Deny: an optional reason, recorded; nothing runs and the incident stays open") }}{% endif %}
@@ -143,6 +146,23 @@
     </dd></div>
   </dl>
 </section>
+{#- The evidence's ONE home (C3729; R2: "collapsed under the card"), under the bottom line: the
+    signals the problem was classified from (R4), and what the record keeps besides: the
+    triggers kept of those seen, the detect pass's reads of the device, the devices attached.
+    Each change's record is on the device's History, linked from What Mercury has done. -#}
+{%- set K = B.kept or {} %}
+{%- set K_more = (K.seen or 0) > (K.triggers or 0) %}
+{%- if B.evidence or K.reads or K.members or K_more %}
+<details class="card bluf-evidence inc-evidence" id="inc-evidence" data-keep="bluf-evidence-{{ x.id }}">
+  <summary>Evidence ({{ (B.evidence or []) | length }})</summary>
+  <ul class="set-list small">
+    {%- for ev in B.evidence or [] %}<li data-kind="{{ ev.kind }}">{{ ev.words | times }}{% if ev.at %} <span class="muted">{{ clock(ev.at) }}</span>{% endif %}</li>{% endfor %}
+    {%- if K_more %}<li class="muted" data-kept="seen">{{ K.triggers }} trigger{{ '' if K.triggers == 1 else 's' }} kept of {{ K.seen }} seen; the rest are counted in the record.</li>{% endif %}
+    {%- if K.reads %}<li data-kept="reads">{{ K.reads }} read{{ '' if K.reads == 1 else 's' }} of {{ x.device or 'the device' }} kept by the detect pass (their state and time; never configuration text).</li>{% endif %}
+    {%- if K.members %}<li data-kept="members">Devices attached: {% for m in K.members %}<a href="{{ url_for('device_v2.device', name=m.device, list=x.network) }}">{{ m.device }}</a>: {{ m.why }}{{ '; ' if not loop.last }}{% endfor %}{% if K.more_members %}; and {{ K.more_members }} more, counted in the record{% endif %}.</li>{% endif %}
+  </ul>
+</details>
+{%- endif %}
 {#- The ONE card: What to do and AI troubleshooting together (R2). Its state is the page's
     one state (`x.page_state`: `incident_page.status`, asked with this section's own state). -#}
 <section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}" data-inc-state="{{ x.page_state }}">
@@ -173,6 +193,14 @@
         {%- else %} <span class="fixit-pre fixit-pre-refused" data-preflight="refused">· refused at its preflight: {{ pf.refused or 'no reason was recorded' }}</span>{% endif %}</li>
       {%- endfor %}
     </ol>
+    {#- Everything the plan's hash binds, before Approve (C3725), one level down: the incident,
+        the proposal, each step's operation and parameters and its own hash, a collector step's
+        session among them (as read when the plan was proposed). -#}
+    {%- if NP.bound %}
+    <details class="small plan-bound" data-keep="fixit-bound-{{ x.id }}"><summary>What its hash binds</summary>
+      <dl class="tl-record">{% for label, words in NP.bound %}<dt>{{ label }}</dt><dd>{{ words }}</dd>{% endfor %}</dl>
+    </details>
+    {%- endif %}
   </div>
   {%- endif %}
   {%- if S == 'handed_over' %}{% set hx = x.handover %}<p class="small fixit-handed">Handed over at {{ clock(hx.at) }} by {{ (hx.by or 'nobody recorded') | people }} to {{ hx.teams | join(', ') if hx.teams else 'no team (kept, sent to nobody)' }} · <a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=hx.version, list=x.network) }}">Open the write-up</a></p>{% endif %}

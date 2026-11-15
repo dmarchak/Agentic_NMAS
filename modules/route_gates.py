@@ -396,7 +396,9 @@ GATES = {
     # anyone but a verified person too, whatever configure's settings allow a service.
     "settings_v2.ai_on": _g(K, "turns a background AI feature on for one network, bound to the "
                                "estimate the person was shown and accepted, with its day and "
-                               "month caps; recorded with who, when and the estimate"),
+                               "month caps; recorded with who, when and the estimate; for "
+                               "automatic AI troubleshooting, each open incident the person "
+                               "ticked started once as its own job, within the caps (C3732)"),
     "settings_v2.ai_off": _g(K, "turns a background AI feature off for one network, its next "
                                 "call refused at once; recorded"),
     "settings_v2.ai_caps": _g(K, "changes an on background AI feature's day and month caps on "

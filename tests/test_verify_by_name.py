@@ -130,7 +130,9 @@ class TestVerify:
     def test_an_untouched_interface_that_comes_back_within_the_settle_is_not_a_failure(self,
                                                                                        run):
         flap = dict(R3_STATES, GigabitEthernet4="down")
-        ctx, clock, _calls = run(["interface Loopback9", " description x", "exit"], R3_STATES,
+        # A line that can reach a BGP session, so the hold watch is one of the ordinary checks:
+        # a description cannot (R3, the operator, 2026-11-14; `verify_scope.bgp_reach`).
+        ctx, clock, _calls = run(["interface Loopback9", " bandwidth 1000", "exit"], R3_STATES,
                                  flap, later=[R3_STATES])
         pipeline._stage_verify(ctx)
         v = ctx.verify_result["x"]

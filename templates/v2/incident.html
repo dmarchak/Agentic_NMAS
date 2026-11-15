@@ -12,7 +12,7 @@
     says beside it as `item_more`; then, collapsed: the timings (the four recorded times, TIME
     TO REPAIR, one line per attempt), the timeline, What's wrong, What Mercury has done (THE
     stepper's five stages, as the heal's card on its device's page draws them, then Mercury's
-    diagnosis in full), Evidence, Seen before and The record. ONE state for the whole page (the GUI review's item 2, C3450; the operator,
+    diagnosis in full), Seen before and The record (the evidence is the BLUF's, C3729). ONE state for the whole page (the GUI review's item 2, C3450; the operator,
     2026-11-13; `incident_page.status`): the header's badge and every section carry it
     (`data-inc-state`), and none says another. The one card says it in words and, while a
     person is needed and the BLUF's fix is the item's (`bluf.fix.kind` button), the BLUF draws
@@ -210,7 +210,8 @@
   </details>
 </section>
 <section class="card inc-fold" id="inc-done" aria-labelledby="h-inc-done" data-inc-state="{{ p.state }}">
-  <details class="inc-fold-d" data-keep="inc-done-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral')) }}</span>{% endif %}</summary>
+  <details class="inc-fold-d" data-keep="inc-done-{{ p.id }}"><summary class="card-head"><h2 id="h-inc-done">What Mercury has done</h2>{#- A hold working as designed is drawn neutral, its plain line on the hover (R2, C3728); red
+    only for what failed. -#}{% if p.done.mark %}<span data-outcome-level="{{ p.done.level }}">{{ badge('Self-healing' ~ (' (' ~ p.done.mode ~ ')' if p.done.mode) ~ ': ' ~ p.done.mark, {'ok': 'ok', 'warn': 'warn', 'danger': 'danger'}.get(p.done.level, 'neutral'), title=p.done.hold or none) }}</span>{% endif %}</summary>
   {%- if p.done.steps %}
   {#- THE stepper's five stages, as the heal's card on its device's page draws them
       (`incident_page.heal_card`: `run_card.named_heal`, else `run_card.steps_card`); who it
@@ -271,18 +272,8 @@
   {%- endif %}
   </details>
 </section>
-<details class="card inc-evidence" data-keep="inc-evidence-{{ p.id }}">
-  <summary>Evidence</summary>
-  <ul class="set-list">
-    <li><strong>The triggers:</strong> {{ p.evidence.triggers }} kept{% if p.evidence.seen > p.evidence.triggers %} of {{ p.evidence.seen }} seen{% endif %}; each is in the timeline above and in the record below.</li>
-    <li><strong>The reads:</strong> {{ p.evidence.reads }} read{{ '' if p.evidence.reads == 1 else 's' }} of {{ p.device }} kept by the detect pass (their state and time; never configuration text).</li>
-    <li><strong>The changes in this incident:</strong> each heal and each decision is a record on <a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='history') }}">{{ p.device }}'s History</a>.</li>
-    {%- if p.evidence.members %}
-    <li><strong>Members:</strong>
-      <ul class="set-list">{% for m in p.evidence.members %}<li><a href="{{ url_for('device_v2.device', name=m.device, list=p.network) }}">{{ m.device }}</a>: {{ m.why }}</li>{% endfor %}{% if p.evidence.more_members %}<li class="muted">and {{ p.evidence.more_members }} more, counted in the record</li>{% endif %}</ul></li>
-    {%- endif %}
-  </ul>
-</details>
+{#- The evidence has ONE home (C3729, R2): collapsed under the bottom line, in the BLUF's own
+    card (`_fixit_section.html`); its History link is What Mercury has done's. -#}
 {#- Seen before (the board's B7; C3488): whether the same loss was seen on this device before
     and how that ended, as its Needs attention item holds it (`seen_before.py`'s answer in the
     alerts reader's stored value, never computed by the page). Drawn only when a past incident
@@ -312,7 +303,8 @@
     {%- set fxp = p.fixit.proposal or {} %}{% if fxp.flag and fxp.flag.params_hash %}<dt>Proposed fix's parameter hash</dt><dd><span class="mono">{{ fxp.flag.params_hash }}</span> · proposal {{ fxp.id }}{% if fxp.flag.kind == 'repeat' %} · the same as attempt {{ fxp.flag.attempt }}'s{% endif %}</dd>{% endif %}
     {#- The plan's hash and each step's (R2: Approve is by the plan's hash; the hashes are the
         record's, never the card's main text). -#}
-    {%- if fxp.steps is defined and fxp.hash %}<dt>The plan's hash</dt><dd><span class="mono">{{ fxp.hash }}</span>{% for st in fxp.steps %} · step {{ st.n }} <span class="mono">{{ st.hash }}</span>{% endfor %}</dd>{% endif %}
+    {#- A plan that draws What its hash binds (C3725) says its hashes there, once. -#}
+    {%- if fxp.steps is defined and fxp.hash and not fxp.bound %}<dt>The plan's hash</dt><dd><span class="mono">{{ fxp.hash }}</span>{% for st in fxp.steps %} · step {{ st.n }} <span class="mono">{{ st.hash }}</span>{% endfor %}</dd>{% endif %}
     {#- A plan refused at its preflight: what was refused, by hash (the section's words name
         none): the plan's hash as Approve would have bound it, and a repeating step's
         parameter hash with the attempt it is the same as. -#}

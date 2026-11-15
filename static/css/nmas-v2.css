@@ -3069,6 +3069,17 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   width: 140px; background: var(--surface); color: var(--ink); }
 .ai-accept { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; max-width: 820px; }
 .ai-open-act { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* C3732: Turn on…'s list of open incidents for automatic AI troubleshooting, each tickable. */
+.ai-catchup { display: flex; flex-direction: column; gap: 6px; max-width: 820px; }
+.ai-catchup-pick { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line);
+  border-radius: var(--r); padding: 10px 12px; background: var(--surface); }
+.ai-catchup-lead { margin: 0; }
+.ai-catchup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+  gap: 4px; max-height: 320px; overflow-y: auto; }
+.ai-catchup-item label { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  font-size: 13px; overflow-wrap: anywhere; }
+.ai-catchup-cap { color: var(--warn); }
+.ai-catchup-done { margin: 6px 0 0; padding-left: 18px; }
 @media (max-width: 900px) {
   .ai-feature { grid-template-columns: minmax(0, 1fr); }
   .ai-feature > .ai-f-act { justify-content: flex-start; }

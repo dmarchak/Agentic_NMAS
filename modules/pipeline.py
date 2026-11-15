@@ -1829,7 +1829,17 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # after the push, and a session gone by then fails verify.
         bgp_failed = any(i.startswith("bgp ") for i in issues) or any(
             u.startswith("bgp ") for u in unmet)
+        # R3 (the operator, 2026-11-14): a FULL program whose every line is management or
+        # cosmetic (`verify_scope.bgp_reach`: descriptions, aliases, the logging buffer, ...)
+        # cannot break a session, so its hold time proves nothing about it: skipped, and the
+        # record says why. Anything else, or a line nobody classified, waits it out as before.
+        reach = scope.get("bgp") or {"reaches": True}
         if ("bgp" in checked and not bgp_failed and not hard
+                and scope["scope"] != verify_scope.QUICK and not reach["reaches"]):
+            record["bgp_watch"] = {"state": _SKIPPED, "why": reach["why"],
+                                   "lines": list(reach.get("lines") or [])}
+            log.info("pipeline[8/verify]: %s bgp hold not watched: %s", ip, reach["why"])
+        elif ("bgp" in checked and not bgp_failed and not hard
                 and scope["scope"] != verify_scope.QUICK):
             # Less the sessions the program drops on purpose (C506 phase 2).
             baseline = (max(0, pre_counts["bgp"] - expected_gone.get("bgp", 0))

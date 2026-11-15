@@ -728,7 +728,10 @@ class TestThePage:
         assert drawn == [], drawn
         assert who in {i for i, _w, _a in kept}, "The record keeps the words as recorded"
         h1 = text_of(body.split("<h1", 1)[1].split(">", 1)[1].split("</h1>", 1)[0])
-        assert h1.startswith("edge-b: configuration changed outside Mercury"), h1
+        # Premise corrected (C3727, the operator's R4 of 2026-11-14: the incident is titled by
+        # its problem, `bluf.what_of`, the one string its list, heading and BLUF say): the
+        # problem's words for a change from outside Mercury.
+        assert h1.startswith("edge-b: its configuration was changed outside Mercury"), h1
         assert "CONFIG_I" not in h1 and "vty0" not in h1 and "ops" not in h1, h1
 
     def test_a_secret_in_a_record_is_masked_on_the_way_out(self, client):

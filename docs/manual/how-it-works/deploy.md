@@ -229,7 +229,10 @@ the run ends. Its stages, in the order the code declares them:
    route table must keep 90% of its routes, re-read for up to 90 s; BGP is read once more no earlier than its configured hold time after the push
    (180 s when none is set), except for a program that touches only management sections
    (terminal lines, logging, SNMP, NTP, banners, users, and the management sources,
-   `ip tftp|ssh source-interface`), which no session depends on. Every
+   `ip tftp|ssh source-interface`), which no session depends on, and one whose every other
+   line is cosmetic (an interface's `description`, an `alias`, `logging buffered`, a banner,
+   SNMP's location or contact), which no session can depend on: the result says the hold
+   was not waited and why. A program with any other line waits the whole hold. Every
    new line is read back from the configuration read after the push, whatever the program
    touches; a `vlan <N>` line and the `name` under it are read where a switch keeps them,
    `show vlan id <N>` (one read per VLAN after the push: a switch in VTP server or client mode

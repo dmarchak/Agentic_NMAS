@@ -657,7 +657,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
-                            "problem")}
+                            "problem", "kept")}
     # The page draws the problem by its condition (the rest of its fields are the BLUF's
     # words): only what is drawn is carried.
     out["bluf"]["problem"] = {"condition": (out["bluf"].get("problem") or {}).get("condition")
@@ -726,9 +726,15 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
     if done:
         return f"Resolved: {ended or 'closed'}."
     got = A.failures(network, open_ids={inc.id})
-    n = len(got["failures"]) + len(failed)
+    # A hold a person resolves is no failure of a fix that ran (C3732): said as the hold.
+    held = [f for f in got["failures"] if f["kind"] == "held"]
+    n = len(got["failures"]) - len(held) + len(failed)
     times = {0: "", 1: " once", 2: " twice"}.get(n, f" {n} times")
     lead = f"Mercury's fix failed{times}." if n else ""
+    if not lead and held:
+        g = held[-1].get("guard") or {}
+        lead = (f"Self-healing is held by guard {g.get('guard')} ({g.get('name') or 'a guard'}): "
+                "Mercury cannot fix it alone, a person resolves it.")
     if not lead and legacy.get("failure"):
         # A failure Mercury holds with no attempt of its own: no fix of its own exists for this
         # problem (a lost stream), or its decision stopped it.
@@ -741,7 +747,12 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
     if state == "investigating":
         est = AIT.estimate()
         since = int(max(0, now - float((last_start or {}).get("epoch") or now)))
-        return (f"{lead} The AI is investigating (started {since} s ago), about "
+        how = "started"
+        if (last_start or {}).get("words") == A.CATCH_UP_WORDS and last_start.get("by"):
+            # A catch-up's start at the switch's turn-on (C3732): the person who ticked it.
+            from modules import display_names
+            how = f"started at turn-on by {display_names.people(last_start['by'])},"
+        return (f"{lead} The AI is investigating ({how} {since} s ago), about "
                 f"{money(est['usd'])}.").strip()
     if state == "capped":
         which = (last_start or {}).get("which") or "a"

@@ -77,16 +77,105 @@ def classify(commands: list) -> dict:
     if other:
         named = ", ".join(f"`{s}`" for s in other[:3]) + (
             f" and {len(other) - 3} more" if len(other) > 3 else "")
-        return {"scope": FULL, "sections": sections, "forwarding": other,
+        bgp = bgp_reach(commands)
+        held = ("BGP is read again after its hold time" if bgp["reaches"] else
+                f"BGP's hold time is not waited out ({bgp['why']})")
+        return {"scope": FULL, "sections": sections, "forwarding": other, "bgp": bgp,
                 "why": (f"it changes {named}, which can affect forwarding or is not a "
-                        "management section: neighbours, routes and interfaces are "
-                        "watched, BGP is read again after its hold time, and each new "
-                        "line is read back")}
+                        f"management section: neighbours, routes and interfaces are "
+                        f"watched, {held}, and each new line is read back")}
     families = list(dict.fromkeys(family(s) for s in sections))
     return {"scope": QUICK, "sections": sections, "forwarding": [],
             "why": (f"every line is management ({', '.join(families)}): the device is read "
                     "on a new login and each new line is read back; BGP's hold time is not "
                     "waited out, because no line here can affect a session")}
+
+
+# ── What a program can reach: the cosmetic lines (R3, the operator, 2026-11-14) ─────────────
+#
+# R3: "Cosmetic changes (description, banner, snmp location/contact, alias) are a read-back
+# only. Anything unclassified gets the current full wait (safe by default)." A cosmetic line
+# changes what the device says about itself and nothing it forwards, routes or keeps a session
+# on, so no line here can break a BGP session (the hold watch, C178, exists for a session a
+# change broke without resetting TCP) or clear or cause a symptom a heal reads again
+# (`modules/heal/act.py`). A line joins COSMETIC by a decision written here, never by
+# resemblance; a line under any other section, or of any other shape, is not cosmetic.
+
+#: (what it is, the section it sits under (None: a top-level line), the line's shape).
+COSMETIC = (
+    ("descriptions", re.compile(r"^interface \S"), re.compile(r"^\s*(no )?description(\s|$)")),
+    ("banners", None, re.compile(r"^(no )?banner ")),
+    ("SNMP location", None, re.compile(r"^(no )?snmp-server location(\s|$)")),
+    ("SNMP contact", None, re.compile(r"^(no )?snmp-server contact(\s|$)")),
+    ("aliases", None, re.compile(r"^(no )?alias ")),
+    # Not in R3's quoted list; kept because it sizes and levels the device's own in-memory log
+    # and nothing else: every symptom a heal reads again comes from Loki (what `logging host`
+    # and `logging trap` send), Grafana's alerts or the routing and heartbeat readers
+    # (`modules/heal/act.py` `judge`), none of which reads that buffer, and it carries no
+    # session, route or forwarding. (On IOS a size change empties the buffer; no symptom reads
+    # it.)
+    ("the logging buffer", None, re.compile(r"^(no )?logging buffered(\s|$)")),
+)
+
+
+def cosmetic(chain, line: str) -> str:
+    """What *line* (under the sections *chain*, outermost first) is, when it is one of the
+    COSMETIC lines, or ``""``. A section header is never cosmetic by itself: a bare
+    ``interface Loopback9`` creates an interface. A ``description`` under it is, even when the
+    interface is new: an interface created carrying only a description has no address, so no
+    routing process, BGP session or route can run over it or be sourced from it, and nothing a
+    heal reads again is about it. (A heal never sends one: a missing interface departs as a
+    stanza unit whose header is its own line, `kinds.units_of`, so `readback_only` refuses it;
+    a deploy's program may, and its hold is then skipped on this reasoning.)"""
+    chain = tuple(c.strip() for c in chain or ())
+    for what, section, shape in COSMETIC:
+        if section is None:
+            if not chain and shape.match(line.strip()):
+                return what
+        elif chain and len(chain) == 1 and section.match(chain[0]) and shape.match(line):
+            return what
+    return ""
+
+
+def cosmetic_only(lines) -> list:
+    """The cosmetic families of *lines* (``[(chain, line)]``, a heal unit's), in order, when
+    EVERY line is cosmetic; ``[]`` when any one is not, or there are none."""
+    out = []
+    for chain, line in lines or []:
+        what = cosmetic(chain, line)
+        if not what:
+            return []
+        if what not in out:
+            out.append(what)
+    return out
+
+
+def bgp_reach(commands: list) -> dict:
+    """``{"reaches", "why", "lines"}``: whether *commands* (one device's program) can reach a
+    BGP session. It cannot when every line it configures is a management family's (`family`,
+    by its top-level section) or COSMETIC; anything else, an empty program, or a line nobody
+    named here, can (``reaches`` True: the hold watch's full wait, safe by default). *lines*
+    names the families found when it cannot."""
+    from modules.nsot.deploy import program_leaves
+
+    leaves = program_leaves(list(commands or []))
+    if not leaves:
+        return {"reaches": True, "lines": [],
+                "why": "nothing is sent, so nothing is classified: the full wait"}
+    found = []
+    for leaf in leaves:
+        chain = tuple(leaf.chain or ())
+        top = (chain[0] if chain else leaf.line).strip()
+        what = family(top) or cosmetic(chain, leaf.line)
+        if not what:
+            shown = " > ".join(list(chain) + [leaf.line.strip()])
+            return {"reaches": True, "lines": [],
+                    "why": f"`{shown}` is not a management or cosmetic line, so it may reach "
+                           "a BGP session: its hold time is waited out"}
+        if what not in found:
+            found.append(what)
+    return {"reaches": False, "lines": found,
+            "why": f"every line is {', '.join(found)}: no line here can reach a BGP session"}
 
 
 def vlan_reads(commands: list) -> list:

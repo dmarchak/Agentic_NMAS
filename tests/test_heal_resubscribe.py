@@ -907,6 +907,166 @@ class TestTheVerify:
         v = stored(rec)["subscriptions"][0]["verify"]["collector"]
         assert v["state"] == "fail" and "nothing received on it yet" in v["words"]
 
+    # ── The direct checks (R3, the operator, 2026-11-14) ──────────────────────────────────
+    # The collector's reads as `read_collector` gives them with its socket diagnostics read:
+    # each session's `bytes_received` beside its last receive (ss_tni_4's fields; the quiet
+    # session's 828 bytes as measured on the host, 2026-11-10).
+
+    @staticmethod
+    def with_bytes(*sessions):
+        """`coll`, each session (remote, rport, state, lastrcv_ms, bytes_received)."""
+        got = coll(*[s[:4] for s in sessions])
+        for row, s in zip(got["sessions"], sessions):
+            row["bytes_received"] = s[4]
+        return got
+
+    @staticmethod
+    def alone(intents):
+        """The one edit that makes 101 r2's only subscription to 10.255.1.10 port 57000: 102
+        sends to port 57001 (as test_a_subscription_not_chosen_that_shares_the_receiver_is_named
+        does)."""
+        for s in intents["r2"]["telemetry"]:
+            if str(s["subscription"]) == "102":
+                s["settings"] = [x.replace("57000", "57001") for x in s["settings"]]
+
+    @pytest.mark.parametrize("remote", ["192.0.2.6", "2001:db8:4::6"])
+    def test_both_direct_checks_pass_it_long_before_the_old_bound(self, lab, remote):
+        """The stream's series never arrives (Prometheus lags): the device's new connection
+        and bytes growing twice on the device's new session after its first read pass it
+        within three direct reads, and the series is a note, never a gate."""
+        from modules.heal import resubscribe as R
+        old, new = (remote, 60235, "ESTABLISHED", 5966281), (remote, 60999, "ESTABLISHED", 287)
+        src = Src(series=seq([ABSENT]), intent_edit=self.alone, collector=seq([
+            self.with_bytes(old + (828,)), self.with_bytes(old + (828,), new + (1200,)),
+            self.with_bytes(old + (828,), new + (1300,)),
+            self.with_bytes(old + (828,), new + (5400,))]))
+        start = src.clock.t
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "resubscribed", rec["why"]
+        took = src.clock.t - start - R.WAIT_S
+        assert took == 2 * R.DIRECT_POLL_S < R.MEASURED_BACK_S, f"took {took} s"
+        assert src.clock.slept[1:] == [R.DIRECT_POLL_S] * 2
+        v = stored(rec)["subscriptions"][0]["verify"]
+        assert v["device"]["state"] == "pass" and v["collector"]["state"] == "pass"
+        assert v["collector"]["words"] == (
+            f"a new session from {remote} port 60999 on 10.255.1.10 port 57000 received 4200 "
+            "bytes, growing on two reads after its first (1200, 1300, 5400)")
+        assert v["stream"]["state"] == "cant_tell"
+        assert v["stream"]["words"].startswith("a note, not a gate: subscription 101's series")
+        step = verify_step(rec)
+        assert step["basis"] == "direct" and ", on the direct checks: " in step["words"]
+        assert "on the direct checks" in rec["why"]
+
+    def test_one_growth_is_the_connections_opening_never_the_stream(self, lab):
+        """The first read lands before the connection's own opening bytes (gRPC's preface,
+        SETTINGS, a PING): one growth, then nothing. Not a stream: without the series it fails
+        at the bound."""
+        new = ("192.0.2.6", 60999, "ESTABLISHED", 287)
+        src = Src(series=seq([ABSENT]), intent_edit=self.alone, collector=seq([
+            self.with_bytes(OLD + (828,)), self.with_bytes(OLD + (828,), new + (24,)),
+            self.with_bytes(OLD + (828,), new + (130,))]))
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "not_back", rec["why"]
+        assert verify_step(rec)["basis"] == ("today's three checks: the collector's bytes were "
+                                             "read and did not grow twice on a new session")
+
+    def test_growths_the_size_of_keepalives_are_the_connections_upkeep_never_the_stream(
+            self, lab):
+        """The second review of the verify-speed gate, 2026-11-15: a connection carrying no
+        data still grows by its upkeep (an HTTP/2 PING, 17 bytes, and its ACKs). Two such
+        growths, each under `MIN_GROWTH_BYTES`, never pass it: without the series it fails at
+        the bound."""
+        new = ("192.0.2.6", 60999, "ESTABLISHED", 287)
+        src = Src(series=seq([ABSENT]), intent_edit=self.alone, collector=seq([
+            self.with_bytes(OLD + (828,)), self.with_bytes(OLD + (828,), new + (24,)),
+            self.with_bytes(OLD + (828,), new + (41,)),
+            self.with_bytes(OLD + (828,), new + (58,))]))
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "not_back", rec["why"]
+        assert verify_step(rec)["basis"] == ("today's three checks: the collector's bytes were "
+                                             "read and did not grow twice on a new session")
+
+    def test_bytes_not_growing_on_the_new_session_never_pass_it_directly(self, lab):
+        """A new session standing with the same bytes received is not a stream: without the
+        series it fails at the bound, as before, and says the bytes did not grow."""
+        new = ("192.0.2.6", 60999, "ESTABLISHED", 287, 1200)
+        src = Src(series=seq([ABSENT]), intent_edit=self.alone, collector=seq([
+            self.with_bytes(OLD + (828,)), self.with_bytes(OLD + (828,), new)]))
+        start = src.clock.t
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "not_back", rec["why"]
+        assert 290 <= src.clock.t - start - 10 <= 300, "the bound, after the 10 s wait"
+        step = verify_step(rec)
+        assert step["basis"] == ("today's three checks: the collector's bytes were read and "
+                                 "did not grow twice on a new session")
+        assert step["checks"]["stream"]["state"] == "fail"
+
+    def test_bytes_growing_on_the_old_session_are_not_the_stream_back(self, lab):
+        """The session there before the operation (a stale half-open one) receiving is no
+        new dial: the direct check waits for a NEW session."""
+        src = Src(series=seq([ABSENT]), intent_edit=self.alone, collector=seq([
+            self.with_bytes(OLD + (828,)), self.with_bytes(OLD + (900,)),
+            self.with_bytes(OLD + (5000,)), self.with_bytes(OLD + (9000,))]))
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "not_back", rec["why"]
+        assert "no new session from r2" in stored(rec)["subscriptions"][0]["verify"][
+            "collector"]["words"]
+
+    @pytest.mark.parametrize("receiver", ["10.255.1.10", "2001:db8::10"])
+    @pytest.mark.parametrize("subs", [("101", "102"), ("102",)])
+    def test_subscriptions_sharing_a_receiver_keep_the_series_as_a_gate(self, lab, receiver,
+                                                                         subs):
+        """101 and 102 send to one receiver, so IOS-XE carries both on one connection: bytes
+        growing on it may be 101's alone while 102 (a bad sensor path) sends nothing. Chosen
+        together or 102 alone, neither passes on the bytes; without its series each fails at
+        the bound, saying why the bytes could not tell."""
+        def edit(intents):
+            for s in intents["r2"]["telemetry"]:
+                s["settings"] = [x.replace("10.255.1.10", receiver) for x in s["settings"]]
+        new = ("192.0.2.6", 60999, "ESTABLISHED", 287)
+        src = Src(series=seq([ABSENT]), intent_edit=edit,
+                  box=Box(text=R2_CFG.replace("10.255.1.10", receiver)),
+                  receiver=seq([receiver_read(R2_101), receiver_read(R2_102),
+                                receiver_read(new_connection(R2_101)),
+                                receiver_read(new_connection(R2_102))]),
+                  collector=seq([self.with_bytes(OLD + (828,))]
+                                + [self.with_bytes(OLD + (828,), new + (1000 * n,))
+                                   for n in range(1, 80)]))
+        rec = run(src, subs=subs)
+        assert rec["outcome"] == "not_back", rec["why"]
+        for got in stored(rec)["subscriptions"]:
+            assert got["outcome"] == "not_back", got
+        for step in [s for s in rec["steps"] if s["step"] == "verify"]:
+            assert step["basis"] == (
+                f"today's three checks: r2 sends another subscription to {receiver} port "
+                "57000 over the same connection (or intent's receivers could not all be read), "
+                f"so the collector's bytes cannot tell subscription {step['sub']}'s own")
+            assert step["checks"]["stream"]["state"] == "fail"
+
+    def test_only_the_devices_one_subscription_to_a_receiver_is_alone(self, lab):
+        from modules.heal import resubscribe as R
+        assert R.plan(NET, "r2", ["101"], sources=Src())["alone"] == []
+        assert R.plan(NET, "r2", ["101", "102"], sources=Src())["alone"] == []
+        assert R.plan(NET, "r2", ["101"], sources=Src(intent_edit=self.alone))["alone"] == \
+            ["101"]
+        assert R.plan(NET, "r2", ["101", "102"],
+                      sources=Src(intent_edit=self.alone))["alone"] == ["101", "102"]
+
+    def test_without_the_collectors_bytes_it_is_todays_three_checks_and_says_so(self, lab):
+        """No session carries its bytes (the socket diagnostics not read): never passed on
+        less evidence. The default sources' series is present and their new session receiving,
+        so today's three checks pass it, at their own cadence, and the step says why."""
+        from modules.heal import resubscribe as R
+        src = Src(intent_edit=self.alone)
+        rec = run(src, subs=("101",))
+        assert rec["outcome"] == "resubscribed", rec["why"]
+        assert R.DIRECT_POLL_S not in src.clock.slept[1:]
+        assert set(src.clock.slept[1:]) <= {R.POLL_S}
+        step = verify_step(rec)
+        assert step["basis"] == ("today's three checks: the collector's bytes were not read "
+                                 "(no session of the device's carried its bytes received)")
+        assert step["checks"]["stream"]["state"] == "pass"
+
     def test_the_collector_elsewhere_is_cant_tell(self, lab):
         src = Src(collector=seq([coll(state="elsewhere")]))
         rec = run(src, subs=("101",))

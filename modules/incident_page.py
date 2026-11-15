@@ -656,26 +656,17 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
 # ── The title ───────────────────────────────────────────────────────────────────────────────
 
 def _happened(incident, entry: dict, decisions: list, room: int) -> str:
-    """What happened, in plain words and at most *room* characters, from THE title builder
-    (`said.title`; the GUI review's item 5, C3453): the newest decision's units that say a
-    change ("edge-b: static route added outside Mercury"), with its cause's facts and the
-    incident's triggers, else its first symptom, else what opened it. Never the configuration
-    line, a mnemonic, a code key or an id: the line is What's wrong's."""
-    from modules.heal import said
+    """What happened, in plain words and at most *room* characters: THE problem's title
+    (`bluf.what_of`, R4; C3727), the one string the BLUF's first line says: the problem's own
+    words where its object is named from the evidence ("edge1: telemetry streams 101 and
+    102 lost"), else the newest decision's units that say a change (`said.title`, the GUI review's
+    item 5, C3453: "edge-b: static route added outside Mercury"), else its condition's words.
+    Never the alert that raised it, the configuration line, a mnemonic, a code key or an id: the
+    signals are its evidence, and the line is What's wrong's."""
+    from modules import bluf
 
-    inc = incident or {}
-    device = inc.get("device") or entry.get("device") or "A device"
-    trig = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
-    newest = decisions[-1] if decisions else {}
-    for d in reversed(decisions):
-        units = [u for u in d.get("units") or [] if isinstance(u, dict)]
-        if units:
-            newest = d
-            break
-    units = [u for u in newest.get("units") or [] if isinstance(u, dict)]
-    facts = ((newest.get("cause") or entry.get("cause") or {}).get("facts")) or []
-    return (said.title(device, units, trig, facts, room=room)
-            or f"{device}: an incident whose triggers are not kept")[:room]
+    return bluf.what_of({"incident": incident or {}, "entry": entry or {},
+                         "decisions": list(decisions or [])}, room=room)
 
 
 def title(incident, entry: dict, decisions: list, state: str = "", who: dict = None) -> str:
@@ -1159,9 +1150,15 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
                             if st["why"] == "watching" and not decisions and not entry
                             else "")},
         done={"mark": steplog.mark(outcome, kind) if entry else "",
-              "level": ((card.get("level") if card and card.get("state") == "result" else
+              # A guard or hold working as designed is never a failure (R2; C3728): its
+              # outcome drawn neutral, its plain line (`bluf.hold_line`) on the hover; red
+              # only for what failed.
+              "level": (("hold" if outcome in HOLD_OUTCOMES else
+                         card.get("level") if card and card.get("state") == "result" else
                          "ok" if outcome in run_card.HEALED + run_card.DECISION_GOOD
                          else run_card.level_of(outcome)) if entry else ""),
+              "hold": (_hold_words(entry, decisions, device)
+                       if entry and outcome in HOLD_OUTCOMES else ""),
               "mode": steplog.MODE_WORDS.get(entry.get("mode"), "") if entry else "",
               # Whether its heal runs now: the live region then redraws on each step, as its
               # device's card does. Its times are the stages' own and the header's (each fact
@@ -1173,12 +1170,8 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
               "change_record": bool(cr.get("state") == "made" and cr.get("markdown")),
               "diagnosis": diagnosis},
         todo=_todo(st, device, tl, fixit, item),
-        evidence={"triggers": len(inc.get("triggers") or []),
-                  "seen": int(inc.get("triggers_seen") or 0),
-                  "reads": len(inc.get("reads") or []),
-                  "members": [{"device": m.get("device") or "", "why": m.get("why") or ""}
-                              for m in members[:MEMBERS_SHOWN]],
-                  "more_members": max(0, len(members) - MEMBERS_SHOWN)},
+        # The evidence's counts and members are the BLUF's (`bluf.kept_of`, C3729: one home,
+        # under the bottom line), never a second section here.
         members_n=len(members))
     model = display_names.people_payload(steplog.masked(model))
     model["record"] = steplog.masked(_record(found, tl))
@@ -1186,8 +1179,27 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     # section as it draws itself (`section.drawn`): neither is worded again here.
     model["item"] = item
     model["fixit"] = with_item(fixit, item, st["needs"]) if "bluf" in fixit else dict(
-        fixit, **composed(model, fixit, item, st["needs"]))
+        fixit, **composed(model, fixit, item, st["needs"], found=found))
     return model
+
+
+#: A decision's outcomes that are a guard or hold working as designed (`decide`'s stops: held,
+#: halted, self-healing off), drawn neutral on What Mercury has done, never as a failure (R2,
+#: C3728).
+HOLD_OUTCOMES = ("held", "halted", "off")
+
+
+def _hold_words(entry: dict, decisions: list, device: str) -> str:
+    """The hold's plain line (`bluf.hold_line`, from the guard record that stopped it: the
+    newest decision's, which keeps its operands, else the step log entry's), or the decision's
+    own words when no guard record is kept."""
+    from modules import bluf
+
+    for g in [d.get("guard") for d in reversed(decisions or [])] + [entry.get("guard")]:
+        line = bluf.hold_line(g, device, tail=False)
+        if line:
+            return line
+    return str(entry.get("words") or "")
 
 
 #: The BLUF's severity (`bluf.severity`) as the header's level draws it: its words and badge.
@@ -1221,12 +1233,14 @@ def failed_here(fixit: dict) -> bool:
     return any(a.get("state") == "failed" for a in fixit.get("attempts") or [])
 
 
-def composed(model: dict, fixit: dict, item: dict, needs: bool) -> dict:
+def composed(model: dict, fixit: dict, item: dict, needs: bool, found: dict = None) -> dict:
     """The top of the page for a section model that carries no BLUF of its own (one built
     before `modules/fixit/section.py` drew ``bluf``, ``status`` and ``actions``; the
     operator's R2, 2026-11-14): ``{"bluf", "status", "actions"}`` composed from what the page
-    already holds, never new words. *what* is the item's lead sentence (a lost stream's),
-    else the page's title; *impact* what Mercury cannot see meanwhile, else "" (drawn as not
+    already holds, never new words. *what* is THE problem's title (`bluf.what_of` of *found*,
+    the heading's own words, C3727), else the item's lead sentence, else the page's title; its
+    evidence and what the record keeps besides (`bluf.model_of`, C3729: the evidence's one
+    home); *impact* what Mercury cannot see meanwhile, else "" (drawn as not
     known); the fix: nothing while nobody is needed, the item's own action, Start AI
     troubleshooting once a fix failed here (or with nothing tried and no action of its own),
     else Hand over. Never a fix that already failed here (`failed_here`, and the item's
@@ -1253,8 +1267,14 @@ def composed(model: dict, fixit: dict, item: dict, needs: bool) -> dict:
         fix = {"kind": "hand_over", "label": ""}
     else:
         fix = {"kind": "none", "label": ""}
-    return {"bluf": {"what": fx.get("lead") or model["title"], "impact": fx.get("unseen") or "",
-                     "fix": fix},
+    from modules import bluf as B
+    from modules.heal import steplog
+
+    bm = B.model_of(found) if found else {}
+    return {"bluf": {"what": bm.get("what") or fx.get("lead") or model["title"],
+                     "impact": fx.get("unseen") or "", "fix": fix,
+                     "evidence": steplog.masked(bm.get("evidence") or []),
+                     "kept": steplog.masked(bm.get("kept") or {})},
             "status": status, "composed": True,
             "actions": {"start": {"offered": start, "href": "", "refused": ai.get("refused")
                                   or ""},

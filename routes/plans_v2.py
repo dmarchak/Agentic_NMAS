@@ -110,6 +110,10 @@ def card(network: str, args, **answer) -> dict:
                         refused=redact_text(got.get("refused") or ""),
                         steps=[{k: s.get(k) for k in ("n", "words", "drawn")}
                                for s in got.get("steps") or []])
+    # Everything the plan's hash binds, drawn before Approve (C3725), masked as the preview is.
+    c["preview"]["bound"] = ([(label, redact_text(words)) for label, words in E.bound_rows(
+        network, got.get("plan") or "", got.get("params") or {}, got.get("steps") or [],
+        got.get("hash") or "")] if got.get("ok") else [])
     return c
 
 
