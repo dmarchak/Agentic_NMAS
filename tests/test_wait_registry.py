@@ -35,6 +35,13 @@ from tests.source_index import ROOT, track_all, tracked
 
 #: The product's folders and files the scan reads.
 SCANNED = ("app.py", "modules", "routes", "scripts", "deploy")
+#: Files inside SCANNED the registry does not list, each with why (CI #1736, 2026-11-15).
+OUTSIDE = {
+    "scripts/nmas-oxidized-cred": (
+        "Oxidized's retired helper (Phase 3 step 2, 2026-10-08): tests/test_credential_rotation.py"
+        " `test_nothing_runs_oxidizeds_router_db_helper` holds that nothing in the product names"
+        " it but its declaration and its removal listing, so the registry cannot list its wait"),
+}
 #: The fewest sites the scan must find in the checkout (106 in 79 functions on 2026-11-14, when
 #: the registry was built): a scan that found far fewer has stopped reading a folder.
 FEWEST_SITES = 95
@@ -148,6 +155,8 @@ def scan(root=None) -> dict:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         rel = os.path.relpath(path, base).replace(os.sep, "/")
+        if rel in OUTSIDE:
+            continue
         for s in sites(text):
             out.setdefault(f"{rel}::{s['where']}", []).append(s)
     return out
@@ -163,6 +172,23 @@ def _shown(key, ss):
 
 
 class TestEveryWaitIsDeclared:
+    def test_what_the_scan_leaves_out_is_exactly_the_retired_helper(self):
+        # Each file left out still exists, still waits (so the exclusion is not stale), and is
+        # the one the rotation test forbids naming.
+        assert set(OUTSIDE) == {"scripts/nmas-oxidized-cred"}
+        for rel in OUTSIDE:
+            with open(os.path.join(str(ROOT), rel), encoding="utf-8") as fh:
+                assert sites(fh.read()), f"{rel} no longer waits: drop it from OUTSIDE"
+
+    def test_an_entry_is_built_whole_by_its_one_builder(self):
+        # The registry's one builder (`waits._w`) keeps every field it is given, so an entry
+        # read back is the declaration as written (CI #1736: it was reached only at import).
+        from modules import waits as W
+        got = W._w("a planted wait", "1 s polls", "reasoned", True, ["POLL_S"])
+        assert got == {"waits_for": "a planted wait", "why": "1 s polls", "basis": "reasoned",
+                       "early": True, "constants": ("POLL_S",)}
+        assert all(set(e) == set(got) for e in W.WAITS.values())
+
     def test_the_scan_reads_the_whole_product(self, found):
         n = sum(len(v) for v in found.values())
         assert n >= FEWEST_SITES, f"the scan found {n} waits, fewer than {FEWEST_SITES}"

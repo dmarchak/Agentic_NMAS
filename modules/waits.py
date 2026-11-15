@@ -344,10 +344,6 @@ WAITS = {
         "1 s polls; then a fixed 2 s for the restart after init, unclassified: the full wait, "
         "safe by default",
         "unclassified", False),
-    "scripts/nmas-oxidized-cred::hold_router_db": _w(
-        "the router database's lock to come free, tried every 0.05 s",
-        "within LOCK_WAIT_S, reasoned: a holder writes one file", "reasoned", True,
-        ("LOCK_WAIT_S",)),
     "scripts/nmas-post-deploy-check::detection_lines": _w(
         "detection's first good read since the start, asked every DETECTION_POLL_SECONDS",
         "detection reads every 5 s", "cadence", True, ("DETECTION_POLL_SECONDS",)),
