@@ -178,7 +178,10 @@ def test_prompt_v1_s_parts_carry_each_person_as_their_label(planted):
     assert ALICE_NAME not in text and display_names.label(ALICE) in text
 
 
-def test_mercury_and_nobody_are_never_labelled():
+def test_mercury_and_nobody_are_never_labelled(monkeypatch, tmp_path):
+    # Its own, empty display-name store: a person the run's shared store holds is a name
+    # `people_labelled` labels in any text, rightly, and "alex" was one (CI #1740).
+    monkeypatch.setattr(display_names, "_path", lambda: str(tmp_path / "display_names.json"))
     sections = [{"name": "history", "pieces": [
         {"ref": "history:1", "who": "mercury"}, {"ref": "history:2", "who": ""},
         {"ref": "history:3", "who": "mercury:heal"},

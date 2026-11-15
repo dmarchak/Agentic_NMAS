@@ -42,7 +42,7 @@ def _commit(repo, message, *paths, allow_empty=False):
 
 @pytest.fixture
 def planted(lab, tmp_path, monkeypatch):  # noqa: F811
-    from modules import acknowledgements, config, restarts, reveal_audit
+    from modules import acknowledgements, restarts, reveal_audit
     # The reveal record is this lab's own (C837: History draws every reveal, and the process's
     # record holds other tests' reveals of a list also named Lab).
     monkeypatch.setattr(reveal_audit, "_path", lambda: str(tmp_path / "reveal_audit.jsonl"))
@@ -112,7 +112,16 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     acknowledgements.record("authorisations:Lab:r4:shutdown", _now(), why="planned work",
                             by="alex@example.com", verified="person",
                             kind="repeated_authorisation", what="shutdown authorised 3 times")
-    with open(os.path.join(config.DATA_DIR, "breakglass_exports.jsonl"), "a") as fh:
+    # And the break-glass export log (CI #1740, browser3 with two workers): appended to the
+    # session's DATA_DIR, this export of r3 and r4 drew in a later test's fleet History as a
+    # second device on a lab whose rows are r3's alone. History reads it through its owner
+    # (`breakglass.all_exports`), here from this lab's own folder.
+    from modules import breakglass as bg
+    own = tmp_path / "breakglass"
+    own.mkdir()
+    exports = bg.all_exports
+    monkeypatch.setattr(bg, "all_exports", lambda data_dir: exports(str(own)))
+    with open(own / bg.EXPORT_LOG, "a") as fh:
         fh.write(json.dumps({"at": time.time(), "list": "Lab", "actor": "alex@example.com",
                              "via": "browser", "devices": {"r3": "d1", "r4": "d2"},
                              "key_fingerprint": "fp"}) + "\n")

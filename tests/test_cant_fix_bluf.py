@@ -201,12 +201,16 @@ class TestTheNextActionIsTheIncidentsOwn:
 
 
 class TestTheSubjectNamesPeopleByDisplayName:
-    def test_an_identity_in_the_title_is_its_display_name_in_the_subject_as_in_the_body(self):
+    def test_an_identity_in_the_title_is_its_display_name_in_the_subject_as_in_the_body(
+            self, monkeypatch, tmp_path):
         """A title may carry a person's identity (a change's log line names its account): the
-        subject names them by display name, as the body does (`message._people`)."""
+        subject names them by display name, as the body does (`message._people`). The name is
+        set in this test's own display-name store: set in the run's shared one, it outlived the
+        test and labelled "alex" in a later test's text (CI #1740)."""
         from modules import display_names
         from modules.notify import message
 
+        monkeypatch.setattr(display_names, "_path", lambda: str(tmp_path / "display_names.json"))
         who = "alex@example.invalid"
         display_names.set_name(who, "Alex R", by=who, actor_verified="access")
         facts = message.check_event({
