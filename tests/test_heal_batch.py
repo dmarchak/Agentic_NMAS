@@ -420,6 +420,50 @@ class TestTheStripRoutes:
         assert r.status_code in (401, 403)
         assert policy.current("Default")["mode"] == "dry_run", "the press changed nothing"
 
+    def test_the_strip_is_on_incidents_alone_and_needs_attention_keeps_the_run(self, app_client):
+        """C3789 (the operator, 2026-11-15: "The control strip: remove it from Needs attention;
+        keep it only on Incidents"): Needs attention draws no Self-healing or AI switch, only
+        the strip's run part, empty while nothing was pressed and nothing runs, under the id
+        G6's card answers into; Incidents draws both switches, and its Self-healing switch,
+        pressed as drawn there, turns Auto on."""
+        import re
+
+        from modules.heal import policy
+        auto("Default", now=time.time() - 60, kinds=("added_line",))
+        policy.apply_planned("Default", {policy.MODE_KEY: "dry_run"}, actor="a@example.com",
+                             actor_verified="access", person=True, reason="back to dry run")
+        landing = app_client.get("/v2/?list=Default").get_data(as_text=True)
+        assert 'data-ctl="heal"' not in landing and 'data-ctl="ai"' not in landing
+        assert "ctl-strip" not in landing and "AI troubleshooting: Automatic" not in landing
+        part = re.search(r'<section class="ctl-run-only" id="control-strip"[^>]*'
+                         r'data-part="run"[^>]*>(.*?)</section>', landing, re.S)
+        assert part and not part.group(1).strip(), "nothing pressed, nothing running: empty"
+        assert 'hx-get="/v2/control/strip?list=Default&amp;part=run"' in part.group(0)
+        incidents = app_client.get("/v2/incidents?list=Default").get_data(as_text=True)
+        assert 'data-ctl="ai"' in incidents
+        form = re.search(r'<form class="ctl-item" id="ctl-heal" method="post" action="([^"]+)"'
+                         r'.*?name="on" value="([01])">', incidents, re.S)
+        assert form and form.group(2) == "1", "the Self-healing switch is on Incidents"
+        r = app_client.post(form.group(1), data={"on": form.group(2)})
+        assert r.status_code == 200 and policy.current("Default")["mode"] == "auto"
+        # The run part re-reads itself as the run part, never as the whole strip.
+        again = app_client.get("/v2/control/strip?list=Default&part=run").get_data(as_text=True)
+        assert 'data-part="run"' in again and 'data-ctl="heal"' not in again
+
+    def test_fix_all_answers_in_needs_attentions_run_part(self, app_client):
+        """The batch card is on Needs attention, so its press's answer is the run part drawn
+        there in place (`#control-strip`, the card's ``hx-target``), never the switches."""
+        from modules.heal import policy
+        from modules.nsot import capture_job
+        r = app_client.post("/v2/control/Default/fix-all", data={"hash": "x"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 409 and "Nothing was started" in body
+        assert 'id="control-strip"' in body and 'data-part="run"' in body
+        assert 'data-ctl="heal"' not in body and 'class="ctl-run-only card"' in body
+        # And what it said is so: no batch job, self-healing as it was.
+        assert not [j for j in capture_job.card_jobs() if j["kind"] == B.KIND]
+        assert policy.current("Default")["mode"] == "dry_run"
+
     def test_a_moved_batch_is_refused_on_the_strip(self, app_client):
         from modules.heal import policy
         from modules.nsot import capture_job
@@ -435,10 +479,11 @@ SWITCH = "#control-strip [data-ctl=heal] button.ctl-switch"
 
 def test_a_real_browser_toggles_self_healing_busy_on_itself_and_hears_a_change(lab,  # noqa: F811
                                                                               monkeypatch):
-    """Needs attention's strip in a real browser: the Self-healing toggle pressed is busy on
-    itself (its busy words, the control disabled) until its answer, which draws Auto until
-    HH:MM in place; then a change made elsewhere (another person's Dry run, announced) redraws
-    the strip with no reload."""
+    """The strip in a real browser: the Self-healing toggle pressed is busy on itself (its busy
+    words, the control disabled) until its answer, which draws Auto until HH:MM in place; then
+    a change made elsewhere (another person's Dry run, announced) redraws the strip with no
+    reload. Premise corrected (C3789, the operator, 2026-11-15: "keep it only on Incidents"):
+    it was Needs attention's strip; it is Troubleshoot › Incidents'."""
     from tests import browser
     ok, why = browser.available()
     if not ok:
@@ -459,7 +504,7 @@ def test_a_real_browser_toggles_self_healing_busy_on_itself_and_hears_a_change(l
     monkeypatch.setattr(control_strip, "set_heal", slow)
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
-            b.go(srv.url("/v2/?list=Default"))
+            b.go(srv.url("/v2/incidents?list=Default"))
             b.wait_for("return !!window.htmx && window.NMAS && "
                        "NMAS.live().state === 'connected' && !!document.querySelector("
                        "arguments[0]) && " + SETTLED, 20, SWITCH)

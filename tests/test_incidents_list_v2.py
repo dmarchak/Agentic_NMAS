@@ -257,9 +257,11 @@ class TestTheAutoChip:
         body = chip_of(client)
         link = re.search(r'<a class="heal-auto-chip" href="([^"]+)"[^>]*>(.*?)</a>', body, re.S)
         assert link, body
-        # C3748 (the operator, 2026-11-15): the chip opens Needs attention's control strip
-        # for its network, where Self-healing and AI troubleshooting are switched.
-        assert link.group(1) == f"/v2/?list={NET}#control-strip"
+        # C3748 (the operator, 2026-11-15): the chip opens the control strip for its network,
+        # where Self-healing and AI troubleshooting are switched. Premise corrected (C3789,
+        # the operator, 2026-11-15: "remove it from Needs attention; keep it only on
+        # Incidents"): it opened Needs attention's strip before.
+        assert link.group(1) == f"/v2/incidents?list={NET}#control-strip"
         words = link.group(2)
         assert re.sub(r"<[^>]+>", "", words).startswith("Self-healing: Auto until ")
         # The expiry is the policy's own, drawn by THE clock: its instant in `datetime`, the
@@ -308,8 +310,9 @@ class TestTheAutoChip:
         with APP.app.test_request_context(f"{CHIP}?list={NET}"):
             body = render_template("v2/_heal_auto_chip.html", a=dict(got, error=""))
         assert "Self-healing: Auto on 2 networks until" in re.sub(r"<[^>]+>", "", body)
-        # C3748: the chip opens the soonest network's control strip on Needs attention.
-        assert 'href="/v2/?list=C#control-strip"' in body and "on C, A:" in body
+        # C3748: the chip opens the soonest network's control strip, on Incidents since C3789
+        # (premise corrected: on Needs attention before).
+        assert 'href="/v2/incidents?list=C#control-strip"' in body and "on C, A:" in body
 
     def test_a_mode_that_cannot_be_read_is_said(self, client, monkeypatch):  # noqa: F811
         """The route's own answer when the read raises (called in a request, its template
@@ -525,21 +528,24 @@ class TestTheAutoChipInARealBrowser:
                 bar_without = self.settled(b)
                 without = b.js(self.AI)
                 got["items"] = (bar_with, bar_without)
-                # Pressed, it opens Needs attention's control strip for the network. Premise
+                # Pressed, it opens the control strip for the network. Premise
                 # corrected (C3748, the operator, 2026-11-15: "a top-bar status chip only while
                 # Auto or the AI toggle is on, opening the strip"): it opened Settings ›
-                # Self-healing before the strip.
+                # Self-healing before the strip. Premise corrected again (C3789, the operator,
+                # 2026-11-15: "keep it only on Incidents"): Troubleshoot › Incidents' strip,
+                # its Self-healing switch on it, where Needs attention's was before.
                 b.go(srv.url(f"/v2/devices?list={NET}"))
                 b.wait_for("return !!document.querySelector('#nmas-heal-auto .heal-auto-chip')",
                            15)
                 b.click("#nmas-heal-auto a.heal-auto-chip")
-                opened = b.wait_for("return location.pathname === '/v2/' && "
-                                    "!!document.getElementById('control-strip') && "
-                                    "location.pathname + location.search + location.hash", 15)
+                opened = b.wait_for("return location.pathname === '/v2/incidents' && "
+                                    "!!document.querySelector('#control-strip [data-ctl=heal]')"
+                                    " && location.pathname + location.search + location.hash",
+                                    15)
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
-        assert opened == f"/v2/?list={NET}#control-strip", opened
+        assert opened == f"/v2/incidents?list={NET}#control-strip", opened
         auto, ai, bar = got["chip"], got["ai"], got["bar"]
         assert got["width"] == width, got
         if width > 640:

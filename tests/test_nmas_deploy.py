@@ -90,7 +90,8 @@ def _fetch_from_real_origin(world):
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
          wait=False, host_check=None, operations=None, to=None, setup=None, units=None,
-         store=None, override=None, readiness=None, seen=None, jobs=None):
+         store=None, override=None, readiness=None, seen=None, jobs=None, extra=(),
+         smoke=None):
     """*units*: ``(restart_unit, unit_of)`` for the checkout's other units (C1404); by default
     none is installed here, as on a host without the ZTP responder.
 
@@ -181,7 +182,8 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else [])
                     + (["--wait"] if wait else []) + (["--to", to] if to else [])
-                    + (["--override-ci-red", override] if override is not None else []),
+                    + (["--override-ci-red", override] if override is not None else [])
+                    + list(extra),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
                     ready=lambda: ready, host_check=host_check or (lambda repo: None),
@@ -189,7 +191,7 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
                     restart_unit=(units or (None, None))[0] or (lambda u: pytest.fail(u)),
                     unit_of=(units or (None, None))[1] or (lambda u: {"MainPID": 0, "start": "",
                                                                       "load": "not-found"}),
-                    store=store)
+                    store=store, smoke=smoke)
     return code, restarted, calls
 
 

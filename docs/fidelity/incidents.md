@@ -50,7 +50,18 @@ the AI switch's the (i) alone, its padding, gap and corner kept as the strip's
 help-link measurement, not by new shots. Templates sha256 before:
 `7887822430135b8b536f95de82bff6c7a4aeb2d794fb98659401da2c50ae9b86`.
 
-Templates sha256: `9319bd3d534aca97b6b2d01e5ed848ef23424b2fe8da9cadacbe8da22081700a`
+Compared again 2026-11-15 (the operator's item 2, C3789: "keep it only on Incidents"): the
+strip is this page's alone, drawn as compared; its template gains the run part Needs attention
+draws (no element of this page moves), its toggle records this page as where it was pressed,
+and the top bar's chip opens this page's strip. Compared by the templates' diff and
+tests/test_heal_batch.py's and tests/test_incidents_list_v2.py's pages (the chip pressed in a
+real browser lands on this page's switch), not by new shots; every region's verdict unchanged
+(log: The control strip on Troubleshoot › Incidents alone; Needs attention keeps its run part
+(C3789)). The hash below is over the working tree, which also holds the concurrent edit to
+base.html (the assistant's chat panel), compared by its own build. Templates sha256 before:
+`9319bd3d534aca97b6b2d01e5ed848ef23424b2fe8da9cadacbe8da22081700a`.
+
+Templates sha256: `22671d63f0fea528ab83b514243ff0f0acd1adbd5b898275bfe558e31c64f0c2`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs

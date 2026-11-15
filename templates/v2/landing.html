@@ -8,7 +8,9 @@
     <p class="sub">What is wrong, and what needs a person. Each item names its cause and the one action that addresses it.</p>
   </div>
 </div>
-{%- if strip %}{% with s = strip %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
+{#- C3789: the control strip is on Troubleshoot › Incidents alone; here, its run part, where G6's
+    batch card's press answers (`control_strip.run_view`). -#}
+{%- if batch_run %}{% with s = batch_run %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
 {% include "v2/_attention.html" %}
 {% include "v2/_recent.html" %}
 {% endblock %}

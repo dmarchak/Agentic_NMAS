@@ -6803,11 +6803,17 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
 
 def _incidents_listed(lst: str = None):
     """`incidents_list.rows` for the page's network, read once for both `_incidents_agree` and
-    `_fold_signals_into_problems`; None when it raised (each then reads, or changes nothing)."""
-    from modules import incidents_list
+    `_fold_signals_into_problems`; None when it raised (each then reads, or changes nothing).
+    Handed to `incidents_list.hold` as computed (C3788), so the Incidents page draws this
+    background's list instead of computing its own per request."""
+    from modules import incidents_list, invalidation
 
+    network = lst or _page_network()
     try:
-        return incidents_list.rows(lst or _page_network())
+        gen = invalidation.generation()
+        got = incidents_list.rows(network)
+        incidents_list.hold(network, got, gen)
+        return got
     except Exception as exc:                        # noqa: BLE001 (the rows stay as they are)
         log.warning("attention: the incidents could not be read: %s", exc)
         return None
@@ -6826,8 +6832,32 @@ PORT_PROBLEMS = ("err_disabled",)
 SEVERITY_LEVEL = {"critical": "danger", "warning": "warning", "info": "unknown"}
 
 
+def _failed_here(lst: str, iid: str) -> bool:
+    """Whether a fix already ran and failed on incident *iid* of *lst*: the incident page's
+    own test (`incident_page.failed_here`) over its troubleshooting record's attempts, each
+    drawn as its section draws it (`fixit.section._attempt`): the attempts alone, never the
+    whole section (measured on the host 2026-11-15 for a lost stream's incident: its view 0.83 s
+    warm, its attempts 0.05 s). Read once per incident whose row offers Re-subscribe. A record
+    that cannot be read says not known, logged: the row keeps its action."""
+    from modules import incident_page
+    from modules.fixit import incident as F
+    from modules.fixit import section
+
+    try:
+        found = incident_page.resolve(lst, iid)
+        inc = section.incident_of(lst, found)["incident"] if found["found"] == "page" else None
+        if inc is None:
+            return False
+        tried = F.attempts(inc, None)
+        return incident_page.failed_here(
+            {"attempts": [section._attempt(a, {}, {}) for a in tried["attempts"]]})
+    except Exception as exc:                        # noqa: BLE001 (the row keeps its action)
+        log.warning("attention: whether a fix failed on %s cannot be read: %s", iid, exc)
+        return False
+
+
 def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
-                                read=None) -> list:
+                                read=None, failed=None) -> list:
     """C3731 (measured on the host 2026-11-15 03:08 UTC: two switches' err-disabled ports each
     drawn as a Grafana "Interface down" row AND the incident's row, both danger): R4 folds
     related signals into the one problem. For each OPEN incident with a problem on a device (its
@@ -6838,8 +6868,12 @@ def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
     interface; a port problem's port its classification's, `PORT_PROBLEMS`) or, naming no
     interface, is one of the incident's own triggers folds under it, as its evidence (``folded``,
     ``folded_evidence``). An alert naming another object, or naming none and not one of the
-    incident's, stays a row. *listed* is `incidents_list.rows`'s answer and *read* the
-    incidents' read (tests). An unreadable store changes nothing."""
+    incident's, stays a row. Every other row linking the same incident (its hold, its lost
+    stream's row) folds under it too (C3791), and a Re-subscribe that already failed on the
+    incident is replaced by the incident's next action (*failed*, `_failed_here`). Its line
+    carries the problem's ``impact`` (C3790), and a member's level never raises it (C3792).
+    *listed* is `incidents_list.rows`'s answer and *read* the incidents' read (tests). An
+    unreadable store changes nothing."""
     from modules.heal import errdisable
     from modules.heal import incidents as INC
 
@@ -6860,22 +6894,56 @@ def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
         log.warning("attention: %s's incidents could not be read to fold: %s", lst, exc)
         return rows
     records = {i.get("id"): i for i in held.get("incidents") or []}
-    parents = {}
+    parents, linking = {}, {}
     for top in rows:
         iid = str((top.get("incident_page") or {}).get("id") or "")
-        if iid in problems and iid not in parents:
-            parents[iid] = top
+        if iid in problems and not top.get("batch") and not top.get("alike"):
+            linking.setdefault(iid, []).append(top)
+    for iid, rs in linking.items():
+        # C3791: a hold working as designed is a line of its incident, never its row (R2), so
+        # the row is the first one linking the incident that is not a hold, else the hold.
+        parents[iid] = next((x for x in rs if x.get("kind") != "held"), rs[0])
+    failed = failed or _failed_here
     taken = set()
     for iid, top in parents.items():
         r, p = problems[iid]
         b = r.get("bluf") or {}
         top["what"] = b.get("what") or top["what"]
-        # The incident's severity sets the row's level, except "info" (unknown): a row that
-        # needs a person's decision is never drawn unknown, so it keeps its own level, and only
-        # a folded member's higher severity raises it (below).
+        # C3790 (R2): the row's line says the problem's impact under its title, from Mercury's
+        # own table (`bluf`), never the AI.
+        if b.get("impact"):
+            top["impact"] = b["impact"]
+        # C3792 (the operator, 2026-11-15: "severity follows impact; one host offline is not
+        # an outage"): the incident's severity, from its impact table, IS the row's level; a
+        # folded alert's own label stays on that alert, its evidence, never the row's level.
+        # Except "info" (unknown): a row that needs a person's decision is never drawn
+        # unknown, so it keeps its own level.
         sev = SEVERITY_LEVEL.get(b.get("severity"))
         if sev and sev != "unknown":
             top["level"] = sev
+        # C3791 (the operator, 2026-11-15: "One problem, one row"): every other row linking
+        # the same incident (its hold, a lost stream's row) folds under this one, its own
+        # AI status not said again (each fact once).
+        same = [x for x in linking[iid] if x is not top]
+        for x in same:
+            x.pop("ai_status", None)
+            taken.add(id(x))
+        # R2: "Nothing that already failed on an incident is offered as its next action": a
+        # Re-subscribe that already ran and failed here (`incident_page.failed_here`, the
+        # incident page's own test) gives way to the incident's next action (its BLUF's fix,
+        # the action `_incidents_agree` gives an incident's own row), on the row and on each
+        # member folded with it.
+        # A row whose line offers Start AI troubleshooting instead (`first_action`'s
+        # ``start``) offers no Re-subscribe on its line already.
+        offers = [x for x in [top] + same
+                  if (x.get("action") or {}).get("open") == "resubscribe"
+                  and not (x.get("incident_page") or {}).get("start")]
+        if offers and failed(lst, iid):
+            nxt = {"label": (b.get("fix") or {}).get("label")
+                   or "Open the incident and decide what to do",
+                   "href": r.get("href") or ""}
+            for x in offers:
+                x["action"] = dict(nxt)
         rec = records.get(iid) or {}
         port = ((errdisable.of_record(rec).get("port") if p.get("condition") in PORT_PROBLEMS
                  else "") or p.get("object") or "")
@@ -6895,15 +6963,15 @@ def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
                     for m in members):
                 folded.append(other)
                 taken.add(id(other))
+        folded += same
+        for m in folded:
+            m["evidence_of"] = iid
         if folded:
             top["folded"] = list(top.get("folded") or []) + folded
             top["folded_evidence"] = len(folded)
-            # A fold never hides a worse signal (the review of Gate 1a): the row is at least
-            # as severe as the most severe row folded under it (`LEVELS`, most severe first).
-            worst = min((LEVELS.index(x["level"]) for x in [top] + folded
-                         if x.get("level") in LEVELS), default=None)
-            if worst is not None:
-                top["level"] = LEVELS[worst]
+            # C3792: no member's level raises the row's. Each member keeps its own level, its
+            # label drawn in the evidence (`_attention.html`), so the fold hides no signal (the
+            # review of Gate 1a); the row's severity is its problem's impact alone.
     return [r for r in rows if id(r) not in taken]
 
 

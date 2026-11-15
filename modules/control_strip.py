@@ -1,5 +1,7 @@
-"""The control strip (C3748; the operator's design, 2026-11-15): one shared component at the top
-of Needs attention and Troubleshoot › Incidents, for the page's network.
+"""The control strip (C3748; the operator's design, 2026-11-15): one component at the top of
+Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, the operator,
+2026-11-15). Needs attention, where G6's batch card is pressed, draws its run part alone
+(`run_view`): the press's answer and the batch's run, no toggle.
 
 - **Self-healing**: on is Auto for the network, for its default duration
   (`heal_auto_default_hours`, C3749; 1 hour by default), labelled "Auto until HH:MM"; off is
@@ -143,8 +145,18 @@ def view(network: str, now: float = None, **answer) -> dict:
             "why_not": why, "run": batch_run(network), "answer": answer}
 
 
+def run_view(network: str, **answer) -> dict:
+    """The strip's run part alone, for Needs attention (C3789; the operator, 2026-11-15: "The
+    control strip: remove it from Needs attention; keep it only on Incidents"): G6's batch card
+    is pressed there, so the press's answer and the batch's run on THE stepper are drawn in
+    place there, under `ANCHOR`, with no toggle. ``{"network", "anchor", "run", "answer",
+    "run_only"}``; a read of this server's job registry only."""
+    return {"network": network, "anchor": ANCHOR, "run": batch_run(network), "answer": answer,
+            "run_only": True}
+
+
 def set_heal(network: str, on: bool, *, actor: str, verified: str, person: bool,
-             page: str = "Needs attention", now: float = None) -> dict:
+             page: str = "Troubleshoot › Incidents", now: float = None) -> dict:
     """The Self-healing toggle: on, Auto for the default duration; off, Dry run. Through the
     policy's own write (`policy.apply_planned`), the person's reason the toggle's own words:
     ``{"ok", "nothing", "words"}``. Raises `policy.PolicyRefused` naming the gate."""

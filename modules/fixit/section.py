@@ -757,11 +757,11 @@ def auto_model(network: str, sw: dict = None) -> dict:
 
 def switch_href(network: str) -> str:
     """Where the network's automatic troubleshooting switch is (the operator, 2026-11-15:
-    every sentence naming it links straight to it): the AI toggle on Needs attention's control
-    strip for *network* (C3748, `control_strip`)."""
+    every sentence naming it links straight to it): the AI toggle on Incidents' control strip
+    for *network* (C3748, `control_strip`; on Incidents alone since C3789)."""
     from urllib.parse import quote
 
-    return f"/v2/?list={quote(network or '', safe='')}#ctl-ai"
+    return f"/v2/incidents?list={quote(network or '', safe='')}#ctl-ai"
 
 
 def _status(state: str, inc, network: str, plan, failed: list, last_start, legacy: dict,

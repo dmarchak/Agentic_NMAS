@@ -26,6 +26,7 @@ err-disable, and a cause still connected err-disables it again. No device, no ne
 - **Needs attention** (C3731): one row per incident, its alerts folded under it.
 """
 import os
+import re
 
 import pytest
 import yaml
@@ -443,7 +444,8 @@ class TestOneRowPerIncident:
 
     def test_a_proposal_row_under_an_info_incident_keeps_its_own_level(self):
         """A row that needs a person's decision ("needs your decision", warning) is never drawn
-        unknown because its incident's severity is info; a folded member's higher one raises it."""
+        unknown because its incident's severity is info; a folded member's higher one does not
+        raise it (C3792)."""
         from modules import attention as A
         listed = self.listed()
         listed["rows"][0]["bluf"]["severity"] = "info"
@@ -455,15 +457,155 @@ class TestOneRowPerIncident:
         rows = self.rows(level="danger")
         rows[0].update(kind="propose", level="warning")
         got = A._fold_signals_into_problems(rows, NET, listed, read=self.read)
-        assert got[0]["level"] == "danger"
+        # Premise corrected (C3792, the operator, 2026-11-15: "a folded alert's own label ...
+        # is shown as evidence under it, never as the row's severity"): a danger alert folded
+        # under it raised the row to danger before; the row keeps its own level, and the
+        # alert keeps its own, as evidence.
+        assert got[0]["level"] == "warning"
+        assert [m["level"] for m in got[0]["folded"]] == ["danger", "danger"]
 
     def test_a_fold_never_hides_a_worse_alert(self):
-        """A danger alert folded under a warning incident makes the incident's row danger
-        (the review of Gate 1a): a fold hides no severity."""
+        """A danger alert folded under a warning incident keeps its own level, marked as the
+        incident's evidence, so the fold hides no severity (the review of Gate 1a). Premise
+        corrected (C3792, the operator, 2026-11-15: "severity follows impact; one host offline
+        is not an outage ... a folded alert's own label is shown as evidence under it, never
+        as the row's severity"): it made the incident's row danger before; the row stays at
+        its problem's impact, warning."""
         from modules import attention as A
         got = A._fold_signals_into_problems(self.rows(level="danger"), NET, self.listed(),
                                             read=self.read)
-        assert got[0]["folded_evidence"] == 2 and got[0]["level"] == "danger"
+        assert got[0]["folded_evidence"] == 2 and got[0]["level"] == "warning"
+        assert [(m["level"], m["evidence_of"]) for m in got[0]["folded"]] == [
+            ("danger", "hi-e56afd12e1a6")] * 2
+
+    def test_the_row_carries_its_problems_impact_and_draws_warning_over_a_critical_alert(self):
+        """C3790 and C3792, drawn: the row's line is its title, then its problem's impact
+        (Mercury's table), then the AI's status, each its own element under the title; the row
+        is Warning, and each folded alert keeps its Critical label, marked as the incident's
+        evidence."""
+        from tests.test_needs_attention import _panel
+
+        from modules import attention as A
+        impact = B.bluf({"problem": P.Problem(device="s1", object="Gi1/0",
+                                              condition="err_disabled", affected="h1")})["impact"]
+        assert impact == ("h1 has no network until the port is recovered; the rest of the "
+                          "network is unaffected")
+        listed = self.listed()
+        listed["rows"][0]["bluf"]["impact"] = impact
+        rows = self.rows(level="danger")
+        for r in rows:          # what the row constructor gives every row (`attention.row`)
+            r.update(action={"label": f"Open {r['devices'][0]}"}, cause=r["what"])
+        got = A._fold_signals_into_problems(rows, NET, listed, read=self.read)
+        assert got[0]["impact"] == impact
+        got[0]["ai_status"] = {"state": "ended", "since": "2026-11-15T17:00:00Z",
+                               "words": "Mercury's fix failed once. Ask it again, or hand over."}
+        html = _panel({"rows": got, "sources": [], "badge": {"n": len(got)}})
+        line = html.split('data-attention-row="heal:x"')[1].split("</summary>")[0]
+        assert '<span class="att-level">Warning</span>' in line, line
+        title = line.index('class="att-what"')
+        assert title < line.index('class="att-impact') < line.index('class="att-ai'), line
+        assert f'title="{impact}">{impact}</span>' in line.replace("&#39;", "'")
+        assert "AI: Mercury's fix failed once." in line.replace("&#39;", "'")
+        # Under the row (the other port's own "Interface down" row stands apart, at Critical).
+        parent = html.split('data-attention-row="heal:x"')[1]
+        for member in ("grafana:Critical syslog received", "grafana:Interface down"):
+            sub = parent.split(f'data-attention-row="{member}"')[1].split("</summary>")[0]
+            assert re.search(r'<span class="att-level" data-evidence-of="hi-e56afd12e1a6"'
+                             r'[^>]*>Critical</span>', sub), sub
+        assert "2 alerts under this incident, as its evidence" in html
+
+    # C3791 (the operator, 2026-11-15, from r7's two rows on the host at 17:09 UTC: "One
+    # problem, one row (C3731), and never offer an action that already failed on this
+    # incident (R2)").
+    IID = "hi-22cfdc299000"
+
+    def stream_and_hold(self):
+        ai = {"state": "ended", "since": "2026-11-15T17:00:00Z",
+              "words": "Mercury's fix failed twice. Ask the AI again, or hand over."}
+        page = {"id": self.IID, "list": NET}
+        stream = {"id": "grafana:r7-streams", "source": "grafana", "kind": "incident",
+                  "level": "warning", "devices": ["r7"], "networks": {"r7": [NET]},
+                  "what": "r7: telemetry streams 101 and 102 lost",
+                  "action": {"label": "Re-subscribe r7's telemetry", "open": "resubscribe",
+                             "device": "r7", "subs": ["101", "102"]},
+                  "operands": {"members": [
+                      {"rule": "NMAS telemetry stream lost: r7 subscription 101",
+                       "device": "r7", "interface": ""}]},
+                  "incident_page": dict(page), "ai_status": dict(ai)}
+        hold = {"id": "heal:hd-7080f74e58d2", "source": "heal", "kind": "held",
+                "level": "warning", "devices": ["r7"], "networks": {"r7": [NET]},
+                "what": "Self-healing holds r7 on Default: the device's golden departs from "
+                        "its intent",
+                "action": {"label": "Adopt the change into r7's intent"},
+                "incident_page": dict(page), "ai_status": dict(ai)}
+        # The hold first: a hold is never the problem's row while another row links it.
+        return [hold, stream]
+
+    def listed_r7(self):
+        return {"unreadable": [], "rows": [{
+            "id": self.IID, "resolved": False,
+            "href": f"/v2/incident/{self.IID}?list={NET}",
+            "bluf": {"what": "r7: telemetry streams 101 and 102 lost", "severity": "warning",
+                     "impact": "Mercury can't see r7's interfaces or CPU; traffic is unaffected",
+                     "fix": {"kind": "", "label": "Open the incident and decide what to do"},
+                     "problem": {"device": "r7", "object": "telemetry streams 101 and 102",
+                                 "condition": "telemetry_lost"}}}]}
+
+    def read_r7(self, _net):
+        return {"incidents": [{"id": self.IID, "triggers": [
+            {"kind": "alert", "rule": "NMAS telemetry stream lost: r7 subscription 101"}]}]}
+
+    def test_an_incidents_hold_folds_under_its_one_row(self):
+        from modules import attention as A
+        asked = []
+        got = A._fold_signals_into_problems(
+            self.stream_and_hold(), NET, self.listed_r7(), read=self.read_r7,
+            failed=lambda lst, iid: asked.append((lst, iid)) or False)
+        assert [r["id"] for r in got] == ["grafana:r7-streams"], [r["id"] for r in got]
+        top = got[0]
+        assert [m["id"] for m in top["folded"]] == ["heal:hd-7080f74e58d2"]
+        assert top["folded"][0]["evidence_of"] == self.IID
+        assert "ai_status" in top and "ai_status" not in top["folded"][0], "said once"
+        assert asked == [(NET, self.IID)], "asked once, for the incident"
+        # Not failed here: Re-subscribe stays its action.
+        assert top["action"]["open"] == "resubscribe" and A.first_action(top) == "resubscribe"
+
+    def test_a_resubscribe_that_failed_here_gives_way_to_the_incidents_next_action(self):
+        from modules import attention as A
+        got = A._fold_signals_into_problems(self.stream_and_hold(), NET, self.listed_r7(),
+                                            read=self.read_r7, failed=lambda lst, iid: True)
+        top = got[0]
+        assert top["action"] == {"label": "Open the incident and decide what to do",
+                                 "href": f"/v2/incident/{self.IID}?list={NET}"}, top["action"]
+        assert A.first_action(top) not in ("resubscribe", "start"), A.first_action(top)
+
+    def test_whether_a_fix_failed_here_is_the_incident_pages_own_test(self, monkeypatch):
+        from modules import attention as A
+        from modules import incident_page as IP
+        from modules.fixit import incident as F
+        from modules.fixit import section
+
+        def attempt(state, passed):
+            """One attempt as the troubleshooting record keeps it (`fixit.incident.attempts`)."""
+            return {"n": 1, "run": "run-1", "device": "r7", "state": state, "passed": passed,
+                    "at": "2026-11-15T17:00:00Z", "finished_at": None, "proposal": "",
+                    "operation": "telemetry-resubscribe", "params": {}, "source": "person",
+                    "actor": "op@example.com", "outcome": "", "words": ""}
+        monkeypatch.setattr(IP, "resolve", lambda lst, iid: {"found": "page", "id": iid})
+        monkeypatch.setattr(section, "incident_of", lambda lst, found: {"incident": object()})
+        for attempts, want in (([attempt("ended", False)], True),
+                               ([attempt("ended", True)], False),
+                               ([attempt("running", False)], False), ([], False)):
+            monkeypatch.setattr(F, "attempts", lambda inc, resolved, a=attempts: {
+                "attempts": a})
+            assert A._failed_here(NET, self.IID) is want, attempts
+
+        def boom(inc, resolved):
+            raise OSError("the record cannot be read")
+        monkeypatch.setattr(F, "attempts", boom)
+        assert A._failed_here(NET, self.IID) is False, "not known keeps the row's action"
+        monkeypatch.setattr(section, "incident_of", lambda lst, found: {"incident": None})
+        assert A._failed_here(NET, self.IID) is False, "no record, no attempt"
 
     # C3731's widening (the operator, 2026-11-15): every problem kind folds its own signals.
     @pytest.mark.parametrize("condition", ["link_down", "interface_shut", "port_stuck"])

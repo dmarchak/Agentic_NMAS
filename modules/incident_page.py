@@ -1006,9 +1006,9 @@ def _held_attention(network: str) -> dict:
     never computed for this page, the page-speed rule), masked and its people named, as the
     list's own page draws it; a run's hold is the request's to mark (`routes.v2._attention`)."""
     from modules import attention_store, display_names
-    from modules.outbound import mask_payload
 
-    return display_names.people_payload(mask_payload(attention_store.read(network)))
+    # Masked once per held value (`read_masked`, C3788), as the list's own page reads it.
+    return display_names.people_payload(attention_store.read_masked(network))
 
 
 def page(network: str, incident_id: str, attention: dict = None) -> dict:

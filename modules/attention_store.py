@@ -256,6 +256,32 @@ def read(network: str = None) -> dict:
     return copy.deepcopy(held)
 
 
+#: `read_masked`'s masked copy of each network's held value, by the value it masked (C3788).
+_masked = {}
+
+
+def read_masked(network: str = None) -> dict:
+    """`read`, masked on the way out (`outbound.mask_payload`, what every drawing of the page
+    does), the mask applied ONCE per held value and kept beside it (C3788: 1.6 s of every
+    Needs attention request on the host was masking the same 104 KB value again); a copy for
+    this caller. "Reading …" and a test session's live value are masked each time."""
+    from modules.outbound import mask_payload
+
+    name = network or _network()
+    with _lock:
+        held = _net(name).value
+    if COMPUTE_ON_READ or held is None:
+        return mask_payload(read(name))
+    read(name)                                    # counted as a view, its wake rule kept
+    with _lock:
+        kept = _masked.get(name)
+    if kept is None or kept[0] is not held:
+        kept = (held, mask_payload(copy.deepcopy(held)))
+        with _lock:
+            _masked[name] = kept
+    return copy.deepcopy(kept[1])
+
+
 def badge(network: str = None):
     """*network*'s badge as held (`attention.badge_of`'s), a copy with ``at``, when it was
     assembled (a page drops a pushed badge older than the one it drew); None before its first

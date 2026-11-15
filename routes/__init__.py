@@ -164,7 +164,7 @@ def register_blueprints(app) -> list:
     from routes.incidents_v2 import bp as incidents_v2_bp
     # The plan engine (modules/plan_engine.py): a plan previewed together, approved once.
     from routes.plans_v2 import bp as plans_v2_bp
-    # The control strip (C3748) and G6's one-button batch, on Needs attention and Incidents.
+    # The control strip (C3748), on Incidents, and G6's one-button batch, on Needs attention.
     from routes.control_v2 import bp as control_v2_bp
     # Saved plans (Gate 1b, C3696, C3763): save a verified run as a self-heal script or a
     # reusable action, promote a script, approve a provisional shape.

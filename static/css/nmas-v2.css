@@ -321,7 +321,12 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ctl-line { color: var(--ink); opacity: .8; }
 /* Gate 2: a row's "AI investigating since" or its outcome (Incidents, Needs attention). */
 .inc-row-ai, .att-ai { display: block; color: var(--accent); font-size: 12.5px; }
-.att-ai { display: inline; margin-left: 8px; }
+/* C3790 (R2): on a Needs attention row the title, its age and its action are the line; the
+   problem's impact and then the AI's status each one line under the title, cut with an
+   ellipsis (the whole on hover), never a column of the line that squeezes the title away. */
+.att-line .att-impact, .att-line .att-ai { grid-column: 2 / -1; order: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-line .att-impact { color: var(--ink-2); font-size: 13px; }
 /* Gate 2: Settings › AI's AI troubleshooting card for one network (board G2b). */
 .ai-ts { border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 14px;
   margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -1475,6 +1480,8 @@ button.menu-item[disabled]:hover { background: none; }
 .run-mark-failed { background: var(--danger); border-color: var(--danger); }
 /* A decision that worked and hands the work to a person (a can't-fix): amber, never red (C3454). */
 .run-mark-needs { background: var(--warn-mark); border-color: var(--warn-mark); }
+/* A guard or hold stopping a decision, working as designed (R2): neutral, never red. */
+.run-mark-held { background: var(--ink-3); border-color: var(--ink-3); }
 .run-mark-running { border-color: var(--accent); border-top-color: var(--accent-soft); }
 /* Each step at least 76 px, wrapping onto a second row when an operation has more steps than
    fit (a deploy's twelve ran into each other in one row, the operator's shot, 2026-10-13);
@@ -1592,9 +1599,9 @@ button.menu-item[disabled]:hover { background: none; }
 .att-held { font-size: 13px; }
 /* A held row's run, on a second line under its title (the operator, 2026-11-11); the right
    side holds Open the run alone. */
-.att-line .att-running { grid-column: 2 / 4; grid-row: 2; font-size: 13px; color: var(--ink-2); }
+.att-line .att-running { grid-column: 2 / 4; order: 1; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 700px) {
-  .att-line .att-running { grid-column: 1 / -1; grid-row: auto; }
+  .att-line .att-running, .att-line .att-impact, .att-line .att-ai { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
   .run-row, .run-final { grid-template-columns: 1fr; gap: 6px; }

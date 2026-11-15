@@ -4,9 +4,9 @@ When several devices of a network depart from their intent at once, self-healing
 all (guard 6, many devices at once): a fleet-wide departure is escalated, never healed by
 itself. Each hold keeps what its fix would send. Needs attention then shows one card for the
 network: **"N devices have faults. Mercury can fix M."**, with guard 6's words and the exact
-fix for each device, and one button, **Turn on self-healing and fix all**. The **control
-strip**, at the top of Needs attention and of the Incidents page, switches self-healing and
-automatic AI troubleshooting for the page's network.
+fix for each device, and one button, **Turn on self-healing and fix all**; the card is drawn
+only while such a batch is held. The **control strip**, at the top of the Incidents page,
+switches self-healing and automatic AI troubleshooting for the page's network.
 
 ![Turn on self-healing and fix all: guard 6 held several devices that departed at once, and each hold kept what its fix would send; Needs attention's card says how many devices have faults and how many Mercury can fix, with each program, before you press; you press once, as a verified person who may change self-healing, bound to the card's hash; the AI starts on each incident with no fix, as your press under every cap; a job turns on Auto for the network's default duration and records the approval, then fixes one device first through the heal, held and verified, and only then the rest at once, each held and verified, starting none after a failure; guard 10 still counts every heal; the outcome is recorded and the strip shows each step.](diagrams/heal-batch.svg)
 
@@ -28,7 +28,8 @@ dialog:
   held to the incident's AI cap, the day cap and the calls already in flight. It only
   proposes; nothing it proposes runs until a person approves it on the incident's page. A
   start a cap refuses is said on that incident's page, naming the cap.
-- The rest runs as one job, each step on the strip's stepper as it happens, so a long fix never
+- The rest runs as one job, each step on the stepper above Needs attention's list (and on the
+  Incidents page's strip) as it happens, so a long fix never
   holds the page or the tunnel's request open:
 
 1. `auto`: self-healing is turned on in Auto for the network for its default duration (Auto
@@ -90,4 +91,4 @@ stay acknowledged. The gear opens the network's AI troubleshooting card in Setti
 
 While self-healing is in Auto, or AI troubleshooting starts by itself, on any network, the top
 bar shows a status chip ("Self-healing: Auto until …", "AI on"). It opens that network's
-control strip on Needs attention. With neither on, there is no chip.
+control strip on the Incidents page. With neither on, there is no chip.

@@ -111,8 +111,8 @@ def _press_switch(world, html):
 
 class TestTheSwitchIsLinkedWhereItIsNamed:
     """The operator, 2026-11-15 (r7's card): every sentence naming the automatic
-    troubleshooting switch links straight to it: the AI toggle on Needs attention's control
-    strip for that network."""
+    troubleshooting switch links straight to it: the AI toggle on Troubleshoot › Incidents'
+    control strip for that network (on Needs attention's before C3789)."""
 
     def test_the_status_and_the_costs_line_link_to_this_network_s_switch(self, world):
         import re
@@ -123,7 +123,10 @@ class TestTheSwitchIsLinkedWhereItIsNamed:
         r, html = page(world.client, iid)
         assert r.status_code == 200
         html = unescape(html)
-        want = f"/v2/?list={NET}#ctl-ai"
+        # Premise corrected (C3789, the operator, 2026-11-15: "The control strip: remove it
+        # from Needs attention; keep it only on Incidents"): the switch is on Troubleshoot ›
+        # Incidents' strip, where Needs attention's was before.
+        want = f"/v2/incidents?list={NET}#ctl-ai"
         status = re.search(r'<p class="fixit-status"[^>]*>(.*?)</p>', html, re.S).group(1)
         assert "automatic troubleshooting is off for this network" in re.sub(
             r"<[^>]+>", "", status), status

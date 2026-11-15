@@ -413,13 +413,13 @@ RECENT_RECEIPTS = 5
 
 def _attention() -> dict:
     from modules import attention_store
-    from modules.outbound import mask_payload
 
-    # Rows quote their sources' own words: masked on the way out. The value the background
-    # holds, never computed for this request (C3166): "Reading …" before its first value.
+    # Rows quote their sources' own words: masked on the way out, once per held value
+    # (`read_masked`, C3788). The value the background holds, never computed for this request
+    # (C3166): "Reading …" before its first value.
     from modules import display_names
     # And every person in those words by display name (board E2a): a copy, as the mask's is.
-    a = display_names.people_payload(mask_payload(attention_store.read()))
+    a = display_names.people_payload(attention_store.read_masked())
     # A row whose action would change a device a run holds NOW draws it disabled, with the
     # run (the operator, 2026-11-11): read for this request from the holds themselves, never
     # kept with the held value, which a hold's start does not move.
@@ -475,13 +475,14 @@ def _page(template: str, **ctx):
 
 @bp.route("/", methods=["GET"])
 def landing():
-    """Needs attention: what is wrong and what needs a person, worst first; the control strip
-    (C3748) for the page's network above it."""
+    """Needs attention: what is wrong and what needs a person, worst first. The control strip
+    (C3748) is on Troubleshoot › Incidents alone (C3789); here, its run part, where G6's batch
+    card's press answers (`control_strip.run_view`)."""
     from modules import control_strip
     from routes.device_v2 import _page_ref
 
     return _page("v2/landing.html", a=_attention(), recent=_recent(), active_nav="attention",
-                 strip=control_strip.view(_page_ref().name))
+                 batch_run=control_strip.run_view(_page_ref().name))
 
 
 @bp.route("/recent", methods=["GET"])

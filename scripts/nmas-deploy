@@ -1308,6 +1308,78 @@ def offline_verdict(repo, target, run=subprocess.run):
 
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The fast lane (the operator, 2026-11-15, temporary until the operator ends it)
+# ---------------------------------------------------------------------------
+
+#: The fewest words a fast-lane deploy's TESTS may say (the tests run for the touched files
+#: and their result: "pytest 12 files, 340 passed" is five).
+FAST_LANE_MIN_WORDS = 4
+#: The smoke check's bound, reasoned, not measured yet: it reads the running release's own
+#: answers after its readiness, which the deploy has already waited for; the first fast-lane
+#: deploy's run measures it (recorded in its row), and the bound moves to 2.5x that.
+SMOKE_BOUND_S = 150
+
+
+def _probe_helpers():
+    """`nmas-tier2-probe`'s helpers, loaded from its file: the hypervisor's nightly backup
+    window is defined there once (02:30 to 03:30 America/Denver, the zone read at the instant
+    asked, refusing when it cannot be read)."""
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nmas-tier2-probe")
+    loader = SourceFileLoader("nmas_tier2_probe", path)
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def in_backup_window(now: float) -> bool:
+    """Whether *now* is inside the nightly backup window, 02:30 to 03:30 America/Denver
+    (`nmas-tier2-probe`'s one definition), or the zone cannot be read: a fast-lane deploy or a
+    revert is refused inside it."""
+    return _probe_helpers().in_backup_window(now)
+
+
+def backup_window_words(now: float) -> str:
+    return _probe_helpers().backup_window_words(now)
+
+
+def previous_deployed(repo, head):
+    """The commit this checkout was deployed from to reach *head*: the deploy record's newest
+    row whose deploy ended well (exit 0) and moved it to *head* from another commit; "" when
+    the record names none."""
+    path = os.path.join(repo, "data", "deploy_audit.jsonl")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+    except (OSError, ValueError):
+        return ""
+    for r in reversed(rows):
+        if r.get("exit") == OK and r.get("to") == head and r.get("from") \
+                and r.get("from") != head:
+            return r["from"]
+    return ""
+
+
+def run_smoke(repo, target):
+    """``(ok, words)``: the checkout's smoke check (`scripts/nmas-post-deploy-check`) on the
+    running *target*, in this interpreter, bounded by `SMOKE_BOUND_S`; ok only on its exit 0
+    and its ``SMOKE OK`` line."""
+    try:
+        out = subprocess.run([sys.executable, os.path.join(repo, "scripts",
+                                                           "nmas-post-deploy-check"),
+                              target, "--checkout", repo],
+                             capture_output=True, text=True, timeout=SMOKE_BOUND_S)
+    except subprocess.TimeoutExpired:
+        return False, f"the smoke check did not finish within {SMOKE_BOUND_S} s"
+    except OSError as exc:
+        return False, f"the smoke check could not run: {exc}"
+    said = (out.stdout + out.stderr).strip()
+    return out.returncode == 0 and "SMOKE OK" in said, said
+
+
 def audit(repo, row):
     path = os.path.join(repo, "data", "deploy_audit.jsonl")
     try:
@@ -1484,7 +1556,7 @@ def wait_for_ready(health, clock, sleep, timeout=READY_BOUND_S, interval=2):
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
          clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None,
-         operations=None, restart_unit=None, unit_of=None, store=None) -> int:
+         operations=None, restart_unit=None, unit_of=None, store=None, smoke=None) -> int:
     # In the order it happened: over SSH stdout was block-buffered and the
     # verdict (stderr) printed first, above the lines that led to it.
     if hasattr(sys.stdout, "reconfigure"):
@@ -1508,7 +1580,21 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                     help="the operator's override when the two CI runners disagree on the "
                          "target (one passed it, the other failed it): deploys on the green, "
                          "recording REASON in the audit row; never over a red with no green")
+    ap.add_argument("--fast-lane", metavar="TESTS", default=None,
+                    help="the operator's temporary fast lane (2026-11-15): deploy without the "
+                         "gate's or CI's verdict, TESTS naming the tests run for the touched "
+                         "files and their result; recorded with the files; refused in the "
+                         "nightly backup window; the smoke check runs after the restart, and a "
+                         "red smoke reverts to the previous deployed commit")
+    ap.add_argument("--revert", action="store_true",
+                    help="put the checkout back at the commit deployed before the current one "
+                         "(the deploy record's last deploy that moved to HEAD: its from), and "
+                         "restart; refused in the nightly backup window")
     args = ap.parse_args(argv)
+    if args.fast_lane is not None and len(args.fast_lane.split()) < FAST_LANE_MIN_WORDS:
+        print(f"--fast-lane needs the tests run and their result, at least "
+              f"{FAST_LANE_MIN_WORDS} words; given {args.fast_lane!r}. Refused.", file=sys.stderr)
+        return LOCAL_REFUSED
     # The final SDN lab's laptop kit (the operator, 2026-11-05: "nmas-deploy refuses to run from
     # this installation"): its worktree carries LAB_KIT_MARKER, and nothing is ever deployed
     # from it, whichever checkout it would deploy (lab/sdn-laptop/kit init writes the marker).
@@ -1527,7 +1613,8 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     # started_at is when the RUN began, ended_at when its row is written: two
     # instants, millisecond resolution, so neither can be read as the other.
     row = {"started_at": iso_ms(clock()), "user": getpass.getuser(),
-           "gate": "offline" if args.offline else "ci"}
+           "gate": ("revert" if args.revert else "fast-lane" if args.fast_lane is not None
+                    else "offline" if args.offline else "ci")}
     if args.offline:
         row["parallel"] = parallel_available(repo)[0]
 
@@ -1544,7 +1631,7 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                               "again when it has finished (Help > About shows the last update)")
     try:
         code = _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
-                       ready, operations, restart_unit, unit_of, store)
+                       ready, operations, restart_unit, unit_of, store, smoke)
     finally:
         os.close(lock)
     # LAST on screen: the host steps, when the checkout is at the target (a
@@ -1651,7 +1738,12 @@ def take_lock(repo):
 
 
 def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready,
-            operations=None, restart_unit=None, unit_of=None, store=None):
+            operations=None, restart_unit=None, unit_of=None, store=None, smoke=None):
+    fast = getattr(args, "fast_lane", None) is not None
+    back = bool(getattr(args, "revert", False))
+    if (fast or back) and in_backup_window(clock()):
+        return finish(LOCAL_REFUSED, "refused: inside the hypervisor's nightly backup window, "
+                                     f"{backup_window_words(clock())}; nothing moved")
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)
@@ -1680,19 +1772,43 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                            tip]).returncode != 0:
             return finish(LOCAL_REFUSED, f"{target[:10]} is not on origin/main ({tip[:10]}). "
                                          "Refused.")
+    if back:
+        # The one-command revert (the operator's fast lane, 2026-11-15): the commit deployed
+        # before the current one, by the deploy record, whatever gate deployed it.
+        target = previous_deployed(repo, head)
+        if not target:
+            return finish(LOCAL_REFUSED, f"--revert: the deploy record names no deploy that "
+                                         f"moved this checkout to {head[:10]} from another "
+                                         "commit, so there is nothing to put it back to. Refused.")
     row.update({"from": head, "to": target})
-    if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head, target]).returncode != 0:
+    if not back and subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head,
+                                    target]).returncode != 0:
         return finish(LOCAL_REFUSED, f"{'the target' if args.to else 'origin/main'} "
                                      f"({target[:10]}) is not a fast-forward of "
                                      f"HEAD ({head[:10]}). Refused.")
 
     override = getattr(args, "override_ci_red", None)
-    code, message = (offline_verdict(repo, target, run) if args.offline
-                     else ci_verdict(repo, target, get, store, override))
+    if fast or back:
+        # Neither the gate's verdict nor CI's is asked (the fast lane; a revert goes back to a
+        # release already deployed): full CI keeps running on main, and a red on the running
+        # release is Needs attention's warning (`ci_agreement`), not a stop.
+        changed = ([] if head == target else
+                   git(repo, "diff", "--name-only", head, target).split())
+        row["fast_lane"] = {"tests": args.fast_lane if fast else "", "files": changed,
+                            "commits": len(git(repo, "log", "--format=%H",
+                                               f"{target}..{head}" if back
+                                               else f"{head}..{target}").split())}
+        code, message = OK, (f"{'REVERT' if back else 'FAST LANE'}: {target[:10]}, no gate or "
+                             f"CI verdict asked (the operator's temporary fast lane); "
+                             f"{len(changed)} file(s) changed"
+                             + (f"; tests: {args.fast_lane}" if fast else ""))
+    else:
+        code, message = (offline_verdict(repo, target, run) if args.offline
+                         else ci_verdict(repo, target, get, store, override))
     print(message)
     if args.wait and not args.offline and code == CI_PENDING:
         code, message = _wait_for_ci(repo, target, get, clock, sleep, row, store, override)
-    if not args.offline:
+    if not args.offline and not (fast or back):
         row["ci_source"] = verdict_source(message)      # which runner's verdict this was
         if row["ci_source"] == "override":
             # The operator's override, recorded on the deploy (the operator, 2026-11-03).
@@ -1743,7 +1859,11 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
         return finish(LOCAL_REFUSED, "NOT DEPLOYED: " + venv_refusal(venv, target, repo)
                       + f". The checkout was NOT moved: still at {head[:10]}.")
 
-    if head != target:
+    if head != target and back:
+        git(repo, "reset", "--hard", "--quiet", target)
+        what = f"reverted {head[:10]} -> {target[:10]}"
+        print(what)
+    elif head != target:
         git(repo, "merge", "--ff-only", "--quiet", target)
         what = f"deployed {head[:10]} -> {target[:10]}"
         print(what)
@@ -1830,6 +1950,29 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                      else "")
                   + (f"; kept {', '.join(os.path.basename(d) for d in held)} (a running process "
                      "has it loaded)" if held else "") + ".")
+    if fast and head != target:
+        # "Never on a red smoke" (the operator's fast lane, 2026-11-15): the smoke check runs on
+        # the release now running, and a red one puts the previous release back at once.
+        smoked, said = (smoke or run_smoke)(repo, target)
+        row["smoke"] = {"ok": smoked, "words": said[-400:]}
+        print(said)
+        if not smoked:
+            git(repo, "reset", "--hard", "--quiet", head)
+            again = unit()
+            try:
+                (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE],
+                                                    check=True, capture_output=True,
+                                                    text=True)))()
+            except (subprocess.CalledProcessError, OSError) as exc:
+                return finish(UNHEALTHY, f"{what}, the smoke check was RED, and the revert to "
+                                         f"{head[:10]} did not restart: {exc}")
+            back_ok, _seen, back_why = wait_for_running(head, again["MainPID"],
+                                                        health or _health, unit, clock, sleep)
+            row["reverted"] = {"to": head, "running": back_ok, "why": back_why}
+            return finish(UNHEALTHY, f"{what}, but the smoke check was RED, so it was reverted "
+                                     f"to {head[:10]} ("
+                                     + ("running again" if back_ok else
+                                        f"NOT confirmed running: {back_why}") + f"). {said[-300:]}")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
                       f"running {target[:10]} since {state.get('start')} (systemd). {message}"
                       + pruned)

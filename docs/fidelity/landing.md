@@ -218,7 +218,24 @@ Compared by the templates' diff and the browser's help-link measurement, not by 
 every region's verdict unchanged. Templates sha256 before:
 `6dff64c0b455b85ea7fd65bbcdbfededea26394753e2426c6bf88653029fab82`.
 
-Templates sha256: `8a194fb20d7fc8ba29ec8ce5d9beffcda2f1494080a38655259567d5df230d5f`
+**Compared again 2026-11-15 (the operator's items 2 to 5, C3789 to C3792):** the control strip
+leaves this page (on Troubleshoot › Incidents alone); its run part stays, drawn above the list
+only once G6's card was pressed or its batch runs. An item's line keeps its title, age and
+action; under the title, the problem's impact and then the AI's status, one line each (the AI's
+status had squeezed the title to 0 px at 1280, measured by
+tests/test_attention_sections.py's real-browser test, which now reads the title whole-width at
+1280 and 390). An incident's other rows fold under its one row; an item folded as evidence
+keeps its level, drawn as its label. Compared by the templates' diff and those tests, not by
+new shots; every other region's verdict unchanged. Templates sha256 before:
+`8a194fb20d7fc8ba29ec8ce5d9beffcda2f1494080a38655259567d5df230d5f`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The control strip (C3789) | board G2: at the top of Needs attention and Incidents | on Incidents alone; here, the run part of a pressed batch, nothing otherwise | **deviation** (log: The control strip on Troubleshoot › Incidents alone; Needs attention keeps its run part (C3789)) |
+| The item's line under its title (C3790) | one line (board NA-R) | the same line; the impact and the AI's status each one line under the title | **deviation** (log: Needs attention: the line's title first, its impact and the AI's status each one line under it (C3790)) |
+| An incident's items (C3791, C3792) | not on board NA-R | one row per incident, its level its impact, each folded item's own level its label | **deviation** (log: Needs attention: one row per incident, its severity its impact, a failed fix not offered again (C3791, C3792)) |
+
+Templates sha256: `fa865767a3eb8424621f3b5fb3c81fba9f3882f5c0345f97b701534de6c3ba6b`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

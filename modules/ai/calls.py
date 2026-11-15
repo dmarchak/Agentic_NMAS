@@ -32,6 +32,22 @@ def _path() -> str:
     return os.path.join(DATA_DIR, "ai_calls.jsonl")
 
 
+def version():
+    """What changes whenever a row is appended to the record, for a reader that holds a value
+    computed from it (C3788: the measured cost per call, read 24 to 26 times per Incidents page):
+    the file's identity, size and modification time; None on the records database or when the
+    file cannot be read, so such a reader computes again every time, never holds a stale one."""
+    from modules import records_db
+
+    try:
+        if records_db.backend(STORE) == records_db.POSTGRES:
+            return None
+        st = os.stat(_path())
+    except Exception:                               # noqa: BLE001 (no version: compute again)
+        return None
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
 def new_id() -> str:
     return "ai-" + uuid.uuid4().hex[:16]
 

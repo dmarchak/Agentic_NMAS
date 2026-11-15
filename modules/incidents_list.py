@@ -47,8 +47,10 @@ alert incident (``al-``) and an SDN incident (``resp-``) are not listed until th
 (board T, part 3).
 """
 
+import copy
 import logging
 import os
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -273,6 +275,48 @@ def rows(network: str) -> dict:
     return {"rows": out, "folded": folded, "unreadable": unreadable}
 
 
+#: How long a held list is drawn before it is read again with nothing announced (C3788): the
+#: list's own states move with time too (an investigation past its bound, a cap's day), so a
+#: held list never outlives this. 30 s, the attention store's fastest viewed cadence.
+HOLD_S = 30.0
+#: The list as last computed, by network: ``(generation, monotonic, epoch, value)``.
+_held = {}
+_held_lock = threading.Lock()
+
+
+def held(network: str) -> dict:
+    """`rows` for *network* as last computed, held (the operator, 2026-11-15, C3788: the
+    Incidents page computed its list per request, 8 to 10 s on the host): the held value while
+    nothing has changed since it was computed (`invalidation.generation`: every announcement and
+    every mutating route's declared change moves it) and for at most `HOLD_S`; else `rows`
+    computed now and held. Needs attention's background recompute computes it too
+    (`attention._incidents_listed`), so the page usually finds it held. A copy for the caller,
+    with ``held_at`` (epoch seconds) when it was computed."""
+    from modules import attention_store, invalidation
+
+    now = time.monotonic()
+    gen = invalidation.generation()
+    with _held_lock:
+        h = _held.get(network)
+    # A test session computes on every read, as Needs attention's store does
+    # (`attention_store.COMPUTE_ON_READ`: a test writes a store and reads the page again).
+    if h is not None and h[0] == gen and now - h[1] < HOLD_S \
+            and not attention_store.COMPUTE_ON_READ:
+        return dict(copy.deepcopy(h[3]), held_at=h[2])
+    got = rows(network)
+    with _held_lock:
+        _held[network] = (gen, now, time.time(), got)
+    return dict(copy.deepcopy(got), held_at=time.time())
+
+
+def hold(network: str, value: dict, generation: int) -> None:
+    """Hold *value* (`rows`' answer, computed while `invalidation.generation` was
+    *generation*) for `held`: the attention store's recompute hands its own list here, so the
+    Incidents page reads it rather than computing it again."""
+    with _held_lock:
+        _held[network] = (generation, time.monotonic(), time.time(), copy.deepcopy(value))
+
+
 def _found(held: list, entries: list, decided: list) -> tuple:
     """Each listed incident as `incident_page.resolve` finds one (``{"id", "incident",
     "entry", "decisions", "advisories"}``), from the three stores' rows as read once, and how
@@ -353,7 +397,7 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
     tab = tab if tab in TABS else "open"
     q = " ".join(str(q or "").split())[:QUERY_CHARS]
     device = str(device or "").strip()[:128]
-    got = rows(network)
+    got = held(network)
     on_tab = [r for r in got["rows"] if r["resolved"] == (tab == "closed")]
     if tab == "open":
         _acknowledged(on_tab)
@@ -379,7 +423,9 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
              "total": len(on_tab), "summary": summary, "groups": groups,
              "matched": len(matched), "folded": got["folded"],
              "unreadable": got["unreadable"], "kept": incidents.CLOSED_KEPT,
-             "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+             # When the list drawn was computed (it is held, C3788), not when it was drawn.
+             "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                      time.gmtime(got.get("held_at") or time.time()))}
     return display_names.people_payload(steplog.masked(model))
 
 

@@ -113,12 +113,23 @@
     {%- set nets = r.networks or {} %}
     <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}">
       <summary class="att-line">
-        <span class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
+        {#- C3792: an item folded under an incident as its evidence keeps its own level (an
+            alert's, its rule's label in Grafana), drawn here as that label; the incident's row
+            above is at its problem's impact. -#}
+        <span class="att-level"{% if r.evidence_of %} data-evidence-of="{{ r.evidence_of }}" title="This item's own level (an alert's is its rule's label), drawn as evidence: the incident's severity is its problem's impact"{% endif %}>{{ LEVEL_WORDS.get(r.level, r.level) }}</span>
         <h2 class="att-what" title="{{ r.what }}">{{ r.what }}</h2>
+        {#- C3790 (the operator's R2, 2026-11-15: "the first line is the problem title, then the
+            impact, then the action; the AI's status goes under it, one line"): the title, its
+            age and its action are the line; under the title, a held run's words, then the
+            problem's impact from Mercury's own table (`attention._fold_signals_into_problems`;
+            a row leading its body with the BLUF says it there instead), then the AI's status,
+            each one line cut with an ellipsis, the whole on hover (placed after the line by
+            their CSS `order`, read in this order). -#}
+        {%- if r.held %}{{ held_run(r) }}{% endif %}
+        {%- if r.impact and not r.bluf %}<span class="att-impact small" data-impact title="{{ r.impact }}">{{ r.impact }}</span>{% endif %}
         {#- Gate 2 (the operator, 2026-11-15): the AI's investigation of the row's incident, from
             the incidents list's one state; live, as the job announces its start and end. -#}
-        {%- if r.ai_status %}<span class="att-ai small" data-ai="{{ r.ai_status.state }}">{% if r.ai_status.state == 'investigating' %}{{ r.ai_status.words }} since {{ clock(r.ai_status.since) }}{% else %}AI: {{ r.ai_status.words }}{% endif %}</span>{% endif %}
-        {%- if r.held %}{{ held_run(r) }}{% endif %}
+        {%- if r.ai_status %}<span class="att-ai small" data-ai="{{ r.ai_status.state }}"{% if r.ai_status.state != 'investigating' %} title="AI: {{ r.ai_status.words }}"{% endif %}>{% if r.ai_status.state == 'investigating' %}{{ r.ai_status.words }} since {{ clock(r.ai_status.since) }}{% else %}AI: {{ r.ai_status.words }}{% endif %}</span>{% endif %}
         <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted" title="Its source does not record when the condition began; the row stands while the condition holds, and its reading's age is below.">start not tracked</span>{% endif %}</span>
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>
@@ -330,7 +341,9 @@
         <h3 id="{{ r.alike.anchor }}">{{ r.alike.count }} {{ r.alike.noun }} in this group</h3>
         {#- C3731: a port problem's own alerts, folded under its incident as its evidence. -#}
         {%- elif r.folded_evidence %}
-        <h3>{{ r.folded_evidence }} alert{{ '' if r.folded_evidence == 1 else 's' }} under this incident, as its evidence</h3>
+        {#- C3791: an incident's other rows (its hold, a lost stream's row) fold here too. -#}
+        {%- set n_alerts = r.folded | selectattr('source', 'equalto', 'grafana') | list | length %}
+        <h3>{% if n_alerts == r.folded_evidence %}{{ n_alerts }} alert{{ '' if n_alerts == 1 else 's' }}{% else %}{{ r.folded_evidence }} item{{ '' if r.folded_evidence == 1 else 's' }}{% endif %} under this incident, as its evidence</h3>
         {%- else %}
         <h3>{{ r.folded|length }} device{{ '' if r.folded|length == 1 else 's' }} under this item</h3>
         {%- endif %}

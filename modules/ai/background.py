@@ -51,6 +51,7 @@ import hashlib
 import json
 import logging
 import math
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -365,15 +366,41 @@ def _frequency(spec: dict, network: str) -> dict:
     return {"per_day": float(per) if ok else None, "basis": str(got.get("basis") or "")}
 
 
+#: `measured_cost`'s answers, held until the record of AI calls changes (C3788), by task, its
+#: model, the cap day and the record's `calls.version`.
+_measured = {}
+_measured_lock = threading.Lock()
+
+
 def measured_cost(task: str, now=None) -> dict:
     """``{"usd_per_call", "calls", "measured", "basis"}``: the mean cost of *task*'s sent calls
     (a row with tokens: the provider answered and billed) on its pinned model over the last
     `COST_WINDOW_DAYS` cap days, from that window of the record alone; with none, the task's
-    per-call cap (its worst case at its bounds), ``measured`` False and said."""
-    from modules.ai import calls, profiles, spend
+    per-call cap (its worst case at its bounds), ``measured`` False and said. Held until the
+    record changes or the day turns (C3788: computed once per change, never per read); a record
+    with no version (the records database) is read every time."""
+    from modules.ai import calls, profiles
 
     pin = profiles.task(task)
     today = calls.today(now)
+    ver = calls.version()
+    key = (task, pin["model"], today, profiles.cap_per_call(task), ver)
+    if ver is not None:
+        with _measured_lock:
+            held = _measured.get(key)
+        if held is not None:
+            return dict(held)
+    got = _measured_cost(task, pin, today)
+    if ver is not None:
+        with _measured_lock:
+            _measured.clear() if len(_measured) > 64 else None
+            _measured[key] = dict(got)
+    return got
+
+
+def _measured_cost(task: str, pin: dict, today: str) -> dict:
+    from modules.ai import calls, profiles, spend
+
     got = calls.rows_since(calls.day_start(spend.day_minus(today, COST_WINDOW_DAYS)))
     sent = [r for r in got.get("rows") or [] if r.get("feature") == task
             and r.get("model") == pin["model"] and r.get("tokens")]

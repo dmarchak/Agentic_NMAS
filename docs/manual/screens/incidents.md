@@ -11,9 +11,15 @@ attention](needs-attention) is the one inbox and its badge the one count, and ev
 incident that needs a person is on it, its item linking to that incident's page. Incidents is
 where an incident lives, open or closed; Needs attention is where a person looks first.
 
-The page opens with the same control strip as Needs attention, for this network: the
-**Self-healing** and **Start AI troubleshooting automatically** switches, each with its gear
-([the control strip](heal-batch#self-healing-toggle)).
+The page opens with the control strip, for this network, the one place its switches are:
+**Self-healing** (on is Auto until a time, for the network's default duration; off is Dry run)
+and **AI troubleshooting: Automatic** (on, the AI investigates by itself when Mercury's fix
+fails; off, back to Manual), each with its gear to its full setting, both showing the state now
+and usable only by a person who may change those settings. With open incidents Automatic would
+start on, one line beside its switch says so ("Also starts on N open incidents, about $X"); it
+is refused until the network's spending limits are acknowledged in Settings, and the refusal
+links there ([the control strip](heal-batch#self-healing-toggle)). The top bar's status chip
+opens it here.
 
 ## Open and Closed {#tabs}
 

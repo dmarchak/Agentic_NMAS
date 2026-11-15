@@ -82,6 +82,20 @@ def _sdn_driver_scrub() -> str:
 
 
 #: Every masking entry point, called through its own shape, with the planted URL.
+def _held_masked(text: str) -> dict:
+    """`attention_store.read_masked` of a held value holding *text*, outside a test session's
+    live read (its value held as the background holds it)."""
+    from modules import attention_store as S
+    was, S.COMPUTE_ON_READ = S.COMPUTE_ON_READ, False
+    try:
+        S._net("Masked-planted").value = {"ok": True, "rows": [{"what": text}], "badge": None}
+        return S.read_masked("Masked-planted")
+    finally:
+        S.COMPUTE_ON_READ = was
+        S._nets.pop("Masked-planted", None)
+        S._masked.pop("Masked-planted", None)
+
+
 ENTRY_POINTS = {
     "modules/sdn/drivers/base.py:_scrub": _sdn_driver_scrub,
     # Lab 9 B2: SDN › Policies' words and refusals, masked as redact_text masks.
@@ -182,6 +196,8 @@ ENTRY_POINTS = {
     "modules/redact.py:RedactingFilter": _log_record_masked,
     "modules/outbound.py:mask_payload": lambda: repr(
         __import__("modules.outbound", fromlist=["x"]).mask_payload({"e": PLANTED})),
+    # C3788: Needs attention's held value masked once per value, as mask_payload masks.
+    "modules/attention_store.py:read_masked": lambda: repr(_held_masked(PLANTED)),
     "modules/reader_job.py:_redacted": lambda: __import__(
         "modules.reader_job", fromlist=["x"])._redacted(PLANTED),
     # Needs attention's record (C1192): what a row says, and an acknowledgement's why, at rest.
