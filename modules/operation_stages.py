@@ -184,6 +184,20 @@ STAGES = {
         "fixes_v2.fix", "n/a: the fix the page names, read again under the store's lock",
         NO_DEVICE, "n/a: Delete… undoes it, with its own reason, both kept",
         "modules.nsot.saved_plans.retire"),
+    # A fix's manual controls (board fix-manual-controls, the operator, 2026-11-16): each a
+    # record a later person's run (or, Automatic, its fire) acts on; none sends anything.
+    "fixes_v2.new_save": Stages(
+        "fixes_v2.new", "n/a: the draft the form sends, built again at Save",
+        NO_DEVICE, "n/a: a new fix starts Manual only and runs nothing until a person runs it",
+        "modules.nsot.saved_plans.new_fix"),
+    "fixes_v2.edit_save": Stages(
+        "fixes_v2.edit", "n/a: the version the form opened, refused if it moved",
+        NO_DEVICE, "n/a: every version is kept; an Automatic fix is held Manual only",
+        "modules.nsot.saved_plans.edit_fix"),
+    "fixes_v2.automatic": Stages(
+        "fixes_v2.fix", "n/a: the promotion binds the plan's digest",
+        NO_DEVICE, "n/a: each run it makes rolls itself back on a failed verify (the runner)",
+        "modules.nsot.saved_plans.promote"),
     "resubscribe_v2.close_confirm": Stages(
         "resubscribe_v2.preview", "program",
         "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
@@ -645,6 +659,9 @@ HISTORY = {
     "saved_plans_v2.promote": SAVED,
     "fixes_v2.delete": ("saved_fixes",),
     "fixes_v2.restore": ("saved_fixes",),
+    "fixes_v2.new_save": ("saved_fixes",),
+    "fixes_v2.edit_save": ("saved_fixes",),
+    "fixes_v2.automatic": ("saved_fixes",),
     "saved_plans_v2.not_now": ("n/a: a person's choice not to save a verified fix, kept as a "
                                "line of the incident's troubleshooting record; no device"),
     "saved_plans_v2.approve_shape": ("n/a: a shape of Mercury's rule for raw lines, never one "

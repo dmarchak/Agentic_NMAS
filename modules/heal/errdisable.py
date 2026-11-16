@@ -774,6 +774,24 @@ def check_port_connected(answer, run) -> tuple:
     return ("pass" if state == "connected" else "fail"), f"{short} reads {state}"
 
 
+def check_port_not_admin_down(answer, run) -> tuple:
+    """The port is not administratively down (``show interfaces status``, the status read the
+    connected check reads: ``disabled`` is a port shut on purpose). ``shutdown`` then ``no
+    shutdown`` leaves a port as it was only from a port that is up (the review, 2026-11-16,
+    C1): a port shut on purpose fails, and nothing is sent; one the table does not list is
+    unreadable."""
+    port, _cause, short = _port_cause(run)
+    if answer is None:
+        return "unreadable", f"{STATUS_READ} could not be read"
+    rows = [r for r in status_rows(answer) if same_port(r["port"], port)]
+    if not rows:
+        return "unreadable", f"{short} is not listed in {STATUS_READ}"
+    if rows[0]["status"] == "disabled":
+        return "fail", (f"{short} reads disabled: it is administratively down on purpose, and "
+                        "shutdown / no shutdown would bring it up, so nothing is sent")
+    return "pass", f"{short} reads {rows[0]['status']}: not administratively down"
+
+
 def check_no_recovery(answer, run) -> tuple:
     """The switch does not recover the cause itself: the cause's row of ``show errdisable
     recovery``'s timer table (`recovery_timer`) Disabled passes; Enabled fails (the switch

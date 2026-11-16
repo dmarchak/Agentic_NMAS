@@ -1,0 +1,115 @@
+{%- from "v2/_macros.html" import icon, badge, how, clock -%}
+{#- New fix… (on Troubleshooting › Fixes) and Edit… (in a fix's Contents fold): board
+    docs/boards/fix-manual-controls.html screens 2 and 3, approved by the operator 2026-11-16
+    with two corrections (`modules/fix_editor.card`). Every choice comes from Mercury: what it
+    fixes from the problem schema's match fields, each line one of the shapes that keep a fix
+    net-zero (another typed as provisional, for an admin), each check one Mercury's plans
+    hold. The form draws itself again as a choice changes (``drafted=1``, a read), with the
+    runner's own preview of the draft on an example. Save posts the same form; a line that
+    would last is refused in the operator's words. Nothing here reaches a device. -#}
+{%- if c is none %}
+<section class="card fixit simple" id="fix-new" aria-labelledby="nf-done" data-holds-live="review">
+  <h2 class="simple-title" id="nf-done">New fix</h2>
+  <div class="notice notice-ok set-result" role="status">{{ icon('tick', 16) }}<p>Saved {{ saved.name }} as Manual only: it runs when a person presses Run…, and can be set Automatic after its first verified run.{% if saved.proposed %} Held provisional until an admin approves: {{ saved.proposed | join(', ') }}; it cannot run until then.{% endif %} <a href="{{ url_for('fixes_v2.fix', key=saved.key, list=network) }}">Open {{ saved.name }}</a></p></div>
+  <div class="simple-acts"><button type="button" class="btn btn-small" hx-get="{{ url_for('fixes_v2.new', list=network, close='1') }}" hx-target="#fix-new" hx-swap="outerHTML" hx-disabled-elt="this">Close</button></div>
+</section>
+{%- else %}
+{%- set new = c.mode == 'new' %}
+{%- set d = c.draft %}
+{%- set b = c.built %}
+{%- set o = c.opts %}
+{%- set u_draw = url_for('fixes_v2.new', list=c.network) if new else url_for('fixes_v2.edit', key=c.key, list=c.network) %}
+{%- set u_save = url_for('fixes_v2.new_save', list=c.network) if new else url_for('fixes_v2.edit_save', key=c.key, list=c.network) %}
+{%- set slot = '#fix-new' if new else '#fix-contents' %}
+{%- set offered = o.lines | map(attribute='line') | list %}
+{%- if new %}
+<section class="card fixit simple" id="fix-new" aria-labelledby="nf" data-holds-live="review">
+  <h2 class="simple-title" id="nf">New fix</h2>
+{%- endif %}
+  {%- if said and said.words %}
+  <div class="notice notice-{{ 'danger' if said.level == 'danger' else 'ok' }} set-result" role="{{ 'alert' if said.level == 'danger' else 'status' }}">{{ icon('warn' if said.level == 'danger' else 'tick', 16) }}<p>{{ said.words }}</p></div>
+  {%- endif %}
+  <form class="simple-form" id="fix-form-{{ c.mode }}" aria-label="{{ 'A new fix' if new else 'Edit this fix' }}" hx-get="{{ u_draw }}" hx-trigger="change delay:300ms, submit" hx-target="{{ slot }}" hx-swap="outerHTML">
+    <input type="hidden" name="drafted" value="1">
+    <input type="hidden" name="n" value="{{ d.lines | length }}">
+    {%- if not new %}<input type="hidden" name="version" value="{{ c.version }}">{% endif %}
+    <fieldset><legend>{{ 'Name' if new else 'Saved in place (same version)' }}</legend>
+      <label>Name <input type="text" name="name" value="{{ d.name }}" maxlength="80" required autocomplete="off"></label>
+      <label>Description <input type="text" name="words" value="{{ d.words }}" maxlength="200" autocomplete="off"></label>
+    {%- if new %}
+    </fieldset>
+    <fieldset><legend>What it fixes</legend>
+    {%- endif %}
+      <label>Condition <select name="condition"><option value=""{% if not d.match.condition %} selected{% endif %}>no match: Run… only (an admin's)</option>{% for x in o.conditions %}<option value="{{ x.value }}"{% if d.match.condition == x.value %} selected{% endif %}>{{ x.words }}</option>{% endfor %}</select></label>
+      {%- if d.match.condition %}
+      <label>Cause <select name="cause"><option value="">any cause</option>{% for x in o.causes %}<option value="{{ x }}"{% if d.match.cause == x %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+      <label>Port role <select name="port_role"><option value="">any role</option>{% for x in o.roles %}<option value="{{ x }}"{% if d.match.port_role == x %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+      <label{% if not c.cleared %} class="muted"{% endif %}><input type="checkbox" name="cleared" value="1"{% if d.match.cleared == 'true' and c.cleared %} checked{% endif %}{% if not c.cleared %} disabled{% endif %}> Only once Mercury reads the cause as cleared <span class="small">· {{ ('read by ' ~ c.cleared) if c.cleared else 'no cleared check exists for it yet' }}</span></label>
+      <p class="small muted" data-matches>Matches {{ c.counts.open }} open incident{{ 's' if c.counts.open != 1 }} now · {{ c.counts.closed }} closed one{{ 's' if c.counts.closed != 1 }} kept</p>
+      {%- endif %}
+    </fieldset>
+    <fieldset><legend>{{ 'Sends, in config mode, never saved' if new else 'A change here saves version ' ~ (c.version + 1) }}</legend>
+      <ol class="fixit-plan-items">
+      {%- for ln in d.lines %}
+        <li>
+          <select name="l{{ loop.index0 }}" aria-label="Line {{ loop.index }}">
+            {%- for x in o.lines %}<option value="{{ x.line }}"{% if not ln.other and ln.text == x.line %} selected{% endif %}>{{ x.words }}</option>{% endfor %}
+            <option value="__other__"{% if ln.other %} selected{% endif %}>Another shape (provisional)…</option>
+          </select>
+          {%- if ln.other %} <input type="text" name="o{{ loop.index0 }}" value="{{ ln.text | trim }}" maxlength="120" aria-label="Line {{ loop.index }}, typed" autocomplete="off">{% endif %}
+          {%- if '{interface}' in ln.text %} <span class="muted small">{interface}: {{ "the incident's port" if d.match.condition else 'the port chosen at Run…' }}</span>{% endif %}
+          <button type="submit" class="bluf-link small" name="remove" value="{{ loop.index0 }}">Remove</button>
+        </li>
+      {%- endfor %}
+      </ol>
+      <p class="small"><button type="submit" class="bluf-link" name="add" value="1">Add a line…</button> <span class="muted">· every line offered is one of a pair known to undo itself in one batch; another shape is provisional until an admin approves it, and one that would last is refused</span></p>
+      {%- if b.lasting %}<p class="small fixit-status" role="status" data-refused="lasting">{{ b.lasting }}</p>{% endif %}
+      {%- if b.unproven %}<p class="small fixit-status" role="status" data-unproven>{{ b.unproven }}</p>{% endif %}
+    </fieldset>
+    <fieldset><legend>Checks before (each read live; any one failing refuses the run)</legend>
+      {%- if b.pair %}
+      <label><input type="checkbox" checked disabled> The port is not administratively down <span class="muted small">· show interfaces status · added by Mercury</span></label><br>
+      <p class="small muted" data-pair>{{ b.pair }}</p>
+      {%- endif %}
+      {%- for x in o.checks.pre if x.id != b.pair_id %}
+      <label><input type="checkbox" name="pre" value="{{ x.id }}"{% if x.id in d.pre %} checked{% endif %}> {{ x.name }} <span class="muted small">· {{ x.read or ('Mercury’s own check, ' ~ x.raw.expect) }}</span></label><br>
+      {%- endfor %}
+      <p class="small muted">Only the checks Mercury’s plans hold are offered.</p>
+    </fieldset>
+    <fieldset><legend>Verifies after (a failure rolls back and says so)</legend>
+      {%- for x in o.checks.ver %}
+      <label><input type="checkbox" name="ver" value="{{ x.id }}"{% if x.id in d.ver %} checked{% endif %}> {{ x.name }} <span class="muted small">· {{ x.read or ('Mercury’s own check, ' ~ x.raw.expect) }}</span></label><br>
+      {%- endfor %}
+      <p class="small muted">And always: the running configuration after equals the one before, line for line, or it is rolled back.</p>
+    </fieldset>
+    {%- if b.example and b.example.kind == 'port' %}
+    <fieldset><legend>Preview on</legend>
+      <label>Device <select name="ex_device">{% for n in b.example.devices %}<option value="{{ n }}"{% if n == b.example.device %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+      <label>Interface <select name="ex_interface">{% for n in b.example.ports %}<option value="{{ n }}"{% if n == b.example.interface %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+    </fieldset>
+    {%- endif %}
+  </form>
+  {%- if b.preview %}
+  <p class="plan-sent-label small">Preview on {{ 'an example, ' if b.example.kind == 'incident' else '' }}{{ b.example.words }}{% if b.example.kind == 'incident' and b.example.at %}, {{ clock(b.example.at, 'date') }}{% endif %}:</p>
+  <pre class="plan-sent">{{ b.preview.program | join('\n') }}</pre>
+  {%- if b.preview.refusals %}<p class="small fixit-status" role="status" data-refused="preview">On this example: {{ b.preview.refusals | join('; ') }}</p>{% endif %}
+  {%- elif b.notes %}
+  <p class="small muted">No preview: {{ b.notes | join('; ') }}.</p>
+  {%- endif %}
+  {%- for u in b.provisional %}<p class="small fixit-status" role="status" data-provisional>{{ u.words }}. Saving holds it provisional; the fix cannot run until an admin approves it.</p>{% endfor %}
+  {%- set others = b.refusals | reject('equalto', b.lasting) | list %}
+  {%- if others %}<p class="small bluf-refused" data-refused="draft">Not yet: {{ others | join('; ') }}.</p>{% endif %}
+  {%- if not new and b.new_version %}
+  <p class="small fixit-status" role="status">A change of what runs: saving version {{ b.version }} keeps version {{ c.version }} and its runs{% if c.auto %}, and returns this fix to <strong>Manual only</strong> until version {{ b.version }} has a verified run{% endif %}.</p>
+  {%- elif not new and c.auto and b.drops %}
+  <p class="small fixit-status" role="status" data-drops>A change to what it matches: saving returns this fix to <strong>Manual only</strong> until its next verified run (still version {{ c.version }}).</p>
+  {%- endif %}
+  {%- if c.right %}<p class="small bluf-refused" data-refused="save">{{ c.right }}</p>{% endif %}
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-{{ c.mode }}-save" hx-post="{{ u_save }}" hx-include="#fix-form-{{ c.mode }}" {% if new %}hx-target="#fix-new" hx-swap="outerHTML"{% else %}hx-target="#fix-live" hx-select="#fix-live" hx-disinherit="*" hx-swap="outerHTML"{% endif %} hx-disabled-elt="this"{% if c.right or not b.saveable %} disabled{% endif %} title="{{ ('Saves this fix as Manual only' ~ (', plan ' ~ b.preview.short if b.preview and b.preview.short else '') ~ '; it can be set Automatic after its first verified run') if new else ('Saves version ' ~ b.version ~ '; version ' ~ c.version ~ ' kept' if b.new_version else 'Saves the name, description and match in place, the same version') }}"{{ gate('approve') }}><span class="op-idle">{{ c.save }}</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='saving a fix') }}</span>
+    <button type="button" class="btn btn-small" hx-get="{{ url_for('fixes_v2.new', list=c.network, close='1') if new else url_for('fixes_v2.edit', key=c.key, list=c.network, close='1') }}" hx-target="{{ slot }}" hx-swap="outerHTML" hx-disabled-elt="this">Cancel</button>
+  </div>
+{%- if new %}
+</section>
+{%- endif %}
+{%- endif %}

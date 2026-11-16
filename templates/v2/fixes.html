@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, clock -%}
+{%- from "v2/_macros.html" import icon, badge, clock, how -%}
 {#- Troubleshooting › Fixes (C3849 piece 2; board docs/boards/fixes-list.html, approved by the
     operator 2026-11-16 with conditions): every fix the network has, saved and built-in, one
     summary line, then the groups, each row its name (the fix's own page), what it fixes, how
@@ -10,7 +10,12 @@
     the saved plans or a run record change. Nothing here acts on a device. -#}
 {% block title %}Fixes · {{ brand.short }}{% endblock %}
 {% block main %}
-<div class="page-head"><div class="page-title"><h1>Fixes</h1></div></div>
+<div class="page-head"><div class="page-title"><h1>Fixes</h1></div>
+  {#- New fix… (board fix-manual-controls screen 2): its form drawn in place below, outside the
+      live list, so a redraw of the list never takes it away. -#}
+  <div class="page-acts"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-new" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.new', list=p.network) }}" hx-target="#fix-new" hx-swap="outerHTML" hx-disabled-elt="this" title="Write a fix from Mercury's own choices: what it fixes, its lines, its checks and verify; it starts Manual only"><span class="op-idle">New fix…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='writing a fix') }}</span></div>
+</div>
+<div id="fix-new" hidden></div>
 <div class="tab-body" id="fixes-live" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.page', list=p.network, q=p.q or none, mode=p.mode or none, kind=p.kind or none) }}" hx-select="#fixes-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">
 <p class="inc-list-sum" data-total="{{ p.total }}"><strong>{{ p.total }} fix{{ 'es' if p.total != 1 }}</strong> · {{ p.saved }} saved{% if p.saved_counts %} ({% for w, n in p.saved_counts | dictsort %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %} · {{ p.built }} built-in{% if p.deleted %} · <a href="{{ url_for('fixes_v2.page', list=p.network, kind='deleted') }}">{{ p.deleted }} deleted</a>{% endif %}</p>
 <details class="inc-search"{% if p.filtered %} open{% endif %}>
@@ -48,7 +53,7 @@
   </ul>
   {%- if g.more %}<p class="small muted">And {{ g.more }} more: Search or filter… narrows them.</p>{% endif %}
   {%- else %}
-  <p class="small muted">{{ 'None matches.' if p.filtered else 'None yet: a fix is saved from an incident’s card, after its fix verified.' if g.key == 'saved' else 'None.' }}</p>
+  <p class="small muted">{{ 'None matches.' if p.filtered else 'None yet: a fix is saved from an incident’s card, after its fix verified, or written with New fix….' if g.key == 'saved' else 'None.' }}</p>
   {%- endif %}
 </details>
 {%- endfor %}

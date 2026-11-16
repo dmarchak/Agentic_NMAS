@@ -204,7 +204,7 @@ def fix_with_script(incident_id):
         rec = CR.run(network, key, offer["values"], confirmed=offer["hash"],
                      incident=incident_id, reason=(f"saved script {offer['name']} pressed on "
                                                    f"incident {incident_id}"), **who)
-        if rec.get("state") == "done":
+        if S.run_verified(rec):     # a run that sent nothing closes nothing (C3)
             S.close_fixed(network, incident_id, {"id": rec.get("id"),
                                                  "device": offer["values"].get("device")},
                           e, who["actor"])

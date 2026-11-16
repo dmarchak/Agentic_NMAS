@@ -1,8 +1,9 @@
 {%- from "v2/_macros.html" import icon, how, clock -%}
-{#- Run… on a fix's own page (C3849 piece 4; board fix-bpdu-guard, artboard 2, approved by the
-    operator 2026-11-16 with changes): the device and the port chosen from what Mercury holds
-    (`modules/fix_page.run_card`: the open incidents this fix matches, or, for a fix with no
-    match, the device's access ports in committed intent; never a device read), the runner's
+{#- Run… on a fix's own page (C3849 piece 4; board fix-bpdu-guard, artboard 2, and board
+    fix-manual-controls screen 1, approved by the operator 2026-11-16 with changes): "Run on
+    an open incident" (the open incidents this fix matches, `modules/fix_page.run_card`) or
+    "Or choose a device and interface…" (a device's ports in committed intent and each choice
+    the plan takes; never a device read), the runner's
     own preview, and Run posting to the existing run path (`fixit_v2.fix_with_script` or
     `saved_plans_v2.device_run`, ``view=fix``), whose answer is drawn here
     (`routes/fixes_v2.run_answer`). A changed choice draws the card again with its preview.
@@ -16,8 +17,24 @@
 {%- endmacro %}
 <section class="card fixit simple" id="fix-run" aria-labelledby="fix-run-title" data-run-state="{{ c.state }}" data-holds-live="review"{% if c.state == 'run' and c.run.state == 'running' %} hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, run=c.run.id) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
   <h2 class="simple-title" id="fix-run-title">Run this fix</h2>
-  {%- if c.state in ('choose', 'none', 'refused') and c.devices %}
-  <form class="simple-form" id="fix-run-form" aria-label="Where to run it" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network) }}" hx-trigger="change" hx-target="#fix-run" hx-swap="outerHTML">
+  {%- set u_run = url_for('fixes_v2.run', key=c.key, list=c.network) %}
+  {%- if c.state in ('choose', 'refused') and c.mode == 'incident' and c.incidents %}
+  {#- Run on an open incident (board fix-manual-controls screen 1): the open incidents this
+      fix matches; picking one fills device, object and cause from its problem. -#}
+  <form class="simple-form" id="fix-run-form" aria-label="Which incident" hx-get="{{ u_run }}" hx-trigger="change" hx-target="#fix-run" hx-swap="outerHTML">
+    <fieldset><legend>Run on an open incident</legend>
+      {%- for i in c.incidents %}
+      <label><input type="radio" name="incident" value="{{ i.id }}"{% if i.chosen %} checked{% endif %}> {{ i.label }} <span class="muted small">{% if i.affected %}· {{ i.affected }} {% endif %}· opened {{ clock(i.opened_at) }} · {{ i.state }}</span></label>{% if not loop.last %}<br>{% endif %}
+      {%- endfor %}
+    </fieldset>
+  </form>
+  {%- if c.port_ok %}
+  <p class="small"><button type="button" class="bluf-link" data-op="fix-run-port" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, port='1') }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">Or choose a device and interface…</button></p>
+  {%- endif %}
+  {%- elif c.state in ('choose', 'none', 'refused') and c.devices %}
+  {%- if c.none_open %}<p class="small">No open incident needs this fix right now.</p>{% endif %}
+  <form class="simple-form" id="fix-run-form" aria-label="Where to run it" hx-get="{{ u_run }}" hx-trigger="change" hx-target="#fix-run" hx-swap="outerHTML">
+    <input type="hidden" name="port" value="1">
     <fieldset><legend>Where</legend>
       <label for="fix-run-dev">Device
         <select id="fix-run-dev" name="device">{% for d in c.devices %}<option value="{{ d.name }}"{% if d.chosen %} selected{% endif %}>{{ d.label }}</option>{% endfor %}</select>
@@ -27,9 +44,17 @@
         <select id="fix-run-if" name="interface">{% for i in c.ports %}<option value="{{ i.value }}"{% if i.chosen %} selected{% endif %}>{{ i.label }}</option>{% endfor %}</select>
       </label>
       {%- endif %}
+      {%- for ch in c.choices %}
+      <label for="fix-run-ch-{{ ch.name }}">{{ ch.name | capitalize }} <span class="muted small" title="{{ ch.words }}">· {{ ch.words }}</span>
+        <select id="fix-run-ch-{{ ch.name }}" name="choice_{{ ch.name }}">{% for o in ch.of %}<option value="{{ o.value }}"{% if o.chosen %} selected{% endif %}>{{ o.value }}</option>{% endfor %}</select>
+      </label>
+      {%- endfor %}
     </fieldset>
   </form>
   {%- if c.note and c.ports %}<p class="small muted">{{ c.note }}.</p>{% endif %}
+  {%- if c.matched and not c.none_open %}
+  <p class="small"><button type="button" class="bluf-link" data-op="fix-run-incident" hx-get="{{ u_run }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">Or run on an open incident…</button></p>
+  {%- endif %}
   {%- endif %}
   {%- if c.state == 'choose' %}
     {%- set pv = c.preview %}

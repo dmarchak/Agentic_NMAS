@@ -24,12 +24,18 @@ template's own items, each check's read, and, where the template cannot say it, 
 its check's module declares beside the check (``SAYS``, e.g. `heal.errdisable.SAYS`): what it
 reads and what it cannot prove on a port that is down (the operator's change 1).
 
-**Run…** (`run_card`): a device and a port chosen from what Mercury already holds, never a
-device read: for a fix with a match, the open incidents whose classified problem it matches
-(their ports); for one with none, the device's access ports in committed intent, said so. The
-preview is the runner's own (`command_plan.preview`, asking no device), and Run posts to the
-existing run path for it (`fixit_v2.fix_with_script` on the matched incident, or
-`saved_plans_v2.device_run`), whose live preconditions read the device when it runs.
+**Run…** (`run_card`; board docs/boards/fix-manual-controls.html screen 1): "Run on an open
+incident…", the open incidents this fix's match holds, the one picked filling device, object
+and cause from its problem, run through the incident's own "Fix with:" path
+(`fixit_v2.fix_with_script`); and "Or choose a device and interface…", a device and a port from
+committed intent and each choice the plan takes, run through the device's saved-action path
+(`saved_plans_v2.device_run`). Both are chosen from what Mercury already holds, never a device
+read; the preview is the runner's own (`command_plan.preview`, asking no device), and the live
+preconditions read the device when it runs. A person's action: the same with self-healing on
+or off.
+
+**Versions** (`saved_plans.versions`): each run in the Record names the version it ran
+(`saved_plans.version_at`); New fix… and Edit… are `fix_editor`'s.
 
 Reads only: it writes nothing, creates no network and reaches no device.
 """
@@ -156,6 +162,7 @@ def record_of(network: str, keys, track=(), runs=None, capped=False) -> dict:
     ``{"rows", "runs", "verified", "dry", "summary", "last", "more"}``, *rows* at most
     `RECORD_SHOWN`, each ``{"at", "where", "who", "ok", "words", "run", "device"}``."""
     from modules.nsot import command_plan_run as CR
+    from modules.nsot import saved_plans as S
 
     if runs is None:
         runs, capped = _runs(network)
@@ -165,16 +172,21 @@ def record_of(network: str, keys, track=(), runs=None, capped=False) -> dict:
         if r.get("key") not in keys:
             continue
         seen.add(r.get("id"))
-        refused = r.get("state") == "refused"
+        # A run that sent nothing (``not_needed``) is no run of the fix, and never verified
+        # (C3, `saved_plans.run_verified`): counted with the refused ones, said as not needed.
+        nothing = r.get("outcome") == CR.NOT_NEEDED
+        refused = r.get("state") == "refused" or nothing
         auto = r.get("actor_kind") == "authority" or bool(r.get("authority"))
         params = r.get("params") or {}
         rows.append({"at": r.get("at") or "", "device": r.get("device") or "",
                      "where": " ".join(x for x in (r.get("device") or "",
                                                    _short(params.get("interface") or "")) if x),
                      "who": "Automatic" if auto else f"run by {_people(r.get('actor'))}",
-                     "ok": r.get("state") == "done", "refused": refused, "dry": False,
-                     "words": CR.OUTCOME_WORDS.get(r.get("outcome") or "", "")
-                     or str(r.get("why") or r.get("outcome") or r.get("state") or ""),
+                     "ok": S.run_verified(r), "refused": refused, "dry": False,
+                     "words": (f"not needed: {r.get('not_needed') or r.get('why') or ''}"
+                               .rstrip(": ") if nothing else
+                               CR.OUTCOME_WORDS.get(r.get("outcome") or "", "")
+                               or str(r.get("why") or r.get("outcome") or r.get("state") or "")),
                      "run": r.get("id") or ""})
     loose = [row for row in track or [] if not (row.get("run") and row.get("run") in seen)]
     places = _incident_places(network, [row.get("incident") for row in loose])
@@ -517,7 +529,8 @@ def page(network: str, key: str) -> dict:
     out = {"kind": got["kind"], "key": key, "network": network, "name": key, "from": {},
            "contents": None, "origin": [], "record": None, "limits": [], "changed": [],
            "runnable": False, "why_not": "", "heal_now": "", "hover": "", "shared": False,
-           "deleted": {}, "change_right": "", "by_run": False}
+           "deleted": {}, "change_right": "", "by_run": False, "version": 0, "versions": [],
+           "held_manual": {}, "editable": False}
     if got["kind"] == "unknown":
         return out
     if got["kind"] == "builtin":
@@ -530,9 +543,9 @@ def page(network: str, key: str) -> dict:
     t = got["template"]
     f = got["fix"]
     # Run… here fills a matched fix from its incident, and one with no match only when a
-    # device and an interface are all it takes (`saved_plans.interface_actions`).
+    # device, an interface and choices are all it takes (`saved_plans.port_actions`).
     by_run = got["kind"] == "saved" and (bool(f.get("match"))
-                                         or key in S.interface_actions(network))
+                                         or key in S.port_actions(network))
     if t is not None:
         checks = [_check(f, t, i) for i in t.preconditions]
         verify = [_check(f, t, i) for i in t.verify]
@@ -559,6 +572,12 @@ def page(network: str, key: str) -> dict:
     if how == "manual" and not by_run:
         said = ("runs as a step of a plan a person approves by its hash; Run… here cannot "
                 "fill all it takes")
+    elif how == "manual" and f.get("held_manual"):
+        said = (f"was Automatic; Manual only until version {f['held_manual'].get('version')} "
+                "has a verified run, then it can be set Automatic again")
+    elif how == "manual" and f.get("match"):
+        said = ("runs only when a person presses Run…; it can be set Automatic after its "
+                "version's first verified run")
     out["by_run"] = by_run
     heal = S.heal_mode(network)
     out.update(name=f.get("name") or key, fixes=fixes_words(f, t), how=how, words=words,
@@ -587,9 +606,16 @@ def page(network: str, key: str) -> dict:
     origin.append({"dt": "Scope", "words": ("shared with every network" if f.get("shared")
                                             else f"{f.get('network') or network} only")})
     out["origin"] = origin
-    changed = [{"words": ("Saved Automatic" if auto_at_save else "Saved in Dry run" if
-                          f.get("match") else "Saved, Manual only")
-                + f" by {_people(f.get('saved_by'))}", "at": f.get("saved_at") or ""}]
+    changed = [] if f.get("written") else [
+        {"words": ("Saved Automatic" if auto_at_save else "Saved in Dry run" if
+                   f.get("match") else "Saved, Manual only")
+         + f" by {_people(f.get('saved_by'))}", "at": f.get("saved_at") or ""}]
+    # New fix…, Edit… and Set Automatic (the operator, 2026-11-16), each kept on the fix.
+    for ch in f.get("changes") or []:
+        what = str(S.CHANGE_WORDS.get(ch.get("action"), ch.get("action")) or "")
+        changed.append({"words": f"{what[:1].upper()}{what[1:]} by "
+                                 f"{_people(ch.get('by'))}: {ch.get('words') or ''}",
+                        "at": ch.get("at") or ""})
     if f.get("changed_at"):
         changed.append({"words": f"a match added by {_people(f.get('changed_by'))}",
                         "at": f["changed_at"]})
@@ -609,7 +635,41 @@ def page(network: str, key: str) -> dict:
             hover=out["deleted"].get("reason") or "")
     out["runnable"] = by_run and not out["deleted"]
     out["change_right"] = S.change_right(f)
+    # Versions (the operator, 2026-11-16): every version kept, each run naming the one it ran
+    # (`saved_plans.version_at`), and a fix held Manual only until its version verifies.
+    vs = S.versions(f)
+    out["version"] = vs[-1]["version"]
+    out["versions"] = [{"version": v["version"], "at": v.get("at") or "",
+                        "by": _people(v.get("by")), "why": v.get("why") or "",
+                        "digest": v.get("digest") or "", "now": v is vs[-1]}
+                       for v in reversed(vs)]
+    for row in out["record"]["rows"]:
+        row["version"] = S.version_at(f, row["at"]) if row.get("at") else 0
+    out["held_manual"] = dict(f.get("held_manual") or {})
+    out["editable"] = f.get("saved_as") in (S.FIX, "script") and not out["deleted"]
     return out
+
+
+def automatic_form(network: str, key: str, who: dict) -> dict:
+    """Set Automatic… for a matched fix held Manual only or in Dry run (the operator,
+    2026-11-16: "can be set Automatic after its first verified run"): ``{"offer", "right",
+    "ran", "why", "version"}``, *offer* whether it is drawn, *right* the viewer's refusal for
+    the self-healing right (the AI none), *ran* the verified run of its version now
+    (`saved_plans.verified_run`) or ``{}`` with *why*. A read."""
+    from modules import identity
+    from modules.nsot import saved_plans as S
+
+    f = S.fixes(network).get(key) or {}
+    if not f or not f.get("match") or f.get("mode") == "auto" or f.get("network") != network:
+        return {"offer": False, "right": "", "ran": {}, "why": "", "version": 0}
+    n = S.versions(f)[-1]["version"]
+    ran = S.verified_run(network, f)
+    return {"offer": True, "version": n, "ran": ran,
+            "right": (identity.ai_acting_refusal("set a fix Automatic")
+                      or identity.right_refusal("self_healing", **who)),
+            "why": "" if ran else (f"version {n} has no verified run yet: press Run… once, on a "
+                                   "matching incident or a chosen port, and once it verifies "
+                                   "it can be set Automatic")}
 
 
 def delete_form(network: str, key: str, who: dict) -> dict:
@@ -672,22 +732,78 @@ def _ended(network: str, incident_id: str) -> bool:
     return state in ("fixed", "cleared", "cancelled")
 
 
-def run_card(network: str, key: str, *, device: str = "", interface: str = "",
+def _heal_words(network: str, f: dict, incident_id: str, heal: str) -> str:
+    """What self-healing does about *incident_id* with this fix, from the network's mode now
+    (*heal*) and the fix's own track: never a guard's hold it does not have (correction 2:
+    err-disable is never held by guard 6, which holds configuration departures only, C3819)."""
+    from modules.nsot import saved_plans as S
+
+    mine = [r for r in f.get("track") or [] if r.get("incident") == incident_id]
+    if heal == "off":
+        return "needs a person: self-healing is Off"
+    if f.get("mode") == S.MANUAL or not f.get("match"):
+        return (f"self-healing is {'in Dry run' if heal == 'dry_run' else 'in Auto'}; this fix "
+                "is Manual only")
+    if heal == "dry_run" or f.get("mode") != "auto":
+        dry = [r for r in mine if r.get("mode") == "dry_run"]
+        return ("self-healing recorded what it would do" if dry else
+                "self-healing records what it would do")
+    ran = [r for r in mine if r.get("mode") == "auto"]
+    return (f"self-healing ran it: {ran[-1].get('words')}" if ran and ran[-1].get("words")
+            else "self-healing runs it by itself")
+
+
+def _matching(network: str, f: dict) -> list:
+    """The open incidents whose classified problem the fix *f*'s match holds now, not ended by
+    their page's own rule (`_ended`), newest first: ``[{"id", "problem", "record", "label",
+    "where", "affected", "opened_at", "state"}]``. From Mercury's records only."""
+    from modules.heal import incidents
+    from modules.nsot import saved_plans as S
+
+    recs = {str(r.get("id") or ""): r for r in incidents.read(network).get("incidents") or []
+            if isinstance(r, dict)}
+    heal = S.heal_mode(network)
+    out = []
+    for iid, prob in S._incidents_problems(network):   # noqa: SLF001 (its one read)
+        if not (S.matches(f["match"], prob) and prob.device) or _ended(network, iid):
+            continue
+        rec = recs.get(iid) or {}
+        out.append({"id": iid, "problem": prob, "record": rec,
+                    "where": " ".join(x for x in (prob.device, _short(prob.object or "")) if x),
+                    "label": (f"{prob.device} {_short(prob.object or '')} "
+                              f"{str(prob.condition).replace('_', '-')}"
+                              f"{' by ' + prob.cause if prob.cause else ''}").strip(),
+                    "affected": prob.affected or "", "opened_at": rec.get("opened_at") or "",
+                    "state": _heal_words(network, f, iid, heal)})
+    out.sort(key=lambda r: str(r["opened_at"]), reverse=True)
+    return out
+
+
+def run_card(network: str, key: str, *, incident: str = "", device: str = "",
+             interface: str = "", port: bool = False, choices: dict = None,
              right: str = "") -> dict:
-    """Run…'s card (the module docstring): ``{"state", "key", "network", "name", "devices",
-    "ports", "device", "interface", "why", "note", "preview", "post", "right"}``. *state*
-    ``choose`` (a preview to approve), ``none`` (no port needs it: *why*), ``refused`` (the
-    preview refused: its refusals) or ``not_offered``. *post* is the existing run path's
-    ``{"endpoint", "args", "vals"}``. A read: no device is asked."""
+    """Run…'s card (the module docstring; board fix-manual-controls screen 1): ``{"state",
+    "mode", "key", "network", "name", "incidents", "devices", "ports", "choices", "device",
+    "interface", "why", "note", "preview", "post", "right", "port_ok", "none_open"}``.
+    *mode* ``incident`` ("Run on an open incident…": the open incidents this fix matches, the
+    one chosen filling device, object and cause from its problem, run through the incident's
+    own "Fix with:" path) or ``port`` ("Or choose a device and interface…": a device and a port
+    from committed intent, and each choice the plan takes, run through the device's saved-action
+    path). *state* ``choose`` (a preview to approve), ``none`` (*why*), ``refused`` (the
+    preview's refusals) or ``not_offered``. *post* is the existing run path's ``{"endpoint",
+    "args", "vals"}``. A person's action, the same with self-healing on or off. A read: no
+    device is asked."""
     from modules import incident_page
+    from modules import problem as P
     from modules.neighbours import committed_intents_of
     from modules.nsot import ifnames
     from modules.nsot import saved_plans as S
 
     got = find(network, key)
-    c = {"state": "not_offered", "key": key, "network": network, "name": key, "devices": [],
-         "ports": [], "device": "", "interface": "", "why": "", "note": "", "preview": None,
-         "post": None, "right": right}
+    c = {"state": "not_offered", "mode": "port", "key": key, "network": network, "name": key,
+         "incidents": [], "devices": [], "ports": [], "choices": [], "device": "",
+         "interface": "", "why": "", "note": "", "preview": None, "post": None, "right": right,
+         "port_ok": False, "none_open": False, "matched": False}
     if got["kind"] != "saved" or got["template"] is None:
         return dict(c, why="A built-in fix is read-only here: it runs inside a plan a person "
                            "approves on its incident")
@@ -695,61 +811,43 @@ def run_card(network: str, key: str, *, device: str = "", interface: str = "",
     c["name"] = f.get("name") or key
     if f.get("retired"):
         return dict(c, why=f"{c['name']} is deleted: Restore… under How it runs brings it back")
+    porting = S.port_actions(network).get(key)
+    c.update(port_ok=porting is not None, matched=bool(f.get("match")))
+    if f.get("match") and not port:
+        rows = _matching(network, f)
+        if rows:
+            chosen = next((r for r in rows if r["id"] == incident), rows[0])
+            c["incidents"] = [dict({k: r[k] for k in ("id", "label", "affected", "opened_at",
+                                                      "state", "where")},
+                                   chosen=r is chosen) for r in rows]
+            prob, iid = chosen["problem"], chosen["id"]
+            c.update(mode="incident", device=prob.device, interface=prob.object or "",
+                     where=chosen["where"])
+            found = incident_page.resolve(network, iid)
+            offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), None)
+            if offer is None:
+                try:
+                    values = S.fill(f, P.classify(found))
+                except S.Refused as exc:
+                    return dict(c, state="refused", preview={"ok": False, "refusals": [str(exc)]})
+                return dict(c, state="refused", preview=_preview(network, key, values))
+            pv = _preview(network, key, offer["values"])
+            if pv["ok"] and pv["hash"] != offer["hash"]:
+                return dict(c, state="refused", preview=dict(pv, ok=False, refusals=[
+                    "its preview moved while this card was drawn; choose again"]))
+            return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
+                        post={"endpoint": "fixit_v2.fix_with_script",
+                              "args": {"incident_id": iid, "list": network},
+                              "vals": {"key": key, "hash": offer["hash"], "view": "fix"}})
+        c["none_open"] = True
     intents, err = committed_intents_of(network)
-    if f.get("match"):
-        by_dev = {}
-        for iid, prob in S._incidents_problems(network):   # noqa: SLF001 (its one read)
-            if S.matches(f["match"], prob) and prob.device and not _ended(network, iid):
-                by_dev.setdefault(prob.device, []).append((prob.object or "", iid, prob))
-        names = sorted(set(intents or {}) | set(by_dev))
-        if not names:
-            return dict(c, state="none", why=f"No device of {network} is in its committed "
-                                             f"intent{': ' + err if err else ''}")
-        dev = device if device in names else (sorted(by_dev)[0] if by_dev else names[0])
-        c["devices"] = [{"name": n, "chosen": n == dev, "label": n + (
-            f" ({len(by_dev[n])} port{' needs' if len(by_dev[n]) == 1 else 's need'} this fix)"
-            if n in by_dev else " (none needs it now)")} for n in names]
-        c["device"] = dev
-        ports = by_dev.get(dev) or []
-        if not ports:
-            return dict(c, state="none", why=f"No port on {dev} needs this fix right now")
-        intent = (intents or {}).get(dev) or {}
-        desc = {ifnames.canonical(i.get("name")): str(i.get("description") or "")
-                for i in _intent_ports(intent, False)}
-        chosen = next((p for p in ports if interface and ifnames.same_interface(p[0], interface)),
-                      ports[0])
-        for port, iid, prob in ports:
-            d = desc.get(ifnames.canonical(port)) if port else ""
-            c["ports"].append({"value": port, "chosen": port == chosen[0], "label": (
-                f"{_short(port)} ({d + ', ' if d else ''}"
-                f"{str(prob.condition).replace('_', '-')}"
-                f"{' by ' + prob.cause if prob.cause else ''})")})
-        c["interface"], iid = chosen[0], chosen[1]
-        c["note"] = ("Only the ports an open incident says need this fix now; its checks read "
-                     "the port live when you run it")
-        found = incident_page.resolve(network, iid)
-        offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), None)
-        if offer is None:
-            from modules import problem as P
-            try:
-                values = S.fill(f, P.classify(found))
-            except S.Refused as exc:
-                return dict(c, state="refused", preview={"ok": False, "refusals": [str(exc)]})
-            return dict(c, state="refused", preview=_preview(network, key, values))
-        c["where"] = f"{dev} {_short(c['interface'])}"
-        pv = _preview(network, key, offer["values"])
-        if pv["ok"] and pv["hash"] != offer["hash"]:
-            return dict(c, state="refused", preview=dict(pv, ok=False, refusals=[
-                "its preview moved while this card was drawn; choose again"]))
-        return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
-                    post={"endpoint": "fixit_v2.fix_with_script",
-                          "args": {"incident_id": iid, "list": network},
-                          "vals": {"key": key, "hash": offer["hash"], "view": "fix"}})
-    if key not in S.interface_actions(network):
+    if porting is None:
         others = [n for n in t.parameters if n not in ("device", "interface")]
-        return dict(c, why=(f"Run… here fills a device and an interface, and this fix also "
-                            f"takes {', '.join(others) or 'more'}: it runs as a step of a plan "
-                            "a person approves"))
+        return dict(c, state="none" if c["none_open"] else "not_offered", why=(
+            ("No open incident needs this fix right now, and " if c["none_open"] else "")
+            + (f"Run… on a chosen port fills a device, an interface and choices, and this fix "
+               f"also takes {', '.join(others) or 'more'}: it runs as a step of a plan a person "
+               "approves")))
     access_only = bool((t.parameters.get("interface") or {}).get("access_port"))
     eligible = {n: _intent_ports(i, access_only) for n, i in sorted((intents or {}).items())}
     names = [n for n, ports in eligible.items() if ports]
@@ -773,16 +871,35 @@ def run_card(network: str, key: str, *, device: str = "", interface: str = "",
                             + (f"{i['description']}, " if i.get("description") else "")
                             + f"{i.get('switchport_mode') or 'no switchport'})"} for i in ports]
     c["interface"] = chosen
-    c["note"] = (f"Every {word} in {dev}'s committed intent: this fix matches no problem, so "
-                 "Mercury cannot tell which port needs it; its checks read the port live when "
-                 "you run it")
+    c["note"] = (f"Every {word} in {dev}'s committed intent: "
+                 + ("you choose the port, " if f.get("match") else
+                    "this fix matches no problem, so Mercury cannot tell which port needs it; ")
+                 + "its checks read the port live when you run it")
     c["where"] = f"{dev} {_short(chosen)}"
-    pv = _preview(network, key, {"device": dev, "interface": chosen})
+    # Each choice the plan takes (an err-disabled port's cause), chosen here: the match's own
+    # value through its fill's map when it names one, else the first.
+    picked = {}
+    for name, of in porting["choices"].items():
+        if not of:
+            return dict(c, state="refused", preview={"ok": False, "refusals": [
+                f"{c['name']} takes {name} and offers no choice of it"]})
+        want = (choices or {}).get(name) or ""
+        if want not in of:
+            fill = (f.get("fills") or {}).get(name)
+            _field, mapping = S.fill_of(name, fill) if fill is not None else ("", None)
+            held = (f.get("match") or {}).get(_field) if _field else None
+            want = (mapping or {}).get(held) if isinstance(mapping, dict) else None
+            want = want if want in of else of[0]
+        picked[name] = want
+        words = (t.parameters.get(name) or {}).get("words") or name
+        c["choices"].append({"name": name, "words": words,
+                             "of": [{"value": v, "chosen": v == want} for v in of]})
+    pv = _preview(network, key, {"device": dev, "interface": chosen, **picked})
     return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
                 post={"endpoint": "saved_plans_v2.device_run",
                       "args": {"device": dev, "list": network},
                       "vals": {"key": key, "interface": chosen, "hash": pv["hash"],
-                               "view": "fix"}})
+                               "view": "fix", **picked}})
 
 
 def run_state(network: str, run_id: str) -> dict:
@@ -795,8 +912,13 @@ def run_state(network: str, run_id: str) -> dict:
         rec = privileged.get(network, run_id) or {}
     except (OSError, ValueError):
         rec = {}
+    from modules.nsot import saved_plans as S
+
     state = rec.get("state") or "running"
+    nothing = rec.get("outcome") == CR.NOT_NEEDED
     return {"id": run_id, "state": state, "outcome": rec.get("outcome") or "",
-            "words": CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
-            or str(rec.get("why") or ""), "title": rec.get("title") or "",
-            "device": rec.get("device") or "", "ok": state == "done"}
+            "words": (f"not needed: {rec.get('not_needed') or rec.get('why') or ''}"
+                      .rstrip(": ") if nothing else
+                      CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
+                      or str(rec.get("why") or "")), "title": rec.get("title") or "",
+            "device": rec.get("device") or "", "ok": S.run_verified(rec)}

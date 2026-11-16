@@ -68,6 +68,9 @@ _NAME = re.compile(r"[a-z][a-z0-9_]{0,30}\Z")
 _IFNAME = re.compile(r"[A-Za-z][A-Za-z-]{0,30}[0-9][0-9/.:]{0,15}\Z")
 _HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]{0,40})\}")
+#: Names a parameter never takes: a run's post carries them beside its values (`saved_plans_v2.
+#: device_run`, `fixit_v2.fix_with_script`).
+RESERVED_PARAMS = ("key", "hash", "view", "list")
 #: How many of each a template holds at most.
 MOST = {"preconditions": 8, "verify": 6, "commands": 20, "choices": 12}
 
@@ -77,6 +80,9 @@ NAMED_CHECKS = {
     "errdisable.port_listed": ("modules.heal.errdisable", "check_port_listed", None),
     "errdisable.port_not_listed": ("modules.heal.errdisable", "check_port_not_listed", None),
     "errdisable.port_connected": ("modules.heal.errdisable", "check_port_connected", None),
+    # The declared on/off pair's precondition (C1, 2026-11-16: net-zero only from a port up).
+    "errdisable.port_not_admin_down": ("modules.heal.errdisable", "check_port_not_admin_down",
+                                       None),
     "errdisable.not_recovering_itself": ("modules.heal.errdisable", "check_no_recovery",
                                          "preview_no_recovery"),
     "errdisable.cause_cleared": ("modules.heal.errdisable", "check_cause_cleared", None),
@@ -225,6 +231,10 @@ def parse(doc) -> Template:
     for name, spec in params.items():
         if not isinstance(name, str) or not _NAME.match(name) or not isinstance(spec, dict):
             raise Refused("template", f"parameter {name!r} is a lower-case name and an object")
+        if name in RESERVED_PARAMS:
+            # A run's post carries these beside the values (C4, 2026-11-16).
+            raise Refused("template", f"a parameter is never named {name}: "
+                                      f"{', '.join(RESERVED_PARAMS)} are the run's own fields")
         t = spec.get("type")
         if t not in PARAM_TYPES:
             raise Refused("template", f"parameter {name}'s type is one of "

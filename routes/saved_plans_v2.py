@@ -205,9 +205,10 @@ def approve_shape(incident):
 # ── A device's interface view: a saved action on one interface (board saved-plans D) ────────
 
 def _device_draw(network: str, device: str, code: int = 200, *, key: str = "",
-                 interface: str = "", run: str = "", **said):
-    """The device's saved-actions card: the actions an interface fills and the device's
-    interfaces; with *key* and *interface*, that action's preview by the runner's own preview
+                 interface: str = "", run: str = "", choices: dict = None, **said):
+    """The device's saved-actions card: the actions a chosen port runs (`saved_plans.
+    port_actions`, the one list `device_run` holds them to) and the device's interfaces; with
+    *key*, *interface* and each of its *choices*, that action's preview by the runner's own preview
     (asking no device: the program masked, every check, the hash Run is bound to); with *run*,
     the run's state from its own record. Asked from a fix's own page (``view=fix``, its Run…,
     C3849 piece 4), the same answer is drawn on that page's run card instead
@@ -222,10 +223,21 @@ def _device_draw(network: str, device: str, code: int = 200, *, key: str = "",
                                    interface=interface or (request.values.get("interface")
                                                            or "").strip(), run=run, **said)
     c = saved_plans.device_offer(network, device, **_who())
+    port = saved_plans.port_actions(network).get(key) if key else None
+    # Each choice the action takes: the one asked, else its first (the preview holds it); a
+    # choice with none to offer is refused readably (C4), never an IndexError.
+    empty = [n for n, of in ((port or {}).get("choices") or {}).items() if not of]
+    if empty:
+        said = dict(said, level="danger", words=(f"Not offered: {key} takes "
+                                                 f"{', '.join(empty)} and offers no choice of "
+                                                 "it"))
+        port = None
+    picked = {n: ((choices or {}).get(n) if (choices or {}).get(n) in of else of[0])
+              for n, of in ((port or {}).get("choices") or {}).items()}
     c.update(list=network, device=device, said=said, preview=None, run=None, key=key,
-             interface=interface)
-    if key and interface and key in saved_plans.interface_actions(network):
-        p = CP.preview(network, key, {"device": device, "interface": interface})
+             interface=interface, choices=picked)
+    if key and interface and port is not None:
+        p = CP.preview(network, key, {"device": device, "interface": interface, **picked})
         c["preview"] = {"ok": p["ok"], "title": p.get("title") or "", "hash": p["hash"],
                         "refusals": list(p.get("refusals") or []),
                         "drawn": dict(p.get("drawn") or {})}
@@ -244,9 +256,12 @@ def _device_draw(network: str, device: str, code: int = 200, *, key: str = "",
 def device_actions(device):
     """The device's saved actions, a preview of one on one interface, or a run's state."""
     a = request.args
-    return _device_draw(_list_name(), device, key=(a.get("key") or "").strip(),
+    key = (a.get("key") or "").strip()
+    return _device_draw(_list_name(), device, key=key,
                         interface=(a.get("interface") or "").strip(),
-                        run=(a.get("run") or "").strip())
+                        run=(a.get("run") or "").strip(),
+                        choices={k[len(f"c__{key}__"):]: (v or "").strip()[:40]
+                                 for k, v in a.items() if key and k.startswith(f"c__{key}__")})
 
 
 @bp.route("/device/<device>/run", methods=["POST"])
@@ -262,10 +277,15 @@ def device_run(device):
     key, iface = (form.get("key") or "").strip(), (form.get("interface") or "").strip()
     confirmed = (form.get("hash") or "").strip()
     who = _who()
-    if key not in saved_plans.interface_actions(network):
+    # A fix's Run… on a chosen port (the operator, 2026-11-16) also names each choice its plan
+    # takes (`saved_plans.port_actions`); the runner's preview holds each to its choices.
+    port = saved_plans.port_actions(network).get(key)
+    if port is None:
         return _device_draw(network, device, 409, level="danger",
                             words=f"Not run: {key or 'no action'} is no saved action on one "
                                   "interface")
+    values = {"device": device, "interface": iface,
+              **{n: (form.get(n) or "").strip() for n in port["choices"]}}
     from modules import identity
 
     why = identity.right_refusal("run_plan", **who)
@@ -275,7 +295,7 @@ def device_run(device):
     run_id = reads.new_id()
 
     def work(_job):
-        rec = CR.run(network, key, {"device": device, "interface": iface}, run_id=run_id,
+        rec = CR.run(network, key, values, run_id=run_id,
                      confirmed=confirmed, reason=f"a saved action pressed on {device}",
                      **who)
         return {"run": rec.get("id"), "state": rec.get("state"),

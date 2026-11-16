@@ -14,7 +14,7 @@
     <dl class="tl-record">
       <dt>Automatic{% if p.how == 'automatic' and not p.deleted %} (this fix){% endif %}</dt><dd>Runs by itself on a matching incident while {{ p.network }}'s self-healing is in Auto; a person can also press Run…</dd>
       <dt>Dry run{% if p.how == 'matched' and not p.deleted %} (this fix){% endif %}</dt><dd>Records what it would do on a matching incident and changes nothing</dd>
-      <dt>Manual only{% if p.how == 'manual' and not p.deleted %} (this fix){% endif %}</dt><dd>Never by itself: {% if p.by_run %}only Run… here{% if p.how != 'manual' %} or on a matching incident{% endif %}{% else %}only as a step of a plan a person approves by its hash (the AI may propose it){% endif %}</dd>
+      <dt>Manual only{% if p.how == 'manual' and not p.deleted %} (this fix){% endif %}</dt><dd>Never by itself: {% if p.by_run %}only Run… here{% if p.how != 'manual' or p.held_manual or p.change_right == 'self_healing' %} or on a matching incident{% endif %}{% else %}only as a step of a plan a person approves by its hash (the AI may propose it){% endif %}{% if p.held_manual %}; it was Automatic, and is held here until version {{ p.held_manual.version }} has a verified run{% endif %}</dd>
       {%- if p.deleted %}
       <dt>Deleted (this fix)</dt><dd>Never offered, matched or run, and not in the AI's catalog; its record, origin and runs are kept here</dd>
       {%- endif %}
@@ -38,6 +38,22 @@
       {%- endfor %}
       </ul>
     </div>
+  {%- endif %}
+  {%- if auto is defined and auto and auto.offer and not p.deleted %}
+    {#- Set Automatic… (the operator, 2026-11-16: a fix "can be set Automatic after its first
+        verified run"; one whose version changed, once its new version has one): the
+        self-healing right; the press binds the plan's digest (`saved_plans.promote`). -#}
+    <details class="small" data-keep="fx-auto-{{ p.key }}"{% if said and said.level == 'danger' and 'Automatic' in said.words %} open{% endif %}><summary>Set Automatic…</summary>
+      <form class="simple-form" hx-post="{{ url_for('fixes_v2.automatic', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
+        {%- if auto.ran %}
+        <p>Version {{ auto.version }} verified on run <span class="mono">{{ auto.ran.id[-8:] }}</span>{% if auto.ran.at %}, {{ clock(auto.ran.at, 'date') }}{% endif %}. Automatic, it runs by itself on a matching incident while {{ p.network }}'s self-healing is in Auto, on your standing approval of this version's plan.</p>
+        {%- else %}
+        <p>Not yet: {{ auto.why }}.</p>
+        {%- endif %}
+        {%- if auto.right %}<p class="small bluf-refused" data-refused="automatic">{{ auto.right }}</p>{% endif %}
+        <span class="op-act"><button type="submit" class="btn btn-small" data-op="fix-automatic" hx-disabled-elt="this"{% if auto.right or not auto.ran %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Set Automatic</span><span class="op-busy">Setting…</span></button></span>
+      </form>
+    </details>
   {%- endif %}
   {%- if form %}
     {%- set restoring = form.action == 'restore' %}

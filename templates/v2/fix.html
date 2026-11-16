@@ -4,7 +4,8 @@
     approved by the operator 2026-11-16 with changes): the BLUF card (its name, what it
     fixes, how it runs and its record, Run…, and where it was saved from), then Contents,
     Origin, Record and How it runs, each folded (`modules/fix_page.page`). Run… draws its card
-    in place under the BLUF (`_fix_run.html`). A built-in's page is read-only: no Run…, and
+    in place under the BLUF (`_fix_run.html`); Edit… is inside Contents (`_fix_contents.html`,
+    board fix-manual-controls screen 3), each run in the Record names its version. A built-in's page is read-only: no Run…, and
     How it runs says how it does run, from code and the network's settings. One live region,
     drawn again when the saved plans or a run record change. -#}
 {% block title %}{{ p.name }} · {{ brand.short }}{% endblock %}
@@ -19,7 +20,7 @@
 <section class="card inc-bluf simple" aria-labelledby="fx-title" data-fix="{{ p.key }}">
   <h1 class="simple-title" id="fx-title">{{ p.name }}</h1>
   <p class="simple-impact" title="{{ p.fixes }}">Fixes: {{ p.fixes }}</p>
-  <p class="simple-status" role="status">{{ badge(p.words, p.badge, title=p.hover) }} {{ p.said }}{% if p.heal_now and p.how == 'automatic' and not p.deleted %} (self-healing on {{ p.network }}: {{ p.heal_now }} now){% endif %} · {{ p.record.summary }}</p>
+  <p class="simple-status" role="status">{{ badge(p.words, p.badge, title=p.hover) }} {{ p.said }}{% if p.heal_now and p.how == 'automatic' and not p.deleted %} (self-healing on {{ p.network }}: {{ p.heal_now }} now){% endif %}{% if p.version %} · version {{ p.version }}{% endif %} · {{ p.record.summary }}</p>
   <div class="simple-acts">
     {%- if p.runnable %}
     <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.run', key=p.key, list=p.network) }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Choose a device and an interface, then see exactly what it sends before anything runs"><span class="op-idle">Run…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
@@ -31,37 +32,7 @@
 </section>
 <div id="fix-run" hidden></div>
 
-<section class="card inc-fold" aria-labelledby="h-fx-contents">
-  <details class="inc-fold-d" data-keep="fx-contents-{{ p.key }}"><summary class="card-head"><h2 id="h-fx-contents">Contents</h2></summary>
-  {%- if p.contents %}
-    <div class="simple-sec">
-      <h3>Sends, in config mode, never saved</h3>
-      <pre class="plan-sent">{{ p.contents.program | join('\n') }}</pre>
-      {%- for x in p.contents.params %}
-      <p class="small muted"><span class="mono">{{ '{' ~ x.name ~ '}' }}</span> is {{ x.words }}.</p>
-      {%- endfor %}
-    </div>
-    <div class="simple-sec">
-      <h3>Checks before, each read live; one that fails refuses the run</h3>
-      <ol class="fixit-plan-items">
-      {%- for c in p.contents.checks %}
-        <li>{{ c.name }}{% if c.reads %} <span class="fixit-pre">· reads {{ c.reads }}</span>{% endif %}</li>
-      {%- endfor %}
-      </ol>
-    </div>
-    <div class="simple-sec">
-      <h3>Verifies after; a failure rolls back and says so</h3>
-      <ol class="fixit-plan-items">
-      {%- for v in p.contents.verify %}
-        <li>{{ v }}</li>
-      {%- endfor %}
-      </ol>
-    </div>
-  {%- else %}
-    <p class="small">It fixes {{ p.fixes }}. It ships with Mercury, and what it sends is drawn in its own preview each time it is offered.</p>
-  {%- endif %}
-  </details>
-</section>
+{% include "v2/_fix_contents.html" %}
 
 <section class="card inc-fold" aria-labelledby="h-fx-origin">
   <details class="inc-fold-d" data-keep="fx-origin-{{ p.key }}"><summary class="card-head"><h2 id="h-fx-origin">Origin</h2></summary>
@@ -78,7 +49,7 @@
   {%- if p.record.rows %}
     <ol class="fixit-attempts">
     {%- for r in p.record.rows %}
-      <li class="fixit-a {{ 'fixit-a-passed' if r.ok else ('' if r.dry else 'fixit-a-failed') }}">{{ clock(r.at, 'date') }}{% if r.where %} · {{ r.where }}{% endif %} · {{ r.who }} · {% if r.ok and not r.dry %}<strong>verified:</strong> {% endif %}{{ r.words }}{% if r.run and r.device %} · <a href="{{ url_for('device_v2.device', name=r.device, list=p.network, result=r.run) }}">Open the run</a>{% endif %}</li>
+      <li class="fixit-a {{ 'fixit-a-passed' if r.ok else ('' if r.dry else 'fixit-a-failed') }}">{{ clock(r.at, 'date') }}{% if r.where %} · {{ r.where }}{% endif %}{% if r.version %} · version {{ r.version }}{% endif %} · {{ r.who }} ·{% if r.ok and not r.dry %}<strong>verified:</strong> {% endif %}{{ r.words }}{% if r.run and r.device %} · <a href="{{ url_for('device_v2.device', name=r.device, list=p.network, result=r.run) }}">Open the run</a>{% endif %}</li>
     {%- endfor %}
     </ol>
     <p class="small muted">{% if p.record.more %}{{ p.record.more }} more, older. {% endif %}Every run is on <a href="{{ url_for('v2.history_page', list=p.network) }}">History</a>.</p>

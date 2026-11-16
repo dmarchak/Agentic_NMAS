@@ -1,0 +1,58 @@
+{%- from "v2/_macros.html" import icon, badge, clock -%}
+{#- A fix's Contents fold (board fix-bpdu-guard, artboard 1; board fix-manual-controls screen 3,
+    approved by the operator 2026-11-16 with two corrections): what it sends, the checks it
+    reads first and what it verifies after, its version and the versions kept; and Edit…
+    inside the fold (the default view keeps one button: R5), which draws the fix's form in
+    place (`templates/v2/_fix_form.html`, `routes/fixes_v2.edit`). Drawn by fix.html and
+    again, alone, by Edit… and its Cancel. -#}
+{%- set editing = edit is defined and edit %}
+<section class="card inc-fold" id="fix-contents" aria-labelledby="h-fx-contents"{% if editing %} data-holds-live="review"{% endif %}>
+  <details class="inc-fold-d" data-keep="fx-contents-{{ p.key }}"{% if editing or (contents_said is defined and contents_said and contents_said.words) %} open{% endif %}><summary class="card-head"><h2 id="h-fx-contents">Contents{% if p.version %} · version {{ p.version }}{% endif %}{% if editing %}, editing{% endif %}</h2></summary>
+  {%- if contents_said is defined and contents_said and contents_said.words %}
+    <div class="notice notice-{{ 'danger' if contents_said.level == 'danger' else 'ok' }} set-result" role="{{ 'alert' if contents_said.level == 'danger' else 'status' }}">{{ icon('warn' if contents_said.level == 'danger' else 'tick', 16) }}<p>{{ contents_said.words }}</p></div>
+  {%- endif %}
+  {%- if editing %}
+    {%- set c = edit %}
+    {% include "v2/_fix_form.html" %}
+  {%- elif p.contents %}
+    <div class="simple-sec">
+      <h3>Sends, in config mode, never saved</h3>
+      <pre class="plan-sent">{{ p.contents.program | join('\n') }}</pre>
+      {%- for x in p.contents.params %}
+      <p class="small muted"><span class="mono">{{ '{' ~ x.name ~ '}' }}</span> is {{ x.words }}.</p>
+      {%- endfor %}
+    </div>
+    <div class="simple-sec">
+      <h3>Checks before, each read live; one that fails refuses the run</h3>
+      <ol class="fixit-plan-items">
+      {%- for c in p.contents.checks %}
+        <li>{{ c.name }}{% if c.reads %} <span class="fixit-pre">· reads {{ c.reads }}</span>{% endif %}</li>
+      {%- endfor %}
+      </ol>
+    </div>
+    <div class="simple-sec">
+      <h3>Verifies after; a failure rolls back and says so</h3>
+      <ol class="fixit-plan-items">
+      {%- for v in p.contents.verify %}
+        <li>{{ v }}</li>
+      {%- endfor %}
+      </ol>
+    </div>
+    {%- if p.versions | length > 1 %}
+    <div class="simple-sec">
+      <h3>Versions, each kept</h3>
+      <ul class="small">
+      {%- for v in p.versions %}
+        <li>Version {{ v.version }}{% if v.now %} {{ badge('runs now', 'info') }}{% endif %} · {{ v.why }} · by {{ v.by }}, {{ clock(v.at, 'date') }} <span class="info-link" tabindex="0" title="Its template's digest {{ v.digest }}: every run of this version binds it">{{ icon('info', 15) }}</span></li>
+      {%- endfor %}
+      </ul>
+    </div>
+    {%- endif %}
+    {%- if p.editable %}
+    <p class="small"><button type="button" class="bluf-link" data-op="fix-edit" hx-get="{{ url_for('fixes_v2.edit', key=p.key, list=p.network) }}" hx-target="#fix-contents" hx-swap="outerHTML" hx-disabled-elt="this" title="Name, description and what it fixes change in place; a change to its lines, checks or verify saves a new version, the old kept">Edit…</button></p>
+    {%- endif %}
+  {%- else %}
+    <p class="small">It fixes {{ p.fixes }}. It ships with Mercury, and what it sends is drawn in its own preview each time it is offered.</p>
+  {%- endif %}
+  </details>
+</section>

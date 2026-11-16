@@ -1955,6 +1955,19 @@ def saved_fixes(ctx):
                 who=r.get("by", ""), detail=r.get("reason", ""),
                 record=[("Action", action), ("Fix", f.get("name") or key),
                         ("Reason", r.get("reason")), ("Verified", r.get("verified"))]))
+        # Written, edited, a new version, set Automatic (board fix-manual-controls, the
+        # operator, 2026-11-16: "said on the page and in History"), each kept on the fix.
+        for ch in f.get("changes") or []:
+            if not _recent(ctx, ch.get("at")):
+                continue
+            what = str(S.CHANGE_WORDS.get(ch.get("action"), ch.get("action")) or "")
+            if ch.get("action") == "new_version":
+                what += f" ({ch.get('version')})"
+            events.append(_event(
+                ch.get("at"), "fix", f"Saved fix “{f.get('name') or key}” {what}", [],
+                who=ch.get("by", ""), detail=ch.get("words", ""),
+                record=[("Action", what), ("Fix", f.get("name") or key),
+                        ("Version", ch.get("version")), ("What", ch.get("words"))]))
     events.sort(key=lambda e: e["at"], reverse=True)
     return _out(events[:ctx["limit"]])
 

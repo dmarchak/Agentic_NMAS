@@ -323,3 +323,199 @@ def record_measurement(network: str, dialect: str, sent_shapes, *, device: str, 
             now.append(shape)
         return now
     return _update(network, change)
+
+
+# ── Net-zero lines: what a saved fix's line editor offers and refuses (the operator, ────────
+# 2026-11-16, correction 1 to board fix-manual-controls: "a fix's command plan must leave
+# running config as it was, so the line editor (New fix and Edit) offers only shapes that keep
+# it net-zero, and refuses a lasting one in plain words"). The rule is read from the lines
+# alone, before a fix is saved; the run's own net-zero compare (`command_plan_run.net_zero`)
+# stays the final guard.
+
+#: The section headers a fix may enter: an interface its typed parameter names, validated on
+#: the device's committed intent, so entering it creates nothing (`command_plan.validate`).
+NET_ZERO_HEADERS = ("interface {interface}",)
+#: The operator's words for a line that would last (2026-11-16).
+LASTING_WORDS = ("This line would change {device}'s configuration permanently; a fix must "
+                 "leave it as it was. Make lasting changes in Intent.")
+#: The on/off pairs known to undo themselves in one batch (the review, 2026-11-16, F3): the
+#: measured launch shapes, an interface's administrative state set and set back. Nothing else
+#: is called net-zero by resemblance (`ip routing` / `no ip routing`, a description, an access
+#: VLAN, a route are not); an admin may mark an approved shape as the other half of one
+#: (its store record's ``pair_of``, `declared_pairs`).
+LAUNCH_PAIRS = (("interface {interface} > shutdown", "interface {interface} > no shutdown"),)
+#: A declared pair is net-zero only from a port that is up (the review, 2026-11-16, C1): a
+#: port shut on purpose would come up. A fix sending one carries this precondition, read live
+#: (`command_plan.NAMED_CHECKS`), added by its editor and required at save (`pair_refusal`).
+PAIR_PRECONDITION = {"name": "The port is not administratively down",
+                     "read": "show interfaces status",
+                     "expect": "errdisable.port_not_admin_down"}
+#: The editor's words for it.
+PAIR_WORDS = ("shutdown / no shutdown leaves a port as it was only when it starts up, so "
+              "Mercury adds the check that the port is not administratively down, read live "
+              "before anything is sent.")
+#: The operator's words beside any other pair a fix sends (2026-11-16).
+UNPROVEN_WORDS = ("Only shutdown / no shutdown is known to undo itself; other lines are "
+                  "checked by the run's before/after compare.")
+#: A line beginning with one of these words configures the device as a whole (or another
+#: section), never an interface: typed under one, it is refused (F3). Refusing by
+#: resemblance is safe.
+GLOBAL_ONLY = ("hostname", "ip routing", "ip route", "ipv6 route", "ipv6 unicast-routing",
+               "ip domain", "ip name-server", "ip default-gateway", "ip ssh", "ip http",
+               "router", "vlan", "vtp", "spanning-tree mode", "spanning-tree vlan",
+               "spanning-tree portfast default", "snmp-server", "logging host",
+               "logging buffered", "service", "banner", "archive", "errdisable recovery",
+               "access-list", "ip access-list",
+               "route-map", "class-map", "policy-map", "key chain", "line", "interface",
+               "telemetry", "netconf-yang", "restconf", "event manager", "license")
+
+
+def negation(text: str) -> str:
+    """*text*'s own negation: ``no shutdown`` for ``shutdown``, and ``shutdown`` for ``no
+    shutdown`` (one leading ``no`` added or taken away)."""
+    words = _words(text)
+    return words[3:] if words.startswith("no ") else f"no {words}"
+
+
+def global_only(text: str) -> str:
+    """The `GLOBAL_ONLY` word *text* (negated or not) begins with, or ``""``."""
+    bare = _bare(_words(text).lower())
+    return next((w for w in GLOBAL_ONLY if bare == w or bare.startswith(w + " ")), "")
+
+
+def declared_pairs(network: str = "") -> set:
+    """The on/off pairs known to undo themselves (`LAUNCH_PAIRS`, and each pair *network*'s
+    admin approved as one: an approved shape whose record names its other half, ``pair_of``,
+    itself approved or measured), each ``(set shape, set-back shape)``. A read."""
+    out = set(LAUNCH_PAIRS)
+    recs = {r.get("shape"): r for r in ((read_store(network) if network else {})
+                                        .get("shapes") or {}).values() if isinstance(r, dict)}
+    every = set().union(*[set(m) for m in MEASURED.values()]) if MEASURED else set()
+    for shape, r in recs.items():
+        other = r.get("pair_of") or ""
+        if r.get("state") == "approved" and other and (
+                other in every or (recs.get(other) or {}).get("state") == "approved"):
+            out.add((shape, other) if not shape.split(" > ")[-1].startswith("no ")
+                    else (other, shape))
+    return out
+
+
+def judge(lines, network: str = "") -> dict:
+    """*lines* (a fix's config-mode lines as its template writes them, placeholders kept)
+    judged net-zero or not in one batch: ``{"lasting": [(line, why)], "unproven": [line],
+    "declared": [line]}``, *declared* the lines of declared pairs (`pair_refusal`).
+    Net-zero: a top-level header of `NET_ZERO_HEADERS` (entering an interface Mercury's model
+    holds), and, under it, a line followed later in that section by its own negation where
+    the two are a declared pair (`declared_pairs`: ``shutdown`` then ``no shutdown``).
+    *unproven*: any other line its own negation follows in its section, never called
+    net-zero; it is left to the run's before/after compare, said in the operator's words
+    (`UNPROVEN_WORDS`). *lasting*, refused: a line no negation follows, a negation nothing
+    before it set, a global command typed under an interface (`global_only`), any other
+    top-level line, and a line under no section. A refused word or an object as text is the
+    rule's own refusal (`check`), not judged here."""
+    pairs = declared_pairs(network)
+    out, unproven, declared, section, open_ = [], [], [], None, []
+
+    def close_section():
+        for raw in open_:
+            out.append((raw, f"nothing after it in its section undoes `{_words(raw)}` (its "
+                             f"own negation, `{negation(raw)}`, would)"))
+        open_.clear()
+    for raw, shape in shapes(lines):
+        indented = str(raw)[:1] in (" ", "\t")
+        if not indented:
+            close_section()
+            if shape in NET_ZERO_HEADERS:
+                section = shape
+            else:
+                section = None
+                out.append((raw, "it is a line of the device's global configuration, which "
+                                 "nothing in a fix's batch undoes"))
+            continue
+        if section is None:
+            out.append((raw, "it is under no interface Mercury's model holds"))
+            continue
+        text = _words(raw)
+        if global_only(text):
+            out.append((raw, f"`{global_only(text)}` configures the device as a whole, not "
+                             "an interface"))
+            continue
+        if not text.startswith("no "):
+            open_.append(raw)
+            continue
+        # A negation closes the line it negates, set before it in this section; one that
+        # negates nothing set here would last (``no shutdown`` alone opens a port shut on
+        # purpose).
+        undoes = next((o for o in open_ if _words(o) == negation(text)), None)
+        if undoes is None:
+            out.append((raw, f"`{text}` undoes nothing this fix set before it in its section"))
+            continue
+        open_.remove(undoes)
+        if (f"{section} > {_words(undoes)}", f"{section} > {text}") not in pairs:
+            unproven += [undoes, raw]
+        else:
+            declared += [undoes, raw]
+    close_section()
+    return {"lasting": out, "unproven": unproven, "declared": declared}
+
+
+def pair_refusal(commands, preconditions, network: str = "") -> str:
+    """Why a fix sending *commands* with *preconditions* (a template's items) is not net-zero
+    from where it starts, or ``""``: a declared pair (`judge`'s ``declared``) needs
+    `PAIR_PRECONDITION` among its preconditions (C1)."""
+    if not judge(commands, network)["declared"]:
+        return ""
+    if any((p or {}).get("expect") == PAIR_PRECONDITION["expect"] for p in preconditions or []):
+        return ""
+    return ("a fix sending shutdown / no shutdown checks first that the port is not "
+            "administratively down (it would come up): its precondition "
+            f"\"{PAIR_PRECONDITION['name']}\" is missing")
+
+
+def lasting(lines, network: str = "") -> list:
+    """The lines of *lines* that would last (`judge`'s ``lasting``): ``[(line, why)]``."""
+    return judge(lines, network)["lasting"]
+
+
+def lasting_refusal(lines, device: str = "", network: str = "") -> str:
+    """The operator's words for the first line of *lines* that would last (`lasting`), naming
+    *device* (or "the device"), with the line and why; ``""`` when none would."""
+    got = lasting(lines, network)
+    if not got:
+        return ""
+    raw, why = got[0]
+    return (f"`{_words(raw)}`: " + LASTING_WORDS.format(device=device or "the device")
+            + f" ({why})")
+
+
+def offered(network: str = "") -> list:
+    """The line shapes a fix's editor offers, each one that keeps it net-zero: every header of
+    `NET_ZERO_HEADERS`, and each half of a declared on/off pair under it (`declared_pairs`:
+    ``shutdown`` and ``no shutdown``) that every measured dialect allows (`MEASURED`) or
+    *network*'s admin approved. ``[{"line", "shape", "words", "state"}]``, *line* as a template
+    writes it (an indented line one space in). A read: writes nothing."""
+    halves = {s for pair in declared_pairs(network) for s in pair}
+    allowed = {}
+    every = [set(m) for m in MEASURED.values()]
+    for shape in set.intersection(*every) if every else set():
+        allowed[shape] = "measured"
+    kept = read_store(network) if network else {}
+    for rec in (kept.get("shapes") or {}).values():
+        if isinstance(rec, dict) and rec.get("state") == "approved" and rec.get("shape"):
+            allowed.setdefault(rec["shape"], "approved")
+    out = []
+    for head in NET_ZERO_HEADERS:
+        if head in allowed:
+            out.append({"line": head, "shape": head, "words": head, "state": allowed[head]})
+        # Each line before its own negation (``shutdown``, then ``no shutdown``): the order a
+        # net-zero batch sends them in (`lasting`).
+        under = sorted((s for s in allowed if s.startswith(head + " > ")),
+                       key=lambda s: (_bare(s[len(head) + 3:]), s[len(head) + 3:]
+                                      .startswith("no ")))
+        for shape in under:
+            text = shape[len(head) + 3:]
+            if shape not in halves or f"{head} > {negation(text)}" not in allowed:
+                continue
+            out.append({"line": " " + text, "shape": shape, "words": text,
+                        "state": allowed[shape]})
+    return out

@@ -41,10 +41,12 @@ and never approves or saves (`identity.ai_acting_refusal`). The store is the ins
 (`STORE`), locked and replaced atomically.
 """
 
+import contextlib
 import json
 import logging
 import os
 import re
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -57,6 +59,8 @@ FAMILY = "saved action"
 KINDS = ("script", "action", "fix")
 FIX = "fix"
 MODES = ("dry_run", "auto")
+#: A matched fix's mode while it is Manual only (`how_of`): never fired, offered to a person.
+MANUAL = "manual"
 #: How a fix runs (`how_of`): by a person only; offered on matching incidents; and, promoted,
 #: by itself on them as well.
 HOWS = ("manual", "matched", "automatic")
@@ -140,7 +144,7 @@ def templates() -> dict:
     try:
         mtime = stamp()
     except OSError:
-        return {}
+        return _draft_templates()
     if _CACHE["mtime"] != mtime:
         out = {}
         for key, e in (read().get("plans") or {}).items():
@@ -149,13 +153,42 @@ def templates() -> dict:
             except CP.Refused as exc:
                 log.error("saved plans: %s no longer parses: %s", key, exc)
         _CACHE.update(mtime=mtime, templates=out)
-    return dict(_CACHE["templates"])
+    return dict(_CACHE["templates"], **_draft_templates())
+
+
+#: A fix's editor previewing its draft (`previewing`): this thread's drafts, by key.
+_DRAFTS = threading.local()
+#: The key a New fix's draft previews under (`fix_editor.build`), never a saved fix's
+#: (`key_refusal`).
+DRAFT_KEY = "fix-draft-preview"
+
+
+def _draft_templates() -> dict:
+    return dict(getattr(_DRAFTS, "templates", None) or {})
+
+
+@contextlib.contextmanager
+def previewing(key: str, template):
+    """While inside, *key* names *template* (a parsed `command_plan.Template`, a draft New
+    fix… or Edit… previews) in THIS thread's `templates`, so the runner's own preview
+    (`command_plan.preview`, asking no device) previews exactly the draft that Save would
+    store. Never written; no other thread, process or run sees it, and it ends with the
+    block."""
+    before = _draft_templates()
+    _DRAFTS.templates = dict(before, **{key: template})
+    try:
+        yield
+    finally:
+        _DRAFTS.templates = before
 
 
 def how_of(e: dict) -> str:
-    """How the fix *e* runs (`HOWS`): ``manual`` with no match; ``automatic`` with one,
-    promoted (Auto); else ``matched`` (Dry run: offered, recorded when it fires)."""
-    if not e.get("match"):
+    """How the fix *e* runs (`HOWS`): ``manual`` with no match, or with one held Manual only
+    (mode ``manual``: a fix written on the Fixes page until its first verified run, or an
+    Automatic one whose commands, checks or verify changed until its new version has one; the
+    operator, 2026-11-16: offered on a matching incident, never run by itself); ``automatic``
+    with one, promoted (Auto); else ``matched`` (Dry run: offered, recorded when it fires)."""
+    if not e.get("match") or e.get("mode") == MANUAL:
         return "manual"
     return "automatic" if e.get("mode") == "auto" else "matched"
 
@@ -182,8 +215,97 @@ def as_fix(e: dict) -> dict:
     else:
         out.update(network=str(e.get("network") or ""), shared=bool(e.get("shared")),
                    catalog=True)
+    # Edit… changes a fix's description in place (its own ``words``, never its template's,
+    # whose digest a promotion binds), and versions its template (`versions`).
+    out["words"] = str(e.get("words") or out["words"])
+    out["version"] = versions(e)[-1]["version"]
     out["how"] = how_of(out)
     return out
+
+
+# ── Versions (the operator, 2026-11-16: "changing commands, checks or verify creates a new
+# version (old versions kept, each run names its version)") ─────────────────────────────────
+
+def versions(e: dict) -> list:
+    """Every version of the stored fix *e*, oldest first: ``[{"version", "digest", "at", "by",
+    "why", "template"}]``, the last the template it runs now. An entry saved before versions
+    existed (expand, then contract) is version 1, its template the one it holds, from its
+    save."""
+    from modules.nsot import command_plan as CP
+
+    kept = [dict(v) for v in e.get("versions") or [] if isinstance(v, dict)]
+    if kept:
+        return kept
+    try:
+        digest = CP.parse(e.get("template")).digest
+    except CP.Refused:
+        digest = ""
+    return [{"version": 1, "digest": digest, "at": str(e.get("saved_at") or ""),
+             "by": str(e.get("saved_by") or ""), "why": "saved",
+             "template": e.get("template")}]
+
+
+def version_at(e: dict, at: str) -> int:
+    """The version of *e* that ran at the instant *at* (an ISO instant): the newest saved at
+    or before it. Sound because a run binds its plan's hash, which binds its template's
+    digest (`command_plan.BINDS`): a run previewed on one version and applied after the next
+    was saved is refused, so a run that ran, ran the version current when it started."""
+    got = 1
+    for v in versions(e):
+        # Strictly before: a run in the second a version was saved began on the one before
+        # (a person's press needs a preview of the new version first).
+        if str(v.get("at") or "") < str(at or ""):
+            got = int(v.get("version") or 1)
+    return got
+
+
+#: The newest run records read for a version's verified run: a bound, said when reached.
+VERIFIED_READ = 200
+
+
+def run_verified(rec) -> bool:
+    """THE one reading of "a verified run" (saving a fix from a run, `_verified_run`; a
+    version's verified run, `verified_run`): a command plan's run that SENT its program and
+    passed its own verify, its state ``done`` and its outcome ``done``. A run that sent
+    nothing is never one, though the runner records it ``done`` (`command_plan_run.
+    RECORD_STATE`: ``not_needed``, its precondition saying there was nothing to do), nor a
+    refused, rolled-back, unverified or re-tripped one (the review, 2026-11-16, F1)."""
+    return (isinstance(rec, dict) and rec.get("kind") == "command_plan"
+            and rec.get("state") == "done" and rec.get("outcome") == "done")
+
+
+def verified_run(network: str, e: dict) -> dict:
+    """The newest run of *e*'s current version that sent and verified (`run_verified`),
+    ``{"id", "at"}``, or ``{}``: a run record of its key started after the second the version
+    was saved (`version_at`) and, for a fix held Manual only by an edit (``held_manual``, F4),
+    after that edit; version 1 of a fix saved from a verified run, never edited since, counts
+    that run when its record still reads verified. A read of the newest `VERIFIED_READ` run
+    records."""
+    from modules import config
+    from modules.nsot import privileged
+
+    vs = versions(e)
+    cur = vs[-1]
+    src = e.get("from_run") or {}
+    held = e.get("held_manual") or {}
+    if cur["version"] == 1 and src.get("run") and not held:
+        try:
+            rec = privileged.get(network, src["run"])
+        except (OSError, ValueError):
+            rec = None
+        return {"id": src["run"], "at": src.get("at") or ""} if run_verified(rec) else {}
+    since = max(str(cur.get("at") or ""), str(held.get("at") or ""))
+    try:
+        got = privileged.runs(network, limit=VERIFIED_READ,
+                              data_dir=config.list_data_path(network)).get("runs") or []
+    except (OSError, ValueError) as exc:
+        log.error("saved plans: %s's run records could not be read: %s", network, exc)
+        got = []
+    for r in got:
+        if (r.get("key") == e.get("key") and run_verified(r)
+                and str(r.get("at") or "") > since):
+            return {"id": r.get("id") or "", "at": r.get("at") or ""}
+    return {}
 
 
 def _is_matched(e: dict) -> bool:
@@ -382,18 +504,24 @@ def fill(entry: dict, problem) -> dict:
     return out
 
 
-def _incidents_problems(network: str) -> list:
-    """``[(incident id, problem)]`` for *network*'s open incidents, each classified as its page
-    classifies it (`problem.classify`). A read."""
+def incident_problems(network: str, *, closed: bool = False) -> list:
+    """THE one reading of *network*'s incidents as problems: ``[(record, problem)]``, oldest
+    first, each classified as its page classifies it (`problem.classify`); its open ones, and
+    with *closed* its closed ones too (New fix…'s example and counts, `fix_editor`). A read."""
     from modules import problem as P
     from modules.heal import incidents
 
     out = []
     for rec in (incidents.read(network).get("incidents") or []):
-        if not isinstance(rec, dict) or rec.get("state") == "closed":
+        if not isinstance(rec, dict) or (rec.get("state") == "closed" and not closed):
             continue
-        out.append((str(rec.get("id") or ""), P.classify({"incident": rec, "entry": {}})))
+        out.append((rec, P.classify({"incident": rec, "entry": {}})))
     return out
+
+
+def _incidents_problems(network: str) -> list:
+    """``[(incident id, problem)]`` for *network*'s open incidents (`incident_problems`)."""
+    return [(str(rec.get("id") or ""), prob) for rec, prob in incident_problems(network)]
 
 
 def match_preview(network: str, match: dict) -> dict:
@@ -421,9 +549,10 @@ def _verified_run(network: str, run_id: str) -> dict:
         rec = None
     if not isinstance(rec, dict) or rec.get("kind") != "command_plan":
         raise Refused(f"{run_id} is no command plan's run of {network}")
-    if rec.get("state") != "done":
-        raise Refused(f"{run_id} did not pass its own verify "
-                      f"({rec.get('outcome') or 'no outcome'}): only a verified fix is saved")
+    if not run_verified(rec):
+        raise Refused(f"{run_id} did not send its program and pass its own verify "
+                      f"(state {rec.get('state') or 'none'}, outcome "
+                      f"{rec.get('outcome') or 'none'}): only a verified fix is saved")
     return rec
 
 
@@ -432,6 +561,17 @@ def _key(kind: str, name: str) -> str:
     if not slug:
         raise Refused("a saved plan is named in words")
     return f"{kind}-{slug}"
+
+
+def key_refusal(name: str) -> str:
+    """Why a fix named *name* cannot be saved by that name, or ``""``: its key would be the one
+    a New fix's draft previews under (`DRAFT_KEY`), so its preview and the saved fix would be
+    two plans under one key (the review, 2026-11-16, F6)."""
+    slug = _SLUG.sub("-", (name or "").lower()).strip("-")[:40]
+    if slug and f"{FIX}-{slug}" == DRAFT_KEY:
+        return (f"a fix cannot be named {name!r}: that name is the one Mercury previews every "
+                "new fix under; choose another name")
+    return ""
 
 
 def _template_doc(rec: dict, key: str, name: str, words: str) -> dict:
@@ -460,7 +600,8 @@ def _store(entry: dict) -> dict:
     network, run_id = entry["network"], (entry.get("from_run") or {}).get("run")
 
     def change(doc):
-        for old in doc["plans"].values():
+        # A fix written on the Fixes page (`new_fix`) was saved from no run: none answers it.
+        for old in doc["plans"].values() if run_id else ():
             if isinstance(old, dict) and _saved_from_run(old, network, run_id):
                 if old.get("retired"):
                     # A deleted fix is never answered as "already saved" nor changed in place
@@ -489,6 +630,14 @@ def _again(old: dict, entry: dict) -> dict:
 
     if not (entry["match"] and old.get("kind") == FIX and not old.get("match")):
         return dict(as_fix(old), already=True, changed=False)
+    if len(versions(old)) > 1 or old.get("held_manual"):
+        # The run verified version 1; the fix runs another version now (or was edited since),
+        # which no run of it has verified: a match is never given to it here, Automatic or not
+        # (the review, 2026-11-16, F2). Its Edit… gives a match, Manual only.
+        raise Refused(f"{old.get('name') or old.get('key')} is saved from this run already and "
+                      f"has changed since (version {versions(old)[-1]['version']} now): its "
+                      "match is added with Edit… on its page, Manual only until that version "
+                      "has a verified run")
     # The fills are written onto OLD's template, so they are checked against it (the review,
     # 2026-11-16: a built-in plan changed between the two saves could name other parameters,
     # leaving an Automatic fix that every fire refuses and no incident offers).
@@ -570,9 +719,12 @@ def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dic
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
             network: str = "") -> dict:
-    """Promote the script *key* of *network* from Dry run to Auto, binding its plan's digest:
-    needs the self-healing right. Refused (`Refused`) for a key of another network, and for a
-    script in Auto already (its promoter is kept)."""
+    """Promote the script *key* of *network* from Dry run (or Manual only) to Auto, binding its
+    plan's digest: needs the self-healing right, and a verified run of the version it runs now
+    (`verified_run`; the operator, 2026-11-16: a fix "can be set Automatic after its first
+    verified run", and one whose commands, checks or verify changed only once its new version
+    has one). Refused (`Refused`) for a key of another network, and for a script in Auto
+    already (its promoter is kept). The change is kept on its ``changes`` (History)."""
     from modules import identity
     from modules.nsot import command_plan as CP
 
@@ -580,7 +732,6 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
                                  person=person)
     if why:
         raise Refused(why)
-
     def change(doc):
         e = doc["plans"].get(key)
         if not e or not _is_matched(e) or e.get("retired"):
@@ -591,10 +742,35 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
             raise Refused(f"{key} is a self-heal script of {e.get('network')}, not of {network}")
         if e.get("mode") == "auto":
             raise Refused(f"{key} is in Auto already, promoted by {e.get('promoted_by')}")
+        n = versions(e)[-1]["version"]
+        # Read under the store's lock (C2): an edit that lands meanwhile, a new version or a
+        # match-only one (``held_manual``), is the entry judged here, never a copy read before.
+        ran = verified_run(e.get("network") or network, dict(e, key=key))
+        if not ran:
+            raise Refused(f"{e.get('name') or key} version {n} has no verified run yet: run it "
+                          "once with Run… (a person's press), and once it verifies it can be "
+                          "set Automatic")
         e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
                  digest=CP.parse(e["template"]).digest)
+        e.pop("held_manual", None)
+        _change(e, "automatic", actor, f"set Automatic on version {n}'s verified run "
+                                       f"{str(ran.get('id') or '')[-8:]}")
         return as_fix(e)
     return _update(change)
+
+
+#: Each change kept on a fix (`_change`), in words: THE one table its page's How it runs
+#: (`fix_page.page`) and History (`history_sources.saved_fixes`) draw it by.
+CHANGE_WORDS = {"written": "written on the Fixes page", "edited": "edited",
+                "new_version": "saved as a new version", "automatic": "set Automatic"}
+
+
+def _change(e: dict, action: str, by: str, words: str) -> None:
+    """One change of the fix *e* kept on it (``changes``, newest last; History draws each,
+    `history_sources.saved_fixes`): written, edited, a new version, set Automatic."""
+    e["changes"] = list(e.get("changes") or []) + [
+        {"action": action, "by": by, "at": _iso(), "words": str(words)[:300],
+         "version": versions(e)[-1]["version"]}]
 
 
 def save_action(network: str, *, run_id: str, name: str, words: str, actor: str,
@@ -607,6 +783,221 @@ def save_action(network: str, *, run_id: str, name: str, words: str, actor: str,
     return save_fix(network, run_id=run_id, name=name, words=words, shared=shared,
                     actor=actor, actor_verified=actor_verified, person=person,
                     incident=incident)
+
+
+# ── New fix… and Edit… on the Fixes pages (board fix-manual-controls, the operator, ─────────
+# 2026-11-16): a fix written from Mercury's own choices (`modules/fix_editor.py` builds the
+# template), and a fix's name, description and match changed in place, its commands, checks
+# or verify as a new version.
+
+def _write_refusal(e_match: dict, who: dict, what: str) -> str:
+    """The AI never writes a fix; a person holds the right a fix with *e_match* takes
+    (`change_right`: the self-healing right with a match, the admin right without)."""
+    from modules import identity
+
+    return (identity.ai_acting_refusal(what)
+            or identity.right_refusal("self_healing" if e_match else "admin", **who))
+
+
+def _template_refusal(t, network: str = "") -> str:
+    """Why the parsed template *t* may not be a fix's: a line that would last (the operator's
+    correction 1: `command_policy.lasting_refusal`, in their words)."""
+    from modules.nsot import command_policy
+
+    return (command_policy.lasting_refusal(t.commands, network=network)
+            or command_policy.pair_refusal(t.commands, t.doc.get("preconditions"), network))
+
+
+def _propose_shapes(network: str, t, by: str, name: str) -> list:
+    """Each line shape of *t* no dialect has measured, held PROVISIONAL on *network* for an
+    admin's approval (`command_policy.propose`): the fix cannot run until it is approved
+    (the runner's policy check refuses it). The shapes proposed now."""
+    from modules.nsot import command_policy
+
+    out = []
+    for _raw, shape in command_policy.shapes(t.commands):
+        for dialect, measured in command_policy.MEASURED.items():
+            if shape in measured:
+                continue
+            got = command_policy.propose(network, dialect, shape, by=by,
+                                         why=f"a line of the fix {name}, written on the "
+                                             "Fixes page")
+            if got.get("ok") and shape not in out:
+                out.append(shape)
+    return out
+
+
+def new_fix(network: str, *, name: str, words: str, match: dict, fills: dict,
+            template: dict, actor: str, actor_verified: str, person: bool) -> dict:
+    """New fix… (the operator, 2026-11-16): a fix of *network* written from Mercury's choices,
+    *template* the command plan `fix_editor.build` made (its key set here, from *name*),
+    *match* and *fills* as a saved fix's (`match_refusal`, `fills_refusal`), said in *words*.
+    It starts Manual only (mode ``manual`` with a match: offered on a matching incident, never
+    fired) and can be set Automatic once a person's run of it verifies (`promote`). Refused,
+    nothing saved: the AI; a person without the right (`_write_refusal`); a line that would
+    last (`_template_refusal`). A line shape not measured is held provisional for an admin
+    (`_propose_shapes`). The fix (`as_fix`), ``proposed`` the shapes held now."""
+    from modules.nsot import command_plan as CP
+
+    who = dict(actor=actor, actor_verified=actor_verified, person=person)
+    match = dict(match or {})
+    why = _write_refusal(match, who, "write a fix")
+    if why:
+        raise Refused(why)
+    if match:
+        why = match_refusal(match)
+        if why:
+            raise Refused(why)
+    name = " ".join(str(name or "").split())[:80]
+    why = key_refusal(name)
+    if why:
+        raise Refused(why)
+    key = _key(FIX, name)
+    doc = dict(template or {}, key=key)
+    try:
+        t = CP.parse(doc)
+    except CP.Refused as exc:
+        raise Refused(str(exc)) from exc
+    why = _template_refusal(t, network) or (fills_refusal(t, fills) if match else "")
+    if why:
+        raise Refused(why)
+    at = _iso()
+    e = {"key": key, "kind": FIX, "network": network, "shared": False, "name": name,
+         "words": " ".join(str(words or "").split())[:200], "template": doc, "match": match,
+         "fills": dict(fills) if match else {}, "saved_by": actor, "saved_at": at,
+         "written": True, "track": [],
+         "versions": [{"version": 1, "digest": t.digest, "at": at, "by": actor,
+                       "why": "written on the Fixes page", "template": doc}]}
+    if match:
+        e["mode"] = MANUAL
+    _change(e, "written", actor, "Manual only until its first verified run")
+    got = _store(e)
+    proposed = _propose_shapes(network, t, actor, name)
+    from modules import plan_engine
+    plan_engine.refresh_saved_kinds()
+    return dict(got, proposed=proposed)
+
+
+#: What a template change compares: a change to any of these is a new version.
+VERSIONED = ("parameters", "preconditions", "steps", "verify")
+
+
+def template_changed(old: dict, new: dict) -> bool:
+    """Whether *new* (a template) runs differently from *old*: its commands, checks, verify or
+    parameters differ (`VERSIONED`); its title, words and reason are not compared."""
+    return any((old or {}).get(k) != (new or {}).get(k) for k in VERSIONED)
+
+
+def edit_fix(key: str, *, network: str, version: int, name: str, words: str, match: dict,
+             fills: dict, template: dict, actor: str, actor_verified: str,
+             person: bool) -> dict:
+    """Edit… on a fix's page (the operator, 2026-11-16): *name*, *words* (its description)
+    and *match* with its *fills* saved in place, the same version; *template* (the editor's
+    `fix_editor.build`), when it runs differently from the fix's own (`template_changed`), saved
+    as a new version: the old kept with its digest (`versions`). An Automatic fix whose match,
+    fills, lines, checks or verify change (one rule for every edit, F4) returns to Manual only
+    until its next verified run (``held_manual``; `promote` sets
+    it Automatic again). *version* is the version the editor opened: a fix changed since is
+    refused, naming both. Needs the right changing it takes before and after (`change_right`;
+    the AI none). Raises `Refused`, nothing written. The fix (`as_fix`) with ``new_version``
+    and ``proposed`` (shapes held for an admin)."""
+    from modules.nsot import command_plan as CP
+
+    who = dict(actor=actor, actor_verified=actor_verified, person=person)
+    match = dict(match or {})
+    if match:
+        why = match_refusal(match)
+        if why:
+            raise Refused(why)
+    name = " ".join(str(name or "").split())[:80]
+    if not name:
+        raise Refused("a fix is named in words")
+    parsed = {}
+
+    def change(doc):
+        e = doc["plans"].get(key)
+        if not isinstance(e, dict) or e.get("kind") not in (FIX, "script"):
+            raise Refused(f"{key} is no saved fix that can be edited here"
+                          + (" (it was saved as a reusable action before fixes were one "
+                             "object: save it again from a verified run to edit it)"
+                             if isinstance(e, dict) and e.get("kind") == "action" else ""))
+        if as_fix(e)["network"] != network:
+            raise Refused(f"{key} is a saved fix of {as_fix(e)['network'] or 'no network'}, "
+                          f"not of {network}")
+        if e.get("retired"):
+            raise Refused(f"{e.get('name') or key} is deleted: Restore… brings it back first")
+        for right_of in (e.get("match"), match):
+            why = _write_refusal(right_of, who, "change a fix")
+            if why:
+                raise Refused(why)
+        now = versions(e)[-1]["version"]
+        if int(version or 0) != now:
+            raise Refused(f"{e.get('name') or key} changed since this was opened (opened "
+                          f"version {version or 'none'}, version {now} now): open Edit… again")
+        new_doc = dict(template or e["template"], key=e["template"].get("key") or key)
+        bump = template_changed(e["template"], new_doc)
+        try:
+            t = CP.parse(new_doc if bump else e["template"])
+        except CP.Refused as exc:
+            raise Refused(str(exc)) from exc
+        if bump:
+            why = _template_refusal(t, network)
+            if why:
+                raise Refused(why)
+        if match:
+            why = fills_refusal(t, fills)
+            if why:
+                raise Refused(why)
+        said = []
+        if name != e.get("name"):
+            said.append(f"named {name}")
+        if (" ".join(str(words or "").split())[:200]
+                != " ".join(as_fix(e)["words"].split())[:200]):
+            said.append("its description changed")
+        new_fills = dict(fills) if match else {}
+        if match != (e.get("match") or {}):
+            said.append("its match changed" if match else "its match removed")
+        elif new_fills != (e.get("fills") or {}):
+            said.append("its fills changed")
+        # One rule for every edit (the operator, 2026-11-16, F4): an Automatic fix whose
+        # match, fills, lines, checks or verify change drops to Manual only until its next
+        # verified run of the version it runs then (`verified_run` reads runs after this).
+        was_auto = e.get("mode") == "auto"
+        runs_differently = bump or match != (e.get("match") or {}) or \
+            new_fills != (e.get("fills") or {})
+        e.update(name=name, words=" ".join(str(words or "").split())[:200], match=match,
+                 fills=new_fills)
+        if (match and not e.get("mode")) or (not match and e.get("mode")):
+            # A match added starts Manual only; one removed leaves no promotion standing.
+            e["mode"] = MANUAL
+        at = _iso()
+        n = versions(e)[-1]["version"] + (1 if bump else 0)
+        if bump:
+            e["versions"] = versions(e) + [{"version": n, "digest": t.digest, "at": at,
+                                            "by": actor,
+                                            "why": "commands, checks or verify changed",
+                                            "template": new_doc}]
+            e["template"] = new_doc
+        if was_auto and runs_differently:
+            e.update(mode=MANUAL, held_manual={"from": "auto", "version": n, "at": at})
+        elif runs_differently and e.get("held_manual"):
+            # Held already: the run it waits for is one after this edit too.
+            e["held_manual"] = dict(e["held_manual"], version=n, at=at)
+        held = "; Manual only until its next verified run" if (was_auto and runs_differently) \
+            else ""
+        if bump:
+            _change(e, "new_version", actor, f"version {n} saved, version {n - 1} kept" + held)
+        elif said:
+            _change(e, "edited", actor, "; ".join(said) + held)
+        else:
+            raise Refused("nothing changed: the fix is as it was")
+        parsed["t"] = t
+        return dict(as_fix(e), new_version=bump)
+    got = _update(change)
+    proposed = _propose_shapes(network, parsed["t"], actor, name) if got["new_version"] else []
+    from modules import plan_engine
+    plan_engine.refresh_saved_kinds()
+    return dict(got, proposed=proposed)
 
 
 # ── Firing: Dry run records, Auto runs, no AI call ──────────────────────────────────────────
@@ -744,7 +1135,16 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
         if claimed is not None:
             release(key, claimed.get("id") or "", f"not run: {key} is no longer a script here")
         raise Refused(f"{key} is no self-heal script of {network}")
-    mode = "dry_run" if force_dry and mode_now(e, heal_mode) != "off" else mode_now(e, heal_mode)
+    if e.get("mode") == MANUAL:
+        # Manual only (`how_of`): a person's Run… alone runs it; nothing fires, nothing is
+        # recorded as a Dry run.
+        if claimed is not None:
+            release(key, claimed.get("id") or "", f"not run: {e.get('name')} is Manual only")
+        return {"mode": MANUAL, "ok": False, "sent": False, "hash": "", "values": {},
+                "run": "", "state": "done",
+                "words": f"{e.get('name') or key} is Manual only: it runs only when a person "
+                         "presses Run…; nothing fired"}
+    mode ="dry_run" if force_dry and mode_now(e, heal_mode) != "off" else mode_now(e, heal_mode)
     if claimed is not None and mode != claimed.get("mode"):
         words = (f"not run: the batch claimed its {claimed.get('mode')} run, and self-healing "
                  f"allows {mode} now; nothing was sent")
@@ -783,10 +1183,14 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
                                         f"{held['words']}; nothing was sent"))
         else:
             rec = _run_as_job(network, e, values, p["hash"], incident, batch=batch)
-            out.update(run=rec.get("id") or "", ok=rec.get("state") == "done",
-                       sent=rec.get("outcome") != "refused",
-                       words=CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
-                       or str(rec.get("why") or ""))
+            # A run that sent nothing (``not_needed``) is never a verified fix, and closes
+            # nothing (C3, `run_verified`): said as not needed, with why.
+            nothing = rec.get("outcome") in ("refused", CR.NOT_NEEDED)
+            out.update(run=rec.get("id") or "", ok=run_verified(rec), sent=not nothing,
+                       words=(f"not needed: {rec.get('not_needed') or rec.get('why') or ''}"
+                              .rstrip(": ") if rec.get("outcome") == CR.NOT_NEEDED else
+                              CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
+                              or str(rec.get("why") or "")))
             if out["ok"]:
                 # Every verified script run closes its incident Fixed, whichever path fired it
                 # (the heal decision, a re-decide): one close (the operator, 2026-11-16).
@@ -1031,7 +1435,9 @@ def fire_matching(network: str, found: dict, *, sources=None, mode: str = None,
         return []
     record = found.get("incident") if isinstance(found.get("incident"), dict) else {}
     iid = str(record.get("id") or found.get("id") or "")
-    hit = [e for e in scripts(network).values() if matches(e.get("match") or {}, prob)]
+    # A Manual only fix (`how_of`) is offered to a person on its incident, never fired.
+    hit = [e for e in scripts(network).values() if matches(e.get("match") or {}, prob)
+           and e.get("mode") != MANUAL]
     if not hit:
         return []
     mode = heal_mode(network) if mode is None else mode
@@ -1053,33 +1459,50 @@ def fire_matching(network: str, found: dict, *, sources=None, mode: str = None,
 # ── A device's interface view: the saved actions an interface fills ────────────────────────
 
 def interface_actions(network: str = None) -> dict:
-    """The saved fixes of the catalog (`actions`: *network*'s own and the shared ones, or every
-    one) whose parameters a device's interface fills alone: exactly a device and an interface
-    (``Bounce interface``), by key, each read as a fix. One that takes anything else (a choice)
-    is offered where that is known (an incident), not here."""
+    """The saved fixes a device's interface fills alone, exactly a device and an interface
+    (``Bounce interface``), by key, each read as a fix: `port_actions`' (the one list a chosen
+    port's path reads) that take no choice."""
+    return {k: v["fix"] for k, v in port_actions(network).items() if not v["choices"]}
+
+
+def port_actions(network: str = None) -> dict:
+    """The saved fixes of the catalog (`actions`) a chosen port runs: their parameters a device,
+    one ``interface`` and any choices (a fix's Run… asks each choice beside the port; the
+    operator, 2026-11-16: a fix's first run is a person's, on a matching incident or a chosen
+    port), by key: ``{key: {"fix", "choices": {name: [choice]}}}``. Every `interface_actions`
+    entry is one, with no choices. A read."""
     every = templates()
     out = {}
     for key, e in actions(network).items():
         t = every.get(key)
-        if t and sorted((n, s.get("type")) for n, s in t.parameters.items()) == [
-                ("device", "device"), ("interface", "interface")]:
-            out[key] = e
+        if t is None:
+            continue
+        kinds = {n: s.get("type") for n, s in t.parameters.items()}
+        if kinds.get("device") != "device" or kinds.get("interface") != "interface":
+            continue
+        rest = {n: k for n, k in kinds.items() if n not in ("device", "interface")}
+        if all(k == "choice" for k in rest.values()):
+            out[key] = {"fix": e, "choices": {n: list(t.parameters[n].get("of") or [])
+                                              for n in rest}}
     return out
 
 
 def device_offer(network: str, device: str, *, actor: str, actor_verified: str,
                  person: bool) -> dict:
     """What *device*'s page offers of the saved actions: ``{"actions": [{"key", "name",
-    "words"}], "interfaces": [names], "right", "why"}``, the interfaces from its committed
-    intent, *right* the viewer's (`identity.right_refusal`, running a plan), *why* when there
-    is nothing to offer. A read."""
+    "words", "choices"}], "interfaces": [names], "right", "why"}``: every action a chosen port
+    runs (`port_actions`, the one list its run path, `device_run`, holds them to), each choice
+    it takes asked beside the interface; the interfaces from its committed intent, *right* the
+    viewer's (`identity.right_refusal`, running a plan), *why* when there is nothing to offer.
+    A read."""
     from modules import identity
     from modules.nsot import hostvars, listref
 
-    acts = interface_actions(network)
-    out = {"actions": [{"key": k, "name": e.get("name") or k,
-                        "words": (e.get("template") or {}).get("words") or ""}
-                       for k, e in sorted(acts.items())],
+    acts = port_actions(network)
+    out = {"actions": [{"key": k, "name": v["fix"].get("name") or k,
+                        "words": (v["fix"].get("template") or {}).get("words") or "",
+                        "choices": dict(v["choices"])}
+                       for k, v in sorted(acts.items())],
            "interfaces": [], "why": "",
            "right": identity.right_refusal("run_plan", actor=actor,
                                            actor_verified=actor_verified, person=person)}
