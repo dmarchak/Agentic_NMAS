@@ -1806,8 +1806,85 @@ def incident_pack_id(network: str, incident_id: str) -> str:
     return f"ep-{digest_}-h"
 
 
+#: The sources an incident's pack reads for its device, each its own part read at once
+#: (`_incident_sources`), in the pack's order; ``model`` is the network model's capture and the
+#: three sections read from it (observed, health, observer), one after another inside it.
+INCIDENT_PARTS = ("history", "intent", "neighbours", "model", "logs")
+#: What each part's section is read from, said when the part raised.
+_PART_SOURCES = {"history": "the device's History", "intent": "the device's committed intent",
+                 "neighbours": "the neighbours capture", "logs": "Loki",
+                 "observed": "the network model", "health": "Prometheus",
+                 "observer": "Prometheus"}
+_MODEL_SECTIONS = ("observed", "health", "observer")
+
+
+def _incident_sources(ref, dev: dict, host: str, onset, now: float, clock: float, skip: dict,
+                      *, loki=None, prometheus=None, timings: dict) -> list:
+    """`build_incident`'s device sections (history, intent, neighbours, observed, health,
+    observer, logs), in that order, each part of `INCIDENT_PARTS` read AT ONCE
+    (`fanout.read_each`; the operator, 2026-11-16: "plan ready in 45 s or less"), each bounded
+    by its own client as before; a part that raised is its sections saying so ("unreadable"),
+    never raised. A skipped section is absent, saying why, and never read. *timings* gets each
+    part's seconds (and ``capture``'s), for the caller's record."""
+    from modules import fanout
+    from modules import network_model as NM
+
+    def timed(name, fn):
+        t0 = time.monotonic()
+        try:
+            return fn()
+        finally:
+            timings[name] = round(time.monotonic() - t0, 2)
+
+    def model_side():
+        # The network model's capture, then the three sections read from it, in order.
+        cap = {"ok": False, "error": "no device"}
+        if not set(_MODEL_SECTIONS) <= set(skip):
+            try:
+                cap = timed("capture", lambda: NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS,
+                                                          now=now))
+            except Exception as exc:                  # said in the sections, never raised
+                cap = {"ok": False, "error": _failed(exc)}
+        out = [_absent("observed", "", skip["observed"]) if "observed" in skip
+               else observed_section(cap, now, clock)]
+        for name, fn in (("health", health_section), ("observer", observer_section)):
+            if name in skip:
+                out.append(_absent(name, "", skip[name]))
+                continue
+            try:
+                kw = {"prometheus": prometheus}
+                if name == "health":
+                    kw["loki"] = loki
+                out.append(fn(ref, host, cap, onset, now, clock, **kw))
+            except Exception as exc:                  # said in the section, never raised
+                out.append(_section(name, "Prometheus", clock, "unreadable", _failed(exc)))
+        return out
+
+    readers = {"history": lambda: [history_section(ref, host)],
+               "intent": lambda: [intent_section(ref, dev)],
+               "neighbours": lambda: [neighbours_section(ref, dev, as_of=now)],
+               "model": model_side,
+               "logs": lambda: [logs_section(ref, host, onset, now, client=loki)]}
+    todo = [p for p in INCIDENT_PARTS if p == "model" or p not in skip]
+    got = dict(zip(todo, fanout.read_each(lambda p: timed(p, readers[p]), todo,
+                                          name="evidence_pack.incident",
+                                          max_workers=len(todo))))
+    out = []
+    for part in INCIDENT_PARTS:
+        names = _MODEL_SECTIONS if part == "model" else (part,)
+        if part not in got:
+            out += [_absent(n, "", skip[n]) for n in names]
+        elif isinstance(got[part], fanout.Failed):
+            out += [_section(n, _PART_SOURCES[n], clock, "unreadable",
+                             f"{n} could not be read ({got[part]})") for n in names]
+        else:
+            out += list(got[part])
+    return out
+
+
 def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: float = None,
-                   loki=None, prometheus=None, skip: dict = None) -> dict:
+                   loki=None, prometheus=None, skip: dict = None,
+                   timings: dict = None) -> dict:
     """A heal incident's pack (board H, H8; section 12: "a can't-fix that started from a
     CONFIG_I or the schedule has no alert, so a pack is built for the incident, as
     `build_detection` builds one for an SDN detection"), masked and hashed. Never raises: a
@@ -1821,9 +1898,10 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
     step), as of which every time series is read. *skip* (``{section name: why}``) leaves those
     of history, intent, neighbours, observed, health, observer and logs unread, each an absent
     section saying why (a problem kind that needs none of them, `fixit_troubleshoot.KIND_PACK`);
-    the network model is not captured when observed, health and observer are all skipped."""
+    the network model is not captured when observed, health and observer are all skipped. The
+    device's sources are read at once (`_incident_sources`), each part's seconds put in
+    *timings* when given."""
     from modules import device_page
-    from modules import network_model as NM
     from modules import redact
     from modules.nsot import listref
 
@@ -1857,33 +1935,9 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
                      "logs"):
             sections.append(_absent(name, "", why))
     else:
-        skip = dict(skip or {})
-        cap = {"ok": False, "error": "no device"}
-        if not {"observed", "health", "observer"} <= set(skip):
-            try:
-                cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now)
-            except Exception as exc:                  # said in the sections, never raised
-                cap = {"ok": False, "error": _failed(exc)}
-        built = (("history", lambda: history_section(ref, host)),
-                 ("intent", lambda: intent_section(ref, dev)),
-                 ("neighbours", lambda: neighbours_section(ref, dev, as_of=now)),
-                 ("observed", lambda: observed_section(cap, now, clock)))
-        for name, fn in built:
-            sections.append(_absent(name, "", skip[name]) if name in skip else fn())
-        for name, fn in (("health", health_section), ("observer", observer_section)):
-            if name in skip:
-                sections.append(_absent(name, "", skip[name]))
-                continue
-            try:
-                kw = {"prometheus": prometheus}
-                if name == "health":
-                    kw["loki"] = loki
-                sections.append(fn(ref, host, cap, onset, now, clock, **kw))
-            except Exception as exc:                  # said in the section, never raised
-                sections.append(_section(name, "Prometheus", clock, "unreadable",
-                                         _failed(exc)))
-        sections.append(_absent("logs", "", skip["logs"]) if "logs" in skip
-                        else logs_section(ref, host, onset, now, client=loki))
+        sections += _incident_sources(ref, dev, host, onset, now, clock, dict(skip or {}),
+                                      loki=loki, prometheus=prometheus,
+                                      timings=timings if timings is not None else {})
     sections.append(tried_section(entry, units, clock))
     sections.append(diagnosis_section(entry, clock))
     for s in sections:

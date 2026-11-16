@@ -720,7 +720,12 @@ def fixit_format() -> str:
         "an unread part is not evidence of anything.",
         "mercury_reads may begin with Mercury's standard reads for the incident's problem kind, "
         "run before your first pass (their why says so): then this pass is your first, there is "
-        "no previous answer to replace, and they are cited as any read is."])
+        "no previous answer to replace, and they are cited as any read is. They are what this "
+        "problem kind needs read (for an err-disabled port: its state and cause, the device's "
+        "own recovery, the port's configuration when the configuration class is on, and the "
+        "cause's own state), and the plan's preconditions are read again by Mercury: never "
+        "ask one of them again, and when they and the pack settle the cause, propose the plan "
+        "in this pass with reads empty."])
     # The catalogue is the prompt's to describe (v7 and v8 say it once; the gate's measurement,
     # 2026-11-15: every request's fixed size inside its bound).
 
@@ -761,7 +766,8 @@ def read_set() -> str:
 
 
 def request(network: str, found: dict, incident, *, note: str = "", now: float = None,
-            resolved: float = None, seen: dict = None, loki=None, prometheus=None) -> dict:
+            resolved: float = None, seen: dict = None, loki=None, prometheus=None,
+            timings: dict = None) -> dict:
     """`built_request`, or `Refused` with nothing sent when a person in it cannot be labelled
     because no label key is installed (C3458, `display_names.LabelKeyMissing`, the key named):
     a press and its preview alike, and no key is made by either."""
@@ -769,7 +775,7 @@ def request(network: str, found: dict, incident, *, note: str = "", now: float =
 
     try:
         return built_request(network, found, incident, note=note, now=now, resolved=resolved,
-                             seen=seen, loki=loki, prometheus=prometheus)
+                             seen=seen, loki=loki, prometheus=prometheus, timings=timings)
     except display_names.LabelKeyMissing as exc:
         raise Refused(f"Not asked: {exc}") from None
 
@@ -799,16 +805,28 @@ def held_words(network: str, incident) -> str:
 
 def built_request(network: str, found: dict, incident, *, note: str = "", now: float = None,
                   resolved: float = None, seen: dict = None, loki=None,
-                  prometheus=None) -> dict:
+                  prometheus=None, timings: dict = None) -> dict:
     """The investigation's request for the incident `incident_page.resolve` *found* (its
     `fixit.incident.Incident`, *incident*), before any call: ``{"pack", "topo", "sections",
     "checked_sections", "data", "ctx", "subject", "actable", "said"}``. *sections* are what is
     sent of the pack, *checked_sections* those plus this incident's own (what an answer's
     references resolve against). Raises `Refused` for a network whose marking forces AI off.
-    Reads Mercury's stores and the monitoring the pack reads; calls no model."""
+    Reads Mercury's stores and the monitoring the pack reads; calls no model. *timings*, when
+    given, gets each part's seconds (``pack:<source>`` each of the pack's own sources, read at
+    once, `evidence_pack.build_incident`), for the investigation's record."""
+    import time
+
     from modules import evidence_pack as EP
     from modules.ai import egress_classes, explain
     from modules.fixit import payload
+
+    timings = timings if timings is not None else {}
+    t0 = [time.monotonic()]
+
+    def part(name):
+        now_ = time.monotonic()
+        timings[name] = round(now_ - t0[0], 2)
+        t0[0] = now_
 
     marked = egress_classes.classification_marking(network)
     if marked:
@@ -818,22 +836,30 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
     units = [u for d in found.get("decisions") or [] for u in d.get("units") or []]
     # What this problem kind's pack leaves unread, and whether its topology is sent (`KIND_PACK`).
     trim = KIND_PACK.get(problem_condition(found)) or {}
+    sources = {}
     pack = EP.build_incident(network, found.get("incident") or {}, entry, units,
                              now=float(entry.get("epoch") or 0) or now, loki=loki,
-                             prometheus=prometheus, skip=trim.get("skip"))
+                             prometheus=prometheus, skip=trim.get("skip"), timings=sources)
+    part("pack")
+    timings.update({f"pack:{k}": v for k, v in sources.items()})
     topo = (explain.topology(pack) if not trim.get("topology") else {
         "sent": False, "why": trim["topology"], "summary": "", "yaml": "", "ids": [],
         "reached": {}, "version": "", "subject": incident.device, "network": network,
         "observed": "", "names": {}, "as_now": ""})
     sections = explain.sent_sections(pack, topo)
+    part("topology")
     tried = payload.tried_parts(incident, resolved, now=now)
-    own = [attempts_section(incident, resolved, now=now, got=tried),
-           seen_section(network, incident.device, seen), run_steps_section(incident, tried)]
+    own = [attempts_section(incident, resolved, now=now, got=tried)]
+    part("attempts")
+    own.append(seen_section(network, incident.device, seen))
+    part("seen_before")
+    own.append(run_steps_section(incident, tried))
     # The state after a failed run, when the newest attempt failed (the operator, 2026-11-16:
     # R1's re-investigation a failed run starts, and a person's after it).
     after = after_run_section(network, incident, tried.get("newest_failed"), now=now, loki=loki)
     if after is not None:
         own.append(after)
+    part("run_steps and after_run")
     checked = list(sections) + own + [note_section(note)]
     data = {"pack": json.dumps([explain.as_sent(s) for s in sections] + own, sort_keys=True,
                                ensure_ascii=False, separators=(",", ":")),
@@ -863,7 +889,10 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
                         "devices": [incident.device] if incident.device else []},
             "actable": [incident.device, *incident.subscriptions],
             "own": own, "note_part": note_section(note)}
-    return fit(prep)
+    part("held, the catalogue and the contexts")
+    got = fit(prep)
+    part("the fit")
+    return got
 
 
 # ── The request's size (the host's preview of a standing incident, 2026-11-14) ────────────────
@@ -1620,14 +1649,30 @@ def reads_context() -> dict:
 # investigation start to plan ready in 45 s or less") ──────────────────────────────────────────
 
 #: Each problem kind's standard reads (`problem.classify`'s condition), run at once before the
-#: first call (`read_loop.run`'s *pregather*), as the model would ask them: a show's words and
-#: the hypothesis it tests; ``{if}`` the incident's port (its classification's), the read left
-#: out when none is known.
+#: first call (`read_loop.run`'s *pregather*), as the model would ask them: ``(op, words,
+#: hypothesis, causes)``, *op* a read family operation (``show``, or ``show_config``, which the
+#: configuration class decides: refused and left out while it is off), *words* after its verb,
+#: *causes* the classification's causes it is read for (``()`` for every one); ``{if}`` the
+#: incident's port (its classification's), the read left out when none is known. For an
+#: err-disabled port (the operator, 2026-11-16: "the pre-gathered reads must answer it in ONE
+#: call"): its state and cause, the device's own recovery, the port's own configuration, and
+#: the cause's own state: port security's settings, violation count and last violator, and
+#: whether a MAC is still learned on the port; BPDU guard's state and the BPDUs the port took.
+#: The plan's own preconditions are read ahead too (`read_ahead_for`).
+PSEC, BPDU = "psecure-violation", "bpduguard"
 PREGATHER = {"err_disabled": (
-    ("interfaces status err-disabled", "the port is err-disabled now, and by which cause"),
-    ("errdisable recovery", "whether the device recovers the cause by itself, and after how long"),
-    ("port-security interface {if}", "the port's port-security settings, violation count and "
-                                     "last violating MAC"))}
+    ("show", "interfaces status err-disabled", "the port is err-disabled now, and by which "
+                                               "cause", ()),
+    ("show", "errdisable recovery", "whether the device recovers the cause by itself, and "
+                                    "after how long", ()),
+    ("show_config", "running-config interface {if}", "the port's own configuration: its "
+                                                     "port-security and BPDU guard settings", ()),
+    ("show", "port-security interface {if}", "the port's port-security settings, violation "
+                                             "count and last violating MAC", (PSEC,)),
+    ("show", "mac address-table interface {if}", "whether a MAC, the violator's or another, is "
+                                                 "still learned on the port", (PSEC,)),
+    ("show", "spanning-tree interface {if} detail", "BPDU guard on the port, and the BPDUs it "
+                                                    "sent and received", (BPDU,)))}
 PREGATHER_WHY = "Mercury's standard read for this problem kind, run before the first pass"
 #: A classification's own read of the same command on the same device is reused while it is at
 #: most this old (reasoned, not measured: IOS's default errdisable recovery interval is 300 s, so
@@ -1660,9 +1705,11 @@ def pregather_for(network: str, found: dict, incident) -> tuple:
     from modules.heal import errdisable as ED
     from modules.nsot import reads
 
-    asked = PREGATHER.get(problem_condition(found)) or ()
     c = ED.of_record((found or {}).get("incident") or {})
     port, conf = str(c.get("port") or ""), c.get("confirmed") or {}
+    cause = str(c.get("cause") or "")
+    asked = [(op, words, hypothesis) for op, words, hypothesis, causes
+             in PREGATHER.get(problem_condition(found)) or () if not causes or cause in causes]
     age = time.time() - float(conf.get("epoch") or 0)
     reuse = {}
     if asked and conf.get("run") and 0 <= age <= REUSE_S:
@@ -1678,29 +1725,167 @@ def pregather_for(network: str, found: dict, incident) -> tuple:
                      signed_in_as=dict(got.get("signed_in_as") or {}))
                  for a in got.get("answers") or [] if a.get("state") == "answered"}
     out = []
-    for words, hypothesis in asked:
+    for op, words, hypothesis in asked:
         if "{if}" in words and not port:
             continue
         words = words.replace("{if}", port)
         why = PREGATHER_WHY + (f"; Mercury's classification read it {int(age)} s before, reused"
                                if (incident.device, f"show {words}") in reuse else "")
-        out.append({"op": "show", "args": {"device": incident.device, "words": words},
+        out.append({"op": op, "args": {"device": incident.device, "words": words},
                     "why": why, "hypothesis": hypothesis})
     return out, reuse
 
 
+#: Who a read ahead of the plan's preflight reads as, and why: the preflight's own reader
+#: (`command_plan_run.Sources.read`), so its answer is the one the preflight would take.
+AHEAD_ACTOR = "Mercury (reviewed commands)"
+AHEAD_PURPOSE = ("a command plan's precondition read, read ahead while the AI looks, for its "
+                 "plan's preflight")
+
+
+def read_ahead_for(found: dict, incident, requests) -> list:
+    """The precondition reads of each built-in command plan that fixes the incident's problem
+    kind (its template's ``fixes`` and ``preconditions``), ``{interface}`` the classification's
+    port, less those *requests* (`pregather_for`'s) read already: read through the reads
+    engine while the first call is asked (`troubleshoot`), so the plan's preflight on the card
+    takes them young (`fix_proposal.job_reads`) instead of reading the device after the answer.
+    Never sent to the model: Mercury's own reads, recorded on History › Reads. A read naming any
+    other placeholder is left out (its value is the plan's, not known yet). ``[]`` for a kind
+    with no plan."""
+    from modules.heal import errdisable as ED
+    from modules.nsot import command_plan
+    from modules.nsot.command_plan_run import Reused
+
+    cond = problem_condition(found)
+    port = str(ED.of_record((found or {}).get("incident") or {}).get("port") or "")
+    have = {Reused.key(incident.device, f"show {r['args']['words']}") for r in requests or ()}
+    out = []
+    try:
+        plans = list(command_plan.builtin().values())
+    except Exception as exc:                                  # noqa: BLE001 (then none ahead)
+        log.info("fixit troubleshoot: the built-in plans could not be read: %s", exc)
+        return []
+    for t in plans:
+        if cond not in tuple(getattr(t, "fixes", ()) or ()):
+            continue
+        for p in t.preconditions:
+            read = str(p.get("read") or "")
+            if not read:
+                continue
+            try:
+                read = command_plan.substitute(read, {"interface": port} if port else {})
+            except command_plan.Refused:
+                continue
+            if Reused.key(incident.device, read) not in have and read not in out:
+                out.append(read)
+    return out
+
+
+def read_ahead(network: str, incident, commands: list) -> str:
+    """*commands* on the incident's device through THE reads engine, as the preflight reads
+    them (`AHEAD_ACTOR`): the run's id, or ``""`` when nothing was read (refused, said in the
+    log: the preflight then reads live, as before). Bounded by the engine's own session
+    bounds."""
+    from modules.nsot import reads
+
+    if not commands or not incident.device:
+        return ""
+    try:
+        rec = reads.run(network, [incident.device], list(commands), AHEAD_ACTOR,
+                        purpose=AHEAD_PURPOSE)
+    except Exception as exc:                                  # noqa: BLE001 (read live later)
+        log.info("fixit troubleshoot: %s's plan reads were not read ahead: %s", incident.id, exc)
+        return ""
+    return str(rec.get("id") or "")
+
+
 def _laps(what: str):
-    """``lap(step)``: logs how long *step* took since the last lap (the operator's measurement
-    of a press, 2026-11-16: 25 s before the first call and 29 s after the last, unattributed)."""
+    """``lap(step, seconds=None)``: logs how long *step* took since the last lap (the
+    operator's measurement of a press, 2026-11-16: 25 s before the first call and 29 s after
+    the last, unattributed), or, with *seconds*, a part measured on its own (one of several
+    read at once), which moves no lap. ``lap.took`` holds every step's seconds, numbered in
+    order (``"01 the request ..."``), for the investigation's record (`fixit.incident.
+    record_proposal`'s *took*): the host logs below info, so the log alone never shows them."""
     import time
 
     last = [time.monotonic()]
+    took = {}
 
-    def lap(step):
+    def lap(step, seconds=None):
         now = time.monotonic()
-        log.info("fixit troubleshoot: %s: %s took %.1f s", what, step, now - last[0])
-        last[0] = now
+        s = (now - last[0]) if seconds is None else float(seconds)
+        if seconds is None:
+            last[0] = now
+        log.info("fixit troubleshoot: %s: %s took %.1f s", what, step, s)
+        took[f"{len(took) + 1:02d} {step}"] = round(s, 1)
+    lap.took = took
     return lap
+
+
+def _as_this_job(fn):
+    """*fn* to run in another thread as this job's work (`op_progress.running_as`), so a step
+    it says (`troubleshoot_job.say`) is this investigation's; the AI's identity is carried by
+    the thread starter (`fanout.read_each`, `identity.ai_carried`)."""
+    from modules import op_progress
+
+    job = op_progress.current()
+
+    def run():
+        with op_progress.running_as(job):
+            return fn()
+    return run
+
+
+def _at_once(named: list) -> dict:
+    """Each ``(name, fn)`` of *named* run at once (`fanout.read_each`), as this job:
+    ``{name: (its result or a fanout.Failed, its seconds)}``. Each is bounded by its own
+    sources' bounds, as it was when they ran one after another."""
+    import time
+
+    from modules import fanout
+
+    def one(item):
+        name, fn = item
+        t0 = time.monotonic()
+        try:
+            return _as_this_job(fn)()
+        finally:
+            took[name] = round(time.monotonic() - t0, 1)
+
+    took = {}
+    got = fanout.read_each(one, named, name="fixit_troubleshoot.at_once",
+                           max_workers=max(1, len(named)))
+    return {name: (g, took.get(name, 0.0)) for (name, _fn), g in zip(named, got)}
+
+
+def _behind(fn):
+    """*fn* started now in its own thread as this job and as the AI acting now
+    (`identity.ai_carried`); ``join()`` waits for it: ``(its result, or None when it raised,
+    said in the log; its seconds)``. Bounded by *fn*'s own bounds (the reads engine's)."""
+    import threading
+    import time
+
+    from modules import identity
+
+    out = {}
+
+    def run():
+        t0 = time.monotonic()
+        try:
+            out["got"] = _as_this_job(fn)()
+        except Exception as exc:                                  # noqa: BLE001 (said)
+            log.warning("fixit troubleshoot: a read ahead failed: %s", exc)
+        finally:
+            out["s"] = round(time.monotonic() - t0, 1)
+
+    t = threading.Thread(target=identity.ai_carried(run), name="fixit-read-ahead",
+                         daemon=True)
+    t.start()
+
+    def join():
+        t.join()
+        return out.get("got"), out.get("s", 0.0)
+    return join
 
 
 def background_trigger(network: str, job: str, failure_key: str) -> dict:
@@ -1768,14 +1953,59 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         raise Refused(cs["words"].replace("Retry isn't available", "Not asked", 1)
                       + ". Nothing was sent")
     from modules import troubleshoot_job as TJ
-    TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
-    # The step a person reads on the status line (board R5's screen 3): plain words only.
-    TJ.say("Gathering what Mercury already knows about this incident…",
-           done="Gathered what Mercury already knows about this incident")
     lap = _laps(incident.id)
-    prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
-                   seen=seen, loki=loki, prometheus=prometheus)
-    lap("the request (the pack, the attempts, Seen before, the fit)")
+    # The loop names the network by its one id (`listref.network_id`), as the heal analysis's
+    # does: the send log's rows and the calls are keyed by it, and History draws a network's
+    # reads by it (C3344: by the list's name, none was drawn).
+    from modules.nsot import listref
+    net_id = listref.network_id(network)
+    plain = bool(RL.reads_off(FR.FAMILY, net_id))
+    TJ.step("reading the reads' scope (the device's committed intent and golden)")
+    scope = None if plain else _scope(network, incident, actor, collector, series)
+    trig = trigger if background else triggers.person(actor, counts_for=counts_for)
+    # The problem kind's standard reads, before the first call (the operator, 2026-11-16): a
+    # classification's read of seconds ago is reused, never read again; and the plan's own
+    # precondition reads, read ahead while the first call is asked (`read_ahead_for`).
+    pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
+    ahead = read_ahead_for(found, incident, pre) if pre else []
+    lap("the reads' scope and the standard reads named")
+    TJ.step("building the request (the evidence pack, the attempts, the catalogue)"
+            + (" and running the standard reads, at once" if pre else ""))
+    # The step a person reads on the status line (board R5's screen 3): plain words only.
+    if pre:
+        TJ.say(f"Gathering what Mercury knows and reading what this problem needs from "
+               f"{incident.device}…", done="Gathered what Mercury knows and read what this "
+                                           f"problem needs from {incident.device}")
+    else:
+        TJ.say("Gathering what Mercury already knows about this incident…",
+               done="Gathered what Mercury already knows about this incident")
+    request_parts = {}
+
+    def build():                                                                 # pack
+        return request(network, found, incident, note=note, now=now, resolved=resolved,
+                       seen=seen, loki=loki, prometheus=prometheus, timings=request_parts)
+
+    # The request and the standard reads at once (the operator, 2026-11-16: "whatever runs one
+    # after the other runs concurrently"): the reads reach the device, the request reads
+    # Mercury's stores and its monitoring, so neither waits on the other.
+    got_at_once = _at_once([("request", build)] + ([("reads", lambda: RL.pregather_run(
+        FR.FAMILY, pre, reuse, network=net_id, scope=scope))] if pre else []))
+    lap("the request" + (" and the standard reads, at once" if pre else ""))
+    prep, secs = got_at_once["request"]
+    lap("the request (the pack, the attempts, Seen before, the fit)", seconds=secs)
+    for name, s in request_parts.items():
+        lap(f"the request: {name}", seconds=s)
+    from modules import fanout
+    if isinstance(prep, fanout.Failed):
+        raise prep.error
+    pregathered = None
+    if pre:
+        pregathered, secs = got_at_once["reads"]
+        lap(f"the standard reads ({len(pre)}, one device session)", seconds=secs)
+        if isinstance(pregathered, fanout.Failed):
+            log.warning("fixit troubleshoot: %s's standard reads failed: %s", incident.id,
+                        pregathered)
+            pregathered = []
     memo = {}
 
     def may_go_on(_cost_usd):
@@ -1801,33 +2031,30 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             TJ.say("The AI is working out a fix from what it found…",
                    done="The AI worked out a fix from what it found")
         lap(f"before call {memo['calls']}")
+        # The plan's precondition reads, read ahead while the first call is asked (the device
+        # is idle then); joined before any round of reads, so they never hold the device
+        # against the loop's own (one operation per device, refused by name).
+        behind = (_behind(lambda: read_ahead(network, incident, ahead))
+                  if memo["calls"] == 1 and ahead else None)
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
         lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its count and its send)")
+        if behind is not None:
+            run_id, secs_ = behind()
+            memo["ahead"] = run_id
+            lap(f"the plan's {len(ahead)} precondition read(s) read ahead, beside call 1",
+                seconds=secs_)
+            lap("waiting for them past call 1")
         TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
         if got.get("typed_masked") and "typed_masked" not in memo:
             memo["typed_masked"] = got["typed_masked"]
         return got
 
-    # The loop names the network by its one id (`listref.network_id`), as the heal analysis's
-    # does: the send log's rows and the calls are keyed by it, and History draws a network's
-    # reads by it (C3344: by the list's name, none was drawn).
-    from modules.nsot import listref
-    net_id = listref.network_id(network)
-    plain = bool(RL.reads_off(FR.FAMILY, net_id))
-    TJ.step("reading the reads' scope (the device's committed intent and golden)")
-    scope = None if plain else _scope(network, incident, actor, collector, series)
-    trig = trigger if background else triggers.person(actor, counts_for=counts_for)
-    # The problem kind's standard reads, at once, before the first call (the operator,
-    # 2026-11-16): a classification's read of seconds ago is reused, never read again.
-    pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
-    if pre:
-        TJ.say(f"Reading what this problem needs from {incident.device}…",
-               done=f"Read what this problem needs from {incident.device}")
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
                  data=prep["data"], actor=actor, trigger=trig,
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,
-                 reads_context=reads_context(), pregather=pre, reuse=reuse)
+                 reads_context=reads_context(), pregather=pre, reuse=reuse,
+                 pregathered=pregathered)
     lap("after the last call")
     # A citation not in what was sent: asked once more, naming it, within the investigation's
     # worst case and the incident's cap (the operator, 2026-11-15).
@@ -1868,7 +2095,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                         "not kept", incident.id)
             return {}
         try:
-            return F.record_proposal(incident, "ai", words=words, now=now, **common, **more)
+            return F.record_proposal(incident, "ai", words=words, now=now, **common, **more,
+                                     took=dict(lap.took))
         except (F.Refused, OSError, ValueError) as exc:
             log.error("fixit troubleshoot: %s's answer was not kept: %s", incident.id, exc)
             return {}
@@ -1951,7 +2179,11 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             note=note, shown=out["shown"], prompt=common["prompt"], now=now,
             # The investigation's own device reads, reused by the plan's preflight (its card
             # alone) when the same command on the same device is young enough (2026-11-16).
-            investigated=got.get("reads") or ())
+            investigated=list(got.get("reads") or ()) + (
+                [{"verdict": "run", "run": memo["ahead"]}] if memo.get("ahead") else []),
+            # Each part's seconds so far, kept on the plan's line (its preflight's own are
+            # its ``preconditions_read``'s ``reuse``).
+            took=dict(lap.took))
         lap("the plan's door (its preconditions read, the alternative's too, the record)")
         out["checked"] = door
         out["proposal"] = door.get("line") or {}

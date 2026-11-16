@@ -1226,20 +1226,76 @@ def second_request(feature: LoopFeature, data: dict, context: dict, records: lis
     return prompt, schema, parts, dict(ctx, reads_format=READS_FORMAT)
 
 
-def _pregathered(family: ReadFamily, feature: LoopFeature, out: dict, requests, reuse, *,
-                 network: str, scope, subject, trigger) -> list:
-    """`run`'s *pregather*: judged, run (*reuse* first), fitted to the feature's room and
-    logged before the first call; the records to attach, or ``[]`` when none ran or the send
-    log could not be written (then nothing of them is sent, said in the log)."""
-    records = run_reads(family, check(family, list(requests), network=network, scope=scope),
-                        scope, reuse=reuse)
-    # A standard read the check refused is Mercury's, never the model's: left out (it is no
-    # missing capability the model asked for), the rest numbered read:1 on.
+def pregather_run(family: ReadFamily, requests, reuse: dict = None, *, network: str,
+                  scope: dict = None) -> list:
+    """`run`'s *pregather* judged and run (*reuse* first), apart from `run`, so a caller may
+    read them while it builds the first call's request (`fixit_troubleshoot.troubleshoot`, the
+    operator, 2026-11-16: "plan ready in 45 s or less"): the records, numbered ``read:1`` on.
+    A standard read the check refused is Mercury's, never the model's: left out (it is no
+    missing capability the model asked for), said in the log. Judged `ReadFamily.limit` at a
+    time: a pass's limit is on what the MODEL asks; Mercury's standard reads are declared in
+    code, and the investigation's `LoopFeature.max_reads` counts them."""
+    requests = list(requests or ())
+    judged = []
+    for i in range(0, len(requests), family.limit):
+        judged += check(family, requests[i:i + family.limit], network=network, scope=scope,
+                        start=i + 1)
+    records = run_reads(family, judged, scope, reuse=reuse)
     for r in records:
         if r["verdict"] == "refused":
             log.info("read loop %s: a standard read was refused: %s", family.name, r["reason"])
-    records = [dict(r, id=f"read:{n}") for n, r in
-               enumerate((r for r in records if r["verdict"] != "refused"), 1)]
+    return [dict(r, id=f"read:{n}") for n, r in
+            enumerate((r for r in records if r["verdict"] != "refused"), 1)]
+
+
+def _read_key(family: ReadFamily, verdict: dict) -> tuple:
+    """One read as `_unread` compares it: its device and its rendered requests, each as
+    `command_plan_run.Reused.key` writes a command (spacing collapsed, an interface in its
+    long form, lower case), so ``Gi1/0`` and ``GigabitEthernet1/0`` are one read."""
+    from modules.nsot.command_plan_run import Reused
+
+    device = device_of(family, verdict) or ""
+    return (device, tuple(Reused.key(device, q)[1] if isinstance(q, str) else json.dumps(q)
+                          for q in verdict.get("requests") or ()))
+
+
+def _unread(family: ReadFamily, wanted: list, records: list, *, network: str,
+            scope: dict = None) -> tuple:
+    """``(new, repeated)``: *wanted* less each request a read of *records* already answered
+    (the same device and the same rendered request), and the ids of the reads that answered
+    those (the operator, 2026-11-16: a read the investigation already holds is answered from
+    it, never by another device round and another call). Each request is judged alone, as its
+    round would judge it; one that is refused stays in *new*, to be refused in its round."""
+    done = {}
+    for r in records or ():
+        if r.get("verdict") == "run" and r.get("requests"):
+            done.setdefault(_read_key(family, r), str(r.get("id") or ""))
+    if not wanted or not done:
+        return list(wanted or ()), []
+    new, repeated = [], []
+    for w in wanted:
+        v = check(family, [w], network=network, scope=scope)[0]
+        rid = done.get(_read_key(family, v)) if v["verdict"] == "allowed" else None
+        if rid:
+            repeated.append(rid)
+        else:
+            new.append(w)
+    return new, list(dict.fromkeys(repeated))
+
+
+def _names_a_fix(answer) -> bool:
+    return bool(getattr(answer, "plan", None) or getattr(answer, "fix", None))
+
+
+def _pregathered(family: ReadFamily, feature: LoopFeature, out: dict, requests, reuse, *,
+                 network: str, scope, subject, trigger, records=None) -> list:
+    """`run`'s *pregather*: judged and run (`pregather_run`, unless *records* are its records,
+    run already), fitted to the feature's room and logged before the first call; the records
+    to attach, or ``[]`` when none ran or the send log could not be written (then nothing of
+    them is sent, said in the log)."""
+    if records is None:
+        records = pregather_run(family, requests, reuse, network=network, scope=scope)
+    records = [dict(r) for r in records]
     if not any(r["verdict"] == "run" for r in records):
         return []
     if feature.read_room:
@@ -1253,7 +1309,8 @@ def _pregathered(family: ReadFamily, feature: LoopFeature, out: dict, requests, 
 def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str, data: dict,
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
         scope: dict = None, actable=(), send=None, today: str = None,
-        reads_context: dict = None, pregather=(), reuse: dict = None) -> dict:
+        reads_context: dict = None, pregather=(), reuse: dict = None,
+        pregathered: list = None) -> dict:
     """The loop for one finding (the module's docstring has the steps): at most two calls of
     *feature*'s task through *ask* (the gateway's `ask`, given by the feature), each with
     *trigger*, *actor*, *subject* and *network*; *data* the call's own parts, *context* its
@@ -1275,7 +1332,11 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     first call (*reuse* answering those a read of seconds ago already holds, `run_reads`),
     logged in the send log before anything of them is sent, ids ``read:1`` on; the first call
     is then the *again* pass with them attached, so most investigations answer in one round
-    (the operator, 2026-11-16). None that ran: the first pass as before."""
+    (the operator, 2026-11-16). None that ran: the first pass as before. *pregathered* is
+    `pregather_run`'s records of *pregather*, when the caller ran them already (while it built
+    *data*); they are then fitted and logged here, never run again. A later answer's request
+    for a read the investigation already holds is answered from it (`_unread`), never by
+    another device round and another call."""
     if not isinstance(family, ReadFamily) or not isinstance(feature, LoopFeature):
         raise TypeError("read_loop.run takes a declared ReadFamily and LoopFeature")
     common = {"actor": actor, "trigger": trigger, "subject": subject, "network": network,
@@ -1295,9 +1356,10 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     plain = bool(off) and feature.plain is not None
     prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
     pre = []
-    if pregather and not plain and feature.rounds:
+    if (pregather or pregathered) and not plain and feature.rounds:
         pre = _pregathered(family, feature, out, pregather, reuse, network=network,
-                           scope=scope, subject=subject, trigger=trigger)
+                           scope=scope, subject=subject, trigger=trigger,
+                           records=pregathered)
     asked_parts = (again_request(feature, data, ctx, pre) if pre
                    else (prompt, schema, parts, ctx))
     prompt, schema, parts, ctx1 = asked_parts
@@ -1329,10 +1391,24 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         out["words"] = f"AI analysis: reads not asked: {off}"
         return out
     wanted = _reads_of(answer)
+    repeated = []
+    if wanted and pre:
+        # A read the standard reads already answered is answered from them (2026-11-16).
+        wanted, repeated = _unread(family, wanted, pre, network=network, scope=scope)
+        if repeated:
+            out["repeated"] = repeated
     if not wanted:
         if pre:
             out["words"] = (f"AI analysis: {_summary(pre)} before the first call (Mercury's "
-                            "standard reads); answered in one call")
+                            "standard reads); answered in one call"
+                            + (f"; the reads it asked for again were answered by "
+                               f"{_listed(repeated)}" if repeated else ""))
+        if repeated and not _names_a_fix(answer):
+            # It asked only for what it holds, and named no fix: said as a stop, never as
+            # its own "reading first" words.
+            # The standard reads were its one round.
+            return _stopped(out, 1, "the reads it asked for were already in what it was sent "
+                                    f"({_listed(repeated)})")
         return out
     if feature.rounds:
         return _investigate(family, feature, out, wanted, started=started, ask=ask,
@@ -1513,9 +1589,21 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
         out.update(answer=answer, state="answered", prompt=f"{prompt[0]}.v{prompt[1]}",
                    answer_call=got.get("call_id") or "")
         wanted = [] if last else _reads_of(answer)
+        repeated = []
+        if wanted:
+            # A read this investigation already holds is answered from it (2026-11-16).
+            wanted, repeated = _unread(family, wanted, records, network=network, scope=scope)
+            if repeated:
+                out["repeated"] = list(dict.fromkeys(list(out.get("repeated") or ())
+                                                     + repeated))
         if not wanted:
             out["words"] = (f"AI analysis: {summary}; {rounds} round{'s' if rounds != 1 else ''}"
-                            " of reads; answered" + (f" at the bound on {bound}" if bound else ""))
+                            " of reads; answered" + (f" at the bound on {bound}" if bound else "")
+                            + (f"; the reads it asked for again were answered by "
+                               f"{_listed(repeated)}" if repeated else ""))
             out["bound"] = bound
+            if repeated and not _names_a_fix(answer):
+                return _stopped(out, rounds, "the reads it asked for were already in what it "
+                                             f"was sent ({_listed(repeated)})")
             return out
         asking = got.get("call_id") or ""

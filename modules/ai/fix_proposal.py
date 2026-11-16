@@ -348,7 +348,7 @@ def _propose_shapes(network: str, shapes, call_id: str) -> list:
 def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=(),
                       actor: str, actor_verified: str, note: str = "", shown: dict = None,
                       prompt: str = "", now: float = None, alternative_of: str = "",
-                      investigated=(), reuse=None) -> dict:
+                      investigated=(), reuse=None, took: dict = None) -> dict:
     """What an AI call's plan proposes in *incident*: *steps* ``[{"operation", "params"}]`` in
     order, each held to this door (`step_held`), then kept as the incident's proposal line with
     its steps (`fixit.incident.record_proposal`), whose preflight on the page (`fixit.plan.
@@ -362,7 +362,9 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     records (`read_loop.run`'s ``reads``): a precondition read of the same command on the same
     device it took at most `command_plan_run.REUSE_S` before is reused, its age said, and the
     alternative's preflight reuses the first's reads the same way (*reuse*, `job_reads`: the
-    card's alone; the approved run reads live). ``{"ok", "steps", "line", "alternative",
+    card's alone; the approved run reads live). *took* is the investigation's timings so far
+    (`fixit_troubleshoot._laps`), kept on the plan's line, a refused one's too, beside its
+    preflight's own seconds (``reuse``). ``{"ok", "steps", "line", "alternative",
     "shapes", "refused", "code"}``. Never runs, holds, opens or starts anything."""
     from modules import plan_engine as PE
     from modules.fixit import incident as F
@@ -390,7 +392,7 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
         try:
             line = F.record_proposal(incident, "ai", calls=ids, prompt=prompt, now=now,
                                      words=f"Mercury's check refused the AI's plan: {words}",
-                                     shown=shown or {}, **kept)
+                                     shown=shown or {}, took=took, **kept)
         except (F.Refused, OSError, ValueError) as exc:
             log.error("fix_proposal: %s's refused plan was not kept: %s", incident.id, exc)
             line = {}
@@ -412,13 +414,18 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     reads = _command_plan_reads(incident.network, steps, incident.id, reuse=reuse)
     if reads:
         shown_["preconditions_read"] = reads
+        if took is not None:
+            took = dict(took)
+            for n, r in reads.items():
+                took[f"{len(took) + 1:02d} the plan's preflight, step {n}"] = (
+                    r["reuse"]["took_s"])
     if shapes:
         shown_["shapes"] = shapes
     if alternative_of:
         shown_["alternative_of"] = alternative_of
     line = F.record_proposal(incident, "ai", steps=[_attempt_form(s) for s in steps],
                              calls=ids, prompt=prompt, now=now, sessions=sessions,
-                             shown=shown_, **kept)
+                             shown=shown_, took=took, **kept)
     alt = {}
     if imp.get("steps") and not alternative_of:
         alt_steps = [{"operation": s["operation"],

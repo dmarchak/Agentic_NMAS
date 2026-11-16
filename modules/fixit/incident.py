@@ -433,6 +433,10 @@ NOTE_CHARS = 2000
 WORDS_CHARS = 500
 #: What is shown of an AI answer, kept with its proposal line, at most (bytes of its JSON).
 SHOWN_BYTES = 8192
+#: An investigation's timings kept on its proposal line (`record_proposal`'s *took*): at most
+#: this many parts (reasoned: about 25 today), each named in at most this many characters.
+TOOK_MOST = 60
+TOOK_CHARS = 100
 #: What is kept of each collector step's session read (`plan_engine.read_sessions`, C3725).
 SESSION_FIELDS = ("session", "local", "quiet_s", "dry_run", "refused", "at")
 
@@ -440,7 +444,8 @@ SESSION_FIELDS = ("session", "local", "quiet_s", "dry_run", "refused", "at")
 def record_proposal(incident: Incident, source: str, operation: str = "", params=None, *,
                     calls=(), prompt: str = "", now: float = None, by: str = "",
                     verified: str = "", note: str = "", words: str = "",
-                    shown: dict = None, steps=None, sessions: dict = None) -> dict:
+                    shown: dict = None, steps=None, sessions: dict = None,
+                    took: dict = None) -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
     `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
@@ -455,8 +460,17 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     A PLAN of catalog operations (C3694) gives *steps*, ``[{"operation", "params"}]`` in their
     order, 1 to `MOST_STEPS`, each kept canonical with its hash (``steps``: ``[{"operation",
     "params", "params_hash"}]``); *operation* and *params* are then its first step's, so a
-    reader of the one-operation shape reads a plan of one as before. It starts nothing."""
+    reader of the one-operation shape reads a plan of one as before. It starts nothing.
+
+    *took* (an AI investigation's, `fixit_troubleshoot._laps`: ``{"<nn> <part>": seconds}``)
+    keeps how long each part of the investigation took, for the next measurement of a press
+    (the operator, 2026-11-16: the host logs below info); at most `TOOK_MOST` parts, each name
+    at most `TOOK_CHARS`, kept only when given and never drawn."""
     _check(incident)
+    if took is not None and not isinstance(took, dict):
+        raise Refused(f"a proposal's timings are {{part: seconds}}, and {took!r:.80} was given")
+    took = {str(k)[:TOOK_CHARS]: round(float(v), 1) for k, v in list((took or {}).items())
+            [:TOOK_MOST] if isinstance(v, (int, float)) and not isinstance(v, bool)}
     kept_steps = []
     if steps is not None:
         if isinstance(steps, (str, bytes, dict)) or not 1 <= len(list(steps)) <= MOST_STEPS:
@@ -528,7 +542,8 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
                               ("sessions", sessions),
                               ("note", typed),
                               ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
-                              ("shown", dict(shown or {})), ("steps", kept_steps))
+                              ("shown", dict(shown or {})), ("steps", kept_steps),
+                              ("took", took))
             if v}
 
     def build(lines):
