@@ -137,6 +137,10 @@
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='btn btn-small btn-primary') }}
       {%- elif is_again %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=True, aiv=ct) }}
+      {%- elif F.kind == 'button' and F.script %}
+        {#- C3805: the matching Automatic saved script, run once as the person who presses, bound
+            to the hash its preview drew; no AI. -#}
+        {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=F.key, hash=F.hash), F.label, 'Fixing…', 'start', F.label, "Runs the saved script once as you: the device held, its checks read again, sent, verified and recorded; no AI", primary=True, kind='approve') }}
       {%- elif F.kind == 'button' and F.read and F.href %}
         {#- C3797: the read the AI said would settle it, which its read set lacks: a person's
             read in Show commands, its row filled in; nothing runs until Run is pressed there. -#}
@@ -318,11 +322,12 @@
   {%- if po_has or aa_has %}
   {#- The operator, 2026-11-15: during a new investigation the previous answer is labelled, and
       collapsed; one about another incident is superseded, its content withheld. -#}
-  {%- set prev = (PP.previous or PP.superseded) and true %}
+  {%- set outdated = (x.ai_answer or {}).outdated %}
+  {%- set prev = (PP.previous or PP.superseded or outdated) and true %}
   <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP and not prev %} open{% endif %}>
-    <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}{% if prev %} (previous answer){% endif %}</summary>
+    <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}{% if outdated %} ({{ outdated }}){% elif prev %} (previous answer){% endif %}</summary>
     <div class="fixit-ai-answer">
-      {%- if prev %}<p class="small muted" data-answer-label>Previous answer{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}, superseded{% endif %}</p>{% endif %}
+      {%- if prev %}<p class="small muted" data-answer-label>{{ 'Outdated answer' if outdated else 'Previous answer' }}{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}, superseded{% endif %}{% if outdated %}: {{ outdated }}{% endif %}</p>{% endif %}
       {%- if sh.rationale %}<p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>{% endif %}
       {%- if sh.hypotheses %}
       <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span>{% if h.unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ h.unverified_words }}</span>{% endif %}{% if h.confirm %}<br><span class="muted">To confirm: <span class="mono">{{ h.confirm }}</span></span>{% endif %}</li>{% endfor %}</ol>

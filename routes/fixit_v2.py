@@ -148,6 +148,53 @@ def _proposal_named(inc, named: str):
     return line, ""
 
 
+@bp.route("/<incident_id>/fixit/script", methods=["POST"])
+def fix_with_script(incident_id):
+    """"Fix with saved script: <name>" (C3805): the incident's matching Automatic script run once
+    as the verified person who pressed, bound to the hash the page drew (``key``, ``hash``), by
+    the runner as a job (the device held, preconditions read again, sent, verified, rolled back
+    on a failed verify, recorded); verified, the incident closes Fixed. No AI."""
+    from urllib.parse import quote
+
+    from modules.nsot import capture_job
+    from modules.nsot import command_plan_run as CR
+    from modules.nsot import saved_plans as S
+
+    network, found, _inc, who, refused = _gate(incident_id, "Fix with saved script")
+    if refused is not None:
+        return refused
+    offer = S.script_offer(network, found)
+    key, sent = (request.values.get("key") or "").strip(), (request.values.get("hash") or "")
+    if not offer or offer["key"] != key:
+        return _section(network, found, 409, refused=(
+            f"Not run: {key or 'no script'} is no saved script matching this incident's "
+            "problem now. Nothing ran"))
+    if sent.strip() != offer["hash"]:
+        return _section(network, found, 409, refused=(
+            f"Not run: you pressed {offer['name']} at {sent or 'no hash'}, and its preview now "
+            f"is {offer['hash']}: it moved since the page was drawn. Nothing ran"))
+    e = S.scripts(network)[key]
+
+    def work(_job):
+        rec = CR.run(network, key, offer["values"], confirmed=offer["hash"],
+                     incident=incident_id, reason=(f"saved script {offer['name']} pressed on "
+                                                   f"incident {incident_id}"), **who)
+        if rec.get("state") == "done":
+            S.close_fixed(network, incident_id, {"id": rec.get("id"),
+                                                 "device": offer["values"].get("device")},
+                          e, who["actor"])
+        return {"run": rec.get("id"), "state": rec.get("state"),
+                "words": CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
+                or str(rec.get("why") or "")}
+    capture_job.start(network, f"{offer['name']} on {incident_id}", who["actor"], work,
+                      kind="saved script", announce_keys=CR.ANNOUNCE_KEYS,
+                      announcer=CR.ANNOUNCER,
+                      page=f"/v2/incident/{incident_id}?list={quote(network)}")
+    return _section(network, found, done=(
+        f"Running {offer['name']} on {offer['values'].get('device')}: held, checked, sent, "
+        "verified and recorded; the incident closes Fixed when it verifies"))
+
+
 @bp.route("/<incident_id>/fixit/approve", methods=["POST"])
 def approve(incident_id):
     """Approve: the waiting plan, preflighted again, approved by its hash as the verified person

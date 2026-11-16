@@ -446,6 +446,7 @@ DECLARED = {
     # section again in place, and an incident's page open elsewhere (its live region rides on
     # drift) reads the incident's record again; a hand-over's send moves the notifications log.
     "fixit_v2.approve": ("privileged", "drift", "in_progress"),
+    "fixit_v2.fix_with_script": ("privileged", "drift", "in_progress"),   # C3805
     "fixit_v2.deny": ("drift",),
     "fixit_v2.modify": ("ai_calls", "drift"),
     "fixit_v2.ask_again": ("ai_calls", "drift"),

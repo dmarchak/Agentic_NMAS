@@ -136,6 +136,9 @@ STAGES = {
     "control_v2.fix_all": Stages(
         "v2.landing", "hash", "modules.heal.act.apply_decision",
         "modules.pipeline.roll_back_after", "modules.heal.steplog.record_act"),
+    "fixit_v2.fix_with_script": Stages(
+        "incident_v2.incident", "hash", "modules.nsot.command_plan_run.plan_verify",
+        "modules.nsot.command_plan_run.net_zero", "modules.nsot.command_plan_run.run"),
     "fixit_v2.approve": Stages(
         "incident_v2.incident", "hash", "modules.heal.resubscribe.verify",
         "modules.heal.resubscribe.put_back", "modules.plan_engine._record"),
@@ -655,6 +658,7 @@ HISTORY = {
     # The plan's steps' runs are each its device's run records, read by History's privileged
     # source; the plan's own record beside them.
     "fixit_v2.approve": ("privileged",),
+    "fixit_v2.fix_with_script": ("privileged",),
     "fixit_v2.deny": ("n/a: a denial is one line of the incident's troubleshooting record "
                       "(modules/fixit/incident.py), drawn on the incident's page, never one "
                       "device's record"),

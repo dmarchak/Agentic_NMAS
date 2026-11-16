@@ -122,6 +122,9 @@ def save_script(incident):
     # run", `saved_plans.saved_from`), its form collapsed: the redraw its announcement asks
     # for draws the same line (item 7, the operator, 2026-11-15).
     log.info("saved plans: %s saved as a self-heal script of %s", e["key"], network)
+    if e.get("mode") == "auto":
+        # C3805: every open incident it matches is decided again now.
+        S.redecide_soon(network, by=_who()["actor"])
     return _draw(network, incident)
 
 
@@ -154,6 +157,7 @@ def promote(incident):
         e = S.promote((request.form.get("key") or "").strip(), network=network, **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
+    S.redecide_soon(network, by=_who()["actor"])      # C3805: its open matches decided again
     return _draw(network, incident, level="ok", words=(
         f"Promoted {e['name']}: when its match holds it runs, while self-healing is in Auto"))
 

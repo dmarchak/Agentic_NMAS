@@ -718,8 +718,24 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     }
     out["actions"] = actions
     lacked = lacked_read(out["ai_answer"])
+    # C3805: an Automatic saved script matching the problem fixes it with no AI; an AI answer
+    # it overtakes is labelled outdated (the operator's status-line rule, 2026-11-15).
+    offer = {}
+    if not done:
+        from modules.nsot import saved_plans
+        try:
+            offer = saved_plans.script_offer(network, found)
+        except Exception as exc:                      # noqa: BLE001 (said; no offer drawn)
+            log.error("fixit: %s's saved-script offer could not be read: %s", iid, exc)
+    out["script"] = offer
+    if offer and out["ai_answer"]:
+        out["ai_answer"]["outdated"] = f"outdated: a saved script now fixes this ({offer['name']})"
     if done:
         nxt = {"kind": "none", "label": ""}
+    elif offer:
+        nxt = {"kind": "button", "script": True,
+               "label": f"Fix with saved script: {offer['name']}",
+               "key": offer["key"], "hash": offer["hash"]}
     elif actions["approve"]["offered"] or proposed:
         nxt = {"kind": "approve", "label": "Approve the plan" if plan["approvable"] else
                "Modify or deny the plan", "href": actions["approve"]["href"]}
@@ -757,6 +773,37 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                             approved=_approved(state, rec, out.get("stop") or {}),
                             planned=any("proposal" in ln and ln.get("source") == "ai"
                                         and ln.get("operation") for ln in rec["lines"]))
+    out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
+                                 proposed and plan.get("approvable"))
+
+
+#: A failed start's words when the press never reached the AI (a refusal before any call):
+#: an event for Details, never the headline (the operator's status-line rule, 2026-11-15).
+UNASKED = ("was not asked", "refused by the gateway", "nothing was sent to the AI")
+
+
+def _best_status(status: str, offer: dict, done: bool, found: dict, starts: list,
+                 newest_ai, plan_ready) -> str:
+    """The status line as the incident's best current knowledge, not its latest event (the
+    operator, 2026-11-15): a fix available first ("A saved script can fix this: <name>", "The
+    AI's plan is ready"), then the AI's latest real diagnosis, and a failed attempt only when
+    nothing else exists; a press that never reached the AI is never the headline. Closed by a
+    script: "Fixed by saved script <name> at <instant>"."""
+    fixed = ((found or {}).get("incident") or {}).get("fixed") or {}
+    if done:
+        return (f"Fixed by saved script {fixed['name']} at {fixed.get('at')}."
+                if fixed.get("script") and fixed.get("name") else status)
+    if offer:
+        return f"A saved script can fix this: {offer['name']}."
+    if plan_ready:
+        return "The AI's plan is ready."
+    last = starts[-1] if starts else {}
+    unasked = last.get("state") == "failed" and any(
+        w in str(last.get("words") or "") for w in UNASKED)
+    if unasked and newest_ai:
+        said = str(newest_ai.get("words") or "").strip()
+        return "The AI found: " + (said.split(". ")[0].rstrip(".") + "." if said else "see Details.")
+    return status
 
 
 def _approved(state: str, rec: dict, stop: dict) -> dict:

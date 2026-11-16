@@ -551,6 +551,99 @@ def heal_mode(network: str) -> str:
         return "off"
 
 
+def script_for(network: str, found: dict) -> tuple:
+    """``(entry, problem)``: the first Automatic script whose match the incident *found*'s
+    classified problem holds, else ``(None, None)`` (C3805)."""
+    from modules import problem as P
+
+    prob = P.classify(found)
+    if not prob.condition:
+        return None, None
+    hit = sorted((e for e in scripts(network).values()
+                  if e.get("mode") == "auto" and matches(e.get("match") or {}, prob)),
+                 key=lambda e: e.get("key") or "")
+    return (hit[0], prob) if hit else (None, None)
+
+
+def script_offer(network: str, found: dict) -> dict:
+    """The incident's "Fix with saved script: <name>" (C3805): ``{"key", "name", "hash",
+    "values"}`` of its matching Automatic script, previewed by the runner's own preview (no
+    device), or ``{}`` when none matches or its preview is refused. A read."""
+    from modules.nsot import command_plan as CP
+
+    e, prob = script_for(network, found)
+    if not e:
+        return {}
+    try:
+        values = fill(e, prob)
+    except Refused:
+        return {}
+    p = CP.preview(network, e["key"], values)
+    return ({"key": e["key"], "name": e.get("name") or e["key"], "hash": p["hash"],
+             "values": p["values"]} if p["ok"] else {})
+
+
+def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> dict:
+    """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device"}``)
+    through the one close path (`decide.end_standing`, the close keeping ``fixed``); ``{}``
+    when it is not standing (the detect pass ends it then)."""
+    from modules.heal import decide
+
+    now = time.time()
+    hhmm = time.strftime("%H:%M", time.gmtime(now))
+    rid = str(run.get("id") or "")
+    return decide.end_standing(
+        network, incident_id,
+        (f"fixed: saved script {e.get('name')}'s run {rid[-8:]} verified on "
+         f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by,
+        read_words=f"the script's run {rid} read the device back and verified",
+        fixed={"run": rid, "device": run.get("device") or "", "at": _iso(),
+               "script": e.get("key") or "", "name": e.get("name") or ""})
+
+
+def redecide(network: str, *, by: str = "saved-plans") -> list:
+    """Every open incident of *network* whose problem matches an Automatic script (C3805: on a
+    save, a promote and self-healing switched on): with self-healing in Auto the script fires
+    (`fire`: claimed, the heal guards asked, the runner) and, verified, the incident closes
+    Fixed (`close_fixed`); in Off or Dry run nothing runs (the incident's bottom line offers
+    the script). ``[{"incident", "key", "words"}]``."""
+    from modules import incident_page
+    from modules.heal import incidents as INC
+
+    mode = heal_mode(network)
+    if mode != "auto":
+        return []
+    out = []
+    for inc in INC.read(network).get("incidents") or []:
+        if inc.get("state") not in INC.OPEN_STATES:
+            continue
+        found = incident_page.resolve(network, inc["id"])
+        e, prob = script_for(network, found)
+        if not e:
+            continue
+        got = fire(network, e["key"], prob, inc["id"], heal_mode=mode, record=inc)
+        if got.get("ok") and got.get("run") and not got.get("already"):
+            close_fixed(network, inc["id"], {"id": got["run"],
+                                             "device": (got.get("values") or {}).get("device")},
+                        e, by)
+        out.append({"incident": inc["id"], "key": e["key"], "words": got.get("words") or ""})
+        log.info("saved plans: %s re-decided on %s: %s", e["key"], inc["id"], got.get("words"))
+    return out
+
+
+def redecide_soon(network: str, *, by: str) -> None:
+    """`redecide` on its own thread: a save, a promote or a switch answers at once; each run
+    holds its device (the runner) and is announced as it records."""
+    import threading
+
+    def go():
+        try:
+            redecide(network, by=by)
+        except Exception as exc:                      # noqa: BLE001 (said; the next trigger retries)
+            log.error("saved plans: re-deciding %s's open incidents failed: %s", network, exc)
+    threading.Thread(target=go, name=f"redecide-{network}", daemon=True).start()
+
+
 def fire_matching(network: str, found: dict, *, sources=None, mode: str = None) -> list:
     """Every script of *network* whose match the incident *found* (`incident_page.resolve`)
     holds, fired (`fire`) under self-healing's mode now (*mode*, else `heal_mode`), Auto ones

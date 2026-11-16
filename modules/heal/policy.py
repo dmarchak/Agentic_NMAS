@@ -575,6 +575,10 @@ def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_v
         "reason": reason, "actor": actor, "actor_verified": actor_verified})
     log.info("heal: %s confirmed %s's policy %s (mode %s)", actor, network,
              p["policy_fingerprint"], after[MODE_KEY])
+    if after[MODE_KEY] == "auto" and p["before"].get(MODE_KEY) != "auto":
+        # C3805: switched on, every open incident an Automatic script matches is decided again.
+        from modules.nsot import saved_plans
+        saved_plans.redecide_soon(network, by=actor)
     return {"ok": True, "network": network, "mode": after[MODE_KEY], "until": after[UNTIL_KEY],
             "fingerprint": p["fingerprint"], "policy_fingerprint": p["policy_fingerprint"],
             "changes": p["changes"], "recorded": entry.get("recorded", False),
