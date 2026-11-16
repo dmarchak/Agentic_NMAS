@@ -114,7 +114,8 @@ def save_script(incident):
                 if k in S.OPTIONAL_MATCH and form.get(f"keep_{k}") == "1"}}
     try:
         e = S.save_script(network, run_id=o["run"], name=(form.get("name") or "").strip(),
-                          match=match, fills=o["fills"], **_who())
+                          match=match, fills=o["fills"], dry_run=form.get("dry_run") == "1",
+                          **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
     # Its result is the card's own line for what is saved from the run ("Saved: <name>, Dry

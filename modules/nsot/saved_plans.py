@@ -309,10 +309,13 @@ def _store(entry: dict) -> dict:
 
 
 def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dict,
-                actor: str, actor_verified: str, person: bool) -> dict:
+                actor: str, actor_verified: str, person: bool, dry_run: bool = False) -> dict:
     """Save the verified run *run_id* as a self-heal script of *network*: its plan with its
-    parameters open, *match* (`match_refusal`) and *fills* (`fills_refusal`), in Dry run. Needs
-    the self-healing right (`identity.right_refusal`). Raises `Refused`, nothing saved."""
+    parameters open, *match* (`match_refusal`) and *fills* (`fills_refusal`). Saved in Auto,
+    promoted by the person saving it: saving a verified fix is the approval (the operator,
+    2026-11-15); *dry_run* keeps it in Dry run until promoted. The network's self-healing mode
+    still governs whether it acts (`mode_now`). Needs the self-healing right. Raises
+    `Refused`, nothing saved."""
     from modules import identity
     from modules.nsot import command_plan as CP
 
@@ -329,11 +332,16 @@ def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dic
     why = fills_refusal(CP.parse(doc), fills)
     if why:
         raise Refused(why)
-    return _store({"key": key, "kind": "script", "network": network, "name": name[:120],
-                   "template": doc, "match": dict(match), "fills": dict(fills),
-                   "mode": "dry_run", "saved_by": actor, "saved_at": _iso(),
-                   "from_run": {"run": run_id, "plan": rec.get("key"), "at": rec.get("at"),
-                                "by": rec.get("actor")}, "track": []})
+    e = {"key": key, "kind": "script", "network": network, "name": name[:120],
+         "template": doc, "match": dict(match), "fills": dict(fills),
+         "mode": "dry_run", "saved_by": actor, "saved_at": _iso(),
+         "from_run": {"run": run_id, "plan": rec.get("key"), "at": rec.get("at"),
+                      "by": rec.get("actor")}, "track": []}
+    if not dry_run:
+        # As `promote` binds it: the person, when, and the plan's digest.
+        e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
+                 digest=CP.parse(doc).digest)
+    return _store(e)
 
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
