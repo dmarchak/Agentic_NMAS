@@ -894,11 +894,15 @@ def check_cause_cleared(_answer, run) -> tuple:
     classification) on neither the port's port-security table nor its MAC table. A cause not
     cleared fails ("Port stays down: ..."); one that cannot be told is unreadable."""
     port, cause, short = _port_cause(run)
-    c = _classification(run.network, run.incident)
-    src = run.sources.of("errdisable")
+    # The run's preconditions read its lines beside the device's reads (`AHEAD`, one thread,
+    # joined before this check is judged); without them (a direct call) it reads them now.
+    ahead = (getattr(run, "ahead", None) or {}).get("check_cause_cleared")
+    told = ahead if ahead is not None else cause_lines(run)
+    if told.get("raised"):
+        return "unreadable", (f"whether the cause has cleared on {short} cannot be told: "
+                              f"{told['raised']}")
+    c, got, start = told["c"], told["got"], told["start"]
     if cause == "bpduguard":
-        start = float(c.get("epoch") or 0) or (run.at - LOOKBACK_S)
-        got = src.lines(src.device(run.device) or run.dev, start, run.at)
         if got.get("error"):
             return "unreadable", f"whether BPDUs still arrive on {short} cannot be told: " \
                                  f"{got['error']}"
@@ -914,7 +918,27 @@ def check_cause_cleared(_answer, run) -> tuple:
         return "deferred", (f"whether BPDUs still arrive on {short} cannot be told while the "
                             "port is down; judged after the bounce by verify's no new "
                             "err-disable")
-    return _psecure_cleared(run, port, cause, short, c, src)
+    return _psecure_cleared(run, port, cause, short, c, got)
+
+
+def cause_lines(run, src=None) -> dict:
+    """What `check_cause_cleared` judges besides the device: the incident's classification and
+    the port's lines in Loki from its err-disable (BPDU guard: from the classification's time,
+    else `LOOKBACK_S` back; port security: `LOOKBACK_S` before it, else
+    `ERRDISABLE_LOOKBACK_S` back) to now. ``{"c", "got", "start", "until"}``; *got* is
+    `log_lines`' answer (its ``error`` said, never "no lines"). No device is read here, so a
+    run reads it in a thread beside its device reads (`AHEAD`)."""
+    _port, cause, _short = _port_cause(run)
+    src = src if src is not None else run.sources.of("errdisable")
+    c = _classification(run.network, run.incident)
+    until = run.at
+    since = float(c.get("epoch") or 0)
+    if cause == "bpduguard":
+        start = since or (until - LOOKBACK_S)
+    else:
+        start = (since - LOOKBACK_S) if since else (until - ERRDISABLE_LOOKBACK_S)
+    got = src.lines(src.device(run.device) or run.dev, start, until)
+    return {"c": c, "got": got, "start": start, "until": until}
 
 
 #: How close a violation and the err-disable it causes are logged: the same second on IOS
@@ -922,18 +946,18 @@ def check_cause_cleared(_answer, run) -> tuple:
 TRIGGER_S = 10
 
 
-def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, src) -> tuple:
+def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, got: dict) -> tuple:
     """Port security's cause cleared while the port is down (the operator, 2026-11-16): no
-    new violation since the err-disable, by the port's ``PSECURE_VIOLATION`` lines (none after
-    its newest err-disable line) and its violation count (unchanged from the one the device
-    confirmation read after that err-disable, when it holds one); the violating MAC named
-    from the line, else the port's Last Source Address. Verify's re-trip check catches a
-    violator still connected once the port is up. Kept on ``run.found`` for the run's record."""
+    new violation since the err-disable, by the port's ``PSECURE_VIOLATION`` lines (*got*,
+    `cause_lines`: none after its newest err-disable line) and its violation count (unchanged
+    from the one the device confirmation read after that err-disable, when it holds one); the
+    violating MAC named from the line, else the port's Last Source Address. The count is read
+    through the run's sources: inside a run's preconditions, the one device read they asked
+    together (`AHEAD`). Verify's re-trip check catches a violator still connected once the
+    port is up. Kept on ``run.found`` for the run's record."""
     cmd = PSEC_IF_READ.format(port=port)
     ps = port_security(run.sources.read(run.device, [cmd]).get(cmd))
     since = float(c.get("epoch") or 0)
-    start = (since - LOOKBACK_S) if since else (run.at - ERRDISABLE_LOOKBACK_S)
-    got = src.lines(src.device(run.device) or run.dev, start, run.at)
     mine = []
     for ln in got.get("lines") or []:
         p = parse_line(ln.get("line") or "")
@@ -978,6 +1002,29 @@ def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, src) -> tu
     if mac:
         said.append(f"the violating MAC {mac_colon(mac)}")
     return "pass", "; ".join(said)
+
+
+def _ahead_no_recovery(_read: str, _run) -> dict:
+    # The timer table, whatever the item's own read (an old saved script's `show running-config
+    # | include errdisable recovery` is never judged: the check reads the table in its place).
+    return {"device": [RECOVERY_READ], "answer_of": RECOVERY_READ}
+
+
+def _ahead_cause_cleared(_read: str, run) -> dict:
+    port, cause, _short = _port_cause(run)
+    src = run.sources.of("errdisable")
+    return {"device": [PSEC_IF_READ.format(port=port)] if cause == "psecure-violation" else [],
+            "answer_of": "", "other": lambda: cause_lines(run, src)}
+
+
+#: What each check here asks before it is judged, so a run's preconditions ask every device
+#: read in one read-engine run and the rest beside it (`command_plan_run._ahead`; the
+#: operator, 2026-11-16: preconditions batching). Keyed by the check's function; each answers
+#: ``{"device": [commands], "answer_of": the command whose answer the check is handed, "other":
+#: a callable reading no device (run in a thread beside the device's reads) or absent}``. A
+#: check not listed is asked its item's own read and handed its answer, as before.
+AHEAD = {"check_no_recovery": _ahead_no_recovery,
+         "check_cause_cleared": _ahead_cause_cleared}
 
 
 def offender_words(rec: dict) -> str:

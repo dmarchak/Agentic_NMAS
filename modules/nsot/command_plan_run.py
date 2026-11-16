@@ -264,28 +264,49 @@ class Sources:
         if not live:
             return {c: out.get(c) for c in commands}
         t0 = time.monotonic()
+        got = {}
         try:
-            rec = reads.run(self.network, [host], live, "Mercury (reviewed commands)",
+            # One engine run for them all (at most `reads.MAX_COMMANDS` each: a longer list is
+            # asked in runs of that many, in order).
+            # A run the engine refuses leaves EVERY command unanswered, as one refused read
+            # did before the batch (the review, 2026-11-16: answering the rest one by one let
+            # an item whose check ignores its own answer pass beside a refused read).
+            for k in range(0, len(live), reads.MAX_COMMANDS):
+                part = self._engine_run(host, live[k:k + reads.MAX_COMMANDS])
+                if part is None:
+                    got = {}
+                    break
+                got.update(part)
+        finally:
+            if reuse is not None:
+                reuse.stats["live"] += len(live)
+                reuse.stats["live_s"] = round(reuse.stats["live_s"] + time.monotonic() - t0, 2)
+        out.update({c: got.get(c) for c in live})
+        return {c: out.get(c) for c in commands}
+
+    def _engine_run(self, host: str, commands: list) -> dict:
+        """``{command: answer}`` for each of *commands* answered by one read-engine run (an
+        unanswered one absent: unreadable), or ``None`` when the engine refuses the run (a
+        command its allowlist refuses): the caller then leaves every command unanswered."""
+        from modules.nsot import reads
+
+        try:
+            rec = reads.run(self.network, [host], commands, "Mercury (reviewed commands)",
                             purpose="a command plan's precondition or verify read",
                             inline=True, **({"session": self.session}
                                             if self.session is not None else {}))
         except reads.Refused as exc:
             log.warning("command plan: a read was refused: %s", exc)
-            return {c: out.get(c) for c in commands}
-        finally:
-            if reuse is not None:
-                reuse.stats["live"] += len(live)
-                reuse.stats["live_s"] = round(reuse.stats["live_s"] + time.monotonic() - t0, 2)
+            return None
         r = (rec.get("results") or {}).get(host) or {}
         got = {}
         for a in r.get("answers") or []:
             if a.get("state") == reads.ANSWERED:
                 got[a["command"]] = a.get("answer") or ""
-                if reuse is not None and a.get("at"):
-                    reuse.keep(host, a["command"], got[a["command"]], float(a["at"]),
-                               run=rec.get("id") or "")
-        out.update({c: got.get(c) for c in live})
-        return {c: out.get(c) for c in commands}
+                if self.reuse is not None and a.get("at"):
+                    self.reuse.keep(host, a["command"], got[a["command"]], float(a["at"]),
+                                    run=rec.get("id") or "")
+        return got
 
 
 def _same_address(a: str, b: str) -> bool:
@@ -329,6 +350,10 @@ class CheckRun:
         self.network, self.device, self.dev = network, device, dev
         self.derived, self.incident, self.sources = derived, incident, sources
         self.found = {}
+        #: ``{check: what it reads besides the device}``, read beside the preconditions'
+        #: device reads and handed to the check while they are judged (`_read_and_judge`);
+        #: empty outside that.
+        self.ahead = {}
         #: ``{interface: its configuration}`` read just before the send, when the net-zero
         #: check is scoped to the plan's interfaces (`net_zero_scope`); None, the whole.
         self.sections_before = None
@@ -353,16 +378,136 @@ def person_refusal(actor: str, actor_verified: str, person: bool) -> str:
 
 # ── The checks the pipeline runs for the plan ───────────────────────────────────────────────
 
-def _judge(items, run: CheckRun, answers: dict) -> list:
-    """Each item judged: ``[{"name", "read", "result", "words"}]``."""
+def _judge(items, run: CheckRun, answers: dict, asks: list = None) -> list:
+    """Each item judged: ``[{"name", "read", "result", "words"}]``; with *asks* (`_ahead`, one
+    per item), each is handed the answer of its check's ``answer_of`` read, its ``read``."""
+    from modules.nsot import command_plan as CP
+
+    out = []
+    for k, i in enumerate(items):
+        cmd = (asks[k]["answer_of"] if asks is not None else
+               CP.substitute(i["read"], run.derived) if i["read"] else "")
+        result, words = CP.matched(i, answers.get(cmd) if cmd else None, run)
+        out.append({"name": i["name"], "read": cmd, "result": result, "words": words})
+    return out
+
+
+#: How long the preconditions wait, once their device reads are in, for the reads beside them
+#: that are not the device's (G7's Loki lines, `errdisable.AHEAD`). Each Loki request is bounded
+#: by the integration's 5 s (`integrations.base.DEFAULT_TIMEOUT`) and the read makes two (the
+#: syslog job's selector, then the query); 2.5x those is 25 s, counted from the thread's start.
+#: Past it the read is unreadable (the plan refuses, nothing sent) and its thread is left to
+#: end on its own bound.
+AHEAD_JOIN_S = 25.0
+
+
+def _ahead(items, run: CheckRun) -> list:
+    """What each item asks before it is judged, one per item: ``{"device": [commands],
+    "answer_of": command, "other": callable or None, "check": name}``. An item's own read and
+    the answer it is handed, unless its named check's module declares what the check reads
+    (its ``AHEAD``, keyed by the check's function: `errdisable.AHEAD`)."""
+    import importlib
+
     from modules.nsot import command_plan as CP
 
     out = []
     for i in items:
         cmd = CP.substitute(i["read"], run.derived) if i["read"] else ""
-        result, words = CP.matched(i, answers.get(cmd) if cmd else None, run)
-        out.append({"name": i["name"], "read": cmd, "result": result, "words": words})
+        plan = {"device": [cmd] if cmd else [], "answer_of": cmd, "other": None, "check": ""}
+        spec = CP.NAMED_CHECKS.get(i.get("expect") or "") if not i.get("expect_line") else None
+        if spec:
+            declared = (getattr(importlib.import_module(spec[0]), "AHEAD", None) or {}).get(
+                spec[1])
+            if declared is not None:
+                plan.update(declared(cmd, run), check=spec[1])
+        out.append(plan)
     return out
+
+
+class _Answered:
+    """*sources* while the preconditions are judged (`_read_and_judge`): a read of *host*'s
+    commands that their one read asked is answered from *answers*, that read's own live
+    answers (one None stays None: unreadable, never read again); a command it did not ask is
+    read through *sources*, as before. Everything else is *sources*'."""
+
+    def __init__(self, sources, host: str, answers: dict):
+        self._sources, self._host, self._answers = sources, host, answers
+
+    def __getattr__(self, name):
+        return getattr(self._sources, name)
+
+    def read(self, host: str, commands: list) -> dict:
+        mine = host == self._host
+        rest = [c for c in commands if not mine or c not in self._answers]
+        got = dict(self._sources.read(host, rest) or {}) if rest else {}
+        return {c: (self._answers[c] if mine and c in self._answers else got.get(c))
+                for c in commands}
+
+
+def _other(fn, box: dict) -> None:
+    """A read that is no device's, in its own thread: its answer, or what it raised, and its
+    seconds, in *box*."""
+    t0 = time.monotonic()
+    try:
+        box["result"] = fn()
+    except Exception as exc:                          # noqa: BLE001 (unreadable, said)
+        log.warning("command plan: a precondition's read beside the device's raised: %s", exc)
+        box["result"] = {"raised": f"{type(exc).__name__}: {exc}"}
+    box["took_s"] = round(time.monotonic() - t0, 1)
+
+
+def _read_and_judge(items, run: CheckRun, laps=None) -> tuple:
+    """The preconditions *items* read and judged (the operator, 2026-11-16: preconditions
+    batching). Every device read they make (each item's own, and what its check declares,
+    `_ahead`) is asked in ONE read-engine run, on the run's session when it rides one
+    (`Sources.ride`); each read that is no device's (G7's Loki lines) runs in a thread beside
+    it, started first and joined before anything is judged (bounded, `AHEAD_JOIN_S`), so the
+    device's session is only ever used by this thread. Each item is then judged from those
+    answers, read now: a check's own device read is answered from the same run (`_Answered`),
+    and one that was not answered stays unreadable. Laps (*laps*, `pipeline.lap`): the
+    device reads, the reads beside them (with their own seconds), the judging. ``(judged,
+    asks)``."""
+    from modules.pipeline import lap
+
+    asks = _ahead(items, run)
+    cmds = list(dict.fromkeys(c for a in asks for c in a["device"]))
+    beside = {}
+    for a in asks:
+        if a.get("other") and a["check"] not in beside:
+            box = {"started": time.monotonic()}
+            th = threading.Thread(target=_other, args=(a["other"], box), daemon=True,
+                                  name=f"plan-ahead-{a['check']}")
+            beside[a["check"]] = (th, box)
+            th.start()
+    answers = run.sources.read(run.device, cmds) if cmds else {}
+    lap(laps, "preconditions: read")
+    ahead = {}
+    for name, (th, box) in beside.items():
+        th.join(max(0.0, AHEAD_JOIN_S - (time.monotonic() - box["started"])))
+        if th.is_alive():
+            ahead[name] = {"raised": f"its read did not answer within {AHEAD_JOIN_S:.0f} s"}
+        else:
+            ahead[name] = box.get("result") or {"raised": "its read answered nothing"}
+    if beside:
+        lap(laps, "preconditions: beside the device reads ("
+            + ", ".join(f"{n} {b.get('took_s', AHEAD_JOIN_S)} s" for n, (_t, b)
+                        in beside.items()) + ")")
+    src = run.sources
+    log_ = getattr(src, "reused_log", None)
+    run.ahead, run.sources = ahead, _Answered(src, run.device, dict(answers))
+    try:
+        judged = []
+        for k, i in enumerate(items):
+            n = len(log_) if log_ is not None else 0
+            judged.append(_judge([i], run, answers, [asks[k]])[0])
+            if log_ is not None:
+                # A proposal's preflight: the reads a check made itself, reused or live,
+                # outside the one read (a check no module declares), told apart per item.
+                asks[k]["reused_during"] = list(log_[n:])
+    finally:
+        run.ahead, run.sources = {}, src
+    lap(laps, "preconditions: judged")
+    return judged, asks
 
 
 def preconditions(t, run: CheckRun, rec: dict):
@@ -371,10 +516,12 @@ def preconditions(t, run: CheckRun, rec: dict):
     the configuration before. Then, when the net-zero check can be scoped to the plan's
     interfaces (`net_zero_scope`), each interface's configuration read before the send.
     Returns the pipeline's hook, ``hook(ctx) -> why or ""``."""
-    from modules.nsot import command_plan as CP
     from modules.pipeline import lap
 
     def hook(ctx):
+        # The pipeline's stage 4 read the configuration before on the pool directly, not
+        # through the read engine, so the preconditions' one engine run comes immediately
+        # after it (stage 5 between), on the same session, holding the device.
         ip = run.dev.get("ip", "")
         pre = (ctx.pre_snapshots or {}).get(ip) or {}
         if not pre.get("running_config"):
@@ -393,12 +540,9 @@ def preconditions(t, run: CheckRun, rec: dict):
             "configuration)"
             if only else "the running configuration read before anything is sent, holding "
                          "the device"))
-        cmds = list(dict.fromkeys(CP.substitute(i["read"], run.derived)
-                                  for i in t.preconditions if i["read"]))
-        answers = run.sources.read(run.device, cmds) if cmds else {}
-        lap(rec.get("laps"), "preconditions: read")
-        judged = _judge(t.preconditions, run, answers)
-        lap(rec.get("laps"), "preconditions: judged")
+        # Every precondition's device read in one read-engine run on the run's session, the
+        # rest beside it (`_read_and_judge`), each judged from its own answer, read now.
+        judged, _asks = _read_and_judge(t.preconditions, run, rec.get("laps"))
         rec["preconditions"] = judged
         if run.found:
             rec["found"] = dict(run.found)
@@ -850,20 +994,20 @@ def preconditions_now(network: str, key: str, p: dict, *, sources=None,
         # query took 6.1 s on s1's run), fetched beside this preflight, never waited on here.
         from modules.pipeline import warm_netbox_context
         warm_netbox_context(network, p["device_row"])
-    cmds = list(dict.fromkeys(CP.substitute(i["read"], p["derived"])
-                              for i in t.preconditions if i["read"]))
-    answers = src.read(run_.device, cmds) if cmds else {}
+    # The run's one path (`_read_and_judge`): every device read in one engine run, the rest
+    # beside it; each read the reuse answered is in the log by its command.
     log_ = getattr(src, "reused_log", None)
+    before = len(log_) if log_ is not None else 0
+    judged, asks = _read_and_judge(t.preconditions, run_)
     if log_ is None:
-        return _judge(t.preconditions, run_, answers)
-    batch = list(log_)
+        return judged
+    batch = list(log_[before:])
     out = []
-    for i in t.preconditions:
-        # Each item judged alone, so a read its own check makes (G7's port-security read in
-        # `cause_cleared`) is told apart from the others'.
-        before = len(log_)
-        j = _judge([i], run_, answers)[0]
-        mine = [r for r in batch if j["read"] and r["command"] == j["read"]] + log_[before:]
+    for j, a in zip(judged, asks):
+        # Each item's reused reads by the commands it asked (its own and its check's: G7's
+        # port-security read in `cause_cleared`), so each is told apart from the others'.
+        mine = ([r for r in batch if r["command"] in a["device"]]
+                + list(a.get("reused_during") or []))
         if mine:
             j["reused"] = [{"command": r["command"], "age_s": r["age_s"], "from": r["from"],
                             "run": r.get("run") or ""} for r in mine]
