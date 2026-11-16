@@ -359,6 +359,10 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     shapes = _propose_shapes(incident.network, imp.get("shapes") or [], call_id)
     sessions = PE.read_sessions(incident.network, steps, now=now) or None
     shown_ = dict(shown or {})
+    from modules import troubleshoot_job
+    # The card's live stepper (the operator, 2026-11-16): the plan's own reads of the switch.
+    troubleshoot_job.say("Checking the plan against the switch…",
+                         done="Checked the plan against the switch")
     reads = _command_plan_reads(incident.network, steps, incident.id)
     if reads:
         shown_["preconditions_read"] = reads

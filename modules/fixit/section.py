@@ -1124,7 +1124,8 @@ PLAN_READY = {"the AI": "The AI's plan", "Mercury's diagnosis": "Mercury's plan"
 
 def card_of(out: dict, found: dict) -> dict:
     """The incident card's default view (MERCURY_CHARTER R5; board R5, approved 2026-11-15,
-    screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready"}``. *status*
+    screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready", "live"}``, *live* the live
+    stepper's steps while a job runs (`progress.of`). *status*
     the one status line (an instant in its words, drawn in the viewer's zone), *kind* ``ai``
     while the AI investigates, ``ok`` once fixed and verified, else ``""``; *step* the
     investigation's live step (`troubleshoot_job.shown`); *how* how a fixed incident was fixed
@@ -1159,6 +1160,11 @@ def card_of(out: dict, found: dict) -> dict:
             card["how"] = {"words": "Mercury's self-healing, verified on the device",
                            "device": "", "run": ""}
         return card
+    from modules.fixit import progress
+    # The compact live stepper while the AI investigates or a run goes (the operator,
+    # 2026-11-16): its steps stand in for the one status line (`progress.of`).
+    card["live"] = progress.of(out.get("network") or "", out.get("id") or "",
+                               out.get("device") or "", state)
     if state == "investigating":
         from modules import troubleshoot_job
         card.update(kind="ai", step=troubleshoot_job.shown(out.get("network") or "",
@@ -1169,8 +1175,31 @@ def card_of(out: dict, found: dict) -> dict:
     if state == "proposed" and plan and plan.get("steps") is not None and approve \
             and plan.get("approvable"):
         who = PLAN_READY.get(plan.get("source") or "", "The plan")
-        card.update(plan_ready=True, status=f"{who} is ready for your approval, below")
+        took = _plan_took(out, found)
+        # Collapsed to one line once ready ("Plan ready in 1 min 27 s").
+        card.update(plan_ready=True, status=(
+            f"Plan ready in {progress.took_words(took)}: approve it below" if took else
+            f"{who} is ready for your approval, below"))
     return card
+
+
+def _plan_took(out: dict, found: dict):
+    """Seconds from the investigation's start to the plan it proposed, or None (no start line
+    before it, or a record that cannot be read). A read."""
+    from modules.fixit import incident as F
+
+    inc = incident_of(out.get("network") or "", found).get("incident")
+    try:
+        lines = F.read(inc)["lines"] if inc is not None else []
+    except Exception:                                 # noqa: BLE001 (said without it)
+        return None
+    last = max((n for n, ln in enumerate(lines) if "proposal" in ln), default=None)
+    if last is None:
+        return None
+    start = next((ln for ln in reversed(lines[:last]) if "start" in ln), None)
+    if not start:
+        return None
+    return float(lines[last].get("epoch") or 0) - float(start.get("epoch") or 0) or None
 
 
 def analysed(found: dict) -> bool:

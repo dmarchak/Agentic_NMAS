@@ -113,12 +113,20 @@ SHOWN_KEPT = 200
 SHOWN_CHARS = 120
 
 
-def say(words: str) -> bool:
+#: The steps said by each incident's running investigation, in order, by ``(network, incident
+#: id)``: ``{"job", "steps": [{"doing", "done", "at"}]}`` (the card's stepper, `trail`).
+_trails = {}
+#: The most steps one investigation's trail keeps (its first ones dropped).
+TRAIL_KEPT = 40
+
+
+def say(words: str, done: str = "") -> bool:
     """The running investigation's step in plain words a person reads on its incident's status
-    line ("Reading edge1's err-disable status…"), never a command or a prompt version: kept for
-    its incident and announced (`STEP_KEYS`) when it changes, so at most one announcement per
-    step and none for the same words again. In this process, as the job is (`capture_job`): a
-    page drawn in a process that does not run it shows no step. Whether it was announced."""
+    line ("Reading edge1's err-disable status…"), never a command or a prompt version, *done*
+    its words once done ("Read edge1: err-disable status"): kept for its incident, in its trail,
+    and announced (`STEP_KEYS`) when it changes, so at most one announcement per step and none
+    for the same words again. In this process, as the job is (`capture_job`): a page drawn in a
+    process that does not run it shows no step. Whether it was announced."""
     import time
 
     from modules import invalidation, op_progress
@@ -132,6 +140,13 @@ def say(words: str) -> bool:
     if was and was[0] == words and was[2] == job:
         return False
     _shown[where] = (words, time.time(), job)
+    t = _trails.get(where)
+    if not t or t["job"] != job:
+        t = _trails[where] = {"job": job, "steps": []}
+    t["steps"] = (t["steps"] + [{"doing": words, "done": str(done or "")[:SHOWN_CHARS],
+                                 "at": time.time()}])[-TRAIL_KEPT:]
+    while len(_trails) > SHOWN_KEPT:
+        _trails.pop(next(iter(_trails)))
     while len(_shown) > SHOWN_KEPT:
         _shown.pop(next(iter(_shown)))
     try:
@@ -154,6 +169,17 @@ def shown(network: str, incident_id: str) -> str:
         return ""
     job = capture_job.get(got[2]) or {}
     return got[0] if job.get("state") == "running" else ""
+
+
+def trail(network: str, incident_id: str) -> list:
+    """The steps *incident_id*'s running investigation said (`say`), oldest first, each
+    ``{"doing", "done", "at"}``; ``[]`` when none is kept or its job no longer runs."""
+    from modules.nsot import capture_job
+
+    got = _trails.get((network, incident_id))
+    if not got or (capture_job.get(got["job"]) or {}).get("state") != "running":
+        return []
+    return [dict(s) for s in got["steps"]]
 
 
 def was_stopped(job: str) -> bool:

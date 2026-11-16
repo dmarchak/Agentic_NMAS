@@ -28,7 +28,7 @@
   {%- endfor %}
   <span class="inc-list-age muted">checked {{ stamp(p.read_at) }}</span>
 </nav>
-<div id="incidents-live" class="tab-body" hx-disinherit="*" hx-get="{{ url_for('incidents_v2.page', tab=p.tab, q=p.q or None, device=p.device or None, list=p.network) }}" hx-select="#incidents-live" hx-trigger="nmas:drift from:body, nmas:attention from:body" hx-swap="outerHTML">
+<div id="incidents-live" class="tab-body" hx-disinherit="*" hx-get="{{ url_for('incidents_v2.page', tab=p.tab, q=p.q or None, device=p.device or None, list=p.network) }}" hx-select="#incidents-live" hx-trigger="nmas:drift from:body, nmas:attention from:body, nmas:ai_step from:body" hx-swap="outerHTML">
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of {{ p.network }}'s self-healing record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. What could be read is listed below, so this list may be short: an incident it does not show is not known to be absent.</div></div>
 {%- endif %}
@@ -77,7 +77,10 @@
         {%- if r.impact %}<span class="simple-impact" data-impact title="{{ r.impact }}">{{ r.impact }}</span>{% endif %}
         {#- Gate 2: the AI's investigation, live (the job announces its start and end), is the
             status while it says something; else what the row waits for. -#}
-        {%- if r.busy and p.tab == 'open' %}<span class="inc-row-sub simple-status working-now" data-status data-busy title="{{ r.status }}">{{ r.status }}</span>
+        {#- The live stepper's current step only (the operator, 2026-11-16), while one runs. -#}
+        {%- set ls = live_step(p.network, r.id, r.device) if p.tab == 'open' else none %}
+        {%- if ls %}<span class="inc-row-sub simple-status working-now" data-status data-live-step="{{ ls.key }}">{{ ls.words }}{% if ls.since %} <time class="muted" data-elapsed="{{ ls.since }}">0 s</time>{% endif %}</span>
+        {%- elif r.busy and p.tab == 'open' %}<span class="inc-row-sub simple-status working-now" data-status data-busy title="{{ r.status }}">{{ r.status }}</span>
         {%- elif r.ai %}<span class="inc-row-ai simple-status simple-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>
         {%- elif p.tab == 'open' %}{% if r.status %}<span class="inc-row-sub simple-status" data-status title="{{ r.status }}" data-waits="{{ r.waits }}">{{ r.status | times }}</span>{% endif %}
         {%- elif r.fixed_words %}<span class="inc-row-sub simple-status muted" data-fixed>{{ r.fixed_words | times }}{% if r.ttr %} · {{ r.ttr }}{% endif %}</span>

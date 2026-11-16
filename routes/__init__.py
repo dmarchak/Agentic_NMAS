@@ -73,6 +73,15 @@ def register_blueprints(app) -> list:
         return controls.control(name)
     app.jinja_env.globals["ai_control"] = ai_control
 
+    # The incident's live step, the current one only (the operator, 2026-11-16: the compact
+    # stepper on the Incidents row): `fixit.progress`, a read of this process's memory.
+    def live_step(network, incident_id, device=""):
+        from modules.fixit import progress
+        steps = progress.investigation(network, incident_id) or progress.run(
+            network, incident_id, device)
+        return next((s for s in steps if s["state"] == "running"), None)
+    app.jinja_env.globals["live_step"] = live_step
+
     # Was this right? under every AI answer (PHASE8_PLAN 16.11 item 1): `ai_feedback(call_id)`
     # is what the control draws for the viewer (modules/ai/feedback.control).
     def ai_feedback(call_id):

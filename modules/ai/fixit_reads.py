@@ -249,8 +249,17 @@ def say_round(verdicts: list) -> None:
         return
     first = step_words(verdicts[0].get("op") or "", verdicts[0].get("args") or {})
     more = len(verdicts) - 1
+    # Done, the round says its reads (the operator, 2026-11-16: "Read s5: <the commands>"):
+    # each allowlisted read's own words, Mercury's own reads by what they read.
+    device = str((verdicts[0].get("args") or {}).get("device") or "the device")
+    said = [(f"{v.get('op')} {(v.get('args') or {}).get('words') or ''}".strip()
+             if v.get("op") in ("show", "show_config", "ping", "traceroute")
+             else OWN_STEP.get(v.get("op") or "", str(v.get("op") or "")))
+            for v in verdicts]
     troubleshoot_job.say(first if not more else
-                         f"{first.rstrip('…')} and {more} more read{'s' if more != 1 else ''}…")
+                         f"{first.rstrip('…')} and {more} more read{'s' if more != 1 else ''}…",
+                         done=f"Read {device}: " + "; ".join(said).replace("show_config",
+                                                                           "show"))
 
 
 def run(op: str, args: dict, requests: list, scope: dict):

@@ -60,15 +60,18 @@ def step(incident_id):
     2026-11-15: `troubleshoot_job.shown`), its status line's part redrawn when the job
     announces ``ai_step``. A read of this process's memory: it waits on nothing and writes
     nothing; no step kept (none runs, or another process runs it) draws the part empty."""
-    from modules import troubleshoot_job
+    from modules import incident_page
     from modules.fixit import incident as F
+    from modules.fixit import progress
 
     ref = _page_ref()
-    step_words = troubleshoot_job.shown(ref.name, incident_id) if F.valid_id(incident_id) \
-        else ""
-    if F.valid_id(incident_id) and not step_words:
-        # A saved script's run on it (the operator, 2026-11-15): what that run is doing now.
-        from modules.nsot import saved_plans
-        step_words = (saved_plans.running_on(ref.name, incident_id) or {}).get("step") or ""
+    steps = []
+    if F.valid_id(incident_id):
+        # The live stepper (the operator, 2026-11-16): the investigation's, else the run's (an
+        # approved plan's, or a saved script's, 2026-11-15).
+        device = ((incident_page.resolve(ref.name, incident_id).get("incident") or {})
+                  .get("device") or "")
+        steps = (progress.investigation(ref.name, incident_id)
+                 or progress.run(ref.name, incident_id, device))
     return _strict(render_template("v2/_inc_step.html", iid=incident_id, network=ref.name,
-                                   step=step_words), 200)
+                                   steps=steps, said=""), 200)

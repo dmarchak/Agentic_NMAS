@@ -1535,7 +1535,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     from modules import troubleshoot_job as TJ
     TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
     # The step a person reads on the status line (board R5's screen 3): plain words only.
-    TJ.say("Gathering the evidence…")
+    TJ.say("Gathering the evidence…", done="Gathered the evidence")
     lap = _laps(incident.id)
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
@@ -1556,7 +1556,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         # said back to the person.
         memo["calls"] = memo.get("calls", 0) + 1
         TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
-        TJ.say("Asking the AI…" if memo["calls"] == 1 else "Writing the plan…")
+        TJ.say(f"Asking the AI ({memo['calls']})…", done=f"Asked the AI ({memo['calls']})")
         lap(f"before call {memo['calls']}")
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
         lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its count and its send)")
@@ -1578,7 +1578,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     # 2026-11-16): a classification's read of seconds ago is reused, never read again.
     pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
     if pre:
-        TJ.say("Reading the device…")
+        TJ.say("Reading the device…", done="Read the device")
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
                  data=prep["data"], actor=actor, trigger=trig,
                  context=prep["ctx"], subject=prep["subject"], scope=scope,

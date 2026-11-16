@@ -1,6 +1,14 @@
-{#- The running investigation's one live step, on its incident's status line (board R5's screen 3,
-    approved 2026-11-15 with the operator's change 3: "one live progress step pushed from the
-    job's step record, within 3 lines"): `troubleshoot_job.shown`, plain words only ("Reading
-    edge1's err-disable status…"), redrawn when the job announces `ai_step` (once per step); nothing
-    polls. Drawn by templates/v2/_fixit_section.html and by routes/incident_v2.step. -#}
-<span class="simple-progress" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body, nmas:in_progress from:body" hx-swap="outerHTML" hx-select="unset">{% if step %}· {{ step }}{% endif %}</span>
+{#- The incident card's compact live stepper (the operator, 2026-11-16), in place of its one status
+    line while the AI investigates or an approved plan or a saved script runs
+    (`fixit.progress.of`, steps in `run_stepper.step`'s model): each done step ticked with its
+    seconds, the current one with a spinner (`working-now`) and a counter that ticks in the page
+    (`time[data-elapsed]`, static/js/nmas_v2.js), the next ones greyed. Redrawn when the job says
+    a step (`ai_step`) or a run records one (`device_progress`, `in_progress`); nothing polls.
+    *said* the status words drawn while no step is kept here. Drawn by _fixit_section.html and by
+    routes/incident_v2.step. -#}
+<span class="inc-live" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body, nmas:device_progress from:body, nmas:in_progress from:body" hx-swap="outerHTML" hx-select="unset">
+{%- if steps %}<span class="inc-stepper" data-steps="{{ steps | length }}">
+  {%- for s in steps %}<span class="inc-stepper-step inc-stepper-{{ s.state }}{{ ' working-now' if s.state == 'running' }}" data-step="{{ s.key }}" data-state="{{ s.state }}">{% if s.state == 'done' %}<span aria-hidden="true">✓</span> {% elif s.state == 'failed' %}<span aria-hidden="true">✗</span> {% endif %}{{ s.words }}{% if s.state in ('done', 'failed') and s.took_s is not none %} <span class="muted">{{ s.took_s }} s</span>{% elif s.state == 'running' and s.since %} <time class="muted" data-elapsed="{{ s.since }}">0 s</time>{% endif %}</span>{% endfor %}
+</span>
+{%- elif said %}{{ said }}{% endif -%}
+</span>

@@ -1225,6 +1225,20 @@
     redrawHeld(region, b);
   }
 
+  /* The live stepper's counter (the operator, 2026-11-16): the running step's seconds since it
+     began, ticked in the page every second from its own start (`time[data-elapsed]`); the
+     server is never asked. */
+  function tickElapsed() {
+    var list = root.document.querySelectorAll('time[data-elapsed]');
+    var now = Date.now();
+    for (var i = 0; i < list.length; i++) {
+      var t = Date.parse(list[i].getAttribute('data-elapsed'));
+      if (t !== t) continue;
+      var s = Math.max(0, Math.round((now - t) / 1000));
+      list[i].textContent = s >= 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : s + ' s';
+    }
+  }
+
   function drawAges(scope) {
     var list = (scope || root.document).querySelectorAll('time[data-age]');
     var now = Date.now();
@@ -2677,6 +2691,8 @@
     root.document.addEventListener('click', resumeHeld);
     // `toggle` does not bubble: a long plan's steps are heard in the capture phase.
     root.document.addEventListener('toggle', planStepOpened, true);
+    tickElapsed();
+    if (root.setInterval) root.setInterval(tickElapsed, 1000);
     root.document.addEventListener('click', citeClicked);
     // The modal: opened and closed by its buttons; `close` does not bubble, so it is heard in
     // the capture phase; placed again as the window scrolls or resizes.
