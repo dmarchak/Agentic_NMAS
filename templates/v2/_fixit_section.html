@@ -148,7 +148,7 @@
       {%- elif F.kind in ('item', 'button') and item_action is defined and item_action | trim %}{{ item_action }}
       {%- elif F.kind == 'button' %}<p class="bluf-fix-words">{{ F.label | times }}</p>
       {%- endif %}
-      {%- if again.offered and not is_again and F.kind != 'start' %}
+      {%- if again.offered and not is_again and F.kind not in ('start', 'approve') %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=(F.kind == 'none' and not F.label), aiv=ct) }}
       {%- endif %}
       {%- if acting and F.kind != 'hand_over' and (ACT.hand_over or {}).get('offered', True) %}
@@ -433,7 +433,7 @@
   <h2 class="simple-title" id="plan-title" title="{{ steps[0].words }}">The plan: on {{ x.device }}, in config mode, never saved: {% for l in L.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</h2>
   <dl class="simple-plan">
     {%- if L.checks %}<div><dt>Checks first</dt><dd>{{ L.checks | join(' · ') }}</dd></div>{% endif %}
-    {%- if L.verify %}<div><dt>Then verifies</dt><dd>{% for v in L.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
+    {%- if L.verify %}<div><dt>Then verifies</dt><dd>{% for v in L.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
   </dl>
   {%- else %}
   <h2 class="simple-title" id="plan-title">The plan: {{ steps | length }} step{{ '' if steps | length == 1 else 's' }} on {{ x.device }}</h2>
@@ -443,7 +443,7 @@
   <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ st.n }}: {{ st.words | times }}</summary>
     {%- if lines.program %}<p class="small">Sends, in config mode, never saved: {% for l in lines.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
     {%- if lines.checks %}<p class="small">Checks first: {{ lines.checks | join(' · ') }}</p>{% endif %}
-    {%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after %} for {{ v.after }} s{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
     <p class="small muted">{{ st.params }}</p>
   </details>
   {%- else %}
@@ -454,6 +454,10 @@
   <div class="simple-acts">
     {%- if approve_ok %}
     <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{% if long %}Open each step first: Approve waits until every step has been opened. {% endif %}Runs this plan exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{% if long %} disabled data-needs-steps{% endif %}{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span></span>
+    {%- elif (ACT.ask_again or {}).offered %}
+    {#- A plan that can't be approved (refused at its preflight, or its hash moved): asking
+        again is the primary action, Modify or deny the link (the operator, 2026-11-16). -#}
+    {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told why this plan can't run: its plan is preflighted again before you approve it", primary=True) }}
     {%- endif %}
     {%- set m_ok = (ACT.modify or {}).offered %}
     {%- set d_ok = (ACT.deny or {}).offered %}

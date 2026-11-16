@@ -782,6 +782,11 @@ def check_cause_cleared(_answer, run) -> tuple:
     return _psecure_cleared(run, port, cause, short, c, src)
 
 
+#: How close a violation and the err-disable it causes are logged: the same second on IOS
+#: (s5's 18:21:58 pair, 2026-11-16), so ten seconds tells the triggering one from a new one.
+TRIGGER_S = 10
+
+
 def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, src) -> tuple:
     """Port security's cause cleared while the port is down (the operator, 2026-11-16): no
     new violation since the err-disable, by the port's ``PSECURE_VIOLATION`` lines (none after
@@ -800,9 +805,14 @@ def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, src) -> tu
         if p and same_port(p.get("port") or "", port):
             mine.append(dict(p, epoch=float(ln.get("epoch") or 0), at=ln.get("at") or ""))
     errs = [p for p in mine if p["kind"] == "errdisable" and p["cause"] == cause]
-    err_epoch = max([p["epoch"] for p in errs] + [since])
     trips = [p for p in mine if p["kind"] == "violation" and p["mac"]]
-    later = [p for p in trips if err_epoch and p["epoch"] > err_epoch + 1]
+    # The violation that err-disabled the port lands within seconds of its err-disable line
+    # (s5, 2026-11-16: both at 18:21:58): it is the cause, never "new". New is a violation
+    # after that pair; with no err-disable line read, the first violation is the trigger.
+    anchor = (max(p["epoch"] for p in errs) if errs else
+              min(p["epoch"] for p in trips) if trips else since)
+    err_epoch = anchor
+    later = [p for p in trips if anchor and p["epoch"] > anchor + TRIGGER_S]
     mac = (trips[-1]["mac"] if trips else "") or ps.get("last_mac") or mac_dotted(
         c.get("mac") or "")
     run.found.update(mac=mac_colon(mac), port=short, cause=cause,

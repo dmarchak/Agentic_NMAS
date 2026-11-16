@@ -708,9 +708,12 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                    "href": _href(network, iid, "modify"),
                    "refused": ai_refused if proposed else ""},
         "deny": {"offered": bool(proposed), "href": _href(network, iid, "deny"), "refused": ""},
-        "ask_again": {"offered": bool(deny_last and not ai_refused),
+        # Also for a plan that can't be approved (refused at its preflight, or its hash moved):
+        # asking again is its primary action (the operator, 2026-11-16).
+        "ask_again": {"offered": bool((deny_last or (proposed and not plan["approvable"]))
+                                      and not ai_refused),
                       "href": _href(network, iid, "ask_again"),
-                      "refused": ai_refused if deny_last else ""},
+                      "refused": ai_refused if deny_last or proposed else ""},
         "start": {"offered": bool(start_offered and not ai_refused),
                   "href": _href(network, iid, "start"),
                   "refused": ai_refused if start_offered else ""},
@@ -810,20 +813,30 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
             out["working_step"] = troubleshoot_job.shown(network, iid)
 
 
-def _first_sentence(text) -> str:
-    """The first sentence of *text*, without its full stop."""
+#: The most characters of the AI's finding the status line says, cut at a word (the operator,
+#: 2026-11-16: "shortened, not cut mid-word").
+FINDING_CHARS = 140
+
+
+def _first_sentence(text, most: int = 0) -> str:
+    """The first sentence of *text*, without its full stop; with *most*, cut at the last whole
+    word within it, an ellipsis said."""
     text = " ".join(str(text or "").split())
-    return text.split(". ")[0].rstrip(".") if text else ""
+    one = text.split(". ")[0].rstrip(".") if text else ""
+    if most and len(one) > most:
+        one = one[:most].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+    return one
 
 
 def _refused_plan_words(answer, why_refused) -> str:
     """"The AI found: <its finding>. Its fix can't run yet: <the plain reason>." from the AI's
     answer (its rationale) and the plan's refusal, its step and preflight wording dropped."""
     shown = (answer or {}).get("shown") or {}
-    found = _first_sentence((answer or {}).get("words") or shown.get("rationale"))
+    found = _first_sentence((answer or {}).get("words") or shown.get("rationale"),
+                            FINDING_CHARS)
     reason = re.sub(r"^(?:step \d+(?: \([^)]*\))?:\s*|refused at its preflight:\s*)+", "",
                     _first_sentence(why_refused), flags=re.I)
-    lead = f"The AI found: {found}. " if found else ""
+    lead = f"The AI found: {found}{'' if found.endswith('…') else '.'} " if found else ""
     return lead + (f"Its fix can't run yet: {reason}." if reason else "Its fix can't run yet.")
 
 
