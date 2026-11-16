@@ -5,8 +5,9 @@ incident's own home). Provisional, operator review pending (the operator, 2026-1
 boards: approved provisionally for initial implementation and testing").
 
 **What it draws, for one network:** every incident its self-healing holds, in two tabs:
-- **Open:** each incident a person or Mercury still has to finish (`incident_page.RESOLVED`
-  says which are not), grouped by what it waits for: **Needs a person**, **Mercury working**
+- **Open:** each incident the incidents store holds open (C3876: the tabs follow the store's
+  state; a store-closed incident whose fix nothing confirmed is on Closed, "Closed, not
+  confirmed"), grouped by what it waits for: **Needs a person**, **Mercury working**
   (a heal applying, or a fix a person approved running or passed), **Watching** (Mercury
   reading it, before its decision). A summary line first, counts by group.
 - **Closed:** how each one ended: **Fixed by Mercury** (no person took part), **Fixed by a
@@ -76,7 +77,10 @@ CLOSED_GROUPS = (("fixed_ai", "Fixed by AI", "ok"),
                  ("fixed_person", "Fixed by a person", "ok"),
                  ("fixed", "Fixed, who is not recorded", "ok"),
                  ("cleared", "Cleared", "muted"),
-                 ("cancelled", "Declined", "muted"))
+                 ("cancelled", "Declined", "muted"),
+                 # C3876: closed in the store, its fix never confirmed (a past close with no
+                 # proof): never Fixed, never Open.
+                 ("closed_unconfirmed", "Closed, not confirmed", "warn"))
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
          "ended", "ttr", "by", "drill", "acknowledged", "ai", "impact", "status", "busy",
@@ -221,6 +225,13 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     held = IP.held_words(inc)
     if held and not fx.get("working"):
         fx = dict(fx, held=held)
+    # C3876 (the operator, 2026-11-16): the tabs follow the incidents store (open states on
+    # Open, closed on Closed), never the page's rule alone: a store-closed incident the rule
+    # does not read resolved (a past close with no proof) is Closed, not confirmed, never on
+    # Open and never Fixed. One the store does not hold (the step log alone) keeps the rule.
+    unconfirmed = bool(inc) and inc.get("state") == "closed" and not resolved
+    if inc:
+        resolved = inc.get("state") == "closed"
     st = IP.working_status(st, fx.get("working"), resolved)
     if not resolved and not fx.get("working"):
         # A saved script running on an incident with no troubleshooting record of its own (the
@@ -240,10 +251,11 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "href": incidents.incident_href(network, found["id"], device=device),
             "title": IP.title(inc, entry, decisions, st["state"], who),
             "state": st["state"], "state_words": st["words"], "why": st["why"],
-            "kind": STATE_KINDS.get(st["state"], "muted"),
+            "kind": "warn" if unconfirmed else STATE_KINDS.get(st["state"], "muted"),
             # Mercury working on it now (a saved script's run, an AI investigation): that group,
             # its status the live step (the operator, 2026-11-15).
-            "group": "working" if fx.get("working") else _group(st, tl, how),
+            "group": ("closed_unconfirmed" if unconfirmed else "working" if fx.get("working")
+                      else _group(st, tl, how)),
             "resolved": resolved, "busy": bool(fx.get("working")),
             # A decided or failed one says its reason (`incident_page.waits_words`, the
             # operator, 2026-11-16: never a reasonless "waits for a person").
@@ -257,7 +269,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
                 or status_words(st["state"], st.get("reason") or WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",
-            "ended": tl["ended"] if resolved else "",
+            "ended": (tl["ended"] or (inc or {}).get("closed_at") or "") if resolved else "",
             "ttr": tl["ttr"]["words"] if st["state"] == "fixed" else "",
             "by": by if st["state"] == "fixed" and not how else "",
             # Who fixed it, for a close on a verified run (an AI plan, a saved script).

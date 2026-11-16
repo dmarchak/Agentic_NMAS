@@ -97,9 +97,13 @@ def _fixes(incidents: list, decisions: list) -> list:
         if a.get("outcome") == "healed" and inc:
             out.append((_epoch(a.get("at")), d.get("device") or "", d.get("kind") or "heal",
                         inc))
+    from modules.heal.act import CONFIRM_MARK
+
     for inc in incidents or []:
         f = inc.get("fixed") or {}
-        if f.get("epoch"):
+        # A confirmation's proof (`act.CONFIRM_MARK`: Mercury read it already fixed) is no
+        # fix of its own: it makes no fight or recurrence finding (the review, finding 10).
+        if f.get("epoch") and f.get("by") != CONFIRM_MARK:
             out.append((float(f["epoch"]), f.get("device") or inc.get("device") or "",
                         f.get("operation") or "fix", inc))
     return out

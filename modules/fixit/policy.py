@@ -185,6 +185,44 @@ def _cap_of(network) -> dict:
     return {"state": "ok", "usd": float(raw), "error": "", "source": "installation"}
 
 
+#: Where each source of the per-incident cap is changed (C3873, the operator, 2026-11-16: the
+#: refusal names the cap's source and where it is changed).
+NETWORK_CAP_WHERE = ("Settings › AI, AI troubleshooting for the network, Spending limits, "
+                     "Per incident")
+INSTALLATION_CAP_WHERE = "Settings › AI, the AI troubleshooting card, AI spend per incident"
+
+
+def cap_said(network, cap: dict) -> str:
+    """The cap *cap* (`cap_usd`'s answer for *network*) with its source and where it is
+    changed (C3873): "$1.00, Default's own limit (<where>)" or "$5.00, the installation's
+    (<where>)"."""
+    amount = money(cap.get("usd")) if cap.get("usd") is not None else "unknown"
+    if cap.get("source") == "network":
+        return f"{amount}, {network}'s own limit ({NETWORK_CAP_WHERE})"
+    return f"{amount}, the installation's ({INSTALLATION_CAP_WHERE})"
+
+
+def cap_overrides() -> list:
+    """C3873: ``[(network, usd)]``, each network whose own per-incident limit takes the
+    installation's place for it (*usd* None where its own holds no positive amount: it reads
+    unreadable, `cap_usd`). A read of the settings; a network list that cannot be read is
+    none (logged), never a guess."""
+    from modules.integration_groups import network_names
+
+    try:
+        names = network_names()
+    except Exception as exc:                          # noqa: BLE001 (said: logged)
+        log.error("fixit: the networks could not be listed for their own caps: %s", exc)
+        return []
+    out = []
+    for name in names:
+        own, why = _own(name)
+        if why or "incident_cap_usd" in own:
+            raw = own.get("incident_cap_usd")
+            out.append((name, float(raw) if not why and _positive(raw) else None))
+    return out
+
+
 def cap_state(incident, worst_usd) -> dict:
     """The comparison the cap makes for *incident*'s next attempt, whose worst case is
     *worst_usd* (US dollars, a positive amount: the next call's per-call cap from its pin,
@@ -210,12 +248,14 @@ def cap_state(incident, worst_usd) -> dict:
                         f"case of {money(worst)} cannot be compared with it")
         return out
     out["cap"] = cap["usd"]
+    # C3873: the cap named with its source and where it is changed.
+    said = cap_said(getattr(incident, "network", None) or "the network", cap)
+    out["source"] = cap.get("source") or "installation"
     cost = F.cost_so_far(incident)
     if cost["state"] != "ok":
         out["words"] = (f"Retry isn't available: what this incident's AI calls cost is not "
                         f"known ({cost['error']}), so spent plus the next attempt's worst case "
-                        f"of {money(worst)} cannot be compared with the cap of "
-                        f"{money(cap['usd'])}")
+                        f"of {money(worst)} cannot be compared with the cap of {said}")
         return out
     spent = float(cost["usd"])
     total = round(spent + worst, PRECISION)
@@ -224,7 +264,7 @@ def cap_state(incident, worst_usd) -> dict:
         out["words"] = (f"Retry isn't available: this incident's AI spend would pass its cap. "
                         f"Spent {money(spent)} in this incident; the next attempt costs at most "
                         f"{money(worst)}, which would make {money(total)} against the cap of "
-                        f"{money(cap['usd'])}. Mercury never raises the cap")
+                        f"{said}. Mercury never raises the cap")
         return out
     out["state"] = "allowed"
     return out

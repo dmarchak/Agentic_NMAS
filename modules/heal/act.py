@@ -65,9 +65,16 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    once from its store's last read and never waited on (``once``), and the step says so
    ("descriptions only: read back, 2 s");
 9. **record**: `decisions.applied` with the outcome (`OUTCOMES`; ``rolled_back`` halts the
-   network, guard 14, and so does a program sent and neither verified nor rolled back), and
-   `incidents.close`. The receipt carries the heal (its decision, incident, policy, the person
-   whose change it healed and its check after verify) through `apply_batch`'s ``heal``.
+   network, guard 14, and so does a program sent and neither verified nor rolled back),
+   stamped when it is recorded (C3871), and its incident (`outcome_on_incident`, C3870: the
+   operator, 2026-11-16, "Only 'healed' closes an incident"): healed closes it with its verify
+   as proof; any other outcome leaves it open, standing on the act, its outcome said, so R1
+   sees it (`fixit.auto.failures`) and the retry policy takes it once per trigger
+   (`retry._in_population`); a tail that fails after Fixed reopens it (`reopen_on_tail`).
+   Before any AI call on such a failure, its device is read and the incident closed on that
+   read where it is at intent and its symptom gone (`confirm_before_ai`). The receipt
+   carries the heal (its decision, incident, policy, the person whose change it healed and its
+   check after verify) through `apply_batch`'s ``heal``.
 
 **One job per incident** (`run`, `start`): each heal decision is taken at once and run as a
 job (`capture_job.start`, kind ``heal``), so the detect runner is never held by an apply.
@@ -88,7 +95,7 @@ name, its result, its words, masked, and its time), its ``records`` and the batc
 approved proposal is a different program (intent's router-id and a measured reset), so it
 plans its own and reuses the parts: `apply_batch`'s ``capture``, ``after_verify`` and
 ``heal``, `units_left`, `read_symptom`, `policy_reason`'s shape for its person's reason, and
-`decisions.applied` and `incidents.close` as here.
+`decisions.applied` and `outcome_on_incident` as here.
 """
 
 import logging
@@ -113,7 +120,8 @@ STEPS = (("take", "Take the heal decision, once"),
          ("symptom", "Read the symptom again (a removed feature's before its save; any "
                      "other, and a re-applied heartbeat applet's next heartbeat, once the "
                      "device is released)"),
-         ("record", "Record the outcome and close the incident: Fixed rests on verify"),
+         ("record", "Record the outcome: Fixed rests on verify and closes the incident; any "
+                    "other outcome leaves it open, said"),
          ("saved", "After Fixed: save to startup"),
          ("commit", "After Fixed: read the whole configuration and commit the golden from it"),
          ("golden", "After Fixed: read the device again, its own read, against its new "
@@ -258,7 +266,7 @@ class Sources:
         lock refused r6's, C3864, is never asked). ``{"state": "clean"|"drifted"|"unknown",
         "changed_lines", "error"}``; a read or a golden that cannot be had is ``unknown``,
         neither a pass nor a fail."""
-        from modules import drift_check, goldens
+        from modules import goldens
 
         rec = goldens._golden_record((dev or {}).get("ip", ""), self.network)
         if not rec.get("text"):
@@ -268,9 +276,7 @@ class Sources:
         if not text:
             return {"state": "unknown", "changed_lines": 0,
                     "error": f"the device could not be read again ({error})"}
-        diff = drift_check.drift_diff(rec["text"], text, device)
-        n = drift_check.changed_lines(diff) if diff else 0
-        return {"state": "drifted" if n else "clean", "changed_lines": n, "error": ""}
+        return against_golden(rec["text"], text, device)
 
     def symptom(self, device, triggers, since, once: str = "") -> dict:
         return read_symptom(self.network, device, triggers, since, clock=self.clock,
@@ -568,7 +574,8 @@ def readback_only(units: list) -> str:
 
 
 def read_symptom(network: str, device: str, triggers: list, since: float, *, clock=time.time,
-                 sleep=time.sleep, read=None, request=None, once: str = "") -> dict:
+                 sleep=time.sleep, read=None, request=None, once: str = "",
+                 bound_s: float = None) -> dict:
     """The incident's symptoms read again (``{"state", "words", "checks"}``): each trigger's
     store asked to read now, then read until every symptom is gone or its bound passes. *state*
     is ``none`` (no symptom to read), ``gone``, ``present`` or ``unreadable`` (a store that
@@ -583,7 +590,12 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
     its last good read taken if it was made after the newest symptom began (an older one is
     stale: unreadable, never gone), no reader asked to run and nothing waited:
     ``gone``, ``present`` (a symptom the change could not have caused or cleared: symptom
-    remains) or ``unreadable``, each saying *once* and why it was not waited on."""
+    remains) or ``unreadable``, each saying *once* and why it was not waited on.
+
+    *bound_s* (C3870's confirmation before AI troubleshooting, `confirm_before_ai`): the
+    longest it reads in place of the symptoms' own bounds; 0 reads each store once as it
+    stands, after asking its reader to run, and waits for nothing: anything but gone is no
+    proof."""
     from modules import reader_job
     from modules.nsot import reads as reads_store
 
@@ -610,7 +622,7 @@ def read_symptom(network: str, device: str, triggers: list, since: float, *, clo
         # carrying none keeps *since*, the heal's own start (later, so stricter).
         began = [float(t["epoch"]) for t in wanted if t.get("epoch")]
         since = max(began) if len(began) == len(wanted) else since
-    bound = max(_bound(t) for t in wanted)
+    bound = max(_bound(t) for t in wanted) if bound_s is None else int(bound_s)
     deadline = clock() + bound
     asked = {}
 
@@ -955,7 +967,7 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
 def _apply_decision(network: str, decision: dict, *, now: float = None, sources=None,
                     actor_kind: str = "policy", holds: list) -> dict:
     from modules import identity, pipeline
-    from modules.heal import decide, decisions, incidents, kinds, steplog
+    from modules.heal import decide, decisions, kinds, steplog
     from modules.nsot import authorisation
     from modules.nsot.deploy import config_line_count
     from modules.redact import redact_text
@@ -989,42 +1001,48 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     #: "n"}``, *n* the steps the first act row kept.
     declared = {}
 
-    def record_outcome(outcome, words):
+    def record_outcome(outcome, words, tail=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
+        # C3871: recorded at the moment the outcome is, never the act's start (*now* stays the
+        # act's own for its guards and elapsed times).
+        at = time.time()
         try:
-            decisions.applied(network, decision["id"], outcome, by=via, words=words, now=now)
+            decisions.applied(network, decision["id"], outcome, by=via, words=words, now=at)
             if outcome == "failed":
                 decisions.halt(network, guard=14, name="a heal sent and not verified",
                                words=f"the heal of {device} ({decision['id']}) failed after "
                                      f"sending and was not rolled back: {words}",
                                operands={"decision": decision["id"], "device": device},
-                               now=now)
+                               now=at)
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
-        try:
-            # Closed at once, in this one step, under the incidents store's lock: a verified
-            # heal with its verify kept on the close (`verified_of`, the proof the incident's
-            # card draws; the operator, 2026-11-16).
-            incidents.close(network, decision["incident"],
-                            f"{outcome}: {words} (decision {decision['id']})", now,
-                            fixed=verified_of(decision, steps) if outcome == "healed"
-                            else None)
-        except Exception as exc:
-            log.error("heal: %s's incident %s was not closed: %s", network,
-                      decision.get("incident"), exc)
+        if outcome == "healed" and (tail or {}).get("state") == "flagged":
+            # Healed, and its tail (run before this outcome: a symptom waited on) flagged: it
+            # stands on the tail's failure, never closed Fixed first (C3870).
+            outcome_on_incident(network, decision, TAIL_FAILED, tail.get("flag") or "")
+        else:
+            # Only healed closes (C3870), with its verify kept on the close (`verified_of`,
+            # the proof the incident's card draws); any other outcome stands, said.
+            outcome_on_incident(network, decision, outcome, words,
+                                fixed=verified_of(decision, steps) if outcome == "healed"
+                                else None)
         log.info("heal: %s on %s: %s: %s", network, device, outcome, words)
 
     def declare(outcome, words):
-        """The outcome at Fixed (decisions (a) and (b)): recorded, the incident closed and the
-        first ``act`` row written with the tail ``running`` (`tail_of`), so the incident reads
-        Fixed while the save, the full read, the golden and the read again run under it."""
+        """The outcome at Fixed (decisions (a) and (b)): recorded, the incident closed (healed;
+        any other outcome leaves it standing, C3870) and the first ``act`` row written with
+        the tail ``running`` (`tail_of`), so the incident reads Fixed while the save, the full
+        read, the golden and the read again run under it."""
         record_outcome(outcome, words)
         declared.update(outcome=outcome, words=words, n=len(steps))
         first = {"decision": decision["id"], "device": device, "outcome": outcome,
                  "words": redact_text(words), "steps": list(steps), "sent": True,
                  "records": {"tail": tail_of(device, outcome, [], [], running=True)}}
         try:
-            steplog.record_act(network, decision, first, by=via, policy_by=setter, now=now)
+            # C3871: stamped when recorded, as the applied row is, so R1's eligibility (the
+            # failure after the switch went on) reads the outcome's time, never the act's start.
+            steplog.record_act(network, decision, first, by=via, policy_by=setter,
+                               now=time.time())
         except Exception as exc:
             log.error("heal: %s's act on %s (at Fixed) is not in the step log: %s", network,
                       device, exc)
@@ -1032,8 +1050,14 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     def finish(outcome, words, *, sent=False, report=None, flags=None):
         if declared:
             outcome, words = declared["outcome"], declared["words"]
-        else:
-            record_outcome(outcome, words)
+        # The tail's own record: each step after the outcome and any flag it raised.
+        tail = (tail_of(device, outcome, steps, list(flags or []))
+                if sent and outcome not in ("refused", "rolled_back", "failed") else None)
+        if not declared:
+            record_outcome(outcome, words, tail=tail)
+        elif outcome == "healed" and (tail or {}).get("state") == "flagged":
+            # Closed at Fixed; its tail then failed: the incident is reopened (C3870).
+            reopen_on_tail(network, decision, tail, steps)
         result = {"decision": decision["id"], "device": device, "outcome": outcome,
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
         result["records"] = _records(network, decision, result, src, held, now)
@@ -1043,27 +1067,28 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
             # Where each second of THE apply went (round 2, item 4), from its run's laps.
             from modules.nsot.command_plan_run import _laps
             result["records"]["laps"] = _laps(marks)
-        if sent and outcome not in ("refused", "rolled_back", "failed"):
-            # The tail's own record: each step after the outcome and any flag it raised.
-            result["records"]["tail"] = tail_of(device, outcome, steps, list(flags or []))
+        if tail is not None:
+            result["records"]["tail"] = tail
         # A heal declared at Fixed writes its tail as a second ``act`` row: only the steps after
         # its record (the step log folds both into one entry, its records the last row's).
         logged = dict(result, steps=steps[declared["n"]:]) if declared else result
         try:
-            steplog.record_act(network, decision, logged, by=via, policy_by=setter, now=now)
+            steplog.record_act(network, decision, logged, by=via, policy_by=setter,
+                               now=time.time())                   # C3871: at record time
             result["records"]["step_log"] = "written"
         except Exception as exc:
             log.error("heal: %s's act on %s is not in the step log: %s", network, device, exc)
             result["records"]["step_log"] = f"not written: {type(exc).__name__}: {exc}"
         return result
 
-    def refuse(name, words):
-        step(name, "refused", words)
+    def refuse(name, words, waits=False):
+        # *waits*: a guard working as designed (`refusal_waits`): no failure R1 starts on.
+        step(name, "refused", words, **({"waits": True} if waits else {}))
         return finish("refused", f"{words}. Nothing was sent")
 
     why = _stops(src, network, decision, now)
     if why:
-        return refuse("stops", why)
+        return refuse("stops", why, waits=True)
     step("stops", "ok", "AUTO on a network marked lab, the policy decided under, nothing held")
 
     dev = src.device(device)
@@ -1074,14 +1099,14 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
                        begin=begin, clock=getattr(src, "clock", time.time),
                        sleep=getattr(src, "sleep", time.sleep))
     if busy:
-        return refuse("read", busy)
+        return refuse("read", busy, waits=True)
     holds.append(device)
     # The stops judged again once held (the review, finding 1): the wait for the hold may have
     # lasted up to HOLD_WAIT_S, and a Stop everywhere, a mode change or a planned-restart
     # window declared meanwhile refuses here, nothing sent.
     why = _stops(src, network, decision, getattr(src, "clock", time.time)())
     if why:
-        return refuse("stops", f"{why} (judged again once {device} was held)")
+        return refuse("stops", f"{why} (judged again once {device} was held)", waits=True)
     begin("read", f"reading {device} again")
     text, error = src.read(dev)
     if not text:
@@ -1113,7 +1138,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         return refuse("plan", (f"the program recomputed from the read at apply is not the one "
                                f"decided (decided {decision.get('program_hash')}, now "
                                f"{prog['hash']}): {_moved(decision, c['units'], prog, dep)}; "
-                               "a later read starts over"))
+                               "a later read starts over"), waits=True)
     if prog["refused"] or c.get("blocked") or c["tier"] != 1:
         return refuse("plan", f"the program refuses a unit now: "
                               f"{(prog['refused'] or [{}])[0].get('reason') or c.get('blocked')}")
@@ -1380,6 +1405,586 @@ def verified_of(decision: dict, steps: list) -> dict:
             "at": _iso(now), "epoch": now, "verify": kept}
 
 
+# ── What an act's outcome does to its incident (C3870, C3871) ───────────────────────────────
+
+#: The act outcome that closes its incident (the operator, 2026-11-16: "Only 'healed' closes an
+#: incident. Partial, symptom remains, rolled back, failed, refused, interrupted stay open,
+#: stating the outcome"). An approved dampening's is its own (`dampening.finish`).
+CLOSES = ("healed",)
+#: A healed act whose tail then failed (`reopen_on_tail`): the standing outcome. The one name
+#: (`fixit.auto` imports it).
+TAIL_FAILED = "tail_failed"
+#: A standing act outcome in Mercury's words (`OUTCOME_WORDS`, and the tail's).
+STANDING_WORDS = dict(OUTCOME_WORDS, **{TAIL_FAILED: "fixed, and a step after it failed"})
+#: What a tail failure stands on: its failed step, which no drift run's read at the golden
+#: ends (`incidents.ends_at_golden` ends only ``departure``).
+ON_TAIL = "tail"
+
+
+def stands_on(outcome: str, inc: dict):
+    """What an act's standing stands on (the review, finding 2): a tail failure on its step
+    (`ON_TAIL`); an incident that names a symptom on it (``symptom``: closed only by Mercury's
+    confirmation read, `request_confirm`); else None (its grace period's, `incidents.stand`)."""
+    if outcome == TAIL_FAILED:
+        return ON_TAIL
+    return "symptom" if symptom_triggers((inc or {}).get("triggers") or []) else None
+
+
+def outcome_on_incident(network: str, decision: dict, outcome: str, words: str, *,
+                        fixed: dict = None, closes=CLOSES, said: dict = None) -> str:
+    """THE one home of what an act's outcome does to its incident (C3870): an outcome in
+    *closes* closes it, *fixed* its proof (`verified_of`); any other leaves it open, standing
+    on the act (`incidents.stand` with ``act``, on what `stands_on` says), its outcome and words
+    said in Mercury's words (*said*, `STANDING_WORDS` unless given); a healed act whose tail
+    flagged before its outcome is recorded stands on `TAIL_FAILED`. Stamped when it is
+    recorded (C3871: the time this is called, never the act's start). ``"closed"``,
+    ``"stood"``, or why neither was recorded (logged; never raised: the outcome is recorded
+    already)."""
+    from modules.heal import incidents
+
+    iid = (decision or {}).get("incident") or ""
+    if not iid:
+        return "no incident"
+    at = time.time()
+    try:
+        if outcome in closes:
+            incidents.close(network, iid, f"{outcome}: {words} (decision {decision['id']})", at,
+                            fixed=fixed)
+            return "closed"
+        lead = (said or STANDING_WORDS).get(outcome, outcome)
+        on = stands_on(outcome, _incident(network, iid))
+        incidents.stand(network, iid, {"id": decision["id"], "outcome": outcome,
+                                       "words": f"{lead}: {words}".rstrip(": "),
+                                       "departure": decision.get("departure") or "",
+                                       "mode": decision.get("mode") or ""},
+                        now=at, on=on, act=True)
+        return "stood"
+    except Exception as exc:                          # noqa: BLE001 (said: logged)
+        log.error("heal: %s's incident %s was not %s on %s (%s): %s", network, iid,
+                  "closed" if outcome in closes else "left standing", decision.get("id"),
+                  outcome, exc)
+        return f"{type(exc).__name__}: {exc}"
+
+
+def tail_failed_step(tail: dict) -> str:
+    """The first tail step that did not pass (`TAIL_STEPS`), or ``""`` (it did not finish).
+    The one reader of it (`fixit.auto.failures` too)."""
+    return next((s.get("step") for s in (tail or {}).get("steps") or []
+                 if s.get("result") not in ("ok", "running")), "") or ""
+
+
+#: A refusal that is a guard working as designed (R2: "a guard or hold working as designed is
+#: not a failure"): its step carries ``waits`` (`refuse`'s *waits*): the stops at apply (the
+#: kill switch, the mode, the stage, the policy moved, a halt, planned work), the device held
+#: past the wait's bound, the program moved since the decision, the device changed during the
+#: heal. Its incident stands and is retried by the policy; R1 does not count it.
+def refusal_waits(row: dict) -> bool:
+    """Whether an ``act`` step-log row refused only by a guard that waits (`refuse`'s
+    *waits*), so it is no failure R1 starts on (`fixit.auto.failures`)."""
+    return (row or {}).get("outcome") == "refused" and any(
+        isinstance(s, dict) and s.get("result") == "refused" and s.get("waits")
+        for s in (row or {}).get("steps") or [])
+
+
+def reopen_on_tail(network: str, decision: dict, tail: dict, steps=None) -> str:
+    """A heal closed at Fixed whose tail then failed (the operator, 2026-11-16: "A failed
+    save/golden tail step reopens the incident"): `incidents.reopen`, the flag its words.
+    Only from a tail running in this code (past incidents are never reopened). The flag stays
+    Needs attention's own row (`attention._heal_tail_rows`)."""
+    from modules.heal import incidents
+
+    del steps
+    try:
+        incidents.reopen(network, decision["incident"], decision["id"],
+                         f"{STANDING_WORDS[TAIL_FAILED]}: {tail.get('flag') or ''}".rstrip(": "),
+                         time.time(), step=tail_failed_step(tail),
+                         departure=decision.get("departure") or "", on=ON_TAIL)
+        return "reopened"
+    except Exception as exc:                          # noqa: BLE001 (said: logged)
+        log.error("heal: %s's incident %s was not reopened on its tail: %s", network,
+                  decision.get("incident"), exc)
+        return f"{type(exc).__name__}: {exc}"
+
+
+def against_golden(golden_text: str, text: str, device: str) -> dict:
+    """*text* (a device's read) judged against *golden_text* by drift's own comparison
+    (`drift_check.drift_diff`): ``{"state": "clean"|"drifted", "changed_lines", "error"}``. The
+    one comparison `Sources.read_at_golden` and `confirm_before_ai` make."""
+    from modules import drift_check
+
+    diff = drift_check.drift_diff(golden_text, text, device)
+    n = drift_check.changed_lines(diff) if diff else 0
+    return {"state": "drifted" if n else "clean", "changed_lines": n, "error": ""}
+
+
+# ── The confirmation before AI troubleshooting (C3870) ──────────────────────────────────────
+
+#: The failure kinds (`fixit.auto.failures`) whose device Mercury reads before any AI call.
+CONFIRM_KINDS = ("act", "tail")
+#: Who holds the device for the confirmation, and its step's name in the step log.
+CONFIRM_BY = "Mercury's confirmation before AI troubleshooting"
+CONFIRM_STEP = "confirm"
+#: A confirmation's proof is marked so (``fixed.by``): `findings._fixes` counts no fix from it.
+CONFIRM_MARK = "confirm"
+#: How long a confirmation taken (``reading``) may stand before another may take it (its thread
+#: died, or it raised): about 2.5 times the longest it can take, reasoned, not measured: the
+#: hold's wait (`HOLD_WAIT_S`, 335 s), the symptom's longest bound (`SYMPTOM_SECONDS`' alert,
+#: 750 s), and a minute for the device's reads.
+CONFIRM_BOUND_S = round(2.5 * (HOLD_WAIT_S + max(SYMPTOM_SECONDS.values()) + 60))
+#: An unreadable confirmation is tried again at most this often (the review, finding 10).
+CONFIRM_UNREAD_AGAIN_S = 3600
+#: The tail steps the confirmation can check by a read: the save (startup boots what runs,
+#: Reload's own gate) and the golden's commit and read again (the device at its golden,
+#: `Sources.read_at_golden`, the golden step's own check). A tail that did not finish names no
+#: step: never proof.
+CONFIRM_TAIL_STEPS = ("saved", "commit", "golden")
+
+
+def _act_began(network: str, decision: dict) -> tuple:
+    """``(epoch, last act row)``: when *decision*'s act began (its first ``started`` or ``act``
+    row), else the decision's own time; and its newest ``act`` row, or ``{}``."""
+    from modules.heal import steplog
+
+    got = steplog.of_decision(network, decision.get("id") or "")
+    rows = [r for r in got.get("rows") or [] if r.get("row") in ("started", "act")]
+    began = min([float(r.get("epoch") or 0) for r in rows if r.get("epoch")]
+                or [float(decision.get("epoch") or 0)])
+    last = next((r for r in reversed(rows) if r.get("row") == "act"), {})
+    return began, last
+
+
+def _saved_read(dev: dict, device: str) -> dict:
+    """Whether *device* boots what it runs, read on one session as Reload's gate reads it
+    (`reload_op.read_boot_pair`: the running configuration, `show startup-config`, and `dir
+    nvram:` where startup keeps a certificate there) and judged as it judges it
+    (`roundtrip.startup_is_running`): ``{"state": "pass"|"fail"|"unread", "words"}``. A read;
+    nothing is sent but reads."""
+    from modules.connection import with_temp_connection
+    from modules.nsot import reload_op, roundtrip
+
+    try:
+        pair = with_temp_connection(dev, lambda conn: reload_op.read_boot_pair(conn, device))
+    except Exception as exc:                          # noqa: BLE001 (said: unread, no proof)
+        return {"state": "unread", "words": f"its startup could not be read ({exc})"}
+    if not (pair or {}).get("startup") or not (pair or {}).get("running"):
+        return {"state": "unread", "words": "its startup or running configuration read empty"}
+    same = roundtrip.startup_is_running(pair["startup"], pair["running"], pair.get("nvram") or "")
+    if same.get("equal"):
+        return {"state": "pass", "words": "startup holds what it runs, so the save held"}
+    return {"state": "fail", "words": (
+        f"startup does not hold what it runs ({len(same.get('only_right') or [])} running "
+        "line(s) not in startup), so the save did not hold")}
+
+
+def _confirm_read(network: str, src, device: str, tail_step: str = None,
+                  check_saved: bool = False) -> dict:
+    """*device* read, held as the act holds it (`hold_device`; released before anything is
+    waited on), by the act's own confirmation (`Sources.read_at_golden`: its one read, its
+    golden and its compare), the golden itself at its intent (`Sources.golden`'s state, no
+    second compare): ``{"state": "pass"|"fail"|"unread", "words", "at"}``. *tail_step* (a tail
+    failure's failed step, `tail_failed_step`): that step checked by a read too (the review,
+    finding 8): ``saved`` by startup holding what runs (`_saved_read`); ``commit`` and
+    ``golden`` by the read at the golden itself; ``""`` (it did not finish) or any other step
+    is never proof. *check_saved* (the second review, B: an act whose save to startup was held,
+    failed or not reached, `_save_done`): the save checked by the same read (`_saved_read`).
+    Nothing is sent: reads only."""
+    from modules.nsot import device_ops
+
+    dev = src.device(device) or {}
+    if not dev:
+        return {"state": "unread", "at": _iso(time.time()),
+                "words": f"{device} is not in the network's inventory, so it was not read"}
+    if tail_step is not None and tail_step not in CONFIRM_TAIL_STEPS:
+        return {"state": "unread", "at": _iso(time.time()), "words": (
+            f"its tail's failed step ({tail_step or 'not recorded: it did not finish'}) cannot "
+            "be checked by a read, so no read proves it")}
+    busy = hold_device(network, device, dev.get("ip", ""), CONFIRM_BY, CONFIRM_BY,
+                       clock=getattr(src, "clock", time.time),
+                       sleep=getattr(src, "sleep", time.sleep))
+    if busy:
+        return {"state": "unread", "at": _iso(time.time()), "words": busy}
+    try:
+        golden = src.golden(device, dev)
+        if golden.get("state") != "at_intent":
+            return {"state": "fail", "at": _iso(time.time()), "words": (
+                f"{device}'s golden is not at its intent now "
+                f"({golden.get('words') or golden.get('state')}), so a read at it proves nothing")}
+        got = src.read_at_golden(device, dev)
+        at = _iso(time.time())
+        saved = _saved_read(dev, device) if (tail_step == "saved" or check_saved) and \
+            got.get("state") == "clean" else None
+    finally:
+        device_ops.release(network, device)
+    commit = (golden.get("commit") or "")[:10] or "its committed golden"
+    if got.get("state") == "unknown":
+        return {"state": "unread", "at": at, "words": (
+            f"{device} could not be read against its golden ({got.get('error') or 'unknown'})")}
+    if got.get("state") != "clean":
+        return {"state": "fail", "at": at, "words": (
+            f"{device} read at {at}: {got.get('changed_lines')} line(s) differ from its golden "
+            f"{commit}")}
+    words = (f"{device} read at {at}, holding it: at its golden {commit}, which is at its "
+             "intent, so every healed unit is at intent")
+    if saved is not None:
+        if saved["state"] != "pass":
+            return {"state": saved["state"], "at": at, "words": f"{words}; but {saved['words']}"}
+        words = f"{words}; {saved['words']}"
+    return {"state": "pass", "at": at, "words": words}
+
+
+def _save_done(network: str, decision: dict) -> bool:
+    """Whether *decision*'s act recorded its save to startup done (a ``saved`` step ``ok`` in
+    any of its step-log rows); False when held, failed, not reached or unreadable (B)."""
+    from modules.heal import steplog
+
+    got = steplog.of_decision(network, (decision or {}).get("id") or "")
+    return any(isinstance(s, dict) and s.get("step") == "saved" and s.get("result") == "ok"
+               for r in got.get("rows") or [] for s in r.get("steps") or [])
+
+
+def _confirm_port(network: str, inc: dict, device: str):
+    """The second review, A: for an incident whose problem is a port's (a trigger of
+    `incidents.PORT_EVENT_KINDS`), its port's own state read again through the read the
+    standing path judges it by (`errdisable.confirm`, judged by `detect._port_found`):
+    ``{"state": "gone"|"present"|"unreadable", "words"}``, or None for no port problem. A port
+    not classified, or a read missing or unreadable, is never proof."""
+    from modules.heal import errdisable, incidents
+    from modules.heal.detect import _port_found
+
+    if not any(t.get("kind") in incidents.PORT_EVENT_KINDS
+               for t in (inc or {}).get("triggers") or []):
+        return None
+    c = errdisable.of_record(inc)
+    if c.get("state") != "classified":
+        return {"state": "unreadable", "words": (
+            "its port problem is not classified, so its port's state cannot be read: no proof")}
+    try:
+        conf = errdisable.confirm(network, device, c)
+    except Exception as exc:                          # noqa: BLE001 (said: no proof)
+        return {"state": "unreadable", "words": f"{errdisable.CONFIRM_READ} raised {exc}"}
+    found = _port_found(dict(c, confirmed=conf))
+    port = c.get("short") or c.get("port") or "its port"
+    if found is False:
+        return {"state": "gone", "words": (
+            f"{errdisable.CONFIRM_READ} at {conf.get('at') or '?'} does not list {port}: its "
+            "port is clear")}
+    if found is True:
+        return {"state": "present", "words": (
+            f"{errdisable.CONFIRM_READ} at {conf.get('at') or '?'}: {port} is still "
+            "err-disabled")}
+    return {"state": "unreadable", "words": (
+        f"{port}'s state could not be read clear ({conf.get('why') or 'no answer'}): no proof")}
+
+
+def _confirm_device(network: str, sources, decision: dict, device: str,
+                    triggers: list, tail_step: str = None, inc: dict = None) -> dict:
+    """The confirmation's reads (`_confirm_read`, then the symptom read again, newer than this
+    confirmation's own start, within its own bound: `read_symptom` as an act's verify reads it;
+    the review, finding 7): ``{"fixed", "read", "symptom", "sym", "last"}``, *fixed* True only
+    when the device is at its golden (at its intent), any failed tail step checked by a read,
+    and its symptom gone or none named; a read not made since it began is unreadable, never
+    proof. *sym* is the symptom's step as a proof keeps it; *last* the act's newest step-log
+    row. Never raises."""
+    try:
+        src = sources or Sources(network)
+        _began, last = _act_began(network, decision)
+        began = time.time()
+        read = _confirm_read(network, src, device, tail_step,
+                             check_saved=not _save_done(network, decision))
+        if read["state"] == "pass":
+            s = read_symptom(network, device, triggers, began,
+                             clock=getattr(src, "clock", time.time),
+                             sleep=getattr(src, "sleep", time.sleep))
+            # A port problem's own state too (A): anything but clear is no proof.
+            port = _confirm_port(network, inc, device)
+            if port is not None and (port["state"] != "gone" or s["state"] in ("gone", "none")):
+                s = dict(port, reads=list(s.get("reads") or []),
+                         words=(f"{s.get('words') or ''}; {port['words']}".lstrip("; ")
+                                if port["state"] == "gone" else port["words"]))
+        else:
+            s = {"state": "not read", "words": "not read: the device read gave no proof",
+                 "reads": []}
+    except Exception as exc:                          # noqa: BLE001 (said: no proof)
+        read = {"state": "unread", "at": _iso(time.time()),
+                "words": f"the confirmation raised {type(exc).__name__}: {exc}"}
+        s, last = {"state": "not read", "words": "not read", "reads": []}, {}
+    fixed = read["state"] == "pass" and s["state"] in ("gone", "none")
+    sym = {"step": "symptom", "result": "ok" if fixed else s["state"],
+           "words": s.get("words") or "", "at": _iso(time.time()),
+           **({"reads": list(s["reads"])} if s.get("reads") else {})}
+    return {"fixed": fixed, "read": read, "symptom": s, "sym": sym, "last": last}
+
+
+def _confirm_proof(decision_id: str, device: str, read: dict, sym: dict, words: str,
+                   at: float) -> dict:
+    """The confirmation's proof in `verified_of`'s shape, its two deciding steps
+    (`DECIDING_STEPS`, drawn by `fixit.proof.of_act`): the healed units at intent (the device
+    at its golden, which is at its intent), its words leading with *words* ("already fixed;
+    confirmation was blocked (...)"), and the symptom."""
+    return {"act": decision_id, "device": device, "at": _iso(at), "epoch": at,
+            # Marked a confirmation (`CONFIRM_MARK`): `findings._fixes` counts no fix from it.
+            "by": CONFIRM_MARK, "read_by": CONFIRM_BY, "words": words,
+            "verify": [{"step": "intent", "result": "ok", "words": f"{words}: {read['words']}",
+                        "at": read["at"]}, dict(sym)]}
+
+
+def _tail_step_of(network: str, decision: dict, standing: dict):
+    """A tail failure's failed step (`tail_failed_step`, from its act row's tail record, or its
+    standing's own ``step``), for `_confirm_read`; None for any other standing."""
+    if (standing or {}).get("outcome") != TAIL_FAILED:
+        return None
+    _began, last = _act_began(network, decision)
+    return (tail_failed_step((last.get("records") or {}).get("tail"))
+            or (standing or {}).get("step") or "")
+
+
+def confirm_before_ai(network: str, key: str, *, sources=None) -> dict:
+    """C3870 (the operator, 2026-11-16: "Confirm-first: the deterministic own-device read
+    before any AI call"): for a failure of an act or a tail (*key* ``act:<decision>`` or
+    ``tail:<decision>``, `fixit.auto.failures`), before anything asks the AI, its device is
+    read through Mercury's own read, held as the act holds it (`_confirm_read`: at its golden,
+    which is at its intent; a tail failure's failed step checked by a read too), and its
+    symptom read again, newer than the confirmation's own start (`read_symptom`, within its
+    own bound; none named passes). Both pass:
+    the incident closes on that read as its proof (`decide.end_standing`, its ``fixed`` in
+    `verified_of`'s shape), "already fixed; confirmation was blocked (<the act's why>)".
+    Either fails, or a read is unreadable or refused: no proof, and the read is kept as the
+    act's ``confirm`` step in the step log, so the AI's evidence holds it (`evidence_pack.
+    tried_section`) beside the failure. ``{"state", "words"}``, *state* ``closed``,
+    ``closed_already`` (it closed before the AI was asked: nothing to ask), ``not_fixed``,
+    ``not_standing`` (moved since: judged as before), ``unread`` or ``skipped`` (another kind
+    of failure). Never raises."""
+    from modules.heal import decide, decisions, steplog
+
+    kind, _sep, decision_id = str(key or "").partition(":")
+    if kind not in CONFIRM_KINDS or not decision_id:
+        return {"state": "skipped", "words": ""}
+    try:
+        d = decisions.find(network, decision_id)
+        inc = _incident(network, d.get("incident") or "")
+    except Exception as exc:                          # noqa: BLE001 (said: the AI is asked)
+        return {"state": "unread", "words": f"decision {decision_id} could not be read: {exc}"}
+    if not inc:
+        return {"state": "unread", "words": f"{d.get('incident') or 'its incident'} is not held"}
+    if inc.get("state") == "closed":
+        return {"state": "closed_already", "words": (
+            f"{inc['id']} closed before the AI was asked: "
+            f"{inc.get('closed_why') or 'no why was recorded'}")}
+    standing = inc.get("standing") or {}
+    if inc.get("state") != "standing" or not standing.get("act"):
+        return {"state": "not_standing", "words": (
+            f"{inc['id']} is {inc.get('state')}, not standing on its act, so it was not "
+            "confirmed before the AI was asked")}
+    device = d.get("device") or inc.get("device") or ""
+    got = _confirm_device(network, sources, d, device, inc.get("triggers") or [],
+                          _tail_step_of(network, d, standing), inc=inc)
+    read, s, sym, last = got["read"], got["symptom"], got["sym"], got["last"]
+    blocked = (standing.get("words") or STANDING_WORDS.get(standing.get("outcome"), ""))[:200]
+    if got["fixed"]:
+        words = f"already fixed; confirmation was blocked ({blocked})"
+        at = time.time()
+        ended = decide.end_standing(network, inc["id"], words, now=at, by=CONFIRM_BY,
+                                    read_words=f"{read['words']}; {sym['words']}",
+                                    fixed=_confirm_proof(decision_id, device, read, sym, words,
+                                                         at))
+        if ended:
+            return {"state": "closed", "words": words, "decision": ended.get("id"),
+                    "proof": f"{read['words']}; {sym['words']}"}
+        return {"state": "not_standing", "words": f"{inc['id']} moved while it was read"}
+    said = (f"Mercury read {device} before asking the AI: {read['words']}; its symptom: "
+            f"{sym['words']}: no proof it is fixed")
+    if last:
+        try:
+            steplog.record_act(network, d, {
+                "outcome": last.get("outcome") or "", "words": last.get("words") or "",
+                "sent": bool(last.get("sent")), "records": dict(last.get("records") or {}),
+                "steps": [{"step": CONFIRM_STEP, "result": (
+                    "unreadable" if read["state"] == "unread"
+                    or (read["state"] == "pass" and s["state"] == "unreadable")
+                    else "failed"),
+                    "words": said, "at": _iso(time.time())}]},
+                by=last.get("by") or CONFIRM_BY, policy_by=last.get("policy_by") or "",
+                now=time.time())
+        except Exception as exc:                      # noqa: BLE001 (said: logged)
+            log.error("heal: %s's confirmation of %s is not in the step log: %s", network,
+                      decision_id, exc)
+    return {"state": "not_fixed", "words": said,
+            "unread": read["state"] == "unread"
+            or (read["state"] == "pass" and s["state"] in ("unreadable", "stale"))}
+
+
+#: The closed outcomes `confirm_closed` reads (C3876): a heal act's that are not healed
+#: (`steplog.NOT_HEALED` among `OUTCOMES`), closed before C3870 kept such an incident open.
+CLOSED_UNPROVEN = tuple(o for o in OUTCOMES if o != "healed" and o != "refused")
+
+
+def confirm_due(rec: dict, now: float, *, wanted: bool) -> bool:
+    """Whether a confirmation record (*rec*: ``{"state", "epoch"}``) may be taken now (the
+    review, finding 10): ``wanted`` (asked for, `request_confirm`); ``reading`` past
+    `CONFIRM_BOUND_S` (its thread died, or it raised); ``unread`` past
+    `CONFIRM_UNREAD_AGAIN_S`. No record: a closed incident's first (*wanted* False), never a
+    standing one's (it waits to be asked)."""
+    if not rec:
+        return not wanted
+    age = float(now) - float(rec.get("epoch") or 0)
+    return (rec.get("state") == "wanted"
+            or (rec.get("state") == "reading" and age >= CONFIRM_BOUND_S)
+            or (rec.get("state") == "unread" and age >= CONFIRM_UNREAD_AGAIN_S))
+
+
+def _closed_unproven(inc: dict, now: float = None) -> str:
+    """The decision a closed incident's close names when it closed on an act outcome that is
+    not healed (`CLOSED_UNPROVEN`, its ``closed_why`` "<outcome>: ... (decision <id>)"), with no
+    proof kept (no ``fixed``) and a confirmation due (`confirm_due` of its
+    ``confirmed_closed``); else ``""``."""
+    import re
+
+    from modules.heal import steplog
+
+    now = time.time() if now is None else float(now)
+    why = str(inc.get("closed_why") or "")
+    outcome = why.split(":", 1)[0]
+    if (inc.get("state") != "closed" or inc.get("fixed")
+            or not confirm_due(inc.get("confirmed_closed"), now, wanted=False)
+            or outcome not in CLOSED_UNPROVEN or outcome not in steplog.NOT_HEALED):
+        return ""
+    m = re.search(r"\(decision ([\w-]+)\)\s*$", why)
+    return m.group(1) if m else ""
+
+
+def _standing_wanted(inc: dict, now: float = None) -> bool:
+    """Whether a standing act incident waits for its confirmation (`request_confirm`)."""
+    now = time.time() if now is None else float(now)
+    return (inc.get("state") == "standing" and bool((inc.get("standing") or {}).get("act"))
+            and confirm_due(inc.get("confirm_wanted"), now, wanted=True))
+
+
+def request_confirm(network: str, incident_id: str, why: str) -> bool:
+    """The review's finding 2 (an incident a heal could not confirm ends only with proof):
+    where a close of a STANDING ACT would have been made (a drift run at the golden, the
+    symptom read gone, a re-decision of nothing to heal), it is not closed: its confirmation is
+    asked for instead (``confirm_wanted``, *why*), and the confirm pass (`confirm_closed`, on
+    its own thread) reads its device and closes it with that read as its proof, or leaves it
+    standing. Returns whether it was asked. Never raises."""
+    from modules.heal import incidents
+
+    try:
+        asked = incidents.want_confirm(network, incident_id, why,
+                                       again_s=CONFIRM_UNREAD_AGAIN_S)
+    except Exception as exc:                          # noqa: BLE001 (said: logged)
+        log.error("heal: %s's %s: its confirmation was not asked for: %s", network,
+                  incident_id, exc)
+        return False
+    if asked:
+        confirm_closed_soon(network)
+    return bool(asked)
+
+
+def confirm_closed(network: str, *, sources=None) -> list:
+    """C3876 (the operator, 2026-11-16: "no reopen of past incidents; r6 stays closed"): each
+    incident already closed on a heal act's outcome that is not healed, with no proof
+    (`_closed_unproven`), confirmed ONCE by the same read as `confirm_before_ai`
+    (`_confirm_device`: its device held and read at its golden, at its intent, and its symptom
+    read once), deterministically, with no AI. Taken first under the incidents store's lock
+    (`incidents.claim_confirm`), so it never runs twice, in any process. At intent with its
+    symptom clear, the read is kept on the closed incident as its proof (``fixed``, in
+    `verified_of`'s shape, "already fixed; confirmation was blocked (<the act's why>)"), and
+    the incident page reads it Fixed; its state, ``closed_at`` and ``closed_why`` are
+    untouched (no reopen). Otherwise nothing changes but the record of the try
+    (``confirmed_closed``), and it stays Needs a person. Returns ``[{"incident", "state"}]``.
+
+    The same pass confirms each STANDING act incident whose confirmation was asked for
+    (`request_confirm`): `confirm_before_ai`'s own read and close, nothing asked of the AI.
+    A taken confirmation that never ended is taken again past `CONFIRM_BOUND_S`, an unreadable
+    one at most once an hour (`confirm_due`). Nothing runs while self-healing is Off on the
+    network. Never raises."""
+    from modules.heal import decisions, incidents, policy
+
+    out = []
+    try:
+        if policy.current(network).get("mode") == "off":
+            return out
+    except Exception as exc:                          # noqa: BLE001 (said: an unread mode holds)
+        log.error("heal: %s's mode could not be read for the confirm pass: %s", network, exc)
+        return out
+    got = incidents.read(network)
+    if got["state"] != "ok":
+        return out
+    for inc in got["incidents"]:
+        if not _standing_wanted(inc):
+            continue
+        try:
+            if not incidents.claim_confirm(network, inc["id"], field="confirm_wanted",
+                                           due=lambda i, t: _standing_wanted(i, t)):
+                continue
+            s = inc.get("standing") or {}
+            kind = "tail" if s.get("outcome") == TAIL_FAILED else "act"
+            r = confirm_before_ai(network, f"{kind}:{s.get('decision') or ''}")
+            state = {"closed": "fixed", "closed_already": "closed"}.get(
+                r["state"], "unread" if r.get("unread") or r["state"] == "unread"
+                else "not_fixed")
+            incidents.record_confirm(network, inc["id"], {
+                "state": state, "by": CONFIRM_BY, "decision": s.get("decision") or "",
+                "words": (r.get("words") or "")[:400]}, field="confirm_wanted")
+            out.append({"incident": inc["id"], "state": state})
+        except Exception as exc:                      # noqa: BLE001 (said: logged)
+            log.error("heal: %s's standing incident %s was not confirmed: %s: %s", network,
+                      inc.get("id"), type(exc).__name__, exc)
+    for inc in got["incidents"]:
+        decision_id = _closed_unproven(inc)
+        if not decision_id:
+            continue
+        try:
+            taken = incidents.claim_confirm(
+                network, inc["id"], due=lambda i, t: bool(_closed_unproven(i, t)))
+            if not taken:
+                continue
+            d = decisions.find(network, decision_id)
+            device = d.get("device") or inc.get("device") or ""
+            c = _confirm_device(network, sources, d, device, inc.get("triggers") or [],
+                                inc=inc)
+            why = (str(inc.get("closed_why") or "").split(" (decision ")[0])[:200]
+            words = f"already fixed; confirmation was blocked ({why})"
+            at = time.time()
+            fixed = (_confirm_proof(decision_id, device, c["read"], c["sym"], words, at)
+                     if c["fixed"] else None)
+            state = "fixed" if c["fixed"] else (
+                "unread" if c["read"]["state"] == "unread"
+                or c["symptom"]["state"] == "unreadable" else "not_fixed")
+            incidents.record_confirm(network, inc["id"], {
+                "state": state, "by": CONFIRM_BY, "decision": decision_id,
+                "words": (words if fixed else
+                          f"no proof it is fixed: {c['read']['words']}; its symptom: "
+                          f"{c['sym']['words']}")[:400]}, fixed=fixed, now=at)
+            out.append({"incident": inc["id"], "state": state})
+        except Exception as exc:                      # noqa: BLE001 (said: logged)
+            log.error("heal: %s's closed incident %s was not confirmed: %s: %s", network,
+                      inc.get("id"), type(exc).__name__, exc)
+    return out
+
+
+def confirm_closed_soon(network: str) -> bool:
+    """`confirm_closed` on its own thread when *network* holds an incident it would read (one
+    read of the incidents store; nothing else), so the detect pass is never held by a device
+    read or its hold's wait. Returns whether a thread was started."""
+    import threading
+
+    from modules.heal import incidents
+
+    got = incidents.read(network)
+    if got["state"] != "ok" or not any(_closed_unproven(i) or _standing_wanted(i)
+                                       for i in got["incidents"]):
+        return False
+
+    def go():
+        try:
+            confirm_closed(network)
+        except Exception as exc:                      # noqa: BLE001 (said: logged)
+            log.error("heal: %s's closed incidents were not confirmed: %s", network, exc)
+    threading.Thread(target=go, name=f"heal-confirm-closed-{network}", daemon=True).start()
+    return True
+
+
 def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
                device: str = ""):
     """``(step, begin)`` over *steps*, a run's own list: `step(name, result, words)` records a
@@ -1429,7 +2034,8 @@ def _not_deployed(r, report, step, finish):
 
     outcome = r.get("outcome") or "refused"
     if outcome == SKIPPED_DRIFTED:
-        step("apply", "refused", r.get("reason") or "")
+        # The device changed during the heal: a guard working as designed (`refusal_waits`).
+        step("apply", "refused", r.get("reason") or "", waits=True)
         return finish("refused", ("the device changed during the heal: "
                                   f"{r.get('reason') or 'stage 4 found it moved'}; a later read "
                                   "starts over. Nothing was sent"), report=report)
@@ -1853,10 +2459,10 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
     [{"decision", "job"}], "refused", "failed", "interrupted"}``.
 
     First, each heal whose job ended before it recorded its outcome is recorded
-    (`interrupted.reap`, H6), so its incident is closed and Needs attention raises it. Each
-    decision's mark (`interrupted.hold`) is taken BEFORE it is taken, so a taken heal with no
-    outcome and no mark held is one whose job ended."""
-    from modules.heal import decisions, incidents, interrupted
+    (`interrupted.reap`, H6), so its incident stands on it (C3870) and Needs attention raises
+    it. Each decision's mark (`interrupted.hold`) is taken BEFORE it is taken, so a taken heal
+    with no outcome and no mark held is one whose job ended."""
+    from modules.heal import decisions, interrupted
 
     now = time.time() if now is None else float(now)
     out = {"network": network, "started": [], "refused": [], "failed": [], "interrupted": []}
@@ -1893,8 +2499,8 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
                 decisions.take(network, d["id"], by=f"{by}: refusing an untaken batch heal",
                                now=now)
                 decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
-                incidents.close(network, d["incident"], f"refused: {words} (decision "
-                                                         f"{d['id']})", now)
+                # Refused is no fix: its incident stands on it (C3870).
+                outcome_on_incident(network, d, "refused", words)
             except Exception as exc:                  # noqa: BLE001 (said; read again next)
                 out["failed"].append(f"{d.get('device')}: {type(exc).__name__}: {exc}")
             out["refused"].append(f"{d.get('device')}: {words}")
@@ -1915,7 +2521,7 @@ def start_decided(network: str, d: dict, *, now: float = None, starter=None,
     r2's act began 13 s after its decision, the pass deciding the other incidents and firing
     their scripts first), so a later `run` finds it taken. A batch's decision is never started
     here (its batch job takes it)."""
-    from modules.heal import decisions, incidents, interrupted
+    from modules.heal import decisions, interrupted
 
     now = time.time() if now is None else float(now)
     if d.get("batch"):
@@ -1935,8 +2541,7 @@ def start_decided(network: str, d: dict, *, now: float = None, starter=None,
         log.error("heal: %s's heal of %s could not start: %s", network, d["device"], exc)
         words = f"its job could not start ({type(exc).__name__}: {exc}). Nothing was sent"
         decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
-        incidents.close(network, d["incident"], f"refused: {words} (decision {d['id']})",
-                        now)
+        outcome_on_incident(network, d, "refused", words)
         interrupted.release(network, d["id"])
         return {"failed": f"{d['device']}: {type(exc).__name__}: {exc}"}
     return {"started": {"decision": d["id"], "job": job}}

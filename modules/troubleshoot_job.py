@@ -299,6 +299,8 @@ def record_failure(incident, key: str, words: str, *, trigger: str, by: str = ""
 OUTCOMES = {"proposed": ("ok", "plan proposed"),
             "healed_by_script": ("ok", "healed by a saved script"),
             "script_running": ("ok", "a saved script runs"),
+            # C3870: Mercury's own read before the AI found it fixed, and closed it on that read.
+            "confirmed_fixed": ("ok", "already fixed"),
             "failed": ("danger", "failed")}
 NO_PLAN = ("warn", "no plan")
 #: The most words a finished row's reason says before "Details on the card" (the operator,

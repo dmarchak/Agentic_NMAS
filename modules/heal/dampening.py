@@ -563,7 +563,7 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     """Apply one taken, approved dampening proposal as the person, verify it and record it
     (`STEPS`): ``{"decision", "device", "outcome", "words", "steps", "sent", "report",
     "records"}``."""
-    from modules.heal import decisions, incidents, propose, steplog
+    from modules.heal import decisions, propose, steplog
     from modules.nsot import receipts
     from modules.nsot.deploy import DEPLOYED
     from modules.redact import redact_text
@@ -603,24 +603,24 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
         try:
-            decisions.applied(network, decision["id"], outcome, by=by, words=words, now=now)
+            # C3871: stamped when the outcome is recorded, never the approval's start.
+            at = time.time()
+            decisions.applied(network, decision["id"], outcome, by=by, words=words, now=at)
             if outcome == "failed":
                 decisions.halt(network, guard=14, name="a heal sent and not verified",
                                words=(f"the approved dampening of {device} {interface} "
                                       f"({decision['id']}) failed after sending and was not "
                                       f"rolled back: {words}"),
                                operands={"decision": decision["id"], "device": device},
-                               now=now)
+                               now=at)
         except Exception as exc:
             log.error("heal: %s's dampening outcome on %s was not recorded: %s", network,
                       device, exc)
-        try:
-            if decision.get("incident"):
-                incidents.close(network, decision["incident"],
-                                f"{outcome}: {words} (decision {decision['id']})", now)
-        except Exception as exc:
-            log.error("heal: %s's incident %s was not closed: %s", network,
-                      decision.get("incident"), exc)
+        # C3870: only a dampening deployed and verified closes its incident; any other outcome
+        # leaves it standing, said in this act's words (`act.outcome_on_incident`).
+        from modules.heal import act
+        act.outcome_on_incident(network, decision, outcome, words, closes=("dampened",),
+                                said=OUTCOME_WORDS)
         result = {"decision": decision["id"], "device": device, "outcome": outcome,
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report,
                   "records": {

@@ -468,6 +468,40 @@ def _fixit_state(inc, trigger: dict, now: float, reserved_usd: float = 0.0, *,
     return "started", "", ""
 
 
+def _refusal_basis(network: str, inc, state: str, which: str, words: str) -> str:
+    """What refused a start, kept on its refusal line and compared when the automatic pass asks
+    again (C3872: "A refused start must not spend its trigger"; `incident.claim_start`'s
+    *basis*): the incident's cap by its source and amount; a day or month cap by its period,
+    the day cap and the feature's own entry (its caps); the mode or hosted state by its words.
+    ``""`` for a start. A read of the settings; nothing is asked."""
+    import json
+
+    from modules.ai import calls, gateway, reservations
+    from modules.fixit import auto as A
+    from modules.fixit import policy as P
+
+    if state == "started":
+        return ""
+    try:
+        if which == "incident":
+            # The same read `policy.cap_state` makes (the review, finding 9).
+            cap = P.cap_usd(getattr(inc, "network", None))
+            return f"incident:{cap.get('source')}:{cap.get('usd')}:{cap.get('state')}"
+        if which in ("day", "month"):
+            day = calls.today()
+            entry = A.switch(network).get("entry") or {}
+            # Whether the calls in flight and today's spend could be read: their clearing
+            # lets the automatic pass ask again (the review, finding 9).
+            held = reservations.open_reservations().get("state")
+            spent = "read" if calls.spent_usd(day).get("usd") is not None else "unread"
+            return (f"{which}:{day if which == 'day' else str(day)[:7]}:{gateway.day_cap()}:"
+                    f"reservations={held}:spend={spent}:"
+                    + json.dumps(entry, sort_keys=True, default=str))
+    except Exception as exc:                          # noqa: BLE001 (said: its words stand in)
+        log.info("fixit auto: what refused %s could not be read: %s", network, exc)
+    return f"{state}:{which}:{words}"
+
+
 def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
     """R1's pass (`modules/fixit/auto.py`): each new failure of Mercury's fix on an open
     incident, recorded since the network's stamp, taken ONCE (`incident.claim_start`) and,
@@ -514,11 +548,13 @@ def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
             from modules import filestore
             with filestore.PathLock(start_lock_path(network)):
                 state, which, words = _fixit_state(inc, trigger, at)
+                # C3872: a refusal takes no key; the same refusal is not written again.
                 line = F.claim_start(inc, f["key"], trigger="auto", state=state, job=job,
                                      which=which, words=words, now=at,
                                      failure={k: f[k] for k in ("kind", "id", "outcome",
                                                                 "at")},
-                                     busy_s=bound)
+                                     busy_s=bound,
+                                     basis=_refusal_basis(network, inc, state, which, words))
         except Exception as exc:                      # said; the next pass reads it again
             out["failed"].append(f"{iid}: {type(exc).__name__}: {exc}")
             continue
@@ -560,7 +596,8 @@ def fixit_investigation(network: str, incident_id: str, key: str, job: str, *,
 
 def catch_up_investigation(network: str, incident_id: str, key: str, *, actor: str,
                            verified: str, send=None, deliver=None, counts: bool = True,
-                           planned: str = "") -> dict:
+                           planned: str = "", note: str = "", resolved: float = None,
+                           scripts: bool = True) -> dict:
     """One investigation started at the turn-on of ``fixit_auto`` on an incident the person
     ticked (`start_catch_up`), its start already taken under the failure's own key: the same
     investigation as the automatic start's (`_investigation`), its trigger the person who ticked
@@ -569,7 +606,9 @@ def catch_up_investigation(network: str, incident_id: str, key: str, *, actor: s
     copied into its job). *counts* (C3751): its calls count toward ``fixit_auto``'s spend on
     the network too, for the feature's day and month caps (a turn-on's catch-up; G6's press
     is a person's alone, `start_catch_up`'s *press*). *planned*: the reservation its start
-    was planned under (C3752), settled the moment the investigation's own call reserves."""
+    was planned under (C3752), settled the moment the investigation's own call reserves.
+    *note* and *resolved*: a person's Start press on the incident's page (`start_press`), its
+    typed note and the incident's resolution as the page passed them."""
     from modules.ai import fixit_troubleshoot as AIT
     from modules.ai import presses
     from modules.fixit import auto as A
@@ -584,20 +623,23 @@ def catch_up_investigation(network: str, incident_id: str, key: str, *, actor: s
         # took the first's answer).
         with presses.within(f"{incident_id}:{key}"):
             return AIT.troubleshoot(network, found, inc, actor=actor, actor_verified=verified,
-                                    person=True, send=send,
+                                    person=True, send=send, note=note, resolved=resolved,
                                     counts_for={"feature": A.FEATURE, "network": network}
                                     if counts else None)
     try:
         return _investigation(network, incident_id, key, ask, deliver=deliver,
-                              trigger="person", by=actor, verified=verified)
+                              trigger="person", by=actor, verified=verified, scripts=scripts)
     finally:
         _settle_planned(planned)        # whatever it ended in: never left to its expiry
 
 
 def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, trigger: str,
-                   by: str = "", verified: str = "") -> dict:
+                   by: str = "", verified: str = "", scripts: bool = True) -> dict:
     """The one investigation path of a start taken under a failure's key (the automatic start's
-    and the catch-up's): the incident resolved, *ask* ``(found, incident)`` asking AI
+    and the catch-up's): an act's or a tail's failure confirmed first by Mercury's own read of
+    its device (`heal.act.confirm_before_ai`, C3870: closed on it when at intent with its
+    symptom gone, ``confirmed_fixed``, nothing asked), the incident resolved, *ask* ``(found,
+    incident)`` asking AI
     troubleshooting, a refusal or a failure before anything was sent kept as the failure's
     ``failed`` start line (as *trigger*, with *by* and *verified* for a person's), and a
     proposal told to the team (`proposal_notice`)."""
@@ -605,16 +647,39 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
     from modules.ai import fixit_troubleshoot as AIT
     from modules.fixit import section
 
+    # C3870 (the operator, 2026-11-16: "Confirm-first: the deterministic own-device read before
+    # any AI call"): an act's or a tail's failure has its device read by Mercury first, held as
+    # the act holds it; at intent with its symptom gone, the incident closes on that read and
+    # nothing is asked (nor any script fired). Otherwise the read is kept in the step log, and
+    # the incident is resolved after it, so the AI's evidence holds it.
+    from modules.heal import act as HA
+    confirmed = HA.confirm_before_ai(network, key)
     found = incident_page.resolve(network, incident_id)
     inc = section.incident_of(network, found)["incident"] if found["found"] == "page" else None
+    who = {"by": by, "verified": verified} if by else {}
+    if confirmed["state"] in ("closed", "closed_already"):
+        # The key's start ends here, never left "investigating" (`incident.claim_start`'s
+        # ``closed``: one line under the same key, nothing asked).
+        said = (f"closed by confirm read: {confirmed.get('proof') or confirmed['words']}"
+                if confirmed["state"] == "closed" else confirmed["words"])
+        if inc is not None:
+            try:
+                from modules.fixit import incident as F
+                F.claim_start(inc, key, trigger=trigger, state="closed", words=said, **who)
+            except Exception as exc:                  # noqa: BLE001 (said: logged)
+                log.error("fixit auto: %s: its start's close was not kept: %s", incident_id,
+                          exc)
+        return {"state": "confirmed_fixed", "words": confirmed["words"]}
     if inc is None:
         return {"state": "failed", "words": f"{incident_id} has no page"}
-    who = {"by": by, "verified": verified} if by else {}
     # C3696: a saved self-heal script whose R4 match the problem holds fires first, with no AI
     # call (`saved_plans.fire_matching`): one in Dry run records what it would run, and one a
     # person promoted runs through the runner; healed so, the AI is not asked.
+    # A person's press (*scripts* False: `start_catch_up`'s press mode, the incident page's
+    # Start, Ask again and Modify, and G6's) fires none: it runs confirm-first and then the AI
+    # with its typed words, so a press never writes to a device (the second review, C).
     from modules.nsot import saved_plans
-    fired = saved_plans.fire_matching(network, found)
+    fired = saved_plans.fire_matching(network, found) if scripts else []
     healed = next((f for f in fired if f.get("mode") == "auto" and f.get("ok")), None)
     if healed:
         return {"state": "healed_by_script", "script": healed, "words": (
@@ -644,7 +709,8 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
 
 
 def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: float = None,
-                   starter=None, press: str = "", press_label: str = "") -> dict:
+                   starter=None, press: str = "", press_label: str = "", fallback: dict = None,
+                   line_words: str = None, note: str = "", resolved: float = None) -> dict:
     """Turning ``fixit_auto`` on catches up on the person's choice (the operator, 2026-11-15:
     "when the switch is turned on, it starts on every open incident whose fix failed or that
     has no fix, within the caps ... records what was chosen"): each incident in *ticked* (ids)
@@ -655,8 +721,10 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
     start planned before any starts, the worst cases of the ones ahead of it held against the
     feature's caps and the day cap: C3745), its investigation started as its own job
     (`troubleshoot_job.start`, never in the request) under the person's trigger
-    (`catch_up_investigation`). A cap that would be passed takes the key with no call, its
-    ``which`` the cap, so the incident's card says which. Called inside the turn-on's request.
+    (`catch_up_investigation`). A cap that would be passed records its refusal with no call,
+    its ``which`` the cap, so the incident's card says which, and takes no key (C3872: "A
+    refused start must not spend its trigger"): the next switch-on lists it again. Called
+    inside the turn-on's request.
     ``{"started", "capped", "off", "skipped", "failed"}``: incident ids, *skipped* and
     *failed* ``{"id", "why"}``. *starter* ``(network, id, key, work)`` replaces the job
     (tests).
@@ -664,7 +732,14 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
     *press* (G6, the one-button batch): the same starts made by a person's press with
     ``fixit_auto`` off, its words the start line's: the feature's switch and caps are not
     asked and its calls do not count toward it (a person's press under the incident's cap,
-    the day cap and the calls in flight); *press_label* names the press on In progress."""
+    the day cap and the calls in flight); *press_label* names the press on In progress.
+
+    A person's Start AI troubleshooting on an incident's page (`start_press`, the operator,
+    2026-11-16: "One start path, not two") is this start too, in *press* mode: *fallback*
+    ``{id: item}`` is the item for an incident `auto.catch_up` does not list (no untaken
+    failure: the press's own key, ``person:start``); *line_words* the start line's words in
+    place of *press*'s; *note* and *resolved* pass to its investigation. ``why`` (``{id:
+    words}``) says each refusal's words, for the press's answer."""
     from flask import copy_current_request_context
 
     from modules import troubleshoot_job
@@ -675,7 +750,7 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
 
     at = time.time() if now is None else float(now)
     bound = follow_up_wait_s()
-    out = {"started": [], "capped": [], "off": [], "skipped": [], "failed": []}
+    out = {"started": [], "capped": [], "off": [], "skipped": [], "failed": [], "why": {}}
     ticked = [t for t in dict.fromkeys(ticked or ())]
     if not ticked:
         return out
@@ -690,7 +765,7 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
     # lock is let go, so every other process and the gateway count it (C3753).
     with filestore.PathLock(start_lock_path(network)):
         got = A.catch_up(network, now=at, bound_s=bound)
-        listed = {i["id"]: i for i in got["items"]}
+        listed = dict(fallback or {}, **{i["id"]: i for i in got["items"]})
         # Every cap first, before anything starts (C3745): in tick order, each start held
         # against its incident's cap, the feature's day and month caps (the turn-on's, just
         # recorded; never for *press*, a person's press alone) and the day cap, with the worst
@@ -731,12 +806,13 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
                     words = kept["refusal"]["why"]
                     hold = ""
             try:
+                said = (line_words if line_words is not None else press or A.CATCH_UP_WORDS)
                 line = F.claim_start(inc, f["key"], trigger="person", state=state, which=which,
-                                     words=(press or A.CATCH_UP_WORDS) if state == "started"
-                                     else words,
+                                     words=said if state == "started" else words,
                                      by=actor, verified=verified, now=at,
                                      failure={k: f[k] for k in ("kind", "id", "outcome", "at")},
-                                     busy_s=bound)
+                                     busy_s=bound,
+                                     basis=_refusal_basis(network, inc, state, which, words))
             except Exception as exc:                      # noqa: BLE001 (said in the answer)
                 _settle_planned(hold)
                 out["failed"].append({"id": iid, "why": f"{type(exc).__name__}: {exc}"})
@@ -748,13 +824,16 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
                 continue
             out[state].append(iid)
             if state != "started":
+                out["why"][iid] = words
                 continue
             def investigate(i=iid, k=f["key"], h=hold):
                 # Its planned reservation settled whatever it ends in (C3752).
                 try:
                     return catch_up_investigation(network, i, k, actor=actor,
                                                   verified=verified, counts=not press,
-                                                  planned=h)
+                                                  planned=h, note=note, resolved=resolved,
+                                                  # A press fires no saved script (C).
+                                                  scripts=not press)
                 finally:
                     _settle_planned(h)
             work = copy_current_request_context(investigate)
@@ -1415,6 +1494,14 @@ def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None
         if state != "gone":
             return {}
         now, minutes = clock(), int(quiet_s // 60)
+        if (again.get("standing") or {}).get("act"):
+            # The review's finding 2: an incident a heal could not confirm ends only with
+            # proof: its symptom read gone asks for Mercury's confirmation read instead, and the
+            # notice goes as before.
+            from modules.heal import act
+            act.request_confirm(network, incident_id, (
+                f"its symptoms read gone and quiet {minutes} minutes (the can't-fix notice)"))
+            return {}
         return decide.end_standing(
             network, incident_id,
             (f"nothing to heal: every symptom the incident named has cleared by itself at "

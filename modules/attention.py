@@ -8390,7 +8390,8 @@ def _heal_interrupted_rows(lst: str, rows: list, found=None) -> list:
             what=(f"Self-healing on {lst}: the heal of {host} was interrupted, and what reached "
                   "the device is not known"),
             cause=((said or "its job ended before it recorded its outcome")
-                   + (". Mercury recorded it and closed its incident." if recorded else
+                   + (". Mercury recorded it; its incident stays open on it (only a healed "
+                      "heal closes one)." if recorded else
                       ". Found at this read; the heal runner records it at its next pass.")
                    + halted),
             action={"label": (f"Read the heal's steps on {host}'s History, read {host} against "

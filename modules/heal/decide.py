@@ -710,6 +710,16 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
         # symptom folds into it, a later trigger of the same departure joins it.
         incidents.stand(network, incident["id"], d, settled=incident.get("settled"), now=now)
         return
+    if (incident.get("stood") or {}).get("act"):
+        # The review's findings 2 and 5: an incident a heal could not confirm ends only with
+        # proof. A re-decision that would close it (halted, nothing to heal) puts it back on
+        # its act; nothing to heal asks for Mercury's confirmation read (`act.request_confirm`),
+        # which alone closes it, with that read as its proof.
+        from modules.heal import act
+        incidents.stand(network, incident["id"], None, now=now)
+        if d["outcome"] == "nothing":
+            act.request_confirm(network, incident["id"], f"decided again: {d['words']}"[:300])
+        return
     incidents.close(network, incident["id"], f"{d['outcome']}: {d['words']} (decision "
                                              f"{d['id']})", now)
 

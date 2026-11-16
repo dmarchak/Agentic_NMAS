@@ -605,6 +605,16 @@ def card(name: str, ai_state: bool = True, typed: dict = None) -> dict:
             f["amount"] = amount_text(f["value"])
         if f["key"] == READS_AS_KEY:
             f.update(reads_as_offer(f))
+        if f["key"] == _fixit_policy.CAP_KEY:
+            # C3873: say which networks' own limits take this amount's place for them.
+            over = _fixit_policy.cap_overrides()
+            if over:
+                f["note"] = (f"{f['note']}. Not used on "
+                             + ", ".join(f"{n} (its own {_fixit_policy.money(u)})"
+                                         if u is not None else f"{n} (its own, unreadable)"
+                                         for n, u in over)
+                             + f": each network's own limit takes its place there "
+                               f"({_fixit_policy.NETWORK_CAP_WHERE})")
     if spec["integration"]:
         out["health"] = _health(spec["integration"])
     if name == "netbox":

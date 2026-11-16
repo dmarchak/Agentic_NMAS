@@ -54,7 +54,13 @@ def _ended(found: dict) -> str:
     from modules import incident_page
 
     state = incident_page.state_of(found["incident"], found["entry"], found["decisions"])
-    return state if state in ("fixed", "cleared", "cancelled") else ""
+    if state in ("fixed", "cleared", "cancelled"):
+        return state
+    # C3876: closed in the store with its fix never confirmed: ended all the same (its AI
+    # troubleshooting read-only), said as what it is.
+    if (found["incident"] or {}).get("state") == "closed":
+        return incident_page.UNCONFIRMED_WORDS.lower()
+    return ""
 
 
 def _resolved_at(found: dict):
@@ -411,68 +417,66 @@ def _ask(incident_id: str, what: str, *, note: str, allowed: str):
             return _section(network, found, 400, refused=(
                 "Not asked: Modify sends your words to the AI, and none were typed. Nothing "
                 "was sent"))
-    # Taken ONCE under the record's lock (`claim_start`): Start's one key, or the next of the
-    # person's presses; a second press made at the same moment takes the same key and is
-    # refused, naming the investigation that runs, never a second paid call.
-    from modules import troubleshoot_job
+    # ONE start path (the operator, 2026-11-16: "One start path, not two"): the press is R1's
+    # start (`heal_notice.start_catch_up` in its press mode, G6's): planned and claimed under
+    # the network's start lock, every cap asked (the mode, hosted AI, this incident's cap, the
+    # day cap and the calls in flight; never ``fixit_auto``'s switch or caps), its worst case
+    # reserved, and its investigation `_investigation`, Mercury's own confirmation read first
+    # (C3870). Its key: the incident's untaken failure's, as R1's (so R1 never starts on that
+    # failure again), else Start's one key or the next of the person's presses, as before; a
+    # second press at the same moment is refused, naming the investigation that runs.
+    from modules import heal_notice, troubleshoot_job
 
     people = [ln for ln in F.starts(inc)["starts"] if ln.get("trigger") == "person"
               and not str(ln.get("start") or "").endswith(":failed")]
     key = "person:start" if allowed == "start" else f"person:{len(people) + 1}"
+    at = time.time()
+    own = {"id": incident_id, "incident": inc,
+           "failure": {"key": key, "kind": "person", "id": incident_id, "outcome": allowed,
+                       "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))}}
+    ended, jobs = {}, []
+
+    def starter(_network, _iid, k, run):
+        def work(_job):
+            try:
+                out = run()
+            except Exception as exc:                  # noqa: BLE001 (said, then the job's)
+                ended["error"] = str(exc)
+                raise
+            words = out.get("words") or ""
+            if out.get("state") == "failed" and not out.get("proposal"):
+                # Kept on the card by `_investigation` (its ``failed`` start line); said here.
+                ended["error"] = words
+            elif allowed == "modify" and out.get("state") == "proposed":
+                words = ("The AI revised its plan with your words: the new plan, with its new "
+                         "hash, is below. Nothing ran.")
+            ended["out"] = {"state": out.get("state"), "words": words,
+                            "typed_masked": out.get("typed_masked")}
+            return ended["out"]
+        jobs.append(troubleshoot_job.start(network, incident_id, who["actor"], work,
+                                           label=f"{what}: {incident_id}", key=k,
+                                           trigger="person"))
     try:
-        line = F.claim_start(inc, key, trigger="person", state="started",
-                             by=who["actor"], verified=who["actor_verified"],
-                             busy_s=section.investigation_bound_s())
-    except (F.Refused, OSError, ValueError) as exc:
+        got = heal_notice.start_catch_up(
+            network, [incident_id], actor=who["actor"], verified=who["actor_verified"], now=at,
+            starter=starter, press=what, fallback={incident_id: own}, line_words="", note=note,
+            resolved=_resolved_at(found))
+    except Exception as exc:                          # noqa: BLE001 (said in place)
         return _section(network, found, 409, refused=f"Not asked: {exc}")
-    if line is None:
-        return _section(network, found, 409, refused=(
-            "Not asked: the AI is already investigating this incident (its start was taken a "
-            "moment ago, by another press). Nothing was sent"))
-    resolved = _resolved_at(found)
-
-    def investigate():
-        # Inside the press's own request context (copied into the job's thread): the call's
-        # trigger is the person who pressed, verified as their request was.
-        try:
-            out = AIT.troubleshoot(network, found, inc, actor=who["actor"],
-                                   actor_verified=who["actor_verified"], person=who["person"],
-                                   note=note, resolved=resolved)
-        except Exception as exc:                      # noqa: BLE001 (kept, then the job's)
-            # A refusal before anything was sent, or the investigation raising: drawn in place
-            # as "Couldn't troubleshoot: <why>", and the job's own failure under In progress.
-            words = str(exc) if isinstance(exc, AIT.Refused) else f"{type(exc).__name__}: {exc}"
-            troubleshoot_job.record_failure(inc, key, words, trigger="person", by=who["actor"],
-                                     verified=who["actor_verified"])
-            raise
-        if out["state"] == "failed" and not out["proposal"]:
-            troubleshoot_job.record_failure(inc, key, out["words"], trigger="person",
-                                     by=who["actor"], verified=who["actor_verified"])
-        words = out["words"]
-        if allowed == "modify" and out["state"] == "proposed":
-            words = ("The AI revised its plan with your words: the new plan, with its new hash, "
-                     "is below. Nothing ran.")
-        return {"state": out["state"], "words": words,
-                "typed_masked": out.get("typed_masked")}
-
-    from flask import copy_current_request_context
-
-    run = copy_current_request_context(investigate)
-    ended = {}
-
-    def work(_job):
-        try:
-            ended["out"] = run()
-        except Exception as exc:                      # noqa: BLE001 (said, then the job's)
-            ended["error"] = str(exc)
-            raise
-        return ended["out"]
-    job = troubleshoot_job.start(network, incident_id, who["actor"], work,
-                          label=f"{what}: {incident_id}", key=key, trigger="person")
+    if not got["started"]:
+        why = (got["why"].get(incident_id)
+               or next((s["why"] for s in got["skipped"] + got["failed"]
+                        if s.get("id") == incident_id), ""))
+        if any(s.get("id") == incident_id for s in got["skipped"]):
+            why = ("the AI is already investigating this incident (its start was taken a "
+                   "moment ago, by another press)")
+        why = str(why or "it could not be started").removeprefix("Not started: ").rstrip(".")
+        return _section(network, found, 409, refused=f"Not asked: {why}. Nothing was sent")
+    job = jobs[0] if jobs else ""
     # The job runs on; its end is announced and the card re-fetches. A job that ended before
     # this answer is drawn (a quick refusal) says what it found.
-    said = ((ended["out"] or {}).get("words") if "out" in ended else
-            f"Couldn't troubleshoot: {ended['error']}" if "error" in ended else
+    said = (f"Couldn't troubleshoot: {ended['error']}" if "error" in ended else
+            (ended["out"] or {}).get("words") if "out" in ended else
             troubleshoot_job.done_words(job))
     if said is None:
         return _section(network, found, 202, level="muted", done=(

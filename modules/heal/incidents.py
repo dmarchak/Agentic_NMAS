@@ -12,7 +12,9 @@ with its kind, time, source and words), the reads the detect pass made of it
 - ``claimed``: the decision has it (H3, then H4's act and verify); it closes it, or leaves it
   standing;
 - ``standing`` (C2813): decided, and its cause still stands: a dry run's would-heal, a can't
-  fix, or a hold a person resolves (no until). It stays OPEN, so the rules below still hold
+  fix, or a hold a person resolves (no until); or (C3870) an act whose outcome was anything
+  but healed, or a healed act whose tail then failed (`reopen`), its standing record marked
+  ``act``. It stays OPEN, so the rules below still hold
   for it: a symptom arriving later on another device folds into it (its blast radius, its far
   end) within `FOLD_STANDING_S` of its decision, and a later trigger of the same cause joins
   it (`sight`). Its ``standing`` names the
@@ -712,13 +714,19 @@ def defer(network: str, incident_id: str, until: float, why: str, now: float = N
 
 
 def stand(network: str, incident_id: str, decision: dict = None, *, settled: dict = None,
-          now: float = None) -> dict:
+          now: float = None, on: str = None, act: bool = False) -> dict:
     """C2813: a claimed incident whose decision leaves its cause standing (`STANDS`) stays
     open, ``standing`` on *decision* (``{"id", "outcome", "words", "departure"}``). Its
     departure is the decision's, else the one its grace period settled on; ``on`` is
-    ``symptom`` when the grace period found the device at its golden, else ``departure``.
-    *decision* None puts back a standing incident taken by `take_standing` (a decision that
-    could not be recorded)."""
+    ``symptom`` when the grace period found the device at its golden, else ``departure``
+    (*on* given: that one). *decision* None puts back a standing incident taken by
+    `take_standing` (a decision that could not be recorded).
+
+    *act* (C3870, the operator, 2026-11-16: "Only 'healed' closes an incident"): an act's
+    outcome other than healed stands too, its standing record marked ``act`` and its
+    ``outcome`` the act's (`act.OUTCOMES`, never a decision's: `STANDS` names those), so R1
+    sees it open (`fixit.auto.pending`) and the retry policy takes it once per trigger
+    (`retry._in_population`)."""
     now = time.time() if now is None else float(now)
 
     def change(doc):
@@ -727,6 +735,10 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
             raise Refused(f"{incident_id} is {inc.get('state')}, not claimed, so it does not "
                           "stand")
         if decision is None:
+            if not inc.get("standing") and (inc.get("stood") or {}).get("act"):
+                # The review's finding 5: an act's standing a re-decision would have closed
+                # (halted, nothing) is put back on that act, never closed with no proof.
+                inc["standing"], inc["stood"] = inc["stood"], None
             if not inc.get("standing"):
                 raise Refused(f"{incident_id} stood on nothing, so it is not put back")
             inc.update(state="standing", claimed=None, updated_at=_iso(now))
@@ -745,8 +757,57 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
                              "mode": decision.get("mode") or "",
                              # A port problem settled on its device read stands on its
                              # symptom too (`detect._settle_port`, 2026-11-16).
-                             "on": "symptom" if how.get("how") in ("at_golden", "confirmed")
-                             else "departure"})
+                             "on": on or ("symptom" if how.get("how") in ("at_golden",
+                                                                          "confirmed")
+                                          else "departure"),
+                             **({"act": True} if act else {})})
+        return inc
+
+    return _mutate(network, change)
+
+
+def reopen(network: str, incident_id: str, decision_id: str, words: str, now: float = None,
+           *, step: str = "", departure: str = "", on: str = None) -> dict:
+    """C3870 (the operator, 2026-11-16: "A failed save/golden tail step reopens the
+    incident"): a heal's incident closed at Fixed whose tail then failed goes back to
+    ``standing``, its standing record an act's (``act``) with outcome ``tail_failed``, the
+    failing *step* and *words* (the tail's flag), so R1 sees it open. Only an incident closed
+    by THAT decision's healed close (its ``fixed`` names *decision_id*, or its ``closed_why``
+    is that close's); anything else is refused, naming both. Its device must be in no other
+    open incident (one incident per device). The close it undoes is kept as ``reopened``."""
+    now = time.time() if now is None else float(now)
+    if not (words or "").strip():
+        raise Refused("an incident is reopened with why, and none was given")
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        why = str(inc.get("closed_why") or "")
+        fixed = inc.get("fixed") or {}
+        mine = (fixed.get("act") == decision_id
+                or (why.startswith("healed:") and why.endswith(f"(decision {decision_id})")))
+        if inc.get("state") != "closed" or not mine:
+            raise Refused(
+                f"{incident_id} is {inc.get('state')}, closed by "
+                f"{fixed.get('act') or why[-40:] or 'nothing recorded'}, and only an incident "
+                f"closed by decision {decision_id}'s healed close is reopened by its tail")
+        other, _m = _where(doc, inc.get("device") or "")
+        if other is not None:
+            raise Refused(f"{inc.get('device')} is in open incident {other['id']} now, and a "
+                          f"device is in one open incident at a time, so {incident_id} is not "
+                          "reopened")
+        inc["reopened"] = {"at": _iso(now), "epoch": now, "decision": decision_id,
+                           "closed_at": inc.get("closed_at"), "closed_why": why,
+                           "fixed": dict(fixed) if fixed else None}
+        for k in ("fixed", "closed_at", "closed_why"):
+            inc.pop(k, None)
+        inc.update(state="standing", claimed=None, updated_at=_iso(now), stood=None,
+                   standing={"decision": decision_id, "outcome": "tail_failed",
+                             "words": (words or "")[:300], "step": step or "",
+                             "at": _iso(now), "epoch": now, "departure": departure or "",
+                             "guard": None, "mode": "auto", "act": True,
+                             # Its failed step (`act.ON_TAIL`), never a departure a drift
+                             # run's read at the golden ends (the review, finding 2).
+                             "on": on or "tail"})
         return inc
 
     return _mutate(network, change)
@@ -912,6 +973,77 @@ def close(network: str, incident_id: str, why: str, now: float = None, *,
         if fixed:
             inc["fixed"] = dict(fixed)
         return inc
+
+    return _mutate(network, change)
+
+
+#: The confirmation records an incident keeps (`act.confirm_closed`): a closed incident's
+#: (C3876) and a standing act's asked for (`want_confirm`).
+CONFIRM_FIELDS = ("confirmed_closed", "confirm_wanted")
+
+
+def claim_confirm(network: str, incident_id: str, now: float = None, *,
+                  field: str = "confirmed_closed", due=None) -> dict:
+    """C3876: take an incident for its confirmation (`act.confirm_closed`), under the store's
+    lock: its *field* set to ``reading``, the record returned; ``{}`` when *due(incident, now)*
+    (`act.confirm_due`'s judgement, asked again inside the lock) says it is not due, so two
+    passes never both take it."""
+    now = time.time() if now is None else float(now)
+    if field not in CONFIRM_FIELDS:
+        raise Refused(f"a confirmation is kept as {' or '.join(CONFIRM_FIELDS)}, not {field!r}")
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if due is None or not due(inc, now):
+            return {}
+        inc[field] = dict(inc.get(field) or {}, state="reading", at=_iso(now), epoch=now)
+        return dict(inc)
+
+    return _mutate(network, change)
+
+
+def record_confirm(network: str, incident_id: str, result: dict, *, fixed: dict = None,
+                   now: float = None, field: str = "confirmed_closed") -> dict:
+    """C3876: what the confirmation found (its *field*: ``{"state", "words", "by",
+    "decision", "at"}``) and, for a closed incident at intent, its proof (``fixed``, kept only
+    where none is). The incident's state, ``closed_at`` and ``closed_why`` are never changed
+    here: no reopen."""
+    now = time.time() if now is None else float(now)
+    if field not in CONFIRM_FIELDS:
+        raise Refused(f"a confirmation is kept as {' or '.join(CONFIRM_FIELDS)}, not {field!r}")
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        inc[field] = dict(result or {}, at=_iso(now), epoch=now)
+        if fixed and inc.get("state") == "closed" and not inc.get("fixed"):
+            inc["fixed"] = dict(fixed)
+        return inc
+
+    return _mutate(network, change)
+
+
+def want_confirm(network: str, incident_id: str, why: str, now: float = None, *,
+                 again_s: float = 3600.0) -> bool:
+    """The review's finding 2: a STANDING act incident a close would have ended is asked for
+    its confirmation instead (``confirm_wanted`` ``wanted``, *why*), under the store's lock;
+    False when it is not a standing act, one is already asked for or being read, or its last
+    confirmation of the same act ended less than *again_s* ago (so a pass that sees the same
+    clear read again never reads the device again each pass)."""
+    now = time.time() if now is None else float(now)
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        rec = inc.get("confirm_wanted") or {}
+        if inc.get("state") != "standing" or not (inc.get("standing") or {}).get("act"):
+            return False
+        same = rec.get("decision") in (None, "", (inc.get("standing") or {}).get("decision"))
+        if same and (rec.get("state") in ("wanted", "reading")
+                     or now - float(rec.get("epoch") or 0) < float(again_s)):
+            return False
+        inc["confirm_wanted"] = {"state": "wanted", "why": (why or "")[:300], "at": _iso(now),
+                                 "epoch": now,
+                                 "decision": (inc.get("standing") or {}).get("decision") or ""}
+        return True
 
     return _mutate(network, change)
 

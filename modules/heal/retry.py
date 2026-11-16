@@ -21,10 +21,14 @@ its cause still standing) whose newest decision is
   (``now_auto``, `now_auto`, keyed by the Auto confirmation's instant), so it heals with no
   press whichever path turned Auto on, once per confirmation. A would-heal decided in Auto (a
   kind Auto does not fix) is not in it: deciding it again changes nothing.
+- C3870 (the operator, 2026-11-16: "Only 'healed' closes an incident ... Retry: the existing
+  policy, once per trigger"): an act whose outcome was anything but healed, or a healed act
+  whose tail then failed, leaves its incident standing on it (``act`` on its standing record,
+  `act.outcome_on_incident`, `incidents.reopen`): decided again as a can't-fix is, once per
+  trigger, never while the network is halted (recorded as not tried). The act's failure also
+  starts the AI by its own key (`fixit.auto.failures`), once.
 An incident a batch claimed (`heal.batch.claimed_by_batch`: its restore is the batch's, marked
-under the incidents store's lock before the batch turned Auto on) is left to that batch.
-A heal whose act failed closes its incident (`act.py`, `incidents.close`), so no open incident
-stands on one: the act's failure starts the AI by its own key (`fixit.auto.failures`). An
+under the incidents store's lock before the batch turned Auto on) is left to that batch. An
 incident a saved script is firing on now (a ``firing`` track row, the batch's claim included)
 is left alone. Nothing runs while self-healing is not in Auto: nothing is retried then.
 
@@ -49,7 +53,9 @@ no thread of its own.
 its outcome), finished by the decision that takes it (`finish`, whichever process decides),
 and the decision's own row in History, its claim step saying it was a retry and why. A
 switch-on's or a script's retry whose fixes failed is a failure R1 sees (`failures_of`,
-read by `fixit.auto.pending`); a daily retry's never starts the AI.
+read by `fixit.auto.pending`); a daily retry's never starts the AI, nor does the act of a
+heal its decision made (`fixit.auto.failures` leaves out an act whose decision a daily retry
+made; a switch-on's or a script's re-decided heal that fails counts once, as its act).
 """
 
 import logging
@@ -160,6 +166,22 @@ def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tupl
     if inc.get("state") != "standing":
         return "", None
     s = inc.get("standing") or {}
+    if s.get("act"):
+        # C3870: an act's outcome but healed, or a healed act's tail that failed
+        # (`incidents.stand`'s ``act``, `incidents.reopen`), decided again as a can't-fix is,
+        # once per trigger by this retry's keys; never while the network is halted (a failed,
+        # rolled-back or interrupted act halts it, guard 14), where a decision would be
+        # ``halted`` and close it with no proof: recorded as not tried, under the key.
+        from modules.heal import decisions
+        try:
+            halt = decisions.halted(network)
+        except Exception as exc:                      # noqa: BLE001 (an unread halt holds)
+            return "skip", {"guard": 14, "name": "",
+                            "words": f"whether {network} is halted could not be read ({exc})"}
+        if halt.get("id"):
+            return "skip", {"guard": halt.get("guard"), "name": "",
+                            "words": f"{network} is halted: {halt.get('words') or ''}"}
+        return "decide", None
     if s.get("outcome") == "cant_fix":
         return "decide", None
     if s.get("outcome") == "would_heal":
@@ -268,8 +290,11 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
                            words=f"Retried at {_hhmm(now)} UTC: {words}; deciding again")
                 # Back for a fresh decision, as a settled incident is (`incidents.settle`):
                 # its grace's settlement kept, never a second decision path.
+                # An act's standing is kept as ``stood`` (the review, finding 5): a re-decision
+                # that would close it puts it back on that act (`decide._act`).
                 inc.update(state="ready" if inc.get("settled") else "watching",
-                           standing=None, stood=None, claimed=None, retry_pending=rec["id"],
+                           standing=None, stood=s if s.get("act") else None, claimed=None,
+                           retry_pending=rec["id"],
                            updated_at=_iso(now),
                            unsettled={"at": _iso(now), "why": f"tried again: {words}",
                                       "from": f"standing on {s.get('decision') or '?'}"})
@@ -313,7 +338,8 @@ def run_soon(network: str, trigger: str, **kw) -> None:
 
 def daily(network: str, now: float = None) -> dict:
     """The daily retry of *network*, asked on every detect pass (`detect._retry_step`): `run`
-    with ``daily`` only when an incident standing on a can't-fix or a person's hold has not
+    with ``daily`` only when an incident standing on a can't-fix, an act (C3870) or a person's
+    hold has not
     been tried for `DAY_S` (from its recorded retry or decision); otherwise one read of the
     incidents store and nothing else."""
     from modules.fixit.auto import HELD_FOR_A_PERSON
@@ -324,6 +350,7 @@ def daily(network: str, now: float = None) -> dict:
     if got["state"] != "ok" or not any(
             i.get("state") == "standing" and due_daily(i, now)
             and ((i.get("standing") or {}).get("outcome") == "cant_fix"
+                 or (i.get("standing") or {}).get("act")
                  or ((i.get("standing") or {}).get("outcome") == "held"
                      and _guard_of(i.get("standing")) in HELD_FOR_A_PERSON))
             for i in got["incidents"]):

@@ -105,6 +105,8 @@ STATE_WORDS = {"open": "Open", "needs_person": "Needs a person", "fixed": "Fixed
                "cleared": "Cleared", "cancelled": "Cancelled"}
 #: The states in which nothing is left for Mercury or a person to do.
 RESOLVED = ("fixed", "cleared", "cancelled")
+#: C3876: the words of an incident the store closed whose fix nothing confirmed (`status`).
+UNCONFIRMED_WORDS = "Closed, not confirmed"
 #: The fix-it section's states (`fixit.section.STATES`) in which a person's choice is waited
 #: for, each with why the page then needs a person (`status`); and those in which a fix a
 #: person approved is under way or passed, so nobody is needed now.
@@ -456,14 +458,22 @@ def waits_words(incident, entry: dict, decisions: list, why: str) -> str:
     - a hold: the guard and what it read, from the decision's guard;
     - a can't-fix or a halt: the decision's own first sentence;
     - a failed put-back (*why* ``verify_failed``): what it tried and what failed, from the
-      act's own words."""
+      act's own words, or, open on its act (C3870), its outcome in Mercury's words;
+    - an act standing on an outcome that sent nothing, or a tail that failed after Fixed: its
+      standing words (the outcome's words first, `act.STANDING_WORDS`)."""
     inc = incident or {}
+    stood = inc.get("standing") or {}
     if why == "verify_failed":
         ran = acts(entry or {})
         last = ran[-1] if ran else {}
         tried = next((d for d in reversed(decisions or [])
                       if d.get("id") == last.get("decision")), {})
         what = put_back_words(tried.get("units") or [])
+        if stood.get("act") and stood.get("decision") == last.get("decision") \
+                and stood.get("words"):
+            # C3870: open on its act's outcome, said in Mercury's words (`act.STANDING_WORDS`
+            # lead its standing words): "healed configuration; symptom remains: ...".
+            return (f"Tried to {what}: " if what else "Its fix ran: ") + _first(stood["words"])
         failed = _first(last.get("words"))
         if not (what or failed):
             return ""
@@ -652,8 +662,15 @@ def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
         log.error("incident page: why %s waits could not be said: %s",
                   (incident or {}).get("id"), exc)
         reason = ""
-    return {"state": state, "words": STATE_WORDS[state], "needs": state == "needs_person",
-            "why": why, "reason": reason}
+    words = STATE_WORDS[state]
+    if (incident or {}).get("state") == "closed" and state not in RESOLVED:
+        # C3876: the store closed it and nothing confirmed its fix (a past close with no
+        # proof): the header says what it is, never "Open" nor "Fixed" (the Incidents list's
+        # "Closed, not confirmed").
+        words = UNCONFIRMED_WORDS
+    return {"state": state, "words": words, "needs": state == "needs_person",
+            "why": why, "reason": reason,
+            "closed_unconfirmed": words == UNCONFIRMED_WORDS}
 
 
 # ── The timeline ───────────────────────────────────────────────────────────────────────────
@@ -1333,7 +1350,10 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     tl = timeline(found["incident"], entry, decisions, network)
     # Resolved: nothing is left for Mercury or a person to do. An incident whose heal ended
     # without a passed verify is closed in its own store and still needs a person.
-    resolved = state_of(found["incident"], entry, decisions) in RESOLVED
+    rule = state_of(found["incident"], entry, decisions)
+    # C3876: closed in the store is resolved here too, as the Incidents list's tabs count it
+    # (a past close with no proof is "Closed, not confirmed", never Fixed, never Open).
+    resolved = rule in RESOLVED or inc.get("state") == "closed"
     # The AI troubleshooting section (board recurring-fixes v2; `modules/fixit/section.py`),
     # drawn with no AI call: a read of the incident's troubleshooting record, the operations'
     # run records, the record of AI calls and the settings. Resolved, it is read-only. Read
@@ -1341,8 +1361,8 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     closed = _epoch(tl["closed"]) if tl["closed"] else None
     fixit = section.drawn(network, found,
                           resolved=(closed or time.time()) if resolved else None,
-                          ended=state_of(found["incident"], entry, decisions) if resolved
-                          else "")
+                          ended=(rule if rule in RESOLVED else UNCONFIRMED_WORDS.lower())
+                          if resolved else "")
     # C3862: a heal act running on it is Mercury working (`fix_running`), as the section says
     # it; asked here too for a section drawn without its record (no device identity known).
     heal = {} if resolved or fixit.get("working") else fix_running(network, found)
@@ -1417,9 +1437,9 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     model = dict(
         base, title=title(found["incident"], entry, decisions, state, tl["who"]),
         state=state, state_words=st["words"],
-        state_kind={"open": "info", "fixed": "ok",
-                    "needs_person": "danger" if sev["kind"] == "danger" else "warn"}.get(
-                        state, "muted"),
+        state_kind="warn" if st.get("closed_unconfirmed") else {
+            "open": "info", "fixed": "ok",
+            "needs_person": "danger" if sev["kind"] == "danger" else "warn"}.get(state, "muted"),
         # Resolved as the Incidents list counts it (its state, `incidents_list`): an incident the
         # AI's plan fixed is closed there, so its breadcrumb says Closed (the operator, 2026-11-16).
         severity=sev, device=device, resolved=resolved or state in RESOLVED,

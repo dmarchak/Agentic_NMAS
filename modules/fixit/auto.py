@@ -14,19 +14,27 @@ for the incident's kind, read from its own record, each with its own key (`key_o
   ``decision:<incident>``, ONE per incident however often a standing incident is judged again
   (C2813: a re-judged standing incident is the same failure, never a new one that spends
   again);
-- the heal's decision is held by a guard a PERSON resolves (`HELD_FOR_A_PERSON`: guards 4, 6
-  and 9, held with no time to check again, `heal.guards`; e.g. guard 4, the device's golden
+- the heal's decision is held by a guard a PERSON resolves (`HELD_FOR_A_PERSON`: guards 4 and
+  6, held with no time to check again, `heal.guards`; e.g. guard 4, the device's golden
   departs from its intent): no fix Mercury can run alone (the operator, 2026-11-15: "count held
   incidents (e.g. [a lab router]'s guard-4 hold) as 'no fix Mercury can run alone' ... The AI
   may only diagnose and propose within its catalog; where the fix needs a person's approval (a
   template
   bring-in), it says so as its finding and offers Hand over"): ``held:<incident>``, ONE per
-  incident. A guard that WAITS (the grace, planned work, the topology, a person working: held
-  with a time to check again) is no failure (R2: "a guard or hold working as designed is not a
+  incident. A guard that WAITS (guard 3, planned work: held with a time to check again) is no
+  failure (R2: "a guard or hold working as designed is not a
   failure"): it starts nothing, nor takes a key, so a later can't-fix or hold still does;
-- the heal's act ended without a verified fix (`ACT_FAILURES`: its symptom remained, it rolled
-  back, it failed after sending, it was refused before sending, it was interrupted):
-  ``act:<decision>``, one per act;
+- the heal's act ended without a verified fix (`ACT_FAILURES`: its symptom remained, it could
+  not be confirmed (partial), it rolled back, it failed after sending, it was refused before
+  sending, it was interrupted): ``act:<decision>``, one per act. Its incident stays open,
+  standing on the act (C3870, the operator, 2026-11-16: "Only 'healed' closes an incident";
+  `heal.act.outcome_on_incident`), so this reader, which reads open incidents only, sees it;
+- the heal's act healed and verified, and a step of its tail after Fixed failed (the save to
+  startup, the golden commit, or the read against the new golden: `heal.act.tail_of`'s flag):
+  ``tail:<decision>``, its incident reopened by the tail (`heal.act.reopen_on_tail`). Before
+  any AI call on an act's or a tail's failure, Mercury reads the device itself and closes the
+  incident on that read where it is at intent and its symptom gone
+  (`heal.act.confirm_before_ai`, asked by `heal_notice._investigation`);
 - a plan a person approved on the incident's page stopped at a step or failed (the R1 flow's
   step 7: "step 2 runs again with that failure in the evidence"): ``run:<plan run id>``;
 - a retry of the incident's fixes that failed again (`heal.retry.failures_of`, the operator,
@@ -67,6 +75,10 @@ import calendar
 import logging
 import time
 
+# The one name of a healed act whose tail then failed: its own failure, keyed
+# ``tail:<decision>`` (`failures`), from the act row whose tail record flagged.
+from modules.heal.act import TAIL_FAILED
+
 log = logging.getLogger(__name__)
 
 #: The background feature (`background.FEATURES`) and its finding kind.
@@ -74,14 +86,19 @@ FEATURE = "fixit_auto"
 #: The decision outcomes after which no code fix of Mercury's exists for the problem (can't
 #: fix, `heal.decisions.OUTCOMES`). A ``held`` decision is one only by `HELD_FOR_A_PERSON`.
 DECISION_FAILURES = ("cant_fix",)
-#: The guards whose hold a person resolves (`heal.guards`' docstring: "``held`` without
-#: *until*: a person resolves it (4, 6, 9)"; tests/test_fixit_catch_up.py holds it against the
-#: guards themselves): a decision held by one is no fix Mercury can run alone. A guard held
-#: WITH a time to check again (3, 5, 7) waits as designed and is never a failure.
-HELD_FOR_A_PERSON = (4, 6, 9)
-#: The act outcomes that are no verified fix (`heal.act.OUTCOMES`; ``healed`` and ``partial``
-#: are not failures: partial healed and says what it could not show).
-ACT_FAILURES = ("symptom_remains", "rolled_back", "failed", "refused", "interrupted")
+#: The guards whose hold is a person's decision (the operator, 2026-11-16: only guards 4 and 6;
+#: `heal.guards`): a decision held by one is no fix Mercury can run alone. Only guard 3,
+#: planned work, holds WITH a time to check again: it waits as designed and is never a failure.
+HELD_FOR_A_PERSON = (4, 6)
+#: The act outcomes that are no verified fix (`heal.act.OUTCOMES`; only ``healed`` is one).
+#: ``partial`` is one since C3870 (the operator, 2026-11-16: "Only 'healed' closes an
+#: incident"): Mercury's fix ran and could not be confirmed, and its incident stays open. A
+#: ``refused`` act refused by a guard that waits is not one (`heal.act.refusal_waits`, R2).
+ACT_FAILURES = ("symptom_remains", "partial", "rolled_back", "failed", "refused",
+                "interrupted")
+#: Each tail step in the words a failure's reason names it by (`heal.act.TAIL_STEPS`).
+TAIL_STEP_WORDS = {"saved": "the save to startup", "commit": "the golden commit",
+                   "golden": "the read against its new golden"}
 #: A plan run's outcomes that are a failure of an approved plan (`plan_engine.RECORD_STATE`).
 PLAN_FAILURES = ("stopped", "failed")
 #: The incident states in which a failure may still start an investigation.
@@ -159,8 +176,8 @@ def eligible(failure: dict, sw: dict, heal: dict = None) -> str:
 
 
 def key_of(kind: str, ident: str) -> str:
-    """A failure's key: ``decision:<incident>``, ``held:<incident>``, ``act:<decision>`` or
-    ``run:<run id>`` (the
+    """A failure's key: ``decision:<incident>``, ``held:<incident>``, ``act:<decision>``,
+    ``tail:<decision>`` or ``run:<run id>`` (the
     shape a background trigger's finding id takes: no underscore, no space)."""
     return f"{kind}:{ident}"
 
@@ -169,26 +186,44 @@ def failures(network: str, *, open_ids=None) -> dict:
     """*network*'s failures of Mercury's fix, oldest first (the module's docstring):
     ``{"state", "failures", "error"}``, each ``{"key", "kind", "id", "incident", "device",
     "outcome", "epoch", "at"}``; *open_ids*, when given, keeps only those incidents'. A step log
-    that cannot be read gives none, said."""
-    from modules.heal import steplog
+    that cannot be read gives none, said.
+
+    Not failures (the review, finding 4): an act whose decision a DAILY retry made (its
+    incident's ``retries``, `heal.retry.finish`'s fix ``decision``: "a daily retry's never starts
+    the AI"); and a ``refused`` act refused by a guard that waits (`heal.act.refusal_waits`,
+    R2). An ``interrupted`` row (`interrupted.reap`'s, `steplog.record_interrupted`) is the act
+    failure it is (finding 6)."""
+    from modules.heal import act, incidents, steplog
 
     got = steplog.read(network)
     if got["state"] == "unreadable":
         return {"state": "unreadable", "failures": [], "error": got["error"]}
+    daily = {x.get("decision") for i in incidents.read(network).get("incidents") or []
+             for rt in i.get("retries") or [] if rt.get("trigger") == "daily"
+             for x in rt.get("fixes") or [] if x.get("fix") == "decision" and x.get("decision")}
     seen, out = set(), []
     for r in got["rows"]:
         inc = r.get("incident") or ""
         if not inc or (open_ids is not None and inc not in open_ids):
             continue
         row, outcome = r.get("row"), r.get("outcome") or ""
+        if row == "interrupted":
+            outcome = "interrupted"
         guard = r.get("guard") if isinstance(r.get("guard"), dict) else {}
+        if row in ("act", "interrupted") and r.get("decision") in daily:
+            continue
         if row == "decision" and outcome in DECISION_FAILURES:
             kind, ident = "decision", inc
         elif (row == "decision" and outcome == "held"
               and guard.get("guard") in HELD_FOR_A_PERSON):
             kind, ident = "held", inc
-        elif row == "act" and outcome in ACT_FAILURES and r.get("decision"):
+        elif (row in ("act", "interrupted") and outcome in ACT_FAILURES and r.get("decision")
+              and not act.refusal_waits(r)):
             kind, ident = "act", r["decision"]
+        elif (row == "act" and outcome == "healed" and r.get("decision")
+              and ((r.get("records") or {}).get("tail") or {}).get("state") == "flagged"):
+            # C3870: verified, and a step after it failed (its tail's second ``act`` row).
+            kind, ident, outcome = "tail", r["decision"], TAIL_FAILED
         else:
             continue
         key = key_of(kind, ident)
@@ -196,12 +231,16 @@ def failures(network: str, *, open_ids=None) -> dict:
             continue
         seen.add(key)
         epoch = float(r.get("epoch") or 0)
+        tail = ((r.get("records") or {}).get("tail") or {}) if kind == "tail" else {}
+        failed = act.tail_failed_step(tail)
         out.append({"key": key, "kind": kind, "id": ident, "incident": inc,
                     "device": r.get("device") or "", "outcome": outcome, "epoch": epoch,
                     "at": r.get("at") or (_iso(epoch) if epoch else ""),
                     "fix_kind": r.get("kind") or "",
                     **({"guard": {k: guard.get(k) for k in ("guard", "name", "words")}}
-                       if kind == "held" else {})})
+                       if kind == "held" else {}),
+                    **({"step": TAIL_STEP_WORDS.get(failed, failed or "a step after it"),
+                        "flag": tail.get("flag") or ""} if kind == "tail" else {})})
     return {"state": "ok", "failures": out, "error": ""}
 
 
@@ -343,6 +382,10 @@ def pending(network: str) -> dict:
 WHY = {("decision", "cant_fix"): ("no_fix", "Mercury has no fix of its own for it"),
        ("decision", "no_code_fix"): ("no_fix", "no code fix exists for a lost telemetry stream"),
        ("act", "symptom_remains"): ("failed", "Mercury's fix ran and the problem remained"),
+       # C3870 (the operator, 2026-11-16): its incident stays open on these too.
+       ("act", "partial"): ("failed", "Mercury's fix ran and could not be confirmed"),
+       ("tail", TAIL_FAILED): ("failed", "Mercury's fix verified, and a step after it failed "
+                                         "({step})"),
        ("act", "rolled_back"): ("failed", "Mercury's fix was rolled back"),
        ("act", "failed"): ("failed", "Mercury's fix failed"),
        ("act", "refused"): ("failed", "Mercury's fix was refused before it sent anything"),
@@ -391,13 +434,17 @@ def catch_up(network: str, now: float = None, bound_s: float = None) -> dict:
         asked = max((float(ln.get("epoch") or 0) for ln in rec["lines"]
                      if ("start" in ln and ln.get("state") == "started")
                      or ("proposal" in ln and ln.get("source") == "ai")), default=None)
-        have = {ln.get("start") for ln in rec["lines"] if "start" in ln}
+        # C3872: only a start that started takes its key; a refused one is listed again.
+        have = {ln.get("start") for ln in rec["lines"] if "start" in ln
+                and ln.get("state") == "started"}
         new = [f for f in p["failures"] if f["key"] not in have
                and (asked is None or f["epoch"] > asked)]
         if not new or (bound_s and in_flight(inc, at, bound_s)):
             continue
         f = new[0]
         kind, words = WHY.get((f["kind"], f["outcome"]), ("failed", "Mercury's fix failed"))
+        # A tail's failure names its step (`failures`' ``step``).
+        words = words.replace("{step}", f.get("step") or "a step after it")
         if f["kind"] == "held":
             g = f.get("guard") or {}
             kind, words = "held", (f"held by guard {g.get('guard')}: "
@@ -409,10 +456,12 @@ def catch_up(network: str, now: float = None, bound_s: float = None) -> dict:
 
 
 def taken(incident) -> set:
-    """The failure keys *incident*'s record has taken (its start lines)."""
+    """The failure keys *incident*'s record has taken: its ``started`` start lines alone
+    (C3872: a refused start, capped or off, records its refusal and spends no key)."""
     from modules.fixit import incident as F
 
-    return {ln.get("start") for ln in F.starts(incident)["starts"]}
+    return {ln.get("start") for ln in F.starts(incident)["starts"]
+            if ln.get("state") == "started"}
 
 
 def in_flight(incident, now: float, bound_s: float) -> bool:

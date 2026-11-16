@@ -200,7 +200,8 @@ a non-expert approves, and the checks that prove it.
   records what was chosen, and starts on those within the caps; after that every new failure
   starts by itself. An incident left unticked keeps one "Start AI troubleshooting" button for
   a person's press. **A hold a person must resolve counts as no fix Mercury can run alone**
-  (the operator, 2026-11-15; a guard-4, 6 or 9 hold): the AI diagnoses and proposes within
+  (the operator, 2026-11-15; a guard-4 or guard-6 hold, 6 for configuration departures only;
+  guards 5, 7, 9 and 10 hold nothing since the operator's decision of 2026-11-16): the AI diagnoses and proposes within
   its catalog, and where the fix needs a person's approval (a template bring-in) it says so
   as its finding and offers Hand over. **In every mode of self-healing** (the operator, 2026-11-15: "the AI only
   proposes, and nothing runs without a person's approval, so it investigates in Dry run

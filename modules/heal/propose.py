@@ -42,7 +42,9 @@ access``), through H4's parts (`apply_approved`, `STEPS`):
    back: nothing is left half applied. A reset made cannot be undone, so it is kept whatever
    its verify says, and the symptom decides the outcome;
 8. **saved, golden, symptom** and **record** as a heal's (`act._judge`): the golden re-check,
-   the symptom read once the device is released, `decisions.applied`, `incidents.close`, the
+   the symptom read once the device is released, `decisions.applied`,
+   `act.outcome_on_incident` (healed closes the incident; any other outcome leaves it
+   standing, said: C3870), the
    change record and the NetBox journal entry naming the person (H6), and the step log's
    ``started`` row before anything is sent and its ``act`` row at the end, ``by`` the person.
 
@@ -413,7 +415,7 @@ def approve(network: str, decision_id: str, *, confirmed_hash: str, reason: str,
     """Approve one proposal as previewed and start its act as a job: ``{"ok", "network",
     "decision", "device", "job", "hash"}``. Raises `NotAPerson` or `Refused` with nothing taken
     or sent (the module's docstring); *starter* is `start` unless given."""
-    from modules.heal import decisions, incidents, interrupted
+    from modules.heal import decisions, interrupted
 
     now = time.time() if now is None else float(now)
     _person(actor, actor_verified, person, "approving a self-healing proposal")
@@ -455,8 +457,8 @@ def approve(network: str, decision_id: str, *, confirmed_hash: str, reason: str,
                   exc)
         try:
             decisions.applied(network, decision_id, "refused", by=actor, words=words, now=now)
-            incidents.close(network, taken.get("incident"),
-                            f"refused: {words} (decision {decision_id})", now)
+            # Refused is no fix: its incident stands on it, said (C3870).
+            act.outcome_on_incident(network, taken, "refused", words)
         finally:
             interrupted.release(network, decision_id)
         raise Refused(f"not approved: {words}") from None
@@ -532,7 +534,7 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     "report", "records"}``."""
     from modules import pipeline
     from modules.drift_check import departure, drift_diff
-    from modules.heal import decide, decisions, incidents, kinds, steplog
+    from modules.heal import decide, decisions, kinds, steplog
     from modules.nsot import authorisation, privileged
     from modules.redact import redact_text
 
@@ -555,25 +557,23 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     def finish(outcome, words, *, sent=False, report=None):
         step("record", outcome, f"{act.OUTCOME_WORDS[outcome]}: {words}")
         try:
-            decisions.applied(network, decision["id"], outcome, by=by, words=words, now=now)
+            # C3871: stamped when the outcome is recorded, never the approval's start.
+            at = time.time()
+            decisions.applied(network, decision["id"], outcome, by=by, words=words, now=at)
             if outcome == "failed":
                 decisions.halt(network, guard=14, name="a heal sent and not verified",
                                words=f"the approved heal of {device} ({decision['id']}) failed "
                                      f"after sending and was not rolled back: {words}",
                                operands={"decision": decision["id"], "device": device},
-                               now=now)
+                               now=at)
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
-        try:
-            # Its verify kept on the close, as a heal's act keeps it (`act.verified_of`): the
-            # proof the incident's Fixed card draws (the operator, 2026-11-16).
-            incidents.close(network, decision["incident"],
-                            f"{outcome}: {words} (decision {decision['id']})", now,
-                            fixed=act.verified_of(decision, steps) if outcome == "healed"
-                            else None)
-        except Exception as exc:
-            log.error("heal: %s's incident %s was not closed: %s", network,
-                      decision.get("incident"), exc)
+        # Its verify kept on the close, as a heal's act keeps it (`act.verified_of`): the proof
+        # the incident's Fixed card draws (the operator, 2026-11-16); any outcome but healed
+        # leaves it standing, said (C3870), stamped when recorded (C3871).
+        act.outcome_on_incident(network, decision, outcome, words,
+                                fixed=act.verified_of(decision, steps) if outcome == "healed"
+                                else None)
         log.info("heal: %s on %s, approved by %s: %s: %s", network, device, by, outcome, words)
         result = {"decision": decision["id"], "device": device, "outcome": outcome,
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report}

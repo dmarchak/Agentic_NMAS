@@ -22,9 +22,10 @@ is probed before the decisions are read again, so a heal that finished between t
 after its own operation, so a person is left only the decision. It records the outcome
 ``interrupted`` (`decisions.applied`), with the last step the step log holds; when the act had
 written ``started`` (its program may have been sent, and nothing verified or rolled it back),
-it halts the network (guard 14, as a send neither verified nor rolled back does); it closes the
-incident, so the device may take a new one; and it writes the ``interrupted`` row to the step
-log. Needs attention raises it (`attention.heal_source`, ``heal``/``interrupted``) until a later
+it halts the network (guard 14, as a send neither verified nor rolled back does); it leaves the
+incident open, standing on the interrupted act (C3870: only healed closes an incident), so R1
+and the retry policy see it and a later trigger on the device joins it; and it writes the
+``interrupted`` row to the step log. Needs attention raises it (`attention.heal_source`, ``heal``/``interrupted``) until a later
 decision finds the device at intent, or a person acknowledges it with what they found.
 
 **H5's approved proposal** (`modules/heal/propose.py`) holds the same mark (`hold`, `release`)
@@ -233,7 +234,7 @@ def reap(network: str, *, now: float = None, by: str = "heal to intent") -> dict
     [{"decision", "device", "halted", "words"}], "failed": [words]}``. Under the decisions'
     reap lock, across processes, each checked again inside it, so two passes record one."""
     from modules import filestore
-    from modules.heal import decisions, incidents, steplog
+    from modules.heal import act, decisions, steplog
 
     now = time.time() if now is None else float(now)
     out = {"reaped": [], "failed": []}
@@ -260,8 +261,8 @@ def reap(network: str, *, now: float = None, by: str = "heal to intent") -> dict
                                                            "have sent",
                                    words=said, operands={"decision": d["id"],
                                                          "device": d.get("device")}, now=now)
-                incidents.close(network, d.get("incident"), f"{OUTCOME}: {said} (decision "
-                                                            f"{d['id']})", now)
+                # Interrupted is no fix: its incident stands on it, said (C3870).
+                act.outcome_on_incident(network, d, OUTCOME, said)
             except Exception as exc:
                 log.error("heal: %s's interrupted heal %s was not recorded: %s", network,
                           d["id"], exc)

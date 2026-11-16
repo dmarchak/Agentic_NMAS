@@ -5,11 +5,16 @@ operands it compared. A guard that cannot be read applies: it fails closed, neve
 
 *outcome* is what the decision does when the guard applies:
 - ``off``: self-healing is not on for the network (guards 1, 2);
-- ``halted``: the network's policy is halted, or this decision halts it (2, 10, 11, 14);
-- ``held`` with *until*: checked again after it (3, 5, 7): the incident goes back to watching,
-  and its grace period restarts there;
-- ``held`` without *until*: a person resolves it (4, 6, 9);
+- ``halted``: the network's policy is halted, or this decision halts it (2, 11 where the
+  network set ``heal_fight_stop``, 14);
+- ``held`` with *until*: checked again after it (3, planned work, alone): the incident goes
+  back to watching, and its grace period restarts there;
+- ``held`` without *until*: a person resolves it (4; 6, configuration departures only);
 - ``cant_fix``: nothing is sent, the reason named (8, 12).
+**No time-based holds** (the operator, 2026-11-16: "Remove all time-based holds"): guards 5
+(the topology), 7 (a person working), 9 and 10 (the rates) are kept here and called by nothing,
+so they hold nothing; `heal.findings`' recurrence and fight findings replace them. The decision
+store unread still stops a decision, named as guard 10 (`decide._decide_one`; C3878).
 Guard 13 (the tier) is the decision's last step (`decide._outcome`): what remains is healed,
 proposed or can't be fixed by its kinds' tiers.
 

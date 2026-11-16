@@ -138,9 +138,12 @@ CHOICES = ("cancel", "handover", "save", "deny", "approve")
 #: (``auto``, R1) or by a person's press (``person``: Start AI troubleshooting, Ask the AI
 #: again, Modify). Its states: ``started`` (the AI was asked), ``capped`` (a cap would have
 #: been passed: nothing was asked, *which* names the cap), ``off`` (the installation's choice
-#: is off: nothing was asked) and ``failed`` (it could not be asked, *words* say why).
+#: is off: nothing was asked), ``failed`` (it could not be asked, *words* say why) and
+#: ``closed`` (C3870: Mercury's own read before the AI found it fixed and closed the incident on
+#: that read, the key's start ending there with nothing asked; *words* "closed by confirm
+#: read: <proof>").
 START_TRIGGERS = ("auto", "person")
-START_STATES = ("started", "capped", "off", "failed")
+START_STATES = ("started", "capped", "off", "failed", "closed")
 #: The most steps a plan's proposal line keeps (`plan_engine.MOST_STEPS`'s figure).
 MOST_STEPS = 10
 #: The line kinds, exactly one per line.
@@ -985,7 +988,7 @@ def starts(incident: Incident) -> dict:
 def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
                 failure: dict = None, job: str = "", words: str = "", which: str = "",
                 by: str = "", verified: str = "", now: float = None,
-                busy_s: float = None):
+                busy_s: float = None, basis: str = ""):
     """Take *key*, one failure's own record (``decision:<id>:<outcome>`` or ``run:<id>``,
     `modules/fixit/auto.py`), for its ONE investigation: the ``start`` line as stored, or None
     when a start line with *key* is already in the record. Under the record's lock across
@@ -994,6 +997,14 @@ def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
     names (``{"kind", "id", "outcome", "at"}``); *which* the cap a ``capped`` start was stopped
     by (``incident`` or ``day``); a person's start gives *by* and *verified*. Starts nothing:
     the caller asks the AI after it holds the line.
+
+    **A refused start spends no key** (C3872, the operator, 2026-11-16: "A refused start must
+    not spend its trigger"): only a ``started`` line takes *key*. A refusal (``capped``,
+    ``off``) is recorded as its own line under *key*, so the card says which cap, and a later
+    start of the same key is still taken; an automatic refusal (*trigger* ``auto``) whose
+    *basis* (what refused it: the cap's amount and source, its day, or the mode's words) and
+    *state* and *which* are those of the key's newest line is not written again, and None is
+    returned, so the automatic pass asks again only when what refused it changed.
 
     **One investigation at a time, atomically** (*busy_s*, the investigation's bound): a
     ``started`` claim is refused, under the same lock, while the record's newest start is
@@ -1016,8 +1027,22 @@ def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
     taken = []
 
     def build(lines):
-        if any(ln.get("start") == key for ln in lines if "start" in ln):
+        mine = [ln for ln in lines if "start" in ln and ln.get("start") == key]
+        if state == "closed":
+            # The end of a started key that Mercury's own read closed (C3870's confirm-first):
+            # written once, under the key it ends, and only after its start.
+            if not any(ln.get("state") == "started" for ln in mine) or any(
+                    ln.get("state") == "closed" for ln in mine):
+                taken.append("nothing to end")
+                return None
+        elif any(ln.get("state") == "started" for ln in mine):
             taken.append(True)
+            return None
+        if (state != "started" and trigger == "auto" and mine
+                and mine[-1].get("state") == state
+                and str(mine[-1].get("which") or "") == str(which or "")
+                and str(mine[-1].get("basis") or "") == str(basis or "")):
+            taken.append("same refusal")
             return None
         if state == "started" and busy_s:
             last = max((n for n, ln in enumerate(lines) if "start" in ln), default=None)
@@ -1030,7 +1055,8 @@ def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
                      "failure": dict(failure or {}), "job": str(job or ""),
                      "words": " ".join(str(words or "").split())[:WORDS_CHARS],
                      "which": str(which or ""), "at": _iso(at), "epoch": at},
-                    **({"by": by, "verified": verified} if by else {}))
+                    **({"by": by, "verified": verified} if by else {}),
+                    **({"basis": str(basis)[:200]} if basis else {}))
 
     line = _append_unless(incident, build)
     if taken:

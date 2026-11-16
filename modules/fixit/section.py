@@ -458,7 +458,9 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     events += [(float(ln["epoch"]), 1 + n, _line_kind(ln), ln)
                for n, ln in enumerate(rec["lines"])
                if _line_kind(ln) not in ("start", "save")
-               or ln.get("state") in ("started", "capped", "failed")]
+               # C3870: a start that Mercury's own read closed ends there (``closed``), so
+               # the card never reads "investigating" after it.
+               or ln.get("state") in ("started", "capped", "failed", "closed")]
     newest = max(events, key=lambda e: (e[0], e[1])) if events else None
     if resolved is not None:
         out["state"] = "resolved"
@@ -754,7 +756,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     # network's switch is off, or the failure was recorded before it was turned on), or one
     # whose automatic start was taken with no AI call (the mode off, hosted AI off); never
     # once the AI was asked or an automatic start went.
-    went = [s for s in starts if s.get("state") in ("started", "capped")]
+    # C3872: a refused start (capped, off) took nothing, so only a start that started, or one
+    # Mercury's own read closed, counts as gone.
+    went = [s for s in starts if s.get("state") in ("started", "closed")]
     taken_off = any(s.get("state") in ("off", "failed") for s in starts)
     start_offered = (not done and not asked and not went and state in ("ready", "stopped")
                      and (legacy["offered"] or taken_off))

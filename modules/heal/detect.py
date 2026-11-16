@@ -511,7 +511,8 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
         trig = decide.judged_triggers(inc)
         if _fixed(network, inc, trig, out, now, by):
             continue
-        port = _port_clear(network, inc, out, now, by)
+        act_standing = bool((inc.get("standing") or {}).get("act"))
+        port = None if act_standing else _port_clear(network, inc, out, now, by)
         if port is not None:
             continue                              # judged on its device read
         try:
@@ -521,6 +522,14 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
                       exc)
             continue
         if state != "gone":
+            continue
+        if act_standing:
+            # The review's finding 2: an incident a heal could not confirm ends only with
+            # proof: its symptom read gone asks for Mercury's confirmation read instead.
+            from modules.heal import act
+            act.request_confirm(network, inc["id"], (
+                f"every symptom {inc['id']} named read gone from its store at "
+                f"{decide._hhmm(now)} UTC"))
             continue
         d = decide.end_standing(
             network, inc["id"],
@@ -805,6 +814,15 @@ def _retry_step() -> None:
             retry.now_auto(name)
         except Exception as exc:
             log.error("heal: %s's would-heal catch-up failed: %s: %s", name,
+                      type(exc).__name__, exc)
+        try:
+            # C3876: an incident closed on an act outcome but healed, with no proof, confirmed
+            # once by Mercury's own read (`act.confirm_closed`, on its own thread; taken under
+            # the incidents store's lock, so never twice). One store read when there is none.
+            from modules.heal import act
+            act.confirm_closed_soon(name)
+        except Exception as exc:
+            log.error("heal: %s's closed incidents were not confirmed: %s: %s", name,
                       type(exc).__name__, exc)
 
 

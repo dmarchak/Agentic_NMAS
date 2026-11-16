@@ -1001,7 +1001,8 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
                  "Nothing was sent")
         decisions.take(network, d["id"], by=by, now=now)
         decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
-        incidents.close(network, d["incident"], f"refused: {words} (decision {d['id']})", now)
+        # Refused is no fix: its incident stands on it, said (C3870, `act.outcome_on_incident`).
+        act.outcome_on_incident(network, d, "refused", words)
         return {"device": device, "outcome": "refused", "decision": d["id"], "words": words}
     try:
         interrupted.hold(network, d["id"], device, by)
