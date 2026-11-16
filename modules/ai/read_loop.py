@@ -442,6 +442,10 @@ class ReadFamily:
     #: Told of each round of reads before it is sent (``step(allowed_verdicts)``), in the
     #: caller's own thread, so its job can say what it is reading (board R5's screen 3).
     step: Optional[Callable] = field(default=None, repr=False, compare=False)
+    #: One device's several reads in one session and one hold (the operator, 2026-11-16:
+    #: "any further reads the AI asks for run in parallel"): ``run_many([(op, args, requests),
+    #: ...], scope) -> [answer or Exception, ...]``, in order; None runs them one by one.
+    run_many: Optional[Callable] = field(default=None, repr=False, compare=False)
     by_name: dict = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -960,21 +964,33 @@ def _turns(family: ReadFamily, allowed: list) -> list:
     return turns
 
 
-def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
+def _reused(family: ReadFamily, v: dict, reuse: dict):
+    """The answer *reuse* holds for the allowed verdict *v* (``{(device, request): answer}``:
+    a read of the same command on the same device Mercury made seconds before), or None."""
+    reqs = list(v.get("requests") or [])
+    device = device_of(family, v)
+    return reuse.get((device, reqs[0])) if device and len(reqs) == 1 else None
+
+
+def run_reads(family: ReadFamily, verdicts: list, scope: dict = None, reuse: dict = None) -> list:
     """The allowed *verdicts* run, each handed exactly its rendered requests; every verdict back
     as its read record, in order: run (its masked, bounded answer), refused (as judged, never
-    run) or failed (said).
+    run) or failed (said). *reuse* (``{(device, request): answer}``) answers a verdict whose one
+    request it holds without running it (the caller states how young its answers are).
 
-    **One device's reads run one after another, in the pass's order** (C3422): each takes the
-    device's one-operation hold (`device_ops`, through the reads engine) after the last has
-    released it, so a pass's own reads of one device never refuse each other. Reads of
-    different devices, and reads that reach no device (`device_of`), run at once
-    (`fanout.read_each`, at most the family's limit). A device another operation holds is
-    still refused by name, never waited for."""
+    **One device's reads share one hold** (C3422): with the family's `ReadFamily.run_many`,
+    one session asks them all, in the pass's order, under the device's one-operation hold;
+    without it each takes the hold after the last released it. Either way a pass's own reads
+    of one device never refuse each other. Reads of different devices, and reads that reach no
+    device (`device_of`), run at once (`fanout.read_each`, at most the family's limit). A
+    device another operation holds is still refused by name, never waited for."""
     from modules import fanout, redact
 
     scope = dict(scope or {})
-    allowed = [v for v in verdicts if v["verdict"] == "allowed"]
+    reuse = dict(reuse or {})
+    kept = {id(v): a for v in verdicts if v["verdict"] == "allowed"
+            for a in [_reused(family, v, reuse)] if a is not None}
+    allowed = [v for v in verdicts if v["verdict"] == "allowed" and id(v) not in kept]
     if family.step and allowed:
         try:
             family.step(allowed)
@@ -985,8 +1001,16 @@ def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
         return family.run(v["op"], dict(v["args"]), list(v["requests"]), scope)
 
     def in_turn(turn):
-        # One device's reads, one after another: the hold is one operation's at a time, so
-        # reads of one device at once refused all but one (C3422); never across devices.
+        # One device's reads: in one session when the family can (`run_many`), else one after
+        # another, the hold being one operation's at a time (C3422); never across devices.
+        if family.run_many is not None and len(turn) > 1:
+            try:
+                got = family.run_many([(allowed[i]["op"], dict(allowed[i]["args"]),
+                                        list(allowed[i]["requests"])) for i in turn], scope)
+                return [fanout.Failed(a) if isinstance(a, BaseException) else a for a in got]
+            except Exception as exc:                    # noqa: BLE001 (one by one instead)
+                log.warning("read loop %s: one session for %d reads failed (%s); one by one",
+                            family.name, len(turn), exc)
         out = []
         for i in turn:
             try:
@@ -999,7 +1023,7 @@ def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
     results = [None] * len(allowed)
     for turn, got in zip(turns, fanout.read_each(in_turn, turns,
                                                  name=f"read_loop.{family.name}",
-                                                 max_workers=family.limit)):
+                                                 max_workers=family.limit) if turns else ()):
         for i, answer in zip(turn, [got] * len(turn) if isinstance(got, fanout.Failed)
                              else got):
             results[i] = answer
@@ -1010,7 +1034,7 @@ def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
         if v["verdict"] != "allowed":
             out.append(dict(v))
             continue
-        answer = next(got)
+        answer = kept[id(v)] if id(v) in kept else next(got)
         if isinstance(answer, fanout.Failed):
             out.append(dict(v, verdict="failed", reason=redact.redact_egress(
                 f"the read failed: {answer}"[:TEXT_MAX], values)))
@@ -1202,10 +1226,34 @@ def second_request(feature: LoopFeature, data: dict, context: dict, records: lis
     return prompt, schema, parts, dict(ctx, reads_format=READS_FORMAT)
 
 
+def _pregathered(family: ReadFamily, feature: LoopFeature, out: dict, requests, reuse, *,
+                 network: str, scope, subject, trigger) -> list:
+    """`run`'s *pregather*: judged, run (*reuse* first), fitted to the feature's room and
+    logged before the first call; the records to attach, or ``[]`` when none ran or the send
+    log could not be written (then nothing of them is sent, said in the log)."""
+    records = run_reads(family, check(family, list(requests), network=network, scope=scope),
+                        scope, reuse=reuse)
+    # A standard read the check refused is Mercury's, never the model's: left out (it is no
+    # missing capability the model asked for), the rest numbered read:1 on.
+    for r in records:
+        if r["verdict"] == "refused":
+            log.info("read loop %s: a standard read was refused: %s", family.name, r["reason"])
+    records = [dict(r, id=f"read:{n}") for n, r in
+               enumerate((r for r in records if r["verdict"] != "refused"), 1)]
+    if not any(r["verdict"] == "run" for r in records):
+        return []
+    if feature.read_room:
+        _within_room(records, feature.read_room, records)
+    if _log_sending(out, family, feature, records, network=network, subject=subject,
+                    trigger=trigger, asking_call=""):
+        return []
+    return records
+
+
 def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str, data: dict,
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
         scope: dict = None, actable=(), send=None, today: str = None,
-        reads_context: dict = None) -> dict:
+        reads_context: dict = None, pregather=(), reuse: dict = None) -> dict:
     """The loop for one finding (the module's docstring has the steps): at most two calls of
     *feature*'s task through *ask* (the gateway's `ask`, given by the feature), each with
     *trigger*, *actor*, *subject* and *network*; *data* the call's own parts, *context* its
@@ -1220,7 +1268,14 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     (pass 1's answer refused: nothing drawn, no read run) or ``failed`` (pass 1 not answered);
     *reads* every read record; *words* what the step log says; *loop* the send log's id for
     the requests (`read_log`), and *logged* whether its rows were kept. Never raises for a
-    model's answer."""
+    model's answer.
+
+    *pregather* (an iterative feature's, `LoopFeature.again`): read requests in the model's
+    own shape (``{op, args, why, hypothesis}``), judged by the same check and run before the
+    first call (*reuse* answering those a read of seconds ago already holds, `run_reads`),
+    logged in the send log before anything of them is sent, ids ``read:1`` on; the first call
+    is then the *again* pass with them attached, so most investigations answer in one round
+    (the operator, 2026-11-16). None that ran: the first pass as before."""
     if not isinstance(family, ReadFamily) or not isinstance(feature, LoopFeature):
         raise TypeError("read_loop.run takes a declared ReadFamily and LoopFeature")
     common = {"actor": actor, "trigger": trigger, "subject": subject, "network": network,
@@ -1239,13 +1294,25 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     off = _all_off(family, network)
     plain = bool(off) and feature.plain is not None
     prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
-    got = ask(feature.task, prompt, schema, parts, context=ctx or None, **common)
+    pre = []
+    if pregather and not plain and feature.rounds:
+        pre = _pregathered(family, feature, out, pregather, reuse, network=network,
+                           scope=scope, subject=subject, trigger=trigger)
+    asked_parts = (again_request(feature, data, ctx, pre) if pre
+                   else (prompt, schema, parts, ctx))
+    prompt, schema, parts, ctx1 = asked_parts
+    got = ask(feature.task, prompt, schema, parts, context=ctx1 or None, **common)
     out["first"] = asked(got)
+    if pre:
+        _log_answered(out, got)
     if not got.get("ok"):
         return dict(out, error=got.get("error") or "", detail=got.get("detail") or "",
                     words=f"AI analysis: not run: {got.get('error')}: {got.get('detail')}")
     answer = got["output"]
-    why = feature.check(answer, read_ids=()) or _acts_check(feature, answer, actable)
+    why = (second_check(feature, answer, pre, actable) if pre else
+           feature.check(answer, read_ids=()) or _acts_check(feature, answer, actable))
+    if pre:
+        out.update(reads=list(pre), prompt=f"{prompt[0]}.v{prompt[1]}")
     if why:
         out["first"]["why"] = why
         out["pass"] = 1
@@ -1258,11 +1325,15 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         return out
     wanted = _reads_of(answer)
     if not wanted:
+        if pre:
+            out["words"] = (f"AI analysis: {_summary(pre)} before the first call (Mercury's "
+                            "standard reads); answered in one call")
         return out
     if feature.rounds:
         return _investigate(family, feature, out, wanted, started=started, ask=ask,
                             common=common, data=data, ctx=ctx, network=network, scope=scope,
-                            actable=actable, subject=subject, trigger=trigger, asked=asked)
+                            actable=actable, subject=subject, trigger=trigger, asked=asked,
+                            records=pre)
     records = run_reads(family, check(family, wanted, network=network, scope=scope), scope)
     out["reads"] = records
     summary = _summary(records)
@@ -1344,7 +1415,7 @@ def again_request(feature: LoopFeature, data: dict, context: dict, records: list
 
 def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: list, *,
                  started: float, ask, common: dict, data: dict, ctx: dict, network: str,
-                 scope, actable, subject, trigger, asked) -> dict:
+                 scope, actable, subject, trigger, asked, records=()) -> dict:
     """An iterative loop's reads (C3797; the operator, 2026-11-15: "the AI requests reads from
     its read families, Mercury runs them through the read engine ... and the AI continues until
     it's confident or hits the bounds"): each round's requests judged and the allowed ones run
@@ -1356,7 +1427,8 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
     ends when an answer asks for no read (it is confident), at the last pass, or when a pass is
     not answered or is refused by the check (the newest checked answer stands, said). ``out``
     as `run` returns it, ``pass`` the calls made and ``rounds`` the rounds of reads run."""
-    records, rounds, asking = [], 0, out["first"].get("call_id") or ""
+    # *records*: the reads run before the first call (`run`'s *pregather*), ids continuing.
+    records, rounds, asking = list(records or ()), 0, out["first"].get("call_id") or ""
     # The wall-time bound as a deadline (`modules/waits.py`, ``read_loop.py::_investigate``).
     deadline = started + float(feature.wall_s)
     while True:

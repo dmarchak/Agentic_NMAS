@@ -2092,9 +2092,22 @@ def _stage_verify(ctx: PipelineContext) -> None:
                                                f"({_why(exc)})"]}
             issues += list(plan_checked.get("issues") or [])
             cant_read += list(plan_checked.get("unreadable") or [])
+            # A plan's own stop (a recovered port tripped again by its own cause, the operator,
+            # 2026-11-16): the plan's outcome, never a rollback, as the port is already safely
+            # down. The issue that a port the program brings up is not up is that stop's
+            # explanation when the stop names every such port; any other issue still rolls back.
+            stop = plan_checked.get("stop") or {}
+            if stop and named is not None and named.get("not_up"):
+                from modules.nsot import ifnames as _ifn
+                if all(any(_ifn.same_interface(n, s) for s in stop.get("interfaces") or [])
+                       for n in named["not_up"]):
+                    said = "The change brings up " + ", ".join(named["not_up"])
+                    stop["explains"] = [i for i in issues if i.startswith(said)]
+                    issues = [i for i in issues if not i.startswith(said)]
 
         ctx.verify_result[ip] = {
             "ok":     (not issues and not unmet and not cant_read
+                       and not (plan_checked or {}).get("stop")
                        and not (read_back or {}).get("missing")),
             # Quick or full, and why, from the program (verify_scope).
             "verify_scope": {"scope": scope["scope"], "why": scope["why"]},

@@ -295,6 +295,9 @@ FAMILY = RL.ReadFamily(
     operations=tuple(dataclasses.replace(op, transport="cli") for op in RR.COMMAND_OPS)
     + OWN_READS + LOCAL,
     run=run, step=say_round,
+    # One device's reads in a round share one session and one hold (only device reads, `cli`,
+    # are grouped by device: `read_loop._turns`).
+    run_many=RR.run_many,
     words="AI troubleshooting's reads: the device's by Mercury's allowlist, and "
           "Mercury's own")
 

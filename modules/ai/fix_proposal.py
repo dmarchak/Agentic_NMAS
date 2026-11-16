@@ -268,7 +268,7 @@ def _attempt_form(step: dict) -> dict:
             "params": validate.as_attempt(step["operation"], held_)}
 
 
-def _command_plan_reads(network: str, steps: list) -> dict:
+def _command_plan_reads(network: str, steps: list, incident: str = "") -> dict:
     """Each built-in command plan step's preconditions read NOW, through the read engine,
     inside the job making the proposal (`catalog.PlanStep.preflight` with *reads*), so the page
     draws them from the record and never waits: ``{"<n>": {"ok", "refused", "hash"}}``."""
@@ -280,7 +280,8 @@ def _command_plan_reads(network: str, steps: list) -> dict:
             continue
         try:
             got = catalog.COMMAND_PLANS[s["operation"]].preflight(network, s["params"],
-                                                                  reads=True)
+                                                                  reads=True,
+                                                                  incident=incident)
         except Exception as exc:                          # noqa: BLE001 (kept, never raised)
             got = {"ok": False, "refused": f"its preconditions could not be read "
                                            f"({type(exc).__name__})", "hash": ""}
@@ -358,7 +359,7 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     shapes = _propose_shapes(incident.network, imp.get("shapes") or [], call_id)
     sessions = PE.read_sessions(incident.network, steps, now=now) or None
     shown_ = dict(shown or {})
-    reads = _command_plan_reads(incident.network, steps)
+    reads = _command_plan_reads(incident.network, steps, incident.id)
     if reads:
         shown_["preconditions_read"] = reads
     if shapes:

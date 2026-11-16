@@ -1,6 +1,6 @@
 # Recover an err-disabled interface (G7, C3712): the first built-in command plan (C3757, path
 # 2). Run by modules/nsot/command_plan_run.py on the deploy pipeline's engine; its lines held by
-# modules/nsot/command_policy.py (the shapes as sent by G7's recovery, measured at its first run).
+# modules/nsot/command_policy.py (the shapes as sent by G7's recovery; measured on IOS by its first real run, C3762).
 kind: command_plan
 key: errdisable-recover
 title: "Recover {device} {interface_short}, err-disabled by {cause}"
@@ -46,7 +46,9 @@ verify:
     expect: errdisable.port_connected
     poll: errdisable-poll
     within: errdisable-connect
-  - name: No new err-disable
+  # The re-trip check (the operator, 2026-11-16): a re-trip is the run's own outcome,
+  # `retripped`, never a verify failure; nothing more is sent and nothing is rolled back.
+  - name: "Then re-checks for 10 s: does it trip again?"
     read: show interfaces status err-disabled
     expect: errdisable.port_not_listed
     after: errdisable-quiet

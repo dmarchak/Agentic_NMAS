@@ -64,8 +64,15 @@ STEPS = (("approve", "Preview the plan again and compare its hash with the one a
 STEP_LABELS = {"approve": "Check hash", "hold": "Hold {device}", "read_before": "Read before",
                "preconditions": "Check preconditions", "send": "Send", "verify": "Verify",
                "rollback": "Roll back", "record": "Record"}
-OUTCOMES = ("done", "refused", "not_net_zero", "rolled_back", "unverified", "failed")
+#: A verify check's result, and the run's outcome, when the port the plan recovered tripped
+#: again by its own cause (the operator, 2026-11-16): a finding, never a verify failure; no
+#: retry and no rollback (the port is already safely down), nothing more sent.
+RETRIPPED = "retripped"
+OUTCOMES = ("done", "refused", "not_net_zero", "rolled_back", "unverified", "failed",
+            RETRIPPED)
 OUTCOME_WORDS = {"done": "ran, verified, and the configuration is as it was before",
+                 RETRIPPED: "tripped again after the bounce: the port was left err-disabled, "
+                            "nothing more was sent and nothing was rolled back",
                  "refused": "nothing was sent",
                  "not_net_zero": "refused: the configuration after differed from before, and "
                                  "it was rolled back",
@@ -79,7 +86,8 @@ OUTCOME_WORDS = {"done": "ran, verified, and the configuration is as it was befo
 DEFERRED = "deferred"
 HOLDS = ("pass", DEFERRED)
 RECORD_STATE = {"done": "done", "refused": "refused", "not_net_zero": "failed",
-                "rolled_back": "failed", "unverified": "unverified", "failed": "failed"}
+                "rolled_back": "failed", "unverified": "unverified", "failed": "failed",
+                RETRIPPED: "failed"}
 
 
 class Sources:
@@ -130,11 +138,13 @@ class Sources:
 
 class CheckRun:
     """What a named check is handed: the run's network, device and inventory row, the
-    validated values (`derived`), the incident it acts in, the sources and the time."""
+    validated values (`derived`), the incident it acts in, the sources and the time; *found*
+    is what a check learned from the device for the run's record (G7's violating MAC)."""
 
     def __init__(self, network, device, dev, derived, incident, sources):
         self.network, self.device, self.dev = network, device, dev
         self.derived, self.incident, self.sources = derived, incident, sources
+        self.found = {}
 
     @property
     def at(self) -> float:
@@ -188,6 +198,8 @@ def preconditions(t, run: CheckRun, rec: dict):
         answers = run.sources.read(run.device, cmds) if cmds else {}
         judged = _judge(t.preconditions, run, answers)
         rec["preconditions"] = judged
+        if run.found:
+            rec["found"] = dict(run.found)
         bad = [j for j in judged if j["result"] not in HOLDS]
         if bad:
             why = "; ".join(f"{j['name']}: {j['words']}" for j in bad) + ". Nothing was sent"
@@ -207,18 +219,29 @@ def preconditions(t, run: CheckRun, rec: dict):
     return hook
 
 
-def _verify_item(item, run: CheckRun) -> dict:
+def _verify_item(item, run: CheckRun, before: str = "") -> dict:
     """One verify read: polled until it holds within its bound, or read once after its wait
-    (`waits.PLAN_BOUNDS`). ``{"name", "read", "result", "words", "took_s"}``."""
+    (`waits.PLAN_BOUNDS`). A bound derived per port (``derive``) is derived from *before*, the
+    running configuration the run read before it sent anything, and the switch's PoE answer
+    for the port, read once first (`command_plan.derived_bound`). ``{"name", "read", "result",
+    "words", "took_s"}``, and for a derived bound ``"bound_s"`` and ``"bound_why"``."""
     from modules.nsot import command_plan as CP
     from modules.waits import PLAN_BOUNDS
 
     src = run.sources
     cmd = CP.substitute(item["read"], run.derived) if item["read"] else ""
+    spec = PLAN_BOUNDS.get(item.get("within")) or {}
+    derived = {}
+    if spec.get("derive"):
+        iface = run.derived.get(spec["of"]) or ""
+        poe_cmd = f"show power inline {iface}"
+        poe = (src.read(run.device, [poe_cmd]) or {}).get(poe_cmd)
+        derived = CP.derived_bound(item["within"], before or "", iface, poe)
     t0 = src.clock()
     if item.get("after"):
         src.sleep(PLAN_BOUNDS[item["after"]]["seconds"])
-    bound = PLAN_BOUNDS[item["within"]]["seconds"] if item.get("within") else 0
+    bound = (derived["seconds"] if derived else
+             PLAN_BOUNDS[item["within"]]["seconds"] if item.get("within") else 0)
     poll = PLAN_BOUNDS[item["poll"]]["seconds"] if item.get("poll") else 0
     while True:
         answer = (src.read(run.device, [cmd]) or {}).get(cmd) if cmd else None
@@ -227,8 +250,13 @@ def _verify_item(item, run: CheckRun) -> dict:
             break
         src.sleep(poll)
     took = round(src.clock() - t0, 1)
-    return {"name": item["name"], "read": cmd, "result": result, "took_s": took,
-            "words": words + (f" after {took} s" if bound else "")}
+    out = {"name": item["name"], "read": cmd, "result": result, "took_s": took,
+           "words": words + (f" after {took} s" if bound else "")}
+    if derived:
+        # The run record says which rule bounded it (the operator: "portfast edge: 12 s").
+        out.update(bound_s=bound, bound_why=derived["words"])
+        out["words"] += f" (bound {derived['words']})"
+    return out
 
 
 def net_zero(before: str, after: str) -> list:
@@ -259,8 +287,16 @@ def plan_verify(t, run: CheckRun, rec: dict):
         from modules.commands import run_device_command
         from modules.connection import get_persistent_connection
 
-        checks = [_verify_item(i, run) for i in t.verify]
-        issues = [f"{c['name']}: {c['words']}" for c in checks if c["result"] == "fail"]
+        checks = [_verify_item(i, run, (pre or {}).get("running_config") or "")
+                  for i in t.verify]
+        # A re-trip (the operator, 2026-11-16) is the run's outcome, never an issue: the port
+        # is down again by its own cause, which explains the reads that fail on it, so they
+        # roll nothing back; the net-zero check below still does.
+        retrip = next((c for c in checks if c["result"] == RETRIPPED), None)
+        stop = ({"outcome": RETRIPPED, "words": retrip["words"],
+                 "interfaces": [run.derived.get("interface") or ""]} if retrip else {})
+        issues = [f"{c['name']}: {c['words']}" for c in checks
+                  if c["result"] == "fail" and not retrip]
         unread = [f"{c['name']}: {c['words']}" for c in checks if c["result"] == "unreadable"]
         dev = run.dev
         try:
@@ -278,8 +314,10 @@ def plan_verify(t, run: CheckRun, rec: dict):
                           "zero, so it is rolled back and refused")
         rec["verify_checks"] = checks
         rec["net_zero"] = {"checked": bool(after), "differs": differs}
+        if run.found:
+            rec["found"] = dict(run.found)
         return {"issues": issues, "unreadable": unread, "checks": checks,
-                "net_zero": {"checked": bool(after), "differs": differs}}
+                "net_zero": {"checked": bool(after), "differs": differs}, "stop": stop}
     return hook
 
 
@@ -307,16 +345,18 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
     return ctx
 
 
-def preconditions_now(network: str, key: str, p: dict, *, sources=None) -> list:
+def preconditions_now(network: str, key: str, p: dict, *, sources=None,
+                      incident: str = "") -> list:
     """The plan *p*'s preconditions read now through the read engine and judged, holding
     nothing beyond the reads' own holds (a proposal's preflight, `catalog.PlanStep`); the run
-    reads them again holding the device. ``[{"name", "read", "result", "words"}]``."""
+    reads them again holding the device. *incident* is the one it is proposed in, so a check
+    reads its classification as the run's does. ``[{"name", "read", "result", "words"}]``."""
     from modules.nsot import command_plan as CP
 
     t = CP.template_of(key)
     src = sources or Sources(network)
     run_ = CheckRun(network, p["values"].get("device") or "", p["device_row"], p["derived"],
-                    "", src)
+                    str(incident or ""), src)
     cmds = list(dict.fromkeys(CP.substitute(i["read"], p["derived"])
                               for i in t.preconditions if i["read"]))
     return _judge(t.preconditions, run_, src.read(run_.device, cmds) if cmds else {})
@@ -338,9 +378,11 @@ def step_apply(key: str):
                   incident=str(params.get("incident") or ""),
                   fixit=FP.run_link_of(network, params))
         ok = rec.get("state") == "done"
+        # The plan's own words for its end when its finish gave them ("Fixed: pc-12 is back
+        # online.", a re-trip's finding), else the runner's.
         return {"ok": ok, "outcome": rec.get("outcome") or "",
-                "words": OUTCOME_WORDS.get(rec.get("outcome") or "", "")
-                + (f": {rec.get('why')}" if rec.get("why") and not ok else ""),
+                "words": rec.get("said") or (OUTCOME_WORDS.get(rec.get("outcome") or "", "")
+                + (f": {rec.get('why')}" if rec.get("why") and not ok else "")),
                 "receipt": {"run": rec.get("id") or "", "state": rec.get("state") or "",
                             "receipt": (rec.get("receipt") or {}).get("id") or ""}}
     return apply
@@ -406,6 +448,10 @@ def _outcome(ctx, rec: dict = None) -> tuple:
             return "not_net_zero", ("the configuration after differed from before: "
                                     + "; ".join(differs[:8]) + said)
         return "rolled_back", (ctx.error or "verify failed") + said
+    stop = (v.get("plan_checks") or {}).get("stop") or {}
+    if ctx.final_status == "success" and stop.get("outcome") in OUTCOMES:
+        # The plan's own stop (a re-trip): its outcome and its words, nothing rolled back.
+        return stop["outcome"], stop.get("words") or OUTCOME_WORDS[stop["outcome"]]
     if ctx.final_status == "success" and v.get("ok") is True:
         return "done", "ran, verified, and the configuration is as it was before"
     if ctx.final_status == "success":
@@ -555,8 +601,10 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
               ("the plan's lines sent in config mode, never saved" if pushed.get("ok")
                else f"the send failed: {pushed.get('error') or ctx.error or 'not recorded'}"))
         v = (ctx.verify_result or {}).get(ctx.device_ips[0]) or {}
+        stop = (v.get("plan_checks") or {}).get("stop") or {}
         _step(rec, "verify", "ok" if v.get("ok") is True else "fail",
               "; ".join((v.get("issues") or []) + (v.get("unreadable") or []))
+              or stop.get("words")
               or "every check held, and the configuration is as it was before",
               checks=rec.get("verify_checks") or [])
         if ctx.rollback_performed:

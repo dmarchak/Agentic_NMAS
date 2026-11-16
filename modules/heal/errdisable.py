@@ -40,9 +40,11 @@ This module keeps the plan's checks, which its template names (`check_port_liste
 err-disabled by the cause now; `check_no_recovery` and, at preview from the golden,
 `preview_no_recovery`: no IOS errdisable recovery for the cause, never raced;
 `check_cause_cleared`: BPDU guard, no BPDU guard line for the port since the err-disable; port
-security, the violating MAC on neither the port's port-security table nor its MAC table;
+security, no new violation since the err-disable, by its ``PSECURE_VIOLATION`` lines and its
+violation count, the MAC from the line or its Last Source Address;
 `check_port_connected` and `check_port_not_listed`: the verify, connected within its bound and
-no new err-disable through the quiet), and its finish (`on_finish`: the offending MAC, the
+the re-trip check through the quiet, whose re-trip is the run's own outcome, ``retripped``: no
+retry, no rollback), and its finish (`on_finish`: the offending MAC, the
 port, the time and the cause kept on the run's record and notified). A cause that has not
 cleared refuses with nothing sent: "Port stays down: the device that tripped it (MAC …) is
 still connected", and the engineer is notified.
@@ -74,6 +76,16 @@ CONFIRM_READ = "show interfaces status err-disabled"
 STATUS_READ = "show interfaces status"
 RECOVERY_READ = "show running-config | include errdisable recovery"
 PSEC_READ = "show port-security address"
+#: The port's own port-security view: its Last Source Address and its violation count (the
+#: operator, 2026-11-16: the violating MAC and "no new violation" are read here, never only
+#: from the incident's evidence).
+PSEC_IF_READ = "show port-security interface {port}"
+#: How far back a check with no incident's classification looks for the port's err-disable
+#: line: an err-disabled port stays so until recovered, so its line can be hours old; the
+#: newest `LINES_LIMIT` lines are read (Loki's backward query). Reasoned, not measured.
+ERRDISABLE_LOOKBACK_S = 86400
+#: The re-trip's last words (the operator, 2026-11-16): no retry and no rollback follow it.
+RETRIP_TAIL = "Port left err-disabled; nothing more sent."
 #: How far before an incident's opening its device's lines are read: the alert's onset lags its
 #: line by Grafana's evaluation (60 s) and its pending period. Reasoned, not measured: 300 s is
 #: 2.5 times those two at 60 s each; the trial reads the lag from the record.
@@ -98,6 +110,9 @@ _STATUS = re.compile(r"^(?P<port>[A-Za-z][A-Za-z-]*\d[\d/.:]*)\s+(?P<name>.*?)\s
 _MAC_ROW = re.compile(r"^\s*(?P<vlan>\d+|All)\s+(?P<mac>[0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\."
                       r"[0-9a-fA-F]{4})\s+(?P<type>\S+)\s+(?P<port>\S+)")
 _RECOVERY = re.compile(r"^\s*errdisable recovery cause (?P<cause>\S+)\s*$", re.M)
+#: One ``Key : value`` row of ``show port-security interface`` (a key may hold a colon:
+#: ``Last Source Address:Vlan``; the separator is the colon after the padding).
+_PSEC_FIELD = re.compile(r"^(?P<key>\S.*?)\s+:\s*(?P<value>.*?)\s*$")
 
 
 class Refused(ValueError):
@@ -199,6 +214,25 @@ def mac_rows(text: str) -> list:
             out.append({"vlan": m.group("vlan"), "mac": mac_dotted(m.group("mac")),
                         "type": m.group("type"), "port": m.group("port")})
     return out
+
+
+def port_security(text) -> dict:
+    """``show port-security interface <if>`` as ``{"status", "last_mac", "last_vlan",
+    "violations"}`` (the MAC dotted, ``""`` for none; the count an int, None when absent), or
+    ``{}`` when *text* is None or holds no field (tests/fixtures/errdisable/s5_port_security_gi03.txt)."""
+    fields = {}
+    for line in (text or "").splitlines():
+        m = _PSEC_FIELD.match(line.rstrip())
+        if m:
+            fields[m.group("key").strip().lower()] = m.group("value")
+    if not fields:
+        return {}
+    mac, _, vlan = (fields.get("last source address:vlan") or "").rpartition(":")
+    mac = mac_dotted(mac)
+    count = (fields.get("security violation count") or "").strip()
+    return {"status": fields.get("port status") or "",
+            "last_mac": "" if mac == "0000.0000.0000" else mac, "last_vlan": vlan.strip(),
+            "violations": int(count) if count.isdigit() else None}
 
 
 def recovery_for(config: str, cause: str) -> str:
@@ -516,7 +550,8 @@ def confirm(network: str, device: str, c: dict, *, sources=None, now: float = No
     cmds = [CONFIRM_READ]
     psec = c.get("cause") == "psecure-violation"
     if psec:
-        cmds += [PSEC_READ, f"show mac address-table interface {c['port']}"]
+        cmds += [PSEC_READ, f"show mac address-table interface {c['port']}",
+                 PSEC_IF_READ.format(port=c["port"])]
     got = src.read(device, cmds)
     at = _iso(now)
     if "_why" in got or CONFIRM_READ not in got:
@@ -531,6 +566,12 @@ def confirm(network: str, device: str, c: dict, *, sources=None, now: float = No
                               got.get(f"show mac address-table interface {c['port']}"))
         if still is not None:
             out["cleared"] = "false" if still else "true"
+    if psec:
+        # The violation count at this read: the cause-cleared check's baseline when this read
+        # came after the err-disable (`check_cause_cleared`).
+        ps = port_security(got.get(PSEC_IF_READ.format(port=c["port"])))
+        if ps:
+            out["psec"] = {"violations": ps["violations"], "last_mac": ps["last_mac"]}
     return out
 
 
@@ -628,15 +669,40 @@ def check_port_listed(answer, run) -> tuple:
 
 
 def check_port_not_listed(answer, run) -> tuple:
-    """No new err-disable: the port is not listed in the err-disabled view."""
-    port, _cause, short = _port_cause(run)
+    """The re-trip check ("Then re-checks for 10 s: does it trip again?"): the port not listed
+    in the err-disabled view. Listed again by its own cause is the run's own outcome, the
+    re-trip (`command_plan_run.RETRIPPED`, the operator, 2026-11-16): its device is still
+    connected, the port is left err-disabled and nothing more is sent (`retrip_words`); listed
+    by another reason fails, as before."""
+    from modules.nsot.command_plan_run import RETRIPPED
+
+    port, cause, short = _port_cause(run)
     if answer is None:
         return "unreadable", f"{CONFIRM_READ} could not be read"
     again = [r for r in status_rows(answer, reasons=True) if same_port(r["port"], port)]
+    if again and again[0].get("reason") == cause:
+        return RETRIPPED, retrip_words(run, port, cause, short)
     if again:
         return "fail", (f"{short} err-disabled again by {again[0].get('reason')}: its cause is "
                         "still there")
-    return "pass", f"{short} is not err-disabled"
+    return "pass", f"{short} did not trip again"
+
+
+def retrip_words(run, port: str, cause: str, short: str) -> str:
+    """The re-trip's finding, the operator's words (2026-11-16): "The device with MAC <mac> is
+    still connected to <device> <port>. Port left err-disabled; nothing more sent." The MAC is
+    the port's Last Source Address read now (port security), else the one the preconditions
+    found; BPDU guard's lines name no MAC. Kept on ``run.found["retrip"]``."""
+    mac = ""
+    if cause == "psecure-violation":
+        cmd = PSEC_IF_READ.format(port=port)
+        mac = port_security(run.sources.read(run.device, [cmd]).get(cmd)).get("last_mac") or ""
+        mac = mac_colon(mac) or (run.found.get("mac") or "")
+    who = (f"The device with MAC {mac}" if mac else
+           "The device sending BPDUs" if cause == "bpduguard" else "The device that tripped it")
+    run.found["retrip"] = {"mac": mac, "device": run.device, "port": short, "cause": cause,
+                           "at": _iso(run.at)}
+    return f"{who} is still connected to {run.device} {short}. {RETRIP_TAIL}"
 
 
 def check_port_connected(answer, run) -> tuple:
@@ -713,19 +779,60 @@ def check_cause_cleared(_answer, run) -> tuple:
         return "deferred", (f"whether BPDUs still arrive on {short} cannot be told while the "
                             "port is down; judged after the bounce by verify's no new "
                             "err-disable")
-    want = mac_dotted(c.get("mac") or "")
-    if not want:
-        return "unreadable", (f"the MAC that tripped port security on {short} is not in the "
-                              "incident's evidence, so whether it is gone cannot be told")
-    cmds = [PSEC_READ, f"show mac address-table interface {port}"]
-    got = run.sources.read(run.device, cmds)
-    still = violator_seen(want, port, got.get(cmds[0]), got.get(cmds[1]))
-    if still is None:
-        return "unreadable", "the port-security or MAC table could not be read"
-    if still:
-        return "fail", (f"Port stays down: the device that tripped it (MAC {mac_colon(want)}) "
-                        "is still connected")
-    return "pass", f"the violating MAC {mac_colon(want)} is gone from {short}"
+    return _psecure_cleared(run, port, cause, short, c, src)
+
+
+def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, src) -> tuple:
+    """Port security's cause cleared while the port is down (the operator, 2026-11-16): no
+    new violation since the err-disable, by the port's ``PSECURE_VIOLATION`` lines (none after
+    its newest err-disable line) and its violation count (unchanged from the one the device
+    confirmation read after that err-disable, when it holds one); the violating MAC named
+    from the line, else the port's Last Source Address. Verify's re-trip check catches a
+    violator still connected once the port is up. Kept on ``run.found`` for the run's record."""
+    cmd = PSEC_IF_READ.format(port=port)
+    ps = port_security(run.sources.read(run.device, [cmd]).get(cmd))
+    since = float(c.get("epoch") or 0)
+    start = (since - LOOKBACK_S) if since else (run.at - ERRDISABLE_LOOKBACK_S)
+    got = src.lines(src.device(run.device) or run.dev, start, run.at)
+    mine = []
+    for ln in got.get("lines") or []:
+        p = parse_line(ln.get("line") or "")
+        if p and same_port(p.get("port") or "", port):
+            mine.append(dict(p, epoch=float(ln.get("epoch") or 0), at=ln.get("at") or ""))
+    errs = [p for p in mine if p["kind"] == "errdisable" and p["cause"] == cause]
+    err_epoch = max([p["epoch"] for p in errs] + [since])
+    trips = [p for p in mine if p["kind"] == "violation" and p["mac"]]
+    later = [p for p in trips if err_epoch and p["epoch"] > err_epoch + 1]
+    mac = (trips[-1]["mac"] if trips else "") or ps.get("last_mac") or mac_dotted(
+        c.get("mac") or "")
+    run.found.update(mac=mac_colon(mac), port=short, cause=cause,
+                     err_at=_iso(err_epoch) if err_epoch else "",
+                     violations=ps.get("violations"))
+    who = f"the device with MAC {mac_colon(mac)}" if mac else "the device that tripped it"
+    if later:
+        return "fail", (f"Port stays down: {who} is still connected (a new violation at "
+                        f"{later[-1]['at']})")
+    conf = c.get("confirmed") or {}
+    base = (conf.get("psec") or {}).get("violations")
+    if float(conf.get("epoch") or 0) < err_epoch:
+        base = None
+    count = ps.get("violations")
+    if base is not None and count is not None and count > base:
+        return "fail", (f"Port stays down: {who} is still connected (the violation count is "
+                        f"{count}, {base} at the err-disable)")
+    lines_told = not got.get("error") and bool(err_epoch)
+    if not lines_told and (base is None or count is None):
+        why = got.get("error") or f"no err-disable line for {short} in its lines"
+        return "unreadable", (f"whether a violation came since {short}'s err-disable cannot be "
+                              f"told: {why}" + ("" if ps else f", and {cmd} could not be read"))
+    said = [f"no new violation on {short} since its err-disable"
+            + (f" at {_iso(err_epoch)}" if err_epoch else "")]
+    if count is not None:
+        said.append(f"violation count {count}"
+                    + (", as at the err-disable" if base is not None else ""))
+    if mac:
+        said.append(f"the violating MAC {mac_colon(mac)}")
+    return "pass", "; ".join(said)
 
 
 def offender_words(rec: dict) -> str:
@@ -742,30 +849,52 @@ def on_finish(network: str, rec: dict, *, sources=None) -> None:
     """The plan's finish (its template's ``on_finish``): the offender kept on the run's record
     (the MAC, the port, the time and the cause), and every run that sent, or refused because
     its cause has not cleared, notifies the engineer (C3712)."""
+    from modules.nsot.command_plan_run import RETRIPPED
+
     values = rec.get("params") or {}
     c = _classification(network, str((rec.get("fixit") or {}).get("incident") or ""))
     cause = values.get("cause") or ""
-    rec["offender"] = {"mac": mac_colon(c.get("mac") or ""),
+    found = rec.get("found") or {}
+    rec["offender"] = {"mac": (found.get("retrip") or {}).get("mac") or found.get("mac")
+                       or mac_colon(c.get("mac") or ""),
                        "port": _short(values.get("interface") or ""), "cause": cause,
                        "cause_words": CAUSES.get(cause, cause),
-                       "at": _iso(c["epoch"]) if c.get("epoch") else ""}
+                       "at": found.get("err_at") or (_iso(c["epoch"]) if c.get("epoch") else "")}
     pre = rec.get("preconditions") or []
     not_cleared = any(p.get("result") == "fail" and p.get("words", "").startswith(
         "Port stays down") for p in pre)
     outcome = rec.get("outcome")
+    src = sources or Sources(network)
+    if outcome == "done":
+        # The success words where the host is known (the operator, 2026-11-16; `bluf.RESTORED`).
+        host = str(c.get("host") or "")
+        if not host:
+            try:
+                intent, _err = src.intent(rec.get("device") or "")
+                host = intent_port(intent, values.get("interface") or "")["host"]
+            except Exception as exc:                  # noqa: BLE001 (said without the host)
+                log.info("errdisable: the recovered port's host was not read: %s", exc)
+        if host:
+            rec["said"] = rec["why"] = f"Fixed: {host} is back online."
+    if outcome == RETRIPPED:
+        # The recurrence finding, as the run said it: kept for the incident's page, the AI's
+        # evidence (its attempt's outcome and words) and Needs attention (`rec["recurrence"]`).
+        rec["said"] = rec.get("why") or ""
+        rec["recurrence"] = dict(found.get("retrip") or {}, words=rec["said"])
     if outcome == "refused" and not not_cleared:
         return
+    ended = ("recovered" if outcome == "done" else "tripped again" if outcome == RETRIPPED
+             else "not recovered")
     event = {"incident": str((rec.get("fixit") or {}).get("incident") or rec["id"])[:80],
              "event": ("action" if outcome == "done" else "held" if not_cleared
                        else "cant_fix"),
              "network": network, "device": rec.get("device") or "", "kind": KEY,
-             "title": f"{rec.get('device')} {rec['offender']['port']}: "
-                      f"{'recovered' if outcome == 'done' else 'not recovered'}"[:120],
+             "title": f"{rec.get('device')} {rec['offender']['port']}: {ended}"[:120],
              "lead": (next(p["words"] for p in pre if p.get("words", "").startswith(
-                 "Port stays down")) if not_cleared else offender_words(rec))[:800],
+                 "Port stays down")) if not_cleared else rec["said"] if outcome == RETRIPPED
+                 else offender_words(rec))[:800],
              "happened": offender_words(rec)[:800],
              "outcome": str(rec.get("why") or outcome)[:400]}
-    src = sources or Sources(network)
     try:
         got = src.notify(network, event)
         rec["notified"] = {"sent": int(got.get("sent") or 0), "nobody": bool(got.get("nobody")),

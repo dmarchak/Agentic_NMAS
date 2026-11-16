@@ -310,8 +310,22 @@ def _delimited(tag: str, parts: dict) -> str:
     return "\n\n".join(f'<{tag} name="{name}">\n{parts[name]}\n</{tag}>' for name in sorted(parts))
 
 
+#: The tasks whose person's press is sent with the cache marks all the same (the operator,
+#: 2026-11-16: "prompt caching on the fixed prefix ... for every call, person-pressed and
+#: automatic alike"): one press of an investigation makes two to four calls within minutes over
+#: one prefix, so what call 1 writes, calls 2 on read (C2261's reason, one call a press, does
+#: not hold for it).
+CACHED_PRESSES = ("fixit_troubleshoot",)
+#: Each task's context blocks that differ from one request to the next (an incident's own):
+#: sent in a system block AFTER the fixed context, each block marked, so the fixed prefix (the
+#: prompt, the formats, the read set) is byte-identical across every request of the task and
+#: the whole system prefix across one investigation's calls.
+PER_REQUEST_CONTEXT = {"fixit_troubleshoot": ("catalogue", "network")}
+
+
 def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: dict = None,
-                  profile: dict = None, cache_ttl: str = None, cache: bool = True) -> dict:
+                  profile: dict = None, cache_ttl: str = None, cache: bool = True,
+                  volatile=()) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
     prompt, then the *context* (what every call of a feature shares, as 8.1's builder
     vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
@@ -326,13 +340,21 @@ def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: d
     request's: `ask_batch`) is the one cache mark's TTL; none is the 5-minute default, the mark
     sent as it always was. *cache* False sends no mark at all (C2261, the operator's decision
     of 2026-11-01: a person's single press, more than five minutes from the next, wrote a
-    prefix nothing read); the prompt's bytes are the same either way, only the mark differs."""
+    prefix nothing read); the prompt's bytes are the same either way, only the mark differs.
+    *volatile* names the context blocks a request's own (`PER_REQUEST_CONTEXT`): they follow
+    the fixed context in a block of their own, and with *cache* both blocks are marked."""
     system = [{"type": "text", "text": prompt["text"]}]
-    if context:
-        system.append({"type": "text", "text": _delimited("context", context)})
-    if cache:
-        system[-1]["cache_control"] = ({"type": "ephemeral", "ttl": cache_ttl} if cache_ttl
-                                       else {"type": "ephemeral"})
+    fixed = {k: v for k, v in (context or {}).items() if k not in set(volatile)}
+    own = {k: v for k, v in (context or {}).items() if k in set(volatile)}
+    if fixed:
+        system.append({"type": "text", "text": _delimited("context", fixed)})
+    marks = [system[-1]]
+    if own:
+        system.append({"type": "text", "text": _delimited("context", own)})
+        marks.append(system[-1])
+    for block in marks if cache else ():
+        block["cache_control"] = ({"type": "ephemeral", "ttl": cache_ttl} if cache_ttl
+                                  else {"type": "ephemeral"})
     body = {
         "model": pin["model"],
         "max_tokens": int(pin["max_tokens"]),
@@ -671,12 +693,14 @@ def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
     # come minutes apart, so the prefix each wrote went unread; a batch, an evaluation and a
     # background feature's calls share their prefix and keep it.
     ttl = {"cache_ttl": cache_ttl} if cache_ttl else {}
-    marked = bool(cache_ttl) or kind != triggers.PERSON
+    marked = bool(cache_ttl) or kind != triggers.PERSON or feature in CACHED_PRESSES
     from modules import display_names
     try:
         body = redact.egress_payload(build_request(prompt_file, schema_model, held["parts"],
                                                    asked, context=context, profile=profile,
-                                                   cache=marked, **ttl),
+                                                   cache=marked,
+                                                   volatile=PER_REQUEST_CONTEXT.get(feature, ()),
+                                                   **ttl),
                                      values)
     except display_names.LabelKeyMissing as exc:
         # A person in the request and no label key to name them by (C3458): refused, never

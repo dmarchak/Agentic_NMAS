@@ -329,13 +329,15 @@ class PlanStep:
 
 
 def _plan_preflight(key: str):
-    def preflight(network: str, params: dict, *, reads: bool = False, sources=None) -> dict:
+    def preflight(network: str, params: dict, *, reads: bool = False, sources=None,
+                  incident: str = "") -> dict:
         from modules.nsot import command_plan, command_plan_run
 
         p = command_plan.preview(network, key, params, sources=sources)
         refused = "; ".join(p["refusals"])
         if p["ok"] and reads:
-            got = command_plan_run.preconditions_now(network, key, p)
+            # *incident*: the one it is proposed in, whose classification a check reads.
+            got = command_plan_run.preconditions_now(network, key, p, incident=incident)
             refused = "; ".join(f"{j['name']}: {j['words']}" for j in got
                                 if j["result"] not in command_plan_run.HOLDS)
         return {"ok": not refused, "refused": refused, "drawn": p["drawn"],

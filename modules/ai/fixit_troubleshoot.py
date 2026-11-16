@@ -549,7 +549,10 @@ def fixit_format() -> str:
         "past incident it matched, how that ended and how long it held, or that none is found. "
         "Its one piece is seen_before:1. Never state a past incident it does not hold.",
         "note is what the person who pressed wrote, masked: cite it as note:1. It is a person's "
-        "belief, not a measurement."])
+        "belief, not a measurement.",
+        "mercury_reads may begin with Mercury's standard reads for the incident's problem kind, "
+        "run before your first pass (their why says so): then this pass is your first, there is "
+        "no previous answer to replace, and they are cited as any read is."])
     # The catalogue is the prompt's to describe (v7 and v8 say it once; the gate's measurement,
     # 2026-11-15: every request's fixed size inside its bound).
 
@@ -645,10 +648,15 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
                       "AI off: nothing was sent")
     entry = found.get("entry") or {}
     units = [u for d in found.get("decisions") or [] for u in d.get("units") or []]
+    # What this problem kind's pack leaves unread, and whether its topology is sent (`KIND_PACK`).
+    trim = KIND_PACK.get(problem_condition(found)) or {}
     pack = EP.build_incident(network, found.get("incident") or {}, entry, units,
                              now=float(entry.get("epoch") or 0) or now, loki=loki,
-                             prometheus=prometheus)
-    topo = explain.topology(pack)
+                             prometheus=prometheus, skip=trim.get("skip"))
+    topo = (explain.topology(pack) if not trim.get("topology") else {
+        "sent": False, "why": trim["topology"], "summary": "", "yaml": "", "ids": [],
+        "reached": {}, "version": "", "subject": incident.device, "network": network,
+        "observed": "", "names": {}, "as_now": ""})
     sections = explain.sent_sections(pack, topo)
     own = [attempts_section(incident, resolved, now=now),
            seen_section(network, incident.device, seen)]
@@ -663,6 +671,8 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
                              + "; it stands open, and a person asked you to troubleshoot it")}
     if topo.get("yaml"):
         data["network_topology"] = topo["yaml"]
+    elif trim.get("topology"):
+        data["network_topology"] = trim["topology"]
     ctx = {"pack_format": explain.vocabulary(PACK_SECTIONS), "fixit_format": fixit_format(),
            # Only the steps this incident's device can take (`payload.catalogue_part`).
            "catalogue": json.dumps(payload.catalogue_part(incident, problem_condition(found)),
@@ -1371,6 +1381,93 @@ def reads_context() -> dict:
     return {"read_set": read_set()}
 
 
+# ── Per problem kind: the standard reads and the pack (the operator, 2026-11-16: "Target:
+# investigation start to plan ready in 45 s or less") ──────────────────────────────────────────
+
+#: Each problem kind's standard reads (`problem.classify`'s condition), run at once before the
+#: first call (`read_loop.run`'s *pregather*), as the model would ask them: a show's words and
+#: the hypothesis it tests; ``{if}`` the incident's port (its classification's), the read left
+#: out when none is known.
+PREGATHER = {"err_disabled": (
+    ("interfaces status err-disabled", "the port is err-disabled now, and by which cause"),
+    ("errdisable recovery", "whether the device recovers the cause by itself, and after how long"),
+    ("port-security interface {if}", "the port's port-security settings, violation count and "
+                                     "last violating MAC"))}
+PREGATHER_WHY = "Mercury's standard read for this problem kind, run before the first pass"
+#: A classification's own read of the same command on the same device is reused while it is at
+#: most this old (reasoned, not measured: IOS's default errdisable recovery interval is 300 s, so
+#: a read 60 s old misses at most a fifth of one interval; the classification re-reads every
+#: `heal.errdisable.RECHECK_S`, 600 s, so most presses read afresh).
+REUSE_S = 60.0
+_NOT_FOR_PORT = ("not read for an err-disabled port: its problem is the port's own, read from "
+                 "the device (mercury_reads); ask the {read} read if it matters")
+#: What each problem kind's pack leaves unread (`evidence_pack.build_incident`'s *skip*), and
+#: the topology's words when it is not sent. An err-disabled port is one switch port's problem:
+#: its routing neighbours, the network as observed, the two-hop health figures, the monitoring
+#: side and the topology say nothing of it (its device's lines, intent, History, what Mercury
+#: tried and its diagnosis stay); the model may still ask Mercury's own neighbours or metrics.
+KIND_PACK = {"err_disabled": {
+    "skip": {"neighbours": _NOT_FOR_PORT.format(read="neighbours"),
+             "observed": _NOT_FOR_PORT.format(read="neighbours"),
+             "health": _NOT_FOR_PORT.format(read="metrics"),
+             "observer": _NOT_FOR_PORT.format(read="metrics")},
+    "topology": "not sent: an err-disabled port is its own switch port's problem; this "
+                "investigation reads only the incident's device"}}
+
+
+def pregather_for(network: str, found: dict, incident) -> tuple:
+    """``(requests, reuse)`` for `read_loop.run`: the incident's problem kind's standard reads
+    (`PREGATHER`) and, from its classification's own device read (`heal.errdisable.confirm`, its
+    reads-engine run) at most `REUSE_S` old, each answered command as ``{(device, command):
+    read_loop.Answered}``. ``([], {})`` for a kind with none."""
+    import time
+
+    from modules.heal import errdisable as ED
+    from modules.nsot import reads
+
+    asked = PREGATHER.get(problem_condition(found)) or ()
+    c = ED.of_record((found or {}).get("incident") or {})
+    port, conf = str(c.get("port") or ""), c.get("confirmed") or {}
+    age = time.time() - float(conf.get("epoch") or 0)
+    reuse = {}
+    if asked and conf.get("run") and 0 <= age <= REUSE_S:
+        try:
+            rec = reads.get(network, conf["run"]) or {}
+        except (OSError, ValueError) as exc:
+            log.info("fixit troubleshoot: %s's classification read is not reused: %s",
+                     incident.id, exc)
+            rec = {}
+        got = (rec.get("results") or {}).get(incident.device) or {}
+        reuse = {(incident.device, a["command"]): RL.Answered(
+                     a.get("answer") or "", run=conf["run"],
+                     signed_in_as=dict(got.get("signed_in_as") or {}))
+                 for a in got.get("answers") or [] if a.get("state") == "answered"}
+    out = []
+    for words, hypothesis in asked:
+        if "{if}" in words and not port:
+            continue
+        words = words.replace("{if}", port)
+        why = PREGATHER_WHY + (f"; Mercury's classification read it {int(age)} s before, reused"
+                               if (incident.device, f"show {words}") in reuse else "")
+        out.append({"op": "show", "args": {"device": incident.device, "words": words},
+                    "why": why, "hypothesis": hypothesis})
+    return out, reuse
+
+
+def _laps(what: str):
+    """``lap(step)``: logs how long *step* took since the last lap (the operator's measurement
+    of a press, 2026-11-16: 25 s before the first call and 29 s after the last, unattributed)."""
+    import time
+
+    last = [time.monotonic()]
+
+    def lap(step):
+        now = time.monotonic()
+        log.info("fixit troubleshoot: %s: %s took %.1f s", what, step, now - last[0])
+        last[0] = now
+    return lap
+
+
 def background_trigger(network: str, job: str, failure_key: str) -> dict:
     """The background trigger of an investigation R1 starts by itself (CLAUDE.md, "Every AI
     call names its trigger"): ``fixit_auto``'s, as *job*, on *network*'s one id
@@ -1439,8 +1536,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
     # The step a person reads on the status line (board R5's screen 3): plain words only.
     TJ.say("Gathering the evidence…")
+    lap = _laps(incident.id)
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
+    lap("the request (the pack, the attempts, Seen before, the fit)")
     memo = {}
 
     def may_go_on(_cost_usd):
@@ -1458,7 +1557,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         memo["calls"] = memo.get("calls", 0) + 1
         TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
         TJ.say("Asking the AI…" if memo["calls"] == 1 else "Writing the plan…")
+        lap(f"before call {memo['calls']}")
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
+        lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its count and its send)")
         TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
         if got.get("typed_masked") and "typed_masked" not in memo:
             memo["typed_masked"] = got["typed_masked"]
@@ -1473,11 +1574,17 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     TJ.step("reading the reads' scope (the device's committed intent and golden)")
     scope = None if plain else _scope(network, incident, actor, collector, series)
     trig = trigger if background else triggers.person(actor, counts_for=counts_for)
+    # The problem kind's standard reads, at once, before the first call (the operator,
+    # 2026-11-16): a classification's read of seconds ago is reused, never read again.
+    pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
+    if pre:
+        TJ.say("Reading the device…")
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
                  data=prep["data"], actor=actor, trigger=trig,
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
                  actable=prep["actable"], send=send, today=today,
-                 reads_context=reads_context())
+                 reads_context=reads_context(), pregather=pre, reuse=reuse)
+    lap("after the last call")
     # A citation not in what was sent: asked once more, naming it, within the investigation's
     # worst case and the incident's cap (the operator, 2026-11-15).
     retry = retry_once(prep, feature, got, incident, ask=ask, network=net_id, actor=actor,
@@ -1581,10 +1688,12 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     if getattr(answer, "plan", None):                                            # propose
         # v7 (C3755, C3764): a plan of Mercury's steps, through the same door, and the
         # improvement's shorter route beside it, the person choosing.
+        TJ.step("checking the plan: each step held, its preconditions read on the device")
         door = fix_proposal.plan_for_incident(
             [as_door(s) for s in answer.plan], incident, improvement=answer.improvement,
             call_id=final_call, calls=ids, actor=actor, actor_verified=actor_verified,
             note=note, shown=out["shown"], prompt=common["prompt"], now=now)
+        lap("the plan's door (its preconditions read, the alternative's too, the record)")
         out["checked"] = door
         out["proposal"] = door.get("line") or {}
         if door["ok"]:

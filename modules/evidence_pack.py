@@ -1807,7 +1807,7 @@ def incident_pack_id(network: str, incident_id: str) -> str:
 
 
 def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: float = None,
-                   loki=None, prometheus=None) -> dict:
+                   loki=None, prometheus=None, skip: dict = None) -> dict:
     """A heal incident's pack (board H, H8; section 12: "a can't-fix that started from a
     CONFIG_I or the schedule has no alert, so a pack is built for the incident, as
     `build_detection` builds one for an SDN detection"), masked and hashed. Never raises: a
@@ -1818,7 +1818,10 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
     (`tried`), the incident's configuration said only by kind, and Mercury's diagnosis by kind
     (`diagnosis`, H17). *entry* is the incident's step
     log entry, *units* its decisions' masked units; *now* the incident's time (its latest
-    step), as of which every time series is read."""
+    step), as of which every time series is read. *skip* (``{section name: why}``) leaves those
+    of history, intent, neighbours, observed, health, observer and logs unread, each an absent
+    section saying why (a problem kind that needs none of them, `fixit_troubleshoot.KIND_PACK`);
+    the network model is not captured when observed, health and observer are all skipped."""
     from modules import device_page
     from modules import network_model as NM
     from modules import redact
@@ -1854,16 +1857,23 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
                      "logs"):
             sections.append(_absent(name, "", why))
     else:
+        skip = dict(skip or {})
         cap = {"ok": False, "error": "no device"}
-        try:
-            cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now)
-        except Exception as exc:                      # said in the sections, never raised
-            cap = {"ok": False, "error": _failed(exc)}
-        sections.append(history_section(ref, host))
-        sections.append(intent_section(ref, dev))
-        sections.append(neighbours_section(ref, dev, as_of=now))
-        sections.append(observed_section(cap, now, clock))
+        if not {"observed", "health", "observer"} <= set(skip):
+            try:
+                cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now)
+            except Exception as exc:                  # said in the sections, never raised
+                cap = {"ok": False, "error": _failed(exc)}
+        built = (("history", lambda: history_section(ref, host)),
+                 ("intent", lambda: intent_section(ref, dev)),
+                 ("neighbours", lambda: neighbours_section(ref, dev, as_of=now)),
+                 ("observed", lambda: observed_section(cap, now, clock)))
+        for name, fn in built:
+            sections.append(_absent(name, "", skip[name]) if name in skip else fn())
         for name, fn in (("health", health_section), ("observer", observer_section)):
+            if name in skip:
+                sections.append(_absent(name, "", skip[name]))
+                continue
             try:
                 kw = {"prometheus": prometheus}
                 if name == "health":
@@ -1872,7 +1882,8 @@ def build_incident(network: str, incident: dict, entry: dict, units=(), *, now: 
             except Exception as exc:                  # said in the section, never raised
                 sections.append(_section(name, "Prometheus", clock, "unreadable",
                                          _failed(exc)))
-        sections.append(logs_section(ref, host, onset, now, client=loki))
+        sections.append(_absent("logs", "", skip["logs"]) if "logs" in skip
+                        else logs_section(ref, host, onset, now, client=loki))
     sections.append(tried_section(entry, units, clock))
     sections.append(diagnosis_section(entry, clock))
     for s in sections:

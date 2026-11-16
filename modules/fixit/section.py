@@ -83,6 +83,7 @@ recipients by team name. No email address is drawn.
 import calendar
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -781,6 +782,17 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         # A guard holds it: said, with when the next automatic heal is allowed (the operator,
         # 2026-11-16), never "reading it, before it decides".
         out["status"] = _held_of(found)
+    if not done and plan is not None and state == "proposed" and not plan.get("approvable"):
+        # The AI's one-line finding and, plainly, why its fix can't run yet (the operator,
+        # 2026-11-16: never "Mercury would refuse a step of it as it stands").
+        out["status"] = _refused_plan_words(out.get("ai_answer"), plan.get("why_refused"))
+    # A recovery whose port tripped again is its own finding, never "the last attempt did not
+    # fix it" (the operator, 2026-11-16): the run's words, "The device with MAC <mac> is still
+    # connected to <device> <port>. Port left err-disabled; nothing more sent."
+    from modules.nsot.command_plan_run import RETRIPPED
+    newest_try = (tried.get("attempts") or [{}])[-1]
+    if not done and state == "stopped" and newest_try.get("outcome") == RETRIPPED:
+        out["status"] = newest_try.get("words") or out["status"]
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"] = "", ""
@@ -796,6 +808,23 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         elif state == "investigating":
             out["working"] = "The AI is investigating"
             out["working_step"] = troubleshoot_job.shown(network, iid)
+
+
+def _first_sentence(text) -> str:
+    """The first sentence of *text*, without its full stop."""
+    text = " ".join(str(text or "").split())
+    return text.split(". ")[0].rstrip(".") if text else ""
+
+
+def _refused_plan_words(answer, why_refused) -> str:
+    """"The AI found: <its finding>. Its fix can't run yet: <the plain reason>." from the AI's
+    answer (its rationale) and the plan's refusal, its step and preflight wording dropped."""
+    shown = (answer or {}).get("shown") or {}
+    found = _first_sentence((answer or {}).get("words") or shown.get("rationale"))
+    reason = re.sub(r"^(?:step \d+(?: \([^)]*\))?:\s*|refused at its preflight:\s*)+", "",
+                    _first_sentence(why_refused), flags=re.I)
+    lead = f"The AI found: {found}. " if found else ""
+    return lead + (f"Its fix can't run yet: {reason}." if reason else "Its fix can't run yet.")
 
 
 def _held_of(found: dict) -> str:

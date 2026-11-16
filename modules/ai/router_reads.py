@@ -510,6 +510,41 @@ def run(op: str, args: dict, requests: list, scope: dict) -> RL.Answered:
                        signed_in_as=dict(signed))
 
 
+def run_many(items: list, scope: dict) -> list:
+    """One device's several reads (`read_loop.ReadFamily.run_many`: ``[(op, args, requests)]``,
+    one device's) in ONE reads-engine run: one session, one hold, each command once, in order;
+    each read answered from its own commands, or the exception that read would have raised.
+    Past the engine's `reads.MAX_COMMANDS` the reads run one by one (`run`)."""
+    from modules.nsot import reads
+
+    host = items[0][1]["device"]
+    commands = list(dict.fromkeys(c.strip() for _op, _a, reqs in items for c in reqs))
+    if len(commands) > reads.MAX_COMMANDS or any(a["device"] != host for _o, a, _r in items):
+        return [_tried(run, op, args, reqs, scope) for op, args, reqs in items]
+    record = reads.run(scope["network"], [host], commands,
+                       scope.get("actor") or "the AI analysis", by=KIND,
+                       purpose=scope.get("purpose") or "the AI's reads: "
+                       + ", ".join(dict.fromkeys(op for op, _a, _r in items)))
+    got = (record.get("results") or {}).get(host) or {}
+    by_command = {a.get("command"): a for a in got.get("answers") or []}
+    signed = dict(got.get("signed_in_as") or {})
+    out = []
+    for _op, _args, reqs in items:
+        mine = dict(got, answers=[by_command[c.strip()] for c in reqs
+                                  if c.strip() in by_command])
+        out.append(_tried(lambda: RL.Answered(_answer_of({"results": {host: mine}}, host),
+                                              run=record.get("id") or "",
+                                              signed_in_as=signed)))
+    return out
+
+
+def _tried(fn, *args):
+    try:
+        return fn(*args)
+    except Exception as exc:                            # noqa: BLE001 (that read's failure)
+        return exc
+
+
 #: The shapes AI troubleshooting's family alone asks for (`modules/ai/fixit_reads.py`, S6):
 #: the heal analysis's read set stays as its released pass-1 schema (heal_analysis v2)
 #: declares it, so a feature's reads widen only with its own schema.
