@@ -206,7 +206,11 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     """One watching incident's step of a pass; returns the reads left."""
     from modules.heal import grace, incidents
 
-    if float(inc.get("defer_until") or 0) > now and not _hold_lifted(network, inc, now):
+    if float(inc.get("defer_until") or 0) > now and _hold_lifted(network, inc, now):
+        # Its hold no longer holds: the deferral ends now, and the grace restarts now.
+        incidents.lift(network, inc["id"], now)
+        inc = dict(inc, defer_until=now)
+    if float(inc.get("defer_until") or 0) > now:
         out["waiting"].append({"incident": inc["id"], "device": inc["device"],
                                "state": "deferred", "due_at": inc["defer_until"],
                                "words": (inc.get("deferred") or {}).get("why") or "deferred"})

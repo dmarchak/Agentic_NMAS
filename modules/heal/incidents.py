@@ -634,6 +634,22 @@ def claim(network: str, incident_id: str, *, by: str, now: float = None) -> dict
     return _mutate(network, change)
 
 
+def lift(network: str, incident_id: str, now: float = None) -> dict:
+    """A deferral whose hold no longer holds (`detect._hold_lifted`) ends now: the grace period
+    restarts now, never at the old deferral's end (the operator, 2026-11-16)."""
+    now = time.time() if now is None else float(now)
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if inc.get("state") != "watching" or float(inc.get("defer_until") or 0) <= now:
+            return inc
+        inc.update(defer_until=now, updated_at=_iso(now),
+                   deferred=dict(inc.get("deferred") or {}, lifted=_iso(now)))
+        return inc
+
+    return _mutate(network, change)
+
+
 def defer(network: str, incident_id: str, until: float, why: str, now: float = None,
           quiet: bool = False, guard=None) -> dict:
     """The decision (H3) sends a claimed incident back to watching until *until* (a planned
