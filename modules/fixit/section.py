@@ -832,13 +832,20 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"], out["investigating"] = "", "", False
     if not done:
+        from modules import incident_page
         from modules import troubleshoot_job
         from modules.nsot import saved_plans
         run = saved_plans.running_on(network, iid)
+        # C3862: a heal act running on it (a batch's restore or any), THE answer the Incidents
+        # row and Needs attention read too (`incident_page.fix_running`).
+        heal = {} if run else incident_page.fix_running(network, found)
         if run:
             out["working"] = (f"Self-healing: fixing with saved script "
                               f"{offer.get('name') or 'a saved script'}")
             out["working_step"] = run["step"]
+            out["status"], out["status_source"] = out["working"], ""
+        elif heal:
+            out["working"], out["working_step"] = heal["words"], heal["step"]
             out["status"], out["status_source"] = out["working"], ""
         elif state == "investigating":
             out["working"] = "The AI is investigating"

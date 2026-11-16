@@ -40,6 +40,7 @@ its compressed form; `address_of` also reads an alert's polled ``instance`` with
 import calendar
 import ipaddress
 import logging
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -134,6 +135,38 @@ def person_words(p: dict) -> str:
     if not p.get("user") and not p.get("process"):
         parts.insert(0, "no account named")
     return "the line names " + " ".join(parts)
+
+
+#: `person_words`' sentence read back into its parts, for a record that kept only the sentence
+#: (a grace kept before C3863: ``person`` the sentence, beside ``user``).
+_SAID = re.compile(r"the line names (?:no account named )?(?:the account (?P<user>\S+))?"
+                   r"(?: the process (?P<process>.+?))?(?: on (?P<line>\S+))?"
+                   r"(?: from (?P<address>\S+))?\Z")
+
+
+def person_said(p: dict) -> str:
+    """The person a change names, said as a person (the operator, 2026-11-16, C3863: never "the
+    line names the account lab on vty0 from …"): their display name where Mercury holds one for
+    the account (`display_names.shown`), else the account, with where the line says they were in
+    brackets: "lab (vty0, from 192.0.2.1)". ``""`` when no account is named. *p* is
+    `person_of`'s answer or a grace record (`detect._grace_started`); a grace kept before C3863
+    holds the sentence as ``person`` beside ``user``, so ``user`` is preferred and the line and
+    address are read back from the sentence. The sentence itself stays the record's
+    (``words``), for Details."""
+    from modules import display_names
+
+    p = p if isinstance(p, dict) else {}
+    m = _SAID.match(" ".join(str(p.get("words") or p.get("person") or "").split()))
+    back = {k: v for k, v in (m.groupdict() if m else {}).items() if v}
+    user = str(p.get("user") or back.get("user") or "").strip()
+    if not user:
+        return ""
+    line = str(p.get("line") or back.get("line") or "").strip()
+    source = p.get("source") if p.get("source") != p.get("line") else ""
+    address = str(p.get("address") or source or back.get("address") or "").strip()
+    where = [w for w in (line, f"from {address}" if address else "") if w]
+    name = display_names.shown(user) or user
+    return f"{name} ({', '.join(where)})" if where else name
 
 
 def _holder(network: str, device: str):

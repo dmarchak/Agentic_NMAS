@@ -274,7 +274,13 @@ def _grace_started(network: str, inc: dict, person: dict, j: dict, reads: list,
         return
     lines = next((r.get("changed_lines") for r in reversed(reads)
                   if r.get("state") == "drifted"), None)
-    g = {"person": person.get("words") or person.get("user"), "user": person.get("user"),
+    # C3863 (the operator, 2026-11-16): the person kept as a person, the account and where the
+    # line says they were (`attribution.person_said` draws "lab (vty0, from <address>)"); the
+    # attribution's sentence kept as ``words``, for Details. A grace kept before this holds the
+    # sentence as ``person``: `person_said` reads ``user`` first.
+    g = {"person": person.get("user"), "user": person.get("user"),
+         "line": person.get("line") or "", "address": person.get("address") or "",
+         "source": person.get("source") or "", "words": person.get("words") or "",
          "change_epoch": change, "until": _iso(float(j.get("due_at") or now)),
          "lines": lines, "told": False}
     try:
@@ -342,6 +348,7 @@ def _settle_port(network, inc, out, budget, now, by):
 def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     """One watching incident's step of a pass; returns the reads left."""
     from modules.heal import decide, grace, incidents
+    from modules.heal.attribution import person_said
 
     if float(inc.get("defer_until") or 0) > now and _hold_lifted(network, inc, now):
         # Its hold no longer holds: the deferral ends now, and the grace restarts now.
@@ -364,7 +371,7 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     if pressed == "kept":
         g = inc.get("grace") or {}
         d = decide.end_standing(
-            network, inc["id"], f"kept: {person.get('words') or 'the person'}'s change on "
+            network, inc["id"], f"kept: {person_said(person) or 'the person'}'s change on "
                                 f"{inc['device']} was adopted into intent",
             now=now, by=by, also_watching=True,
             read_words=(f"host_vars/{inc['device']}.yml committed after the change at "

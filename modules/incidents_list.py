@@ -29,8 +29,9 @@ further read: an open incident a person has troubleshot has a troubleshooting re
 (`fixit/<id>.json`, found by ONE listing of its folder), and its state is part of the page's
 one state (`status`), so that record's section state is read for those incidents alone (an
 incident nobody troubleshot has no record and no attempt: an attempt is a run its proposal's
-record line started). Nothing here reaches a device, Grafana, Loki or NetBox, and nothing is
-written.
+record line started). An open incident with a taken heal decision and no outcome has its act's
+mark probed (`incident_page.fix_running`, C3862: whether its heal runs now). Nothing here
+reaches a device, Grafana, Loki or NetBox, and nothing is written.
 
 **Large fleets** (CLAUDE.md, "Built for large fleets"): a summary first, groups that are
 `<details>`, open only while the tab holds at most `OPEN_UNDER` rows, each group drawing at
@@ -210,6 +211,13 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     tl = IP.timeline(inc, entry, decisions, network)
     resolved = st["state"] in IP.RESOLVED
     how = IP.fixed_how(network, inc) if st["state"] == "fixed" else {}
+    if not resolved and not fx.get("working"):
+        # C3862 (the operator, 2026-11-16): a heal act running on it, a batch's restore or any,
+        # is Mercury working with its live step, over any grace, dry-run or watching state
+        # (`incident_page.fix_running`, THE answer the card and Needs attention read too).
+        heal = IP.fix_running(network, found)
+        if heal:
+            fx = dict(fx, working=f"{heal['words']} · {heal['step']}")
     held = IP.held_words(inc)
     if held and not fx.get("working"):
         fx = dict(fx, held=held)
@@ -275,14 +283,22 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     return out
 
 
-def grace_words(inc, why: str) -> str:
+def grace_words(inc, why: str, now: float = None) -> str:
     """A named person's change waiting for them (`detect._grace_started`, the operator,
-    2026-11-16): "Waiting for <person>: put back automatically at <instant> unless kept", the
-    instant drawn by the page's clock; "" otherwise."""
+    2026-11-16): "Waiting for lab (vty0, from <address>): put back automatically at <instant>
+    unless kept", the person said as a person (`attribution.person_said`, C3863), the instant
+    drawn by the page's clock; "" otherwise, and "" once that instant has passed (C3862: a grace
+    is never drawn past its instant)."""
+    from modules import incident_page as IP
+    from modules.heal.attribution import person_said
+
     g = (inc or {}).get("grace") or {}
     if why != "watching" or not g.get("until"):
         return ""
-    return (f"Waiting for {g.get('person') or 'the person who changed it'}: put back "
+    until = IP._epoch(g["until"])
+    if until is None or until <= (time.time() if now is None else float(now)):
+        return ""
+    return (f"Waiting for {person_said(g) or 'the person who changed it'}: put back "
             f"automatically at {g['until']} unless kept")
 
 

@@ -1018,16 +1018,20 @@ def grace_notice(network: str, inc: dict, grace: dict, *, deliver=None) -> dict:
     """Tell *grace*'s person once, through the network's team (`GRACE_TOLD_AS`): "You changed
     <device> (<n> lines differ from intent). Keep it: adopt into intent / Put it back now"."""
     from modules import heal_notify
+    from modules.heal.attribution import person_said
     from modules.notify import delivery
 
     device = inc.get("device") or ""
     links = grace_links(network, device)
+    # C3863: the person as a person ("lab (vty0, from <address>)"), never the attribution's
+    # sentence.
+    who = person_said(grace) or "a person"
     lines = grace.get("lines")
     event = {"incident": str(inc.get("id") or "")[:80], "event": GRACE_EVENT,
              "network": network, "device": device,
              "title": (f"You changed {device} ({lines if lines is not None else 'some'} lines "
                        "differ from intent)")[:120],
-             "happened": f"{grace.get('person') or 'a person'} changed {device}",
+             "happened": f"{who} changed {device}",
              "outcome": f"Put back automatically at {grace.get('until')} unless kept",
              "todo": (f"Keep it: adopt into intent ({links['keep']}) / Put it back now "
                       f"({links['put_back']})"),

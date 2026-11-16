@@ -294,7 +294,8 @@ def who_of(entry: dict, decisions: list) -> dict:
     return {"kind": "unknown", "actor": ""}
 
 
-#: Mercury working on an open incident now: a saved script's run or an AI investigation.
+#: Mercury working on an open incident now: a heal act (`fix_running`), a saved script's run or
+#: an AI investigation.
 MERCURY_WORKING = "mercury_working"
 
 
@@ -305,6 +306,78 @@ def working_status(st: dict, working: str, resolved: bool) -> dict:
     if working and not resolved:
         return dict(st, state="open", why=MERCURY_WORKING, words="Mercury working")
     return st
+
+
+#: A heal act running on an incident, before its live step (`fix_running`).
+RESTORING = "Self-healing: restoring {device}"
+#: Its step before its act's job has said one (a batch deciding it again, or holding it).
+STARTING = "starting"
+
+
+def fix_running(network: str, found: dict, now: float = None) -> dict:
+    """THE answer to whether a heal act runs on the incident now (C3862, the operator,
+    2026-11-16: "A row whose fix is running in a batch must show "Mercury working" and the
+    step, whatever its earlier grace or dry-run state"): ``{"words", "step", "job",
+    "decision"}``, *words* "Self-healing: restoring r2" and *step* the act's live step, or
+    ``{}`` when none runs. The Incidents row (`incidents_list._row`), the incident's card and
+    page (`fixit.section`'s ``working``, then `working_status`) and Needs attention's row
+    linking it (which draws the list's status, `attention._incidents_agree`) all read this.
+
+    From what is already recorded, no tracker of its own; running while the incident is open
+    (or its step log entry still applying) and any of:
+    - its act's mark is held (`interrupted.mark_state`: taken before its decision is, released
+      once its outcome is recorded, in any process) for a taken decision with no outcome;
+    - its step log entry is applying (`acts`' ``running``);
+    - a self-healing batch claimed it (`heal.batch.claimed_by_batch`: from the batch's start
+      until it recorded the device's outcome).
+    Its step: the act's own (its ``heal_run`` job in this process, `op_progress.run_of`, the
+    run named by the decision), else the step log's newest recorded one while applying, else
+    `STARTING`. A read: one mark probed per taken decision with no outcome, nothing written."""
+    from modules import op_progress, run_stepper
+    from modules.heal import act as A
+    from modules.heal import batch as HB
+    from modules.heal import incidents, interrupted
+    from modules.nsot import capture_job
+
+    now = time.time() if now is None else float(now)
+    inc = (found or {}).get("incident") or {}
+    entry = (found or {}).get("entry") or {}
+    decisions = (found or {}).get("decisions") or []
+    device = inc.get("device") or entry.get("device") or ""
+    ran = acts(entry)
+    applying = bool(ran and ran[-1]["running"])
+    open_ = inc.get("state") in incidents.OPEN_STATES
+    if not (open_ or applying):
+        return {}
+    held = ""
+    for d in reversed(decisions):
+        if (d.get("outcome") in interrupted.TAKEN_OUTCOMES and d.get("taken")
+                and not d.get("applied") and d.get("id")):
+            try:
+                if interrupted.mark_state(network, d["id"])[0] == "held":
+                    held = d["id"]
+                    break
+            except OSError as exc:
+                log.warning("incident page: %s's heal mark cannot be read (%s)", d["id"],
+                            type(exc).__name__)
+    batch = open_ and HB.claimed_by_batch(inc, now)
+    if not (held or applying or batch):
+        return {}
+    ids = {d.get("id") for d in decisions if d.get("id")}
+    step, job = "", ""
+    for j in capture_job.card_jobs(now):
+        if (j["card"] == "heal_run" and j["state"] == "running" and j["list"] == network
+                and j["device"] == device):
+            live = op_progress.run_of(j["job"]) or {}
+            if live.get("run") in ids:
+                step, job = run_stepper.current_words(live["declared"], live["steps"],
+                                                      live.get("labels")), j["job"]
+                break
+    if not step and applying:
+        step = run_stepper.current_words(A.STEPS, ran[-1]["steps"],
+                                         run_stepper.labels_for(A.STEP_LABELS, device=device))
+    return {"words": RESTORING.format(device=device or "the device"), "step": step or STARTING,
+            "job": job, "decision": held or (ran[-1]["decision"] if applying else "")}
 
 
 def held_words(incident, now: float = None) -> str:
@@ -1092,8 +1165,9 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
         return {"words": "Nothing yet: Mercury is working on it. This page says what it "
                          "decided as soon as it does.", "more": "", "links": ["device"]}
     if why == MERCURY_WORKING:
-        return {"words": "Nothing yet: Mercury is working on it (a saved script's run or an AI "
-                         "investigation). Its outcome is drawn here when it ends.",
+        return {"words": "Nothing yet: Mercury is working on it (a self-healing restore, a saved "
+                         "script's run or an AI investigation). Its outcome is drawn here when "
+                         "it ends.",
                 "more": "", "links": ["device"]}
     if why == "ai_investigating":
         return {"words": "Nothing yet: the AI is investigating. Its proposal is drawn under AI "
@@ -1269,8 +1343,11 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
                           resolved=(closed or time.time()) if resolved else None,
                           ended=state_of(found["incident"], entry, decisions) if resolved
                           else "")
+    # C3862: a heal act running on it is Mercury working (`fix_running`), as the section says
+    # it; asked here too for a section drawn without its record (no device identity known).
+    heal = {} if resolved or fixit.get("working") else fix_running(network, found)
     st = working_status(status(found["incident"], entry, decisions, fixit["state"]),
-                        fixit.get("working"), resolved)
+                        fixit.get("working") or heal.get("words"), resolved)
     state = st["state"]
     # The incident's own Needs attention item, as that list holds it: its action is the
     # page's one primary button while a person is needed, and its lost-stream lines are
