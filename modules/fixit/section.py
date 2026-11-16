@@ -761,6 +761,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "none", "label": "Mercury is working on it"}
     else:
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
+    out["why_person"] = _why_person(nxt, offer, found)
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
                             "problem", "kept")}
@@ -781,6 +782,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         # A guard holds it: said, with when the next automatic heal is allowed (the operator,
         # 2026-11-16), never "reading it, before it decides".
         out["status"] = _held_of(found)
+    elif not done and out["why_person"] and state not in ("investigating", "running"):
+        # Why a person is needed, at a glance, beside its one action (the operator, 2026-11-16).
+        out["status"] = out["why_person"]
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"] = "", ""
@@ -796,6 +800,37 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         elif state == "investigating":
             out["working"] = "The AI is investigating"
             out["working_step"] = troubleshoot_job.shown(network, iid)
+
+
+def _why_person(nxt: dict, offer: dict, found: dict) -> str:
+    """Why a person is needed, one short reason beside its one action (the operator,
+    2026-11-16), or ``""``: guard 4's disagreement, guard 6's many devices, a saved script, the
+    AI's plan, no saved fix yet (the AI can investigate), or nothing safe found."""
+    from modules import problem as P
+
+    inc = (found or {}).get("incident") or {}
+    g = (inc.get("standing") or {}).get("guard")
+    g = g.get("guard") if isinstance(g, dict) else g
+    if g == 4:
+        return "Saved config and intent disagree: decide which is right"
+    if g == 6:
+        return "Many devices changed at once: approve fixing them all"
+    if offer:
+        return f"A saved script can fix this: {offer['name']}"
+    kind = (nxt or {}).get("kind")
+    if kind == "approve":
+        return "The AI's plan is ready: needs your approval"
+    if kind == "start":
+        try:
+            prob = P.classify(found)
+            what = prob.cause or prob.condition.replace("_", " ")
+        except Exception:                             # noqa: BLE001 (said without the cause)
+            what = ""
+        return (f"No saved fix for {what} yet: the AI can investigate" if what
+                else "No saved fix yet: the AI can investigate")
+    if kind == "hand_over":
+        return "No saved fix, and the AI found no safe plan"
+    return ""
 
 
 def _held_of(found: dict) -> str:
