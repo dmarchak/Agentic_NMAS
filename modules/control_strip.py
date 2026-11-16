@@ -42,12 +42,52 @@ device or a computation").
 """
 
 import logging
+import threading
 import time
 
 log = logging.getLogger(__name__)
 
 #: The strip's element id: the top bar's status chip links here (`#control-strip`).
 ANCHOR = "control-strip"
+
+#: C3866 (the operator, 2026-11-16: "Every switch flips instantly; the work it starts happens
+#: after, in the background"): what a screen drew for a press, held in this process so the
+#: press is checked against it by its hash and answers at once, with no second preview: the
+#: Self-healing switch's line (``switch``), the AI switch's line (``ai_line``,
+#: `troubleshoot_control.strip`) and the In progress list a person last drew (``chip``,
+#: routes/operations). Display only: a press still binds its hash, and each item re-checks
+#: its own at apply. Held as the Incidents list holds its rows (`incidents_list.held`, the
+#: pattern): keyed by `invalidation.generation`, so the next announcement or declared change
+#: drops it, and for at most `HELD_S` (15 minutes, a choice, nothing measured: longer than a
+#: person reads a strip before pressing). Dropped, or in a process that did not draw it, the
+#: press previews again (or a list is read again), as before.
+HELD_S = 900
+#: ``{(kind, key): (generation, monotonic, value)}``.
+_held = {}
+_held_lock = threading.Lock()
+
+
+def hold(kind: str, key: str, value):
+    """Keep *value*, what *kind*'s screen drew for *key* (a network, a viewer), as the newest,
+    under the invalidation generation now: returns *value*. None forgets it."""
+    from modules import invalidation
+
+    with _held_lock:
+        _held[(kind, key)] = (invalidation.generation(), time.monotonic(), value)
+    return value
+
+
+def held(kind: str, key: str):
+    """What *kind*'s screen last drew for *key*, while nothing was announced or declared since
+    and within `HELD_S`, or None."""
+    from modules import invalidation
+
+    with _held_lock:
+        got = _held.get((kind, key))
+    if got is None or got[0] != invalidation.generation() \
+            or time.monotonic() - got[1] > HELD_S:
+        return None
+    return got[2]
 
 
 def _run_card(job: dict) -> dict:
@@ -212,18 +252,36 @@ def switch_preview(network: str) -> dict:
     the switch's press is bound to; *on* False when there is nothing open to fix."""
     from modules.heal import batch
 
-    return batch.preview(network, script_items=batch_script_items(network), switch=True)
+    return hold("switch", network,
+                batch.preview(network, script_items=batch_script_items(network), switch=True))
 
 
 def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> dict:
     """The Self-healing switch turned on with the open problems its line drew (C3823): C3819's
-    batch (`heal.batch.press` with ``switch``), bound to *shown*, the line's hash, the saved
-    scripts' matches handed in, and no AI (nothing to start it is handed in). Raises
-    `heal.batch.Refused`, nothing turned on and nothing started."""
+    batch (`heal.batch.press` with ``switch``), bound to *shown*, the line's hash, and no AI
+    (nothing to start it is handed in). C3866: the line as this process drew it (`held`),
+    pressed at its hash, is the batch approved, with no second preview; otherwise the saved
+    scripts' matches are read again and the preview made again, as before. Raises
+    `heal.batch.Refused`, nothing turned on and nothing started (`heal.batch.TurnedOn`: Auto
+    on, nothing sent)."""
     from modules.heal import batch
 
-    return batch.press(network, shown, actor=actor, verified=verified, ident=ident,
-                       script_items=batch_script_items(network), switch=True)
+    drawn = held("switch", network)
+    if drawn is None or drawn.get("hash") != (shown or ""):
+        # Not the line held: the preview made now (and held, `switch_preview`), so a refusal
+        # names it and the strip's redraw and a second press use the current line.
+        drawn = switch_preview(network)
+    got = batch.press(network, shown, actor=actor, verified=verified, ident=ident,
+                      switch=True, held=drawn)
+    # What it listed is the batch's now: a later press is checked against a line drawn again.
+    hold("switch", network, None)
+    return got
+
+
+def starting_words(fixes: int) -> str:
+    """The switch's answer while its work starts (the operator, 2026-11-16: "the switch shows
+    On at once and its line shows the work starting ("Starting 7 fixes…")")."""
+    return f"Starting {fixes} fix{'' if fixes == 1 else 'es'}…"
 
 
 def batch_run(network: str, now: float = None):
@@ -249,10 +307,12 @@ def batch_run(network: str, now: float = None):
     return _run_card(job)
 
 
-def view(network: str, now: float = None, **answer) -> dict:
+def view(network: str, now: float = None, drawn: bool = False, **answer) -> dict:
     """The strip's model for *network*: ``{"network", "anchor", "heal", "ai", "may",
-    "why_not", "run", "answer"}``. *answer* is what a press said (``heal_set``, ``refused``),
-    drawn in place."""
+    "why_not", "run", "answer"}``. *answer* is what a press said (``heal_set``, ``starting``,
+    ``refused``), drawn in place. *drawn* (C3866, a press's answer): each switch's line as
+    this process last drew it (`held`), where it holds one, so the answer waits on no
+    preview; the strip's own read (its GET) makes them again."""
     from flask import url_for
 
     from modules import identity
@@ -276,7 +336,7 @@ def view(network: str, now: float = None, **answer) -> dict:
     # the hash the switch's press is bound to (`switch_preview`); none, no line.
     if heal["known"] and not heal["on"]:
         try:
-            sp = switch_preview(network)
+            sp = (held("switch", network) if drawn else None) or switch_preview(network)
             if sp.get("on"):
                 heal.update(also=sp.get("also") or "", hash=sp.get("hash") or "")
             if sp.get("error") or sp.get("state") != "ok":
@@ -289,7 +349,7 @@ def view(network: str, now: float = None, **answer) -> dict:
     # limits are acknowledged, linking the limits card.
     from modules import troubleshoot_control as troubleshoot
     try:
-        ai = troubleshoot.strip(network)
+        ai = troubleshoot.strip(network, drawn=drawn)
     except Exception as exc:                          # noqa: BLE001 (said, never drawn as off)
         ai = {"on": False, "known": False, "at": "", "level": "unknown", "words": "",
               "ready": "", "line": None, "error": f"{type(exc).__name__}: {exc}"}

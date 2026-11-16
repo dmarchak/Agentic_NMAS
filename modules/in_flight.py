@@ -490,8 +490,22 @@ def chip(networks, viewer: str, now: float = None) -> dict:
                          if not (f.get("href") and f["href"] in homes)]
         except Exception as exc:                      # noqa: BLE001
             unread.append((name, f"its finished runs: {type(exc).__name__}: {exc}"))
+    # What this person has seen, kept (C3081): unreadable lists everything (above) and says so;
+    # with nobody verified looking there is no one to keep it for, so Open the result opens
+    # the page and the in-memory mark is the only one.
+    seen = seen_runs.read()
+    return dict(summary(running, finished, unread), running=running, finished=finished,
+                unread=unread,
+                seen_unread=(SEEN_UNREAD.format(why=seen["why"])
+                             if seen["state"] == "unreadable" else ""),
+                marks=bool(viewer) and seen["state"] != "unreadable")
+
+
+def summary(running: list, finished: list, unread: list) -> dict:
+    """The chip's ``{"counts", "level", "words", "shown"}`` over its lists (`chip`'s; and a
+    list a mark took one entry from, routes/operations, C3866). Red wins; then a partial; then
+    anything running; green only when all is done and clean."""
     counts = {k: sum(1 for f in finished if f["outcome"] == k) for k in OUTCOMES.values()}
-    # Red wins; then a partial; then anything running; green only when all is done and clean.
     level = ("danger" if counts["failed"] or unread else "warn" if counts["partial"]
              else "run" if running else "ok")
     words = "; ".join(w for w in (
@@ -500,15 +514,8 @@ def chip(networks, viewer: str, now: float = None) -> dict:
         f"{counts['partial']} partial" if counts["partial"] else "",
         f"{counts['done']} done" if counts["done"] else "",
         f"{len(unread)} network(s) unread" if unread else "") if w)
-    # What this person has seen, kept (C3081): unreadable lists everything (above) and says so;
-    # with nobody verified looking there is no one to keep it for, so Open the result opens
-    # the page and the in-memory mark is the only one.
-    seen = seen_runs.read()
-    return {"running": running, "finished": finished, "unread": unread, "counts": counts,
-            "level": level, "words": words, "shown": bool(running or finished or unread),
-            "seen_unread": (SEEN_UNREAD.format(why=seen["why"])
-                            if seen["state"] == "unreadable" else ""),
-            "marks": bool(viewer) and seen["state"] != "unreadable"}
+    return {"counts": counts, "level": level, "words": words,
+            "shown": bool(running or finished or unread)}
 
 
 # ---------------------------------------------------------------------------

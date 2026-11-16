@@ -56,11 +56,17 @@ def viewer_key() -> str:
 
 
 def _read_chip() -> dict:
+    """The chip as the person looking sees it now (`in_flight.chip`), held as the list they
+    last drew (`control_strip.hold`, ``chip``, C3866), so marking one of its entries seen
+    answers from it at once."""
+    from modules import control_strip as CS
     from modules import in_flight as F
     from modules import integration_groups as IG
 
     try:
-        return F.chip(IG.network_names(), viewer_key())
+        viewer = viewer_key()
+        got = F.chip(IG.network_names(), viewer)
+        return CS.hold("chip", viewer, got) if viewer else got
     except Exception as exc:                      # noqa: BLE001
         log.exception("operations: the In progress chip could not be read")
         return {"error": f"{type(exc).__name__}: {exc}", "shown": True, "level": "danger",
@@ -109,9 +115,17 @@ def mark_seen():
     an htmx redirect (the network picker's do-then-open, `network_v2.choose`), else a 303.
     ``dismissed``: marked, and the list drawn again in place without it. A refusal (nobody
     verified, the store unreadable) is drawn at the list's head and nothing is written. Every
-    open page's chip reads again (`in_progress`)."""
+    open page's chip reads again (`in_progress`).
+
+    C3866 (the operator, 2026-11-16: marking runs seen "answers at once"): the entry is found
+    in the list as this person last drew it (`control_strip.held`, ``chip``), where this
+    process holds one, else (or when it is not in that list) in the list read now; a dismissal answers with that list less what it marked
+    (`in_flight.summary` again over it), and the announcement redraws every chip from a fresh
+    read."""
     from flask import make_response, redirect
 
+    from modules import control_strip as CS
+    from modules import in_flight as F
     from modules import seen_runs
     from modules.nsot import capture_job
 
@@ -119,9 +133,15 @@ def mark_seen():
     how = (form.get("how") or "").strip()
     job, run = (form.get("job") or "").strip(), (form.get("run") or "").strip()
     viewer = viewer_key()
-    ip = _read_chip()
-    entry = next((f for f in ip.get("finished") or []
-                  if (job and f.get("job") == job) or (run and f.get("run") == run)), None)
+    def listed(ip):
+        return next((f for f in ip.get("finished") or []
+                     if (job and f.get("job") == job) or (run and f.get("run") == run)), None)
+    ip = CS.held("chip", viewer) if viewer else None
+    entry = listed(ip) if ip is not None else None
+    if entry is None:
+        # Not in the list as held (or none held): the list read now, never a silent no-op.
+        ip = _read_chip()
+        entry = listed(ip)
     if not viewer or how not in seen_runs.HOW:
         got = seen_runs.mark(viewer, [job, run], how)          # refused, saying why
         device, network = "", ""
@@ -148,7 +168,16 @@ def mark_seen():
         except Exception as exc:                  # noqa: BLE001
             log.warning("operations: a mark seen was not announced to open pages: %s", exc)
     if how != "opened":
-        return _chip()
+        if entry is None:
+            return _chip(ip)
+        ids = {entry.get("job"), entry.get("run")} - {None, ""}
+        left = [f for f in ip.get("finished") or []
+                if not ({f.get("job"), f.get("run")} & ids)]
+        ip = dict(ip, finished=left, **F.summary(ip.get("running") or [], left,
+                                                 ip.get("unread") or []))
+        if viewer:
+            CS.hold("chip", viewer, ip)
+        return _chip(ip)
     # The run's address from the ONE place it is built (`run_href`, the operator, 2026-11-11:
     # "once the incident page exists, 'Open the result' goes to the incident's URL").
     from html import unescape

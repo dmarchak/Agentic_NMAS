@@ -227,8 +227,10 @@ def approve(incident_id):
     order through its own operation's preview, apply (re-checking its own hash), verify and
     record; the first that does not pass stops it; nothing retried. One approve line names the
     run. Refused with nothing run when the hash is not the one preflighted now (both named) or
-    a step would be refused."""
-    from modules import plan_engine as PE
+    a step would be refused. C3867: the preflight is the page's own (the incident's records, no
+    device or collector read); the approval is recorded and the answer is "Starting…" at once,
+    and the live reads and the start follow it (`_start_approved`), a refusal there drawn on
+    the card."""
     from modules.fixit import incident as F
     from modules.fixit import plan as FP
 
@@ -251,38 +253,7 @@ def approve(incident_id):
             "again. Nothing ran"))
     reason = " ".join((request.form.get("reason") or "").split()) or (
         f"approved plan {plan['hash']} on incident {incident_id}'s page")
-    # Each collector step's session, read when the plan was proposed and drawn from that
-    # record (C3725; the operator, 2026-11-15), is bound by the plan's hash (`plan_params`).
-    # Approve reads it again now (the close helper's dry run) and refuses, naming both, when
-    # the collector holds another; the step's own preview and apply check it once more.
     params, bound = FP.plan_params(inc, line), plan["hash"]
-    from modules.heal import resubscribe as R
-    if any(s["operation"] in R.COLLECTOR_STEP_KEYS for s in params["steps"]):
-        read = {str(s.get("n")): s for s in plan.get("sessions") or []}
-        for n, s in enumerate(params["steps"], 1):
-            if s["operation"] not in R.COLLECTOR_STEP_KEYS:
-                continue
-            kept = read.get(str(n)) or {}
-            got = PE.collector_session(network, s["params"]["device"],
-                                       s["params"].get("subscriptions") or [])
-            if got["session"] != s.get("session"):
-                now = (f"the one from {got['session']}" if got["session"]
-                       else f"none ({got['refused']})")
-                return _section(network, found, 409, refused=(
-                    f"Not approved: step {n}'s collector session moved since the plan was "
-                    f"proposed: the plan read the session from {s.get('session')} at "
-                    f"{kept.get('at') or 'its proposal'}, and the collector holds {now} now. "
-                    "Ask again for a plan that reads it. Nothing ran"))
-        engine = PE.preview(network, PE.INCIDENT_FIX, params)
-        if not engine["ok"]:
-            return _section(network, found, 409, refused=(
-                f"Not approved: {engine['refused']}. Nothing ran"))
-        # The run starts only on the hash the person approved: the session is bound by the
-        # preflight's hash now (`plan_params`), so the engine's preview must name the same.
-        if engine["hash"] != plan["hash"]:
-            return _section(network, found, 409, refused=(
-                f"Not approved: you approved the plan {plan['hash']}, and the plan engine "
-                f"previews {engine['hash']} now: it moved since. Read it again. Nothing ran"))
     # The approval is kept BEFORE the run starts, naming the run it starts (its id given to
     # the engine), so a run never exists without the person's approval on the record.
     from modules.nsot import reads
@@ -292,20 +263,86 @@ def approve(incident_id):
                          plan_hash=plan["hash"], run=run_id)
     except (F.Refused, OSError, ValueError) as exc:
         return _section(network, found, 409, refused=f"Not approved: {exc}. Nothing ran")
-    got = PE.start(network, PE.INCIDENT_FIX, params, bound, actor=who["actor"],
-                   actor_verified=who["actor_verified"], person=who["person"], reason=reason,
-                   run_id=run_id)
-    if got.get("refused"):
+    # C3867 (the operator, 2026-11-16: "Approve: checks the posted hash against the plan as
+    # shown ... starts the plan engine's job at once and answers "Starting…" in place"): the
+    # hash is checked above against the plan as the page draws it (`FP.preflight`, from the
+    # incident's records: no device or collector read), and everything that reads live goes
+    # after the answer (`_start_approved`): each collector session read again, the engine's
+    # preview and its hash, the start; a refusal there is drawn on the card as before.
+    _start_approved(network, inc, params, bound, plan, run_id, who, reason)
+    return _section(network, found, done=(
+        f"Starting… Approved plan {plan['hash'][:12]} runs step by step and stops at the "
+        "first step that does not pass; each step's own record is under Attempts."))
+
+
+def _start_approved(network: str, inc, params: dict, bound: str, plan: dict, run_id: str,
+                    who: dict, reason: str) -> None:
+    """The approved plan started after Approve's answer (C3867), as its own job
+    (`capture_job.start`: an In progress row opening the incident's card, its failed state
+    readable there, its end announced by the plan engine's announcer, `privileged`, `drift`,
+    `in_progress`), its work in the request's context so the verified person is carried to the
+    engine's own job (`copy_current_request_context`; `identity.verified_identity` reads a
+    request): each collector step's session, read when the plan was proposed and bound by the
+    plan's hash (C3725, `plan_params`), read again (the close helper's dry run) and refused,
+    naming both, when the collector holds another; then the plan engine's own start
+    (`PE.start`: its preview of every step and its hash compared with the one approved, then
+    the run as its job, whose apply re-checks each step's own hash). A refusal is kept on the
+    incident's card after its approval (`troubleshoot_job.record_failure`, in every worker)
+    and ends this job failed, naming it."""
+    from urllib.parse import quote
+
+    from flask import copy_current_request_context
+
+    from modules import plan_engine as PE
+    from modules.nsot import capture_job
+
+    def refused(why: str):
         # Kept after its approval, so the card says it, never a run that never was.
         from modules import troubleshoot_job
-        troubleshoot_job.record_failure(inc, f"approve:{run_id}",
-                                 f"the approved plan did not start: {got['refused']}",
-                                 trigger="person", by=who["actor"],
-                                 verified=who["actor_verified"])
-        return _section(network, found, 409, refused=f"Not approved: {got['refused']}")
-    return _section(network, found, done=(
-        f"Approved plan {plan['hash']}: it runs now, step by step, and stops at the first step "
-        "that does not pass. Each step's own record is under Attempts."))
+        words = f"the approved plan did not start: {why}"
+        troubleshoot_job.record_failure(inc, f"approve:{run_id}", words, trigger="person",
+                                        by=who["actor"], verified=who["actor_verified"])
+        raise RuntimeError(words)                     # the job's failed state says it
+
+    def go(_job=None):
+        got = {}
+        try:
+            from modules.heal import resubscribe as R
+            read = {str(s.get("n")): s for s in plan.get("sessions") or []}
+            for n, s in enumerate(params["steps"], 1):
+                if s["operation"] not in R.COLLECTOR_STEP_KEYS:
+                    continue
+                kept = read.get(str(n)) or {}
+                now = PE.collector_session(network, s["params"]["device"],
+                                           s["params"].get("subscriptions") or [])
+                if now["session"] != s.get("session"):
+                    held = (f"the one from {now['session']}" if now["session"]
+                            else f"none ({now['refused']})")
+                    got = {"refused": (
+                        f"step {n}'s collector session moved since the plan was proposed: "
+                        f"the plan read the session from {s.get('session')} at "
+                        f"{kept.get('at') or 'its proposal'}, and the collector holds "
+                        f"{held} now. Ask again for a plan that reads it. Nothing ran")}
+                    break
+            # `PE.start` previews every step and compares its hash with the one approved
+            # (the session is bound by the preflight's hash, `plan_params`), refusing, naming
+            # both, when it moved.
+            if not got:
+                got = PE.start(network, PE.INCIDENT_FIX, params, bound, actor=who["actor"],
+                               actor_verified=who["actor_verified"], person=who["person"],
+                               reason=reason, run_id=run_id)
+        except Exception as exc:                      # noqa: BLE001 (kept on the card)
+            log.exception("fixit approve: run %s did not start", run_id)
+            got = {"refused": f"{type(exc).__name__}: {exc}. Nothing ran"}
+        if got.get("refused"):
+            refused(got["refused"])
+        return {"run": run_id, "job": got.get("job"), "state": "done",
+                "words": f"the approved plan's run started ({run_id})"}
+    capture_job.start(network, f"Starting the approved plan on {inc.id}", who["actor"],
+                      copy_current_request_context(go), kind="approved plan start",
+                      announce_keys=("privileged", "drift", "in_progress"),
+                      announcer=PE.ANNOUNCER,
+                      page=f"/v2/incident/{quote(inc.id)}?list={quote(network)}#inc-run")
 
 
 @bp.route("/<incident_id>/fixit/deny", methods=["POST"])

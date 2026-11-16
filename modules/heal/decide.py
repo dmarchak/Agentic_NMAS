@@ -354,9 +354,17 @@ def decide_one(network: str, incident: dict, *, now: float, sources=None, mode=N
     "until", "verify"}``. *cause* is what happened, from the incident's judged triggers and the
     decision's units (`said.cause_of`, C2823: facts first, a hypothesis labelled), or None;
     *words* state it first, then *outcome_words*, what Mercury did or would do."""
+    d = _decide_one(network, incident, now=now, sources=sources, mode=mode, batch=batch)
+    return said_of(network, incident, d)
+
+
+def said_of(network: str, incident: dict, d: dict) -> dict:
+    """*d*, a decision for *incident* (`_decide_one`'s, or a batch's made from the decision it
+    previewed, `heal.batch._as_previewed`, C3865), with its words as `decide_one` states them:
+    the cause first, then what Mercury did or would do (``outcome_words``), the classified
+    problem and the headline. The one home of a decision's words."""
     from modules.heal import said
 
-    d = _decide_one(network, incident, now=now, sources=sources, mode=mode, batch=batch)
     d["outcome_words"] = d.get("words") or ""
     try:
         d["cause"] = said.cause_of(judged_triggers(incident), d)
@@ -388,9 +396,12 @@ BATCH_RESOLVES = (6, 8)
 GRACE_KEPT = ("not_checkable", "unreadable")
 #: The fields of the decision past guard 6 a guard-6 hold carries for the batch's preview
 #: (``beyond``): what the decision would be were guard 6 resolved, with the program it would
-#: send and its hash, so the batch card shows the exact program before the press.
+#: send and its hash, so the batch card shows the exact program before the press. C3865: with
+#: its verify and (``units_masked``, `_beyond`) its units as a record keeps them, so the batch's
+#: press makes the heal decision from this hold with no second device read
+#: (`heal.batch._as_previewed`); the act reads the device at apply.
 BEYOND_FIELDS = ("outcome", "words", "kind", "tier", "program", "program_hash",
-                 "removal_ids", "departure", "dangerous", "guard")
+                 "removal_ids", "departure", "dangerous", "guard", "verify")
 
 
 def _resolves(batch, g: dict, incident: dict) -> bool:
@@ -415,6 +426,8 @@ def _beyond(network, incident, *, now, sources, mode) -> dict:
                                                f"({type(exc).__name__}: {exc})"}
     out = {k: got.get(k) for k in BEYOND_FIELDS}
     out["units"] = len(got.get("units") or [])
+    # Masked by `kinds.masked_unit` as every decision keeps them: no configuration text.
+    out["units_masked"] = list(got.get("units") or [])
     return out
 
 

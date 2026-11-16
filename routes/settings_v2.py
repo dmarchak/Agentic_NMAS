@@ -699,12 +699,16 @@ def ai_ts_level(network):
         return _ai_section(network, 403, ts_refused=why)
     try:
         got = troubleshoot.set_level(network, level, shown=request.form.get("line_digest") or "",
-                                     actor=identity.request_actor(), verified=_verified())
+                                     actor=identity.request_actor(), verified=_verified(),
+                                     background_starts=_on_strip())
     except troubleshoot.Refused as exc:
         if _on_strip():
             return _strip_answer(network, 409, refused=str(exc), refused_href=exc.href)
         return _ai_section(network, 409, ts_refused=str(exc))
     if _on_strip():
+        # C3866: the switch On at once; its catch-up starts after this answer.
+        if got.get("starting"):
+            return _strip_answer(network, starting=got["starting"])
         return _strip_answer(network, ai_set=got["words"])
     return _ai_section(network, ts_set=got["words"])
 

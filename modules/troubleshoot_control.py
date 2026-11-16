@@ -351,8 +351,87 @@ def _set_mode(name: str, slug: str, mode: str, *, actor: str, verified: str) -> 
         raise Refused(str(exc)) from None
 
 
+def starting_words(n: int) -> str:
+    """The AI switch's answer while its catch-up starts (C3866; the operator, 2026-11-16)."""
+    return f"Starting the AI on {n} incident{'' if n == 1 else 's'}…"
+
+
+#: The catch-up's job kind (C3866): the strip draws its newest outcome (`caught_line`).
+CATCH_UP_KIND = "AI catch-up"
+
+
+def start_catch_up_after(name: str, ids, *, actor: str, verified: str) -> str:
+    """Turning Automatic on's catch-up (`heal_notice.start_catch_up`: every start planned
+    against every cap under its lock across processes, each investigation its own job, a cap or
+    hosted AI off kept on the incident's own card) run as its own job (`capture_job.start`, an
+    In progress row, its end announced as an investigation's is) as soon as the switch's answer
+    is on its way (C3866), its work in the request's context so the verified person is carried
+    (`copy_current_request_context`: `start_catch_up` hands each investigation that context).
+    An incident whose start failed is kept on its own card (`troubleshoot_job.record_failure`);
+    one skipped (resolved or started since) and the counts are the job's words, which the strip
+    draws (`caught_line`). A catch-up that raises ends the job failed, naming why. Returns the
+    job's id."""
+    from urllib.parse import quote
+
+    from flask import copy_current_request_context, has_request_context
+
+    from modules import heal_notice, troubleshoot_job
+    from modules.nsot import capture_job
+
+    ids = list(ids)
+
+    def go(_job=None):
+        caught = heal_notice.start_catch_up(name, ids, actor=actor, verified=verified)
+        if caught.get("failed"):
+            from modules.fixit import auto as A
+            listed = {i["id"]: i["incident"] for i in A.catch_up(name)["items"]}
+            for f in caught["failed"]:
+                if f["id"] in listed:
+                    troubleshoot_job.record_failure(
+                        listed[f["id"]], f"catch-up:{f['id']}",
+                        f"the AI was not started when Automatic was turned on: {f['why']}",
+                        trigger="person", by=actor, verified=verified)
+        bad = bool(caught.get("failed") or caught.get("skipped"))
+        return {"state": "partial" if bad else "done", "caught": caught,
+                "words": started_words(caught)}
+    work = copy_current_request_context(go) if has_request_context() else go
+    return capture_job.start(name, f"AI troubleshooting: starting on {len(ids)} open "
+                                   f"incident{'' if len(ids) == 1 else 's'}", actor, work,
+                             kind=CATCH_UP_KIND, announce_keys=troubleshoot_job.ANNOUNCE_KEYS,
+                             announcer=troubleshoot_job.ANNOUNCER,
+                             page=f"/v2/incidents?list={quote(name)}#control-strip")
+
+
+def caught_line(network: str, now: float = None):
+    """The newest catch-up of *network* this server holds, as the strip's AI line says it
+    (C3866): ``{"words", "ok", "at"}`` while it runs ("starting…") and for
+    `control_strip.RUN_LINE_S` after it ended, *ok* False when one was not started (each card
+    says why) or the job failed; else None."""
+    from modules import control_strip as CS
+    from modules.nsot import capture_job
+
+    name = _name(network)
+    job = next((j for j in capture_job.card_jobs() if j["kind"] == CATCH_UP_KIND
+                and j["list"] == name), None)
+    if job is None:
+        return None
+    now = time.time() if now is None else float(now)
+    got = capture_job.get(job["job"]) or {}
+    if got.get("state") == "running":
+        return {"words": "AI troubleshooting: starting on the open incidents now", "ok": True,
+                "at": _iso(job["started_at"])}
+    if job.get("finished_at") and now - float(job["finished_at"]) > CS.RUN_LINE_S:
+        return None
+    pay = got.get("payload") or {}
+    if got.get("state") == "failed":
+        return {"words": f"The AI was not started on the open incidents: {got.get('error')}",
+                "ok": False, "at": _iso(job["started_at"])}
+    return {"words": pay.get("words") or "", "ok": pay.get("state") == "done",
+            "at": _iso(job["started_at"])}
+
+
 def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: str,
-              now: float = None) -> dict:
+              now: float = None, background_starts: bool = False) -> dict:
     """Set *network*'s AI troubleshooting to *lvl* (an admin's decision; the Settings card's
     three choices and the control strip's switch, on Automatic and off back to Manual, are this
     one path). ``{"ok", "level", "nothing", "caught", "line", "words"}``; raises Refused naming
@@ -364,7 +443,13 @@ def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: 
     was Off, the switch turned on with the acknowledged estimate and limits (the list recorded
     with it), and every listed incident started within the caps (`heal_notice.start_catch_up`,
     inside the press's request). Manual and Off: the switch off when it was on (one press, no
-    confirm: it spends nothing), and the network's own mode written where it differs."""
+    confirm: it spends nothing), and the network's own mode written where it differs.
+
+    *background_starts* (C3866, the control strip's switch): the line bound is the one the
+    strip drew (`control_strip.held`, ``ai_line``) when pressed at its digest, and the
+    catch-up's starts run after the answer (`start_catch_up_after`), the answer's
+    ``starting`` "Starting the AI on N incidents…"; each start still planned against every
+    cap before any starts."""
     from modules.ai import background
     from modules.fixit import policy as P
 
@@ -379,7 +464,13 @@ def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: 
         got = limits(name, now=now)
         if got["ready"]:
             raise Refused(f"Automatic was not turned on: {got['ready']}", href=got["href"])
-        line = catch_up_line(name, now=now)
+        # C3866 (the operator, 2026-11-16: "Every switch flips instantly"): the line as the
+        # strip drew it in this process, pressed at its digest, is the one bound, with no second
+        # read of the open incidents; otherwise read again and compared, as before.
+        from modules import control_strip as CS
+        line = CS.held("ai_line", name)
+        if line is None or line.get("state") != "ok" or line.get("digest") != shown:
+            line = catch_up_line(name, now=now)
         if line["state"] != "ok":
             raise Refused(f"Automatic was not turned on: the open incidents it would start on "
                           f"cannot be read ({line['error']}); nothing was changed")
@@ -404,10 +495,19 @@ def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: 
                           + ("; its mode was set to Manual first, and stays Manual" if moved
                              else ""), href=got["href"]) from None
         caught = None
-        if line["ids"]:
+        if line["ids"] and not background_starts:
             from modules import heal_notice
             caught = heal_notice.start_catch_up(name, line["ids"], actor=actor,
                                                 verified=verified, now=now)
+        elif line["ids"]:
+            # C3866: the switch is on; its catch-up runs after the answer, each start planned
+            # against every cap and named on its incident's card (`start_catch_up_after`).
+            start_catch_up_after(name, line["ids"], actor=actor, verified=verified)
+            CS.hold("ai_line", name, None)          # its incidents are being started now
+            return {"ok": True, "level": "automatic", "nothing": False, "caught": None,
+                    "line": line, "entry": out.get("entry"),
+                    "starting": starting_words(len(line["ids"])),
+                    "words": started_words(None)}
         return {"ok": True, "level": "automatic", "nothing": False, "caught": caught,
                 "line": line, "entry": out.get("entry"), "words": started_words(caught)}
     did = False
@@ -515,15 +615,23 @@ def view(network: str, now=None) -> dict:
             "audit_href": audit_href(name)}
 
 
-def strip(network: str) -> dict:
+def strip(network: str, drawn: bool = False) -> dict:
     """The control strip's AI switch for *network* (the operator's item 1: "AI troubleshooting:
     Automatic" on or off): ``{"on", "known", "level", "words", "at", "ready", "line",
     "error"}``. *line* is the one line before turning it on; *ready* why it would be refused
-    (its press is refused then, its refusal linking the limits card, `limits_href`). A read."""
+    (its press is refused then, its refusal linking the limits card, `limits_href`). A read.
+    The line read is held for the press (`control_strip.hold`, ``ai_line``, C3866); *drawn*
+    (a press's answer) draws the held one where there is one."""
     lvl = level(network)
     out = {"on": lvl["level"] == "automatic", "known": lvl["level"] != "unknown",
            "level": lvl["level"], "words": lvl["words"], "at": lvl["switch"].get("at") or "",
            "error": lvl["error"], "ready": "", "line": None}
+    try:
+        # C3866: the newest turn-on's catch-up, its outcome a line on the strip.
+        out["caught"] = caught_line(network)
+    except Exception as exc:                          # noqa: BLE001 (said in place)
+        out["caught"] = {"words": f"Whether the AI started on the open incidents cannot be "
+                                  f"read ({type(exc).__name__}: {exc})", "ok": False, "at": ""}
     if out["on"] or not out["known"]:
         return out
     try:
@@ -531,7 +639,10 @@ def strip(network: str) -> dict:
     except Exception as exc:                          # noqa: BLE001 (said, never drawn as ready)
         out["ready"] = f"its limits cannot be read ({type(exc).__name__}: {exc})"
     try:
-        out["line"] = _line_drawn(catch_up_line(network))
+        from modules import control_strip as CS
+        line = CS.held("ai_line", _name(network)) if drawn else None
+        out["line"] = _line_drawn(line or CS.hold("ai_line", _name(network),
+                                                  catch_up_line(network)))
     except Exception as exc:                          # noqa: BLE001 (said in place)
         out["error"] = f"the open incidents it would start on cannot be read ({exc})"
     return out

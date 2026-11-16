@@ -10,7 +10,10 @@ one-button batch, on Needs attention (C3789; `modules/control_strip.py`, `module
   off is Dry run, through the policy's own write; the strip again with the answer in place.
   With ``hash`` (C3823), on is the batch of the open problems its line drew, bound to that
   hash (`control_strip.switch_on`): restores and saved scripts, never the AI; refused, nothing
-  turned on, when they moved since drawn, the strip drawn again with the new line.
+  turned on, when they moved since drawn, the strip drawn again with the new line. C3866: the
+  press is checked against the line as this process drew it (no second preview), turns Auto
+  on and records the batch's approval inside the request, and answers at once with the switch
+  On and "Starting N fixes…"; the fixes are the batch's job, drawn live on the strip.
 - ``POST /v2/control/<list_name>/fix-all`` (``hash``): Turn on self-healing and fix all, bound
   to the batch's hash as previewed on its card: the AI started on each incident with no fix,
   and the rest as one job (`heal.batch.press`); the strip's run part, with the run on its
@@ -31,15 +34,17 @@ log = logging.getLogger(__name__)
 bp = Blueprint("control_v2", __name__, url_prefix="/v2/control")
 
 
-def _strip(network: str, code: int = 200, run_only: bool = False, **answer):
+def _strip(network: str, code: int = 200, run_only: bool = False, drawn: bool = True,
+           **answer):
     """The strip for *network*, or (*run_only*, C3789) its run part alone, as Needs attention
     draws it under G6's batch card: one template, one model (`control_strip.view`,
-    `control_strip.run_view`)."""
+    `control_strip.run_view`). *drawn* (C3866): a press's answer draws each switch's line as
+    this process last drew it, so it waits on no preview; the strip's GET reads them again."""
     from modules import control_strip
     from routes.device_v2 import _strict
 
     s = (control_strip.run_view(network, **answer) if run_only
-         else control_strip.view(network, **answer))
+         else control_strip.view(network, drawn=drawn, **answer))
     return _strict(render_template("v2/_control_strip.html", s=s), code)
 
 
@@ -63,7 +68,7 @@ def _who() -> dict:
 def strip():
     """The strip for the page's network; ``part=run``, its run part alone (Needs attention's,
     C3789), as it re-reads itself."""
-    return _strip(_network(), run_only=request.args.get("part") == "run")
+    return _strip(_network(), run_only=request.args.get("part") == "run", drawn=False)
 
 
 @bp.route("/<list_name>/heal", methods=["POST"])
@@ -83,17 +88,25 @@ def heal(list_name):
         # C3823: turned on with the open problems its line drew, bound to that line's hash:
         # C3819's batch (restores and saved scripts, all at once; never the AI),
         # which turns self-healing on itself; refused, nothing turned on, when they moved.
+        # C3866 (the operator, 2026-11-16: "Every switch flips instantly; the work it starts
+        # happens after, in the background"): the press is checked against the line as drawn,
+        # turns Auto on and records the approval here, and answers with the switch On and
+        # "Starting N fixes…"; the fixes are the batch's job, its run drawn live below.
         try:
             got = control_strip.switch_on(list_name, shown, actor=who["actor"],
                                           verified=who["verified"], ident=who["ident"])
+        except batch.TurnedOn as exc:
+            return _strip(list_name, 409, refused=f"Nothing was fixed: {exc}")
         except batch.Refused as exc:
             code = 403 if "verified person" in str(exc) or "may not" in str(exc) else 409
             return _strip(list_name, code, refused=f"Self-healing was not changed: {exc}")
-        p = got["preview"]
-        return _strip(list_name, heal_set=(
-            "turning on in Auto, until someone turns it off, and "
-            + batch.switch_words(len(p["items"]), len(p["scripts"]), verb="fixing")
-            + ": all at once, each verified on its own"))
+        except Exception as exc:                      # noqa: BLE001 (readable, never a bare 500)
+            log.exception("control strip: the Self-healing switch on %s failed", list_name)
+            return _strip(list_name, 500, refused=(
+                f"The switch's press did not finish ({type(exc).__name__}: {exc}); the switch "
+                "below shows self-healing as it is now"))
+        return _strip(list_name, starting=control_strip.starting_words(
+            got["preview"]["fixable"]))
     # C3789: the strip, and so its toggle, is on Troubleshoot › Incidents alone
     # (`control_strip.set_heal`'s page).
     try:

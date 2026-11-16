@@ -18,6 +18,9 @@
   {%- set an = s.answer or {} %}
   {%- if an.refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p>{{ an.refused | people }}{% if an.refused_href %} <a href="{{ an.refused_href }}" data-refused-link>Set the spending limits</a>{% endif %}</p></div>
+  {%- elif an.starting %}
+  {#- C3866: the switch is On at once; its work starts as a job, drawn below as it moves. -#}
+  <p class="small set-result" role="status" data-answer="starting">{{ an.starting }}</p>
   {%- elif an.heal_set %}
   <p class="small set-result" role="status" data-answer="heal">Self-healing: {{ an.heal_set }}.</p>
   {%- elif an.ai_set %}
@@ -99,6 +102,11 @@
     {%- if ai.on %}While it's on, the AI investigates by itself when Mercury's fix fails.
     {%- else %}While it's off, a person starts the AI.{% if ai.line and ai.line.words %} {{ ai.line.words }}.{% endif %}{% endif -%}
   </p>
+  {#- C3866: the AI switch's catch-up, run after its answer: while it starts, then its outcome
+      (one not started is said here and on its own card). -#}
+  {%- if ai.caught and ai.caught.words %}
+  <p class="small ctl-line{{ '' if ai.caught.ok else ' warn-text' }}" data-ctl-caught>{{ ai.caught.words | people }}.</p>
+  {%- endif %}
   {#- A viewer who may not change these sees why, as the strip's third line. -#}
   {%- if not s.may %}
   <p class="small muted ctl-why" data-ctl-why>Read only: {{ s.why_not }}.</p>
