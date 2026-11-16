@@ -199,6 +199,15 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     tl = IP.timeline(inc, entry, decisions, network)
     resolved = st["state"] in IP.RESOLVED
     how = IP.fixed_how(network, inc) if st["state"] == "fixed" else {}
+    if not resolved and not fx.get("working"):
+        # A saved script running on an incident with no troubleshooting record of its own (the
+        # heal decision fired it): Mercury working all the same (the operator, 2026-11-16).
+        from modules.nsot import saved_plans
+        run = saved_plans.running_on(network, found["id"])
+        if run:
+            e = saved_plans.script_for(network, found)[0] or {}
+            fx = dict(fx, working=(f"Self-healing: fixing with saved script "
+                                   f"{e.get('name') or ''} · {run['step']}"))
     who = tl["who"]
     by = ((identity.display_name(who["actor"]) if who["actor"] else "a person not recorded")
           if who["kind"] == "person" else "Mercury" if who["kind"] == "none" else "")

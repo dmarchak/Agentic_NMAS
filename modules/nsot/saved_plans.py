@@ -526,15 +526,17 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
             out.update(ok=False, words=(f"held by guard {held['guard']} ({held['name']}): "
                                         f"{held['words']}; nothing was sent"))
         else:
-            rec = CR.run(network, key, values, actor=e.get("promoted_by") or "",
-                         actor_verified="", person=False, confirmed=p["hash"],
-                         incident=incident, reason=(f"self-heal script {e['name']}, promoted "
-                                                    f"by {e.get('promoted_by')}"),
-                         authority={"script": key})
+            rec = _run_as_job(network, e, values, p["hash"], incident)
             out.update(run=rec.get("id") or "", ok=rec.get("state") == "done",
                        sent=rec.get("outcome") != "refused",
                        words=CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
                        or str(rec.get("why") or ""))
+            if out["ok"]:
+                # Every verified script run closes its incident Fixed, whichever path fired it
+                # (the heal decision, a re-decide): one close (the operator, 2026-11-16).
+                close_fixed(network, incident, {"id": out["run"],
+                                                "device": values.get("device")},
+                            e, e.get("promoted_by") or "")
     _settle(key, row["id"], ok=out["ok"], sent=out["sent"], hash=out["hash"],
             run=out["run"], words=out["words"][:300])
     return dict(out, state="done")
@@ -653,32 +655,34 @@ def redecide(network: str, *, by: str = "saved-plans") -> list:
         e, prob = script_for(network, found)
         if not e:
             continue
-        got = _fire_as_job(network, e, prob, inc)
-        if got.get("ok") and got.get("run") and not got.get("already"):
-            close_fixed(network, inc["id"], {"id": got["run"],
-                                             "device": (got.get("values") or {}).get("device")},
-                        e, by)
+        # `fire` runs it as a job and closes the incident when it verifies (one path).
+        got = fire(network, e["key"], prob, inc["id"], heal_mode=mode, record=inc)
         out.append({"incident": inc["id"], "key": e["key"], "words": got.get("words") or ""})
         log.info("saved plans: %s re-decided on %s: %s", e["key"], inc["id"], got.get("words"))
     return out
 
 
-def _fire_as_job(network: str, e: dict, prob, inc: dict) -> dict:
-    """`fire` in Auto as a job of its own (In progress, the row and the card see it running,
-    its actor Mercury's: `actor_words`), waited for: one incident at a time."""
+def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: str) -> dict:
+    """A script's automatic run (the runner) as a job of its own, waited for: In progress, the
+    row and the card see it running (`running_on`), its actor Mercury's (`actor_words`),
+    whichever path fired it. The run's record, or ``{}`` when the job ended without one."""
     from urllib.parse import quote
 
     from modules.nsot import capture_job
+    from modules.nsot import command_plan_run as CR
 
     out = {}
 
     def work(_job):
-        out.update(fire(network, e["key"], prob, inc["id"], heal_mode="auto", record=inc))
-        return {"state": "done" if out.get("ok") else "failed",
-                "words": out.get("words") or ""}
+        out.update(CR.run(network, e["key"], values, actor=e.get("promoted_by") or "",
+                          actor_verified="", person=False, confirmed=confirmed,
+                          incident=incident, reason=(f"self-heal script {e['name']}, promoted "
+                                                     f"by {e.get('promoted_by')}"),
+                          authority={"script": e["key"]}))
+        return {"state": out.get("state"), "words": out.get("why") or ""}
     job = capture_job.start(network, actor_words(e), e.get("promoted_by") or "", work,
                             kind=JOB_KIND, actor_kind="policy",
-                            page=f"/v2/incident/{inc['id']}?list={quote(network)}")
+                            page=f"/v2/incident/{incident}?list={quote(network)}")
     capture_job.wait(job, 900)
     return out
 
