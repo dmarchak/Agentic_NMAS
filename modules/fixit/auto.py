@@ -28,7 +28,11 @@ for the incident's kind, read from its own record, each with its own key (`key_o
   back, it failed after sending, it was refused before sending, it was interrupted):
   ``act:<decision>``, one per act;
 - a plan a person approved on the incident's page stopped at a step or failed (the R1 flow's
-  step 7: "step 2 runs again with that failure in the evidence"): ``run:<plan run id>``.
+  step 7: "step 2 runs again with that failure in the evidence"): ``run:<plan run id>``;
+- a retry of the incident's fixes that failed again (`heal.retry.failures_of`, the operator,
+  2026-11-16: self-healing switched on, or a new script saved that matches it):
+  ``retry:<retry id>``, one per retry; a daily retry's failure starts nothing (whether new
+  evidence or a new capability should start it is a follow-up).
 
 **In every mode of self-healing** (the operator, 2026-11-15, replacing 2026-11-14's "only while
 self-healing is in Auto": "the AI only proposes, and nothing runs without a person's approval,
@@ -299,10 +303,17 @@ def pending(network: str) -> dict:
     by = {}
     for f in got["failures"]:
         by.setdefault(f["incident"], []).append(f)
+    from modules.heal import retry
     for iid, record in opened.items():
         lost = no_code_fix(record)
         if lost and lost["key"] not in {f["key"] for f in by.get(iid, [])}:
             by.setdefault(iid, []).append(lost)
+            by[iid].sort(key=lambda f: f["epoch"])
+        # A retry whose fixes all failed (the operator, 2026-11-16: switched on, or a new
+        # script saved), each its own failure (``retry:<id>``); a daily retry's is none.
+        again = retry.failures_of(record)
+        if again:
+            by.setdefault(iid, []).extend(again)
             by[iid].sort(key=lambda f: f["epoch"])
     folder = os.path.join(list_data_path(network), F.STORE_DIR)
     for iid in opened:
@@ -340,7 +351,12 @@ WHY = {("decision", "cant_fix"): ("no_fix", "Mercury has no fix of its own for i
        ("run", "failed"): ("failed", "an approved plan failed"),
        # C3733: an investigation that lacked a step, which now exists.
        ("capability", "available"): ("no_fix", "a step its last investigation lacked now "
-                                               "exists")}
+                                               "exists"),
+       # The retry policy (the operator, 2026-11-16, `heal.retry`): tried again, failed again.
+       ("retry", "switched_on"): ("failed", "Mercury's fixes were tried again when "
+                                            "self-healing was switched on, and failed"),
+       ("retry", "script_saved"): ("failed", "Mercury's fixes were tried again when a new "
+                                             "script was saved, and failed")}
 
 
 def catch_up(network: str, now: float = None, bound_s: float = None) -> dict:

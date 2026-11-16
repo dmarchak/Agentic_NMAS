@@ -7918,6 +7918,37 @@ def _heal_held_rows(lst: str, rows: list) -> list:
         except Exception as exc:                      # noqa: BLE001 (the hold's row stands)
             log.warning("attention: %s's batch could not be previewed: %s", lst, exc)
             p = {"on": False}
+        # C3823 (the operator's design, 2026-11-16): the card is only for guard 6 holds formed
+        # while self-healing is On. While it is not, turning it on is the approval (the control
+        # strip's line on Troubleshoot › Incidents, `control_strip.switch_preview`), so the row
+        # names that switch and no card is drawn. A mode that cannot be read keeps the card.
+        try:
+            from modules.heal import policy as HP
+            heal_on = HP.current(lst).get("mode") == "auto"
+        except Exception as exc:                      # noqa: BLE001 (the card as before)
+            log.warning("attention: %s's self-healing mode could not be read: %s", lst, exc)
+            heal_on = True
+        if p.get("on") and p.get("items") and not heal_on:
+            from urllib.parse import quote
+            n = len(p["items"]) + len(p.get("scripts") or [])
+            out.append(row(
+                source="heal", kind="held", key=d.get("id") or "?", level="warning",
+                event=d.get("id"), devices=sorted({i["device"] for i in p["items"]}
+                                                  | {o["device"] for o in p["others"]}
+                                                  | {s["device"] for s in
+                                                     p.get("scripts") or []}),
+                since=float(d.get("epoch") or 0) or None,
+                what=(f"Self-healing holds {len(hosts)} device(s) on {lst}: "
+                      f"{g.get('name') or 'many devices at once'}"),
+                cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. "
+                       f"Self-healing is not On for {lst}: turning it on fixes the {n} open "
+                       f"problem{'' if n == 1 else 's'} Mercury can fix, one first, verified, "
+                       "then the rest at once"),
+                action={"label": "Turn on self-healing (Troubleshoot › Incidents)",
+                        "href": f"/v2/incidents?list={quote(lst)}#control-strip"},
+                operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                          "devices": len(hosts), **(g.get("operands") or {})}))
+            return out
         if p.get("on") and p.get("items"):
             out.append(row(
                 source="heal", kind="held", key=d.get("id") or "?", level="warning",

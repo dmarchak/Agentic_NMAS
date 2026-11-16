@@ -74,6 +74,15 @@ STEPS = (("auto", "Turn on self-healing in Auto for the network's default durati
          ("record", "Record the batch's outcome"))
 STEP_LABELS = {"auto": "Turn on Auto", "approve": "Approve batch", "first": "Fix first device",
                "rest": "Fix the rest", "record": "Record"}
+#: C3823 (the operator's design, 2026-11-16): "switching Self-healing On IS the approval for
+#: what's already open". The control strip's Self-healing switch, drawn with the open problems
+#: it also fixes, runs THIS batch (`press` with ``switch=True``): guard 6's restores and the
+#: Automatic saved scripts' matches, never the AI (no-fix incidents start from the Automatic AI
+#: switch's catch-up), its run named after the switch-on (`switch_name`).
+SWITCH = "Self-healing switched on"
+#: The switch-on run's page: the strip, on Troubleshoot › Incidents (C3789), where its run is
+#: drawn (`control_strip._run_card` tells the switch's run by this path).
+SWITCH_PAGE = "/v2/incidents"
 #: A batch decision its job has not taken this long after it was decided is refused by the
 #: heal runner (`act.run`): the job ended. The longest a batch waits on its first device and
 #: then its rest (`WAIT_S` each) and more.
@@ -122,6 +131,31 @@ def lead_words(n: int, m: int, restores: int = None, scripts: int = 0, ai=()) ->
                  f"script{'' if scripts == 1 else 's'})")
     named = _names(list(ai))
     return head + (f"; the AI starts on {named}." if named else ".")
+
+
+def switch_words(restores: int, scripts: int, verb: str = "Also fixes") -> str:
+    """The strip's one line beside the Self-healing switch (C3823): "Also fixes the 7 open
+    problems (5 restores, 2 saved scripts)", each part only when it is not zero; *verb* the
+    press's answer's ("fixing")."""
+    n = int(restores) + int(scripts)
+    parts = ([f"{restores} restore{'' if restores == 1 else 's'}"] if restores else []) + \
+        ([f"{scripts} saved script{'' if scripts == 1 else 's'}"] if scripts else [])
+    return f"{verb} the {n} open problem{'' if n == 1 else 's'} ({', '.join(parts)})"
+
+
+def switch_name(shown: str, epoch: float) -> str:
+    """The switch-on batch's name, on its approval record and each run it starts (C3823):
+    "self-healing switched on by <person> at HH:MM UTC"."""
+    return (f"self-healing switched on by {shown or 'a person'} at "
+            f"{time.strftime('%H:%M', time.gmtime(float(epoch)))} UTC")
+
+
+def switch_moved(seen: str, now: dict) -> str:
+    """The switch's refusal when the open problems it drew moved before the press (C3823),
+    naming both hashes."""
+    return (f"the open problems moved since the line was drawn (pressed {seen[:12] or 'none'}, "
+            f"now {(now.get('hash') or 'none')[:12]}): read the line again; self-healing was "
+            "not turned on and nothing was started")
 
 
 def fix_word(fixable: int) -> str:
@@ -182,7 +216,7 @@ def _handed(got, what: str) -> tuple:
 
 
 def preview(network: str, rows: list = None, *, ai_items: list = None,
-            incidents_doc: dict = None, script_items=None) -> dict:
+            incidents_doc: dict = None, script_items=None, switch: bool = False) -> dict:
     """The batch on *network* now (a read; nothing written, nothing sent): ``{"network",
     "on", "items", "scripts", "others", "ai", "n", "fixable", "fix", "hash", "lead", "hold",
     "state", "error"}``. *on* whether there is a batch at all (a device held by guard 6);
@@ -195,7 +229,12 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
     listed script covers left out (a script match is a fix). *rows* the decisions already
     read, *ai_items* `fixit.auto.catch_up`'s items, *script_items* the script matches
     (`control_strip.batch_script_items`) and *incidents_doc* the incidents store's read, where a
-    caller has them."""
+    caller has them.
+
+    *switch* (C3823): the Self-healing switch's preview. The saved scripts' matches alone make
+    a batch (no guard 6 hold needed), the AI part is always empty (the switch never starts the
+    AI; *ai_items* is not read), and *on* only when there is something to fix, with ``also``
+    its line (`switch_words`); its hash binds the restores and the scripts alone."""
     from modules.heal import decisions, incidents
 
     out = {"network": network, "on": False, "items": [], "scripts": [], "others": [], "ai": [],
@@ -225,11 +264,12 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
         else:
             out["others"].append({"device": host, "incident": d["incident"],
                                   "why": b.get("words") or "its fix could not be previewed"})
-    if not out["items"] and not out["others"]:
+    if not out["items"] and not out["others"] and not switch:
         return out
+    base = dict(out)
     # Not handed in: never read here (the module's docstring). Said, so a card drawn without
-    # a list never reads as "none".
-    ai_items, ai_err = _handed(ai_items, "the open incidents with no fix")
+    # a list never reads as "none". The switch's batch has no AI part (C3823).
+    ai_items, ai_err = _handed([] if switch else ai_items, "the open incidents with no fix")
     script_items, script_err = _handed(script_items, "the saved scripts' matches")
     out["error"] = "; ".join(e for e in (ai_err, script_err) if e)
     restored = {i["incident"] for i in out["items"]}
@@ -248,6 +288,12 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
     devices = ({i["device"] for i in out["items"]} | {o["device"] for o in out["others"]}
                | {s["device"] for s in out["scripts"]} | {a["device"] for a in out["ai"]})
     fixable = len(out["items"]) + len(out["scripts"])
+    if switch:
+        # C3823: nothing to fix, no line, and the switch turns on as before; a list that could
+        # not be read is said (``error``), never drawn as none.
+        if not fixable:
+            return dict(base, error=out["error"])
+        out["also"] = switch_words(len(out["items"]), len(out["scripts"]))
     out.update(on=True, n=len(devices), fixable=fixable, fix=fix_word(fixable),
                hash=batch_hash(out["items"], out["ai"], out["scripts"]),
                lead=lead_words(len(devices), fixable, len(out["items"]),
@@ -280,11 +326,13 @@ def default_until(network: str, now: float) -> str:
 
 
 def turn_on_auto(network: str, *, actor: str, verified: str, person: bool, reason: str,
-                 now: float = None) -> dict:
+                 now: float = None, retry_skip=()) -> dict:
     """Self-healing in Auto for *network* for its default duration, through THE policy write
     (planned, then applied with that plan's own fingerprint as a verified person with
     *reason*): ``{"ok", "nothing", "until", "words"}``. Already in Auto: nothing written, said.
-    A refused plan raises `policy.PolicyRefused`, naming the gate."""
+    A refused plan raises `policy.PolicyRefused`, naming the gate. *retry_skip* (C3823): the
+    incidents a batch is fixing, left out of the retry this turn-on starts (`heal.retry.run`'s
+    *skip*), so the batch's own restores and scripts are never tried twice."""
     from modules.heal import policy
 
     now = time.time() if now is None else float(now)
@@ -297,7 +345,7 @@ def turn_on_auto(network: str, *, actor: str, verified: str, person: bool, reaso
     # expiry; Settings keeps the 1 h, 8 h and 7 d choices.
     proposed = {policy.MODE_KEY: "auto", policy.UNTIL_KEY: ""}
     got = policy.apply_planned(network, proposed, actor=actor, actor_verified=verified,
-                               person=person, reason=reason, now=now)
+                               person=person, reason=reason, now=now, retry_skip=retry_skip)
     return {"ok": True, "nothing": False, "until": got["until"],
             "words": "self-healing turned on in Auto, until someone turns it off"}
 
@@ -317,7 +365,8 @@ def may_press(ident) -> str:
 
 
 def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_items=None,
-          start_ai=None, starter=None, ai_starter=None, script_items=None) -> dict:
+          start_ai=None, starter=None, ai_starter=None, script_items=None,
+          switch: bool = False) -> dict:
     """The one press (the module's steps): ``{"job", "ai", "preview"}``, or `Refused` naming
     what it compared, with nothing started. The caller hands in what this module never reads
     (the module's docstring): *ai_items*, the open incidents with no fix as the card listed
@@ -326,19 +375,30 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
     *start_ai* ``(network, ids, **kw)``, the AI's starts (`heal_notice.start_catch_up`); a
     batch with incidents for the AI and no *start_ai* is refused, nothing started. The shown
     hash binds the scripts too (`batch_hash`). *starter* and *ai_starter* replace the job and
-    the AI's job (tests)."""
+    the AI's job (tests).
+
+    *switch* (C3823): the Self-healing switch's press, bound to the switch's preview
+    (`preview` with *switch*: restores and saved scripts, no AI, *ai_items* and *start_ai*
+    never used); refused, with self-healing not turned on, when the open problems moved since
+    the line was drawn (`switch_moved`); its job, its approval and each run named after the
+    switch-on (`switch_name`)."""
+    from urllib.parse import quote
+
     from modules.nsot import capture_job
 
     why = may_press(ident)
     if why:
         raise Refused(why)
-    p = preview(network, ai_items=ai_items, script_items=script_items)
+    p = preview(network, ai_items=None if switch else ai_items, script_items=script_items,
+                switch=switch)
     if p["state"] != "ok":
         raise Refused(f"the batch cannot be read ({p['error']}); nothing was started")
     if not p["on"]:
+        if switch:
+            raise Refused(switch_moved(shown or "", p))
         raise Refused("no batch is held by guard 6 now; nothing was started")
     if (shown or "") != p["hash"]:
-        raise Refused(moved(shown or "", p))
+        raise Refused(switch_moved(shown or "", p) if switch else moved(shown or "", p))
     # Gate 2's review: Auto's turn-on is judged before anything starts or spends. A network
     # not already in Auto is planned now (`policy.plan`, every gate the job's `turn_on_auto`
     # will hold); one that is not confirmable refuses the press, naming the gates, with no AI
@@ -361,12 +421,16 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
             press=f"started by {BUTTON}, a person's press", press_label=BUTTON,
             starter=ai_starter)
     from modules import identity
-    label = f"{BUTTON}: {p['fixable']} device(s) on {network}"
+    named = switch_name(identity.display_name(actor), now) if switch else ""
+    label = (f"{SWITCH}: {p['fixable']} open problem(s) on {network}" if switch
+             else f"{BUTTON}: {p['fixable']} device(s) on {network}")
     work = (lambda _job: {"ok": True, "result": run(network, p, actor=actor,
-                                                    verified=verified, person=True)})
+                                                    verified=verified, person=True,
+                                                    named=named)})
     job = (starter or capture_job.start)(
         network, label, actor, work, kind=KIND, announce_keys=DONE_KEYS, announcer=ANNOUNCER,
-        page="/v2/?batch={job}#control-strip")
+        page=(f"{SWITCH_PAGE}?list={quote(network)}#control-strip" if switch
+              else "/v2/?batch={job}#control-strip"))
     log.info("heal batch: %s pressed %s on %s (%d to fix, %d by saved scripts, %d for the AI)",
              identity.display_name(actor), p["hash"][:12], network, p["fixable"],
              len(p["scripts"]), len(p["ai"]))
@@ -380,10 +444,12 @@ def _record_row(network: str, row: dict) -> dict:
 
 
 def run(network: str, p: dict, *, actor: str, verified: str, person: bool,
-        sources=None, act_start=None, wait=None, now=None) -> dict:
+        sources=None, act_start=None, wait=None, now=None, named: str = "") -> dict:
     """The batch's job (the module's steps 2): ``{"batch", "steps", "devices", "outcome",
     "words"}``, *devices* ``[{"device", "outcome", "words"}]``. *act_start* and *wait* replace
-    a device's heal job and its wait (tests)."""
+    a device's heal job and its wait (tests). *named* (C3823): the switch-on's name
+    (`switch_name`), on the turn-on's reason, the approval record and each run; "" for the
+    card's press, named `BUTTON` as before."""
     from modules import identity
     from modules.fanout import NOT_STARTED, Failed, each_until_failure
     from modules.heal import act, policy
@@ -407,8 +473,8 @@ def run(network: str, p: dict, *, actor: str, verified: str, person: bool,
 
     begin("auto", "turning on self-healing in Auto")
     # C3819: the batch's saved scripts are claimed before Auto is turned on, under the scripts
-    # store's lock (`saved_plans.claim_for_batch`), so the re-decide that turn-on starts
-    # (`policy.apply`'s `redecide_soon`), the heal decision's `fire_matching` and any other
+    # store's lock (`saved_plans.claim_for_batch`), so the retry that turn-on starts
+    # (`policy.apply`'s `retry.run_soon`), the heal decision's `fire_matching` and any other
     # worker find the batch's ``firing`` row and run nothing: the batch runs them, named. One
     # another path already holds is said, never run twice.
     from modules.nsot import saved_plans
@@ -437,9 +503,17 @@ def run(network: str, p: dict, *, actor: str, verified: str, person: bool,
             row = claims.get((s["key"], s["incident"]))
             if row:
                 saved_plans.release(s["key"], row["id"], words)
+    # C3823: the retry this turn-on starts (`policy.apply`'s `retry.run_soon`) leaves out every
+    # incident this batch fixes: its restores (a guard-6 hold the retry would otherwise judge,
+    # and send back for a fresh decision once guard 6 no longer holds, taking it from under
+    # `_one`) and its claimed scripts (their ``firing`` rows already keep it off them).
+    skip = tuple({i["incident"] for i in p["items"]} | {s["incident"] for s in scripts})
+    reason = (f"the Self-healing switch on Troubleshoot › Incidents' control strip, turned on "
+              f"({named}), approving the {p['fixable']} open problem(s) it listed by their "
+              f"hash {p['hash'][:12]}" if named else f"{BUTTON}, pressed on Needs attention")
     try:
         got = turn_on_auto(network, actor=actor, verified=verified, person=person,
-                           reason=f"{BUTTON}, pressed on Needs attention", now=now)
+                           reason=reason, now=now, retry_skip=skip)
     except (policy.PolicyRefused, policy.NotAPerson) as exc:
         release(scripts, "not run: self-healing was not turned on")
         step("auto", "refused", f"self-healing was not turned on: {exc}. Nothing was sent")
@@ -447,10 +521,11 @@ def run(network: str, p: dict, *, actor: str, verified: str, person: bool,
     step("auto", "ok", got["words"])
     bid = "hb-" + p["hash"][:12] + "-" + hex(int(now))[2:]
     approval = {"id": bid, "by": actor, "by_shown": shown, "hash": p["hash"],
-                "verified": verified}
+                "verified": verified, **({"named": named} if named else {})}
     try:
         _record_row(network, {"row": "batch", "id": bid, "by": actor, "actor_verified": verified,
                               "hash": p["hash"], "at": _iso(now), "epoch": now,
+                              **({"named": named, "source": "switch"} if named else {}),
                               "items": [{k: i[k] for k in ("device", "incident", "decision",
                                                            "program_hash")}
                                         for i in p["items"]],
@@ -463,14 +538,17 @@ def run(network: str, p: dict, *, actor: str, verified: str, person: bool,
         step("approve", "refused", f"the approval could not be recorded ({exc})")
         return finish("refused", "the approval could not be recorded; nothing was sent")
     out["batch"] = bid
-    step("approve", "ok", (f"approved by {shown}: {len(p['items'])} device(s), each program as "
+    step("approve", "ok", ((f"{named[0].upper()}{named[1:]}: " if named else
+                            f"approved by {shown}: ")
+                           + f"{len(p['items'])} device(s), each program as "
                            "previewed" + (f", and {len(scripts)} saved script(s), each plan as "
                                           "previewed" if scripts else "")))
     # One device first, verified, then the rest at once (CLAUDE.md, the heal-batch clause):
     # guard 6's restores first, then the saved scripts, each through its own path.
     work = [("heal", i) for i in p["items"]] + [("script", s) for s in scripts]
     if not work:
-        return finish("fixed", "nothing for Mercury to fix; the AI was started on the rest")
+        return finish("fixed", "nothing for Mercury to fix" + (
+            "" if named else "; the AI was started on the rest"))
 
     def do(w):
         kind, i = w
@@ -569,7 +647,7 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
     *outcome* the heal act's (`act.OUTCOMES`), else ``refused`` or the decision's outcome."""
     from modules.heal import act, decide, decisions, incidents, interrupted
 
-    device, by = item["device"], f"{BUTTON} ({approval['id']})"
+    device, by = item["device"], f"{approval.get('named') or BUTTON} ({approval['id']})"
     now = time.time()
     try:
         inc = incidents.take_standing(network, item["incident"], by=by, now=now)

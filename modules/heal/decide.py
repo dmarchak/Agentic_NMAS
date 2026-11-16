@@ -475,19 +475,7 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     passed("stops", f"no kill switch, {MODE_WORDS.get(mode.get('mode'), mode.get('mode'))}, no "
                     "halt, no planned work", "approved")
     dev = src.device(device)
-    # C2606, C2608: an observe-only device or a host has no approved state Mercury may heal
-    # to; held under guard 4 (the approved state), naming the key and where NetBox set it.
-    from modules.inventory.management import refusal_for
-    why = refusal_for(network, device, what="heal",
-                      dev=dev if isinstance(dev, dict) else None)
-    if why:
-        return stop(guards.hit(4, "held", f"heal off for this device: {why}",
-                               {"management": (dev or {}).get("_management", "")
-                                if isinstance(dev, dict) else "",
-                                "role": (dev or {}).get("role", "")
-                                if isinstance(dev, dict) else ""}))
-    golden = src.golden(device, dev)
-    g = guards.g4_golden(golden)
+    g, golden = _g4(network, device, src, dev)
     if g:
         return stop(g)
     passed("approved", (f"the golden {(golden.get('commit') or '')[:10] or '(no commit)'} is the "
@@ -529,9 +517,13 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     batch_words = ""
     if batch and not batch.get("preview"):
         base["batch"] = {"id": batch.get("id"), "by": batch.get("by"),
-                         "hash": batch.get("hash")}
+                         "hash": batch.get("hash"),
+                         **({"named": batch["named"]} if batch.get("named") else {})}
         # C2817: the step's words name no id or hash, and a person by display name only.
+        # C3823: a switch-on's batch is named after the switch-on.
         batch_words = (f"many devices at once resolved, and the grace dropped, by "
+                       f"{batch['named']}; " if batch.get("named") else
+                       f"many devices at once resolved, and the grace dropped, by "
                        f"{batch.get('by_shown') or 'a person'}'s approval of the batch; ")
     passed("guards", batch_words + "not many devices at once, and no fight stopped by the "
                                    "network's setting", "read")
@@ -639,6 +631,51 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     outcome, words = _outcome(mode, c, list(mode.get("kinds_auto") or []),
                               list(mode.get("kinds_propose") or []), device)
     return dict(base, outcome=outcome, words=words)
+
+
+def _g4(network: str, device: str, src, dev):
+    """Guard 4, the approved state, as the decision judges it (its one home: `_decide_one` and
+    `guard_holds`): ``(hit, golden)``, *hit* None when it does not hold. C2606, C2608: an
+    observe-only device or a host has no approved state Mercury may heal to (held, naming the
+    key and where NetBox set it; *golden* None then); else the device's golden must be at
+    intent (`guards.g4_golden`)."""
+    from modules.heal import guards
+    from modules.inventory.management import refusal_for
+
+    why = refusal_for(network, device, what="heal",
+                      dev=dev if isinstance(dev, dict) else None)
+    if why:
+        return guards.hit(4, "held", f"heal off for this device: {why}",
+                          {"management": (dev or {}).get("_management", "")
+                           if isinstance(dev, dict) else "",
+                           "role": (dev or {}).get("role", "")
+                           if isinstance(dev, dict) else ""}), None
+    golden = src.golden(device, dev)
+    return guards.g4_golden(golden), golden
+
+
+def guard_holds(network: str, incident: dict, guard, *, now: float = None, sources=None):
+    """Whether *guard*, the guard a standing incident's held decision named, still holds
+    *incident* now, as the decision judges it: guard 4 (`_g4`) and guard 6 (`_g6`), the guards
+    a person resolves that hold anything since the operator's decision of 2026-11-16; its
+    `guards.hit`, or None when it no longer holds (any other guard: 9 and the time-based
+    holds were retired, so none holds). A read (the golden and intent, no device): the retry
+    pass asks it before sending a held incident back for a fresh decision
+    (`modules/heal/retry.py`)."""
+    from modules.heal import incidents, policy
+    from modules.heal.guards import value
+
+    now = time.time() if now is None else float(now)
+    device = (incident or {}).get("device") or ""
+    if guard == 4:
+        src = sources or Sources(network)
+        return _g4(network, device, src, src.device(device))[0]
+    if guard == 6:
+        mode = policy.current(network, now)
+        return _g6(incident, incidents.read(network)["incidents"], now,
+                   float(value(mode, "heal_grace_seconds") or 900),
+                   value(mode, "heal_max_devices_drifting"))
+    return None
 
 
 def _act(network: str, incident: dict, d: dict, now: float) -> None:
@@ -819,6 +856,9 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
     now = time.time() if now is None else float(now)
     out = {"ran": False, "network": network, "decided": [], "busy": "", "failed": []}
     decided_records = []
+    # The retry pass's incidents (`modules/heal/retry.py`): each carries its retry's id
+    # (``retry_pending``), finished here, whichever process decides it: {incident: (id, d)}.
+    retried = {}
     try:
         with incidents.HealLock(network, actor="Mercury", trigger=f"the decision ({by})"):
             try:
@@ -827,9 +867,16 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                 return dict(out, failed=[str(exc)])
             for inc in ready:
                 claimed = incidents.claim(network, inc["id"], by=by, now=now)
+                pending = str(claimed.get("retry_pending") or "")
                 try:
                     made = decide_one(network, claimed, now=now, sources=sources)
                     steps, phase = made.pop("steps", []), made.pop("phase", "decide")
+                    if pending and steps:
+                        # History's decision row says it was a retry and why (its claim step).
+                        from modules.heal import retry
+                        steps[0] = dict(steps[0], words=(
+                            f"{steps[0].get('words') or ''}: tried again, "
+                            f"{retry.trigger_words_of(claimed, pending)}"))
                     # Recorded under the one lock G6's batch counts guard 10 under too.
                     with filestore.PathLock(decisions.rate_lock_path(network)):
                         d = decisions.record(network, made, now)
@@ -842,11 +889,17 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                     incidents.defer(network, inc["id"], now + 60,
                                     f"the decision failed ({type(exc).__name__}: {exc}); "
                                     "checked again", now)
+                    if pending:
+                        retried[inc["id"]] = (pending, {
+                            "id": "", "outcome": "failed",
+                            "words": f"the decision failed ({type(exc).__name__}: {exc})"})
                     continue
                 out["decided"].append({"incident": inc["id"], "decision": d["id"],
                                        "outcome": d["outcome"]})
                 if d["outcome"] in SCRIPT_OUTCOMES:
                     decided_records.append(claimed)
+                if pending:
+                    retried[inc["id"]] = (pending, d)
     except incidents.HealBusy as exc:
         return dict(out, busy=str(exc))
     # C3696: a saved self-heal script whose R4 match an incident's problem holds fires from the
@@ -859,16 +912,32 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
     out["scripts"] = []
     from modules import incident_page
     from modules.nsot import saved_plans
+    fired = {}
     for rec in decided_records:
+        iid = rec.get("id") or ""
         try:
-            found = incident_page.resolve(network, rec.get("id") or "")
+            found = incident_page.resolve(network, iid)
             if found.get("found") != "page":
                 found = {"incident": rec, "entry": {}}
-            out["scripts"] += saved_plans.fire_matching(network, found)
+            # A retry's scripts fire under its key (`saved_plans.fire`'s *retry*): each once
+            # for this retry, a run that failed before tried again (the operator, 2026-11-16).
+            got = saved_plans.fire_matching(network, found,
+                                            retry=(retried.get(iid) or ("",))[0])
+            fired[iid] = got
+            out["scripts"] += got
         except Exception as exc:                      # noqa: BLE001 (said; the next is tried)
             log.error("heal: %s's saved scripts did not fire on %s: %s", network,
                       rec.get("id"), exc)
             out["failed"].append(f"saved scripts on {rec.get('id')}: {exc}")
+    if retried:
+        from modules.heal import retry
+        for iid, (rid, d) in retried.items():
+            try:
+                retry.finish(network, iid, rid, d, fired.get(iid) or [], now=now)
+            except Exception as exc:                  # noqa: BLE001 (said; the decision stands)
+                log.error("heal: %s's retry %s on %s was not recorded: %s", network, rid, iid,
+                          exc)
+                out["failed"].append(f"the retry on {iid}: {exc}")
     if out["decided"]:
         try:
             from modules import invalidation

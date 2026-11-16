@@ -123,8 +123,12 @@ def save_script(incident):
     # for draws the same line (item 7, the operator, 2026-11-15).
     log.info("saved plans: %s saved as a self-heal script of %s", e["key"], network)
     if e.get("mode") == "auto":
-        # C3805: every open incident it matches is decided again now.
-        S.redecide_soon(network, by=_who()["actor"])
+        # C3805, and the retry policy (the operator, 2026-11-16): every open incident it
+        # matches whose fixes failed is tried again once, keyed by this save.
+        from modules.heal import retry
+        retry.run_soon(network, "script_saved", script=e["key"],
+                       instance=f"{e['key']}:{e.get('saved_at') or ''}", how="saved",
+                       by=_who()["actor"])
     return _draw(network, incident)
 
 
@@ -157,7 +161,12 @@ def promote(incident):
         e = S.promote((request.form.get("key") or "").strip(), network=network, **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
-    S.redecide_soon(network, by=_who()["actor"])      # C3805: its open matches decided again
+    # C3805, and the retry policy (the operator, 2026-11-16): its open matches whose fixes
+    # failed are tried again once, keyed by this promotion.
+    from modules.heal import retry
+    retry.run_soon(network, "script_saved", script=e["key"],
+                   instance=f"{e['key']}:{e.get('promoted_at') or ''}", how="promoted",
+                   by=_who()["actor"])
     return _draw(network, incident, level="ok", words=(
         f"Promoted {e['name']}: when its match holds it runs, while self-healing is in Auto"))
 

@@ -749,8 +749,9 @@ HISTORY = {
     # device's record.
     "heal_v2.policy_confirm": NOT_A_DEVICE,
     "heal_v2.turn_off": NOT_A_DEVICE,
-    # The control strip's Self-healing toggle (C3748): the network's settings record.
-    "control_v2.heal": NOT_A_DEVICE,
+    # The control strip's Self-healing toggle (C3748): the network's settings record; turned
+    # on with its line's hash (C3823), G6's batch: each device's heal, as an approved heal.
+    "control_v2.heal": ("heal", "receipts", "golden"),
     "ai_classes_v2.device_state_on": NOT_A_DEVICE,
     "ai_classes_v2.device_state_off": NOT_A_DEVICE,
     "heal_v2.notify_save": NOT_A_DEVICE,

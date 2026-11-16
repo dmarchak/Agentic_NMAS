@@ -8,7 +8,8 @@
     as amended: on, with one line first naming the open incidents it also starts on; off, back
     to Manual), each with its gear to the full setting; under them the answer of a press (a
     refusal of Automatic links the limits card), and the network's Turn on self-healing and
-    fix all on THE stepper while it runs and after. Each toggle is busy on itself until its
+    fix all on THE stepper while it runs and after (C3823: or the Self-healing switch's own
+    batch, the open problems its line named, "Self-healing switched on"). Each toggle is busy on itself until its
     answer arrives and the strip is drawn again in place; it re-reads itself when self-healing
     announces, a setting is saved or a run moves. A viewer who may not change these settings
     sees the state with why, the toggles disabled. -#}
@@ -51,8 +52,11 @@
     {#- Self-healing: on is Auto for the default duration, off is Dry run; new problems only. -#}
     <form class="ctl-item" id="ctl-heal" method="post" action="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-post="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="heal" data-state="{{ h.mode }}">
       <input type="hidden" name="on" value="{{ '0' if h.on else '1' }}">
+      {#- C3823: turning it on is the approval of the open problems its line names, bound to
+          that line's hash; none, no hash, and it turns on as before. -#}
+      <input type="hidden" name="hash" value="{{ h.hash if not h.on and h.also else '' }}">
       <span class="ctl-name">Self-healing:</span>
-      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes problems by itself on {{ s.network }}{% if h.until %} until {{ h.until }} UTC{% else %} until someone turns it off{% endif %}. Turn it off: Dry run, where it only says what it would fix.{% else %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d). Open incidents a saved script matches are fixed now.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}{% if h.until %}{{ ('On until ' ~ h.until) | times }}{% else %}On{% endif %}{% elif h.mode == 'dry_run' %}Off (dry run){% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', compact=True, op='the Self-healing toggle') }}</span>
+      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes problems by itself on {{ s.network }}{% if h.until %} until {{ h.until }} UTC{% else %} until someone turns it off{% endif %}. Turn it off: Dry run, where it only says what it would fix.{% elif h.also %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d), and it fixes the open problems the line below names now, as approved by this press ({{ h.hash[:12] }}): one first, verified, then the rest at once. It does not start the AI.{% else %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d).{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}{% if h.until %}{{ ('On until ' ~ h.until) | times }}{% else %}On{% endif %}{% elif h.mode == 'dry_run' %}Off (dry run){% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', compact=True, op='the Self-healing toggle') }}</span>
     </form>
     {#- AI troubleshooting: Automatic (Gate 2, C3769; the operator's minimal design,
         2026-11-15). On is one press, bound to the line drawn beside it (the open incidents it
@@ -66,6 +70,13 @@
       <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if ai.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not ai.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if ai.on %}On since {{ ai.at }} UTC: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits. Turn it off: back to Manual at once; one already running finishes.{% elif ai.ready %}Turning it on is refused until {{ ai.ready }}.{% else %}Now {{ ai.words }}. Turn on: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{{ 'On' if ai.on else 'Off' if ai.known else 'Not known' }}</span><span class="op-busy">{{ 'Turning off…' if ai.on else 'Turning on…' }}</span></button>{{ how('heal-batch', 'ai-toggle', compact=True, op='the AI troubleshooting switch') }}</span>
     </form>
   </div>
+  {#- C3823: while self-healing is not On, the open problems turning it on also fixes. -#}
+  {%- if not h.on and h.also %}
+  <p class="simple-status small ctl-line" data-ctl-also data-hash="{{ h.hash[:12] }}">{{ h.also }}.</p>
+  {%- endif %}
+  {%- if not h.on and h.also_error %}
+  <p class="small warn-text" data-ctl-also-error>Whether turning it on also fixes open problems cannot be read: {{ h.also_error }}</p>
+  {%- endif %}
   {#- The one explanatory line (board R5): what the AI does while the switch is as it is, and,
       while it is off, the open incidents turning it on also starts on. -#}
   <p class="simple-status small ctl-line"{% if not ai.on and ai.line and ai.line.words %} data-ctl-line data-n="{{ ai.line.n }}"{% endif %}>

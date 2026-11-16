@@ -8,6 +8,9 @@ one-button batch, on Needs attention (C3789; `modules/control_strip.py`, `module
 - ``POST /v2/control/<list_name>/heal`` (``on`` 1 or 0): the Self-healing toggle, as a verified
   person who may change self-healing settings: on is Auto for the network's default duration,
   off is Dry run, through the policy's own write; the strip again with the answer in place.
+  With ``hash`` (C3823), on is the batch of the open problems its line drew, bound to that
+  hash (`control_strip.switch_on`): restores and saved scripts, never the AI; refused, nothing
+  turned on, when they moved since drawn, the strip drawn again with the new line.
 - ``POST /v2/control/<list_name>/fix-all`` (``hash``): Turn on self-healing and fix all, bound
   to the batch's hash as previewed on its card: the AI started on each incident with no fix,
   and the rest as one job (`heal.batch.press`); the strip's run part, with the run on its
@@ -75,6 +78,22 @@ def heal(list_name):
     if why:
         return _strip(list_name, 403, refused=f"Self-healing was not changed: {why}")
     on = request.form.get("on") == "1"
+    shown = request.form.get("hash") or ""
+    if on and shown:
+        # C3823: turned on with the open problems its line drew, bound to that line's hash:
+        # C3819's batch (restores and saved scripts, one first, then the rest; never the AI),
+        # which turns self-healing on itself; refused, nothing turned on, when they moved.
+        try:
+            got = control_strip.switch_on(list_name, shown, actor=who["actor"],
+                                          verified=who["verified"], ident=who["ident"])
+        except batch.Refused as exc:
+            code = 403 if "verified person" in str(exc) or "may not" in str(exc) else 409
+            return _strip(list_name, code, refused=f"Self-healing was not changed: {exc}")
+        p = got["preview"]
+        return _strip(list_name, heal_set=(
+            "turning on in Auto, until someone turns it off, and "
+            + batch.switch_words(len(p["items"]), len(p["scripts"]), verb="fixing")
+            + ": one first, verified, then the rest at once"))
     # C3789: the strip, and so its toggle, is on Troubleshoot › Incidents alone
     # (`control_strip.set_heal`'s page).
     try:

@@ -712,9 +712,31 @@ def _loop() -> None:
             except Exception as exc:
                 log.error("heal: %s's heals could not start: %s: %s", name,
                           type(exc).__name__, exc)
+        _retry_step()
         _notify_step()
         _wake.wait(PASS_SECONDS)
         _wake.clear()
+
+
+def _retry_step() -> None:
+    """The daily retry (the operator, 2026-11-16): on every network each pass, not only those
+    still watching (a standing can't-fix or hold is not), `retry.daily` asks whether an
+    incident whose fixes failed was last tried 24 hours ago or more, from its recorded retry,
+    and tries it again once. The retry is taken under the incidents store's lock, so another
+    worker's pass or a restart never takes it twice. Never raises."""
+    from modules.integration_groups import network_names
+
+    try:
+        names = network_names()
+    except Exception as exc:
+        log.error("heal: the networks could not be listed for the daily retry: %s", exc)
+        return
+    for name in names:
+        try:
+            from modules.heal import retry
+            retry.daily(name)
+        except Exception as exc:
+            log.error("heal: %s's daily retry failed: %s: %s", name, type(exc).__name__, exc)
 
 
 def _notify_step() -> None:

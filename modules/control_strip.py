@@ -7,8 +7,15 @@ Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, t
   (`heal_auto_default_hours`, C3749; 1 hour by default), labelled "Auto until HH:MM"; off is
   Dry run. One press, no dialog, through the policy's own write (`policy.apply_planned`: every
   gate its plan holds, recorded with who and why in the network's settings record, which
-  History draws as the person's change). It acts on new problems only: open incidents stay as
-  they stand, with G6's Turn on self-healing and fix all the one place a batch is approved.
+  History draws as the person's change). C3823 (the operator's design, 2026-11-16: "switching
+  Self-healing On IS the approval for what's already open"): while it is not On and open
+  problems Mercury can fix stand (guard 6's held departures, the incidents an Automatic saved
+  script matches), one line beside it says so ("Also fixes the 7 open problems (5 restores, 2
+  saved scripts)", `heal.batch.switch_words`) and the switch carries that line's hash; turning
+  it on runs them as C3819's batch (`switch_on`, `heal.batch.press` with ``switch``: one first,
+  verified, then the rest at once, guard 6 resolved for those listed, the runs named after the
+  switch-on), never the AI, and is refused, nothing turned on, when they moved since drawn.
+  G6's Fix all card on Needs attention stays only for guard 6 holds formed while it is On.
 - **AI troubleshooting** (Gate 2, C3769; the operator's minimal design, 2026-11-15): "AI
   troubleshooting: Automatic", the network's one control's Automatic (`troubleshoot_control`). On
   is one press through the control's own route (`settings_v2.ai_ts_level`, ``answer=strip``):
@@ -55,7 +62,11 @@ def _run_card(job: dict) -> dict:
     outcome = result.get("outcome") or ("failed" if got.get("state") == "failed" else "")
     group = ("running" if not ended else "done" if outcome == "fixed"
              else "failed" if outcome or got.get("state") == "failed" else "done")
-    rows = [RS.row(batch.BUTTON, group, rec["steps"], device=False)]
+    # C3823: the Self-healing switch's batch, told by its page (`heal.batch.SWITCH_PAGE`).
+    from urllib.parse import urlsplit
+    label = (batch.SWITCH if urlsplit(job.get("page") or "").path == batch.SWITCH_PAGE
+             else batch.BUTTON)
+    rows = [RS.row(label, group, rec["steps"], device=False)]
     for d in result.get("devices") or []:
         # ``already``: a saved script another path's run had in flight when the batch claimed
         # it (C3819), drawn running, never done: the batch did not verify it.
@@ -64,7 +75,7 @@ def _run_card(job: dict) -> dict:
         rows.append(RS.row(d.get("device") or "?", g, [], detail=d.get("words") or ""))
     return {"job": job["job"], "state": got.get("state") or job.get("state"),
             "outcome": outcome, "words": result.get("words") or got.get("error") or "",
-            "stepper": RS.card(rows, label="Turn on self-healing and fix all", key="heal-batch"),
+            "stepper": RS.card(rows, label=label, key="heal-batch"),
             "started_at": job.get("started_at")}
 
 
@@ -137,6 +148,27 @@ def fix_all(network: str, shown: str, *, actor: str, verified: str, ident) -> di
                        script_items=batch_script_items(network))
 
 
+def switch_preview(network: str) -> dict:
+    """The Self-healing switch's batch on *network* (C3823): `heal.batch.preview` with
+    ``switch`` (guard 6's restores and the Automatic saved scripts' matches, no AI), the
+    scripts' matches handed in (`batch_script_items`). Its ``also`` the line, its ``hash`` what
+    the switch's press is bound to; *on* False when there is nothing open to fix."""
+    from modules.heal import batch
+
+    return batch.preview(network, script_items=batch_script_items(network), switch=True)
+
+
+def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> dict:
+    """The Self-healing switch turned on with the open problems its line drew (C3823): C3819's
+    batch (`heal.batch.press` with ``switch``), bound to *shown*, the line's hash, the saved
+    scripts' matches handed in, and no AI (nothing to start it is handed in). Raises
+    `heal.batch.Refused`, nothing turned on and nothing started."""
+    from modules.heal import batch
+
+    return batch.press(network, shown, actor=actor, verified=verified, ident=ident,
+                       script_items=batch_script_items(network), switch=True)
+
+
 def batch_run(network: str):
     """The newest kept batch job of *network* on this server, drawn, or None."""
     from modules.heal import batch
@@ -168,7 +200,19 @@ def view(network: str, now: float = None, **answer) -> dict:
             "until": cur.get("until") if cur.get("mode") == "auto" else "",
             "would_until": batch.default_until(network, now), "hours": hours,
             "words": cur.get("words") or "", "known": cur.get("mode") in policy.MODES,
-            "gear": url_for("settings_v2.network", list_name=network, tab="heal")}
+            "gear": url_for("settings_v2.network", list_name=network, tab="heal"),
+            "also": "", "hash": "", "also_error": ""}
+    # C3823: while it is not On, the open problems turning it on also fixes, its one line and
+    # the hash the switch's press is bound to (`switch_preview`); none, no line.
+    if heal["known"] and not heal["on"]:
+        try:
+            sp = switch_preview(network)
+            if sp.get("on"):
+                heal.update(also=sp.get("also") or "", hash=sp.get("hash") or "")
+            if sp.get("error") or sp.get("state") != "ok":
+                heal["also_error"] = sp.get("error") or sp.get("state") or ""
+        except Exception as exc:                      # noqa: BLE001 (said, never drawn as none)
+            heal["also_error"] = f"{type(exc).__name__}: {exc}"
     # Gate 2 (C3769; the operator's minimal design, 2026-11-15): "AI troubleshooting:
     # Automatic", on or off back to Manual, through the one control's route
     # (`troubleshoot.set_level`); the one line before turning it on; its refusal, until the

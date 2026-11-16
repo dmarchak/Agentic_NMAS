@@ -545,11 +545,13 @@ def _person_refusal(actor: str, actor_verified: str, person: bool, what: str) ->
 
 
 def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_verified: str,
-          person: bool, reason: str, now: float = None, seen: dict = None) -> dict:
+          person: bool, reason: str, now: float = None, seen: dict = None,
+          retry_skip=()) -> dict:
     """Make the change the person confirmed, and record it. Re-planned under the network's
     lock; refused when the plan is not confirmable or its fingerprint is not *fingerprint*,
     naming both and what moved. ``{"ok", "network", "mode", "until", "fingerprint",
-    "policy_fingerprint", "changes", "recorded", "at"}``."""
+    "policy_fingerprint", "changes", "recorded", "at"}``. *retry_skip* (C3823): incidents a
+    batch turning self-healing on fixes itself, left out of the switch-on's retry."""
     from modules import list_settings as L
 
     _person_refusal(actor, actor_verified, person, "a heal policy")
@@ -585,9 +587,12 @@ def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_v
     log.info("heal: %s confirmed %s's policy %s (mode %s)", actor, network,
              p["policy_fingerprint"], after[MODE_KEY])
     if after[MODE_KEY] == "auto" and p["before"].get(MODE_KEY) != "auto":
-        # C3805: switched on, every open incident an Automatic script matches is decided again.
-        from modules.nsot import saved_plans
-        saved_plans.redecide_soon(network, by=actor)
+        # Switched on (the operator, 2026-11-16; C3805 before it): every open incident whose
+        # fixes failed is tried again once, keyed by this confirmation's instant, its matching
+        # Automatic scripts fired by the fresh decision (`heal.retry`, the one home).
+        from modules.heal import retry
+        retry.run_soon(network, "switched_on", instance=confirmation["at"], by=actor,
+                       skip=tuple(retry_skip or ()))
     return {"ok": True, "network": network, "mode": after[MODE_KEY], "until": after[UNTIL_KEY],
             "fingerprint": p["fingerprint"], "policy_fingerprint": p["policy_fingerprint"],
             "changes": p["changes"], "recorded": entry.get("recorded", False),
@@ -595,7 +600,7 @@ def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_v
 
 
 def apply_planned(network: str, proposed: dict, *, actor: str, actor_verified: str,
-                  person: bool, reason: str, now: float = None) -> dict:
+                  person: bool, reason: str, now: float = None, retry_skip=()) -> dict:
     """A change made in one press with no dialog (the control strip's Self-healing toggle and
     G6's Turn on self-healing and fix all, C3748): planned now and applied under that plan's
     own fingerprint, so every gate `plan` holds is judged (AUTO only on a network marked lab,
@@ -606,7 +611,7 @@ def apply_planned(network: str, proposed: dict, *, actor: str, actor_verified: s
     p = plan(network, proposed, now)
     return apply(network, proposed, p["fingerprint"], actor=actor,
                  actor_verified=actor_verified, person=person, reason=reason, now=now,
-                 seen=p["operands"])
+                 seen=p["operands"], retry_skip=retry_skip)
 
 
 # ── Turn off: one press, no confirm ─────────────────────────────────────────────────────────

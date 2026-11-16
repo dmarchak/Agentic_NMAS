@@ -865,6 +865,18 @@ def _why_person(nxt: dict, offer: dict, found: dict) -> str:
     kind = (nxt or {}).get("kind")
     if kind == "approve":
         return "The AI's plan is ready: needs your approval"
+    if kind == "start" or (kind == "button" and not nxt.get("script") and not nxt.get("read")):
+        # What Mercury tried on THIS incident and that the AI can investigate, from its own
+        # record (the retry policy, the operator, 2026-11-16; `heal.retry.reason`): a lost
+        # stream says Mercury has no fix it runs by itself.
+        from modules.heal import retry
+        try:
+            said = retry.reason((found or {}).get("network") or "", inc)
+        except Exception as exc:                      # noqa: BLE001 (said without it)
+            log.error("fixit: %s's retries could not be said: %s", inc.get("id"), exc)
+            said = ""
+        if said:
+            return said
     if kind == "start":
         try:
             prob = P.classify(found)

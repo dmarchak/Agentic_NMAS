@@ -431,21 +431,30 @@ def _track(key: str, row: dict) -> None:
     _update(change)
 
 
-def _stands(row: dict, incident: str, mode: str) -> bool:
+def _stands(row: dict, incident: str, mode: str, retry: str = "") -> bool:
     """Whether a track *row* stands for *mode*'s fire on *incident*: a Dry run's record, or an
     Auto run in flight (``firing``) or one that sent anything (``sent``), passed or not, so a
     rolled-back or refused-at-the-device run is never tried again on every pass. A row held by
-    a guard sent nothing, and stands for nothing."""
+    a guard sent nothing, and stands for nothing. Under a *retry* (the retry pass's key for one
+    trigger on one incident, `modules/heal/retry.py`; the operator, 2026-11-16: a failed fix is
+    tried once more per trigger), only a row in flight, a run that verified (never a fix that
+    worked run again, even when its close was refused) or that retry's own row stands, so the
+    retry fires each script once and never twice."""
     if row.get("incident") != incident or row.get("mode") != mode:
         return False
-    return mode == "dry_run" or row.get("state") == "firing" or bool(row.get("sent"))
+    if row.get("state") == "firing":
+        return True
+    if retry:
+        return row.get("retry") == retry or (mode == "auto" and bool(row.get("ok")))
+    return mode == "dry_run" or bool(row.get("sent"))
 
 
-def _claim(key: str, incident: str, mode: str):
+def _claim(key: str, incident: str, mode: str, retry: str = ""):
     """``(row, None)``: a ``firing`` row of *key* on *incident* in *mode*, written under the
     store's lock before anything runs, its ``id`` the one `_settle` finishes; or ``(None,
     row)``, the row already standing for it (`_stands`): the heal decision and the
-    investigation never both run one, and neither runs while the other's is in flight."""
+    investigation never both run one, and neither runs while the other's is in flight.
+    *retry*: the retry pass's key, kept on the row (`_stands`)."""
     import uuid
 
     def change(doc):
@@ -453,11 +462,11 @@ def _claim(key: str, incident: str, mode: str):
         if e is None:
             raise Refused(f"{key} is no saved script")
         for row in reversed(e.get("track") or []):
-            if _stands(row, incident, mode):
+            if _stands(row, incident, mode, retry):
                 return None, dict(row)
         row = {"id": uuid.uuid4().hex, "at": _iso(), "incident": incident, "mode": mode,
                "state": "firing", "sent": False, "ok": False, "hash": "", "run": "",
-               "words": "firing"}
+               "words": "firing", **({"retry": retry} if retry else {})}
         e["track"] = (list(e.get("track") or []) + [row])[-TRACK_KEPT:]
         return dict(row), None
     return _update(change)
@@ -486,7 +495,8 @@ def mode_now(entry: dict, heal_mode: str) -> str:
 
 def fire(network: str, key: str, problem, incident: str, *, sources=None,
          heal_mode: str = "auto", record: dict = None, force_dry: bool = False,
-         claimed: dict = None, batch: dict = None, expect_hash: str = "") -> dict:
+         claimed: dict = None, batch: dict = None, expect_hash: str = "",
+         retry: str = "") -> dict:
     """Script *key* fired on *problem* in *incident*, in the mode self-healing allows it now
     (`mode_now`; Dry run when *force_dry*, another script having sent already), claimed first
     (`_claim`: one standing fire per incident and mode): its values filled from the problem
@@ -502,7 +512,11 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
     turning self-healing on (`claim_for_batch`; no second claim is taken), *batch* its
     approval (``{"id", "by", "by_shown", "hash"}``: guard 6 resolved for this run, the batch
     named on the run's reason and authority) and *expect_hash* the plan hash the person
-    approved: a plan whose hash moved since is refused, naming both, with nothing sent."""
+    approved: a plan whose hash moved since is refused, naming both, with nothing sent.
+
+    *retry*: the retry pass's key (`modules/heal/retry.py`, through the decision's
+    `fire_matching`): a run of it that sent and failed before is tried once more for that
+    retry, never twice (`_stands`)."""
     from modules.nsot import command_plan as CP
     from modules.nsot import command_plan_run as CR
 
@@ -524,7 +538,7 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
     if claimed is not None:
         row = claimed
     else:
-        row, before = _claim(key, incident, mode)
+        row, before = _claim(key, incident, mode, retry)
         if before is not None:
             return dict(before, already=True)
     out = {"mode": mode, "ok": False, "sent": False, "hash": "", "values": {}, "run": ""}
@@ -635,8 +649,8 @@ def standing_fire(network: str, key: str, incident: str, mode: str = "auto") -> 
 def claim_for_batch(key: str, incident: str) -> tuple:
     """G6's batch claims its Auto fire of *key* on *incident* before it turns self-healing on
     (C3819): `_claim`'s ``(row, None)``, or ``(None, row)`` the row already standing. Taken
-    under the store's lock across processes, so the re-decide a turn-on starts
-    (`redecide_soon`), the heal decision's `fire_matching` and any other worker answer the
+    under the store's lock across processes, so the retry a turn-on starts
+    (`heal.retry.run_soon`), the heal decision's `fire_matching` and any other worker answer the
     batch's ``firing`` row and run nothing; the batch fires it later with ``claimed=``."""
     return _claim(key, incident, "auto")
 
@@ -707,31 +721,10 @@ def running_on(network: str, incident_id: str) -> dict:
     return {}
 
 
-def redecide(network: str, *, by: str = "saved-plans") -> list:
-    """Every open incident of *network* whose problem matches an Automatic script (C3805: on a
-    save, a promote and self-healing switched on): with self-healing in Auto the script fires
-    (`fire`: claimed, the heal guards asked, the runner) and, verified, the incident closes
-    Fixed (`close_fixed`); in Off or Dry run nothing runs (the incident's bottom line offers
-    the script). ``[{"incident", "key", "words"}]``."""
-    from modules import incident_page
-    from modules.heal import incidents as INC
-
-    mode = heal_mode(network)
-    if mode != "auto":
-        return []
-    out = []
-    for inc in INC.read(network).get("incidents") or []:
-        if inc.get("state") not in INC.OPEN_STATES:
-            continue
-        found = incident_page.resolve(network, inc["id"])
-        e, prob = script_for(network, found)
-        if not e:
-            continue
-        # `fire` runs it as a job and closes the incident when it verifies (one path).
-        got = fire(network, e["key"], prob, inc["id"], heal_mode=mode, record=inc)
-        out.append({"incident": inc["id"], "key": e["key"], "words": got.get("words") or ""})
-        log.info("saved plans: %s re-decided on %s: %s", e["key"], inc["id"], got.get("words"))
-    return out
+# A save, a promote and self-healing switched on try each open incident's failed fixes again
+# through the retry pass (`modules/heal/retry.py`, the operator, 2026-11-16), its one home: it
+# sends the incident back for a fresh decision, and the decision fires its matching scripts
+# (`fire_matching` with the retry's key). It replaced C3805's `redecide`.
 
 
 def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: str, *,
@@ -748,7 +741,11 @@ def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: s
     out = {}
     reason = f"self-heal script {e['name']}, promoted by {e.get('promoted_by')}"
     authority = {"script": e["key"]}
-    if batch:
+    if batch and batch.get("named"):
+        # C3823: a switch-on's batch is named after the switch-on.
+        reason += (f"; run by {batch['named']} (the batch {batch.get('id')}, approved by its "
+                   f"hash {str(batch.get('hash') or '')[:12]})")
+    elif batch:
         reason += (f"; run by the batch {batch.get('id')}, approved by "
                    f"{batch.get('by_shown') or batch.get('by')} by its hash "
                    f"{str(batch.get('hash') or '')[:12]}")
@@ -766,26 +763,14 @@ def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: s
     return out
 
 
-def redecide_soon(network: str, *, by: str) -> None:
-    """`redecide` on its own thread: a save, a promote or a switch answers at once; each run
-    holds its device (the runner) and is announced as it records."""
-    import threading
-
-    def go():
-        try:
-            redecide(network, by=by)
-        except Exception as exc:                      # noqa: BLE001 (said; the next trigger retries)
-            log.error("saved plans: re-deciding %s's open incidents failed: %s", network, exc)
-    threading.Thread(target=go, name=f"redecide-{network}", daemon=True).start()
-
-
-def fire_matching(network: str, found: dict, *, sources=None, mode: str = None) -> list:
+def fire_matching(network: str, found: dict, *, sources=None, mode: str = None,
+                  retry: str = "") -> list:
     """Every script of *network* whose match the incident *found* (`incident_page.resolve`)
     holds, fired (`fire`) under self-healing's mode now (*mode*, else `heal_mode`), Auto ones
     first; one already standing on the incident (`_claim`) answers what it did then, so the
     heal decision and the investigation never fire one twice. Once one Auto script has sent
-    anything, the rest only record a Dry run: one incident, one change. Its answers, in
-    order."""
+    anything, the rest only record a Dry run: one incident, one change. *retry*: the retry
+    pass's key, each script fired once for it (`fire`). Its answers, in order."""
     from modules import problem as P
 
     prob = P.classify(found)
@@ -801,7 +786,7 @@ def fire_matching(network: str, found: dict, *, sources=None, mode: str = None) 
     for e in sorted(hit, key=lambda x: (x.get("mode") != "auto", x.get("key"))):
         try:
             got = fire(network, e["key"], prob, iid, sources=sources, heal_mode=mode,
-                       record=record or None, force_dry=sent)
+                       record=record or None, force_dry=sent, retry=retry)
             sent = sent or bool(got.get("sent")) or (got.get("already") and got.get("mode")
                                                      == "auto" and got.get("state") == "firing")
             out.append(dict(got, key=e["key"]))
