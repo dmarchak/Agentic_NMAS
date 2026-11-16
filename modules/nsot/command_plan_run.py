@@ -33,10 +33,13 @@ intent"). One execution path: G7's recovery is its first built-in plan
    **One device session per run** (the operator, 2026-11-16): every read the plan makes (its
    preconditions, its verify reads, the net-zero reads) rides the pipeline's own pooled
    session, the one stage 4 signs in on and the push sends on (`Sources.ride`,
-   `pool_session`), each read live. Stage 7 still signs in again after the push (C272)
-   until a measurement shows the push's session reads alike. The pipeline's snapshots before
-   and after are scoped by what the plan touches (`snapshot_scope`). Each step's and each
-   read's time is kept in the record's ``laps``.
+   `pool_session`), each read live, and stage 7 reads on the push's own session once its
+   prompt reads (`PipelineContext.keep_session`; item 5, the operator, 2026-11-16: no second
+   sign-in). The pipeline's snapshots before and after are scoped by what the plan touches
+   (`snapshot_scope`); under the access rule the read before is the plan's interfaces' own
+   sections (`PipelineContext.config_scope`), which the net-zero check's before shares. Each
+   step's and each read's time is kept in the record's ``laps``; the device's NetBox context
+   is warmed by the preflight (`pipeline.warm_netbox_context`).
 4. **The record**: the receipt (`receipts`, action ``command_plan``, no intent commit), the
    run's record in the operations' record History reads (`privileged.record`, its key the
    plan's), each new shape's measurement (`command_policy.record_measurement`), and the
@@ -383,8 +386,13 @@ def preconditions(t, run: CheckRun, rec: dict):
         if why:
             _step(rec, "read_before", "refused", why)
             return why
-        _step(rec, "read_before", "ok", "the running configuration read before anything is "
-                                        "sent, holding the device")
+        only = pre.get("running_config_sections") or []
+        _step(rec, "read_before", "ok", (
+            f"the configuration of {', '.join(only)} read before anything is sent, holding "
+            "the device (the access rule: the port's own section, not the whole "
+            "configuration)"
+            if only else "the running configuration read before anything is sent, holding "
+                         "the device"))
         cmds = list(dict.fromkeys(CP.substitute(i["read"], run.derived)
                                   for i in t.preconditions if i["read"]))
         answers = run.sources.read(run.device, cmds) if cmds else {}
@@ -419,7 +427,14 @@ def preconditions(t, run: CheckRun, rec: dict):
         # send); else, or when one cannot be read, verify compares the whole configuration
         # with stage 4's.
         names = net_zero_scope(t, (ctx.rendered_commands or {}).get(ip) or [])
-        run.sections_before = (_sections(ctx, run.dev, names) if names else None)
+        # Shared with the read before (item 5): where stage 4 read these very sections as the
+        # configuration before, on this session holding the device, they are the net-zero
+        # check's before too; else each is read now.
+        shared = pre.get("sections") or {}
+        run.sections_before = (({n: shared[n] for n in names} if names and all(
+            n in shared for n in names) else _sections(ctx, run.dev, names)) if names else None)
+        if names and run.sections_before is not None and all(n in shared for n in names):
+            lap(rec.get("laps"), "net zero: before (the read before's sections)")
         rec["net_zero_scope"] = ({"scope": "interfaces", "interfaces": names}
                                  if run.sections_before else
                                  {"scope": "full", "why": (
@@ -583,30 +598,19 @@ def _live_mode_refusal(scope: dict, running_config: str) -> str:
 
 
 def _section_read(name: str) -> str:
-    return f"show running-config interface {name}"
+    from modules.pipeline import SECTION_READ
+
+    return SECTION_READ.format(name=name)
 
 
 def _sections(ctx, dev: dict, names: list):
     """``{name: its configuration}`` for each interface of *names*, read on the run's session
     (the pipeline's pool, holding the device), or None when any one cannot be read or the
     device refuses the read (an IOS ``%`` error line): the caller then compares the whole
-    configuration."""
-    from modules.commands import run_device_command
-    from modules.connection import get_persistent_connection
-    from modules.pipeline import IOS_ERROR_PATTERN
+    configuration. The pipeline's one section read (`pipeline.read_sections`)."""
+    from modules.pipeline import read_sections
 
-    out = {}
-    for name in names:
-        try:
-            text = run_device_command(get_persistent_connection(
-                dev, ctx.connections_pool, ctx.pool_lock), _section_read(name)) or ""
-        except Exception as exc:                      # noqa: BLE001 (the whole compare, said)
-            log.info("command plan: %s's configuration was not read: %s", name, exc)
-            return None
-        if not text.strip() or re.search(IOS_ERROR_PATTERN, text):
-            return None
-        out[name] = text
-    return out
+    return read_sections(ctx, dev, names)
 
 
 def _verify_item(item, run: CheckRun, before: str = "") -> dict:
@@ -695,6 +699,14 @@ def _net_zero_after(ctx, run: CheckRun, pre: dict, scope: str = "") -> dict:
                     "interfaces": list(before),
                     "error": "the configuration of " + ", ".join(before) + " could not be "
                              "read again: whether it is net zero cannot be told"}
+    if (pre or {}).get("running_config_sections"):
+        # Stage 4 read the plan's sections alone (item 5): the whole configuration after has
+        # no whole one before to be compared with, so neither a pass nor a fail.
+        return {"checked": False, "differs": [], "scope": "full",
+                "error": ("the configuration before was read for "
+                          + ", ".join(pre["running_config_sections"]) + " alone, and their "
+                          "sections could not be read again: whether it is net zero cannot be "
+                          "told")}
     try:
         text = run_device_command(get_persistent_connection(
             dev, ctx.connections_pool, ctx.pool_lock), "show running-config") or ""
@@ -790,6 +802,12 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
     scope = snapshot_scope(network, t, p, run)
     ctx.snapshot_scope = {ip: scope}
     rec["snapshot_scope"] = scope
+    # Item 5 (the operator, 2026-11-16): stage 7 keeps the push's session (no second sign-in),
+    # and under the access rule the read before is the plan's interfaces' sections alone
+    # (`pipeline._config_scope`; any other rule reads the whole, said in its lap).
+    ctx.keep_session = True
+    if scope.get("rule") == "access":
+        ctx.config_scope = {ip: list(scope.get("interfaces") or [])}
     return ctx
 
 
@@ -827,6 +845,11 @@ def preconditions_now(network: str, key: str, p: dict, *, sources=None,
     src = sources or Sources(network, reuse=reuse)
     run_ = CheckRun(network, p["values"].get("device") or "", p["device_row"], p["derived"],
                     str(incident or ""), src)
+    if p.get("device_row"):
+        # The approved run's stage 1 then finds the device's NetBox context ready (item 5: the
+        # query took 6.1 s on s1's run), fetched beside this preflight, never waited on here.
+        from modules.pipeline import warm_netbox_context
+        warm_netbox_context(network, p["device_row"])
     cmds = list(dict.fromkeys(CP.substitute(i["read"], p["derived"])
                               for i in t.preconditions if i["read"]))
     answers = src.read(run_.device, cmds) if cmds else {}
@@ -972,7 +995,9 @@ def _net_zero_after_rollback(ctx, rec: dict, run: CheckRun) -> None:
     lost = ((ctx.failure_state or {}).get(ctx.device_ips[0]) or {}).get("lost")
     if lost:
         nz["lost_at_failure"] = [" > ".join(list(c) + [ln]) for c, ln in lost][:40]
-    scope = "interfaces" if nz.get("scope") == "interfaces" else "full"
+    # A run whose configuration before was its sections alone (item 5) compares those.
+    scope = ("interfaces" if nz.get("scope") == "interfaces"
+             or pre.get("running_config_sections") else "full")
     got = _net_zero_after(ctx, run, pre, scope=scope)
     if got.get("error"):
         log.warning("command plan: the configuration after the rollback was not read: %s",

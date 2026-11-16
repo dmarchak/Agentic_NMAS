@@ -718,7 +718,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 actor: str, actor_kind: str, on_device=None,
                 declare: dict = None, pair: dict = None, stop_at_first: bool = False,
                 capture: dict = None, after_verify=None, heal: dict = None,
-                hold_detail: str = "") -> dict:
+                hold_detail: str = "", tail=None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     failed devices). THE apply, for the device page's Deploy… and the v2 batch
@@ -742,7 +742,15 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     applied, and either end failing, or the link, rolls both back.
 
     *stop_at_first* (board FC's one stop rule, PHASE8_PLAN 22.2 (4)): the first failed device
-    stops the batch, the rest unattempted, as Coverage's combined deploy does."""
+    stops the batch, the rest unattempted, as Coverage's combined deploy does.
+
+    *tail* (the heal's, with *after_verify*; the operator's decisions (a) and (b), 2026-11-16):
+    each device's outcome rests on its verify and *after_verify*, its read after the push the
+    healed sections alone where its program sits in them, on the push's session; then its save,
+    the full read and the golden capture run as its tail (`pipeline.run_tail`), *tail* (when
+    callable, ``tail(step, state, words)``) hearing each step, before the batch's golden
+    commit. A capture source's ``read`` (the heal's read at apply, made holding the device) is
+    stage 4's configuration before: one read (`PipelineContext.pre_read`)."""
     from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
@@ -754,6 +762,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     if after_verify is not None and pair:
         raise ValueError("a check after verify is the heal's, and a paired deploy has its "
                          "link's: the two are never combined")
+    if tail is not None and after_verify is None:
+        raise ValueError("a tail follows a check after verify (the heal's), and none was given")
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused, templates_sent = [], {}
     # The pair's programs as recomputed here (the confirmed ones): what verify's link checks are
@@ -953,7 +963,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                          if pair else None)
             result = _deploy_one(entry, list_name, device_rows, authorise, **extra,
                                  **({"keep": contexts} if kept else {}),
-                                 **({"transient": transient} if transient else {}))
+                                 **({"transient": transient} if transient else {}),
+                                 **({"tail": True} if tail is not None else {}))
             if heal and name in heal:
                 result["heal"] = dict(heal[name])
             # A pair's receipt rows are written once the pair has settled (each end may yet be
@@ -987,7 +998,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                     if on_device:
                         on_device("done", r["device"], r)
         if after_verify is not None:
-            _settle_after_verify(report, contexts, after_verify, list_name)
+            _settle_after_verify(report, contexts, after_verify, list_name, tail=tail)
             for r in report.get("results") or []:
                 if r.get("device") in ran:
                     record(r)
@@ -1008,7 +1019,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     return report
 
 
-def _settle_after_verify(report: dict, contexts: dict, after_verify, list_name: str) -> dict:
+def _settle_after_verify(report: dict, contexts: dict, after_verify, list_name: str,
+                         tail=None) -> dict:
     """Each device whose pipeline verified, checked once more by *after_verify* (the heal's
     symptom and intent, board H, H4) while it is still held and its save to startup held: a
     ``rollback`` reason rolls it back by the pipeline's own rollback, as a paired deploy rolls
@@ -1039,7 +1051,29 @@ def _settle_after_verify(report: dict, contexts: dict, after_verify, list_name: 
                                         stage="after_verify")
             continue
         try:
-            saved = pipeline.save_held(ctx)
+            if getattr(ctx, "tail", False):
+                # The heal's tail (`pipeline.run_tail`): the save, the full read and the golden
+                # capture, after its verified outcome; the capture goes to the batch's commit.
+                try:
+                    tailed = pipeline.run_tail(ctx, on_step=tail if callable(tail) else None,
+                                               check=getattr(tail, "check", None))
+                except Exception as exc:          # noqa: BLE001 (a flag; the receipt still runs)
+                    # After Fixed: whatever the tail raised is its flag, never a lost receipt
+                    # or commit (the review, finding 4).
+                    log.exception("deploy: %s's tail raised", host)
+                    why = f"the tail raised ({type(exc).__name__}: {exc})"
+                    tailed = {"saved": dict(ctx.saved_startup or {}),
+                              "golden_pending": list(ctx.golden_pending or []),
+                              "full_read": {"state": "failed", "words": why},
+                              "golden_why": why}
+                saved = tailed["saved"]
+                r["golden_pending"] = [{**p, "target_config": r.get("tail_target", "")}
+                                       for p in tailed["golden_pending"]]
+                r["tail"] = {"full_read": tailed["full_read"],
+                             "golden_why": tailed.get("golden_why") or "",
+                             "healed_gone": tailed.get("healed_gone") or ""}
+            else:
+                saved = pipeline.save_held(ctx)
         finally:
             paired_deploy.close_kept(ctx)
         ip = (ctx.selected_devices[0] or {}).get("ip", "") if ctx.selected_devices else ""
@@ -1363,7 +1397,7 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
                 scope: str = "", declare: dict = None, keep: dict = None,
-                transient: dict = None, capture: dict = None) -> dict:
+                transient: dict = None, capture: dict = None, tail: bool = False) -> dict:
     """Run the pipeline for a single device. The only path that connects. *keep* (the paired
     deploy, `modules.nsot.paired_deploy`): the run's context is kept there by hostname, its save
     to startup held (`PipelineContext.hold_save`) until the link verifies, so a device whose own
@@ -1542,6 +1576,18 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         keep[hostname] = ctx
     if transient:
         ctx.pair_transient = {device.get("ip", ""): dict(transient)}
+    if tail and keep is not None:
+        # The heal's tail (`apply_batch`'s *tail*): one session through the run, stage 7 on the
+        # push's; the save, the full read and the golden after its verified outcome; and the
+        # heal's own read at apply, made holding the device, as stage 4's before.
+        ctx.tail = True
+        ctx.keep_session = True
+        if (source or {}).get("read"):
+            ctx.pre_read = {device.get("ip", ""): source["read"]}
+        # Where each second goes (round 2, item 4: about 30 s of r2's 64 s were not accounted
+        # for): each stage's and each read's lap, kept in the heal's record.
+        import time as _time
+        ctx.laps = [("start", _time.time())]
 
     try:
         result = PipelineRunner(ctx).run()
@@ -1552,10 +1598,12 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     finally:
         # The run's pool is this run's, and nothing else will ever close it:
         # each deploy and restore left one session open until the device's
-        # ten-minute timeout, and five of them locked the tool out of r2 (C97).
-        from modules.connection import close_persistent_connection
-        for ip in list(ctx.connections_pool):
-            close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+        # ten-minute timeout, and five of them locked the tool out of r2 (C97). A heal's
+        # run that passed keeps it for its tail, whose settle closes it (`close_kept`).
+        if not (ctx.tail and ctx.final_status == "success"):
+            from modules.connection import close_persistent_connection
+            for ip in list(ctx.connections_pool):
+                close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
 
     from modules.nsot.deploy import command_fingerprint
 
@@ -1584,6 +1632,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # capture equals what was pushed — which is what earns baseline/<ts>.
         "golden_pending": [{**p, "target_config": prepared["config"]}
                            for p in (result.golden_pending or [])],
+        # The target a heal's tail measures its capture against (`_settle_after_verify`), and
+        # its run's laps (a list the tail goes on adding to).
+        **({"tail_target": prepared["config"], "laps": ctx.laps} if ctx.tail else {}),
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),

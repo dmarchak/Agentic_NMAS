@@ -225,11 +225,15 @@ def of_plan(network: str, rec: dict) -> dict:
 def of_act(network: str, verify: list, began=None) -> dict:
     """A heal act's proof from its verify steps (`act.verified_of`'s ``verify``, or the act's
     own steps, `incident_page.acts`): each step's words as a check, its reads' answers from the
-    read engine by their reference. ``{}`` with no verify step."""
+    read engine by their reference. ``{}`` with no verify step. Only the checks that decide
+    the outcome (`act.DECIDING_STEPS`: the healed units' own check and the symptom's; the
+    operator, 2026-11-16: "don't show a check that decides nothing as proof"): the save, the
+    golden commit and the read again are the tail's, drawn under Fixed, never its proof."""
     from modules.heal import act
     from modules.nsot import reads
 
-    steps = [s for s in verify or [] if isinstance(s, dict) and s.get("step") in act.VERIFY_STEPS]
+    steps = [s for s in verify or []
+             if isinstance(s, dict) and s.get("step") in act.DECIDING_STEPS]
     if not steps:
         return {}
     start = _epoch(began) or _epoch(steps[0].get("at")) or 0
@@ -260,7 +264,11 @@ def of_act(network: str, verify: list, began=None) -> dict:
     return {"line": "Verified: " + ", ".join(short),
             "checks": [{"name": act.STEP_LABELS.get(s.get("step"), s.get("step")),
                         "result": "pass" if s.get("result") == "ok" else s.get("result") or "",
-                        "words": s.get("words") or "", "took_s": None, "read": ""}
+                        # An act recorded before 2026-11-16 said its whole-device compare after
+                        # the units' own check ("; intent: ..."): that part decided nothing.
+                        "words": (str(s.get("words") or "").split("; intent: ")[0]
+                                  if s.get("step") == "intent" else s.get("words") or ""),
+                        "took_s": None, "read": ""}
                        for s in steps],
             "net_zero": {"words": "", "lines": []},
             "reads": out_reads[:READS_MAX], "verify_s": None}

@@ -263,6 +263,13 @@ ROW_KINDS = {
     ("heal", "cant_fix"): ("self-healing could not fix a device's problem",
                            "read what Mercury tried, then the action the reason names (adopt "
                            "into intent, capture, check the link, or decide on the change)"),
+    # The operator, 2026-11-16 (decisions (a) and (b)): a heal is Fixed on its verify; its
+    # save, golden commit and read again come after, and one that failed, did not match or did
+    # not finish is said, never left silently Fixed.
+    ("heal", "tail_flag"): ("a device was fixed, and its save, golden or read again after it "
+                            "failed",
+                            "open the incident, read the step that failed, then save or "
+                            "capture the device"),
     # C3701: an open incident that needs a person and that no other row names (Needs attention
     # and Troubleshooting › Incidents from one state, `_incidents_agree`).
     ("heal", "incident"): ("an open incident needs a person and no other row names it",
@@ -676,6 +683,9 @@ CLEARS = {
     ("heal", "cant_fix"): (("resolves", "acknowledge"),
                            "a later decision finds the device with nothing to heal, or a later "
                            "heal of it is healed and verified; or acknowledged with a reason"),
+    ("heal", "tail_flag"): (("resolves", "acknowledge"),
+                            "a later heal of the device ends with its save, golden and read "
+                            "again done; or acknowledged with a reason"),
     ("heal", "incident"): (("resolves", "acknowledge"),
                            "the incident is resolved or no longer needs a person (its page "
                            "says which), or another row names it; or acknowledged with a "
@@ -795,6 +805,8 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "interrupted"),
                                # One can't-fix incident (board H, H8), by its incident's id.
                                ("heal", "cant_fix"),
+                               # One heal's tail that flagged (2026-11-16), by its decision.
+                               ("heal", "tail_flag"),
                                # One open incident no other row names (C3701), by its id.
                                ("heal", "incident"),
                                # One hold a person resolves (board H, H9), by its decision.
@@ -6650,6 +6662,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
     out += _heal_cant_fix_rows(lst, rows, now, said)
     cant_fix_n = (len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
                   - len(clears) - len(damp))
+    out += _heal_tail_rows(lst, now, said)
     out += _heal_capped_rows(lst, now, said)
     out += _heal_fold_rows(lst, said)
     after_fix = _heal_alert_after_fix_rows(lst, now, said)
@@ -7970,6 +7983,48 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
         # Board H's amendment, artboard I (H16): Diagnose…, its runbook and target from the
         # incident's trigger, read from the row already read (nothing more is asked).
         r["diagnose"] = diagnose_page.from_incident(lst, e, triggers.get(e["incident"]))
+        out.append(r)
+    return out
+
+
+def _heal_tail_rows(lst: str, now: float, said: list) -> list:
+    """ONE row per heal whose tail flagged (the operator, 2026-11-16, decisions (a) and (b);
+    `heal.act.tail_card`): fixed on its verify, and its save to startup, its golden commit or
+    its read again failed, did not match, or did not finish within its bound ("r2 fixed, but
+    its save to startup failed: ..."). Until a later heal of the device ends with its tail done,
+    or a person acknowledges it (`CLEARS`). A read of the step log, never the device."""
+    from modules.heal import act, steplog
+    from modules.heal import incidents as INC
+
+    got = steplog.incidents(lst)
+    if got["state"] == "unreadable":
+        said.append(f"the step log cannot be read ({got['error']}), so no heal's tail is shown")
+        return []
+    entries = got["entries"]
+    out = []
+    for e in entries:
+        host, at = e.get("device") or "", float(e.get("epoch") or 0)
+        if not host or not e.get("incident"):
+            continue
+        card = act.tail_card(lst, host, e, now)
+        if card.get("state") != "flagged" or not card.get("flag"):
+            continue
+        if any(x.get("device") == host and float(x.get("epoch") or 0) > at
+               and ((x.get("records") or {}).get("tail") or {}).get("state") == "ok"
+               for x in entries):
+            continue
+        decision = (e.get("decisions") or [""])[-1]
+        failed = [s for s in card["steps"] if s["state"] in ("failed", "running", "pending")]
+        r = row(source="heal", kind="tail_flag", key=decision or e["incident"], level="warning",
+                event=decision or e["incident"], devices=[host], since=at or None,
+                what=card["flag"],
+                cause=("Fixed on its verify; after it: "
+                       + "; ".join(f"{s['words']}" for s in card["steps"])
+                       + (f". Where it stopped: {failed[0]['words']}" if failed else "")),
+                action={"label": "Open the incident",
+                        "href": INC.incident_href(lst, e["incident"], device=host)},
+                operands={"list": lst, "incident": e["incident"], "decision": decision})
+        r["incident_page"] = {"id": e["incident"], "list": lst}
         out.append(r)
     return out
 

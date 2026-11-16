@@ -483,6 +483,12 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         state = "denied"
     elif newest[2] == "approve":
         state = "running"
+        lost = approve_lost(network, found.get("id") or "", rec, now)
+        if lost:
+            # Its run never started (a restart between the approval and its job): the plan is
+            # offered again, its one action Approve, and the status says why.
+            state = "proposed"
+            out["approve_lost"] = {"at": lost["at"]}
     elif newest[2] == "attempt":
         a = newest[3]
         state = ("running" if a["state"] == "running" else "passed" if a["passed"]
@@ -579,18 +585,68 @@ def _answer_drawn(line: dict, other: set, rec: dict, state: str) -> dict:
             "previous": bool(state == "investigating" or (newer_start and state != "proposed"))}
 
 
-def _current_proposal(rec: dict):
+def _current_proposal(rec: dict, network: str = "", incident_id: str = "", now: float = None):
     """The proposal a person may decide on now: the newest proposal line naming an operation,
-    when no deny or approve of it, and no newer proposal, followed it; else None."""
+    when no deny or approve of it, and no newer proposal, followed it; else None. An approve
+    whose run never started (`approve_lost`, asked only with *network* and *incident_id*)
+    decides nothing: its proposal may be approved again."""
     lines = rec["lines"]
     last = max((n for n, ln in enumerate(lines) if "proposal" in ln), default=None)
     if last is None or not lines[last].get("operation"):
         return None
     pid = lines[last]["proposal"]
+    lost = approve_lost(network, incident_id, rec, now) if network and incident_id else {}
     if any(ln.get("choice") in ("deny", "approve") and ln.get("decides") == pid
+           and not (lost and ln is lost.get("line"))
            for ln in lines[last + 1:]):
         return None
     return lines[last]
+
+
+def approve_start_bound() -> int:
+    """How long after an approval its run's record or job must exist (`waits.HEAL_BOUNDS`
+    ``approve-start``) before the approval reads as not started."""
+    from modules.waits import HEAL_BOUNDS
+
+    return int(HEAL_BOUNDS["approve-start"]["seconds"])
+
+
+def approve_lost(network: str, incident_id: str, rec: dict, now: float = None) -> dict:
+    """The newest approve line whose run did not start (the lead's round 2, 2026-11-16:
+    capture_job keeps its jobs in memory, so a process that ended after the approval was
+    recorded and before its job started leaves the card "running since" for good):
+    ``{"line", "at"}`` when it is the record's newest choice, it is older than
+    `approve_start_bound`, its run has no record (`plan_engine.record_of`) and no job for the
+    incident runs here (`progress._job_of`); else ``{}``. A read."""
+    from modules import plan_engine as PE
+    from modules.fixit import progress
+
+    now = time.time() if now is None else float(now)
+    choices = [ln for ln in rec.get("lines") or [] if "choice" in ln]
+    line = choices[-1] if choices else None
+    if not line or line.get("choice") != "approve":
+        return {}
+    if now - float(line.get("epoch") or now) < approve_start_bound():
+        return {}
+    try:
+        # Across processes (the review, finding 7): the run's record, which any process's job
+        # writes, and the device's hold, which any process's run takes before it sends
+        # (`device_ops.holder`, a lock file); this process's own job list only adds to them.
+        if line.get("run") and PE.record_of(network, line["run"]):
+            return {}
+        if progress._job_of(network, incident_id) is not None:
+            return {}
+        from modules import incident_page
+        from modules.nsot import device_ops
+        device = ((incident_page.resolve(network, incident_id) or {}).get("incident")
+                  or {}).get("device") or ""
+        if not device or device_ops.holder(network, device):
+            return {}
+    except Exception as exc:                          # noqa: BLE001 (unread: never "lost")
+        log.info("fixit: whether %s's approved run started could not be read: %s",
+                 incident_id, exc)
+        return {}
+    return {"line": line, "at": line.get("at") or ""}
 
 
 #: A preflight refusal's code (`validate.check`) to the guard that made it: such a guard
@@ -665,7 +721,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     failed = [a for a in drawn if a["state"] == "failed"]
     out["other_actions"] = [{"operation": a["operation"], "attempt": a["n"],
                              "words": a["words"], "run": a["run"]} for a in failed]
-    line = None if done else _current_proposal(rec)
+    line = None if done else _current_proposal(rec, network, iid, now)
     plan = FP.preflight(inc, line, now=now) if line else None
     out["holds"] = _holds(found, inc.device, plan)
     out["proposal"] = plan
@@ -827,6 +883,10 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     newest_try = (tried.get("attempts") or [{}])[-1]
     if not done and state == "stopped" and newest_try.get("outcome") == RETRIPPED:
         out["status"] = newest_try.get("words") or out["status"]
+    if not done and out.get("approve_lost"):
+        # An approval whose run never started (`approve_lost`): said, with Approve its action.
+        out["status"] = (f"Approved at {out['approve_lost']['at'] or 'a time not recorded'}, "
+                         "but its run did not start (Mercury restarted?): approve again")
     out["status_source"] = "AI" if out["status"] in ai_lines else ""
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
@@ -1298,7 +1358,8 @@ def card_of(out: dict, found: dict) -> dict:
 
     state = out.get("state") or ""
     card = {"status": out.get("status") or "", "source": out.get("status_source") or "",
-            "kind": "", "step": "", "how": None, "fixed_at": "", "plan_ready": False, "run": [], "run_page": "", "proof": {}}
+            "kind": "", "step": "", "how": None, "fixed_at": "", "plan_ready": False, "run": [], "run_page": "", "proof": {},
+            "tail": {}}
     network, iid, device = out.get("network") or "", out.get("id") or "", out.get("device") or ""
     # The compact live stepper while the AI investigates or a run goes (the operator,
     # 2026-11-16): its steps stand in for the one status line (`progress.of`).
@@ -1357,6 +1418,9 @@ def card_of(out: dict, found: dict) -> dict:
         # "Fixed" shows its proof (the operator, 2026-11-16): the verify's reads, one line by
         # default, the output on expand (`fixit.proof`).
         card["proof"] = _proof_of(network, a, record, found)
+        # The heal's tail under Fixed (the operator, 2026-11-16, decisions (a) and (b)): its
+        # save, golden commit and read again, live while they run, a failure its flag.
+        card["tail"] = _tail_of(network, device, found)
         return card
     if state == "investigating":
         from modules import troubleshoot_job
@@ -1374,6 +1438,18 @@ def card_of(out: dict, found: dict) -> dict:
             f"Plan ready in {progress.took_words(took)}: approve it below" if took else
             f"{who} is ready for your approval, below"))
     return card
+
+
+def _tail_of(network: str, device: str, found: dict) -> dict:
+    """A heal's tail on the card (`heal.act.tail_card`), or ``{}`` (no tail recorded, or it
+    cannot be read: the card is drawn without it)."""
+    from modules.heal import act
+
+    try:
+        return act.tail_card(network, device, (found or {}).get("entry") or {})
+    except Exception as exc:                          # noqa: BLE001 (drawn without it)
+        log.error("fixit: %s's tail could not be read: %s", device, exc)
+        return {}
 
 
 def _proof_of(network: str, attempt, record: dict, found: dict) -> dict:

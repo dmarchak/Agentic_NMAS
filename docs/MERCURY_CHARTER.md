@@ -268,6 +268,10 @@ place is named. Where this list and another document disagree, the charter gover
   re-trip window, the connect check). Snapshots and verify are scoped by what the plan touches:
   access ports read the port, a routed, uplink or trunk interface keeps its protocols' checks,
   anything unclassified keeps the full snapshots; the rule applied is recorded on the run.
+  A fix's confirmation reads only its own device; waiting on a lock (another check, another
+  device's run) is a declared wait in the wait registry (`modules/waits.py`), drawn as one,
+  never an outcome (the operator, 2026-11-16, after r6 ended "partial" on another act's
+  drift-check lock, C3864).
 - **Proportionality: a plan's disruption never exceeds its problem's impact.** Options are
   ranked least disruptive first; a step whose impact exceeds the problem's (an outage to fix a
   monitoring-only problem) is never the primary fix. A reload is the last resort, offered only

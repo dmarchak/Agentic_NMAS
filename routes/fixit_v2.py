@@ -137,7 +137,9 @@ def _proposal_named(inc, named: str):
     rec = F.read(inc)
     if rec["state"] == "unreadable":
         return None, rec["error"]
-    line = section._current_proposal(rec)
+    # An approve whose run never started (`section.approve_lost`) decides nothing: its
+    # proposal may be approved again, as the card offers it.
+    line = section._current_proposal(rec, inc.network, inc.id)
     named = str(named or "").strip()
     if line is None:
         return None, f"{inc.id} has no proposal waiting for a decision now"

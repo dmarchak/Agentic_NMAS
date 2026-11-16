@@ -687,14 +687,14 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     def after_verify(host, result, ctx):
         post = ((result.get("golden_pending") or [{}])[0] or {}).get("config_text") or ""
         left = act.units_left(c["units"], post) if post else ["no read after the change"]
-        state = src.intent_state(device, post, platform) if post else {
-            "state": "unknown", "words": "no read after the change"}
-        record = {"intent": {"left": left, **state}}
+        # The units' own check decides; a whole-device compare with intent decides nothing
+        # here and is not shown as proof (the operator, 2026-11-16), as a heal's act.
+        record = {"intent": {"left": left}}
         if left:
             step("intent", "failed", f"{len(left)} unit(s) not at intent: {left[0]}")
             return {"rollback": (f"{len(left)} unit(s) not at intent after the change "
                                  f"({left[0]}), so what landed was undone"), "record": record}
-        step("intent", "ok", f"each unit at intent; intent: {state['words']}")
+        step("intent", "ok", "each unit at intent")
         plan = reset["plan"]
         if not plan:
             return {"rollback": "", "record": record}

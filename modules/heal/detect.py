@@ -708,7 +708,27 @@ def wake() -> None:
     _wake.set()
 
 
+def _tails_at_start() -> None:
+    """At start-up (round 2, item 2, the operator, 2026-11-16): each network's heal tail left
+    ``running`` by the process before is recorded flagged once past its bound
+    (`act.reap_tails`), whether or not the network has an incident open. Never raises."""
+    from modules.integration_groups import network_names
+
+    try:
+        names = network_names()
+    except Exception as exc:                          # noqa: BLE001 (act.run's pass reaps)
+        log.error("heal: the networks could not be listed for unfinished tails: %s", exc)
+        return
+    from modules.heal import act
+    for name in names:
+        try:
+            act.reap_tails(name)
+        except Exception as exc:                      # noqa: BLE001 (the next network's)
+            log.error("heal: %s's unfinished tails were not read: %s", name, exc)
+
+
 def _loop() -> None:
+    _tails_at_start()
     while not _stop.is_set():
         try:
             names = watching_networks()

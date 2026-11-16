@@ -895,6 +895,19 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                         d = decisions.record(network, made, now)
                     _act(network, claimed, d, now)
                     _log_steps(network, dict(d, steps=steps, phase=phase), now)
+                    if d["outcome"] == "heal" and not d.get("batch"):
+                        # The act starts at once (the operator, 2026-11-16, item 4; C3865: r2's
+                        # began 13 s after its decision, behind the pass's other decisions and
+                        # scripts). Its own job; a later `act.run` finds it taken.
+                        from modules.heal import act
+                        try:
+                            started = act.start_decided(network, d, by=by)
+                        except Exception as start_exc:    # noqa: BLE001 (the next pass's)
+                            started = {"failed": f"{type(start_exc).__name__}: {start_exc}"}
+                        if not started.get("started"):
+                            log.info("heal: %s's heal of %s starts on the next pass: %s",
+                                     network, d.get("device"),
+                                     started.get("refused") or started.get("failed"))
                 except Exception as exc:
                     log.error("heal: %s's decision on %s failed: %s: %s", network,
                               inc["device"], type(exc).__name__, exc)

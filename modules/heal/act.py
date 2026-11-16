@@ -14,7 +14,10 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    is sent), the network marked lab (C2009's guard), the policy's fingerprint the one the
    decision was made under, every unit's kind still allowed AUTO, no halt in force, no planned
    work, and a person who confirmed the policy (the setter is who is accountable);
-3. **read** the device again (the capture path's one checked read);
+3. **read** the device again (the capture path's one checked read), holding it from here to
+   the end of its tail (`hold_device`: another operation's hold is a declared wait, never an
+   outcome), so this read is the deploy's stage-4 read too (one read, `PipelineContext.pre_read`;
+   the operator, 2026-11-16, item 4);
 4. **plan against that read**: its units classified again and the program recomputed
    (`decide.program`, the decision's own computation), refused unless its hash is the
    decision's ``program_hash``, naming what moved (the departure, the units, the program's
@@ -33,9 +36,24 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    intent on the read after the change, or what landed is undone; (a) for a removed feature
    on an interface (N13), its effect: the trigger's own source read again within its bound
    (`SYMPTOM_SECONDS`), and a symptom still there rolls it back, its lines re-added;
-8. **the golden re-check** ("the documentation, tested"): the device read again
-   (`drift_check.check_device`) must be at its new golden, or the heal is partial; then any
-   other symptom is read again, the device saved and released. One still there KEEPS the
+   The read after the change is the healed units' interface sections, on the push's own
+   session, where every line of the program sits in one (`pipeline.tail_sections`), else the
+   whole configuration, said; the units' own check decides, and no whole-device compare with
+   intent is shown as proof (it decides nothing: a departure elsewhere is its own incident).
+   **Fixed rests on verify** (the operator's decisions (a) and (b), 2026-11-16, C3864 and
+   C3865): where nothing is left to wait for (no symptom named, or a cosmetic heal's one read of
+   its store) the outcome is recorded and the incident closed there (`declare`), and the
+   **tail** follows under it (`TAIL_STEPS`, `pipeline.run_tail`): the save to startup
+   ("Saving to startup…" → "Saved"), the whole configuration read and the golden committed from
+   it ("Committing the golden…" → "Golden committed"), and the device read again, its own read
+   (`Sources.read_at_golden`, never the network's drift check), against that golden. A tail
+   failure or mismatch flags the incident (`tail_of`: "r2 fixed, but its save to startup
+   failed: ..."), never leaves it silently Fixed and never changes its outcome. A heal whose
+   symptom is waited on runs the tail before that wait (the device is never held through it
+   nor left unsaved), and still only flags;
+8. **the golden re-check** ("the documentation, tested"): the device read again, its own read,
+   against its new golden; then any other symptom is read again, the device released. One
+   still there KEEPS the
    heal (rolling back would re-apply the unauthorised change): healed configuration, symptom
    remains, amber. A symptom that cannot be read neither passes nor fails: kept, partial.
    A heal that re-applies the heartbeat applet (C3164, `restored_heartbeat`: decided from
@@ -85,24 +103,46 @@ DONE_KEYS = ("drift", "goldens", "remote", "baselines", "device_state", "rolled_
 #: The steps, in order, for the step log (H6) and the manual's How it works page (H10).
 STEPS = (("take", "Take the heal decision, once"),
          ("stops", "Check the kill switch, the mode, the stage, the policy and planned work"),
-         ("read", "Read the device again"),
+         ("read", "Hold the device (a declared wait while another operation holds it) and "
+                  "read it again: the deploy's read before, too"),
          ("plan", "Recompute the program from that read, and compare its hash"),
          ("authorise", "Give each removal the policy's reason; refuse any dangerous line"),
          ("apply", "Apply as the policy, holding the device: the deploy's nine stages"),
-         ("intent", "Check each healed unit is at intent"),
+         ("intent", "Check each healed unit is at intent, from its own section read after "
+                    "the change"),
          ("symptom", "Read the symptom again (a removed feature's before its save; any "
                      "other, and a re-applied heartbeat applet's next heartbeat, once the "
                      "device is released)"),
-         ("saved", "Saved to startup once verified, the device released"),
-         ("golden", "Read the device again against its new golden"),
-         ("record", "Record the outcome and close the incident"))
+         ("record", "Record the outcome and close the incident: Fixed rests on verify"),
+         ("saved", "After Fixed: save to startup"),
+         ("commit", "After Fixed: read the whole configuration and commit the golden from it"),
+         ("golden", "After Fixed: read the device again, its own read, against its new "
+                    "golden"))
 #: Each step in two to four words, for its column on the stepper (the operator, 2026-11-11:
 #: "short labels ... No full sentences in the step columns"); the long words above are its
 #: hover. `{device}` is the run's own.
 STEP_LABELS = {"take": "Take decision", "stops": "Check stops", "read": "Read {device}",
                "plan": "Recompute program", "authorise": "Authorise removals",
                "apply": "Apply", "intent": "Check intent", "symptom": "Read symptom",
-               "saved": "Save startup", "golden": "Check golden", "record": "Record"}
+               "saved": "Save startup", "commit": "Commit golden", "golden": "Check golden",
+               "record": "Record"}
+#: The tail (the operator's decisions (a) and (b), 2026-11-16): the steps after Fixed, each
+#: drawn under it with its state; a failure or a mismatch flags the incident (`tail_of`),
+#: never changes its outcome. A heal whose symptom is waited on once the device is released
+#: runs them before its outcome (the device is never held through that wait, nor left
+#: unsaved for it), and still only flags.
+TAIL_STEPS = ("saved", "commit", "golden")
+#: The checks that decide a heal's outcome, the only ones drawn as its proof
+#: (`fixit.proof.of_act`; the operator, 2026-11-16: "don't show a check that decides nothing
+#: as proof"): the healed units' own check and the symptom's.
+DECIDING_STEPS = ("intent", "symptom")
+#: The longest the act waits for its device while another operation holds it, then refuses
+#: with nothing sent (item 1: "Waiting on a lock is a declared wait, never an outcome";
+#: `waits.WAITS`). Reasoned: the longest operation measured holding a device in a heal pass is
+#: r2's restore, 134 s from the switch-on (2026-11-16, C3865); 2.5 times that, rounded up.
+HOLD_WAIT_S = 335
+#: How often the hold is tried again while it waits.
+HOLD_POLL_S = 2
 #: What an applied heal did (`decisions.applied`); ``rolled_back`` and ``failed`` halt, and so
 #: does ``interrupted`` once its act had written its program to the step log
 #: (`modules/heal/interrupted.py`, H6, which records it for a job that ended first).
@@ -209,6 +249,28 @@ class Sources:
         from modules import drift_check
 
         return drift_check.check_device(self.network, device, by)
+
+    def read_at_golden(self, device, dev) -> dict:
+        """The heal's confirmation (item 1, the operator, 2026-11-16: "the confirmation reads
+        only its own device"): *device* read again, its own one checked read (`read`), judged
+        against its committed golden by drift's own comparison (`drift_check.drift_diff`),
+        under no network lock and writing nothing (the network's drift check, whose one-run
+        lock refused r6's, C3864, is never asked). ``{"state": "clean"|"drifted"|"unknown",
+        "changed_lines", "error"}``; a read or a golden that cannot be had is ``unknown``,
+        neither a pass nor a fail."""
+        from modules import drift_check, goldens
+
+        rec = goldens._golden_record((dev or {}).get("ip", ""), self.network)
+        if not rec.get("text"):
+            return {"state": "unknown", "changed_lines": 0,
+                    "error": rec.get("refused") or "no committed golden could be read"}
+        text, error = self.read(dev)
+        if not text:
+            return {"state": "unknown", "changed_lines": 0,
+                    "error": f"the device could not be read again ({error})"}
+        diff = drift_check.drift_diff(rec["text"], text, device)
+        n = drift_check.changed_lines(diff) if diff else 0
+        return {"state": "drifted" if n else "clean", "changed_lines": n, "error": ""}
 
     def symptom(self, device, triggers, since, once: str = "") -> dict:
         return read_symptom(self.network, device, triggers, since, clock=self.clock,
@@ -844,10 +906,54 @@ def _guarded(network: str, decision: dict, work):
         raise
 
 
+def hold_device(network: str, device: str, ip: str, actor: str, detail: str, *, begin=None,
+                clock=time.time, sleep=time.sleep) -> str:
+    """Hold *device* for the act from its read to the end of its tail (one read for the act and
+    the deploy's stage 4, `PipelineContext.pre_read`; the hold THE apply then takes is this
+    thread's again, re-entrant). Another operation holding it is WAITED for, a declared wait
+    (`waits.WAITS`, `HOLD_WAIT_S`, tried every `HOLD_POLL_S`, drawn on the read step as
+    running with its bound, *begin*), never an outcome; past the bound, or a device Mercury
+    changes nothing on, ``why`` (nothing was sent), naming the holder. ``""`` once held."""
+    from modules.nsot import device_ops
+    from modules.nsot.receipts import operation
+
+    t0, said = clock(), False
+    while True:
+        try:
+            device_ops.acquire(network, device, operation(""), actor, detail=detail, ip=ip)
+            return ""
+        except device_ops.NotManaged as exc:
+            return str(exc)
+        except device_ops.DeviceBusy as exc:
+            waited = clock() - t0
+            if waited >= HOLD_WAIT_S:
+                return (f"{device} was still held by another operation after the act waited "
+                        f"{round(waited)} s of its {HOLD_WAIT_S} s bound ({exc})")
+            if not said and begin is not None:
+                begin("read", f"waiting for {device}, held by another operation ({exc})",
+                      wait_s=HOLD_WAIT_S, bound=True)
+                said = True
+        sleep(HOLD_POLL_S)
+
+
 def apply_decision(network: str, decision: dict, *, now: float = None, sources=None,
                    actor_kind: str = "policy") -> dict:
     """Apply one taken heal decision, verify it and record it (the module's steps 2 to 9):
-    ``{"decision", "device", "outcome", "words", "steps", "sent", "report"}``."""
+    ``{"decision", "device", "outcome", "words", "steps", "sent", "report"}``. The device the
+    act holds (`hold_device`) is released however it ends."""
+    from modules.nsot import device_ops
+
+    holds = []
+    try:
+        return _apply_decision(network, decision, now=now, sources=sources,
+                               actor_kind=actor_kind, holds=holds)
+    finally:
+        for host in holds:
+            device_ops.release(network, host)
+
+
+def _apply_decision(network: str, decision: dict, *, now: float = None, sources=None,
+                    actor_kind: str = "policy", holds: list) -> dict:
     from modules import identity, pipeline
     from modules.heal import decide, decisions, incidents, kinds, steplog
     from modules.nsot import authorisation
@@ -879,7 +985,11 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
         """The symptom's reads, under its step (`read_symptom`'s ``reads``); none, no key."""
         return {"reads": list(s["reads"])} if s.get("reads") else {}
 
-    def finish(outcome, words, *, sent=False, report=None):
+    #: The outcome recorded at Fixed, before the tail (`declare`): ``{"outcome", "words",
+    #: "n"}``, *n* the steps the first act row kept.
+    declared = {}
+
+    def record_outcome(outcome, words):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
         try:
             decisions.applied(network, decision["id"], outcome, by=via, words=words, now=now)
@@ -903,11 +1013,44 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             log.error("heal: %s's incident %s was not closed: %s", network,
                       decision.get("incident"), exc)
         log.info("heal: %s on %s: %s: %s", network, device, outcome, words)
+
+    def declare(outcome, words):
+        """The outcome at Fixed (decisions (a) and (b)): recorded, the incident closed and the
+        first ``act`` row written with the tail ``running`` (`tail_of`), so the incident reads
+        Fixed while the save, the full read, the golden and the read again run under it."""
+        record_outcome(outcome, words)
+        declared.update(outcome=outcome, words=words, n=len(steps))
+        first = {"decision": decision["id"], "device": device, "outcome": outcome,
+                 "words": redact_text(words), "steps": list(steps), "sent": True,
+                 "records": {"tail": tail_of(device, outcome, [], [], running=True)}}
+        try:
+            steplog.record_act(network, decision, first, by=via, policy_by=setter, now=now)
+        except Exception as exc:
+            log.error("heal: %s's act on %s (at Fixed) is not in the step log: %s", network,
+                      device, exc)
+
+    def finish(outcome, words, *, sent=False, report=None, flags=None):
+        if declared:
+            outcome, words = declared["outcome"], declared["words"]
+        else:
+            record_outcome(outcome, words)
         result = {"decision": decision["id"], "device": device, "outcome": outcome,
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
         result["records"] = _records(network, decision, result, src, held, now)
+        marks = next((x.get("laps") for x in (report or {}).get("results") or []
+                      if x.get("device") == device and x.get("laps")), None)
+        if marks:
+            # Where each second of THE apply went (round 2, item 4), from its run's laps.
+            from modules.nsot.command_plan_run import _laps
+            result["records"]["laps"] = _laps(marks)
+        if sent and outcome not in ("refused", "rolled_back", "failed"):
+            # The tail's own record: each step after the outcome and any flag it raised.
+            result["records"]["tail"] = tail_of(device, outcome, steps, list(flags or []))
+        # A heal declared at Fixed writes its tail as a second ``act`` row: only the steps after
+        # its record (the step log folds both into one entry, its records the last row's).
+        logged = dict(result, steps=steps[declared["n"]:]) if declared else result
         try:
-            steplog.record_act(network, decision, result, by=via, policy_by=setter, now=now)
+            steplog.record_act(network, decision, logged, by=via, policy_by=setter, now=now)
             result["records"]["step_log"] = "written"
         except Exception as exc:
             log.error("heal: %s's act on %s is not in the step log: %s", network, device, exc)
@@ -924,11 +1067,26 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     step("stops", "ok", "AUTO on a network marked lab, the policy decided under, nothing held")
 
     dev = src.device(device)
+    # Held from this read to the end of the tail (item 4): the read is the deploy's stage-4
+    # read too, and nothing of Mercury's changes the device between them. Another operation
+    # holding it is a declared wait, never an outcome (item 1).
+    busy = hold_device(network, device, dev.get("ip", ""), setter or "heal to intent", via,
+                       begin=begin, clock=getattr(src, "clock", time.time),
+                       sleep=getattr(src, "sleep", time.sleep))
+    if busy:
+        return refuse("read", busy)
+    holds.append(device)
+    # The stops judged again once held (the review, finding 1): the wait for the hold may have
+    # lasted up to HOLD_WAIT_S, and a Stop everywhere, a mode change or a planned-restart
+    # window declared meanwhile refuses here, nothing sent.
+    why = _stops(src, network, decision, getattr(src, "clock", time.time)())
+    if why:
+        return refuse("stops", f"{why} (judged again once {device} was held)")
     begin("read", f"reading {device} again")
     text, error = src.read(dev)
     if not text:
         return refuse("read", f"the read of {device} at apply could not be made ({error})")
-    step("read", "ok", f"{device} read again")
+    step("read", "ok", f"{device} read again, holding it: the deploy's read before, too")
     held.update(dev=dev, read=text)
 
     golden = src.golden(device, dev)
@@ -1018,60 +1176,6 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
     def cosmetic_words():
         return f"{cosmetic}: read back, {max(0, round(src.clock() - applied_at['t']))} s"
 
-    def after_verify(host, result, ctx):
-        post = ((result.get("golden_pending") or [{}])[0] or {}).get("config_text") or ""
-        left = units_left(c["units"], post) if post else ["no read after the change"]
-        state = src.intent_state(device, post, platform) if post else {
-            "state": "unknown", "words": "no read after the change"}
-        record = {"intent": {"left": left, **state}}
-        # What the deploy's verify waited out before this check, kept on its step (the first
-        # after the apply), so the heal's Fixing stage says the wait inside its duration.
-        waited = bgp_hold(result)
-        if left:
-            step("intent", "failed", f"{len(left)} unit(s) not at intent: {left[0]}", **waited)
-            return {"rollback": (f"{len(left)} healed unit(s) not at intent after the change "
-                                 f"({left[0]}), so what landed was undone"), "record": record}
-        step("intent", "ok", f"each healed unit at intent; intent: {state['words']}", **waited)
-        if not feature_removed(c["units"]):
-            # Any other symptom decides no rollback, so it is read once the device is saved
-            # and released (`_judge`), never while it is held.
-            return {"rollback": "", "record": record}
-        s = src.symptom(device, inc.get("triggers") or [], applied_at["t"],
-                        **({"once": cosmetic_words()} if cosmetic else {}))
-        record["symptom"] = {"state": s["state"], "words": s["words"]}
-        step("symptom", s["state"], s["words"], **symptom_reads(s))
-        if s["state"] == "present":
-            return {"rollback": (f"removing the feature did not clear its symptom ({s['words']}), "
-                                 "so its lines were put back (N13)"), "record": record}
-        return {"rollback": "", "record": record}
-
-    facts = {"decision": decision["id"], "incident": decision.get("incident"),
-             "kind": decision.get("kind"), "mode": "auto",
-             "policy": {"fingerprint": pol.get("fingerprint"), "by": setter,
-                        "reason": pol.get("reason") or ""},
-             "person": dict(decision.get("person") or {}), "program_hash": prog["hash"]}
-    # Section 4: the program and its hash are written to the step log BEFORE anything is sent,
-    # so a heal whose job ends mid-apply leaves what it was sending (H6).
-    try:
-        steplog.record_started(network, decision, steps + [{
-            "step": "apply", "result": "running", **by_field,
-            "words": f"as the policy set by {setter_shown}, holding {device}"}],
-            [redact_text(x) for x in prog["commands"]], prog["hash"], by=via,
-            policy_by=setter, now=now)
-    except Exception as exc:
-        return refuse("apply", (f"the program could not be written to the step log before it "
-                                f"is sent ({type(exc).__name__}: {exc}), and a heal sends "
-                                "nothing it has not recorded"))
-    step("apply", "running", f"as the policy set by {setter_shown}, holding {device}",
-         **by_field)
-    with identity.carried_policy(setter, pol.get("fingerprint") or ""):
-        report = src.apply(
-            device, confirmations={device: entry.get("capture_hash")},
-            command_hashes={device: entry.get("command_hash")}, actor=setter,
-            actor_kind=actor_kind, stop_at_first=True, after_verify=after_verify,
-            heal={device: facts}, hold_detail=via, **plan_kw)
-    r = next((x for x in report.get("results") or [] if x.get("device") == device), {})
-
     def read_again(triggers):
         from modules.device_logs import MARKER
 
@@ -1104,8 +1208,128 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
             return s
         return dict(s, words=f"{held.get('words') or 'its symptom read'}; {s['words']}")
 
-    return _judge(device, r, report, src, via, step, finish, symptom, begin=begin,
-                  more=heartbeat_after if beats else None)
+    def after_verify(host, result, ctx):
+        # The read after the change, as stage 7 read it on the run's session: the healed
+        # units' interface sections where every line sits in one (`pipeline.tail_sections`),
+        # else the whole configuration, said (decision (b)).
+        snap = ((getattr(ctx, "post_snapshots", None) or {}).get(dev.get("ip", ""))) or {}
+        post = snap.get("running_config") or (
+            ((result.get("golden_pending") or [{}])[0] or {}).get("config_text") or "")
+        scope = snap.get("running_config_sections") or []
+        read_words = (f"from {', '.join(scope)}'s own section read after the change" if scope
+                      else "from the whole configuration read after the change"
+                      + (f" ({snap['full_before_fixed']})" if snap.get("full_before_fixed")
+                         else ""))
+        left = units_left(c["units"], post) if post else ["no read after the change"]
+        # The healed units' own check decides; a whole-device compare with intent decides
+        # nothing here and is not shown as proof (the operator, 2026-11-16): a departure
+        # elsewhere is its own incident, and the tail's read again flags a device not at its
+        # new golden.
+        record = {"intent": {"left": left, "read": list(scope) or "whole"}}
+        # What the deploy's verify waited out before this check, kept on its step (the first
+        # after the apply), so the heal's Fixing stage says the wait inside its duration.
+        waited = bgp_hold(result)
+        if left:
+            step("intent", "failed", f"{len(left)} unit(s) not at intent: {left[0]}", **waited)
+            return {"rollback": (f"{len(left)} healed unit(s) not at intent after the change "
+                                 f"({left[0]}), so what landed was undone"), "record": record}
+        step("intent", "ok", f"each healed unit at intent, {read_words}", **waited)
+        verified = ((result.get("verify") or {}).get("ok") is True)
+        if feature_removed(c["units"]):
+            s = src.symptom(device, inc.get("triggers") or [], applied_at["t"],
+                            **({"once": cosmetic_words()} if cosmetic else {}))
+            record["symptom"] = {"state": s["state"], "words": s["words"]}
+            step("symptom", s["state"], s["words"], **symptom_reads(s))
+            if s["state"] == "present":
+                return {"rollback": (f"removing the feature did not clear its symptom "
+                                     f"({s['words']}), so its lines were put back (N13)"),
+                        "record": record}
+            if verified and not beats and s["state"] in ("gone", "none"):
+                declare("healed", _healed_words(s))
+            return {"rollback": "", "record": record}
+        # Decision (a): Fixed rests on verify. Where nothing is left to wait for (no symptom
+        # named, or a cosmetic heal's one read of its store), the outcome is recorded now and
+        # the save, the full read and the golden follow under it. A symptom to wait for is read
+        # once the device is released, never while it is held: its outcome comes after.
+        if verified and not symptom_triggers(symptoms):
+            declare("healed", "healed and verified; the incident named no symptom beyond the "
+                              "configuration")
+        elif verified and cosmetic and not beats:
+            s = read_again(symptoms)
+            record["symptom"] = {"state": s["state"], "words": s["words"]}
+            outcome = {"gone": "healed", "none": "healed", "present": "symptom_remains"}.get(
+                s["state"], "partial")
+            declare(outcome, _healed_words(s) if outcome == "healed" else
+                    f"configuration at intent, and {s['words']}"
+                    + (": configuration was not the whole cause"
+                       if outcome == "symptom_remains" else ""))
+        return {"rollback": "", "record": record}
+
+    def _healed_words(s):
+        return f"healed and verified; {s.get('words') or ''}".rstrip("; ")
+
+    def on_tail(name, state, words):
+        """The tail's steps as `pipeline.run_tail` tells them, live under Fixed, each also
+        noted on the device's hold (``tail: <step>``), so a tail whose process ends says where
+        it stopped (`_last_tail_step`)."""
+        from modules.nsot import device_ops
+
+        if state == "running":
+            device_ops.note(f"tail: {name}")
+            begin(name, words)
+        else:
+            step(name, state, words)
+
+    # The healed units checked again on the tail's whole read before its golden is committed
+    # from it (`pipeline.run_tail`'s *check*; the review, finding 2).
+    on_tail.check = lambda text: units_left(c["units"], text)
+
+    facts = {"decision": decision["id"], "incident": decision.get("incident"),
+             "kind": decision.get("kind"), "mode": "auto",
+             "policy": {"fingerprint": pol.get("fingerprint"), "by": setter,
+                        "reason": pol.get("reason") or ""},
+             "person": dict(decision.get("person") or {}), "program_hash": prog["hash"],
+             # The receipt says what the deploy's stage 4 compared (the review, finding 3).
+             "read_before": (f"stage 4's comparison with the capture (C78) was made against "
+                             f"this heal's own read of {device} at apply, made holding the "
+                             "device and held since, so no second read was taken; the window "
+                             "from that read to the push is the plan and the pipeline's "
+                             "stages 1 to 5 alone")}
+    # Section 4: the program and its hash are written to the step log BEFORE anything is sent,
+    # so a heal whose job ends mid-apply leaves what it was sending (H6).
+    try:
+        steplog.record_started(network, decision, steps + [{
+            "step": "apply", "result": "running", **by_field,
+            "words": f"as the policy set by {setter_shown}, holding {device}"}],
+            [redact_text(x) for x in prog["commands"]], prog["hash"], by=via,
+            policy_by=setter, now=now)
+    except Exception as exc:
+        return refuse("apply", (f"the program could not be written to the step log before it "
+                                f"is sent ({type(exc).__name__}: {exc}), and a heal sends "
+                                "nothing it has not recorded"))
+    step("apply", "running", f"as the policy set by {setter_shown}, holding {device}",
+         **by_field)
+    # The act's read is the deploy's read before (item 4: one read), the device held since.
+    capture[device]["read"] = text
+    with identity.carried_policy(setter, pol.get("fingerprint") or ""):
+        report = src.apply(
+            device, confirmations={device: entry.get("capture_hash")},
+            command_hashes={device: entry.get("command_hash")}, actor=setter,
+            actor_kind=actor_kind, stop_at_first=True, after_verify=after_verify,
+            heal={device: facts}, hold_detail=via, tail=on_tail, **plan_kw)
+    r = next((x for x in report.get("results") or [] if x.get("device") == device), {})
+
+    def release():
+        """Released once the read again is made (the review, finding 6: the device is held
+        through it), before anything is waited on: a symptom's wait never holds it."""
+        from modules.nsot import device_ops
+        if device in holds:
+            holds.remove(device)
+            device_ops.release(network, device)
+
+    return _judge_tail(device, r, report, src, via, step, finish, symptom, dev, begin=begin,
+                       more=heartbeat_after if beats else None, declared=declared,
+                       release=release)
 
 
 #: The field a heal's first step after its apply keeps what the deploy's verify waited out on:
@@ -1197,10 +1421,9 @@ def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,
     return step, begin
 
 
-def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=None):
-    """The outcome of the apply, the golden re-check, the symptom (when the check after verify
-    did not already read it; *more*, given the one it read and found gone, reads what is left
-    once the device is released: a heal's heartbeat, C3164), and the record."""
+def _not_deployed(r, report, step, finish):
+    """The apply's end when it did not deploy (refused, changed during the heal, rolled back,
+    failed), finished; None when it deployed. One reading for `_judge` and `_judge_tail`."""
     from modules.nsot import receipts
     from modules.nsot.deploy import DEPLOYED, SKIPPED_DRIFTED
 
@@ -1222,6 +1445,324 @@ def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=
                                           f"{state or 'ran'}"), sent=True, report=report)
         return finish("failed", f"{r.get('reason') or outcome}; nothing was rolled back",
                       sent=True, report=report)
+    return None
+
+
+def _read_again(src, device, dev, via) -> dict:
+    """The device read again against its new golden: its own read (`Sources.read_at_golden`,
+    item 1), never the network's drift check; a source without it (an older one) asks
+    `golden_recheck`. What raises is ``unknown``: neither a pass nor a fail."""
+    try:
+        own = getattr(src, "read_at_golden", None)
+        if own is not None:
+            return own(device, dev if dev is not None else src.device(device))
+        return src.golden_recheck(device, via)
+    except Exception as exc:                          # noqa: BLE001 (said: unknown)
+        return {"state": "unknown", "error": f"{type(exc).__name__}: {exc}"}
+
+
+def tail_of(device: str, outcome: str, steps: list, flags: list, *,
+            running: bool = False) -> dict:
+    """The tail's record (the act row's ``records["tail"]``; decisions (a) and (b)): ``{"state":
+    "running"|"ok"|"flagged", "flag", "steps": [{"step", "result", "words", "at"}]}``, its
+    steps those of `TAIL_STEPS`. *flags* (each "its save to startup failed: <why>", "its golden
+    was not committed: <why>", "the device read again is not at its golden: <what>") make it
+    ``flagged``, its *flag* the incident's words: "r2 fixed, but its save to startup failed:
+    ...". Never changes the outcome."""
+    kept = [{k: s.get(k) for k in ("step", "result", "words", "at")}
+            for s in steps or [] if isinstance(s, dict) and s.get("step") in TAIL_STEPS]
+    if running:
+        return {"state": "running", "flag": "", "steps": kept, "began": time.time()}
+    if not flags:
+        return {"state": "ok", "flag": "", "steps": kept}
+    # A healed line gone again is the fix not holding: never led by "fixed" (the review of
+    # 2026-11-16, its words contradicting the flag).
+    gone = any(f.startswith("its healed line is no longer on the device") for f in flags)
+    lead = (f"{device}'s fix did not hold: " if gone else
+            f"{device} fixed, but " if outcome == "healed" else
+            f"{device} ({OUTCOME_WORDS.get(outcome, outcome)}), and ")
+    return {"state": "flagged", "flag": lead + "; and ".join(flags), "steps": kept}
+
+
+#: Each tail step on the incident card (the operator, 2026-11-16): its words while it runs,
+#: and once it passed.
+TAIL_WORDS = {"saved": ("Saving to startup…", "Saved"),
+              "commit": ("Committing the golden…", "Golden committed"),
+              "golden": ("Checking the golden…", "Check golden: at its golden")}
+
+
+def tail_bound() -> int:
+    """How long a tail may stay ``running`` after Fixed before it is drawn as not finished
+    (`waits.HEAL_BOUNDS["tail-finish"]`, about 2.5 times its parts, reasoned, to be measured
+    by the heal's laps)."""
+    from modules.waits import HEAL_BOUNDS
+
+    return int(HEAL_BOUNDS["tail-finish"]["seconds"])
+
+
+def _live_tail(network: str, device: str):
+    """The tail steps of *device*'s heal job running in this process now (`op_progress`),
+    or None when none runs here."""
+    from modules import op_progress
+    from modules.nsot import capture_job
+
+    job = next((j for j in capture_job.card_jobs() if j["state"] == "running"
+                and j["kind"] == KIND and j["list"] == network and j["device"] == device), None)
+    live = op_progress.run_of(job["job"]) if job else None
+    if not live:
+        return None
+    return [s for s in live["steps"] if s.get("step") in TAIL_STEPS]
+
+
+def _last_tail_step(network: str, device: str, since: float) -> str:
+    """The last tail step *device*'s hold recorded before its process ended
+    (`device_ops.interrupted`: the act notes each, ``tail: <step>``), in words, or ``""``."""
+    from modules.nsot import device_ops
+
+    try:
+        left = [r for r in device_ops.interrupted(network) if r.get("device") == device
+                and float(r.get("started") or 0) <= since + tail_bound()]
+    except Exception as exc:                          # noqa: BLE001 (said: not recorded)
+        log.info("heal: %s's interrupted holds were not read: %s", network, exc)
+        return ""
+    for r in reversed(left):
+        step = str(((r.get("progress") or {}).get("step")) or "")
+        if step.startswith("tail: "):
+            return TAIL_WORDS.get(step[6:], (step[6:],))[0]
+    return ""
+
+
+def tail_stale(device: str, tail: dict, now: float, last: str = "") -> str:
+    """Why a tail recorded ``running`` did not finish, or ``""`` (not past its bound): "r2's
+    save and golden did not finish (<its last step>)"."""
+    began = float((tail or {}).get("began") or 0)
+    if (tail or {}).get("state") != "running" or not began or now - began < tail_bound():
+        return ""
+    return (f"{device}'s save and golden did not finish ("
+            + (f"its last step: {last}" if last else "its last step is not recorded")
+            + f"; still running {round(now - began)} s after Fixed, past its "
+              f"{tail_bound()} s bound)")
+
+
+def tail_card(network: str, device: str, entry: dict, now: float = None) -> dict:
+    """The tail under Fixed on the incident card: ``{"state": "running"|"ok"|"flagged",
+    "flag", "steps": [{"key", "state", "words"}]}``, every `TAIL_STEPS` step in order (one not
+    begun ``pending``), live from the act's own steps while its job runs here, else from its
+    record (`tail_of`); a ``running`` record past its bound (`tail_stale`) is drawn flagged.
+    ``{}`` for an act with no tail (one recorded before it)."""
+    import re
+
+    now = time.time() if now is None else float(now)
+    tail = ((entry or {}).get("records") or {}).get("tail") or {}
+    if not tail:
+        return {}
+    live = _live_tail(network, device) if tail.get("state") == "running" else None
+    steps = live if live is not None else list(tail.get("steps") or [])
+    by = {s.get("step"): s for s in steps}
+    out = []
+    for key in TAIL_STEPS:
+        s = by.get(key)
+        if s is None:
+            out.append({"key": key, "state": "pending", "words": TAIL_WORDS[key][0]})
+            continue
+        result = s.get("result") or ""
+        if result == "running":
+            out.append({"key": key, "state": "running", "words": TAIL_WORDS[key][0]})
+        elif result == "ok":
+            sha = re.search(r"Golden committed: (\w+)", s.get("words") or "")
+            out.append({"key": key, "state": "ok", "words": (
+                f"Golden committed: {sha.group(1)}" if key == "commit" and sha
+                else TAIL_WORDS[key][1])})
+        else:
+            out.append({"key": key, "state": "failed", "words": s.get("words") or result})
+    state, flag = tail.get("state") or "", tail.get("flag") or ""
+    if state == "running" and live is None:
+        # Its act running in another process holds its decision's mark (a lock file): still
+        # running, never drawn as not finished (the review, finding 7).
+        from modules.heal import interrupted
+        try:
+            if interrupted.mark_state(network, (entry.get("decisions") or [""])[-1])[0] == \
+                    "held":
+                return {"state": "running", "flag": "", "steps": out}
+        except Exception as exc:                      # noqa: BLE001 (judged by its bound)
+            log.info("heal: %s's tail mark could not be read: %s", device, exc)
+        flag = tail_stale(device, tail, now, _last_tail_step(network, device,
+                                                             float(tail.get("began") or 0)))
+        state = "flagged" if flag else "running"
+    return {"state": state, "flag": flag, "steps": out}
+
+
+def tail_holds(network: str, device: str, epoch: float, now: float = None) -> str:
+    """Why a departure of *device* read at *epoch* is not sighted, or ``""`` (round 2, item 3:
+    the incident closes at Fixed, before its golden is committed): the newest heal of it read
+    the device after *epoch*, so that read's departure is the one it healed. A read made after
+    the heal's own is sighted as usual. Read from the step log, never the device."""
+    from modules.heal import steplog
+
+    got = steplog.incidents(network, device)
+    if got.get("state") == "unreadable":
+        return ""
+    for e in reversed(got.get("entries") or []):
+        tail = (e.get("records") or {}).get("tail") or {}
+        if not tail:
+            continue
+        # Only a read made before the heal's own read at apply is the departure it healed (the
+        # review, finding 8): one made after it, a real change made by hand during the tail
+        # among them, is sighted as usual (the tail's check keeps a revert out of the golden).
+        read_at = max([_epoch_of(s.get("at")) for s in e.get("steps") or []
+                       if s.get("step") == "read" and s.get("result") == "ok"
+                       and s.get("row") in ("act", "started")] or [0.0])
+        if read_at and float(epoch or 0) < read_at:
+            return (f"read at {_iso(float(epoch or 0))}, before {device}'s heal read it at "
+                    f"{_iso(read_at)}: the departure it healed")
+        return ""
+    return ""
+
+
+def _epoch_of(iso) -> float:
+    import calendar
+
+    try:
+        return float(calendar.timegm(time.strptime(str(iso), "%Y-%m-%dT%H:%M:%SZ")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def reap_tails(network: str, *, now: float = None, by: str = "heal to intent") -> list:
+    """Each heal tail of *network* still recorded ``running`` past its bound whose act no
+    longer runs (`interrupted.mark_state` not ``held``: its job ended, a restart among the
+    causes), recorded flagged with `tail_stale`'s words as a closing ``act`` row, so its
+    incident's card and Needs attention say it (`run` asks it at every pass, the first after
+    a restart included). Returns the decisions marked. Never raises."""
+    from modules.heal import decisions, interrupted, steplog
+
+    now = time.time() if now is None else float(now)
+    marked = []
+    try:
+        got = steplog.incidents(network)
+    except Exception as exc:                          # noqa: BLE001 (the next pass)
+        log.error("heal: %s's step log could not be read for tails: %s", network, exc)
+        return marked
+    for e in got.get("entries") or []:
+        tail = (e.get("records") or {}).get("tail") or {}
+        decision_id = (e.get("decisions") or [""])[-1]
+        device = e.get("device") or ""
+        if tail.get("state") != "running" or not decision_id:
+            continue
+        began = float(tail.get("began") or 0)
+        try:
+            if interrupted.mark_state(network, decision_id)[0] == "held":
+                continue
+        except Exception as exc:                      # noqa: BLE001 (the next pass)
+            log.info("heal: %s's mark for %s could not be read: %s", network, decision_id, exc)
+            continue
+        words = tail_stale(device, tail, now, _last_tail_step(network, device, began))
+        if not words:
+            continue
+        try:
+            d = next((x for x in decisions.decisions(network) if x.get("id") == decision_id),
+                     {"id": decision_id, "device": device, "incident": e.get("incident")})
+            steplog.record_act(network, d, {
+                "outcome": e.get("outcome") or "", "words": e.get("words") or "", "steps": [],
+                "sent": True, "records": dict(e.get("records") or {}, tail=dict(
+                    tail, state="flagged", flag=words, ended=_iso(now)))}, by=by, now=now)
+            marked.append(decision_id)
+        except Exception as exc:                      # noqa: BLE001 (the next pass)
+            log.error("heal: %s's unfinished tail on %s was not recorded: %s", network,
+                      device, exc)
+    return marked
+
+
+def _judge_tail(device, r, report, src, via, step, finish, symptom, dev, *, begin=None,
+                more=None, declared=None, release=None):
+    """The act's end once THE apply returned (decisions (a) and (b)): the tail's steps as they
+    ended (the save, the golden commit from the full read), then the device read again, its
+    own read, against its new golden; then, where the outcome was not recorded at Fixed
+    (`declared`), the symptom and the outcome. A tail failure or a mismatch is a flag on the
+    incident (`tail_of`), never the outcome."""
+    done = _not_deployed(r, report, step, finish)
+    if done is not None:
+        return done
+    saved = r.get("saved_startup") or {}
+    # The tail drew its save as it ran (`pipeline.run_tail`); an apply without one did not.
+    drawn = bool(r.get("tail"))
+    flags = []
+    held_why = ""
+    if not r.get("commands"):
+        pass                                          # nothing was sent: nothing to save
+    elif saved.get("held"):
+        # C2701: verify did not pass, so the save is held for a person; no outcome was recorded
+        # at Fixed (a verify that did not pass is never Fixed). Its golden is still committed
+        # (stage 8.5 runs after a verify that did not fail), so the commit is drawn below.
+        held_why = saved.get("why") or "no cause recorded"
+        if not drawn:
+            step("saved", "partial",
+                 f"NOT saved to startup, held: verify did not pass ({held_why})")
+    elif not saved.get("ok"):
+        why = saved.get("error") or "the save did not run"
+        flags.append(f"its save to startup failed: {why}")
+        if not drawn:
+            step("saved", "failed", f"NOT saved to startup: {why}: a reload loses the fix")
+    elif not drawn:
+        step("saved", "ok", "Saved")
+    golden = report.get("golden") or {}
+    commit = golden.get("commit") or ""
+    if commit:
+        step("commit", "ok", f"Golden committed: {commit[:10]}, from the whole configuration "
+                             "read after the change, after Mercury's config check passed")
+        if begin is not None:
+            begin("golden", f"reading {device} again, its own read, against its new golden")
+        again = _read_again(src, device, dev, via)
+        if again.get("state") == "clean":
+            step("golden", "ok", (f"At its golden: documentation updated and tested, golden "
+                                  f"{commit[:10]} committed and {device} read again matches "
+                                  "it"))
+        else:
+            what = (f"{again.get('changed_lines')} line(s) differ" if again.get("state") ==
+                    "drifted" else f"it could not be read again ({again.get('error') or ''})")
+            flags.append(f"the device read again is not at its golden: {what}")
+            step("golden", "failed", f"read again: {again.get('state')}: {what}")
+    else:
+        why = ((r.get("tail") or {}).get("golden_why") or golden.get("error")
+               or golden.get("reason") or "no commit")
+        gone = (r.get("tail") or {}).get("healed_gone")
+        flags.append(f"its healed line is no longer on the device: {gone}, so no golden was "
+                     "committed from it" if gone else f"its golden was not committed: {why}")
+        step("commit", "failed", f"the golden was not committed: {why}")
+    if release is not None:
+        # Held through the read again; released before any symptom is waited on.
+        release()
+    if held_why:
+        return finish("partial", (f"healed, its verify did not pass ({held_why}), and its save "
+                                  "to startup is held for a person: a reload returns the "
+                                  "device to before the heal"), sent=True, report=report,
+                      flags=flags)
+    if declared:
+        return finish(declared["outcome"], declared["words"], sent=True, report=report,
+                      flags=flags)
+    held = (r.get("heal") or {}).get("symptom") or {}
+    s = held or symptom()
+    if held and more is not None and held.get("state") in ("gone", "none"):
+        s = more(held)
+    if s.get("state") == "present":
+        return finish("symptom_remains", (f"configuration at intent, and {s['words']}: "
+                                          "configuration was not the whole cause"), sent=True,
+                      report=report, flags=flags)
+    if s.get("state") == "unreadable":
+        return finish("partial", f"configuration at intent, and {s['words']}", sent=True,
+                      report=report, flags=flags)
+    return finish("healed", f"healed and verified; {s.get('words') or ''}".rstrip("; "),
+                  sent=True, report=report, flags=flags)
+
+
+def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=None):
+    """The outcome of the apply, the golden re-check, the symptom (when the check after verify
+    did not already read it; *more*, given the one it read and found gone, reads what is left
+    once the device is released: a heal's heartbeat, C3164), and the record. An approved
+    proposal's (`propose`), whose apply has no tail."""
+    done = _not_deployed(r, report, step, finish)
+    if done is not None:
+        return done
     saved = r.get("saved_startup") or {}
     if saved.get("held"):
         # C2701: verify did not pass, so the pipeline held the save for a person.
@@ -1245,10 +1786,8 @@ def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=
                       report=report)
     if begin is not None:
         begin("golden", f"reading {device} again against its new golden")
-    try:
-        again = src.golden_recheck(device, via)
-    except Exception as exc:
-        again = {"state": "unknown", "error": f"{type(exc).__name__}: {exc}"}
+    # Its own read (item 1): never the network's drift check, whose lock refused r6's (C3864).
+    again = _read_again(src, device, None, via)
     if again.get("state") != "clean":
         step("golden", "failed", f"read again: {again.get('state')} {again.get('error') or ''}")
         return finish("partial", (f"healed, golden {golden['commit'][:10]} committed, and the "
@@ -1324,6 +1863,9 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
     reaped = interrupted.reap(network, now=now, by=by)
     out["interrupted"] = [r["decision"] for r in reaped["reaped"]]
     out["failed"] += reaped["failed"]
+    # A tail whose job ended before it finished (a restart among the causes): flagged, so its
+    # incident's card and Needs attention say it (round 2, item 2).
+    out["tails"] = reap_tails(network, now=now, by=by)
     if out["interrupted"]:
         try:
             from modules import invalidation
@@ -1357,27 +1899,44 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
                 out["failed"].append(f"{d.get('device')}: {type(exc).__name__}: {exc}")
             out["refused"].append(f"{d.get('device')}: {words}")
             continue
-        try:
-            interrupted.hold(network, d["id"], d.get("device") or "", by)
-        except (interrupted.Busy, OSError) as exc:
-            out["refused"].append(str(exc))
-            continue
-        try:
-            taken = decisions.take(network, d["id"], by=f"{by}: the apply", now=now)
-        except decisions.Refused as exc:
-            interrupted.release(network, d["id"])
-            out["refused"].append(str(exc))
-            continue
-        try:
-            job = (starter or start)(network, taken)
-        except Exception as exc:
-            log.error("heal: %s's heal of %s could not start: %s", network, d["device"], exc)
-            words = f"its job could not start ({type(exc).__name__}: {exc}). Nothing was sent"
-            decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
-            incidents.close(network, d["incident"], f"refused: {words} (decision {d['id']})",
-                            now)
-            interrupted.release(network, d["id"])
-            out["failed"].append(f"{d['device']}: {type(exc).__name__}: {exc}")
-            continue
-        out["started"].append({"decision": d["id"], "job": job})
+        got = start_decided(network, d, now=now, starter=starter, by=by)
+        for key in ("started", "refused", "failed"):
+            if got.get(key):
+                out[key].append(got[key])
     return out
+
+
+def start_decided(network: str, d: dict, *, now: float = None, starter=None,
+                  by: str = "heal to intent") -> dict:
+    """One heal decision not yet taken, its mark held, taken once and started as its own job
+    (`start`): ``{"started": {"decision", "job"}}``, ``{"refused": words}`` or ``{"failed":
+    words}``. `run`'s step for each decision, and the decision's own the moment it is
+    recorded (item 4, the operator, 2026-11-16: "the act starts at once once decided"; C3865:
+    r2's act began 13 s after its decision, the pass deciding the other incidents and firing
+    their scripts first), so a later `run` finds it taken. A batch's decision is never started
+    here (its batch job takes it)."""
+    from modules.heal import decisions, incidents, interrupted
+
+    now = time.time() if now is None else float(now)
+    if d.get("batch"):
+        return {"refused": f"{d.get('device')}: a batch's heal is its batch job's to take"}
+    try:
+        interrupted.hold(network, d["id"], d.get("device") or "", by)
+    except (interrupted.Busy, OSError) as exc:
+        return {"refused": str(exc)}
+    try:
+        taken = decisions.take(network, d["id"], by=f"{by}: the apply", now=now)
+    except decisions.Refused as exc:
+        interrupted.release(network, d["id"])
+        return {"refused": str(exc)}
+    try:
+        job = (starter or start)(network, taken)
+    except Exception as exc:
+        log.error("heal: %s's heal of %s could not start: %s", network, d["device"], exc)
+        words = f"its job could not start ({type(exc).__name__}: {exc}). Nothing was sent"
+        decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
+        incidents.close(network, d["incident"], f"refused: {words} (decision {d['id']})",
+                        now)
+        interrupted.release(network, d["id"])
+        return {"failed": f"{d['device']}: {type(exc).__name__}: {exc}"}
+    return {"started": {"decision": d["id"], "job": job}}

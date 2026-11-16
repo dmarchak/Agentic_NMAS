@@ -864,6 +864,22 @@ def _deliver(ctx: _Context, out: list, counts: dict) -> dict:
     from modules.heal import detect, incidents
 
     for network, device, trigger in out:
+        if trigger.get("kind") == "drift":
+            # Round 2, item 3 (the operator, 2026-11-16): a heal's incident closes at Fixed,
+            # before its golden is committed, so a departure read while its tail runs, or read
+            # before it was fixed, is the one it healed: not sighted, said in the log.
+            from modules.heal import act
+            try:
+                held = act.tail_holds(network, device, float(trigger.get("epoch") or 0),
+                                      now=ctx.now)
+            except Exception as exc:                  # noqa: BLE001 (sighted, as before)
+                log.warning("heal: whether %s's tail runs could not be read: %s", device, exc)
+                held = ""
+            if held:
+                counts["tailing"] = counts.get("tailing", 0) + 1
+                log.info("heal: a departure of %s in %s is not sighted: %s", device, network,
+                         held)
+                continue
         try:
             got = incidents.sight(network, device, trigger, now=ctx.now,
                                   radius_of=ctx.radius_of(network))

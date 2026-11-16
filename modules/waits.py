@@ -55,6 +55,31 @@ HEAL_BOUNDS = {
                 "rounded up to whole minutes: "
                 "reasoned from the rule's timing and one reading, not measured over many"),
         "basis": "reasoned"},
+    # The operator, 2026-11-16 (round 2, item 2): a heal's tail (its save, the whole
+    # configuration read and the golden commit, the read again) still "running" this long after
+    # Fixed did not finish: drawn and flagged, and recorded so at the next pass after a restart
+    # (`heal.act.reap_tails`).
+    "tail-finish": {
+        "seconds": 120,
+        "why": ("reasoned from the whole tail's parts, about 2.5 times their sum: measured, "
+                "r2's save to startup 20 s and its golden commit with the read again 6 s (the "
+                "operator's rehearsal, 2026-11-16, C3865) and the whole configuration read "
+                "9.3 s (s1's, the slowest that day); not measured apart, the read again's own "
+                "sign-in (s1's 5.0 s taken for it), the batch's golden commit and the receipts "
+                "(their share of the 6 s is not split), so about 48 s x 2.5 = 120 s. To be "
+                "measured by the heal's laps (`records.laps`: tail: saved, tail: full running "
+                "configuration, tail: golden capture)"),
+        "basis": "reasoned"},
+    # The lead's round 2 (2026-11-16): an approved plan whose run has neither a record nor a
+    # job this long after its approval did not start (`fixit.section.approve_lost`).
+    "approve-start": {
+        "seconds": 60,
+        "why": ("reasoned, not measured: the approval's start (its job made, the plan previewed "
+                "again, the run's record written at its approve step) has no measurement in "
+                "the records; the nearest measured part is a plan's preflight, 25 s of s5's "
+                "87 s to a ready plan (2026-11-16), and 2.5 times that is about 60 s. The "
+                "measurement owed: each run record's start less its approve line's time"),
+        "basis": "reasoned"},
 }
 
 
@@ -67,6 +92,14 @@ WAITS = {
         "intervals (SYMPTOM_SECONDS' comment); a cosmetic heal (R3, `readback_only`) reads it "
         "once and never waits",
         "reasoned", True, ("POLL_SECONDS",)),
+    "modules/heal/act.py::hold_device": _w(
+        "the device a heal acts on to be free of another operation's hold, tried every "
+        "HOLD_POLL_S, then held from the act's read to the end of its tail (the operator, "
+        "2026-11-16: \"Waiting on a lock is a declared wait, never an outcome\")",
+        "within HOLD_WAIT_S, 2.5 times the longest operation measured holding a device in a "
+        "heal pass (r2's restore, 134 s from the switch-on, 2026-11-16, C3865), rounded up; "
+        "past it the heal is refused with nothing sent, naming the holder",
+        "reasoned", True, ("HOLD_POLL_S", "HOLD_WAIT_S")),
     "modules/heal/bounce.py::_held": _w(
         "the device's own revert timer to end, plus WATCH_PAST_S, when the bounce was not "
         "confirmed: the device reverts by itself and the watch reads it",

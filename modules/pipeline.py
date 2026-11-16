@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -352,6 +353,32 @@ class PipelineContext:
     #: logged, never the run's (`_notify_stage`). None, the default, calls nothing.
     on_stage:            Any = None
 
+    # ---- One read, one session, and the heal's tail (the operator, 2026-11-16; C3864, C3865) -
+    #: ip -> the running configuration the caller read moments before, holding the device from
+    #: that read to the end of this run (a heal's read at apply, `heal.act.apply_decision`):
+    #: stage 4 takes it as the configuration before and reads none (item 4: "the act's own read
+    #: again and the pipeline's before-snapshot are ONE read"). Its operational snapshot is
+    #: still read. None, the default, reads it at stage 4 as before.
+    pre_read:            dict = None
+    #: Stage 7 reads on the push's own session (item 4: "no second sign-in at stage 7"; item 5:
+    #: "the after-snapshot keeps the push's session"), its prompt probed first; a session whose
+    #: prompt cannot be read is replaced, as C272's new session was, and the lap says which.
+    keep_session:        bool = False
+    #: A heal's tail (decision (b)): its outcome rests on verify and the scoped read-back of the
+    #: healed units, so stage 7 reads the program's interface sections alone when every line
+    #: sits in one (`tail_sections`; any other program, the full read, said), and stages 8.2
+    #: and 8.5 do not run here: `run_tail` saves to startup, reads the full configuration and
+    #: hands the golden capture back, after the caller has the verified outcome.
+    tail:                bool = False
+    #: Set by `run_tail` while it runs stages 8.2 and 8.5 itself.
+    tail_running:        bool = False
+    #: ip -> the interfaces whose sections ARE the configuration stage 4 reads before a
+    #: transient run under the access rule (item 5: "'Reading before' reads only the plan's
+    #: interface section ... never the whole configuration"), set by a command plan's run from
+    #: `net_zero_scope`. Every read compared with it (the failure capture, the rollback's read
+    #: back) reads the same sections (`_read_like_before`). None reads the whole.
+    config_scope:        dict = None
+
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
     stages_failed:    list[str] = field(default_factory=list)
@@ -653,6 +680,73 @@ def _pre_apply(ctx: PipelineContext) -> str:
 # Stage 1 — NetBox query
 # ---------------------------------------------------------------------------
 
+#: How long stage 1's NetBox context for one device is reused (item 5, the operator,
+#: 2026-11-16: "the NetBox query (6 s) cached for the run's device (bounded, invalidated on the
+#: device's change)"). Reasoned, not measured: nothing in a run decides on that context (the
+#: audit's ``netbox_available`` is its one reader, `_stage_audit_log`), so a stale one can
+#: misstate only that flag, never what is sent or verified; 600 s covers a proposal's
+#: preflight, which warms it (`warm_netbox_context`), to the person's approval of the plan
+#: (s5's press to a ready plan took 87 s on 2026-11-16) and a heal pass's devices in turn.
+#: The device's change invalidates it by its key: the inventory row's name, address and
+#: NetBox id, so a renamed, re-addressed or re-created device misses. The run's parameters are
+#: no part of what NetBox answers (`build_render_context` copies them in), so each answer
+#: carries the asking run's own.
+NETBOX_CONTEXT_S = 600
+_netbox_cache: dict = {}
+_netbox_cache_lock = threading.Lock()
+
+
+def _netbox_key(list_name: str, dev: dict) -> tuple:
+    return (list_name or "", dev.get("hostname") or dev.get("ip") or "", dev.get("ip") or "",
+            str(dev.get("_netbox_id") or ""))
+
+
+def netbox_context(list_name: str, dev: dict, params: dict = None, *, clock=time.time) -> dict:
+    """`nsot.build_render_context` for *dev*, reused while younger than `NETBOX_CONTEXT_S` under
+    the same key (`_netbox_key`); only an answer that built is kept (a failure is asked again
+    next time). The answer carries ``cached_s``, its age, when it came from the cache."""
+    from modules.nsot import build_render_context
+
+    key = _netbox_key(list_name, dev)
+    now = clock()
+    with _netbox_cache_lock:
+        held = _netbox_cache.get(key)
+        if held and now - held[0] < NETBOX_CONTEXT_S:
+            built = held[1]
+            return dict(built, context=dict(built.get("context") or {},
+                                            params=dict(params or {})),
+                        cached_s=round(now - held[0], 1))
+    built = build_render_context(dev.get("hostname") or dev.get("ip", ""), params=params)
+    if built.get("ok"):
+        with _netbox_cache_lock:
+            for k in [k for k, v in _netbox_cache.items() if now - v[0] >= NETBOX_CONTEXT_S]:
+                _netbox_cache.pop(k, None)
+            _netbox_cache[key] = (now, built)
+    return built
+
+
+def netbox_cached(list_name: str, dev: dict, *, clock=time.time):
+    """`netbox_context`'s cached answer for *dev* while it is younger than its bound, else
+    None. Asks nothing of NetBox."""
+    now = clock()
+    with _netbox_cache_lock:
+        held = _netbox_cache.get(_netbox_key(list_name, dev))
+    return held[1] if held and now - held[0] < NETBOX_CONTEXT_S else None
+
+
+def warm_netbox_context(list_name: str, dev: dict, params: dict = None) -> None:
+    """Fill `netbox_context`'s cache for *dev* in a thread of its own, so a run that follows
+    (a plan's approved run after its preflight) does not wait on NetBox. Never raises."""
+    def work():
+        try:
+            netbox_context(list_name, dev, params)
+        except Exception as exc:                      # noqa: BLE001 (a warm-up only)
+            log.info("pipeline: the NetBox context for %s was not warmed: %s",
+                     dev.get("hostname"), _why(exc))
+
+    threading.Thread(target=work, name="netbox-warm", daemon=True).start()
+
+
 def _stage_netbox_query(ctx: PipelineContext) -> None:
     """Fetch device inventory and intended config from NetBox before any other work."""
     try:
@@ -673,15 +767,26 @@ def _stage_netbox_query(ctx: PipelineContext) -> None:
     intended: dict[str, Any] = {}
     errors:   list[str]      = []
 
-    from modules.nsot import build_render_context
+    if ctx.tail or ctx.transient:
+        # A heal's or a command plan's run never waits on NetBox (round 2, item 4: nothing in
+        # the run decides on this context; the audit's ``netbox_available`` is its one reader):
+        # a cached answer is taken, a missing one fetched beside the run for the next, and the
+        # audit says which.
+        for dev in ctx.selected_devices:
+            if netbox_cached(_list_of(ctx), dev) is None:
+                warm_netbox_context(_list_of(ctx), dev, ctx.device_params(dev["ip"]))
+                ctx.intended_config = {"available": False, "reason": (
+                    "being read beside the run, which decides nothing on it")}
+                return
 
     for dev in ctx.selected_devices:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         try:
             # One context builder feeds the pipeline, render previews, the
-            # onboarding wizard and the AI tools — see modules/nsot/context.py.
-            built = build_render_context(hostname, params=ctx.device_params(ip))
+            # onboarding wizard and the AI tools — see modules/nsot/context.py. Cached for
+            # the run's device (`netbox_context`, item 5: the query took 6.1 s on s1's run).
+            built = netbox_context(_list_of(ctx), dev, ctx.device_params(ip))
             context = built["context"]
             intended[ip] = {
                 "device":     context["device"] or None,
@@ -857,18 +962,37 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
             # deploy, or two lists sharing an address, gave the rollback another
             # device's config or none).
             running_cfg = ""
-            try:
-                from modules.commands import run_device_command
-                running_cfg = run_device_command(
-                    get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock),
-                    "show running-config") or ""
-            except Exception as cfg_exc:          # noqa: BLE001
-                log.warning("pipeline[4/pre_snapshot]: %s running-config read failed: %s",
-                            hostname, cfg_exc)
-            lap(ctx.laps, "pre_snapshot: running configuration")
+            shared = ((ctx.pre_read or {}).get(ip) or "")
+            names = _config_scope(ctx, ip)
+            sections = read_sections(ctx, dev, names) if names and not shared else None
+            if shared:
+                # ONE read (item 4): the caller's, made holding the device it still holds.
+                running_cfg = shared
+                snap["running_config_shared"] = True
+                lap(ctx.laps, "pre_snapshot: running configuration (the caller's read)")
+            elif sections is not None:
+                # The plan's interface sections alone (item 5): the configuration before.
+                running_cfg = "\n".join(sections[n] for n in names)
+                snap["running_config_sections"] = list(names)
+                snap["sections"] = dict(sections)
+                lap(ctx.laps, "pre_snapshot: running configuration (its interfaces' sections)")
+            else:
+                if names:
+                    log.info("pipeline[4/pre_snapshot]: %s: a section of %s could not be read, "
+                             "so the whole configuration is read", hostname, ", ".join(names))
+                try:
+                    from modules.commands import run_device_command
+                    running_cfg = run_device_command(
+                        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock),
+                        "show running-config") or ""
+                except Exception as cfg_exc:          # noqa: BLE001
+                    log.warning("pipeline[4/pre_snapshot]: %s running-config read failed: %s",
+                                hostname, cfg_exc)
+                lap(ctx.laps, "pre_snapshot: running configuration")
             if running_cfg:
                 snap["running_config"] = running_cfg
-                _record_pre_change(ctx, dev, running_cfg)
+                _record_pre_change(ctx, dev, running_cfg,
+                                   sections=snap.get("running_config_sections"))
             else:
                 log.warning("pipeline[4/pre_snapshot]: could not fetch running-config for %s", hostname)
 
@@ -927,19 +1051,23 @@ def _pre_change(ctx, ip: str) -> str:
     return (((ctx.pre_snapshots or {}).get(ip)) or {}).get("running_config", "") or ""
 
 
-def _record_pre_change(ctx, dev: dict, text: str) -> None:
+def _record_pre_change(ctx, dev: dict, text: str, sections=None) -> None:
     """Keep the pre-change config as evidence in the CARRIED list's folder, 0600 (it
     holds the device's credentials). Nothing in the run reads it back: `_pre_change`
-    is the run's own copy. A failed write is logged and changes nothing."""
+    is the run's own copy. A failed write is logged and changes nothing. *sections*: the
+    interfaces whose sections alone were read (`PipelineContext.config_scope`), said in its
+    header so the file is never read as the whole configuration."""
     from modules.config import get_list_data_dir, open_secure
     from modules.goldens import _safe_device_name
     host = dev.get("hostname") or dev.get("ip", "")
+    only = (f"! Sections only: {', '.join(sections)} (not the whole configuration)\n"
+            if sections else "")
     try:
         path = os.path.join(get_list_data_dir(_list_of(ctx)), "pre_change",
                             f"{_safe_device_name(host)}.cfg")
         with open_secure(path, "w", encoding="utf-8") as fh:
             fh.write(f"! Pre-change snapshot — {host} ({dev.get('ip', '')})\n"
-                     f"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\n!\n"
+                     f"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\n" + only + "!\n"
                      + text.strip() + "\n")
     except Exception as exc:                  # noqa: BLE001
         log.warning("pipeline: the pre-change evidence for %s was not written: %s", host, exc)
@@ -1358,8 +1486,21 @@ def _read_post_config(ctx: PipelineContext, dev: dict, snap: dict) -> None:
         # Asked of the pool again: a read above that failed spent its
         # session, and the pool replaces a spent one (C272).
         conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-        snap["running_config"] = run_device_command(
-            conn, "show running-config")
+        text = run_device_command(conn, "show running-config")
+        # A device's refusal of the read (`% Invalid input`, a session left in a sub-mode) is
+        # never a configuration (the review, finding 5): it would feed a golden. Judged on the
+        # answer's first lines, where IOS prints it; a banner's text further down is not one.
+        lines = [ln for ln in str(text or "").splitlines() if ln.strip()]
+        head = "\n".join(lines[:3])
+        if re.search(IOS_ERROR_PATTERN, head):
+            raise ValueError(f"the device refused `show running-config`: {head.strip()[:80]}")
+        # And it must end like one (the review of 2026-11-16): IOS closes a running
+        # configuration with `end`, so an authorization failure, a truncated read or any other
+        # answer is never taken for one.
+        if not lines or lines[-1].strip() != "end":
+            raise ValueError("`show running-config` did not end with `end` (refused or cut "
+                             f"short; its last line: {(lines[-1].strip() if lines else '')[:60]!r})")
+        snap["running_config"] = text
     except Exception as cfg_exc:
         log.warning("pipeline[7/post_snapshot]: %s config capture failed: %s",
                     hostname, cfg_exc)
@@ -1371,22 +1512,22 @@ def _read_post_config(ctx: PipelineContext, dev: dict, snap: dict) -> None:
 def _stage_post_snapshot(ctx: PipelineContext) -> None:
     """Capture the same operational metrics as Stage 4, now AFTER deploy,
     on a NEW session (C272): the push's session is where the prompt read as
-    `^@` after a save, and a read on it could not see its own end. Kept for a command plan's
-    transient run too (the operator, 2026-11-16) until stage 7's reads on the push's session
-    are measured equal to a fresh session's, byte for byte, over several transient runs.
+    `^@` after a save, and a read on it could not see its own end. That save is no longer in
+    the push (C501: stage 8.2, after verify), so a run that keeps its session
+    (:attr:`PipelineContext.keep_session`: a heal's apply and a command plan's run, the
+    operator's items 4 and 5, 2026-11-16) reads on the push's own session once its prompt
+    reads, and on a new one when it does not (`_kept_session`); every other run, a new one.
 
-    Scoped by :attr:`PipelineContext.snapshot_scope` as stage 4 is (`_capture_scoped`)."""
-    from modules.connection import close_persistent_connection, get_persistent_connection
-
+    Scoped by :attr:`PipelineContext.snapshot_scope` as stage 4 is (`_capture_scoped`), and a
+    heal with a tail reads only its program's interface sections (`tail_sections`)."""
     errors: list[str] = []
 
     for dev in ctx.selected_devices:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         try:
-            close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
-            get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
-            lap(ctx.laps, "post_snapshot: session")
+            # The push's own session where the run keeps it (items 4 and 5), else a new one.
+            lap(ctx.laps, f"post_snapshot: session ({_kept_session(ctx, dev, ip)})")
             snap = _capture_scoped(ctx, dev, ip, hostname)
             lap(ctx.laps, "post_snapshot: operational reads")
 
@@ -1406,7 +1547,19 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
                 snap["running_config"] = ""
                 snap["running_config_scoped"] = skip_cfg
             else:
-                _read_post_config(ctx, dev, snap)
+                scoped = tail_sections(ctx, ip)
+                got = read_sections(ctx, dev, scoped["names"]) if scoped["names"] else None
+                if got is not None:
+                    # Decision (b): the healed units' sections, read on the run's session, are
+                    # the read-back before Fixed; the full read and the golden are the tail's
+                    # (`run_tail`). Never committed as a golden: stage 8.5 waits for the tail.
+                    snap["running_config"] = "\n".join(got[n] for n in scoped["names"])
+                    snap["running_config_sections"] = list(scoped["names"])
+                else:
+                    _read_post_config(ctx, dev, snap)
+                    if getattr(ctx, "tail", False):
+                        snap["full_before_fixed"] = scoped["why"] or (
+                            "a section could not be read, so the whole configuration was")
             lap(ctx.laps, "post_snapshot: running configuration")
 
             # C1646: each VLAN the program configures, read where the device keeps it (a
@@ -2354,7 +2507,7 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
 
     A fresh SSH handshake costs nothing on a path that only runs on failure.
     """
-    from modules.connection import close_persistent_connection, with_temp_connection
+    from modules.connection import close_persistent_connection
     from modules.list_settings import value as list_value
 
     # Read once, outside the per-device try: a missing list is a defect to raise, never a
@@ -2375,9 +2528,9 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             # box slow for tens of seconds — measured at 5.5s idle and >16s
             # straight after a save. A timeout here loses the evidence, which
             # is the one thing this function exists to preserve (the bound is read above).
-            post = with_temp_connection(
-                dev, lambda c: c.send_command("show running-config",
-                                              read_timeout=timeout))
+            # In the scope stage 4 read it (`_read_like_before`): a plan's sections alone when
+            # those were the configuration before, else the whole.
+            post = _read_like_before(ctx, ip, dev, timeout)
             from modules.nsot.recreate import operations as _sla_ops
             ctx.failure_sla[ip] = _sla_ops(post)
             pre = _pre_change(ctx, ip)
@@ -2428,15 +2581,13 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
     """Read the device back after its undo (fresh connection, as the failure
     capture does) and compute the undo AGAIN against what landed now: an
     empty program means the push is gone."""
-    from modules.connection import with_temp_connection
     from modules.nsot.deploy import rollback_commands
     from modules.list_settings import value as list_value
 
     # Outside the try: a missing list is a defect to raise, never an "unverified" undo.
     timeout = list_value(_list_of(ctx), "nsot_config_read_timeout", 120)
     try:
-        post = with_temp_connection(
-            dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
+        post = _read_like_before(ctx, dev["ip"], dev, timeout)
     except Exception as exc:                    # noqa: BLE001
         return {"state": "sent_unverified",
                 "detail": f"the device could not be read back: {_why(exc)}", "remaining": []}
@@ -2765,6 +2916,10 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
     # back), so the deploy and onboarding cannot disagree about what "saved" means.
     from modules.nsot.onboard import persist_on_device
 
+    if ctx.tail and not ctx.tail_running:
+        # Decision (a): a heal's save is a tail step, after its verified outcome (`run_tail`).
+        log.info("pipeline[save_startup]: in the heal's tail, after its outcome")
+        return
     if ctx.hold_save:
         # The paired deploy saves both ends together once the link verifies (`save_held`).
         log.info("pipeline[save_startup]: held for the link's verify (the paired deploy)")
@@ -2825,6 +2980,113 @@ def save_held(ctx: PipelineContext) -> dict:
     except PipelineStageError as exc:
         ctx.warnings.append(f"save_startup: {exc}")
     return dict(ctx.saved_startup)
+
+
+#: The tail's steps as `run_tail` tells them (``on_step(step, state, words)``): the save, then
+#: the full read and the golden capture from it (the commit is the batch's, after it).
+TAIL_STEPS = ("saved", "commit")
+
+
+def run_tail(ctx: PipelineContext, on_step=None, check=None) -> dict:
+    """A heal's tail (:attr:`PipelineContext.tail`; the operator's decisions (a) and (b),
+    2026-11-16), run once its verified outcome is recorded, the device still held: stage 8.2,
+    the one save there is (on its own session, as ever: C272's push-then-save session is never
+    the save's), then the full running configuration read on the run's kept session (where
+    stage 7 read the healed sections alone), then stage 8.5, which hands the capture back for
+    the batch's golden commit (`defer_golden`). *on_step* hears each step begin (``running``)
+    and end (``ok`` or ``failed``, with its words); what it raises is logged, never the tail's.
+    ``{"saved": ctx.saved_startup, "golden_pending": [...], "full_read": {"state", "words"},
+    "healed_gone"?}``; a failed save or read is said and never raised: the change itself
+    verified. *check* (``check(text) -> [unit words still not at intent]``, the heal's own
+    `units_left`) runs on the read the golden would be committed from; any unit it names is
+    ``healed_gone`` and that read is not committed (the review, finding 2)."""
+    def tell(step, state, words):
+        if on_step is None:
+            return
+        try:
+            on_step(step, state, words)
+        except Exception:                             # noqa: BLE001 (a notice, never the tail's)
+            log.exception("pipeline: the tail's step callback raised for %s", step)
+
+    if check is None:
+        # A tail without the healed units' check would commit a golden from an unchecked read
+        # (the review of 2026-11-16): refused, said, nothing committed.
+        tell("golden", "failed", "the tail was asked with no check of the healed units")
+        return {"saved": ctx.saved_startup, "golden_pending": [],
+                "full_read": {"state": "refused",
+                              "words": "no check of the healed units was given"}}
+    ctx.tail_running = True
+    ctx.hold_save = False
+    out = {"saved": {}, "golden_pending": [], "full_read": {"state": "", "words": ""}}
+    try:
+        tell("saved", "running", "Saving to startup…")
+        try:
+            _stage_save_startup(ctx)
+        except PipelineStageError as exc:
+            ctx.warnings.append(f"save_startup: {exc}")
+        lap(ctx.laps, "tail: saved")
+        out["saved"] = dict(ctx.saved_startup)
+        bad = [s for s in ctx.saved_startup.values() if not s.get("ok")]
+        held = [s for s in bad if s.get("held")]
+        tell("saved", "partial" if held else "failed" if bad or not ctx.saved_startup else "ok",
+             (f"NOT saved to startup, held: verify did not pass ({held[0].get('why')})"
+              if held else "NOT saved to startup: " + "; ".join(
+                  s.get("error") or "not saved" for s in bad)) if bad else
+             "Saved" if ctx.saved_startup else "NOT saved to startup: nothing was saved")
+        tell("commit", "running", "Committing the golden…")
+        for dev in ctx.selected_devices:
+            ip = dev["ip"]
+            post = ctx.post_snapshots.get(ip)
+            if post is None:
+                continue
+            if post.get("running_config_sections"):
+                # The full read the golden is committed from (decision A: a real golden, never
+                # a synthesized one), on the session the push and stage 7 used.
+                post["sections_read"] = post.pop("running_config_sections")
+                post["running_config"] = ""
+                _read_post_config(ctx, dev, post)
+                lap(ctx.laps, "tail: full running configuration")
+                if post.get("running_config"):
+                    out["full_read"] = {"state": "ok", "words": "the whole configuration read"}
+                else:
+                    out["full_read"] = {"state": "failed", "words": (
+                        "the whole configuration could not be read after the change ("
+                        f"{post.get('running_config_error') or 'it read empty'}), so no golden "
+                        "is committed")}
+            else:
+                out["full_read"] = {"state": "ok", "words": "read in full before Fixed: "
+                                    + (post.get("full_before_fixed") or "")}
+            # The healed units checked on the read the golden would be committed from (the
+            # review, finding 2): a healed line gone from it is said, and that read is never
+            # committed as the device's golden.
+            text = post.get("running_config") or ""
+            if check is not None and text:
+                try:
+                    left = list(check(text) or [])
+                except Exception as exc:              # noqa: BLE001 (never committed unchecked)
+                    left = [f"the check could not be made ({_why(exc)})"]
+                if left:
+                    out["healed_gone"] = str(left[0])
+                    post["running_config"] = ""
+                    post["running_config_error"] = (f"its healed line is no longer on the "
+                                                    f"device: {left[0]}")
+        try:
+            _stage_save_golden(ctx)
+        except PipelineStageError as exc:
+            ctx.warnings.append(f"save_golden: {exc}")
+        lap(ctx.laps, "tail: golden capture")
+        out["golden_pending"] = list(ctx.golden_pending or [])
+        if not out["golden_pending"]:
+            # Said by the caller, which draws the commit's end once the batch has committed.
+            out["golden_why"] = (
+                f"its healed line is no longer on the device: {out['healed_gone']}"
+                if out.get("healed_gone") else
+                out["full_read"]["words"] if out["full_read"]["state"] == "failed" else
+                "; ".join(s.get("reason") or "" for s in ctx.golden_skipped or [])
+                or "nothing was captured")
+    finally:
+        ctx.tail_running = False
+    return out
 
 
 def roll_back_after(ctx: PipelineContext, reason: str, stage: str = "pair") -> PipelineContext:
@@ -2888,6 +3150,11 @@ def _stage_save_golden(ctx: PipelineContext) -> None:
     if ctx.transient:
         # A transient plan (C3757) leaves the configuration as it was: no new golden.
         ctx.golden_result = {"ok": True, "commit": "", "changed": [], "transient": True}
+        return
+    if ctx.tail and not ctx.tail_running:
+        # Decision (b): the full read and the golden from it are the heal's tail (`run_tail`);
+        # stage 7 may have read the healed sections alone, which are never a golden.
+        ctx.golden_result = {"ok": True, "commit": "", "changed": [], "tail": True}
         return
     repo = _os.path.join(get_list_data_dir(_list_of(ctx)), "config_repo")
     rolled_back = set(ctx.rolled_back_ips or [])
@@ -3141,12 +3408,147 @@ def _post_config_not_read(ctx, ip: str) -> str:
             "net-zero check reads the configuration after it, so stage 7 does not")
 
 
+#: One interface's own configuration (item 5; a command plan's net-zero check reads the same,
+#: `command_plan_run._sections`).
+SECTION_READ = "show running-config interface {name}"
+
+
+def read_sections(ctx, dev: dict, names: list, conn=None):
+    """``{name: its configuration}`` for each interface of *names*, read on the run's pooled
+    session (asked of the pool at each read, C272), or on *conn* (a callable giving a session)
+    when given; None when any name is not one token of an interface's shape, any read raises,
+    reads empty or the device refuses it (an IOS ``%`` line): the caller then reads the whole
+    configuration. One home for the section read (a command plan's net-zero check uses it)."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+
+    out = {}
+    for name in names or []:
+        if not isinstance(name, str) or not _IFNAME_TOKEN.fullmatch(name):
+            return None
+        try:
+            c = conn() if conn is not None else get_persistent_connection(
+                dev, ctx.connections_pool, ctx.pool_lock)
+            text = run_device_command(c, SECTION_READ.format(name=name)) or ""
+        except Exception as exc:                      # noqa: BLE001 (the whole read, said)
+            log.info("pipeline: %s's configuration was not read: %s", name, _why(exc))
+            return None
+        if not text.strip() or re.search(IOS_ERROR_PATTERN, text):
+            return None
+        out[name] = text
+    return out
+
+
+def _config_scope(ctx, ip: str) -> list:
+    """The interfaces whose sections are *ip*'s configuration before (item 5,
+    `PipelineContext.config_scope`), or ``[]`` (the whole): only a transient run under the
+    access rule (`_access_scope`: no routing read, no route table, so nothing reads the rest of
+    the configuration), every name one of the rule's interfaces. A trunk's or a routed port's
+    plan (the ``routed`` or ``full`` rule) reads the whole: BGP's hold times are read from the
+    configuration before (`_hold_config`)."""
+    names = [n for n in ((getattr(ctx, "config_scope", None) or {}).get(ip) or [])
+             if isinstance(n, str)]
+    access = _access_scope(ctx, ip)
+    if not names or not access or not set(names) <= set(access["interfaces"]):
+        return []
+    return names
+
+
+def _read_like_before(ctx, ip: str, dev: dict, timeout) -> str:
+    """The device's configuration now, read on a fresh connection as the failure capture and
+    the rollback's read-back read it, in the SAME scope stage 4 read it before: the sections of
+    `PipelineContext.config_scope` when stage 4 read those alone (so a comparison with the
+    configuration before never counts every other line as landed), else the whole. Raises when
+    a section cannot be read."""
+    from modules.connection import with_temp_connection
+
+    names = (((ctx.pre_snapshots or {}).get(ip)) or {}).get("running_config_sections") or []
+    if not names:
+        return with_temp_connection(
+            dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
+
+    def read(c):
+        got = []
+        for name in names:
+            text = c.send_command(SECTION_READ.format(name=name), read_timeout=timeout) or ""
+            if not text.strip() or re.search(IOS_ERROR_PATTERN, text):
+                raise ValueError(f"{SECTION_READ.format(name=name)} could not be read")
+            got.append(text)
+        return "\n".join(got)
+    return with_temp_connection(dev, read)
+
+
+def tail_sections(ctx, ip: str) -> dict:
+    """What stage 7 reads after a heal's push when it has a tail (`PipelineContext.tail`,
+    decision (b)): ``{"names": [interface], "why": ""}`` when every line the program sends sits
+    in an interface's section (its section read on the run's session is the read-back, and the
+    full read moves to the tail); else ``{"names": [], "why"}``, the full read before Fixed,
+    and why. A removal, a re-created IP SLA operation, an IP SLA compare and a paired link each
+    keep the full read (each reads the whole configuration after)."""
+    if not getattr(ctx, "tail", False) or getattr(ctx, "transient", False):
+        return {"names": [], "why": "no tail"}
+    rem = (ctx.removals or {}).get(ip) or {}
+    if rem.get("recreates") or ip in (ctx.expect_ip_sla or {}) \
+            or (ctx.pair_transient or {}).get(ip):
+        return {"names": [], "why": ("a re-created IP SLA operation or an IP SLA compare reads "
+                                     "the whole configuration after the push")}
+    # A removal inside an interface's section is read back as gone from that section
+    # (`removal.still_present` judges by its chain), so it is confined like any line below.
+    from modules.nsot.deploy import program_leaves
+
+    names = []
+    for leaf in program_leaves(list((ctx.rendered_commands or {}).get(ip) or [])):
+        chain = tuple(leaf.chain or ())
+        words = chain[0].split() if chain else []
+        if len(words) != 2 or words[0] != "interface" or not _IFNAME_TOKEN.fullmatch(words[1]):
+            return {"names": [], "why": (f"`{leaf.line.strip()}` is not confined to one "
+                                         "interface's section, so the whole configuration is "
+                                         "read after the push, before Fixed")}
+        names.append(words[1])
+    names = list(dict.fromkeys(names))
+    if not names:
+        return {"names": [], "why": "the program holds no line"}
+    return {"names": names, "why": ""}
+
+
+def _kept_session(ctx, dev: dict, ip: str) -> str:
+    """Stage 7's session (`PipelineContext.keep_session`): the push's own, its prompt read
+    first (`find_prompt`: a prompt not ending ``#`` or ``>``, or a read that raises, is C272's
+    unreadable session), else closed and a new one opened. Returns ``kept`` or ``new: <why>``
+    for the lap. Without keep_session a new one, as before."""
+    from modules.connection import close_persistent_connection, get_persistent_connection
+
+    if getattr(ctx, "keep_session", False) and ip in (ctx.connections_pool or {}):
+        try:
+            prompt = (get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+                      .find_prompt() or "").strip()
+            # A prompt left in a configuration sub-mode (``r2(config-if)#``) is no session to
+            # read on (the review, finding 5): a new one.
+            # Any sub-mode, not only ``(config…)``: ``(dhcp-config)#``, ``(cfg-crypto-trans)#``,
+            # ``(ca-trustpoint)#`` (the review of 2026-11-16).
+            if re.search(r"[#>]$", prompt) and not re.search(r"\([^)]*\)[#>]$", prompt):
+                return "kept"
+            why = f"its prompt read {prompt[-20:]!r}"
+        except Exception as exc:                      # noqa: BLE001 (a new session, said)
+            why = _why(exc)
+        close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+        return f"new: the push's session could not be used ({why})"
+    close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+    get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+    return "new"
+
+
 def _hold_config(pre: dict, post: dict) -> str:
     """The configuration BGP's hold times are read from (`_watch_bgp_hold`): the one after the
     push, or, where stage 7 did not read it (`_post_config_not_read`: a transient run, net
     zero, its configuration after checked equal to this one by its own net-zero check), the one
-    stage 4 read before, so a session's hold time is never read as "no BGP neighbor"."""
+    stage 4 read before, so a session's hold time is never read as "no BGP neighbor". A heal
+    whose stage 7 read only its interfaces' sections (`tail_sections`: every line of its
+    program inside them, so no BGP line moved) is read from the one before too."""
     after = (post or {}).get("running_config") or ""
+    if (post or {}).get("running_config_sections"):
+        return (pre or {}).get("running_config") or ""
     if after or not (post or {}).get("running_config_scoped"):
         return after
     return (pre or {}).get("running_config") or ""
@@ -3166,8 +3568,11 @@ def _cosmetic_scope(ctx, ip: str) -> dict:
     intent check are taken from it."""
     if getattr(ctx, "transient", False):
         return {}
-    if ((ctx.removals or {}).get(ip) or {}).get("units") or \
-            ((ctx.removals or {}).get(ip) or {}).get("recreates") or \
+    # A removal is cosmetic too when every line it sends is (round 2, item 4: a description
+    # someone added, healed by `no description`, read the full snapshots before and after):
+    # each line, removals included, is classified below, and verify still reads each removal
+    # back as gone (`removal.still_present`) from the configuration after.
+    if ((ctx.removals or {}).get(ip) or {}).get("recreates") or \
             ip in (ctx.expect_ip_sla or {}) or (ctx.pair_transient or {}).get(ip) or \
             ((ctx.expected_effects or {}).get(ip) or {}).get("declared"):
         return {}
