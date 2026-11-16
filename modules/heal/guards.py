@@ -150,14 +150,21 @@ def g5_topology(held: dict, now: float):
 
 # ── 6: many devices at once ─────────────────────────────────────────────────────────────────
 
-def g6_many(incidents: list, now: float, grace_s: float, most: int):
+def g6_many(incidents: list, now: float, grace_s: float, most: int, *, at: float = None):
     """More than *most* devices of the network departed (their own change, not a symptom)
-    within one grace period: a bad rollout, a template or a systemic event; escalate."""
+    within one grace period of this incident's own departure, either side, itself included
+    (*at*, its opening; the operator, 2026-11-16, C3816): a bad rollout, a template or a
+    systemic event; escalate. Anchored on the incident, not on the decision's instant: a
+    change is decided only after its own grace, so a window before *now* missed the devices
+    that departed before it, and the last devices of a fleet-wide departure were never held.
+    *at* None anchors on *now* (a caller with no incident)."""
+    anchor = float(now if at is None else at)
     devices = sorted({i["device"] for i in incidents if i.get("cause") == "change"
-                      and now - grace_s <= float(i.get("opened_epoch") or 0) <= now})
+                      and anchor - grace_s <= float(i.get("opened_epoch") or 0)
+                      <= min(anchor + grace_s, now)})
     if len(devices) > int(most):
         return hit(6, "held", (f"{len(devices)} devices of the network departed within "
-                               f"{int(grace_s)} s ({', '.join(devices[:6])}"
+                               f"{int(grace_s)} s of each other ({', '.join(devices[:6])}"
                                f"{'…' if len(devices) > 6 else ''}), more than "
                                f"{int(most)}: a fleet-wide departure is escalated, never healed"),
                    {"devices": len(devices), "heal_max_devices_drifting": int(most),

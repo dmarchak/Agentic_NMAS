@@ -515,7 +515,8 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     fight = (findings.fight_on(network, device, key[1] if key else "", mode=mode, now=now)
              if value(mode, "heal_fight_stop") else {})
     for g in (guards.g6_many(got["incidents"], now, grace_s,
-                             value(mode, "heal_max_devices_drifting")),
+                             value(mode, "heal_max_devices_drifting"),
+                             at=_opened(incident)),
               guards.g8_grace(incident),
               guards.g11_fight(fight, bool(value(mode, "heal_fight_stop")))):
         if _resolves(batch, g, incident):
@@ -776,8 +777,18 @@ def script_hold(network: str, incident: dict, *, now: float = None, sources=None
     # The operator, 2026-11-16: no time-based hold (guards 5, 7, 9 and 10 no longer hold), as
     # in `_decide_one`; guard 6 stays, a person's decision.
     g = guards.g6_many(incidents.read(network)["incidents"], now, grace_s,
-                       value(mode, "heal_max_devices_drifting"))
+                       value(mode, "heal_max_devices_drifting"), at=_opened(incident))
     return g or None
+
+
+def _opened(incident: dict):
+    """*incident*'s own opening, guard 6's anchor (C3816), or None (anchored on now) when the
+    record carries none."""
+    try:
+        got = float((incident or {}).get("opened_epoch") or 0)
+    except (TypeError, ValueError):
+        return None
+    return got or None
 
 
 def run(network: str, *, now: float = None, sources=None, by: str = "heal to intent") -> dict:
