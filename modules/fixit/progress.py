@@ -152,6 +152,10 @@ def lines(declared, recorded, labels=None, *, device: str = "", subs: str = "",
         if rec:
             at = _epoch(rec[-1].get("at"))
             took = round(at - prev) if prev else None
+            if isinstance(rec[-1].get("took_s"), (int, float)):
+                # The step's own seconds where the run recorded them (verify's, stage 8 alone),
+                # never the gap since the step before it (which holds stage 7's reads too).
+                took = round(rec[-1]["took_s"])
             checks = (proof or {}).get("checks") or [] if own == "verify" else []
             if checks and not took and (proof or {}).get("verify_s"):
                 took = proof["verify_s"]

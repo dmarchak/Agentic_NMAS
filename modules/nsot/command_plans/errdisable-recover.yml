@@ -30,7 +30,7 @@ preconditions:
     read: show interfaces status err-disabled
     expect: errdisable.port_listed
   - name: The switch does not recover the cause itself
-    read: show running-config | include errdisable recovery
+    read: show errdisable recovery
     expect: errdisable.not_recovering_itself
   - name: The cause has cleared
     expect: errdisable.cause_cleared

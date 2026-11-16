@@ -37,8 +37,9 @@ pipeline's engine (`modules/nsot/command_plan_run.py`: the hold, the gate, the r
 send, the verify, the rollback, the receipt and the record), its parameters validated against
 Mercury's model (the port in committed intent, an access port, never the management path).
 This module keeps the plan's checks, which its template names (`check_port_listed`: the port
-err-disabled by the cause now; `check_no_recovery` and, at preview from the golden,
-`preview_no_recovery`: no IOS errdisable recovery for the cause, never raced;
+err-disabled by the cause now; `check_no_recovery`, the cause's row of ``show errdisable
+recovery``'s timer table Disabled (`recovery_timer`), and, at preview from the golden,
+`preview_no_recovery`: no ``errdisable recovery cause`` line for it: never raced;
 `check_cause_cleared`: BPDU guard, no BPDU guard line for the port since the err-disable; port
 security, no new violation since the err-disable, by its ``PSECURE_VIOLATION`` lines and its
 violation count, the MAC from the line or its Last Source Address;
@@ -74,7 +75,11 @@ CLEARED = ("true", "false", "unknown")
 #: The reads the device confirmation makes, and each preflight read.
 CONFIRM_READ = "show interfaces status err-disabled"
 STATUS_READ = "show interfaces status"
-RECOVERY_READ = "show running-config | include errdisable recovery"
+#: The switch's own recovery, read live as its timer table (the operator, 2026-11-16: the
+#: device's own answer, never a filter over its configuration): ``ErrDisable Reason`` and
+#: ``Timer Status``, one row per cause (`recovery_timer`). The golden's preview reads its
+#: ``errdisable recovery cause`` lines instead (`recovery_for`).
+RECOVERY_READ = "show errdisable recovery"
 PSEC_READ = "show port-security address"
 #: The port's own port-security view: its Last Source Address and its violation count (the
 #: operator, 2026-11-16: the violating MAC and "no new violation" are read here, never only
@@ -242,6 +247,59 @@ def recovery_for(config: str, cause: str) -> str:
         if m.group("cause") in (cause, "all"):
             return m.group(0).strip()
     return ""
+
+
+#: ``show errdisable recovery``'s table: its header, and one row, the reason (which may hold
+#: spaces, ``channel-misconfig (STP)``, and which IOS cuts at its column: ``Recovery command:
+#: "clear``) then its timer's state. s1's capture, tests/fixtures/errdisable/.
+_TIMER_HEAD = re.compile(r"^\s*ErrDisable Reason\s+Timer Status\s*$")
+_TIMER_ROW = re.compile(r"^(?P<reason>\S.*?)\s+(?P<status>Enabled|Disabled)\s*$")
+_TIMER_INTERVAL = re.compile(r"^\s*Timer interval:\s*(?P<s>\d+)\s*seconds", re.M)
+
+
+def recovery_timer(text, cause: str) -> dict:
+    """*cause*'s row of ``show errdisable recovery`` (*text*, its answer): ``{"state", "row",
+    "reasons", "interval_s", "why"}``. *state* ``enabled`` (the switch recovers the cause by
+    its own timer), ``disabled``, or ``unreadable`` (neither: no answer, an answer with a
+    ``%`` line, one with no ``ErrDisable Reason / Timer Status`` table, or a table with no row
+    for *cause*), *why* saying which with what was compared. *reasons* is every reason the
+    table lists, in order; *interval_s* the timer's interval, or None."""
+    out = {"state": "unreadable", "row": "", "reasons": [], "interval_s": None, "why": ""}
+    if text is None:
+        out["why"] = "no answer"
+        return out
+    lines = str(text).splitlines()
+    err = next((ln.strip() for ln in lines if ln.lstrip().startswith("%")), "")
+    if err:
+        out["why"] = f"the device answered `{err[:120]}`"
+        return out
+    head = next((i for i, ln in enumerate(lines) if _TIMER_HEAD.match(ln)), None)
+    if head is None:
+        first = next((ln.strip() for ln in lines if ln.strip()), "")
+        out["why"] = ("the answer is empty" if not first else
+                      f"the answer holds no `ErrDisable Reason  Timer Status` table (its first "
+                      f"line: `{first[:80]}`)")
+        return out
+    rows = {}
+    for ln in lines[head + 1:]:
+        if not ln.strip():
+            break                                   # the table ends at its first blank line
+        if set(ln.strip()) <= set("- "):
+            continue                                # the rule under the header
+        m = _TIMER_ROW.match(ln.rstrip())
+        if m:
+            rows.setdefault(m.group("reason").strip(), (m.group("status"), ln.strip()))
+    out["reasons"] = list(rows)
+    m = _TIMER_INTERVAL.search(str(text))
+    out["interval_s"] = int(m.group("s")) if m else None
+    got = rows.get(str(cause or "").strip())
+    if got is None:
+        shown = ", ".join(list(rows)[:6]) + (" …" if len(rows) > 6 else "")
+        out["why"] = (f"its table lists no row for {cause or 'no cause'} ({len(rows)} reason(s)"
+                      + (f": {shown}" if rows else "") + ")")
+        return out
+    out.update(state=got[0].lower(), row=got[1])
+    return out
 
 
 # ── The problem, from the incident's own evidence ───────────────────────────────────────────
@@ -717,16 +775,39 @@ def check_port_connected(answer, run) -> tuple:
 
 
 def check_no_recovery(answer, run) -> tuple:
-    """The switch does not recover the cause itself (its running configuration's
-    ``errdisable recovery cause``): Mercury never races it."""
+    """The switch does not recover the cause itself: the cause's row of ``show errdisable
+    recovery``'s timer table (`recovery_timer`) Disabled passes; Enabled fails (the switch
+    recovers it by its own timer, and Mercury never races it); a cause the table does not
+    list, or an answer that is not the table (none, a ``%`` line, empty), is unreadable,
+    neither a pass nor a fail, so the plan refuses, naming the cause looked for and what the
+    answer held."""
     _port, cause, short = _port_cause(run)
+    name = CAUSES.get(cause, cause)
+    if answer is not None and not any(_TIMER_HEAD.match(ln)
+                                      for ln in str(answer).splitlines()):
+        # Expand, then contract (CLAUDE.md): a script saved before 2026-11-16 keeps its own
+        # copy of the template, whose read is ``show running-config | include errdisable
+        # recovery``. Its answer is not the table, so the check reads the table itself, on
+        # the run's session, and judges that: the same answer a new template's read gives.
+        try:
+            answer = run.sources.read(run.device, [RECOVERY_READ]).get(RECOVERY_READ)
+        except Exception as exc:                      # noqa: BLE001 (unreadable, said)
+            log.warning("errdisable: %s's %s could not be read: %s", run.device,
+                        RECOVERY_READ, exc)
+            answer = None
     if answer is None:
-        return "unreadable", f"{RECOVERY_READ} could not be read"
-    line = recovery_for(answer, cause)
-    if line:
-        return "fail", (f"the running configuration holds \"{line}\": the switch recovers "
-                        f"{short} by itself, and Mercury does not race it")
-    return "pass", f"no errdisable recovery for {CAUSES.get(cause, cause)}"
+        return "unreadable", f"`{RECOVERY_READ}` could not be read"
+    t = recovery_timer(answer, cause)
+    if t["state"] == "enabled":
+        every = f" (every {t['interval_s']} s)" if t["interval_s"] else ""
+        return "fail", (f"`{RECOVERY_READ}` lists {cause}'s timer Enabled{every}: the switch "
+                        f"recovers {short} by itself, and Mercury does not race it")
+    if t["state"] == "disabled":
+        return "pass", (f"`{RECOVERY_READ}` lists {cause}'s timer Disabled: no errdisable "
+                        f"recovery for {name}")
+    return "unreadable", (f"whether the switch recovers {name} itself cannot be told: "
+                          f"`{RECOVERY_READ}` was read for {cause}'s row under ErrDisable "
+                          f"Reason / Timer Status, and {t['why']}")
 
 
 def preview_no_recovery(network: str, dev: dict, derived: dict, sources) -> tuple:

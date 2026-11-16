@@ -318,8 +318,9 @@ class PipelineContext:
     # ---- A command plan (C3757, path 2; modules/nsot/command_plan_run.py) ------------------
     #: A transient plan's run (a bounce, a clear: net zero, the operator, 2026-11-15): its
     #: lines leave no configuration line, so verify reads none of them back (the plan's
-    #: net-zero check stands for it, in :attr:`plan_verify`), and stage 8.2 and 8.5 do not run
-    #: (nothing to save, nothing new to record as a golden).
+    #: net-zero check stands for it, in :attr:`plan_verify`), stage 8.2 and 8.5 do not run
+    #: (nothing to save, nothing new to record as a golden), and stage 7 reads no configuration
+    #: after the push (`_post_config_not_read`: the net-zero check reads it).
     transient:           bool = False
     #: Checks run AFTER stage 5 and before the send (``hook(ctx) -> why or ""``, in order): a
     #: why stops the run there, nothing sent, recorded as the stage ``pre_apply``. A command
@@ -339,6 +340,12 @@ class PipelineContext:
     #: ``access`` rule on a transient run narrows them (`_access_scope`); any other rule, or
     #: none, reads the full snapshots.
     snapshot_scope:      dict = None
+    #: The caller's stage callback (the operator, 2026-11-16: verify drawn as its own step with
+    #: its real seconds): ``on_stage(stage, event)``, *stage* a `STAGE_NAMES` name, *event*
+    #: ``"start"`` as it starts, ``"end"`` when it completed, ``"failed"`` when it raised (before
+    #: any rollback it starts). Notice only: what it returns is ignored and what it raises is
+    #: logged, never the run's (`_notify_stage`). None, the default, calls nothing.
+    on_stage:            Any = None
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -524,14 +531,25 @@ class PipelineRunner:
                         log.error("pipeline: pre-apply refused, nothing sent: %s", refused)
                         break
                 device_ops.note(_verify_note(self.ctx) if name == "verify" else name)
+                _notify_stage(self.ctx, name, "start")
                 try:
-                    handler(self.ctx)
+                    try:
+                        handler(self.ctx)
+                    except PipelineStageError:
+                        raise
+                    except BaseException:
+                        # Not a stage's failure: it propagates as before (stage 9 still runs),
+                        # and the caller hears that the stage it was told started has ended.
+                        _notify_stage(self.ctx, name, "failed")
+                        raise
                     lap(self.ctx.laps, name)
                     self.ctx.stages_completed.append(name)
                     self._next_expected = idx + 1
+                    _notify_stage(self.ctx, name, "end")
                 except PipelineStageError as exc:
                     lap(self.ctx.laps, f"{name} (failed)")
                     self.ctx.stages_failed.append(name)
+                    _notify_stage(self.ctx, name, "failed")
                     log.error("pipeline: stage '%s' FAILED: %s", name, exc)
                     if on_failure == "continue":
                         # The config is already on the device. Failing to
@@ -597,6 +615,19 @@ def lap(laps, name: str) -> None:
     reads it to decide."""
     if laps is not None:
         laps.append((str(name), time.time()))
+
+
+def _notify_stage(ctx: PipelineContext, stage: str, event: str) -> None:
+    """*stage*'s *event* told to :attr:`PipelineContext.on_stage`, when the caller gave one. A
+    notice only: a callback that raises is logged and the run goes on as if none were given
+    (a record of a step never decides what a device is sent, or whether it is rolled back)."""
+    cb = getattr(ctx, "on_stage", None)
+    if cb is None:
+        return
+    try:
+        cb(stage, event)
+    except Exception:                                 # noqa: BLE001 (a notice, never the run's)
+        log.exception("pipeline: the on_stage callback raised for %s %s", stage, event)
 
 
 def _pre_apply(ctx: PipelineContext) -> str:
@@ -1356,15 +1387,17 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
             # counts. Stage 8.5 needs the post-deploy CONFIG to commit as
             # golden; without this it would commit stage 4's pre-deploy copy
             # and record the wrong thing entirely.
-            if _access_scope(ctx, ip) and not (ctx.removals or {}).get(ip) \
-                    and ip not in (ctx.expect_ip_sla or {}):
-                # The access rule (decision 2): a transient run saves nothing and records no
-                # golden (stage 8.2, 8.5), reads no line back, removes nothing, compares no IP
-                # SLA, and with no routing read watches no BGP hold time, so nothing reads the
-                # configuration after it but the plan's own net-zero check, which reads its
-                # interfaces' sections itself. Not read; said so, never read as empty.
+            skip_cfg = _post_config_not_read(ctx, ip)
+            if skip_cfg:
+                # Read only when the change alters the golden (the operator, 2026-11-16, R3
+                # answer (a)): a transient run (a command plan, net zero) saves nothing and
+                # records no golden (stage 8.2, 8.5), reads no line back, removes nothing and
+                # compares no IP SLA, so nothing reads the configuration after it but the
+                # plan's own net-zero check, which reads it itself (its interfaces' sections,
+                # or the whole), and BGP's hold-time watch, which takes the hold times from
+                # the configuration before (`_hold_config`). Not read; said so, never as empty.
                 snap["running_config"] = ""
-                snap["running_config_scoped"] = _access_scope(ctx, ip)["words"]
+                snap["running_config_scoped"] = skip_cfg
             else:
                 _read_post_config(ctx, dev, snap)
             lap(ctx.laps, "post_snapshot: running configuration")
@@ -1771,8 +1804,12 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # before: the operation may exist precisely to bring it back.
         from modules.nsot.golden_state import MEASURED, protocol_up
         declared = (ctx.declared_protocols or {}).get(ip)
-        from_intent = sorted(p for p in (declared or [])
-                             if p in MEASURED and pre_counts.get(p, 0) < 1)
+        # Scoped snapshots (decision 2, R3) read no protocol, and their program cannot bring
+        # one back (an access port's state, or cosmetic lines alone): nothing is required of
+        # intent's protocols here, and the record says which scope applied.
+        snap_scope = pre.get("scope") or post.get("scope") or {}
+        from_intent = [] if snap_scope else sorted(
+            p for p in (declared or []) if p in MEASURED and pre_counts.get(p, 0) < 1)
         checked = sorted(set(pre_counts) | set(from_intent))
         record["checked_protocols"] = checked
         # Which verify this program gets (the operator, 2026-10-01): one
@@ -1946,14 +1983,13 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # Less the sessions the program drops on purpose (C506 phase 2).
             baseline = (max(0, pre_counts["bgp"] - expected_gone.get("bgp", 0))
                         if pre_counts.get("bgp") else (1 if "bgp" in from_intent else 0))
-            watch = _watch_bgp_hold(ctx, ip, baseline, post.get("running_config") or "")
+            watch = _watch_bgp_hold(ctx, ip, baseline, _hold_config(pre, post))
             record["bgp_watch"] = watch
             if watch.get("issue"):
                 issues.append(watch["issue"])
             if watch.get("unreadable"):
                 cant_read.append(watch["unreadable"])
 
-        snap_scope = pre.get("scope") or post.get("scope") or {}
         if snap_scope:
             # Which snapshots verify compared (decision 2): a subset says so.
             record["snapshot_scope"] = dict(snap_scope)
@@ -1975,6 +2011,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
             ctx.config_type in _ROUTE_INSTALLING_CONFIG_TYPES
             or ctx.params.get("skip_route_check", False)
             or hard              # C506: not waited out over a visible hard failure
+            or bool(snap_scope)  # scoped: the route table was not read, so not compared
         )
         pre_routes  = pre.get("routes",  {}).get("total_count", -1)
         post_routes = post.get("routes", {}).get("total_count", -1)
@@ -2219,6 +2256,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # restore skips the retention check, and the counts were drawn as
             # if they had been compared.
             "routes_compared": not _skip_route,
+            # The snapshots' scope (decision 2, R3): None when they were full.
+            "snapshot_scope": dict(snap_scope) if snap_scope else None,
             "from_intent": from_intent,
             "pre":  {
                 "routing_protocol": pre_nbr.get("protocol", "unknown"),
@@ -2955,8 +2994,15 @@ def _stage_audit_log(ctx: PipelineContext) -> None:
                 delta[ip]["snapshot_scope"] = {
                     "rule": scoped.get("rule"), "interfaces": scoped.get("interfaces"),
                     "words": scoped.get("words"),
-                    "not_read": "routing neighbours and the route table (-1 above), the "
-                                "other interfaces' states and the configuration after"}
+                    "not_read": (
+                        "routing neighbours and the route table (-1 above), the other "
+                        "interfaces' states and the configuration after"
+                        if scoped.get("rule") == "access" else
+                        "routing neighbours, the route table and the interfaces' states "
+                        "(-1 above); the configuration after was read")}
+            if post.get("running_config_scoped"):
+                # Stage 7 did not read the configuration after (`_post_config_not_read`).
+                delta[ip]["config_after_not_read"] = str(post["running_config_scoped"])
 
         entry: dict[str, Any] = {
             "schema_version":   1,
@@ -3054,15 +3100,89 @@ def _access_scope(ctx, ip: str) -> dict:
     return {"rule": "access", "words": str(s.get("words") or ""), "interfaces": names}
 
 
+def _post_config_not_read(ctx, ip: str) -> str:
+    """Why stage 7 does not read *ip*'s configuration after the push, or ``""`` (it reads it):
+    the operator's R3 answer (a), 2026-11-16, "the full read after only when the change alters
+    the golden". A transient run (a command plan: ``net_zero: true``, never saved, no golden)
+    with no removal, no re-created IP SLA operation and no IP SLA compare (each reads it) is
+    not read: its own net-zero check reads the configuration after it. Every other run (a
+    deploy, a cosmetic deploy, a restore) reads it: stage 8.5's golden, the restore's
+    measurement against its ref, the heal's intent check after verify and the read-back of the
+    sent lines are taken from it."""
+    if not getattr(ctx, "transient", False):
+        return ""
+    rem = (ctx.removals or {}).get(ip) or {}
+    if rem.get("units") or rem.get("recreates") or ip in (ctx.expect_ip_sla or {}):
+        return ""
+    access = _access_scope(ctx, ip)
+    if access:
+        return access["words"]
+    return ("a transient run (net zero): it saves nothing and records no golden, and its own "
+            "net-zero check reads the configuration after it, so stage 7 does not")
+
+
+def _hold_config(pre: dict, post: dict) -> str:
+    """The configuration BGP's hold times are read from (`_watch_bgp_hold`): the one after the
+    push, or, where stage 7 did not read it (`_post_config_not_read`: a transient run, net
+    zero, its configuration after checked equal to this one by its own net-zero check), the one
+    stage 4 read before, so a session's hold time is never read as "no BGP neighbor"."""
+    after = (post or {}).get("running_config") or ""
+    if after or not (post or {}).get("running_config_scoped"):
+        return after
+    return (pre or {}).get("running_config") or ""
+
+
+def _cosmetic_scope(ctx, ip: str) -> dict:
+    """*ip*'s snapshot scope when the cosmetic rule narrows it (R3, the operator, 2026-11-14
+    and 2026-11-16: "a description is cosmetic: read back the line, no full-config read"): a
+    run that is not transient (a deploy or a restore), whose every line the device is sent is
+    one of `verify_scope.COSMETIC`'s (`verify_scope.cosmetic`, by its leaf and the section it
+    sits in: descriptions, banners, SNMP's location and contact, aliases, the logging buffer;
+    each changes what the device says about itself and nothing it forwards, routes or keeps a
+    session on), with no removal, no re-created IP SLA operation, no IP SLA compare, no
+    paired link and no declared effect (each its own verify, kept); else ``{}``, the full
+    snapshots. Its verify is the read-back of its own lines from the configuration after
+    (`verify_scope.read_back`), which stage 7 still reads: the golden, the save and the heal's
+    intent check are taken from it."""
+    if getattr(ctx, "transient", False):
+        return {}
+    if ((ctx.removals or {}).get(ip) or {}).get("units") or \
+            ((ctx.removals or {}).get(ip) or {}).get("recreates") or \
+            ip in (ctx.expect_ip_sla or {}) or (ctx.pair_transient or {}).get(ip) or \
+            ((ctx.expected_effects or {}).get(ip) or {}).get("declared"):
+        return {}
+    from modules.nsot import verify_scope
+    from modules.nsot.deploy import program_leaves
+
+    leaves = program_leaves(list((ctx.rendered_commands or {}).get(ip) or []))
+    whats = verify_scope.cosmetic_only([(tuple(leaf.chain or ()), leaf.line)
+                                        for leaf in leaves])
+    if not whats:
+        return {}
+    return {"rule": "cosmetic", "interfaces": [], "words": (
+        f"every line is cosmetic ({', '.join(whats)}): no line changes what the device "
+        "forwards, routes or keeps a session on, so the snapshots before and after read no "
+        "routing neighbour, route table or interface state, and verify reads its own lines "
+        "back from the configuration after")}
+
+
+def _scope_of(ctx, ip: str) -> dict:
+    """The rule that narrows *ip*'s snapshots (`_access_scope`, `_cosmetic_scope`), or
+    ``{}``, the full ones."""
+    return _access_scope(ctx, ip) or _cosmetic_scope(ctx, ip)
+
+
 def _capture_scoped(ctx, dev: dict, ip: str, hostname: str) -> dict:
     """Stage 4's and stage 7's operational snapshot: the full one
-    (`_capture_operational_snapshot`), or under the access rule (`_access_scope`; the
-    operator's decision 2, 2026-11-16) each named interface's state (``interfaces``, as the
-    full read gives it, for those interfaces) and its spanning-tree state (``stp``,
-    ``stp_errors``), with no routing read (``routing_neighbors`` count -1: none checked) and
-    no route table (``total_count`` -1: not checked), the snapshot's ``scope`` saying so."""
+    (`_capture_operational_snapshot`); under the cosmetic rule (`_cosmetic_scope`) none, no
+    device read at all (``interfaces`` with no state and counts -1: nothing compared); under
+    the access rule (`_access_scope`; the operator's decision 2, 2026-11-16) each named
+    interface's state (``interfaces``, as the full read gives it, for those interfaces) and
+    its spanning-tree state (``stp``, ``stp_errors``). Either way with no routing read
+    (``routing_neighbors`` count -1: none checked) and no route table (``total_count`` -1:
+    not checked), the snapshot's ``scope`` saying so."""
     session = _session_for(ctx, dev)
-    scope = _access_scope(ctx, ip)
+    scope = _scope_of(ctx, ip)
     if not scope:
         return _capture_operational_snapshot(session, ip, hostname)
     from modules.commands import run_device_command
@@ -3075,6 +3195,9 @@ def _capture_scoped(ctx, dev: dict, ip: str, hostname: str) -> dict:
                               "unreadable": {}},
         "routes": {"output": "", "total_count": -1},
     }
+    if scope["rule"] == "cosmetic":
+        snap["interfaces"] = {"output": "", "up_count": -1, "down_count": -1, "states": {}}
+        return snap
     texts, errors = [], []
     for name in scope["interfaces"]:
         try:

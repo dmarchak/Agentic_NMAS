@@ -280,6 +280,17 @@ class Sources:
         return {c: out.get(c) for c in commands}
 
 
+def _same_address(a: str, b: str) -> bool:
+    """Whether *a* and *b* name one address: compared as addresses (an IPv6 address written
+    two ways, ``2001:db8::1`` and ``2001:DB8:0::1``, is one), else as text (a name)."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_address(str(a).strip()) == ipaddress.ip_address(str(b).strip())
+    except ValueError:
+        return str(a) == str(b)
+
+
 def pool_session(ctx, dev: dict):
     """The read engine's *session* (`reads.run`'s ``session(dev, fn) -> fn(conn)``) riding
     the pipeline's pooled session for *dev* (``ctx.connections_pool``, the one stage 4 opened,
@@ -293,7 +304,7 @@ def pool_session(ctx, dev: dict):
 
     def session(signed, fn):
         s_ip, s_user = (signed or {}).get("ip", ""), (signed or {}).get("username", "")
-        if s_ip != ip or (s_user and user and s_user != user):
+        if not _same_address(s_ip, ip) or (s_user and user and s_user != user):
             raise ValueError(f"this read is of {s_ip or 'no address'} as "
                              f"{s_user or 'no account'}, and the run's session is {ip} as "
                              f"{user or 'no account'}: it is not read on that session")
@@ -753,6 +764,9 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
     ctx.pre_apply = [preconditions(t, run, rec)]
     ctx.plan_verify = {ip: plan_verify(t, run, rec)}
     ctx.laps = rec.get("laps")
+    # The send and verify recorded as each ends (`stage_steps`), so the stepper draws
+    # Verifying running while it runs and with its own seconds after.
+    ctx.on_stage = stage_steps(ctx, rec)
     # One device session per run (the operator, 2026-11-16): every read the plan makes rides
     # the pool stage 4 opens, the push sends on and verify reads on.
     if hasattr(run.sources, "ride"):
@@ -786,7 +800,11 @@ def preconditions_now(network: str, key: str, p: dict, *, sources=None,
     reads its classification as the run's does. *reuse* (a `Reused`, the proposing job's
     reads) answers a read it holds young enough in place of the device; each item answered
     so says it in its words and ``reused`` (``[{"command", "age_s", "from", "run"}]``), so a
-    reused read never reads as a fresh one. ``[{"name", "read", "result", "words"}]``."""
+    reused read never reads as a fresh one. ``[{"name", "read", "result", "words"}]``.
+    Its one caller is a proposal's preflight, outside any run, so each read opens its own
+    session as a preview's does; *sources* riding a run's session (`Sources.ride`) reads over
+    that session instead. Inside a run the preconditions are the `preconditions` hook's,
+    read over the run's pooled session."""
     from modules.nsot import command_plan as CP
 
     t = CP.template_of(key)
@@ -851,6 +869,69 @@ def _step(rec: dict, name: str, result: str, words: str, **more) -> None:
     rec["steps"].append(dict({"step": name, "result": result, "words": redact_text(words),
                               "at": _iso(time.time())}, **more))
     op_progress.moved()
+
+
+def _recorded(rec: dict, name: str) -> bool:
+    return any(s.get("step") == name for s in rec.get("steps") or [])
+
+
+def _send_step(ctx, rec: dict, *, absent: bool = False) -> None:
+    """The ``send`` step from the pipeline's push result, once. A result absent records
+    nothing as stage 6 ends (the run may read as refused, nothing sent); after the run
+    (*absent*), a run that is not refused records it failed, "not recorded", as it always did."""
+    if _recorded(rec, "send"):
+        return
+    pushed = (ctx.push_results or {}).get(ctx.device_ips[0])
+    if pushed is None and not absent:
+        return
+    pushed = pushed or {}
+    _step(rec, "send", "ok" if pushed.get("ok") else "fail",
+          ("the plan's lines sent in config mode, never saved" if pushed.get("ok")
+           else f"the send failed: {pushed.get('error') or ctx.error or 'not recorded'}"))
+
+
+def _verify_step(ctx, rec: dict, started: float = None) -> None:
+    """The ``verify`` step from the pipeline's verify result, once, with when verify started
+    (``started``) and its own seconds (``took_s``) where the stage was seen to start
+    (`stage_steps`); a verify that recorded no result says so, never "every check held"."""
+    if _recorded(rec, "verify"):
+        return
+    v = (ctx.verify_result or {}).get(ctx.device_ips[0]) or {}
+    stop = (v.get("plan_checks") or {}).get("stop") or {}
+    if v:
+        words = ("; ".join((v.get("issues") or []) + (v.get("unreadable") or []))
+                 or stop.get("words")
+                 or "every check held, and the configuration is as it was before")
+    else:
+        words = "verify recorded no result" + (f" ({ctx.error})" if ctx.error else "")
+    more = {}
+    if started:
+        now = time.time()
+        # ``began`` is the key run_stepper.from_record reads, ``took_s`` the one the card's
+        # stepper prefers (`fixit.progress.lines`): Verifying's own seconds, stage 8 alone.
+        more = {"started": _iso(started), "began": _iso(started),
+                "took_s": round(now - float(started), 1)}
+    _step(rec, "verify", "ok" if v.get("ok") is True else "fail", words,
+          checks=rec.get("verify_checks") or [], **more)
+
+
+def stage_steps(ctx, rec: dict):
+    """The pipeline's stage callback for the run (`PipelineContext.on_stage`): the ``send``
+    step recorded as stage 6 ends (`_send_step`) and the ``verify`` step as stage 8 ends
+    (`_verify_step`, with when it started and its seconds), each before any rollback the
+    stage starts, so the stepper draws Verifying running while verify runs, and Verifying's
+    seconds (since the send: the read after and verify) as its own. Steps recorded here are
+    not recorded again after the run (`run`)."""
+    started = {}
+
+    def on_stage(stage: str, event: str) -> None:
+        if event == "start":
+            started[stage] = time.time()
+        elif stage == "deploy":
+            _send_step(ctx, rec)
+        elif stage == "verify":
+            _verify_step(ctx, rec, started.get("verify"))
+    return on_stage
 
 
 def _net_zero_after_rollback(ctx, rec: dict, run: CheckRun) -> None:
@@ -1071,17 +1152,10 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
             for s in rec["steps"]):
         _step(rec, "preconditions", "refused", words)
     if outcome != "refused":
-        pushed = (ctx.push_results or {}).get(ctx.device_ips[0]) or {}
-        _step(rec, "send", "ok" if pushed.get("ok") else "fail",
-              ("the plan's lines sent in config mode, never saved" if pushed.get("ok")
-               else f"the send failed: {pushed.get('error') or ctx.error or 'not recorded'}"))
-        v = (ctx.verify_result or {}).get(ctx.device_ips[0]) or {}
-        stop = (v.get("plan_checks") or {}).get("stop") or {}
-        _step(rec, "verify", "ok" if v.get("ok") is True else "fail",
-              "; ".join((v.get("issues") or []) + (v.get("unreadable") or []))
-              or stop.get("words")
-              or "every check held, and the configuration is as it was before",
-              checks=rec.get("verify_checks") or [])
+        # Recorded as each stage ended (`stage_steps`); here only what it did not record (a
+        # send whose result is absent, a verify that never started), as before.
+        _send_step(ctx, rec, absent=True)
+        _verify_step(ctx, rec)
         if ctx.rollback_performed:
             o = (ctx.rollback_outcome or {}).get(ctx.device_ips[0]) or {}
             _step(rec, "rollback", "ok" if o.get("state") in ("restored", "nothing_to_undo")
