@@ -65,7 +65,14 @@
 <div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body, nmas:privileged from:body{% if p.done.running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of this incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is open is not known; what could be read is drawn below. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
-{%- elif p.only_log %}
+{%- endif %}
+{#- R5 (board R5, approved 2026-11-15): the page is one card, the incident's (drawn by
+    `_fixit_section.html`, which every fix-it post draws again in place): its title, impact and
+    status, one action and one link; what follows is handed to it for its ONE Details: these
+    notes, the header's facts (`page_head`), and the timings, timeline, What's wrong, What
+    Mercury has done, Seen before and The record (`page_details`). Nothing is removed. -#}
+{%- set page_notes %}
+{%- if p.only_log and not p.unreadable %}
 <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<div>This incident is past the newest {{ p.kept }} closed incidents self-healing keeps for {{ p.network }}, so this page is drawn from its step log alone: its triggers and their times are no longer kept.</div></div>
 {%- endif %}
 {%- for f in p.folded_in %}
@@ -74,19 +81,19 @@
 {%- for r in p.related %}
 <div class="notice notice-muted inc-related" role="status">{{ icon('info', 16) }}<div>Related: <a href="{{ url_for('incident_v2.incident', incident_id=r.incident) }}">{{ r.device }}'s incident</a> ({{ r.why }}).</div></div>
 {%- endfor %}
+{%- endset %}
 {%- set it = p.item %}
 {%- set r = it.row %}
 {%- set nets = r.networks or {} %}
-<section class="card inc-head inc-{{ p.state }}" aria-labelledby="inc-title" data-inc-state="{{ p.state }}">
-  <div class="page-head"><div class="page-title">
-    <h1 id="inc-title">{{ p.title }} {{ info('incident') }}</h1>
-    <p class="inc-line"><span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %}{% if p.severity.words %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span>{% endif %} <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
+{%- set page_head %}
+<div class="inc-head inc-{{ p.state }}" data-inc-state="{{ p.state }}">
+    <p class="inc-line">{{ info('incident') }}<span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %}{% if p.severity.words %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span>{% endif %} <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
       {#- A resolved incident's span ends when it ended (a fixed one at its verify, a declined
           one at the decline, a cleared one at its close: `incident_page.ended_at`). -#}
       {%- if p.resolved %} <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
       {%- elif p.opened %} <span>since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
-  </div></div>
-</section>
+</div>
+{%- endset %}
 {%- set fx = r.fix %}
 {#- The incident's own Needs attention action (the GUI review's item 2, C3450), handed to the
     BLUF as its one next action where the BLUF's fix is the item's (`bluf.fix.kind` button):
@@ -148,12 +155,7 @@
   {%- if r.clears %}<p class="small att-clears">Its Needs attention item clears when {{ r.clears }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
   {%- endif %}
 {%- endset %}
-{#- The BLUF and the one card (`modules/fixit/section.py`), drawn with no AI call; its posts
-    draw it again in place (routes/fixit_v2.py). -#}
-{%- set x = p.fixit %}
-{%- set answer = {} %}
-{%- set item_state = it.state %}
-{% include "v2/_fixit_section.html" %}
+{%- set page_details %}
 {#- Timings, collapsed (R2): the four recorded times, TIME TO REPAIR and one line per
     attempt. -#}
 <details class="card inc-timings" id="inc-timings" data-keep="inc-timings-{{ p.id }}">
@@ -313,6 +315,17 @@
         parameter hash with the attempt it is the same as. -#}
     {%- if fxp.steps is defined and not fxp.hash and (fxp.refused_hash or fxp.steps | selectattr('repeat') | list) %}<dt>The refused plan</dt><dd>{% if fxp.refused_hash %}<span class="mono">{{ fxp.refused_hash }}</span> · {% endif %}proposal {{ fxp.id }}{% for st in fxp.steps %}{% if st.repeat %} · step {{ st.n }}'s parameter hash <span class="mono">{{ st.repeat.params_hash }}</span>, the same as attempt {{ st.repeat.attempt }}'s{% endif %}{% endfor %}</dd>{% endif %}</dl>
 </details>
+{%- endset %}
+{#- The incident's card (`modules/fixit/section.py`), drawn with no AI call; its posts draw it
+    again in place (routes/fixit_v2.py), the page's parts above handed to it for its Details. -#}
+{%- set x = p.fixit %}
+{%- set answer = {} %}
+{%- set item_state = it.state %}
+{%- set page_title = p.title %}
+{%- set page_sev = p.severity %}
+{%- set page_drill = p.drill %}
+{%- set page_state_word = p.state %}
+{% include "v2/_fixit_section.html" %}
 </div>
 {%- endif %}
 {%- endfilter %}

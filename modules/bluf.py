@@ -157,6 +157,30 @@ HOLD_LINES = {
     13: "This kind of fix is one a person approves; self-healing proposes it and sends nothing.",
     14: "Self-healing is halted on {device}'s network after a fix that didn't verify.",
 }
+#: One problem on several devices, held as one batch (board R5's batch card, approved
+#: 2026-11-15: "2 hosts offline (host1, host3); the rest of the network is unaffected"): its
+#: impact in one line, by condition, from the problems' own fields; ``{n}`` counts them and ``{affected}``
+#: lists each one's. A condition not here says its devices' impacts as they are (`batch_impact`).
+BATCH_IMPACT = {
+    "err_disabled": "{n} hosts offline ({affected}); the rest of the network is unaffected",
+}
+
+
+def batch_impact(problems: list, impacts: list) -> str:
+    """The impact of a batch holding *problems* (each a `problem.Problem`'s dict) whose own
+    impacts are *impacts*: the condition's `BATCH_IMPACT` when every problem is that condition
+    and names who it affects, else the one impact they all share, else each distinct one, in
+    order, joined."""
+    conds = {(p or {}).get("condition") for p in problems}
+    affected = [(p or {}).get("affected") or "" for p in problems]
+    if problems and len(conds) == 1 and all(affected):
+        line = BATCH_IMPACT.get(next(iter(conds)))
+        if line:
+            return line.format(n=len(problems), affected=", ".join(affected))
+    distinct = list(dict.fromkeys(i for i in impacts if i))
+    return "; ".join(distinct)
+
+
 #: Said after a hold's line when the fix shown is not one the hold stops.
 NOT_BLOCKING = "This doesn't block the fix below."
 #: Said when the hold is what refused a step of the fix shown at its preflight.
@@ -232,6 +256,25 @@ def severity(condition: str, *, outage_measured: bool = False) -> str:
 def _fmt(text: str, problem: P.Problem) -> str:
     fields = problem.as_dict()
     fields["device"] = fields["device"] or "the device"
+    return text.format(**fields)
+
+
+#: What a verified fix gives back, by condition (board R5's screen 5, approved 2026-11-15:
+#: "Fixed at 14:29, verified; <affected> is back online"): the impact's other side, from the problem's
+#: own fields. A condition not here says only that it was fixed and verified (`restored`).
+RESTORED = {
+    "err_disabled": "{affected} is back online",
+    "telemetry_lost": "Mercury sees {device}'s interfaces and CPU again",
+}
+
+
+def restored(problem) -> str:
+    """What the fix of *problem* (a `problem.Problem`, or its dict) gave back (`RESTORED`), or
+    ``""`` when its condition has no words or the problem lacks a field they name."""
+    fields = problem.as_dict() if hasattr(problem, "as_dict") else dict(problem or {})
+    text = RESTORED.get(fields.get("condition") or "")
+    if not text or any(not fields.get(name) for name in placeholders(text)):
+        return ""
     return text.format(**fields)
 
 

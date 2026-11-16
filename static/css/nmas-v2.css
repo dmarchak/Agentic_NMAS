@@ -3503,6 +3503,43 @@ dialog.modal.modal-wide { width: min(46rem, calc(100vw - 32px)); }
    one line per attempt at its outcome's colour, the STOP, a proposal's flag, and the controls
    in a row that wraps. Nothing scrolls inside it (the board's 1920x1080 rule). */
 .fixit { gap: 8px; }
+/* R5's incident page (board R5, approved 2026-11-15, screens 3 to 6; the board's NEW classes,
+   carried unchanged): the plan card's labelled lines, Modify or deny as one link opening a
+   two-item menu, a long plan's steps each a disclosure, the Customize form, and inside an
+   incident's Details its parts as sections, never cards within a card. */
+.simple-plan { margin: 2px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.simple-plan > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 12px;
+  align-items: baseline; }
+.simple-plan dt { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.simple-plan dd { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.simple-plan code, .simple-step code { font-family: var(--mono); font-size: 13px; }
+.simple-step { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+details.simple-step { white-space: normal; }
+details.simple-step > summary { cursor: pointer; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+details.simple-step[open] > summary { margin-bottom: 4px; }
+.simple-menu > summary { list-style: none; cursor: pointer; color: var(--accent);
+  text-decoration: underline; font-size: 14px; }
+.simple-menu > summary::-webkit-details-marker { display: none; }
+.simple-menu:not([open]) > .menu { display: none; }
+.simple-menu > .menu { left: 0; right: auto; }
+.simple-form { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.simple-form fieldset { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px;
+  margin: 0; }
+.simple-form legend { font-weight: 600; padding: 0 4px; }
+.simple-form input[type="text"] { font: inherit; padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); width: 100%; box-sizing: border-box; background: var(--surface);
+  color: var(--ink); }
+.simple-details .card { box-shadow: none; border: 0; border-top: 1px solid var(--line-2);
+  border-radius: 0; padding: 8px 0 0; margin: 8px 0 0; background: none; }
+.simple-details > .fixit { display: flex; flex-direction: column; margin-top: 8px; }
+.inc-plan .bluf-refused { margin: 0; }
+@media (max-width: 640px) {
+  .simple-plan > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .simple-plan dd, .simple-step, details.simple-step > summary { white-space: normal; overflow: visible; }
+}
 .fixit p, .fixit ul, .fixit ol { margin: 0; overflow-wrap: anywhere; }
 .fixit-h { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .fixit-attempts { padding-left: 22px; display: flex; flex-direction: column; gap: 4px;
@@ -3660,4 +3697,43 @@ dialog.modal::backdrop { background: var(--scrim); }
 .att-bluf .bluf-line dd { font-size: 14px; }
 @media (max-width: 640px) {
   .bluf-line { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
+
+/* R5, simple by default (docs/MERCURY_CHARTER.md; board R5, docs/boards/r5-simple-by-default.html,
+   approved 2026-11-15): a card shows a title, its impact and its status (one line each), one
+   primary action with at most one secondary link, and ONE Details disclosure holding the rest
+   (tests/r5_budget.py holds the budgets). The board's own rules, carried unchanged. */
+.simple { gap: 6px; }
+.simple-title { margin: 0; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.simple-title code { font-size: 15px; font-weight: 500; }
+h1.simple-title { font-size: 22px; }
+.simple-impact, .simple-status { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.simple-impact { color: var(--ink-2); }
+.simple-status { color: var(--ink); }
+.simple-status.simple-ai { color: var(--accent); }
+.simple-status.simple-ok { color: var(--ok); font-weight: 500; }
+.simple-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 4px; }
+.simple-acts .bluf-link { color: var(--accent); text-decoration: underline; }
+.simple-details { border-top: 1px solid var(--line-2); margin-top: 6px; padding-top: 6px; }
+.simple-details > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2);
+  min-height: 24px; }
+.simple-details[open] > summary { margin-bottom: 8px; }
+.simple-sec { margin: 0 0 12px; }
+.simple-sec h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; }
+.simple-sec p, .simple-sec ul, .simple-sec ol { margin: 0; font-size: 13px; }
+.simple-held { margin: 0; }
+.simple-progress { color: var(--ink-2); }
+.att-line { row-gap: 2px; }
+.att-line .att-status { grid-column: 2 / -1; order: 1; min-width: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--ink); }
+.inc-row .simple-impact, .inc-row .simple-status { font-size: 13px; display: block; }
+.inc-search > summary { cursor: pointer; color: var(--accent); font-size: 13px; list-style: none; }
+.inc-search > summary::-webkit-details-marker { display: none; }
+@media (max-width: 640px) {
+  .simple-title, .simple-impact, .simple-status { white-space: normal; overflow: visible; }
+  h1.simple-title { font-size: 20px; }
+  .att-line .att-status { grid-column: 1 / -1; white-space: normal; }
 }

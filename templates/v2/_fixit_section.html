@@ -50,9 +50,14 @@
 {%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most {{ A.calls }} calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
 {#- A press that posts, from the button itself (busy on itself until its answer: `op-idle`,
     `op-busy`), the hidden fields beside it and *know*'s optional box included. -#}
-{%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure') -%}
-<span class="bluf-form">{% if name %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% if pid %}<input type="hidden" name="proposal" value="{{ pid }}">{% endif %}<input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}"><span class="op-act">{% if aiv %}{{ ai.mark(aiv) }} {% endif %}<button type="button" class="btn btn-small{{ ' btn-primary' if primary }}" data-op="fixit-troubleshoot" hx-post="{{ href }}" hx-include="closest .bluf-form" hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{{ title }}"{% if aiv %}{{ ai.attrs(aiv, 'configure') }}{% else %}{{ gate(kind) }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', section, compact=True, op=op) }}</span>
-{%- if know %}<details class="small bluf-know" data-keep="fixit-know-{{ x.id }}"><summary>Add what you know first (optional)</summary><label class="heal-field" for="fixit-know-{{ x.id }}">What do you know that Mercury doesn't? (masked before it is sent, and kept with the answer)<textarea id="fixit-know-{{ x.id }}" name="text" rows="3" maxlength="2000" autocomplete="off"{% if aiv %}{{ ai.input_attrs(aiv) }}{% endif %}></textarea></label></details>{% endif %}</span>
+{%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure', include='') -%}
+<span class="bluf-form">{% if name %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% if pid %}<input type="hidden" name="proposal" value="{{ pid }}">{% endif %}<input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}"><span class="op-act">{% if aiv %}{{ ai.mark(aiv) }} {% endif %}<button type="button" class="btn btn-small{{ ' btn-primary' if primary }}" data-op="fixit-troubleshoot" hx-post="{{ href }}" hx-include="closest .bluf-form{{ ', ' ~ include if include }}" hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{{ title }}"{% if aiv %}{{ ai.attrs(aiv, 'configure') }}{% else %}{{ gate(kind) }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', section, compact=True, op=op) }}</span>
+{%- if know %}{{ know_box(aiv) }}{% endif %}</span>
+{%- endmacro -%}
+{#- What a person knows that Mercury doesn't, sent with Start (R5: a form field is never in the
+    default view, so the box is in the card's Details and Start includes it by its id). -#}
+{%- macro know_box(aiv=none) -%}
+<details class="small bluf-know" data-keep="fixit-know-{{ x.id }}"><summary>Add what you know first (optional)</summary><label class="heal-field" for="fixit-know-{{ x.id }}">What do you know that Mercury doesn't? (masked before it is sent, and kept with the answer)<textarea id="fixit-know-{{ x.id }}" name="text" rows="3" maxlength="2000" autocomplete="off"{% if aiv %}{{ ai.input_attrs(aiv) }}{% endif %}></textarea></label></details>
 {%- endmacro -%}
 {#- A choice that opens its modal, anchored to it, gated as the press its modal holds. -#}
 {%- macro opener(mid, words, section, op, title, cls='btn btn-small') -%}
@@ -88,34 +93,45 @@
 {%- endmacro -%}
 {%- set ct = ai_control('fixit_troubleshoot') -%}
 {%- set acting = S not in ('none', 'resolved') -%}
-<div class="inc-fixit" id="inc-fixit" data-state="{{ S }}">
-<section class="card inc-bluf" id="inc-bluf" aria-label="The bottom line" data-inc-state="{{ x.page_state }}" data-fix="{{ F.kind or 'none' }}"{% if B.severity %} data-severity="{{ B.severity }}"{% endif %}{% if item_state is defined %} data-item="{{ item_state }}"{% endif %}>
-  <dl class="bluf">
-    <div class="bluf-line" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %}><dt>What happened</dt><dd>{{ (B.what or '') | times }}{% if B.since %} <span class="muted small">since {{ clock(B.since) }}</span>{% endif %}{% if not B.what %}<span class="muted">Not said: this incident's record names nothing that happened.</span>{% endif %}</dd></div>
-    <div class="bluf-line" data-bluf="impact"><dt>Impact</dt><dd>{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</dd></div>
-    <div class="bluf-line" data-bluf="fix"><dt>How to fix it</dt><dd>
+{#- `data-live-part` (item 2, the operator, 2026-11-15): every press here answers by drawing this
+    part again in place (`hx-target="#inc-fixit"`), inside the page's live region; marked so, the
+    answer is remembered as the server's drawing of it (static/js/nmas_v2.js, `captureSwapped`),
+    so the region's next live redraw (the job's end, an approval's run) brings it to the state
+    drawn then. Unmarked, it was kept as the page's own and never redrawn until a reload. -#}
+<div class="inc-fixit" id="inc-fixit" data-state="{{ S }}" data-live-part>
+{#- MERCURY_CHARTER R5, simple by default (board R5, docs/boards/simple-simple-by-default.html,
+    approved 2026-11-15, screens 3 to 6): the incident is ONE card (`data-card="incident"`): its
+    title, its impact (the severity a label at its start), its status (`x.card`: the AI's live
+    step after it while it investigates; "Fixed at …, verified; … is back online." once fixed),
+    one primary action and at most one secondary link (Hand over…); everything else (the header's
+    facts, the evidence, the troubleshooting record, the timings, What's wrong, What Mercury has
+    done and The record) under its ONE Details. A plan waiting on Approve is its own card under
+    it (`data-card="plan"`: a person approves only what they can read), and the offer to save a
+    verified fix another (`_saved_plans_saves.html`). tests/r5_budget.py holds the budgets. -#}
+{%- set C = x.card or {} %}
+{%- set TITLE = (page_title if page_title is defined and page_title else '') or B.what or ('Incident ' ~ x.id) %}
+{%- set start_offered = F.kind == 'start' and ((ACT.start or {}).offered or (ACT.start is not defined and A.offered)) %}
+{%- set SEV = page_sev if page_sev is defined and page_sev else ({'words': {'critical': 'Critical', 'warning': 'Warning', 'info': 'Info'}.get(B.severity or '', ''), 'kind': {'critical': 'danger', 'warning': 'warn', 'info': 'info'}.get(B.severity or '', 'neutral')}) %}
+<section class="card inc-bluf simple" id="inc-bluf" data-card="incident" aria-labelledby="inc-title" data-inc-state="{{ x.page_state }}" data-fix="{{ F.kind or 'none' }}"{% if B.severity %} data-severity="{{ B.severity }}"{% endif %}{% if item_state is defined %} data-item="{{ item_state }}"{% endif %}>
+  <h1 class="simple-title" id="inc-title" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %} title="{{ TITLE }}">{{ TITLE }}</h1>
+  {%- if C.kind == 'ok' %}
+  <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
+  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}</p>{% endif %}
+  {%- else %}
+  <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</p>
+  <p class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}" data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' %} {% with iid=x.id, network=x.network, step=C.step %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% if S == 'running' %} <a href="{{ run_href(x.device, x.network, x.stop.run) }}">Open the run</a>{% endif %}</p>
+  {%- endif %}
       {#- Which control the fix names: its kind, and for a "button" the action whose route it
           names (Ask the AI again posts, so it is pressed, never followed as a link). "item"
-          is the page's (`incident_page.page`): the incident's own Needs attention action. -#}
+          is the page's (`incident_page.page`): the incident's own Needs attention action. A
+          plan to approve is its own card, below, Approve on it. -#}
       {%- set again = (ACT.ask_again or {}) %}
       {%- set is_again = F.kind == 'button' and again.offered and (F.href == u_again or F.label == 'Ask the AI again') %}
-      {%- if F.label and F.kind == 'none' %}<p class="bluf-fix-words">{{ F.label | times }}</p>{% endif %}
-      <div class="bluf-acts" role="group" aria-label="The next action">
+      <div class="bluf-acts simple-acts" data-bluf="fix" role="group" aria-label="The next action">
       {%- if F.kind == 'approve' and NP %}
-        {%- if (ACT.approve or {}).offered and NP.approvable %}
-        {#- Approve, THE confirm pattern (tests/test_v2_one_confirm.py): its route named here, the
-            plan's hash it binds carried with the press, busy on itself, gated confirm. -#}
-        <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs the plan below exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span>
-        {#- C3725: each collector step's session, which the plan's hash binds, as read when the
-            plan was proposed (inside its job) and kept with it: drawn from that record, never
-            read on a page draw; Approve reads it again and refuses when it moved. -#}
-        {%- for s in NP.sessions or [] %}{% if s.session %}<span class="bluf-session small" data-session-step="{{ s.n }}" title="Read {{ s.at }} by the close helper's dry run, which closed nothing{% if s.dry_run %}: {{ s.dry_run }}{% endif %}. Approve reads it again and refuses if it moved">Step {{ s.n }} closes the collector's session from {{ x.device }}'s end, <span class="mono">{{ s.session }}</span>{% if s.local %}, to <span class="mono">{{ s.local }}</span>{% endif %}{% if s.quiet_s is not none %}, quiet for {{ s.quiet_s | int }} s{% endif %}.</span>{% endif %}{% endfor %}</span>
-        {%- endif %}
-        {%- if (ACT.modify or {}).offered %}{{ opener('fixit-modify-' ~ x.id, 'Modify…', 'modify', 'Modify', "Opens a box for what to change: the AI returns a revised plan with a new hash, and nothing runs") }}{% endif %}
-        {%- if (ACT.deny or {}).offered %}{{ opener('fixit-deny-' ~ x.id, 'Deny…', 'deny', 'Deny', "Opens Deny: an optional reason, recorded; nothing runs and the incident stays open") }}{% endif %}
       {%- elif F.kind == 'start' %}
-        {%- if (ACT.start or {}).offered or (ACT.start is not defined and A.offered) %}
-        {{ press(u_start, 'Start AI troubleshooting', 'Starting…', 'start', 'Start AI troubleshooting', "One investigation: at most two AI calls, at most " ~ (A.worst or 'its cap') ~ "; the plan it returns runs only when you approve it by its hash", primary=True, aiv=ct, know=True) }}
+        {%- if start_offered %}
+        {{ press(u_start, 'Start AI troubleshooting', 'Starting…', 'start', 'Start AI troubleshooting', "One investigation: at most two AI calls, at most " ~ (A.worst or 'its cap') ~ "; the plan it returns runs only when you approve it by its hash", primary=True, aiv=ct, include='#fixit-know-' ~ x.id) }}
         {%- endif %}
       {%- elif F.kind == 'hand_over' %}
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='btn btn-small btn-primary') }}
@@ -127,8 +143,6 @@
         <span class="op-act"><a class="btn btn-small btn-primary" data-op="show-commands" data-fix-read="{{ F.read }}" href="{{ F.href }}" title="Opens Show commands on {{ x.device }} with {{ F.read }} in its first row: you check it and press Run there; nothing is read until you do">Run <span class="mono">{{ F.read }}</span> in Show commands</a>{{ how('show-commands', compact=True, op='Show commands') }}</span>
       {%- elif F.kind in ('item', 'button') and item_action is defined and item_action | trim %}{{ item_action }}
       {%- elif F.kind == 'button' %}<p class="bluf-fix-words">{{ F.label | times }}</p>
-      {%- elif not F.label %}
-        <p class="bluf-fix-words muted">{% if x.page_state == 'needs_person' %}No action is offered on this page: Fixing it, below, says why.{% else %}Nothing to press: no person is needed.{% endif %}</p>
       {%- endif %}
       {%- if again.offered and not is_again and F.kind != 'start' %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=(F.kind == 'none' and not F.label), aiv=ct) }}
@@ -137,28 +151,29 @@
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='bluf-link') }}
       {%- endif %}
       </div>
-      {%- if F.kind == 'approve' and NP and not ((ACT.approve or {}).offered and NP.approvable) %}
-      {#- Why, once: a refused step says its own why in the plan below, and the status line the
-          plan's; here only that Approve is not offered and where the why is. -#}
-      <p class="small bluf-refused" data-refused="approve">Approve isn't offered: {% if NP.steps | selectattr('preflight.ok', 'false') | list %}a step was refused at its preflight (the plan, below, says why){% else %}{{ NP.why_refused or (ACT.approve or {}).refused or 'the plan cannot be held to its hash' }}{% endif %}.</p>
-      {%- endif %}
-      {%- if F.kind in ('start', 'approve') or (ACT.ask_again or {}).offered %}{{ ai.reason(ct) }}{% endif %}
-      {%- if F.kind == 'start' and A.worst %}<p class="small muted bluf-cost">The AI: {{ ai_cost(A) }}.</p>{% endif %}
-      {#- The answer to a press, under the controls, in space kept for it. -#}
+      {%- if start_offered or (ACT.ask_again or {}).offered %}{{ ai.reason(ct) }}{% endif %}
+      {#- The answer to a press, under the controls, in space kept for it. A refusal, or a done
+          answer with a warning (a hand-over not sent, with Send again), is held through a live
+          redraw (`data-holds-live`, C2001) until Show it now: the state drawn later cannot say
+          it. A plain done answer gives way to the state the next redraw draws, which says it. -#}
       <div class="bluf-answer" aria-live="polite">
       {%- if answer and answer.refused %}
-      <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ answer.refused }}</div></div>
+      <div class="notice notice-danger set-result" role="alert" data-holds-live="review">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ answer.refused }}</div></div>
       {%- elif answer and answer.done %}
-      <div class="notice notice-{{ answer.level or 'muted' }} set-result" role="status">{{ icon('tick' if (answer.level or 'muted') == 'muted' else 'warn', 16) }}<div>{{ answer.done }}
+      <div class="notice notice-{{ answer.level or 'muted' }} set-result" role="status"{% if (answer.level or 'muted') != 'muted' %} data-holds-live="review"{% endif %}>{{ icon('tick' if (answer.level or 'muted') == 'muted' else 'warn', 16) }}<div>{{ answer.done }}
         {%- if answer.resend %}
         <span class="op-act" id="fixit-resend-{{ x.id }}">{% for t in answer.resend_teams %}<input type="hidden" name="team" value="{{ t }}">{% endfor %}<button type="button" class="btn btn-small" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.handover_send', incident_id=x.id, version=answer.resend, list=x.network) }}" hx-include="#fixit-resend-{{ x.id }}" hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="Sends the kept write-up {{ answer.resend }} again to the same teams; nothing new is kept"{{ gate('configure') }}><span class="op-idle">Send again</span><span class="op-busy">Sending…</span></button>{{ how('fixit-troubleshoot', 'hand-over', compact=True, op='a hand-over') }}</span>
         {%- endif %}</div></div>
       {{ ai.typed_masked(answer.typed_masked) }}
       {%- endif %}
       </div>
-    </dd></div>
-  </dl>
-</section>
+  {#- The card's ONE Details (R5): everything else, nothing removed (board R5's screen 6). -#}
+  <details class="simple-details" id="inc-details" data-card-details data-keep="inc-details-{{ x.id }}"><summary>Details</summary>
+  {%- if page_head is defined %}{{ page_head }}{% endif %}
+  {%- if page_notes is defined %}{{ page_notes }}{% endif %}
+  {%- if B.since %}<p class="small muted inc-since">Began {{ clock(B.since) }}.</p>{% endif %}
+  {%- if start_offered %}{{ know_box(ct) }}{% if A.worst %}<p class="small muted bluf-cost">The AI: {{ ai_cost(A) }}.</p>{% endif %}{% endif %}
+  {%- if S == 'investigating' and A.estimate %}<p class="small muted bluf-cost">This investigation: about {{ A.estimate }}, at most {{ A.worst }}.</p>{% endif %}
 {#- The evidence's ONE home (C3729; R2: "collapsed under the card"), under the bottom line: the
     signals the problem was classified from (R4), and what the record keeps besides: the
     triggers kept of those seen, the detect pass's reads of the device, the devices attached.
@@ -166,7 +181,7 @@
 {%- set K = B.kept or {} %}
 {%- set K_more = (K.seen or 0) > (K.triggers or 0) %}
 {%- if B.evidence or K.reads or K.members or K_more %}
-<details class="card bluf-evidence inc-evidence" id="inc-evidence" data-keep="bluf-evidence-{{ x.id }}">
+<details class="bluf-evidence inc-evidence" id="inc-evidence" data-keep="bluf-evidence-{{ x.id }}">
   <summary>Evidence ({{ (B.evidence or []) | length }})</summary>
   <ul class="set-list small">
     {%- for ev in B.evidence or [] %}<li data-kind="{{ ev.kind }}">{{ ev.words | times }}{% if ev.at %} <span class="muted">{{ clock(ev.at) }}</span>{% endif %}</li>{% endfor %}
@@ -176,14 +191,15 @@
   </ul>
 </details>
 {%- endif %}
-{#- The ONE card: What to do and AI troubleshooting together (R2). Its state is the page's
-    one state (`x.page_state`: `incident_page.status`, asked with this section's own state). -#}
-<section class="card fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}" data-inc-state="{{ x.page_state }}">
+{#- What to do and AI troubleshooting together (R2), now under the incident's Details (R5): its
+    status is the card's own line, above. Its state is the page's one state (`x.page_state`:
+    `incident_page.status`, asked with this section's own state). -#}
+<div class="fixit fixit-{{ S }}" id="inc-ai" aria-labelledby="h-inc-ai" data-state="{{ S }}" data-inc-state="{{ x.page_state }}">
   <div class="card-head"><h2 id="h-inc-ai">Fixing it</h2>{% if NP or OLD or x.attempts or A.offered %}{{ badge('beta', 'muted', title="The AI's answers are not measured on recorded cases yet; a person approves every fix by its hash") }}{% endif %}</div>
   {%- if x.unreadable %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's troubleshooting record couldn't be read:</strong> {{ x.unreadable }}. Nothing is written to it until it can be; what else could be read is drawn below.</div></div>
   {%- endif %}
-  <p class="fixit-status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}>{% if x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'running' %} <a href="{{ run_href(x.device, x.network, x.stop.run) }}">Open the run</a>{% endif %}</p>
+  {%- if C.kind == 'ok' or (C.status and C.status != x.status) %}<p class="small fixit-said-record" data-record-status>{{ switch_linked(x.status) if x.status else legacy_status() | times }}</p>{% endif %}
   {%- if x.composed and S not in ('none', 'resolved') and not (S == 'proposed' and OLD and OLD.operation) %}<p class="fixit-said" data-said="{{ S }}">{{ legacy_status() | times }}</p>{% endif %}
   {%- if S in ('none', 'resolved') and x.status %}<p class="small muted fixit-ai-said">{{ ai_said() }}</p>{% endif %}
   {%- if F.kind == 'item' and item_more is defined and item_more | trim %}{{ item_more }}{% endif %}
@@ -193,9 +209,10 @@
   {#- A section built before ``cap``: why the AI is not offered (a cap, or the mode off). -#}
   <p class="small fixit-cap" data-cap="ai">{{ A.refused }} (Settings › Installation › AI, AI troubleshooting).</p>
   {%- endif %}
+  {%- set plan_block %}
   {%- if NP %}
   {#- The plan: each step with its preflight; a refused step says why, and Approve is then
-      not offered (above). The hashes are the record's, one level down. -#}
+      not offered (on the plan's card). The hashes are the record's, one level down. -#}
   <div class="fixit-plan" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable else 'no' }}">
     {%- if NP.found %}<p><strong>What the AI found:</strong> {{ NP.found | times }}</p>{% endif %}
     <ol class="fixit-plan-items">
@@ -216,8 +233,13 @@
       <dl class="tl-record">{% for label, words in NP.bound %}<dt>{{ label }}</dt><dd>{{ words }}</dd>{% endfor %}</dl>
     </details>
     {%- endif %}
+    {#- C3725: each collector step's session, which the plan's hash binds, as read when the
+        plan was proposed (inside its job) and kept with it: drawn from that record, never
+        read on a page draw; Approve reads it again and refuses when it moved. -#}
+    {%- for s in NP.sessions or [] %}{% if s.session %}<p class="bluf-session small" data-session-step="{{ s.n }}" title="Read {{ s.at }} by the close helper's dry run, which closed nothing{% if s.dry_run %}: {{ s.dry_run }}{% endif %}. Approve reads it again and refuses if it moved">Step {{ s.n }} closes the collector's session from {{ x.device }}'s end, <span class="mono">{{ s.session }}</span>{% if s.local %}, to <span class="mono">{{ s.local }}</span>{% endif %}{% if s.quiet_s is not none %}, quiet for {{ s.quiet_s | int }} s{% endif %}.</p>{% endif %}{% endfor %}
   </div>
   {%- endif %}
+  {%- endset %}
   {%- if S == 'handed_over' %}{% set hx = x.handover %}<p class="small fixit-handed">Handed over at {{ clock(hx.at) }} by {{ (hx.by or 'nobody recorded') | people }} to {{ hx.teams | join(', ') if hx.teams else 'no team (kept, sent to nobody)' }} · <a href="{{ url_for('fixit_v2.handover_page', incident_id=x.id, version=hx.version, list=x.network) }}">Open the write-up</a></p>{% endif %}
 
   {#- Everything else, collapsed: one level down, never deeper than two. -#}
@@ -283,7 +305,9 @@
       with content: the plan's when its line kept one, else `x.ai_answer` (a gap, no fix, a
       plan refused); open when there is no plan to read first. A part resting on a citation
       Mercury could not find is marked in words naming it. An answer with nothing to draw is
-      one line of its calls, with no rating. -#}
+      one line of its calls, with no rating. With a plan to approve it is the plan card's
+      Details' (board R5's screen 4), else here. -#}
+  {%- set why_block %}
   {%- set PO = NP or OLD %}
   {%- set POsh = ((PO.shown if PO and PO.shown is defined else none) or {}) %}
   {%- set AAsh = ((x.ai_answer.shown if x.ai_answer and x.ai_answer.shown is defined else none) or {}) %}
@@ -325,6 +349,8 @@
   {%- if PP.superseded or PP.previous %}<p class="small muted" data-answer-label>Previous answer{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}: {{ PP.superseded }}{% endif %}</p>{% endif %}
   <p class="small muted fixit-ai-calls" data-ai-nothing>{{ PP.calls | length }} AI call{{ 's' if PP.calls | length != 1 }}{% if PP.ai_usd %}, {{ PP.ai_usd }}{% endif %}{% if PP.prompt %} · prompt {{ PP.prompt }}{% endif %} · <a href="{{ url_for('v2.history_page', call=PP.calls[-1]) }}">the call on History</a></p>
   {%- endif %}
+  {%- endset %}
+  {%- if not NP %}{{ why_block }}{% endif %}
   {%- if S != 'none' and T %}
   <details class="fixit-more" data-keep="fixit-costs-{{ x.id }}" data-more="costs">
     <summary>Costs</summary>
@@ -377,8 +403,78 @@
     {%- endfor %}
   </details>
   {%- endif %}
-  {%- include "v2/_saved_plans_slot.html" %}
+</div>
+  {%- if page_details is defined %}{{ page_details }}{% endif %}
+  </details>
 </section>
+{#- The plan waiting on Approve, its own card under the incident (board R5's screen 4, approved
+    2026-11-15: a person approves only what they can read, so its steps are never behind
+    Details): for one command plan its exact lines as the title, then "Checks first" and "Then
+    verifies" with the connect bound as derived for this port (`fixit.plan.lines_of`); for more
+    steps one line each, and past three (the operator's item 3: "collapse only long plans, and
+    then Approve stays disabled until each step has been opened") each step collapsed and
+    Approve disabled until every one was opened (static/js/nmas_v2.js, `planStepOpened`).
+    Approve is THE confirm pattern (tests/test_v2_one_confirm.py): its route named here, the
+    plan's hash carried with the press, busy on itself, gated confirm. Modify and Deny are one
+    link opening a two-item menu, each its modal (below). Each step's preflight, the hash and
+    what it binds, and the AI's reasoning are the card's Details. -#}
+{%- if NP %}
+{%- set steps = NP.steps or [] %}
+{%- set long = steps | length > 3 %}
+{%- set L = (steps[0].lines if steps | length == 1 and steps[0].lines else none) %}
+{%- set approve_ok = (ACT.approve or {}).offered and NP.approvable %}
+<section class="card fixit simple inc-plan" id="inc-plan" data-card="plan" aria-labelledby="plan-title" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable else 'no' }}"{% if not L %} data-card-items="{{ steps | length }}"{% endif %}>
+  {%- if L %}
+  <h2 class="simple-title" id="plan-title" title="{{ steps[0].words }}">The plan: on {{ x.device }}, in config mode, never saved: {% for l in L.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</h2>
+  <dl class="simple-plan">
+    {%- if L.checks %}<div><dt>Checks first</dt><dd>{{ L.checks | join(' · ') }}</dd></div>{% endif %}
+    {%- if L.verify %}<div><dt>Then verifies</dt><dd>{% for v in L.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
+  </dl>
+  {%- else %}
+  <h2 class="simple-title" id="plan-title">The plan: {{ steps | length }} step{{ '' if steps | length == 1 else 's' }} on {{ x.device }}</h2>
+  {%- for st in steps %}
+  {%- set lines = st.lines or {} %}
+  {%- if long %}
+  <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ st.n }}: {{ st.words | times }}</summary>
+    {%- if lines.program %}<p class="small">Sends, in config mode, never saved: {% for l in lines.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- if lines.checks %}<p class="small">Checks first: {{ lines.checks | join(' · ') }}</p>{% endif %}
+    {%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after %} for {{ v.after }} s{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+    <p class="small muted">{{ st.params }}</p>
+  </details>
+  {%- else %}
+  <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ st.n }}: {{ st.words | times }}{% if lines.program %}: {% for l in lines.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}{% endif %}</p>
+  {%- endif %}
+  {%- endfor %}
+  {%- endif %}
+  <div class="simple-acts">
+    {%- if approve_ok %}
+    <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{% if long %}Open each step first: Approve waits until every step has been opened. {% endif %}Runs this plan exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{% if long %} disabled data-needs-steps{% endif %}{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span></span>
+    {%- endif %}
+    {%- set m_ok = (ACT.modify or {}).offered %}
+    {%- set d_ok = (ACT.deny or {}).offered %}
+    {%- if m_ok or d_ok %}
+    <details class="simple-menu menu-wrap" data-keep="fixit-plan-menu-{{ x.id }}"><summary role="button">{{ 'Modify or deny…' if m_ok and d_ok else ('Modify…' if m_ok else 'Deny…') }}</summary>
+      <div class="menu" role="menu">
+        {%- if m_ok %}<button type="button" class="menu-item fixit-choice" role="menuitem" data-op="fixit-troubleshoot" data-modal-open="fixit-modify-{{ x.id }}" aria-haspopup="dialog" aria-controls="fixit-modify-{{ x.id }}" title="Opens a box for what to change: the AI returns a revised plan with a new hash, and nothing runs"{{ gate('configure') }}>Modify…</button>{{ how('fixit-troubleshoot', 'modify', compact=True, op='Modify') }}{% endif %}
+        {%- if d_ok %}<button type="button" class="menu-item fixit-choice" role="menuitem" data-op="fixit-troubleshoot" data-modal-open="fixit-deny-{{ x.id }}" aria-haspopup="dialog" aria-controls="fixit-deny-{{ x.id }}" title="Opens Deny: an optional reason, recorded; nothing runs and the incident stays open"{{ gate('configure') }}>Deny…</button>{{ how('fixit-troubleshoot', 'deny', compact=True, op='Deny') }}{% endif %}
+      </div>
+    </details>
+    {%- endif %}
+  </div>
+  {%- if not approve_ok %}
+  {#- Why, once: a refused step says its own why in the plan's Details, and the incident's
+      status line the plan's; here only that Approve is not offered and where the why is. -#}
+  <p class="small bluf-refused" data-refused="approve">Approve isn't offered: {% if steps | selectattr('preflight.ok', 'false') | list %}a step was refused at its preflight (Details, below, says why){% else %}{{ NP.why_refused or (ACT.approve or {}).refused or 'the plan cannot be held to its hash' }}{% endif %}.</p>
+  {%- endif %}
+  <details class="simple-details" id="inc-plan-details" data-card-details data-keep="inc-plan-details-{{ x.id }}"><summary>Details</summary>
+    {{ plan_block }}
+    {{ why_block }}
+  </details>
+</section>
+{%- endif %}
+{#- The offer to save a verified fix (board R5's screens 5 and 5b), its own card under the
+    incident, asked in place once the section is drawn (`saved_plans_v2.card`). -#}
+{%- include "v2/_saved_plans_slot.html" %}
 {#- The modals the BLUF's choices open, anchored to them (`_modal.html`). -#}
 {%- if NP and (ACT.modify or {}).offered %}
 {%- call modal('fixit-modify-' ~ x.id, 'Modify the plan') %}

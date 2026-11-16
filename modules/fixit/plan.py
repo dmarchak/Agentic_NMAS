@@ -220,6 +220,25 @@ def _unverified_mark(line: dict, n: int) -> str:
     return ""
 
 
+def lines_of(drawn) -> dict:
+    """A command plan step's preview (`command_plan.drawn`) as the plan card draws it (board R5's
+    screen 4, approved 2026-11-15): ``{"program", "checks", "verify"}``, *program* the exact
+    lines sent (masked, as the preview drew them), *checks* each precondition's name and
+    *verify* each verify item's ``{"name", "within", "within_why", "after"}`` (*within* the
+    connect bound in seconds as the preview derived it for this port, *within_why* how, *after*
+    a quiet wait's seconds). ``{}`` for a step whose preview is no command plan's."""
+    d = drawn if isinstance(drawn, dict) else {}
+    program = [str(x).strip() for x in d.get("program") or [] if str(x).strip()]
+    if not program:
+        return {}
+    return {"program": program,
+            "checks": [str(p.get("name") or "") for p in d.get("preconditions") or []
+                       if isinstance(p, dict) and p.get("name")],
+            "verify": [{"name": str(v.get("name") or ""), "within": v.get("within"),
+                        "within_why": str(v.get("within_why") or ""), "after": v.get("after")}
+                       for v in d.get("verify") or [] if isinstance(v, dict) and v.get("name")]}
+
+
 def preflight(incident, line: dict, *, resolved: float = None, now: float = None,
               sources=None, planned=None) -> dict:
     """*line*'s plan, every step preflighted (the module's docstring), as the section's
@@ -299,7 +318,10 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                                  if got["code"] == "repeat" else {}),
                       # What the step's own preview resolved (a deploy's program and capture),
                       # bound by the plan's hash as the engine's run binds it.
-                      "resolved": dict(got.get("resolved") or {})})
+                      "resolved": dict(got.get("resolved") or {}),
+                      # A command plan's exact lines, its checks and its verify (board R5's
+                      # screen 4: the plan card lists what Approve sends), from its preview.
+                      "lines": lines_of(got.get("drawn"))})
         if not got["ok"] and not refused:
             refused = f"Step {n} would be refused: {got['refused']}"
     # Each collector step's session, as read when the plan was proposed (PE.read_sessions):

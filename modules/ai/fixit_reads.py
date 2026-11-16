@@ -199,6 +199,60 @@ def _own_read(op: str, host: str, scope: dict):
     return EP.health_section(ref, host, {"ok": False}, onset, now, now)
 
 
+#: Mercury's own reads as a person reads their step (board R5's screen 3: "Reading edge1's
+#: err-disable status…"): what each reads, in plain words.
+OWN_STEP = {"intent": "committed intent", "golden": "golden configuration",
+            "neighbours": "neighbours", "history": "History", "logs": "logs",
+            "metrics": "health figures"}
+#: A `show` family's form with plain words of its own; any other form is said by its family's
+#: name (`router_reads.SHOW_FAMILIES`), never by the command's words.
+SHOW_STEP = {("interfaces", "status err-disabled"): "Reading {device}'s err-disable status…",
+             ("errdisable recovery", ""): "Checking errdisable recovery on {device}…"}
+
+
+def step_words(op: str, args: dict) -> str:
+    """The step a read is, as a person reads it on its incident's status line: Mercury's own
+    read-family name and the device, never the raw command or a prompt version."""
+    device = str((args or {}).get("device") or "the device")
+    if op in OWN_STEP:
+        return f"Reading {device}'s {OWN_STEP[op]}…"
+    if op == "collector_sessions":
+        return "Reading the collector's side of the stream…"
+    if op == "stream_series":
+        return "Checking the stream's data in Prometheus…"
+    if op == "show_config":
+        return f"Reading {device}'s configuration…"
+    if op == "ping":
+        return f"Pinging from {device}…"
+    if op == "traceroute":
+        return f"Tracing a route from {device}…"
+    words = " ".join(str((args or {}).get("words") or "").lower().split())
+    best = ("", "")
+    for family, tails in RR.SHOW_FAMILIES:
+        if words == family or words.startswith(family + " "):
+            rest = words[len(family):].strip()
+            if len(family) > len(best[0]):
+                best = (family, rest if rest in tails else "")
+    if best[0]:
+        said = SHOW_STEP.get(best)
+        return said.format(device=device) if said else f"Reading {device}'s {best[0]}…"
+    return f"Reading {device}…"
+
+
+def say_round(verdicts: list) -> None:
+    """A round of reads about to be sent (`read_loop.run_reads`, in the job's own thread): its
+    step said as a person reads it (`troubleshoot_job.say`; nothing outside an investigation's
+    job), the first read's words and how many more run with it."""
+    from modules import troubleshoot_job
+
+    if not verdicts:
+        return
+    first = step_words(verdicts[0].get("op") or "", verdicts[0].get("args") or {})
+    more = len(verdicts) - 1
+    troubleshoot_job.say(first if not more else
+                         f"{first.rstrip('…')} and {more} more read{'s' if more != 1 else ''}…")
+
+
 def run(op: str, args: dict, requests: list, scope: dict):
     """The family's executor: a device's read through the router read set's own executor (the
     reads engine, `router_reads.run`), a local one through Mercury's own read of it, handed
@@ -240,8 +294,9 @@ FAMILY = RL.ReadFamily(
     name=NAME, transport="local", egress_class="device_state",
     operations=tuple(dataclasses.replace(op, transport="cli") for op in RR.COMMAND_OPS)
     + OWN_READS + LOCAL,
-    run=run, words="AI troubleshooting's reads: the device's by Mercury's allowlist, and "
-                   "Mercury's own")
+    run=run, step=say_round,
+    words="AI troubleshooting's reads: the device's by Mercury's allowlist, and "
+          "Mercury's own")
 
 
 def scope_for(network: str, incident, *, actor: str, collector=None, series=None) -> dict:

@@ -93,6 +93,8 @@
               'reveals',
               // An AI call recorded (Phase 8): History's timeline re-reads.
               'ai_calls',
+              // A running AI investigation's step (board R5's screen 3): its status line.
+              'ai_step',
               // A network created or deleted (Settings): the top bar's network picker and
               // Settings' scope bar draw the list again (P7-05).
               'lists',
@@ -1437,6 +1439,29 @@
   function relayPathTrace() { relay('path_trace'); }
   function relayReveals() { relay('reveals'); }
   function relayAiCalls() { relay('ai_calls'); }
+  // Board R5's screen 3: an incident's status line redraws its investigation's live step.
+  function relayAiStep() { relay('ai_step'); }
+
+  /* A LONG PLAN IS READ BEFORE IT IS APPROVED (the operator's item 3, 2026-11-15: "collapse
+     only long plans, and then Approve stays disabled until each step has been opened"; board
+     R5's screen 4). A plan card of more than three steps draws each collapsed
+     (`details[data-plan-step]`) and its Approve disabled (`data-needs-steps`); each step opened
+     is marked, and once every one has been, Approve is enabled. The marks are the page's: a
+     live redraw that leaves the card alone keeps them (the merge sets only what the server
+     changed), and a new plan draws its own steps closed and its Approve disabled again. */
+  function planStepOpened(e) {
+    var d = e.target;
+    if (!d || !d.hasAttribute || !d.hasAttribute('data-plan-step') || !d.open) return;
+    d.setAttribute('data-opened', '1');
+    var card = d.closest ? d.closest('[data-card="plan"]') : null;
+    if (!card) return;
+    var steps = card.querySelectorAll('details[data-plan-step]');
+    var seen = card.querySelectorAll('details[data-plan-step][data-opened]');
+    var approve = card.querySelector('[data-needs-steps]');
+    if (!approve || !steps.length || seen.length !== steps.length) return;
+    approve.disabled = false;
+    approve.removeAttribute('data-needs-steps');
+  }
   function relayAiFeedback() { relay('ai_feedback'); }
   function relayNotifications() { relay('notifications'); }
   function relayLists() { relay('lists'); }
@@ -1714,6 +1739,7 @@
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);
     NMAS.subscribe('reveals', 'v2Reveals', relayReveals);
     NMAS.subscribe('ai_calls', 'v2AiCalls', relayAiCalls);
+    NMAS.subscribe('ai_step', 'v2AiStep', relayAiStep);
     NMAS.subscribe('ai_feedback', 'v2AiFeedback', relayAiFeedback);
     NMAS.subscribe('notifications', 'v2Notifications', relayNotifications);
     NMAS.subscribe('lists', 'v2Lists', relayLists);
@@ -2649,6 +2675,8 @@
     root.document.addEventListener('htmx:afterRequest', noteSent);
     root.document.addEventListener('htmx:configRequest', keyThePress);
     root.document.addEventListener('click', resumeHeld);
+    // `toggle` does not bubble: a long plan's steps are heard in the capture phase.
+    root.document.addEventListener('toggle', planStepOpened, true);
     root.document.addEventListener('click', citeClicked);
     // The modal: opened and closed by its buttons; `close` does not bubble, so it is heard in
     // the capture phase; placed again as the window scrolls or resizes.

@@ -439,6 +439,9 @@ class ReadFamily:
     run: Callable
     limit: int = MAX_READS
     words: str = ""
+    #: Told of each round of reads before it is sent (``step(allowed_verdicts)``), in the
+    #: caller's own thread, so its job can say what it is reading (board R5's screen 3).
+    step: Optional[Callable] = field(default=None, repr=False, compare=False)
     by_name: dict = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -972,6 +975,11 @@ def run_reads(family: ReadFamily, verdicts: list, scope: dict = None) -> list:
 
     scope = dict(scope or {})
     allowed = [v for v in verdicts if v["verdict"] == "allowed"]
+    if family.step and allowed:
+        try:
+            family.step(allowed)
+        except Exception as exc:                        # noqa: BLE001 (a step is never a read)
+            log.warning("read loop %s: its round's step was not said: %s", family.name, exc)
 
     def one(v):
         return family.run(v["op"], dict(v["args"]), list(v["requests"]), scope)

@@ -48,8 +48,15 @@ def start(network: str, incident_id: str, actor: str, work, *, label: str = "",
     its watchdog (`_watch`) ends it."""
     from modules.nsot import capture_job
 
+    def work_on(job_id):
+        # Which incident this job investigates, for the step its status line shows (`say`).
+        _job_incident[job_id] = (network, incident_id)
+        while len(_job_incident) > SHOWN_KEPT:
+            _job_incident.pop(next(iter(_job_incident)))
+        return work(job_id)
+
     job = capture_job.start(network, label or f"AI troubleshooting {incident_id}", actor,
-                            work, kind=KIND, announce_keys=ANNOUNCE_KEYS,
+                            work_on, kind=KIND, announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER, page=page_of(network, incident_id),
                             actor_kind=actor_kind)
     if key:
@@ -88,6 +95,65 @@ def step(words: str) -> None:
     job = op_progress.current()
     if job:
         _steps[job] = (str(words), time.time())
+
+
+# ── The step a person reads (board R5's screen 3, approved 2026-11-15 with the operator's change
+# 3: "one live progress step pushed from the job's step record") ───────────────────────────────
+
+#: The key an investigation's shown step announces: the incident's status line alone listens.
+STEP_KEYS = ("ai_step",)
+#: The job each investigation runs as, by id: ``(network, incident id)`` (`start`).
+_job_incident = {}
+#: What each incident's running investigation is doing, in plain words, by ``(network,
+#: incident id)``: ``(words, since, job)`` (`say`, `shown`).
+_shown = {}
+#: The most of either kept (oldest dropped first): a bound on memory, never on what runs.
+SHOWN_KEPT = 200
+#: The longest step shown.
+SHOWN_CHARS = 120
+
+
+def say(words: str) -> bool:
+    """The running investigation's step in plain words a person reads on its incident's status
+    line ("Reading edge1's err-disable status…"), never a command or a prompt version: kept for
+    its incident and announced (`STEP_KEYS`) when it changes, so at most one announcement per
+    step and none for the same words again. In this process, as the job is (`capture_job`): a
+    page drawn in a process that does not run it shows no step. Whether it was announced."""
+    import time
+
+    from modules import invalidation, op_progress
+
+    job = op_progress.current()
+    where = _job_incident.get(job) if job else None
+    words = " ".join(str(words or "").split())[:SHOWN_CHARS]
+    if not where or not words:
+        return False
+    was = _shown.get(where)
+    if was and was[0] == words and was[2] == job:
+        return False
+    _shown[where] = (words, time.time(), job)
+    while len(_shown) > SHOWN_KEPT:
+        _shown.pop(next(iter(_shown)))
+    try:
+        invalidation.announce(STEP_KEYS, by=ANNOUNCER, ok=True)
+        return True
+    except RuntimeError:
+        return False
+    except Exception as exc:                          # noqa: BLE001 (the next draw shows it)
+        log.warning("an AI investigation's step was not announced: %s", exc)
+        return False
+
+
+def shown(network: str, incident_id: str) -> str:
+    """The step *incident_id*'s investigation shows now (`say`), or ``""`` when none is kept or
+    its job no longer runs."""
+    from modules.nsot import capture_job
+
+    got = _shown.get((network, incident_id))
+    if not got:
+        return ""
+    job = capture_job.get(got[2]) or {}
+    return got[0] if job.get("state") == "running" else ""
 
 
 def was_stopped(job: str) -> bool:

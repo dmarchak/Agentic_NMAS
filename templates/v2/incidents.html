@@ -17,8 +17,8 @@
 {% block main %}
 <div class="page-head">
   <div class="page-title">
+    {#- Board R5 (approved 2026-11-15): the descriptive sub-heading is dropped (a paragraph). -#}
     <h1>Incidents {{ info('incidents') }}</h1>
-    <p class="sub">{{ p.network }}: every self-healing incident, what is open now and how each closed one ended.</p>
   </div>
 </div>
 {%- if strip %}{% with s = strip %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
@@ -37,6 +37,11 @@
   {%- else %}<strong>{{ p.total }} {{ 'open' if p.tab == 'open' else 'closed' }}</strong>{% for s in p.summary %} · {{ s }}{% endfor %}{% endif -%}
 </p>
 {%- if p.total %}
+{#- Board R5 (approved 2026-11-15): the search and the device filter are form fields, which the
+    large-fleet rule asks for and R5 keeps out of the default view, so they sit behind one
+    "Search or filter…" link, opened while a search or a filter is applied. -#}
+<details class="inc-search" data-keep="inc-search"{% if p.q or p.device %} open{% endif %}>
+<summary>Search or filter…</summary>
 <form class="inc-list-filter" method="get" action="{{ url_for('incidents_v2.page') }}" role="search">
   <input type="hidden" name="list" value="{{ p.network }}">
   <input type="hidden" name="tab" value="{{ p.tab }}">
@@ -52,21 +57,29 @@
   <span class="muted" data-matched="{{ p.matched }}">{{ p.matched }} of {{ p.total }} match · <a href="{{ url_for('incidents_v2.page', tab=p.tab, list=p.network) }}">Show all</a></span>
   {%- endif %}
 </form>
+</details>
 {%- endif %}
+{#- Board R5 (the operator's change 1): guard 6's batch card, as on Needs attention, its held
+    problems inside it (each "since HH:MM" here), never as rows below. -#}
+{%- if p.tab == 'open' %}{% set batch_since = True %}{% for r in batch_rows or [] %}{% include "v2/_heal_batch.html" %}{% endfor %}{% endif %}
 {%- for g in p.groups %}
 <details class="inc-group card" data-group="{{ g.key }}" data-keep="inc-group-{{ g.key }}"{% if g.open %} open{% endif %}>
   <summary class="inc-group-head">{{ badge(g.words, g.kind) }} <span class="muted">{{ g.n }}</span></summary>
   <ul class="inc-rows">
     {%- for r in g.rows %}
-    <li class="inc-row" data-state="{{ r.state }}" data-incident="{{ r.id }}"{% if r.drill %} data-drill="{{ r.drill.id }}"{% endif %}>
+    {#- R5 (board R5, approved 2026-11-15): each row is a card of three lines, its title (the
+        link to the incident), its impact and its status; its device is on the title's hover
+        (the title names it), and what an open row waits for is its status. -#}
+    <li class="inc-row" data-state="{{ r.state }}" data-incident="{{ r.id }}" data-card="{{ r.id }}"{% if r.drill %} data-drill="{{ r.drill.id }}"{% endif %}>
       <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}{% if r.acknowledged %} {{ badge('Acknowledged', 'muted', title=r.acknowledged) }}{% endif %}</span>
       <span class="inc-row-what">
-        {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
-        <span class="inc-row-sub muted">{{ r.device or 'no device recorded' }}
-          {%- if p.tab == 'open' %}{% if r.waits %} · {{ r.waits }}{% endif %}
-          {%- else %}{% if r.by %} · fixed by {{ r.by | people }}{% endif %}{% if r.ttr %} · time to repair {{ r.ttr }}{% endif %}{% endif %}</span>
-        {#- Gate 2: the AI's investigation, live (the job announces its start and end). -#}
-        {%- if r.ai %}<span class="inc-row-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>{% endif %}
+        {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.device or 'no device recorded' }}, {{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
+        {%- if r.impact %}<span class="simple-impact" data-impact title="{{ r.impact }}">{{ r.impact }}</span>{% endif %}
+        {#- Gate 2: the AI's investigation, live (the job announces its start and end), is the
+            status while it says something; else what the row waits for. -#}
+        {%- if r.ai %}<span class="inc-row-ai simple-status simple-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>
+        {%- elif p.tab == 'open' %}{% if r.status %}<span class="inc-row-sub simple-status" data-status title="{{ r.status }}" data-waits="{{ r.waits }}">{{ r.status }}</span>{% endif %}
+        {%- elif r.by or r.ttr %}<span class="inc-row-sub simple-status muted">{% if r.by %}fixed by {{ r.by | people }}{% endif %}{% if r.by and r.ttr %} · {% endif %}{% if r.ttr %}time to repair {{ r.ttr }}{% endif %}</span>{% endif %}
       </span>
       <span class="inc-row-when muted">
         {%- if p.tab == 'open' %}since {{ clock(r.since, 'date') }}
@@ -80,7 +93,7 @@
   {%- endif %}
 </details>
 {%- endfor %}
-{%- if p.total and not p.groups %}
+{%- if p.total and not p.groups and not p.in_card %}
 <p class="muted">No {{ 'open' if p.tab == 'open' else 'closed' }} incident matches. <a href="{{ url_for('incidents_v2.page', tab=p.tab, list=p.network) }}">Show all</a></p>
 {%- endif %}
 {%- if p.folded %}

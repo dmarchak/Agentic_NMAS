@@ -76,7 +76,7 @@ CLOSED_GROUPS = (("fixed_mercury", "Fixed by Mercury", "ok"),
                  ("cancelled", "Declined", "muted"))
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
-         "ended", "ttr", "by", "drill", "acknowledged", "ai")
+         "ended", "ttr", "by", "drill", "acknowledged", "ai", "impact", "status")
 #: A state's badge kind, as the incident's own page colours its state.
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
@@ -195,7 +195,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     who = tl["who"]
     by = ((identity.display_name(who["actor"]) if who["actor"] else "a person not recorded")
           if who["kind"] == "person" else "Mercury" if who["kind"] == "none" else "")
-    return {"id": found["id"], "device": device,
+    out = {"id": found["id"], "device": device,
             # THE incident's address (`incident_href`); "" for one that names no device, whose
             # row then says its id and links nowhere.
             "href": incidents.incident_href(network, found["id"], device=device),
@@ -204,6 +204,9 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "kind": STATE_KINDS.get(st["state"], "muted"),
             "group": _group(st, tl), "resolved": resolved,
             "waits": "" if resolved else WAITS.get(st["why"], ""),
+            # R5 (board R5, approved 2026-11-15): the row's status line, what it waits for in
+            # one line ("Waiting for a person: …" while it needs one), "" once resolved.
+            "status": "" if resolved else status_words(st["state"], WAITS.get(st["why"], "")),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",
             "ended": tl["ended"] if resolved else "",
@@ -225,6 +228,20 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             # investigation runs, its one-line outcome once it ended (`_fixit_of`); redrawn
             # when the job announces its start and end (`troubleshoot_job`, ``drift``).
             "ai": fx["ai"]}
+    # R5: the row's impact line, its BLUF's (Mercury's own table).
+    out["impact"] = out["bluf"].get("impact") or ""
+    return out
+
+
+def status_words(state: str, waits: str) -> str:
+    """An open incident's status line (board R5): what it waits for (`WAITS`), "Waiting for a
+    person: " before it while a person is needed, its first letter capital; "" with nothing to
+    say."""
+    if not waits:
+        return "Waiting for a person" if state == "needs_person" else ""
+    if state == "needs_person":
+        return f"Waiting for a person: {waits}"
+    return waits[:1].upper() + waits[1:]
 
 
 #: The next action a Needs attention row about an incident names, by why its page says it
@@ -394,12 +411,16 @@ def _matches(row: dict, q: str, device: str) -> bool:
     return all(word in hay for word in q.lower().split())
 
 
-def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict:
+def page(network: str, tab: str = "open", q: str = "", device: str = "",
+         batched=()) -> dict:
     """What `templates/v2/incidents.html` draws: ``{"network", "tab", "tabs", "q", "device",
     "devices", "summary", "groups", "shown", "matched", "folded", "unreadable", "kept",
     "read_at"}``. *tabs* is each tab's count; *summary* the tab's counts by group, in words;
     *groups* each non-empty group of the matched rows, with at most `SHOWN` rows and the
-    rest counted; *devices* the devices the tab's rows name (the filter's choices)."""
+    rest counted; *devices* the devices the tab's rows name (the filter's choices).
+    *batched* are the incidents a batch card above the list holds (board R5, the operator's
+    change 1, 2026-11-15: its problems inside it, "not as rows below"): counted in the tab and
+    its summary, drawn in no group while no search or filter is applied."""
     from modules import display_names
     from modules.heal import incidents, steplog
 
@@ -413,9 +434,10 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
     matched = [r for r in on_tab if _matches(r, q, device)]
     groups_of = OPEN_GROUPS if tab == "open" else CLOSED_GROUPS
     counts = {k: sum(1 for r in on_tab if r["group"] == k) for k, _w, _d in groups_of}
+    held_in_card = set(batched or ()) if tab == "open" and not (q or device) else set()
     groups = []
     for key, words, kind in groups_of:
-        members = [r for r in matched if r["group"] == key]
+        members = [r for r in matched if r["group"] == key and r["id"] not in held_in_card]
         if members:
             groups.append({"key": key, "words": words, "kind": kind, "n": len(members),
                            "rows": [{k: r[k] for k in DRAWN} for r in members[:SHOWN]],
@@ -431,6 +453,7 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "") -> dict
              "devices": sorted({r["device"] for r in on_tab if r["device"]}),
              "total": len(on_tab), "summary": summary, "groups": groups,
              "matched": len(matched), "folded": got["folded"],
+             "in_card": sum(1 for r in matched if r["id"] in held_in_card),
              "unreadable": got["unreadable"], "kept": incidents.CLOSED_KEPT,
              # When the list drawn was computed (it is held, C3788), not when it was drawn.
              "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",

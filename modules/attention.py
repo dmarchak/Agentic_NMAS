@@ -6733,6 +6733,11 @@ def _link_stream_incidents(rows: list, read=None) -> None:
                 break
 
 
+#: Why an open incident needs nobody while a fix a person approved runs or passed its verify
+#: (`incident_page.FIXIT_WORKING`'s ``running`` and ``passed``): its can't-fix row stays linked.
+FIX_UNDER_WAY = ("attempt_running", "attempt_passed")
+
+
 def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
     """C3701 (the operator, 2026-11-14: "Fix so both pages derive from one source: an open
     incident that needs a person ⇔ a Needs attention row linking to it"): Needs attention's
@@ -6742,7 +6747,9 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
     `_link_stream_incidents`) and before acknowledgements are applied (an acknowledged row
     still links its incident, and both pages say so):
     - a row linking an incident that is resolved, or open with no person needed, loses the
-      link (the row stays about what it says), and a can't-fix row about a RESOLVED incident
+      link (the row stays about what it says), but for a can't-fix row whose incident's
+      approved fix runs or passed (`FIX_UNDER_WAY`), which keeps it until the incident closes;
+      and a can't-fix row about a RESOLVED incident
       goes (C3699: `hi-126fa0771352`, closed at can't fix before C2813, kept its row while
       Incidents said it cleared);
     - an open incident that needs a person and that no row links takes one row of its own
@@ -6762,7 +6769,10 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
         return rows
     by_id = {r["id"]: r for r in got.get("rows") or []}
     needs = {i for i, r in by_id.items() if not r["resolved"] and r["state"] == "needs_person"}
-    linked = set()
+    # Board R5 (the operator's change 1, 2026-11-15): a batch card holds its problems inside it,
+    # each a line linking its incident, "not as rows below": an incident it holds is named.
+    linked = {i.get("incident") for top in rows for i in (top.get("batch") or {}).get("items")
+              or [] if i.get("incident")}
 
     def keep(r) -> bool:
         iid = str((r.get("incident_page") or {}).get("id") or "")
@@ -6773,11 +6783,22 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
         # incident state Incidents draws (`incidents_list._fixit_of`).
         if by_id[iid].get("ai"):
             r["ai_status"] = by_id[iid]["ai"]
+        # R5 (board R5, approved 2026-11-15): the row's status line, the incident's own
+        # (`incidents_list.status_words`), where the AI's status does not stand in its place.
+        if by_id[iid].get("status"):
+            r["status"] = by_id[iid]["status"]
         if iid in needs:
             linked.add(iid)
             return True
         if by_id[iid]["resolved"] and (r.get("source"), r.get("kind")) == ("heal", "cant_fix"):
             return False
+        if ((r.get("source"), r.get("kind")) == ("heal", "cant_fix")
+                and by_id[iid].get("why") in FIX_UNDER_WAY):
+            # The operator's item 6 (2026-11-15): a can't-fix whose approved fix runs or
+            # passed stays its incident's row until the incident closes, so it is titled by
+            # its problem at the incident's severity (`_fold_signals_into_problems`), never
+            # back at its decision's Critical in its alert's words.
+            return True
         r.pop("incident_page", None)
         return True
 
@@ -6810,8 +6831,58 @@ def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
         r["incident_page"] = {"id": iid, "list": lst}
         if inc.get("ai"):
             r["ai_status"] = inc["ai"]
+        if inc.get("status"):
+            r["status"] = inc["status"]
         out.append(r)
     return out
+
+
+def _batch_cards(rows: list, listed=None) -> list:
+    """Board R5 (approved 2026-11-15, the operator's changes 1 and 4): each batch card's default
+    view, ``card`` on its row: ``{"title", "impact", "held", "status"}``. Its problems
+    held inside it, one short line each (``held``: ``{"incident", "device", "line", "since"}``,
+    each linking its incident), from THE incident state Incidents draws (`incidents_list.rows`:
+    each held incident's BLUF, its problem and its title); its title "Same problem on switch1
+    and switch2: <the problem>" when every held incident's title says one problem, else the
+    batch's own lead; its impact `bluf.batch_impact`; its status `heal.batch.status_words` (its
+    button's count is the preview's own, `heal.batch.fix_word`). An incident the
+    list does not hold is said by its device and its fix's words. Everything the card drew
+    before stays under its Details (`_heal_batch.html`)."""
+    from modules import bluf
+    from modules.heal import batch as HB
+
+    by_id = {r["id"]: r for r in ((listed or {}).get("rows") or [])}
+    for top in rows:
+        p = top.get("batch")
+        if not p:
+            continue
+        held, phrases, problems, impacts = [], [], [], []
+        for i in p.get("items") or []:
+            r = by_id.get(i.get("incident")) or {}
+            b = r.get("bluf") or {}
+            what, device = b.get("what") or "", i.get("device") or ""
+            prob = b.get("problem") or {}
+            head, _sep, rest = what.partition(": ")
+            phrase = head[len(device) + 1:] if head.startswith(device + " ") else ""
+            phrases.append(phrase)
+            problems.append(prob)
+            impacts.append(b.get("impact") or "")
+            obj = prob.get("object") or ""
+            line = (f"{device} {obj}: {rest}" if obj and rest else what
+                    or f"{device}: {i.get('words') or 'held for a person'}")
+            held.append({"incident": i.get("incident") or "", "device": device, "line": line,
+                         "since": r.get("since") or ""})
+        devices = [h["device"] for h in held]
+        same = len(held) > 1 and phrases[0] and len(set(phrases)) == 1
+        names = " and ".join([", ".join(devices[:-1]), devices[-1]]) if len(devices) > 1 \
+            else (devices[0] if devices else "")
+        one = ((by_id.get(held[0]["incident"]) or {}).get("bluf") or {}).get("what") \
+            if len(held) == 1 else ""
+        top["card"] = {"title": f"Same problem on {names}: {phrases[0]}" if same
+                       else (one or p.get("lead") or top.get("what") or ""),
+                       "impact": bluf.batch_impact(problems, impacts), "held": held,
+                       "status": HB.status_words(devices)}
+    return rows
 
 
 def _incidents_listed(lst: str = None):
@@ -9359,6 +9430,8 @@ def assemble(results: list) -> dict:
     rows = _incidents_agree(rows, listed=listed)
     # C3731: a Grafana signal of a classified port problem folds under its incident's row.
     rows = _fold_signals_into_problems(rows, listed=listed)
+    # R5: each batch card's default view, its held problems inside it.
+    rows = _batch_cards(rows, listed=listed)
     # The acknowledgement record and its current list read ONCE for both uses (C3230).
     held = _acknowledgements_now()
     rows, acknowledged, ack_result = _without_acknowledged(rows, held)

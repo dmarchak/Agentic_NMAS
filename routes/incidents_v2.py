@@ -35,11 +35,37 @@ def page():
     from modules import control_strip, incidents_list
 
     ref = _page_ref()
+    batch = _batch_rows(ref.name)
     p = incidents_list.page(ref.name, request.args.get("tab") or "open",
-                            request.args.get("q") or "", request.args.get("device") or "")
+                            request.args.get("q") or "", request.args.get("device") or "",
+                            batched=[h["incident"] for r in batch
+                                     for h in (r.get("card") or {}).get("held") or []])
     return _strict(render_template("v2/incidents.html", p=p, who=_who(),
                                    active_nav="incidents",
-                                   strip=control_strip.view(ref.name)))
+                                   strip=control_strip.view(ref.name), batch_rows=batch))
+
+
+def _batch_rows(network: str) -> list:
+    """Board R5 (the operator's change 1, 2026-11-15): guard 6's batch card on Incidents, as
+    Needs attention draws it: its row from the list the background holds for *network*
+    (`attention_store.read_masked`, the incident page's own read: never computed for this
+    request), masked and its people named. None while the list has not landed, or when it
+    cannot be read (said in the log; the incidents list still draws every incident)."""
+    from modules import attention_store, display_names
+
+    try:
+        a = display_names.people_payload(attention_store.read_masked(network))
+    except Exception as exc:                            # noqa: BLE001 (the list still draws)
+        log.warning("incidents: the batch card could not be read (%s)", type(exc).__name__)
+        return []
+    # Only what the card draws (`_heal_batch.html`): the row's other fields are Needs
+    # attention's, and a field carried here would be drawn by nothing on this page.
+    return [{k: r[k] for k in BATCH_CARD_KEYS if k in r}
+            for r in a.get("rows") or [] if r.get("batch")]
+
+
+#: The fields of a batch row `_heal_batch.html` draws.
+BATCH_CARD_KEYS = ("id", "level", "since", "batch", "batch_folded", "card")
 
 
 @bp.route("/heal-auto", methods=["GET"])

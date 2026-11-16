@@ -5,47 +5,23 @@
     parameters) and Save as a reusable action (an admin's); the scripts whose match this
     problem holds, each with Promote (self-healing rights); the network's provisional shapes,
     each with Approve (an admin's). Each control is busy on itself, its answer drawn in place;
-    a right the viewer lacks is said beside its control, which is drawn disabled. -#}
-<div class="heal-prop saved-plans" id="saved-plans-{{ c.incident }}" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list) }}" hx-trigger="nmas:saved_plans from:body" hx-swap="outerHTML" hx-select="unset"{% if c.said and c.said.words %} data-holds-live="review"{% endif %}>
-{%- if c.said and c.said.words %}
-  <div class="notice notice-{{ 'muted' if c.said.level == 'ok' else 'danger' }} set-result" role="{{ 'status' if c.said.level == 'ok' else 'alert' }}">{{ icon('tick' if c.said.level == 'ok' else 'warn', 16) }}<p>{{ c.said.words | people }}</p></div>
-{%- endif %}
-{%- if c.unset %}
-  <p class="faint small" data-rights="unset">Until Settings' access_rights names who holds them, every verified person holds {% for r in c.unset %}{{ r | replace('_', '-') }}{{ ' and ' if not loop.last }}{% endfor %} rights.</p>
-{%- endif %}
-{%- if c.state == 'ready' %}
-  <p><strong>{{ c.plan }} ran and passed its own verify.</strong> Save it, its parameters left open, to use again. {{ how('plans', compact=True, op='a saved plan') }}</p>
-  <form id="saved-script-{{ c.incident }}" class="small" data-save="script">
-    <input type="hidden" name="list" value="{{ c.list }}">
-    <fieldset><legend>Save as a self-heal script (starts in Dry run)</legend>
-      <label class="heal-field" for="script-name-{{ c.incident }}">Name<input id="script-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="BPDU guard recovery"></label>
-      <p>It matches the problem's fields, never an alert's name:</p>
-      <ul class="tl-record">
-        <li data-match="condition">condition: {{ c.match.condition }} (always)</li>
-        {%- for k in c.optional if c.match[k] is defined %}
-        <li data-match="{{ k }}"><label><input type="checkbox" name="keep_{{ k }}" value="1" checked> {{ k | replace('_', ' ') }}: {{ c.match[k] }}</label></li>
-        {%- endfor %}
-      </ul>
-      <p class="faint" data-preview="match">{{ c.preview.matched }} of the {{ c.preview.read }} open incidents' problems hold this match now.</p>
-      <p>Its parameters, filled from the problem when it fires:</p>
-      <ul class="tl-record">{% for name, f in c.fills.items() %}<li data-fill="{{ name }}">{{ name }}: {% if f is string %}the problem's {{ f | replace('_', ' ') }}{% else %}{% set m = f.map if f.map is defined else f %}{% for k, v in m.items() %}{{ k }} as {{ v }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}</li>{% endfor %}</ul>
-      {%- if c.rights.script %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.save_script', incident=c.incident, list=c.list) }}" hx-include="#saved-script-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save as a self-heal script</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
-    </fieldset>
-  </form>
-  <form id="saved-action-{{ c.incident }}" class="small" data-save="action">
-    <input type="hidden" name="list" value="{{ c.list }}">
-    <fieldset><legend>Save as a reusable action (for every network)</legend>
-      <label class="heal-field" for="action-name-{{ c.incident }}">Name<input id="action-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="Bounce interface"></label>
-      <label class="heal-field" for="action-words-{{ c.incident }}">What it does<input id="action-words-{{ c.incident }}" name="words" type="text" autocomplete="off"></label>
-      <p>Its parameters: {{ c.fills.keys() | join(', ') }}.</p>
-      {%- if c.rights.action %}<p class="small bluf-refused" data-refused="action">{{ c.rights.action | people }}</p>{% endif %}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.save_action', incident=c.incident, list=c.list) }}" hx-include="#saved-action-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.action %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save as a reusable action</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
-    </fieldset>
-  </form>
-{%- elif c.why %}
-  <p class="faint small" data-offer="none">Nothing to save yet: {{ c.why }}.</p>
-{%- endif %}
+    a right the viewer lacks is said beside its control, which is drawn disabled.
+
+    R5, simple by default (board R5, approved 2026-11-15, screens 5, 5b and 6): the offer is its
+    own card under the incident (`data-card="save"`): "Save this fix so Mercury handles it
+    automatically?", one line on what Save does, [Save] (the defaults: the name from the
+    problem, the match pre-ticked, Dry run) and [Not now] (the offer put off for this incident,
+    a line of its troubleshooting record); Customize… is the card's ONE Details, holding the
+    script's form, which Save sends, the optional reusable action and the lists below. Saved, it
+    is one line: "Saved: <name>, Dry run. Promote…" (Promote… one link opening the existing
+    promote in place). With nothing to save the card draws no line, why on its hover. -#}
+{%- set SV = c.saved or {} %}
+{%- set dismissed = c.dismissed and not c.show %}
+{%- set offering = c.state == 'ready' and not SV.script and not dismissed %}
+{%- set more = c.scripts or c.shapes %}
+{#- The lists the card holds besides its offer: the scripts this problem matches, each with
+    Promote, and the line shapes waiting on an admin, each with Approve. -#}
+{%- macro lists() -%}
 {%- if c.scripts %}
   <p class="small"><strong>Saved self-heal scripts this problem matches</strong></p>
   <ul class="small tl-record">
@@ -63,5 +39,96 @@
       <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.approve_shape', incident=c.incident, list=c.list) }}" hx-vals='{{ {"dialect": s.dialect, "shape": s.shape, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.action %} disabled title="{{ c.rights.action | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Approve the shape</span><span class="op-busy">Approving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span></li>
   {%- endfor %}
   </ul>
+{%- endif %}
+{%- endmacro -%}
+{#- The optional reusable action, inside Customize… (or the saved card's Details): its own form
+    and button, or its saved line. -#}
+{%- macro action_part() -%}
+{%- if SV.action %}
+  <p class="small" role="status" data-saved="action">{{ icon('tick', 14) }} Saved: {{ SV.action.name }}, in the catalog</p>
+{%- else %}
+  <form id="saved-action-{{ c.incident }}" class="small simple-form" data-save="action">
+    <input type="hidden" name="list" value="{{ c.list }}">
+    <fieldset><legend>Also save it as a reusable action (for every network)</legend>
+      <label class="heal-field" for="action-name-{{ c.incident }}">Name<input id="action-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="Bounce interface"></label>
+      <label class="heal-field" for="action-words-{{ c.incident }}">What it does<input id="action-words-{{ c.incident }}" name="words" type="text" autocomplete="off"></label>
+      <p>Its parameters: {{ c.fills.keys() | join(', ') }}.</p>
+      {%- if c.rights.action %}<p class="small bluf-refused" data-refused="action">{{ c.rights.action | people }}</p>{% endif %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.save_action', incident=c.incident, list=c.list) }}" hx-include="#saved-action-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.action %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save as a reusable action</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+    </fieldset>
+  </form>
+{%- endif %}
+{%- endmacro -%}
+{%- set said = c.said and c.said.words %}
+{%- set draws = offering or (c.state == 'ready' and SV.script) or dismissed or more or said %}
+<div class="saved-plans{{ ' card simple' if draws }}" id="saved-plans-{{ c.incident }}" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list) }}" hx-trigger="nmas:saved_plans from:body" hx-swap="outerHTML" hx-select="unset"{% if draws %} data-card="save"{% endif %}{% if c.state != 'ready' and c.why %} data-offer="none" title="Nothing to save yet: {{ c.why }}."{% endif %}{% if said %} data-holds-live="review"{% endif %}>
+{%- if c.said and c.said.words %}
+  <div class="notice notice-{{ 'muted' if c.said.level == 'ok' else 'danger' }} set-result" role="{{ 'status' if c.said.level == 'ok' else 'alert' }}">{{ icon('tick' if c.said.level == 'ok' else 'warn', 16) }}<p>{{ c.said.words | people }}</p></div>
+{%- endif %}
+{%- if offering %}
+  {#- Screen 5: the question, what Save does, Save and Not now; Customize… the one Details. -#}
+  <h2 class="simple-title" id="save-title-{{ c.incident }}">Save this fix so Mercury handles it automatically?</h2>
+  <p class="simple-impact">Saves in Dry run: Mercury records what it would do the next time, until you promote it</p>
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" data-save="default" hx-post="{{ url_for('saved_plans_v2.save_script', incident=c.incident, list=c.list) }}" hx-include="#saved-script-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Saves {{ c.plan }} as a self-heal script named {{ c.name }}, in Dry run, matching the problem's fields ticked under Customize…"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='saving a fix') }}</span>
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.not_now', incident=c.incident, list=c.list) }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Puts the offer off for this incident: nothing is saved; Save this fix… stays on this card"{{ gate('configure') }}><span class="op-idle">Not now</span><span class="op-busy">Recording…</span></button>{{ how('plans', compact=True, op='Not now') }}</span>
+  </div>
+  {%- if c.rights.script %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
+  <details class="simple-details" data-card-details data-keep="saved-customize-{{ c.incident }}"><summary>Customize…</summary>
+  {%- if c.unset %}
+    <p class="faint small" data-rights="unset">Until Settings' access_rights names who holds them, every verified person holds {% for r in c.unset %}{{ r | replace('_', '-') }}{{ ' and ' if not loop.last }}{% endfor %} rights.</p>
+  {%- endif %}
+    <p class="small"><strong>{{ c.plan }} ran and passed its own verify.</strong> Save, above, saves it with these choices, its parameters left open. {{ how('plans', compact=True, op='a saved plan') }}</p>
+    <form id="saved-script-{{ c.incident }}" class="small simple-form" data-save="script">
+      <input type="hidden" name="list" value="{{ c.list }}">
+      <fieldset><legend>It runs on a problem that matches (never an alert's name)</legend>
+        <ul class="tl-record">
+          <li data-match="condition">condition: {{ c.match.condition }} (always)</li>
+          {%- for k in c.optional if c.match[k] is defined %}
+          <li data-match="{{ k }}"><label><input type="checkbox" name="keep_{{ k }}" value="1" checked> {{ k | replace('_', ' ') }}: {{ c.match[k] }}</label></li>
+          {%- endfor %}
+        </ul>
+        <p class="faint" data-preview="match">{{ c.preview.matched }} of the {{ c.preview.read }} open incidents' problems hold this match now.</p>
+      </fieldset>
+      <fieldset><legend>How it runs</legend>
+        <p>In Dry run: it records what it would do and changes nothing, until a person with self-healing rights promotes it to Auto.</p>
+        <p>Its parameters, filled from the problem when it fires:</p>
+        <ul class="tl-record">{% for name, f in c.fills.items() %}<li data-fill="{{ name }}">{{ name }}: {% if f is string %}the problem's {{ f | replace('_', ' ') }}{% else %}{% set m = f.map if f.map is defined else f %}{% for k, v in m.items() %}{{ k }} as {{ v }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}</li>{% endfor %}</ul>
+      </fieldset>
+      <label class="heal-field" for="script-name-{{ c.incident }}">Name<input id="script-name-{{ c.incident }}" name="name" type="text" autocomplete="off" value="{{ c.name }}" placeholder="BPDU guard recovery"></label>
+    </form>
+    {{ action_part() }}
+    {{ lists() }}
+  </details>
+{%- elif c.state == 'ready' and SV.script %}
+  {#- Screen 5b: one line, Promote… the only way to Auto: one link opening the existing
+      promote, said and pressed in place (a disclosure, as the plan card's Modify or deny…). -#}
+  <div class="simple-acts simple-saved">
+    <p class="simple-status" role="status" data-saved="script">{{ icon('tick', 14) }} Saved: {{ SV.script.name }}, {{ 'Auto' if SV.script.mode == 'auto' else 'Dry run' }}.</p>
+    {%- if SV.script.mode != 'auto' %}
+    <details class="simple-menu menu-wrap" data-keep="saved-promote-{{ c.incident }}"><summary role="button" title="Opens Promote: the script then runs, verified and recorded, when its match holds, while self-healing is in Auto">Promote…</summary>
+      <div class="menu simple-promote" role="group" aria-label="Promote {{ SV.script.name }}">
+        <p class="small">From Dry run to Auto: when its match holds it runs, its own preview, verify and rollback, recorded, while self-healing is in Auto.</p>
+        <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": SV.script.key, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ SV.script.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+      </div>
+    </details>
+    {%- endif %}
+  </div>
+  {%- if c.rights.script and SV.script.mode != 'auto' %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
+  {%- if not SV.action or more %}
+  <details class="simple-details" data-card-details data-keep="saved-more-{{ c.incident }}"><summary>Details</summary>
+    {{ action_part() }}
+    {{ lists() }}
+  </details>
+  {%- endif %}
+{%- elif dismissed %}
+  {#- Not now: the offer put off for this incident, said in one line, reachable again. -#}
+  <p class="simple-status" role="status" data-offer="dismissed">Not saved: put off{% if c.dismissed.by %} by {{ c.dismissed.by | people }}{% endif %}. <button type="button" class="bluf-link" data-op="plans" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list, show=1) }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" title="Shows the offer to save this fix again">Save this fix…</button>{{ how('plans', compact=True, op='saving a fix') }}</p>
+{%- elif more %}
+  <h2 class="simple-title">Saved fixes for this problem</h2>
+  <details class="simple-details" data-card-details data-keep="saved-more-{{ c.incident }}"><summary>Details</summary>
+    {%- if c.why %}<p class="faint small" data-offer="none">Nothing to save yet: {{ c.why }}.</p>{% endif %}
+    {{ lists() }}
+  </details>
 {%- endif %}
 </div>

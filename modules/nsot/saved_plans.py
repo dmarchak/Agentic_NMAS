@@ -656,7 +656,9 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
     ``{"script", "action"}``, each ``""`` or the refusal (`identity.right_refusal`); *scripts*
     the network's scripts whose match the problem holds (each Promote's), *actions* the saved
     reusable actions, *unset* the rights `access_rights` names no one for (every verified
-    person holds each, and the card says so). A read."""
+    person holds each, and the card says so), *saved* what is saved from the run already
+    (`saved_from`), *name* the name Save gives it by default (`default_name`) and *dismissed*
+    whether Not now put the offer off (`put_off`). A read."""
     from modules import identity, incident_page
     from modules import problem as P
     from modules.fixit import incident as F
@@ -670,7 +672,8 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
            "optional": list(OPTIONAL_MATCH), "fills": {}, "preview": {}, "scripts": [],
            "rights": {"script": identity.right_refusal("self_healing", **who),
                       "action": identity.right_refusal("admin", **who)},
-           "unset": identity.rights_unset(), "actions": sorted(actions())}
+           "unset": identity.rights_unset(), "actions": sorted(actions()),
+           "saved": {"script": None, "action": None}, "name": "", "dismissed": None}
     found = incident_page.resolve(network, incident_id)
     if found.get("found") != "page":
         return dict(out, why=f"{incident_id} has no page")
@@ -698,5 +701,49 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
                                              for k in OPTIONAL_MATCH if getattr(prob, k, "")}}
     out.update(state="ready", run=run_id, plan=rec.get("title") or t.title, match=match,
                fills=default_fills(t, prob, rec.get("params") or {}),
-               preview=match_preview(network, match))
+               preview=match_preview(network, match), saved=saved_from(network, run_id),
+               name=default_name(prob, rec.get("title") or t.title),
+               dismissed=put_off(inc))
     return out
+
+
+def default_name(problem, plan_title: str) -> str:
+    """The name Save gives a script by default (board R5's screen 5: "the name from the
+    problem"): the cause's recovery, on the port role it matched ("BPDU guard recovery (access
+    ports)"), else the plan's own title. At most 120 characters, as a saved name is kept."""
+    cause = str(getattr(problem, "cause", "") or "").strip()
+    role = str(getattr(problem, "port_role", "") or "").strip()
+    name = (f"{cause} recovery" + (f" ({role} ports)" if role else "")) if cause else \
+        str(plan_title or "Saved fix")
+    return name[:120]
+
+
+def put_off(incident) -> dict:
+    """Whether the offer to save *incident*'s verified fix was put off (Not now, board R5's
+    screen 5): its troubleshooting record's newest save choice ``dont_save``, ``{"by", "at"}``,
+    or None (none, a later choice, or a record that cannot be read). A read."""
+    from modules.fixit import incident as F
+
+    try:
+        lines = F.read(incident).get("lines") or []
+    except Exception:                                   # noqa: BLE001 (offered as before)
+        return None
+    saves = [ln for ln in lines if ln.get("choice") == "save"]
+    if not saves or saves[-1].get("saved") != "dont_save":
+        return None
+    return {"by": saves[-1].get("by") or "", "at": saves[-1].get("at") or ""}
+
+
+def saved_from(network: str, run_id: str) -> dict:
+    """What is saved from *network*'s run *run_id* (item 7, the operator, 2026-11-15: every
+    save shows its result in place, and its form collapses): ``{"script", "action"}``, each
+    ``{"key", "name", "mode"}`` of the newest entry its ``from_run`` names, or None. Read from
+    the store, so a redraw after the save's announcement draws the same result. A read."""
+    def newest(entries):
+        got = [e for e in entries if (e.get("from_run") or {}).get("run") == run_id]
+        got.sort(key=lambda e: str(e.get("saved_at") or ""))
+        return ({"key": got[-1]["key"], "name": got[-1].get("name") or got[-1]["key"],
+                 "mode": got[-1].get("mode") or ""} if got else None)
+    return {"script": newest(scripts(network).values()),
+            "action": newest(e for e in actions().values()
+                             if (e.get("from_run") or {}).get("network") == network)}

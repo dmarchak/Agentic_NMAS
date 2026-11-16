@@ -1,0 +1,6 @@
+{#- The running investigation's one live step, on its incident's status line (board R5's screen 3,
+    approved 2026-11-15 with the operator's change 3: "one live progress step pushed from the
+    job's step record, within 3 lines"): `troubleshoot_job.shown`, plain words only ("Reading
+    edge1's err-disable status…"), redrawn when the job announces `ai_step` (once per step); nothing
+    polls. Drawn by templates/v2/_fixit_section.html and by routes/incident_v2.step. -#}
+<span class="simple-progress" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body" hx-swap="outerHTML" hx-select="unset">{% if step %}· {{ step }}{% endif %}</span>

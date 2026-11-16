@@ -1437,6 +1437,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                       + ". Nothing was sent")
     from modules import troubleshoot_job as TJ
     TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
+    # The step a person reads on the status line (board R5's screen 3): plain words only.
+    TJ.say("Gathering the evidence…")
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
     memo = {}
@@ -1455,6 +1457,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         # said back to the person.
         memo["calls"] = memo.get("calls", 0) + 1
         TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
+        TJ.say("Asking the AI…" if memo["calls"] == 1 else "Writing the plan…")
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
         TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
         if got.get("typed_masked") and "typed_masked" not in memo:

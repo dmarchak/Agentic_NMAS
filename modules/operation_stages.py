@@ -630,6 +630,8 @@ HISTORY = {
     "saved_plans_v2.device_run": ("privileged",),
     "saved_plans_v2.save_action": SAVED,
     "saved_plans_v2.promote": SAVED,
+    "saved_plans_v2.not_now": ("n/a: a person's choice not to save a verified fix, kept as a "
+                               "line of the incident's troubleshooting record; no device"),
     "saved_plans_v2.approve_shape": ("n/a: a shape of Mercury's rule for raw lines, never one "
                                      "device's record; the network's shape store keeps it"),
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and

@@ -1090,10 +1090,15 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     outcome = entry.get("outcome") or newest.get("outcome") or ""
     kind = entry.get("kind") or newest.get("kind") or ""
     sev = _severity(state, decisions, ran, tl["who"], resolved, item["level"])
-    # Severity follows impact (the operator's R2, 2026-11-14): while a person is needed, the
-    # header's level is the BLUF's (Mercury's own table: critical only for a network outage).
+    # Severity follows impact (the operator's R2, 2026-11-14): while the incident is open, the
+    # header's level is the BLUF's (Mercury's own table: critical only for a network outage),
+    # in every open state that draws a level, never only while a person is needed: a can't-fix
+    # whose approved fix passed (open, ``attempt_passed``) drew its decision's Critical again
+    # (the operator's item 6, 2026-11-15). An open incident that never needed a card keeps "No
+    # person needed".
     level = SEVERITY_SAID.get((fixit.get("bluf") or {}).get("severity") or "")
-    if level and state == "needs_person":
+    if level and (state == "needs_person" or (
+            state not in RESOLVED and sev["words"] not in ("", "No person needed"))):
         sev = {"words": level[0], "kind": level[1]}
     members = list(inc.get("attached") or [])
     card = heal_card(network, device, entry)

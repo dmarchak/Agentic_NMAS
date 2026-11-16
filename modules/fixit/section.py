@@ -28,8 +28,10 @@ these keys of `view`, and this module keeps to them):
   with no plan to approve the fix is never blank: the read the AI's answer said it lacked
   (``read``, `lacked_read`), a ``button`` linking Show commands with it filled in, else Ask the
   AI again when offered, else Hand over;
-- ``status``: one plain line ("Mercury's fix failed twice. The AI is investigating (started
-  at <ISO instant>), about $0.05."; the screen draws the instant in the viewer's zone);
+- ``status``: one plain line ("The AI is investigating, started at <ISO instant>"; the screen
+  draws the instant in the viewer's zone);
+- ``card``: the incident card's default view (board R5, approved 2026-11-15; `card_of`):
+  ``{"status", "kind", "step", "how", "fixed_at", "plan_ready"}``;
 - ``proposal``: ``{"id", "hash", "refused_hash", "approvable", "steps": [{"n", "operation",
   "words", "params", "hash", "preflight": {"ok", "refused"}, "repeat"}], "found",
   "why_refused", "source", "by", "at",
@@ -441,9 +443,11 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     events = [(a["started_at"], 0, "attempt", a) for a in tried["attempts"]]
     # Record lines in their written order at one time (a start and the proposal it led to may
     # share a second): the later line is the newer.
+    # A save choice (Not now, board R5's screen 5) is about the offer to save the fix, never a
+    # step of the troubleshooting: it moves no state.
     events += [(float(ln["epoch"]), 1 + n, _line_kind(ln), ln)
                for n, ln in enumerate(rec["lines"])
-               if _line_kind(ln) != "start"
+               if _line_kind(ln) not in ("start", "save")
                or ln.get("state") in ("started", "capped", "failed")]
     newest = max(events, key=lambda e: (e[0], e[1])) if events else None
     if resolved is not None:
@@ -749,7 +753,34 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     newest = next((ln for ln in reversed(rec["lines"]) if "proposal" in ln), {})
     out["status"] = _status(state, inc, network, plan, failed, last_start, legacy, done,
                             out.get("ended") or "", now, said=newest.get("words") or "",
-                            failed_words=out.get("ai_failed") or "")
+                            failed_words=out.get("ai_failed") or "",
+                            approved=_approved(state, rec, out.get("stop") or {}),
+                            planned=any("proposal" in ln and ln.get("source") == "ai"
+                                        and ln.get("operation") for ln in rec["lines"]))
+
+
+def _approved(state: str, rec: dict, stop: dict) -> dict:
+    """An approved plan's run as the status line says it (item 5, the operator, 2026-11-15:
+    "AI plan approved by dustnm, passed at 14:29"): ``{"what", "by", "at", "how"}`` for a
+    ``running`` or ``passed`` section, *how* ``running since`` or ``passed at`` and *at* an ISO
+    UTC instant (the screen draws it in the viewer's zone); ``{}`` otherwise. From the newest
+    attempt (`out["stop"]`: who confirmed it, its start and its end), else, before its first
+    run is recorded, the approval line (who, when)."""
+    if state not in ("running", "passed"):
+        return {}
+    words = PLAN_APPROVED
+    how = "passed at" if state == "passed" else "running since"
+    if stop.get("n"):
+        source = {v: k for k, v in SOURCE_WORDS.items()}.get(stop.get("source") or "", "")
+        at = (stop.get("finished") if state == "passed" else "") or stop.get("started") or ""
+        return {"what": words.get(source, f"Attempt {stop['n']}, run"),
+                "by": stop.get("actor") or "", "at": at, "how": how}
+    line = next((ln for ln in reversed(rec["lines"]) if ln.get("choice") == "approve"), None)
+    if line is None:
+        return {}
+    sources = {ln["proposal"]: ln.get("source") for ln in rec["lines"] if "proposal" in ln}
+    return {"what": words.get(sources.get(line.get("decides")) or "", "The plan approved"),
+            "by": line.get("by") or "", "at": line.get("at") or "", "how": how}
 
 
 #: Where the network's background AI switches are turned on and off (Settings › AI, the
@@ -809,21 +840,31 @@ def switch_href(network: str) -> str:
 
 def _status(state: str, inc, network: str, plan, failed: list, last_start, legacy: dict,
             done: bool, ended: str, now: float, said: str = "",
-            failed_words: str = "") -> str:
+            failed_words: str = "", approved: dict = None, planned: bool = False) -> str:
     """The section's one status line, in plain words (the contract's ``status``); *said* is
-    the newest proposal line's own words (a proposal that names no operation says why)."""
+    the newest proposal line's own words (a proposal that names no operation says why);
+    *approved* an approved plan's run (`_approved`); *planned* whether the AI has proposed a
+    plan in this incident, after which the line never says Mercury's fix failed or that the
+    AI did not start by itself (item 5, the operator, 2026-11-15): it says where the AI's
+    plan stands."""
     from modules.ai import fixit_troubleshoot as AIT
     from modules.fixit import auto as A
-    from modules.fixit.policy import money
 
     if done:
         return f"Resolved: {ended or 'closed'}."
+    if approved:
+        from modules import display_names
+        who = display_names.people(approved["by"]) if approved["by"] else "nobody recorded"
+        when = f", {approved['how']} {approved['at']}" if approved["at"] else ""
+        return f"{approved['what']} by {who}{when}."
     got = A.failures(network, open_ids={inc.id})
     # A hold a person resolves is no failure of a fix that ran (C3732): said as the hold.
     held = [f for f in got["failures"] if f["kind"] == "held"]
     n = len(got["failures"]) - len(held) + len(failed)
     times = {0: "", 1: " once", 2: " twice"}.get(n, f" {n} times")
-    lead = f"Mercury's fix failed{times}." if n else ""
+    lead = f"Mercury's fix failed{times}." if n and not planned else ""
+    if planned:
+        held, legacy = [], dict(legacy, failure=None, offered=False)
     if not lead and held:
         g = held[-1].get("guard") or {}
         lead = (f"Self-healing is held by guard {g.get('guard')} ({g.get('name') or 'a guard'}): "
@@ -847,7 +888,6 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
         return f"{lead} Couldn't troubleshoot: {failed_words}. Ask the AI again, or hand over."\
             .strip()
     if state == "investigating":
-        est = AIT.estimate()
         # The start's instant, never a count of seconds (C3801: "started 0 s ago" stayed 0 s on
         # a card nine minutes on): the screen draws it in the viewer's zone (`times`), so it is
         # right on every draw and needs no ticking.
@@ -858,8 +898,10 @@ def _status(state: str, inc, network: str, plan, failed: list, last_start, legac
             # A catch-up's start at the switch's turn-on (C3732): the person who ticked it.
             from modules import display_names
             how = f"started at turn-on by {display_names.people(last_start['by'])}"
-        return (f"{lead} The AI is investigating ({how} at {when}), about "
-                f"{money(est['usd'])}.").strip()
+        # Board R5's screen 3 (approved 2026-11-15): one line, "The AI is investigating,
+        # started at 14:23", its live step after it on the page; its cost (about
+        # `estimate()`'s) is the Details', never the default view's.
+        return f"The AI is investigating, {how} at {when}"
     if state == "capped":
         which = (last_start or {}).get("which") or "a"
         return (f"{lead} The AI did not start: this incident's AI cap would be passed. "
@@ -913,7 +955,67 @@ def _stated(out: dict, found: dict) -> dict:
     out["page_state"] = incident_page.status(found.get("incident"), found.get("entry") or {},
                                              found.get("decisions") or [],
                                              out["state"])["state"]
+    out["card"] = card_of(out, found)
     return out
+
+
+#: An approved plan's words by who proposed it (`_approved`, `card_of`).
+PLAN_APPROVED = {"ai": "AI plan approved", "mercury": "Mercury's plan approved",
+                 "person": "A person's plan approved"}
+#: Whose plan waits, by who proposed it (board R5's screen 4).
+PLAN_READY = {"the AI": "The AI's plan", "Mercury's diagnosis": "Mercury's plan",
+              "a person": "A person's plan"}
+
+
+def card_of(out: dict, found: dict) -> dict:
+    """The incident card's default view (MERCURY_CHARTER R5; board R5, approved 2026-11-15,
+    screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready"}``. *status*
+    the one status line (an instant in its words, drawn in the viewer's zone), *kind* ``ai``
+    while the AI investigates, ``ok`` once fixed and verified, else ``""``; *step* the
+    investigation's live step (`troubleshoot_job.shown`); *how* how a fixed incident was fixed
+    (``{"words", "device", "run"}``: the run's record is its link), and *plan_ready* whether a
+    plan waits on Approve (its own card, below). A read of *out* and the incident's problem."""
+    from modules import bluf as B
+    from modules import display_names
+    from modules import problem as P
+
+    state = out.get("state") or ""
+    card = {"status": out.get("status") or "", "kind": "", "step": "", "how": None,
+            "fixed_at": "", "plan_ready": False}
+    if state == "resolved" and out.get("ended") == "fixed":
+        passed = [a for a in out.get("attempts") or [] if a.get("state") == "passed"]
+        a = passed[-1] if passed else None
+        record = found.get("incident") or {}
+        at = ((a or {}).get("finished") or ((record.get("fixed") or {}).get("at")) or
+              record.get("closed_at") or "")
+        try:
+            back = B.restored(P.classify(found))
+        except Exception:                             # noqa: BLE001 (said without it)
+            back = ""
+        card.update(kind="ok", fixed_at=at, status=(
+            f"Fixed{' at ' + at if at else ''}, verified" + (f"; {back}" if back else "") + "."))
+        if a:
+            source = {v: k for k, v in SOURCE_WORDS.items()}.get(a.get("source") or "", "")
+            what = PLAN_APPROVED.get(source, f"Attempt {a['n']}, run")
+            who = display_names.people(a["actor"]) if a.get("actor") else "nobody recorded"
+            card["how"] = {"words": f"{what} by {who}", "device": a.get("device") or "",
+                           "run": a.get("run") or ""}
+        else:
+            card["how"] = {"words": "Mercury's self-healing, verified on the device",
+                           "device": "", "run": ""}
+        return card
+    if state == "investigating":
+        from modules import troubleshoot_job
+        card.update(kind="ai", step=troubleshoot_job.shown(out.get("network") or "",
+                                                           out.get("id") or ""))
+        return card
+    plan = out.get("proposal") if isinstance(out.get("proposal"), dict) else None
+    approve = ((out.get("actions") or {}).get("approve") or {}).get("offered")
+    if state == "proposed" and plan and plan.get("steps") is not None and approve \
+            and plan.get("approvable"):
+        who = PLAN_READY.get(plan.get("source") or "", "The plan")
+        card.update(plan_ready=True, status=f"{who} is ready for your approval, below")
+    return card
 
 
 def analysed(found: dict) -> bool:

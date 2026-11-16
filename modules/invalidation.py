@@ -99,6 +99,9 @@ VOCABULARY = {
                "(modules/reveal_audit.py); History's timeline draws every kind (C818, C837)",
     "ai_calls": "the record of AI calls (modules/ai/calls.py): each call, its verdict and its "
                 "cost; History's timeline draws it (Phase 8)",
+    "ai_step": "the step a running AI troubleshooting investigation is on, in plain words "
+               "(modules/troubleshoot_job.py `say`): its incident's status line draws it (board "
+               "R5's screen 3), at most one announcement per step",
     "ai_feedback": "what people said of AI answers (Was this right?) and the review of each one "
                    "said wrong (modules/ai/feedback.py): the control under an answer and "
                    "Settings › Installation › AI's Answers said wrong draw it",
@@ -173,7 +176,8 @@ ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     # modules/troubleshoot_job.py (the operator, 2026-11-14): an AI troubleshooting investigation's
     # job ended (Start AI troubleshooting, Modify, Ask the AI again, R1's automatic start).
-    "fixit-investigation": ("ai_calls", "drift", "in_progress"),
+    # Its step, as a person reads it, while it runs (`troubleshoot_job.say`, board R5's screen 3).
+    "fixit-investigation": ("ai_calls", "drift", "in_progress", "ai_step"),
     # routes/settings_v2.display_name (board E2a): a display name changed, for every open
     # page's name chip and Needs attention; the posting page hears its own response.
     "display-names": ("people",),
@@ -356,6 +360,9 @@ DECLARED = {
     "saved_plans_v2.save_action": ("saved_plans",),
     "saved_plans_v2.promote": ("saved_plans",),
     "saved_plans_v2.approve_shape": ("saved_plans",),
+    # Not now (board R5's screen 5): the offer hidden for the incident, its choice a line of the
+    # incident's troubleshooting record; the incident's page draws its card again.
+    "saved_plans_v2.not_now": ("saved_plans", "drift"),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),

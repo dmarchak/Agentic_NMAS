@@ -41,14 +41,18 @@
 </section>
 {%- else %}
 {%- set h, ai = s.heal, s.ai -%}
-<section class="ctl-strip card" id="{{ s.anchor }}" aria-label="Self-healing and AI troubleshooting on {{ s.network }}" data-network="{{ s.network }}" hx-disinherit="*" hx-get="{{ url_for('control_v2.strip', list=s.network) }}" hx-trigger="nmas:drift from:body, nmas:settings from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+{#- Board R5 (docs/boards/r5-simple-by-default.html, approved 2026-11-15, the operator's change
+    2): the strip is a card of two switches, "Self-healing: Off (dry run)" or "On until HH:MM"
+    and "Automatic AI troubleshooting: Off" or "On", and its one explanatory line; each gear to
+    the full setting, and a viewer's read-only reason, under its one Details. Each switch posts
+    what it posted. -#}
+<section class="ctl-strip card" id="{{ s.anchor }}" aria-label="Self-healing and AI troubleshooting on {{ s.network }}" data-network="{{ s.network }}" data-card="control-strip" hx-disinherit="*" hx-get="{{ url_for('control_v2.strip', list=s.network) }}" hx-trigger="nmas:drift from:body, nmas:settings from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <div class="ctl-row">
     {#- Self-healing: on is Auto for the default duration, off is Dry run; new problems only. -#}
     <form class="ctl-item" id="ctl-heal" method="post" action="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-post="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="heal" data-state="{{ h.mode }}">
       <input type="hidden" name="on" value="{{ '0' if h.on else '1' }}">
-      <span class="ctl-name">Self-healing</span>
-      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes new problems by itself on {{ s.network }} until {{ h.until }} UTC. Turn it off: Dry run, where it only says what it would fix.{% else %}Turn on: Auto for {{ h.hours }} hour{{ '' if h.hours == 1 else 's' }}, until about {{ h.would_until }} UTC. New problems only: open incidents stay as they are.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}Auto until {{ clock(h.until) }}{% elif h.mode == 'dry_run' %}Dry run{% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', op='the Self-healing toggle') }}</span>
-      <a class="ctl-gear icon-btn" href="{{ h.gear }}" title="All of {{ s.network }}'s self-healing settings" aria-label="Self-healing settings">{{ icon('settings', 16) }}</a>
+      <span class="ctl-name">Self-healing:</span>
+      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes new problems by itself on {{ s.network }} until {{ h.until }} UTC. Turn it off: Dry run, where it only says what it would fix.{% else %}Turn on: Auto for {{ h.hours }} hour{{ '' if h.hours == 1 else 's' }}, until about {{ h.would_until }} UTC. New problems only: open incidents stay as they are.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}{{ ('On until ' ~ h.until) | times }}{% elif h.mode == 'dry_run' %}Off (dry run){% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', compact=True, op='the Self-healing toggle') }}</span>
     </form>
     {#- AI troubleshooting: Automatic (Gate 2, C3769; the operator's minimal design,
         2026-11-15). On is one press, bound to the line drawn beside it (the open incidents it
@@ -58,17 +62,27 @@
     <form class="ctl-item" id="ctl-ai" method="post" action="{{ ts_url }}" hx-post="{{ ts_url }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="ai" data-state="{{ 'on' if ai.on else 'off' }}" data-level="{{ ai.level }}">
       <input type="hidden" name="level" value="{{ 'manual' if ai.on else 'automatic' }}">
       <input type="hidden" name="line_digest" value="{{ ai.line.digest if ai.line else '' }}">
-      <span class="ctl-name">AI troubleshooting: Automatic</span>
+      <span class="ctl-name">Automatic AI troubleshooting:</span>
       <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if ai.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not ai.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if ai.on %}On since {{ ai.at }} UTC: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits. Turn it off: back to Manual at once; one already running finishes.{% elif ai.ready %}Turning it on is refused until {{ ai.ready }}.{% else %}Now {{ ai.words }}. Turn on: when Mercury's fix fails, the AI investigates by itself, within this network's spending limits.{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{{ 'On' if ai.on else 'Off' if ai.known else 'Not known' }}</span><span class="op-busy">{{ 'Turning off…' if ai.on else 'Turning on…' }}</span></button>{{ how('heal-batch', 'ai-toggle', compact=True, op='the AI troubleshooting switch') }}</span>
-      {%- if not ai.on and ai.line and ai.line.words %}<span class="small ctl-line" data-ctl-line data-n="{{ ai.line.n }}">{{ ai.line.words }}</span>{% endif %}
-      <a class="ctl-gear icon-btn" href="{{ ai.gear }}" title="AI troubleshooting's settings: Off, Manual or Automatic, and the spending limits" aria-label="AI settings">{{ icon('settings', 16) }}</a>
     </form>
   </div>
+  {#- The one explanatory line (board R5): what the AI does while the switch is as it is, and,
+      while it is off, the open incidents turning it on also starts on. -#}
+  <p class="simple-status small ctl-line"{% if not ai.on and ai.line and ai.line.words %} data-ctl-line data-n="{{ ai.line.n }}"{% endif %}>
+    {%- if ai.on %}While it's on, the AI investigates by itself when Mercury's fix fails.
+    {%- else %}While it's off, a person starts the AI.{% if ai.line and ai.line.words %} {{ ai.line.words }}.{% endif %}{% endif -%}
+  </p>
+  {#- A viewer who may not change these sees why, as the strip's third line. -#}
   {%- if not s.may %}
   <p class="small muted ctl-why" data-ctl-why>Read only: {{ s.why_not }}.</p>
   {%- endif %}
   {%- if not h.known %}<p class="small warn-text">Self-healing's mode cannot be read: {{ h.words }}</p>{% endif %}
   {%- if ai.error %}<p class="small warn-text">Whether AI troubleshooting starts by itself cannot be read: {{ ai.error }}</p>{% endif %}
   {{- answer_and_run(s) }}
+  <details class="simple-details" data-card-details data-keep="ctl-details-{{ s.network }}">
+    <summary>Details</summary>
+    <p class="small">Self-healing: {% if h.on %}Auto, fixing new problems by itself until {{ clock(h.until) }}{% elif h.mode == 'dry_run' %}Dry run: it watches and says what it would fix{% elif h.mode == 'off' %}Off{% else %}not known{% endif %}. Turned on, it runs in Auto for {{ h.hours }} hour{{ '' if h.hours == 1 else 's' }}; new problems only, open incidents stay as they are. <a class="ctl-gear" href="{{ h.gear }}" title="All of {{ s.network }}'s self-healing settings">{{ icon('settings', 14) }} Self-healing settings</a></p>
+    <p class="small">AI troubleshooting: now {{ ai.words or ai.level }}. Off, Manual or Automatic, and the spending limits, are on its card. <a class="ctl-gear" href="{{ ai.gear }}" title="AI troubleshooting's settings: Off, Manual or Automatic, and the spending limits">{{ icon('settings', 14) }} AI troubleshooting settings</a></p>
+  </details>
 </section>
 {%- endif %}

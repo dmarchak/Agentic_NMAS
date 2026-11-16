@@ -43,25 +43,54 @@ def _who() -> dict:
             "person": bool(ident is not None and ident.kind == "person")}
 
 
-def _draw(network: str, incident: str, code: int = 200, **said):
+def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, **said):
     from modules.nsot import command_policy, saved_plans
 
     got = saved_plans.offer(network, incident, **_who())
     # What the card draws, and nothing it does not (the run's id and the problem stay the
     # offer's: a save reads them again).
     c = {k: got[k] for k in ("state", "why", "plan", "match", "optional", "fills", "rights",
-                             "scripts", "unset")}
+                             "scripts", "unset", "saved", "name", "dismissed")}
     c.update(preview={"matched": len((got.get("preview") or {}).get("matched") or []),
                       "read": (got.get("preview") or {}).get("read") or 0},
              list=network, incident=incident, shapes=command_policy.provisional(network),
-             said=said)
+             said=said, show=bool(show))
     return _strict(render_template("v2/_saved_plans_saves.html", c=c), code)
 
 
 @bp.route("/<incident>/card", methods=["GET"])
 def card(incident):
-    """The incident's saves, promotions and shapes, in place."""
-    return _draw(_list_name(), incident)
+    """The incident's saves, promotions and shapes, in place; ``show=1`` draws the offer again
+    after Not now put it off (its Save this fix…)."""
+    return _draw(_list_name(), incident, show=request.args.get("show") == "1")
+
+
+@bp.route("/<incident>/not-now", methods=["POST"])
+def not_now(incident):
+    """Not now (board R5's screen 5): the offer to save the incident's verified fix put off for
+    this incident, as the verified person: one choice line in its troubleshooting record
+    (`fixit.incident.record_save`, ``dont_save``). Saves nothing, sends nothing to a device;
+    the card then says so in one line, with Save this fix… to show the offer again."""
+    from modules import incident_page
+    from modules.fixit import incident as F
+    from modules.fixit import section
+
+    network, who = _list_name(), _who()
+    if not (who["person"] and who["actor"] and who["actor_verified"] not in ("", "none")):
+        return _draw(network, incident, 403, level="danger", words=(
+            f"Not recorded: Not now is a verified person's press, and this request is not one "
+            f"(its actor is {who['actor'] or 'none'})"))
+    found = incident_page.resolve(network, incident)
+    inc = (section.incident_of(network, found).get("incident")
+           if found.get("found") == "page" else None)
+    if inc is None:
+        return _draw(network, incident, 409, level="danger",
+                     words=f"Not recorded: {incident} has no troubleshooting record to keep it")
+    try:
+        F.record_save(inc, "dont_save", who["actor"], who["actor_verified"])
+    except (F.Refused, OSError, ValueError) as exc:
+        return _draw(network, incident, 409, level="danger", words=f"Not recorded: {exc}")
+    return _draw(network, incident)
 
 
 def _refused(network, incident, exc, code=409):
@@ -88,9 +117,11 @@ def save_script(incident):
                           match=match, fills=o["fills"], **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
-    return _draw(network, incident, level="ok", words=(
-        f"Saved {e['name']} as a self-heal script, in Dry run: it records what it would run "
-        "until a person with self-healing rights promotes it"))
+    # Its result is the card's own line for what is saved from the run ("Saved: <name>, Dry
+    # run", `saved_plans.saved_from`), its form collapsed: the redraw its announcement asks
+    # for draws the same line (item 7, the operator, 2026-11-15).
+    log.info("saved plans: %s saved as a self-heal script of %s", e["key"], network)
+    return _draw(network, incident)
 
 
 @bp.route("/<incident>/save-action", methods=["POST"])
@@ -107,8 +138,9 @@ def save_action(incident):
                           words=(form.get("words") or "").strip(), **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
-    return _draw(network, incident, level="ok", words=(
-        f"Saved {e['name']} as a reusable action: it is in the catalog, a step a fix may name"))
+    # Its result is the card's line "Saved: <name>, in the catalog" (`saved_from`), as above.
+    log.info("saved plans: %s saved as a reusable action", e["key"])
+    return _draw(network, incident)
 
 
 @bp.route("/<incident>/promote", methods=["POST"])

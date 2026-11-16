@@ -111,7 +111,9 @@
       <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ inlevel.n }}{% if inlevel.n != group|length %} <span class="att-grp-rows">in {{ group|length }} row{{ '' if group|length == 1 else 's' }}</span>{% endif %}</summary>
     {%- for r in group recursive %}
     {%- set nets = r.networks or {} %}
-    <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}">
+    {#- R5 (board R5, approved 2026-11-15): a row is a card whose own line is its one Details
+        control ("a row's own line is its Details control"; tests/r5_budget.py). -#}
+    <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}" data-card="{{ r.id }}" data-card-details>
       <summary class="att-line">
         {#- C3792: an item folded under an incident as its evidence keeps its own level (an
             alert's, its rule's label in Grafana), drawn here as that label; the incident's row
@@ -129,7 +131,9 @@
         {%- if r.impact and not r.bluf %}<span class="att-impact small" data-impact title="{{ r.impact }}">{{ r.impact }}</span>{% endif %}
         {#- Gate 2 (the operator, 2026-11-15): the AI's investigation of the row's incident, from
             the incidents list's one state; live, as the job announces its start and end. -#}
-        {%- if r.ai_status %}<span class="att-ai small" data-ai="{{ r.ai_status.state }}"{% if r.ai_status.state != 'investigating' %} title="AI: {{ r.ai_status.words }}"{% endif %}>{% if r.ai_status.state == 'investigating' %}{{ r.ai_status.words }} since {{ clock(r.ai_status.since) }}{% else %}AI: {{ r.ai_status.words }}{% endif %}</span>{% endif %}
+        {%- if r.ai_status %}<span class="att-ai small" data-ai="{{ r.ai_status.state }}"{% if r.ai_status.state != 'investigating' %} title="AI: {{ r.ai_status.words }}"{% endif %}>{% if r.ai_status.state == 'investigating' %}{{ r.ai_status.words }} since {{ clock(r.ai_status.since) }}{% else %}AI: {{ r.ai_status.words }}{% endif %}</span>
+        {#- R5: the row's status line, its incident's own, where the AI's does not stand. -#}
+        {%- elif r.status %}<span class="att-status" data-status title="{{ r.status }}">{{ r.status }}</span>{% endif %}
         <span class="att-age">{% if r.since %}{{ stamp(r.since) }}{% else %}<span class="muted" title="Its source does not record when the condition began; the row stands while the condition holds, and its reading's age is below.">start not tracked</span>{% endif %}</span>
         <span class="att-primary">{{ primary(r, nets) }}</span>
       </summary>

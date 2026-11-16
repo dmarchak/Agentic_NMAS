@@ -93,6 +93,32 @@ def lead_words(n: int, m: int) -> str:
             f"Mercury can fix {m}.")
 
 
+def fix_word(fixable: int) -> str:
+    """The count in the batch card's button (board R5, approved 2026-11-15, the operator's change
+    4: "Fix both (also turns self-healing on)"): "both" for two, "all N" otherwise ("it" for
+    one). The card draws "Fix <this> (also turns self-healing on)", its side effect always
+    said (`button_words`). The press itself is `BUTTON`'s, the name its records keep."""
+    return "it" if fixable == 1 else "both" if fixable == 2 else f"all {fixable}"
+
+
+def button_words(fixable: int) -> str:
+    """The batch card's button's words whole, as `_heal_batch.html` draws them."""
+    return f"Fix {fix_word(fixable)} (also turns self-healing on)"
+
+
+def status_words(devices: list) -> str:
+    """The batch card's status line (board R5): who it waits for and what one press does, in
+    the order the job does it (`STEPS`: one device first, verified, then the rest)."""
+    devices = [d for d in devices if d]
+    if not devices:
+        return "Held for a person"
+    if len(devices) == 1:
+        return f"Held for a person: one press fixes {devices[0]} and verifies it"
+    rest = devices[1] if len(devices) == 2 else "the rest at once"
+    return (f"Held for a person: one press fixes {devices[0]}, verifies it, "
+            f"then fixes {rest}")
+
+
 def batch_hash(items: list, ai: list) -> str:
     """sha256 over each item's device, incident, decision and program hash, and each incident
     the AI would start on, sorted: what the press is bound to."""
@@ -114,7 +140,7 @@ def _newest(rows: list) -> dict:
 def preview(network: str, rows: list = None, *, ai_items: list = None,
             incidents_doc: dict = None) -> dict:
     """The batch on *network* now (a read; nothing written, nothing sent): ``{"network",
-    "on", "items", "others", "ai", "n", "fixable", "hash", "lead", "hold", "state",
+    "on", "items", "others", "ai", "n", "fixable", "fix", "hash", "lead", "hold", "state",
     "error"}``. *on* whether there is a batch at all (a device held by guard 6); *items* the
     fixable devices ``{"device", "incident", "decision", "program", "program_hash", "units",
     "kind", "words"}``; *others* the held devices the press cannot fix, each with why; *ai* the
@@ -124,7 +150,8 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
     from modules.heal import decisions, incidents
 
     out = {"network": network, "on": False, "items": [], "others": [], "ai": [], "n": 0,
-           "fixable": 0, "hash": "", "lead": "", "hold": "", "state": "ok", "error": ""}
+           "fixable": 0, "fix": "", "hash": "", "lead": "", "hold": "", "state": "ok",
+           "error": ""}
     try:
         rows = decisions.decisions(network) if rows is None else rows
     except Exception as exc:                          # noqa: BLE001 (said, never empty)
@@ -167,6 +194,7 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
     devices = ({i["device"] for i in out["items"]} | {o["device"] for o in out["others"]}
                | {a["device"] for a in out["ai"]})
     out.update(on=True, n=len(devices), fixable=len(out["items"]),
+               fix=fix_word(len(out["items"])),
                hash=batch_hash(out["items"], out["ai"]),
                lead=lead_words(len(devices), len(out["items"])),
                hold=hold_words(len(out["items"]) + len(out["others"])))

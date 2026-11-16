@@ -8,7 +8,8 @@ wrong, what Mercury has done (THE stepper, from the incident's own recorded step
 attention item offers, as the page's primary button; the GUI review's item 2, C3450), the AI
 troubleshooting frame, its evidence and its record (`modules/incident_page.py`).
 
-A READ, and the only route here: it writes nothing, creates no network, starts nothing and
+A READ, as its one part is (``GET /v2/incident/<id>/step``, the investigation's live step on the
+status line, board R5's screen 3): it writes nothing, creates no network, starts nothing and
 reaches no device. The action's own card (a proposal's, a Re-subscribe's) is its operation's
 route, read when its button is pressed. Any viewer the frame serves may open it; it draws the viewer through
 `identity.viewer()` and carries the strict policy.
@@ -51,3 +52,19 @@ def incident(incident_id):
     # Its home is Troubleshooting › Incidents (board T; provisional, operator review pending).
     return _strict(render_template("v2/incident.html", p=p, who=_who(), active_nav="incidents"),
                    code)
+
+
+@bp.route("/<incident_id>/step", methods=["GET"])
+def step(incident_id):
+    """The incident's running investigation's live step (board R5's screen 3, approved
+    2026-11-15: `troubleshoot_job.shown`), its status line's part redrawn when the job
+    announces ``ai_step``. A read of this process's memory: it waits on nothing and writes
+    nothing; no step kept (none runs, or another process runs it) draws the part empty."""
+    from modules import troubleshoot_job
+    from modules.fixit import incident as F
+
+    ref = _page_ref()
+    step_words = troubleshoot_job.shown(ref.name, incident_id) if F.valid_id(incident_id) \
+        else ""
+    return _strict(render_template("v2/_inc_step.html", iid=incident_id, network=ref.name,
+                                   step=step_words), 200)
