@@ -66,5 +66,9 @@ def step(incident_id):
     ref = _page_ref()
     step_words = troubleshoot_job.shown(ref.name, incident_id) if F.valid_id(incident_id) \
         else ""
+    if F.valid_id(incident_id) and not step_words:
+        # A saved script's run on it (the operator, 2026-11-15): what that run is doing now.
+        from modules.nsot import saved_plans
+        step_words = (saved_plans.running_on(ref.name, incident_id) or {}).get("step") or ""
     return _strict(render_template("v2/_inc_step.html", iid=incident_id, network=ref.name,
                                    step=step_words), 200)

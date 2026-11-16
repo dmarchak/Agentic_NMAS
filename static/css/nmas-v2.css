@@ -1850,6 +1850,12 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   animation: nmas-spin .8s linear infinite; }
 @keyframes nmas-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .menu-item.htmx-request::after { animation: none; } }
+/* A status line while Mercury works on it (a saved script's run, an AI investigation): its
+   spinner before the words, the live step after them (the operator, 2026-11-15). */
+.working-now::before { content: ""; display: inline-block; width: 10px; height: 10px;
+  margin-right: 6px; vertical-align: -1px; border: 2px solid var(--line);
+  border-top-color: var(--accent); border-radius: 50%; animation: nmas-spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .working-now::before { animation: none; } }
 /* Credentials > The break-glass record (board 7). */
 .bg-pass { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .bg-pass label { display: flex; flex-direction: column; gap: 4px; }

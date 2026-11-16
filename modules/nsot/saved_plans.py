@@ -601,6 +601,38 @@ def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> 
                "script": e.get("key") or "", "name": e.get("name") or ""})
 
 
+#: What a script's run is doing now, by its newest finished step (`command_plan_run.STEPS`).
+NOW_DOING = {"approve": "holding the device", "hold": "checking preconditions",
+             "read_before": "checking preconditions", "preconditions": "sending",
+             "send": "verifying", "verify": "recording", "rollback": "recording"}
+#: A script run's job (`capture_job`), so In progress, the row and the card see it running.
+JOB_KIND = "saved script"
+
+
+def actor_words(e: dict) -> str:
+    """Who a script's automatic run is by, everywhere it is said (the operator, 2026-11-15)."""
+    from modules import display_names
+    by = e.get("promoted_by") or e.get("saved_by") or ""
+    return (f"Self-healing, saved script {e.get('name')}"
+            + (f" (approved by {display_names.people(by)} at save)" if by else ""))
+
+
+def running_on(network: str, incident_id: str) -> dict:
+    """The saved script's run on *incident_id* still running in this process (its job's page is
+    the incident's), ``{"job", "step"}`` with what it is doing now, or ``{}``. A read."""
+    from modules import op_progress
+    from modules.nsot import capture_job
+
+    for j in capture_job.card_jobs():
+        if (j["kind"] == JOB_KIND and j["state"] == "running" and j["list"] == network
+                and f"/v2/incident/{incident_id}?" in (j.get("page") or "")):
+            own = op_progress.run_of(j["job"]) or {}
+            done = [s.get("step") for s in own.get("steps") or []]
+            return {"job": j["job"],
+                    "step": NOW_DOING.get(done[-1], "starting") if done else "starting"}
+    return {}
+
+
 def redecide(network: str, *, by: str = "saved-plans") -> list:
     """Every open incident of *network* whose problem matches an Automatic script (C3805: on a
     save, a promote and self-healing switched on): with self-healing in Auto the script fires
@@ -621,13 +653,33 @@ def redecide(network: str, *, by: str = "saved-plans") -> list:
         e, prob = script_for(network, found)
         if not e:
             continue
-        got = fire(network, e["key"], prob, inc["id"], heal_mode=mode, record=inc)
+        got = _fire_as_job(network, e, prob, inc)
         if got.get("ok") and got.get("run") and not got.get("already"):
             close_fixed(network, inc["id"], {"id": got["run"],
                                              "device": (got.get("values") or {}).get("device")},
                         e, by)
         out.append({"incident": inc["id"], "key": e["key"], "words": got.get("words") or ""})
         log.info("saved plans: %s re-decided on %s: %s", e["key"], inc["id"], got.get("words"))
+    return out
+
+
+def _fire_as_job(network: str, e: dict, prob, inc: dict) -> dict:
+    """`fire` in Auto as a job of its own (In progress, the row and the card see it running,
+    its actor Mercury's: `actor_words`), waited for: one incident at a time."""
+    from urllib.parse import quote
+
+    from modules.nsot import capture_job
+
+    out = {}
+
+    def work(_job):
+        out.update(fire(network, e["key"], prob, inc["id"], heal_mode="auto", record=inc))
+        return {"state": "done" if out.get("ok") else "failed",
+                "words": out.get("words") or ""}
+    job = capture_job.start(network, actor_words(e), e.get("promoted_by") or "", work,
+                            kind=JOB_KIND, actor_kind="policy",
+                            page=f"/v2/incident/{inc['id']}?list={quote(network)}")
+    capture_job.wait(job, 900)
     return out
 
 

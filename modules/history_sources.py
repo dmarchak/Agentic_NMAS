@@ -2206,9 +2206,17 @@ def privileged(ctx):
         # A record that says how its person was verified (a re-subscribe's ``actor_verified``)
         # is drawn with it; one that does not (a Tier 2 run's) names its actor as before.
         how = r.get("actor_verified")
+        who = _who(r.get("actor", ""), how) if how else r.get("actor", "")
+        script = (r.get("authority") or {}).get("script")
+        if script:
+            # A saved script's run is Mercury's self-healing, never the promoter's own press
+            # (the operator, 2026-11-15).
+            from modules.nsot import saved_plans
+            who = saved_plans.actor_words(saved_plans.scripts(ctx["ref"].name).get(script)
+                                          or {"name": script})
         events.append(_event(r.get("started_at"), "privileged",
                              title, [host],
-                             who=_who(r.get("actor", ""), how) if how else r.get("actor", ""),
+                             who=who,
                              detail=r.get("reason", ""), outcome=outcome,
                              record=[("Run", r.get("id")), ("Reason", r.get("reason")),
                                      ("Verify", (r.get("verify") or {}).get("words")),

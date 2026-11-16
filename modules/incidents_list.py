@@ -69,14 +69,17 @@ OPEN_GROUPS = (("needs_person", "Needs a person", "danger"),
                ("working", "Mercury working", "info"),
                ("watching", "Watching", "warn"))
 #: The Closed tab's groups, in order.
-CLOSED_GROUPS = (("fixed_mercury", "Fixed by Mercury", "ok"),
+CLOSED_GROUPS = (("fixed_ai", "Fixed by AI", "ok"),
+                 ("fixed_script", "Fixed by Mercury: saved script", "ok"),
+                 ("fixed_mercury", "Fixed by Mercury", "ok"),
                  ("fixed_person", "Fixed by a person", "ok"),
                  ("fixed", "Fixed, who is not recorded", "ok"),
                  ("cleared", "Cleared", "muted"),
                  ("cancelled", "Declined", "muted"))
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
-         "ended", "ttr", "by", "drill", "acknowledged", "ai", "impact", "status")
+         "ended", "ttr", "by", "drill", "acknowledged", "ai", "impact", "status", "busy",
+         "fixed_words")
 #: A state's badge kind, as the incident's own page colours its state.
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
@@ -161,16 +164,19 @@ def _fixit_of(network: str, found: dict) -> dict:
                   "words": v.get("status") or "The AI's investigation ended"}
     # Whether a plan stands to approve: a proposal line with no plan (an answer that named no
     # fix, a gap) is the section's "proposed" too, and must never be said as one to approve.
-    return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal"))}
+    return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal")),
+            "working": " · ".join(w for w in (v.get("working"), v.get("working_step")) if w)}
 
 
-def _group(st: dict, tl: dict) -> str:
+def _group(st: dict, tl: dict, how: dict = None) -> str:
     """The row's group key: an OPEN_GROUPS key while it is not resolved, else a
-    CLOSED_GROUPS key."""
+    CLOSED_GROUPS key; a close on a verified run its kind's (`incident_page.fixed_how`)."""
     if st["state"] == "needs_person":
         return "needs_person"
     if st["state"] == "open":
         return "working" if st["why"] in WORKING else "watching"
+    if st["state"] == "fixed" and how:
+        return how["group"]
     if st["state"] == "fixed":
         return {"none": "fixed_mercury", "person": "fixed_person"}.get(tl["who"]["kind"],
                                                                         "fixed")
@@ -190,8 +196,9 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
           else {"state": "", "ai": None, "plan": False})
     fixit = fx["state"]
     st = IP.status(inc, entry, decisions, fixit)
-    tl = IP.timeline(inc, entry, decisions)
+    tl = IP.timeline(inc, entry, decisions, network)
     resolved = st["state"] in IP.RESOLVED
+    how = IP.fixed_how(network, inc) if st["state"] == "fixed" else {}
     who = tl["who"]
     by = ((identity.display_name(who["actor"]) if who["actor"] else "a person not recorded")
           if who["kind"] == "person" else "Mercury" if who["kind"] == "none" else "")
@@ -202,16 +209,22 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "title": IP.title(inc, entry, decisions, st["state"], who),
             "state": st["state"], "state_words": st["words"], "why": st["why"],
             "kind": STATE_KINDS.get(st["state"], "muted"),
-            "group": _group(st, tl), "resolved": resolved,
+            # Mercury working on it now (a saved script's run, an AI investigation): that group,
+            # its status the live step (the operator, 2026-11-15).
+            "group": "working" if fx.get("working") else _group(st, tl, how),
+            "resolved": resolved, "busy": bool(fx.get("working")),
             "waits": "" if resolved else WAITS.get(st["why"], ""),
             # R5 (board R5, approved 2026-11-15): the row's status line, what it waits for in
             # one line ("Waiting for a person: …" while it needs one), "" once resolved.
-            "status": "" if resolved else status_words(st["state"], WAITS.get(st["why"], "")),
+            "status": "" if resolved else (fx.get("working") or status_words(
+                st["state"], WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",
             "ended": tl["ended"] if resolved else "",
             "ttr": tl["ttr"]["words"] if st["state"] == "fixed" else "",
-            "by": by if st["state"] == "fixed" else "",
+            "by": by if st["state"] == "fixed" and not how else "",
+            # Who fixed it, for a close on a verified run (an AI plan, a saved script).
+            "fixed_words": how.get("words", "") if how else "",
             "drill": IP.drill_of(found), "only_log": not inc,
             # The Needs attention rows about it, by the ids an acknowledgement is keyed on
             # (C3701): its own row (a can't-fix, or the incident's row, keyed by its id) and a

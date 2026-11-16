@@ -3,4 +3,4 @@
     job's step record, within 3 lines"): `troubleshoot_job.shown`, plain words only ("Reading
     edge1's err-disable status…"), redrawn when the job announces `ai_step` (once per step); nothing
     polls. Drawn by templates/v2/_fixit_section.html and by routes/incident_v2.step. -#}
-<span class="simple-progress" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body" hx-swap="outerHTML" hx-select="unset">{% if step %}· {{ step }}{% endif %}</span>
+<span class="simple-progress" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body, nmas:in_progress from:body" hx-swap="outerHTML" hx-select="unset">{% if step %}· {{ step }}{% endif %}</span>

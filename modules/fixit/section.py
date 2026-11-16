@@ -775,6 +775,21 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                                         and ln.get("operation") for ln in rec["lines"]))
     out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
                                  proposed and plan.get("approvable"))
+    # While Mercury works on it, said so with what it is doing now, a spinner beside it
+    # (`working`): a saved script's run, or an AI investigation's live step.
+    out["working"], out["working_step"] = "", ""
+    if not done:
+        from modules import troubleshoot_job
+        from modules.nsot import saved_plans
+        run = saved_plans.running_on(network, iid)
+        if run:
+            out["working"] = (f"Self-healing: fixing with saved script "
+                              f"{offer.get('name') or 'a saved script'}")
+            out["working_step"] = run["step"]
+            out["status"] = out["working"]
+        elif state == "investigating":
+            out["working"] = "The AI is investigating"
+            out["working_step"] = troubleshoot_job.shown(network, iid)
 
 
 #: A failed start's words when the press never reached the AI (a refusal before any call):
@@ -789,10 +804,11 @@ def _best_status(status: str, offer: dict, done: bool, found: dict, starts: list
     AI's plan is ready"), then the AI's latest real diagnosis, and a failed attempt only when
     nothing else exists; a press that never reached the AI is never the headline. Closed by a
     script: "Fixed by saved script <name> at <instant>"."""
-    fixed = ((found or {}).get("incident") or {}).get("fixed") or {}
     if done:
-        return (f"Fixed by saved script {fixed['name']} at {fixed.get('at')}."
-                if fixed.get("script") and fixed.get("name") else status)
+        from modules import incident_page
+        how = incident_page.fixed_how((found or {}).get("network") or "",
+                                      (found or {}).get("incident") or {})
+        return f"{how['label']}: {how['words']}." if how else status
     if offer:
         return f"A saved script can fix this: {offer['name']}."
     if plan_ready:

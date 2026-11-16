@@ -293,6 +293,51 @@ def who_of(entry: dict, decisions: list) -> dict:
     return {"kind": "unknown", "actor": ""}
 
 
+#: The closed list's groups for a close on a verified run (`fixed_how`), the operator's labels.
+FIXED_GROUPS = {"ai": ("fixed_ai", "Fixed by AI"),
+                "script": ("fixed_script", "Fixed by Mercury: saved script")}
+
+
+def fixed_how(network: str, incident) -> dict:
+    """Who fixed an incident closed on a run verified on its device (its record's ``fixed``),
+    from that run's record (the operator, 2026-11-15, one label on the row, the page and
+    History): ``{"kind", "group", "label", "words", "began", "verified"}``, *kind* ``ai`` (an
+    AI plan a person approved: "AI plan approved by <person> at <instant>") or ``script`` ("<name>,
+    learned from an AI fix on <device>, approved by <person> when saved"); *began* and
+    *verified* the run's own epochs. ``{}`` for any other close. A read of the records."""
+    from modules import display_names
+    from modules.nsot import privileged, saved_plans
+
+    fixed = (incident or {}).get("fixed") or {}
+    if not fixed.get("run"):
+        return {}
+    try:
+        rec = privileged.get(network, fixed["run"]) or {}
+    except (OSError, ValueError):
+        rec = {}
+    out = {"began": rec.get("started_at"), "verified": rec.get("finished_at")}
+    if fixed.get("script"):
+        e = saved_plans.scripts(network).get(fixed["script"]) or {}
+        src = (e.get("from_run") or {}).get("run") or ""
+        try:
+            learned = (privileged.get(network, src) or {}).get("device") if src else ""
+        except (OSError, ValueError):
+            learned = ""
+        by = e.get("promoted_by") or e.get("saved_by") or ""
+        words = (f"{fixed.get('name') or e.get('name') or 'a saved script'}"
+                 + (f", learned from an AI fix on {learned}" if learned else "")
+                 + (f", approved by {display_names.people(by)} when saved" if by else ""))
+        kind = "script"
+    else:
+        at = rec.get("started_at")
+        when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(at))) if at else ""
+        words = (f"AI plan approved by {display_names.people(rec.get('actor') or '')}"
+                 + (f" at {when}" if when else "")) if rec.get("actor") else "an AI plan"
+        kind = "ai"
+    group, label = FIXED_GROUPS[kind]
+    return dict(out, kind=kind, group=group, label=label, words=words)
+
+
 def _declined(decisions: list) -> dict:
     """The decision a person declined, or ``{}``."""
     return next((d for d in reversed(decisions) if _taken_by(d).endswith(DECLINED)), {})
@@ -574,7 +619,7 @@ def _events(incident, entry: dict, decisions: list, ran: list, device: str) -> l
     return [{"at": e["at"], "words": e["words"]} for e in out]
 
 
-def timeline(incident, entry: dict, decisions: list) -> dict:
+def timeline(incident, entry: dict, decisions: list, network: str = "") -> dict:
     """The header's times and what follows from them: ``{"detected", "decided", "fixed",
     "verified", "ttr", "attempts", "events", "who", "closed", "ended"}``. Each of the first
     four is a cell (`_cell`); ``ttr`` is ``{"seconds", "words", "span", "who", "hover"}``,
@@ -630,6 +675,25 @@ def timeline(incident, entry: dict, decisions: list) -> dict:
                        hover=(f"From Detected, when {detected['basis']}, to Verified, when "
                               f"the fix's last check passed: {seconds:,} seconds. A device's "
                               "clock is never used."))
+    elif state == "fixed" and network and fixed_how(network, inc):
+        # Closed on a run verified on the device (an AI plan, a saved script): how long the
+        # problem lasted, and how long its fix took (the operator, 2026-11-15).
+        how = fixed_how(network, inc)
+        began, ver = how.get("began"), how.get("verified")
+        fixed = _cell("at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(began)))) \
+            if began else _cell("none", words="not recorded")
+        verified = _cell("at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(ver)))) \
+            if ver else _cell("none", words="not recorded")
+        parts = []
+        if detected["epoch"] is not None and ver:
+            lasted = int(float(ver) - float(detected["epoch"]))
+            parts.append(f"lasted {run_stepper.duration_words(lasted)}")
+            ttr.update(seconds=lasted)
+        if began and ver:
+            parts.append(f"the fix took {run_stepper.duration_words(int(float(ver) - float(began)))}")
+        ttr.update(words="; ".join(parts) or "not recorded", who=how["words"],
+                   hover="From Detected to the run's verify, and from the run's start to its "
+                         "verify, both from the run's own record")
     # Each fact once (C3454): a cell holds its state's words, and why on its hover; the reason
     # itself is said where it happened (a failed verify's in its stage, a decline in Decided).
     elif failed and state == "needs_person":
@@ -689,10 +753,10 @@ def title(incident, entry: dict, decisions: list, state: str = "", who: dict = N
     who = who or who_of(entry, decisions)
     end = ""
     if state == "fixed":
-        end = (", fixed and verified"
+        end = (""
                # Closed on a plan's run verified on the device (`incidents.close`'s ``fixed``):
-               # no heal act of Mercury's put it back, and who approved it is said on the
-               # page's "How it was fixed" line (board R5's screen 5).
+               # the badge says Fixed and the row says who (`fixed_how`): nothing appended
+               # (the operator, 2026-11-15).
                if not acts(entry) and (incident or {}).get("fixed") else
                ", and Mercury's fix was verified"
                if steplog.ACTION_FAMILY.get(entry.get("kind") or "") else
@@ -1046,7 +1110,7 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     inc, entry, decisions = found["incident"] or {}, found["entry"], found["decisions"]
     device = inc.get("device") or entry.get("device") or ""
     ran = acts(entry)
-    tl = timeline(found["incident"], entry, decisions)
+    tl = timeline(found["incident"], entry, decisions, network)
     # Resolved: nothing is left for Mercury or a person to do. An incident whose heal ended
     # without a passed verify is closed in its own store and still needs a person.
     resolved = state_of(found["incident"], entry, decisions) in RESOLVED
