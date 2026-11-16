@@ -984,6 +984,10 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
     if why == "watching":
         return {"words": "Nothing yet: Mercury is working on it. This page says what it "
                          "decided as soon as it does.", "more": "", "links": ["device"]}
+    if why == MERCURY_WORKING:
+        return {"words": "Nothing yet: Mercury is working on it (a saved script's run or an AI "
+                         "investigation). Its outcome is drawn here when it ends.",
+                "more": "", "links": ["device"]}
     if why == "ai_investigating":
         return {"words": "Nothing yet: the AI is investigating. Its proposal is drawn under AI "
                          "troubleshooting when it is ready, and nothing runs until a person "
