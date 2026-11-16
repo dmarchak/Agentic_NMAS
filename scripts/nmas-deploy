@@ -1327,7 +1327,9 @@ def _probe_helpers():
     asked, refusing when it cannot be read)."""
     import importlib.util
     from importlib.machinery import SourceFileLoader
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nmas-tier2-probe")
+    # The file's own folder, the symlink resolved (C3851): installed as ~/bin/nmas-deploy, a
+    # symlink to the checkout's copy, its helper is beside the copy, not beside the link.
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "nmas-tier2-probe")
     loader = SourceFileLoader("nmas_tier2_probe", path)
     spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
     mod = importlib.util.module_from_spec(spec)
