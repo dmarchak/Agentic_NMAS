@@ -31,8 +31,8 @@ saves one fix: a save of a run already saved answers the fix saved from it (`sav
 ``action``) are kept as they were written and never rewritten in place; every read presents
 each entry as a fix (`as_fix`): an old script is its network's, not shared, matched, and kept
 out of the catalog as before (its run's twin action, when one was saved, is the catalog's); an
-old action is shared (actions were the installation's), with no match. New saves write the
-fix's shape only.
+old action is the network it was saved on's, not shared, with no match (the operator,
+2026-11-16: sharing is an option, off by default). New saves write the fix's shape only.
 
 **Who** (`identity.right_refusal`, the one chokepoint): running a fix, any engineer
 (``run_plan``); saving or promoting a fix with a match (matched or automatic), the
@@ -165,8 +165,8 @@ def as_fix(e: dict) -> dict:
     ``kind`` ``fix``, ``saved_as`` the kind it was written as, ``network``, ``shared``,
     ``catalog`` (whether it is an action of the catalog), ``match``, ``fills``, ``words`` and
     ``how`` (`how_of`). An old ``script`` is its network's, not shared, and stays out of the
-    catalog as before; an old ``action`` is shared (the installation's, as it was) with no
-    match, its network the one it was saved on."""
+    catalog as before; an old ``action`` is not shared (sharing is an option, off by default:
+    the operator, 2026-11-16) with no match, its network the one it was saved on."""
     kind = e.get("kind") or ""
     out = dict(e, saved_as=kind, kind=FIX, match=dict(e.get("match") or {}),
                fills=dict(e.get("fills") or {}), track=list(e.get("track") or []),
@@ -174,7 +174,10 @@ def as_fix(e: dict) -> dict:
     if kind == "script":
         out.update(network=str(e.get("network") or ""), shared=False, catalog=False)
     elif kind == "action":
-        out.update(network=str((e.get("from_run") or {}).get("network") or ""), shared=True,
+        # The network it was saved on, not shared (the operator, 2026-11-16: "a saved fix
+        # belongs to the network it was saved on, with sharing to all networks as an option,
+        # off by default"): an old action was saved with no sharing choice.
+        out.update(network=str((e.get("from_run") or {}).get("network") or ""), shared=False,
                    catalog=True, match={}, fills={}, mode="")
     else:
         out.update(network=str(e.get("network") or ""), shared=bool(e.get("shared")),
@@ -507,11 +510,11 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
 
 
 def save_action(network: str, *, run_id: str, name: str, words: str, actor: str,
-                actor_verified: str, person: bool, shared: bool = True) -> dict:
+                actor_verified: str, person: bool, shared: bool = False) -> dict:
     """The card's Save as a reusable action (`routes/saved_plans_v2.save_action`): the verified
-    run saved as one fix with no match (`save_fix`), named *name* and said in *words*, shared
-    with every network unless *shared* is False (an action was the installation's). Needs the
-    admin right. Raises `Refused`."""
+    run saved as one fix with no match (`save_fix`), named *name* and said in *words*, its
+    network's; shared with every network only when *shared* is True (an option, off by
+    default: the operator, 2026-11-16). Needs the admin right. Raises `Refused`."""
     return save_fix(network, run_id=run_id, name=name, words=words, shared=shared,
                     actor=actor, actor_verified=actor_verified, person=person)
 

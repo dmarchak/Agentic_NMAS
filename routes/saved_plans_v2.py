@@ -12,7 +12,8 @@ incident's AI troubleshooting section includes and asks for in place.
   right for a fix with a match and its promotion, the admin right for a fix with none and a
   shape. Each answers with the card, its result or refusal drawn in place. Both saves save
   ONE fix (C3849, `saved_plans.save_fix`): Save with the match ticked, Save as a reusable
-  action without one (shared with every network); a run already saved answers its fix.
+  action without one (its network's: sharing is an option, off by default, the operator,
+  2026-11-16; no control offers it yet); a run already saved answers its fix.
 
 Its declarations live in their tables (`route_gates.GATES`, `invalidation.DECLARED`,
 `operation_stages.STAGES`).
