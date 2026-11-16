@@ -1928,7 +1928,9 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
             # interrupted-operation row names it. Either way not clean, and not a second row.
             pending_named += 1
             continue
-        if result_level([r], receipt_ok=True) == "success":
+        if result_level([r], receipt_ok=True) == "success" or receipts.skipped(r):
+            # A command plan its precondition refused, nothing sent: skipped, nothing to fix
+            # (the operator, 2026-11-16), never a row.
             continue
         saved = r.get("saved_startup") or {}
         unsaved_words = (SAVED_STARTUP_WORDS["not_saved"] + ": "
@@ -6874,7 +6876,9 @@ def _batch_cards(rows: list, listed=None) -> list:
         if not p:
             continue
         held, phrases, problems, impacts = [], [], [], []
-        for i in p.get("items") or []:
+        # C3819: the incidents a saved script fixes are the card's problems too, after the
+        # restores, each line naming its script.
+        for i in list(p.get("items") or []) + list(p.get("scripts") or []):
             r = by_id.get(i.get("incident")) or {}
             b = r.get("bluf") or {}
             what, device = b.get("what") or "", i.get("device") or ""
@@ -6886,7 +6890,9 @@ def _batch_cards(rows: list, listed=None) -> list:
             impacts.append(b.get("impact") or "")
             obj = prob.get("object") or ""
             line = (f"{device} {obj}: {rest}" if obj and rest else what
-                    or f"{device}: {i.get('words') or 'held for a person'}")
+                    or f"{device}: {i.get('words') or i.get('title') or 'held for a person'}")
+            if i.get("key"):
+                line += f" · saved script {i.get('name') or i['key']}"
             held.append({"incident": i.get("incident") or "", "device": device, "line": line,
                          "since": r.get("since") or ""})
         devices = [h["device"] for h in held]
@@ -7917,6 +7923,8 @@ def _heal_held_rows(lst: str, rows: list) -> list:
                 source="heal", kind="held", key=d.get("id") or "?", level="warning",
                 event=d.get("id"), devices=sorted({i["device"] for i in p["items"]}
                                                   | {o["device"] for o in p["others"]}
+                                                  | {s["device"] for s in
+                                                     p.get("scripts") or []}
                                                   | {a["device"] for a in p["ai"]}),
                 since=float(d.get("epoch") or 0) or None, what=p["lead"],
                 cause=(f"{p['hold']} Guard {g.get('guard')}, {g.get('name')}: "

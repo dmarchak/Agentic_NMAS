@@ -92,8 +92,24 @@ def noun(row: dict) -> str:
 
 def past(row: dict) -> str:
     """What the receipt's run did, in the past tense, for History."""
+    if skipped(row):
+        return SKIPPED_WORDS[:1].upper() + SKIPPED_WORDS[1:]
     scope = SCOPES.get(row.get("scope") or "")
     return scope[1] if scope else _PAST.get(row.get("action") or "", "Changed")
+
+
+#: A command plan its own precondition refused before anything was sent (the operator,
+#: 2026-11-16: "a precondition refusal that sends nothing is 'skipped: nothing to fix', not a
+#: failure or a warning"), as History and Needs attention say it.
+SKIPPED_WORDS = "skipped: nothing to fix"
+
+
+def skipped(row: dict) -> bool:
+    """Whether *row* is a command plan refused at its pre-apply precondition, nothing sent: its
+    receipt records ``failed`` at ``pre_apply`` (the pipeline's refusal), never a failure to
+    show."""
+    return (row.get("action") == "command_plan" and row.get("stage") == "pre_apply"
+            and not row.get("sent") and row.get("outcome") in ("failed", "refused"))
 
 
 #: Who did a heal's work (the operator, 2026-11-12: a heal reads "Heal <device> · by Mercury's

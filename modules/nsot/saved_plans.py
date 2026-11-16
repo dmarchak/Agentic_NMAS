@@ -485,7 +485,8 @@ def mode_now(entry: dict, heal_mode: str) -> str:
 
 
 def fire(network: str, key: str, problem, incident: str, *, sources=None,
-         heal_mode: str = "auto", record: dict = None, force_dry: bool = False) -> dict:
+         heal_mode: str = "auto", record: dict = None, force_dry: bool = False,
+         claimed: dict = None, batch: dict = None, expect_hash: str = "") -> dict:
     """Script *key* fired on *problem* in *incident*, in the mode self-healing allows it now
     (`mode_now`; Dry run when *force_dry*, another script having sent already), claimed first
     (`_claim`: one standing fire per incident and mode): its values filled from the problem
@@ -495,20 +496,37 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
     script_hold`, on the incident's *record*): one holding it sends nothing and the row says
     which; else the plan runs through the runner (`command_plan_run.run`) on the promotion's
     authority. No AI call either way. ``{"mode", "ok", "sent", "words", "hash", "values",
-    "run", "already", "state"}``."""
+    "run", "already", "state"}``.
+
+    G6's batch (C3819) fires its scripts here too, named: *claimed* the row it claimed before
+    turning self-healing on (`claim_for_batch`; no second claim is taken), *batch* its
+    approval (``{"id", "by", "by_shown", "hash"}``: guard 6 resolved for this run, the batch
+    named on the run's reason and authority) and *expect_hash* the plan hash the person
+    approved: a plan whose hash moved since is refused, naming both, with nothing sent."""
     from modules.nsot import command_plan as CP
     from modules.nsot import command_plan_run as CR
 
     e = scripts(network).get(key)
     if not e:
+        if claimed is not None:
+            release(key, claimed.get("id") or "", f"not run: {key} is no longer a script here")
         raise Refused(f"{key} is no self-heal script of {network}")
     mode = "dry_run" if force_dry and mode_now(e, heal_mode) != "off" else mode_now(e, heal_mode)
+    if claimed is not None and mode != claimed.get("mode"):
+        words = (f"not run: the batch claimed its {claimed.get('mode')} run, and self-healing "
+                 f"allows {mode} now; nothing was sent")
+        release(key, claimed.get("id") or "", words)
+        return {"mode": mode, "ok": False, "sent": False, "hash": "", "values": {}, "run": "",
+                "words": words, "state": "done"}
     if mode == "off":
         return {"mode": "off", "ok": False, "sent": False, "hash": "", "values": {}, "run": "",
                 "words": "self-healing is off on this network: nothing fired"}
-    row, before = _claim(key, incident, mode)
-    if before is not None:
-        return dict(before, already=True)
+    if claimed is not None:
+        row = claimed
+    else:
+        row, before = _claim(key, incident, mode)
+        if before is not None:
+            return dict(before, already=True)
     out = {"mode": mode, "ok": False, "sent": False, "hash": "", "values": {}, "run": ""}
     try:
         values = fill(e, problem)
@@ -518,15 +536,20 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
     out.update(ok=bool(p["ok"]), hash=p["hash"], values=p["values"],
                words=("would run" if p["ok"] else "would be refused: "
                       + "; ".join(p["refusals"])))
-    if mode == "auto" and p["ok"]:
+    if p["ok"] and expect_hash and p["hash"] != expect_hash:
+        out.update(ok=False, words=(f"its plan moved since the batch was previewed (approved "
+                                    f"{expect_hash[:12]}, now {p['hash'][:12]}); nothing was "
+                                    "sent"))
+    elif mode == "auto" and p["ok"]:
         from modules.heal import decide
         held = decide.script_hold(network, record or {"id": incident,
-                                                     "device": values.get("device")})
+                                                     "device": values.get("device")},
+                                  batch=bool(batch))
         if held:
             out.update(ok=False, words=(f"held by guard {held['guard']} ({held['name']}): "
                                         f"{held['words']}; nothing was sent"))
         else:
-            rec = _run_as_job(network, e, values, p["hash"], incident)
+            rec = _run_as_job(network, e, values, p["hash"], incident, batch=batch)
             out.update(run=rec.get("id") or "", ok=rec.get("state") == "done",
                        sent=rec.get("outcome") != "refused",
                        words=CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
@@ -567,10 +590,13 @@ def script_for(network: str, found: dict) -> tuple:
     return (hit[0], prob) if hit else (None, None)
 
 
-def script_offer(network: str, found: dict) -> dict:
-    """The incident's "Fix with saved script: <name>" (C3805): ``{"key", "name", "hash",
-    "values"}`` of its matching Automatic script, previewed by the runner's own preview (no
-    device), or ``{}`` when none matches or its preview is refused. A read."""
+def script_preview(network: str, found: dict) -> dict:
+    """The incident *found*'s matching Automatic script (`script_for`) and its plan as `fire`
+    would preview it (`fill`, then the runner's own preview, `command_plan.preview`, asking no
+    device), without claiming or firing anything: ``{"key", "name", "hash", "values",
+    "program", "title", "problem"}``, *program* and *title* masked (the preview's ``drawn``),
+    *problem* the classified problem as `fire` takes it; ``{}`` when none matches or its
+    preview is refused. A read (G6's batch, C3819; the incident's offer, `script_offer`)."""
     from modules.nsot import command_plan as CP
 
     e, prob = script_for(network, found)
@@ -581,8 +607,54 @@ def script_offer(network: str, found: dict) -> dict:
     except Refused:
         return {}
     p = CP.preview(network, e["key"], values)
-    return ({"key": e["key"], "name": e.get("name") or e["key"], "hash": p["hash"],
-             "values": p["values"]} if p["ok"] else {})
+    if not p["ok"]:
+        return {}
+    d = p.get("drawn") or {}
+    return {"key": e["key"], "name": e.get("name") or e["key"], "hash": p["hash"],
+            "values": p["values"], "program": list(d.get("program") or []),
+            "title": d.get("title") or "", "problem": prob.as_dict()}
+
+
+def script_offer(network: str, found: dict) -> dict:
+    """The incident's "Fix with saved script: <name>" (C3805): ``{"key", "name", "hash",
+    "values"}`` of its matching Automatic script, previewed by the runner's own preview (no
+    device), or ``{}`` when none matches or its preview is refused. A read."""
+    got = script_preview(network, found)
+    return {k: got[k] for k in ("key", "name", "hash", "values")} if got else {}
+
+
+def standing_fire(network: str, key: str, incident: str, mode: str = "auto") -> dict:
+    """The track row of *key* standing for *mode*'s fire on *incident* now (`_stands`: in
+    flight, or one that sent anything), or ``{}``: a fire on it would answer that row and run
+    nothing. A read."""
+    e = scripts(network).get(key) or {}
+    return next((dict(r) for r in reversed(e.get("track") or []) if _stands(r, incident, mode)),
+                {})
+
+
+def claim_for_batch(key: str, incident: str) -> tuple:
+    """G6's batch claims its Auto fire of *key* on *incident* before it turns self-healing on
+    (C3819): `_claim`'s ``(row, None)``, or ``(None, row)`` the row already standing. Taken
+    under the store's lock across processes, so the re-decide a turn-on starts
+    (`redecide_soon`), the heal decision's `fire_matching` and any other worker answer the
+    batch's ``firing`` row and run nothing; the batch fires it later with ``claimed=``."""
+    return _claim(key, incident, "auto")
+
+
+def release(key: str, row_id: str, words: str) -> dict:
+    """The batch's claimed row *row_id* of *key* given back, unrun (its first device did not
+    heal, or self-healing was not turned on): finished with nothing sent, so it stands for
+    nothing (`_stands`) and a later fire may run. Only a row still ``firing`` that sent
+    nothing is released; any other is left as it is (never a sent run made re-runnable)."""
+    def change(doc):
+        e = doc["plans"].get(key) or {}
+        for row in e.get("track") or []:
+            if (row.get("id") == row_id and row.get("state") == "firing"
+                    and not row.get("sent")):
+                row.update(state="done", ok=False, sent=False, words=str(words)[:300])
+                return dict(row)
+        return {}
+    return _update(change)
 
 
 def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> dict:
@@ -662,23 +734,30 @@ def redecide(network: str, *, by: str = "saved-plans") -> list:
     return out
 
 
-def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: str) -> dict:
+def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: str, *,
+                batch: dict = None) -> dict:
     """A script's automatic run (the runner) as a job of its own, waited for: In progress, the
     row and the card see it running (`running_on`), its actor Mercury's (`actor_words`),
-    whichever path fired it. The run's record, or ``{}`` when the job ended without one."""
+    whichever path fired it. *batch*, G6's approval that fired it (C3819), is named on the
+    run's reason and authority. The run's record, or ``{}`` when the job ended without one."""
     from urllib.parse import quote
 
     from modules.nsot import capture_job
     from modules.nsot import command_plan_run as CR
 
     out = {}
+    reason = f"self-heal script {e['name']}, promoted by {e.get('promoted_by')}"
+    authority = {"script": e["key"]}
+    if batch:
+        reason += (f"; run by the batch {batch.get('id')}, approved by "
+                   f"{batch.get('by_shown') or batch.get('by')} by its hash "
+                   f"{str(batch.get('hash') or '')[:12]}")
+        authority["batch"] = batch.get("id") or ""
 
     def work(_job):
         out.update(CR.run(network, e["key"], values, actor=e.get("promoted_by") or "",
                           actor_verified="", person=False, confirmed=confirmed,
-                          incident=incident, reason=(f"self-heal script {e['name']}, promoted "
-                                                     f"by {e.get('promoted_by')}"),
-                          authority={"script": e["key"]}))
+                          incident=incident, reason=reason, authority=authority))
         return {"state": out.get("state"), "words": out.get("why") or ""}
     job = capture_job.start(network, actor_words(e), e.get("promoted_by") or "", work,
                             kind=JOB_KIND, actor_kind="policy",

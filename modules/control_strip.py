@@ -57,7 +57,10 @@ def _run_card(job: dict) -> dict:
              else "failed" if outcome or got.get("state") == "failed" else "done")
     rows = [RS.row(batch.BUTTON, group, rec["steps"], device=False)]
     for d in result.get("devices") or []:
-        g = {"healed": "done", "not_started": "not_reached"}.get(d.get("outcome"), "failed")
+        # ``already``: a saved script another path's run had in flight when the batch claimed
+        # it (C3819), drawn running, never done: the batch did not verify it.
+        g = {"healed": "done", "already": "running",
+             "not_started": "not_reached"}.get(d.get("outcome"), "failed")
         rows.append(RS.row(d.get("device") or "?", g, [], detail=d.get("words") or ""))
     return {"job": job["job"], "state": got.get("state") or job.get("state"),
             "outcome": outcome, "words": result.get("words") or got.get("error") or "",
@@ -78,23 +81,60 @@ def batch_ai_items(network: str) -> dict:
             f"the open incidents with no fix cannot be listed ({got['error']})"}
 
 
+def batch_script_items(network: str) -> dict:
+    """``{"items", "error"}``: every open incident of *network* an Automatic saved script
+    matches, each with its plan previewed as `saved_plans.fire` previews it, asking no device
+    (`saved_plans.script_preview`), for G6's batch (C3819). Each incident is classified from
+    its page (`incident_page.resolve`), as the heal decision's `fire_matching` and the
+    re-decide classify it, read here because `heal.batch` never reads an incident's page. An
+    incident whose script already stands on it in Auto (in flight, or sent) is left out: a fire
+    would run nothing. No Automatic script on the network reads no incident. *error* says why
+    they could not be listed, never read as none."""
+    from modules import incident_page
+    from modules.heal import incidents as INC
+    from modules.nsot import saved_plans as S
+
+    try:
+        if not any(e.get("mode") == "auto" for e in S.scripts(network).values()):
+            return {"items": [], "error": ""}
+        out = []
+        for rec in INC.read(network).get("incidents") or []:
+            if not isinstance(rec, dict) or rec.get("state") not in INC.OPEN_STATES:
+                continue
+            found = incident_page.resolve(network, rec.get("id") or "")
+            if found.get("found") != "page":
+                found = {"incident": rec, "entry": {}}
+            got = S.script_preview(network, found)
+            if not got or S.standing_fire(network, got["key"], rec["id"]):
+                continue
+            out.append(dict(got, incident=rec["id"],
+                            device=rec.get("device") or got["values"].get("device") or ""))
+        return {"items": out, "error": ""}
+    except Exception as exc:                          # noqa: BLE001 (said, never read as none)
+        return {"items": [], "error": (f"the saved scripts' matches cannot be listed "
+                                       f"({type(exc).__name__}: {exc})")}
+
+
 def batch_preview(network: str, rows: list = None) -> dict:
     """G6's batch card on *network* (`heal.batch.preview`), with the incidents for the AI
-    handed in (`batch_ai_items`)."""
+    (`batch_ai_items`) and the saved scripts' matches (`batch_script_items`) handed in."""
     from modules.heal import batch
 
-    return batch.preview(network, rows, ai_items=batch_ai_items(network))
+    return batch.preview(network, rows, ai_items=batch_ai_items(network),
+                         script_items=batch_script_items(network))
 
 
 def fix_all(network: str, shown: str, *, actor: str, verified: str, ident) -> dict:
     """G6's one press (`heal.batch.press`), with what the heal loop never reads handed in: the
-    incidents for the AI as the card listed them and the AI's starts
-    (`heal_notice.start_catch_up`). Raises `heal.batch.Refused`, nothing started."""
+    incidents for the AI as the card listed them, the saved scripts' matches with their
+    previewed plans, and the AI's starts (`heal_notice.start_catch_up`). Raises
+    `heal.batch.Refused`, nothing started."""
     from modules import heal_notice
     from modules.heal import batch
 
     return batch.press(network, shown, actor=actor, verified=verified, ident=ident,
-                       ai_items=batch_ai_items(network), start_ai=heal_notice.start_catch_up)
+                       ai_items=batch_ai_items(network), start_ai=heal_notice.start_catch_up,
+                       script_items=batch_script_items(network))
 
 
 def batch_run(network: str):

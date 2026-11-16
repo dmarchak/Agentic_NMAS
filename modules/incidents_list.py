@@ -155,7 +155,10 @@ def _fixit_of(network: str, found: dict) -> dict:
         log.warning("incidents list: %s's AI starts of %s cannot be read (%s)", network,
                     found.get("id"), type(exc).__name__)
         starts = []
-    if starts:
+    # The AI's status only while an AI result stands (the operator, 2026-11-16: a status not
+    # from the AI never starts "AI:"): an investigation ready to start again ("ready", "none")
+    # draws its incident's own status, as r4's and r7's guard-4 reason after an old start.
+    if starts and v.get("state") not in ("", "none", "ready"):
         last = starts[-1]
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(last.get("epoch") or 0)))
         if v.get("state") == "investigating":

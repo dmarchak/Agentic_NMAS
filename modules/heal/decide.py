@@ -514,9 +514,8 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     key = findings.problem_key(incident)
     fight = (findings.fight_on(network, device, key[1] if key else "", mode=mode, now=now)
              if value(mode, "heal_fight_stop") else {})
-    for g in (guards.g6_many(got["incidents"], now, grace_s,
-                             value(mode, "heal_max_devices_drifting"),
-                             at=_opened(incident)),
+    for g in (_g6(incident, got["incidents"], now, grace_s,
+                  value(mode, "heal_max_devices_drifting")),
               guards.g8_grace(incident),
               guards.g11_fight(fight, bool(value(mode, "heal_fight_stop")))):
         if _resolves(batch, g, incident):
@@ -749,11 +748,15 @@ def _log_steps(network: str, d: dict, now: float) -> None:
 SCRIPT_OUTCOMES = ("cant_fix",)
 
 
-def script_hold(network: str, incident: dict, *, now: float = None, sources=None):
+def script_hold(network: str, incident: dict, *, now: float = None, sources=None,
+                batch: bool = False):
     """The heal guard that holds a promoted script's run on *incident*'s device now, as
     `_decide_one` judges each (guard 1 the kill switch, 2 the mode and a halt, 3 planned work,
-    4 the device Mercury's to change, 6 many devices at once), its `guards.hit` shape; None
-    when none does. A read. *sources* is kept for its callers; no guard here reads it now."""
+    4 the device Mercury's to change, 6 many devices at once, for a configuration departure
+    only, `_g6`: a record with no ``cause`` of ``change`` is an event, never held by 6), its
+    `guards.hit` shape; None when none does. *batch*: the run is one of G6's batch a person
+    approved, which resolves guard 6 for it (`BATCH_RESOLVES`). A read. *sources* is kept for
+    its callers; no guard here reads it now."""
     from modules.heal import decisions, guards, incidents, policy
     from modules.heal.guards import value
     from modules.inventory.management import refusal_for
@@ -776,9 +779,25 @@ def script_hold(network: str, incident: dict, *, now: float = None, sources=None
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
     # The operator, 2026-11-16: no time-based hold (guards 5, 7, 9 and 10 no longer hold), as
     # in `_decide_one`; guard 6 stays, a person's decision.
-    g = guards.g6_many(incidents.read(network)["incidents"], now, grace_s,
-                       value(mode, "heal_max_devices_drifting"), at=_opened(incident))
+    if batch:
+        return None
+    g = _g6(incident, incidents.read(network)["incidents"], now, grace_s,
+            value(mode, "heal_max_devices_drifting"))
     return g or None
+
+
+def _g6(incident: dict, all_incidents: list, now: float, grace_s: float, most):
+    """Guard 6 for *incident* (`guards.g6_many`, anchored on its opening, `_opened`), or None
+    when *incident* is no configuration departure (C3819, the operator, 2026-11-16): guard 6
+    counts config departures only (``cause`` ``change``), so it holds only them; an event
+    problem (an err-disabled port, port security, a lost stream: any incident whose ``cause``
+    is not ``change``, or a record that carries none) is never held by it. The one scope, both
+    callers' (`_decide_one`, `script_hold`)."""
+    from modules.heal import guards
+
+    if (incident or {}).get("cause") != "change":
+        return None
+    return guards.g6_many(all_incidents, now, grace_s, most, at=_opened(incident))
 
 
 def _opened(incident: dict):
