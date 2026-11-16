@@ -47,7 +47,7 @@
     and button, or its saved line. -#}
 {%- macro action_part() -%}
 {%- if SV.action %}
-  <p class="small" role="status" data-saved="action">{{ icon('tick', 14) }} Saved: {{ SV.action.name }}, in the catalog</p>
+  <p class="small" role="status" data-saved="action">{{ icon('tick', 14) }} Saved: <a data-fix-page="{{ SV.action.key }}" href="{{ url_for('fixes_v2.fix', key=SV.action.key, list=c.list) }}">{{ SV.action.name }}</a>, in the catalog</p>
 {%- else %}
   <form id="saved-action-{{ c.incident }}" class="small simple-form" data-save="action">
     <input type="hidden" name="list" value="{{ c.list }}">
@@ -107,7 +107,7 @@
   {#- Screen 5b: one line, Promote… the only way to Auto: one link opening the existing
       promote, said and pressed in place (a disclosure, as the plan card's Modify or deny…). -#}
   <div class="simple-acts simple-saved">
-    <p class="simple-status" role="status" data-saved="script">{{ icon('tick', 14) }} Saved: {{ SV.script.name }}, {{ 'Automatic when self-healing is on' if SV.script.mode == 'auto' else 'Dry run' }}.</p>
+    <p class="simple-status" role="status" data-saved="script">{{ icon('tick', 14) }} Saved: <a data-fix-page="{{ SV.script.key }}" href="{{ url_for('fixes_v2.fix', key=SV.script.key, list=c.list) }}">{{ SV.script.name }}</a>, {{ 'Automatic when self-healing is on' if SV.script.mode == 'auto' else 'Dry run' }}.</p>
     {%- if SV.script.mode != 'auto' %}
     <details class="simple-menu menu-wrap" data-keep="saved-promote-{{ c.incident }}"><summary role="button" title="Opens Promote: the script then runs, verified and recorded, when its match holds, while self-healing is in Auto">Promote…</summary>
       <div class="menu simple-promote" role="group" aria-label="Promote {{ SV.script.name }}">

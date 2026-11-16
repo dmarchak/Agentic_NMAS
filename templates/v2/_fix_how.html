@@ -1,0 +1,58 @@
+{%- from "v2/_macros.html" import icon, clock -%}
+{#- A fix's How it runs fold (board fix-bpdu-guard, artboard 1, approved 2026-11-16): the ways
+    a fix runs, this one's marked, what changed it and when, and what its checks cannot prove
+    on a port that is down (the operator's change 1). A saved fix's Delete… or Restore… is
+    here, inside the fold (the operator, 2026-11-16: the default view keeps one button): a
+    reason, then the press, the answer drawn in place (`routes/fixes_v2.delete`, `restore`).
+    Drawn by fix.html and again, alone, by those two posts. -#}
+<section class="card inc-fold" id="fix-how" aria-labelledby="h-fx-how"{% if said and said.words %} data-holds-live="review"{% endif %}>
+  <details class="inc-fold-d" data-keep="fx-how-{{ p.key }}"{% if open_fold %} open{% endif %}><summary class="card-head"><h2 id="h-fx-how">How it runs · {{ p.words }}</h2></summary>
+  {%- if said and said.words %}
+    <div class="notice notice-{{ 'danger' if said.level == 'danger' else 'ok' }} set-result" role="{{ 'alert' if said.level == 'danger' else 'status' }}">{{ icon('warn' if said.level == 'danger' else 'tick', 16) }}<p>{{ said.words }}</p></div>
+  {%- endif %}
+  {%- if p.kind == 'saved' %}
+    <dl class="tl-record">
+      <dt>Automatic{% if p.how == 'automatic' and not p.deleted %} (this fix){% endif %}</dt><dd>Runs by itself on a matching incident while {{ p.network }}'s self-healing is in Auto; a person can also press Run…</dd>
+      <dt>Dry run{% if p.how == 'matched' and not p.deleted %} (this fix){% endif %}</dt><dd>Records what it would do on a matching incident and changes nothing</dd>
+      <dt>Manual only{% if p.how == 'manual' and not p.deleted %} (this fix){% endif %}</dt><dd>Never by itself: {% if p.by_run %}only Run… here{% if p.how != 'manual' %} or on a matching incident{% endif %}{% else %}only as a step of a plan a person approves by its hash (the AI may propose it){% endif %}</dd>
+      {%- if p.deleted %}
+      <dt>Deleted (this fix)</dt><dd>Never offered, matched or run, and not in the AI's catalog; its record, origin and runs are kept here</dd>
+      {%- endif %}
+      <dt>Changed</dt><dd>{% for c in p.changed %}{{ c.words }}, {{ clock(c.at, 'date') }}{{ ' · ' if not loop.last }}{% endfor %}</dd>
+    </dl>
+  {%- else %}
+    <dl class="tl-record">
+      <dt>{{ p.words }}</dt><dd>{{ p.hover }}</dd>
+      <dt>Read-only</dt><dd>{{ p.why_not }}</dd>
+    </dl>
+    {%- if p.how in ('automatic', 'matched', 'off') %}
+    <p class="small muted">Set by {{ p.network }}'s fix kinds, on <a href="{{ url_for('settings_v2.network', list_name=p.network, tab='heal') }}">Self-healing</a>.</p>
+    {%- endif %}
+  {%- endif %}
+  {%- if p.limits %}
+    <div class="simple-sec">
+      <h3>What its checks cannot prove on a port that is down</h3>
+      <ul class="small">
+      {%- for l in p.limits %}
+        <li><strong>{{ l.name }}{% if l.label %} ({{ l.label }}){% endif %}:</strong> {{ l.words }}</li>
+      {%- endfor %}
+      </ul>
+    </div>
+  {%- endif %}
+  {%- if form %}
+    {%- set restoring = form.action == 'restore' %}
+    <details class="small" data-keep="fx-delete-{{ p.key }}"{% if said and said.level == 'danger' %} open{% endif %}><summary>{{ 'Restore…' if restoring else 'Delete…' }}</summary>
+      <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore' if restoring else 'fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
+        {%- if restoring %}
+        <p>Restoring brings {{ p.name }} back as it was: offered, matched and run again by its own mode, and in the AI's catalog. Its deletion stays in its record and in History.</p>
+        {%- else %}
+        <p>Deleting keeps {{ p.name }}'s record, origin and runs, on this page and in History; it is no longer offered, matched or run, and leaves the AI's catalog. Restore… here brings it back.</p>
+        {%- endif %}
+        <label class="heal-field" for="fx-reason-{{ p.key }}">Why ({{ form.rule }}; kept in History)<textarea id="fx-reason-{{ p.key }}" name="reason" rows="2" maxlength="500" minlength="8" required autocomplete="off"></textarea></label>
+        {%- if form.right %}<p class="small bluf-refused" data-refused="{{ form.action }}">{{ form.right }}</p>{% endif %}
+        <span class="op-act"><button type="submit" class="btn btn-small{{ '' if restoring else ' btn-danger' }}" data-op="fix-{{ form.action }}" hx-disabled-elt="this"{% if form.right %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">{{ 'Restore this fix' if restoring else 'Delete this fix' }}</span><span class="op-busy">{{ 'Restoring…' if restoring else 'Deleting…' }}</span></button></span>
+      </form>
+    </details>
+  {%- endif %}
+  </details>
+</section>

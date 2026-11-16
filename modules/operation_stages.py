@@ -174,6 +174,16 @@ STAGES = {
         "saved_plans_v2.card", "n/a: the shape is the one proposed, named whole",
         NO_DEVICE, "n/a: its first approved run measures it",
         "modules.nsot.command_policy.approve_as"),
+    # Delete… and Restore… on a fix's own page (the operator, 2026-11-16): the entry kept, its
+    # ``retired`` set or cleared with a reason, each kept on its ``retirements``.
+    "fixes_v2.delete": Stages(
+        "fixes_v2.fix", "n/a: the fix the page names, read again under the store's lock",
+        NO_DEVICE, "n/a: Restore… undoes it, with its own reason, both kept",
+        "modules.nsot.saved_plans.retire"),
+    "fixes_v2.restore": Stages(
+        "fixes_v2.fix", "n/a: the fix the page names, read again under the store's lock",
+        NO_DEVICE, "n/a: Delete… undoes it, with its own reason, both kept",
+        "modules.nsot.saved_plans.retire"),
     "resubscribe_v2.close_confirm": Stages(
         "resubscribe_v2.preview", "program",
         "modules.heal.resubscribe.verify", "modules.heal.resubscribe.put_back",
@@ -633,6 +643,8 @@ HISTORY = {
     "saved_plans_v2.device_run": ("privileged",),
     "saved_plans_v2.save_action": SAVED,
     "saved_plans_v2.promote": SAVED,
+    "fixes_v2.delete": ("saved_fixes",),
+    "fixes_v2.restore": ("saved_fixes",),
     "saved_plans_v2.not_now": ("n/a: a person's choice not to save a verified fix, kept as a "
                                "line of the incident's troubleshooting record; no device"),
     "saved_plans_v2.approve_shape": ("n/a: a shape of Mercury's rule for raw lines, never one "

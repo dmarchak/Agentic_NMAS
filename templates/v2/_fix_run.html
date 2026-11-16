@@ -1,0 +1,67 @@
+{%- from "v2/_macros.html" import icon, how, clock -%}
+{#- Run… on a fix's own page (C3849 piece 4; board fix-bpdu-guard, artboard 2, approved by the
+    operator 2026-11-16 with changes): the device and the port chosen from what Mercury holds
+    (`modules/fix_page.run_card`: the open incidents this fix matches, or, for a fix with no
+    match, the device's access ports in committed intent; never a device read), the runner's
+    own preview, and Run posting to the existing run path (`fixit_v2.fix_with_script` or
+    `saved_plans_v2.device_run`, ``view=fix``), whose answer is drawn here
+    (`routes/fixes_v2.run_answer`). A changed choice draws the card again with its preview.
+    Its hash is in the preview's info, never a line of its own (the operator's change 3). -#}
+{%- if c.state == 'closed' %}
+<div id="fix-run" hidden></div>
+{%- else %}
+{%- set u_close = url_for('fixes_v2.run', key=c.key, list=c.network, close='1') %}
+{%- macro cancel(words='Cancel') -%}
+<button type="button" class="btn btn-small" hx-get="{{ u_close }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">{{ words }}</button>
+{%- endmacro %}
+<section class="card fixit simple" id="fix-run" aria-labelledby="fix-run-title" data-run-state="{{ c.state }}" data-holds-live="review"{% if c.state == 'run' and c.run.state == 'running' %} hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, run=c.run.id) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
+  <h2 class="simple-title" id="fix-run-title">Run this fix</h2>
+  {%- if c.state in ('choose', 'none', 'refused') and c.devices %}
+  <form class="simple-form" id="fix-run-form" aria-label="Where to run it" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network) }}" hx-trigger="change" hx-target="#fix-run" hx-swap="outerHTML">
+    <fieldset><legend>Where</legend>
+      <label for="fix-run-dev">Device
+        <select id="fix-run-dev" name="device">{% for d in c.devices %}<option value="{{ d.name }}"{% if d.chosen %} selected{% endif %}>{{ d.label }}</option>{% endfor %}</select>
+      </label>
+      {%- if c.ports %}
+      <label for="fix-run-if">Interface
+        <select id="fix-run-if" name="interface">{% for i in c.ports %}<option value="{{ i.value }}"{% if i.chosen %} selected{% endif %}>{{ i.label }}</option>{% endfor %}</select>
+      </label>
+      {%- endif %}
+    </fieldset>
+  </form>
+  {%- if c.note and c.ports %}<p class="small muted">{{ c.note }}.</p>{% endif %}
+  {%- endif %}
+  {%- if c.state == 'choose' %}
+    {%- set pv = c.preview %}
+    {%- set where = c.where %}
+  <p class="plan-sent-label small">Sends on {{ c.device }}, in config mode, never saved:</p>
+  <pre class="plan-sent">{{ pv.program | join('\n') }}</pre>
+  <dl class="simple-plan">
+    <div><dt>Checks first</dt><dd title="{{ pv.checks | join(' · ') }}">{{ pv.checks | join(' · ') }}</dd></div>
+    <div><dt>Then verifies</dt><dd title="{{ pv.verify | join(' · ') }}">{{ pv.verify | join(' · ') }}</dd></div>
+  </dl>
+  <p class="small muted">{{ c.device }} is held while it runs; a failed verify is rolled back. <span class="info-link" tabindex="0" title="Approved by its hash {{ pv.short }}: what runs is exactly this preview, and a check that moved since is refused, naming what moved">{{ icon('info', 15) }}</span></p>
+  {%- if c.right %}<p class="small bluf-refused" data-refused="run">{{ c.right }}</p>{% endif %}
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" hx-post="{{ url_for(c.post.endpoint, **c.post.args) }}" hx-vals='{{ c.post.vals | tojson }}' hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs exactly this program on {{ where }}, held to its hash {{ pv.short }}"{% if c.right %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Run on {{ where }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
+    {{ cancel() }}
+  </div>
+  {%- elif c.state == 'none' %}
+  <p>{{ c.why }}.</p>
+  <div class="simple-acts">{{ cancel('Close') }}</div>
+  {%- elif c.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ (c.preview.refusals if c.preview else []) | join('; ') }}</p></div>
+  <div class="simple-acts">{{ cancel('Close') }}</div>
+  {%- elif c.state == 'answer' %}
+  <div class="notice notice-{{ 'danger' if c.level == 'danger' else 'ok' }} set-result" role="{{ 'alert' if c.level == 'danger' else 'status' }}">{{ icon('warn' if c.level == 'danger' else 'tick', 16) }}<p>{{ c.words }}{% if c.incident and c.level != 'danger' %} <a href="{{ url_for('incident_v2.incident', incident_id=c.incident, list=c.network) }}">Open the incident</a>{% endif %}</p></div>
+  <div class="simple-acts">{{ cancel('Close') }}</div>
+  {%- elif c.state == 'run' %}
+    {%- set r = c.run %}
+  <p class="small" data-run="{{ r.state }}" role="status">{% if r.state == 'running' %}<strong>{{ r.title or c.name }}:</strong> running, {{ r.device or c.device }} held; this updates as the run records each step.{% elif r.ok %}<strong>Verified:</strong> {{ r.title }}: {{ r.words }}.{% else %}<strong>{{ r.title or 'The run' }}:</strong> {{ r.words or r.outcome }}.{% endif %} <a href="{{ url_for('device_v2.device', name=r.device or c.device, list=c.network, result=r.id) }}">Open the run</a></p>
+  <div class="simple-acts">{{ cancel('Close') }}</div>
+  {%- else %}
+  <p>{{ c.why }}.</p>
+  <div class="simple-acts">{{ cancel('Close') }}</div>
+  {%- endif %}
+</section>
+{%- endif %}

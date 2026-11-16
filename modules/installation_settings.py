@@ -322,6 +322,25 @@ def _f(key, label, kind, note="", choices=(), words=None):
 #: offered and saved only while every device holds the account and its probe passed.
 READS_AS_KEY = "ai_device_reads_as"
 
+#: The toolbar's Assistant on or off (the operator, 2026-11-16; off by default): the one
+#: switch base.html's Assistant button and panel, and the assistant's routes, read.
+ASSISTANT_KEY = "ai_assistant_on"
+#: What the assistant's routes answer while it is off.
+ASSISTANT_OFF_WORDS = "The Assistant is off (Settings › Installation › AI, the Assistant card)."
+
+
+def assistant_on() -> bool:
+    """Whether the toolbar's Assistant is on: only a stored True is on, so a hand edit or a
+    setting that cannot be read leaves it off (nothing drawn, its routes refusing)."""
+    from modules.settings_schema import get_setting
+
+    try:
+        return get_setting(ASSISTANT_KEY, False) is True
+    except Exception as exc:                            # noqa: BLE001 (a page still draws)
+        log.warning("the Assistant's setting could not be read (%s): read as off",
+                    type(exc).__name__)
+        return False
+
 
 #: The cards, in the page's order. ``secret``: the secret Replace… changes (with ``with_id``,
 #: a plain key replaced together with it: a Proxmox token is its id and secret), drawn before
@@ -419,6 +438,18 @@ CARDS = {
         "note": "Every network's defaults: a network's own mode and spending limits, under AI "
                 "troubleshooting below, take their place for it. An incident's page draws its "
                 "spend against its network's cap; the day cap above still holds every call.",
+    },
+    # The toolbar's Assistant on or off (the operator, 2026-11-16: "hide it via a setting
+    # (Settings > AI, "Assistant" on/off, default off for now)"): one switch, saved, checked
+    # and recorded (old and new, who and when) as every card's fields are.
+    "assistant": {
+        "group": "ai_assistant", "title": "Assistant", "tab": "ai",
+        "fields": (_f(ASSISTANT_KEY, "Assistant", "switch",
+                      "on: every page's top bar draws the Assistant and its panel; off: none "
+                      "is drawn, and its questions are refused"),),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "Each question asked of the Assistant is one recorded AI call, within the caps "
+                "above.",
     },
     # Notifications' email relay (board H, artboard B; H9): the installation's one relay, on
     # the Notifications tab beside the webhooks and teams, drawn by its own template

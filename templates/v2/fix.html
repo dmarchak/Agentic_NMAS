@@ -1,0 +1,94 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, how, clock -%}
+{#- A fix's own page (C3849 piece 3; board docs/boards/fix-bpdu-guard.html, artboard 1,
+    approved by the operator 2026-11-16 with changes): the BLUF card (its name, what it
+    fixes, how it runs and its record, Run…, and where it was saved from), then Contents,
+    Origin, Record and How it runs, each folded (`modules/fix_page.page`). Run… draws its card
+    in place under the BLUF (`_fix_run.html`). A built-in's page is read-only: no Run…, and
+    How it runs says how it does run, from code and the network's settings. One live region,
+    drawn again when the saved plans or a run record change. -#}
+{% block title %}{{ p.name }} · {{ brand.short }}{% endblock %}
+{% block main %}
+{%- set group = 'deleted' if p.deleted else ('saved' if p.kind == 'saved' else 'builtin') %}
+<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="{{ url_for('fixes_v2.page', list=p.network) }}">Fixes</a><span aria-hidden="true">/</span><a href="{{ url_for('fixes_v2.page', kind=group, list=p.network) }}">{{ {'saved': 'Saved', 'builtin': 'Built-in', 'deleted': 'Deleted'}[group] }}</a><span aria-hidden="true">/</span><span class="crumb-last" title="{{ p.name }}">{{ p.name }}</span></nav>
+{%- if p.kind == 'unknown' %}
+<div class="page-head"><div class="page-title"><h1>No such fix</h1></div></div>
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>{{ p.network }} has no fix by that name.</strong> Its saved fixes, deleted ones included, and Mercury's built-in fixes were read, and none is it. <a href="{{ url_for('fixes_v2.page', list=p.network) }}">Every fix on {{ p.network }}</a></div></div>
+{%- else %}
+<div id="fix-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.fix', key=p.key, list=p.network) }}" hx-select="#fix-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">
+<section class="card inc-bluf simple" aria-labelledby="fx-title" data-fix="{{ p.key }}">
+  <h1 class="simple-title" id="fx-title">{{ p.name }}</h1>
+  <p class="simple-impact" title="{{ p.fixes }}">Fixes: {{ p.fixes }}</p>
+  <p class="simple-status" role="status">{{ badge(p.words, p.badge, title=p.hover) }} {{ p.said }}{% if p.heal_now and p.how == 'automatic' and not p.deleted %} (self-healing on {{ p.network }}: {{ p.heal_now }} now){% endif %} · {{ p.record.summary }}</p>
+  <div class="simple-acts">
+    {%- if p.runnable %}
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.run', key=p.key, list=p.network) }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Choose a device and an interface, then see exactly what it sends before anything runs"><span class="op-idle">Run…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
+    {%- endif %}
+    {%- if p.from %}
+    <a class="bluf-link" href="{{ url_for('incident_v2.incident', incident_id=p.from.id, list=p.network) }}">Saved from: {{ p.from.title }} ({{ clock(p.from.at, 'day') }})</a>
+    {%- endif %}
+  </div>
+</section>
+<div id="fix-run" hidden></div>
+
+<section class="card inc-fold" aria-labelledby="h-fx-contents">
+  <details class="inc-fold-d" data-keep="fx-contents-{{ p.key }}"><summary class="card-head"><h2 id="h-fx-contents">Contents</h2></summary>
+  {%- if p.contents %}
+    <div class="simple-sec">
+      <h3>Sends, in config mode, never saved</h3>
+      <pre class="plan-sent">{{ p.contents.program | join('\n') }}</pre>
+      {%- for x in p.contents.params %}
+      <p class="small muted"><span class="mono">{{ '{' ~ x.name ~ '}' }}</span> is {{ x.words }}.</p>
+      {%- endfor %}
+    </div>
+    <div class="simple-sec">
+      <h3>Checks before, each read live; one that fails refuses the run</h3>
+      <ol class="fixit-plan-items">
+      {%- for c in p.contents.checks %}
+        <li>{{ c.name }}{% if c.reads %} <span class="fixit-pre">· reads {{ c.reads }}</span>{% endif %}</li>
+      {%- endfor %}
+      </ol>
+    </div>
+    <div class="simple-sec">
+      <h3>Verifies after; a failure rolls back and says so</h3>
+      <ol class="fixit-plan-items">
+      {%- for v in p.contents.verify %}
+        <li>{{ v }}</li>
+      {%- endfor %}
+      </ol>
+    </div>
+  {%- else %}
+    <p class="small">It fixes {{ p.fixes }}. It ships with Mercury, and what it sends is drawn in its own preview each time it is offered.</p>
+  {%- endif %}
+  </details>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-origin">
+  <details class="inc-fold-d" data-keep="fx-origin-{{ p.key }}"><summary class="card-head"><h2 id="h-fx-origin">Origin</h2></summary>
+    <dl class="tl-record">
+    {%- for o in p.origin %}
+      <dt>{{ o.dt }}</dt><dd>{% if o.incident %}<a href="{{ url_for('incident_v2.incident', incident_id=o.incident, list=p.network) }}">{{ o.words }}</a>{% else %}{{ o.words }}{% endif %}{% if o.at %}, {{ clock(o.at, 'date') }}{% endif %}</dd>
+    {%- endfor %}
+    </dl>
+  </details>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-record">
+  <details class="inc-fold-d" data-keep="fx-record-{{ p.key }}"><summary class="card-head"><h2 id="h-fx-record">Record · {{ p.record.summary }}</h2></summary>
+  {%- if p.record.rows %}
+    <ol class="fixit-attempts">
+    {%- for r in p.record.rows %}
+      <li class="fixit-a {{ 'fixit-a-passed' if r.ok else ('' if r.dry else 'fixit-a-failed') }}">{{ clock(r.at, 'date') }}{% if r.where %} · {{ r.where }}{% endif %} · {{ r.who }} · {% if r.ok and not r.dry %}<strong>verified:</strong> {% endif %}{{ r.words }}{% if r.run and r.device %} · <a href="{{ url_for('device_v2.device', name=r.device, list=p.network, result=r.run) }}">Open the run</a>{% endif %}</li>
+    {%- endfor %}
+    </ol>
+    <p class="small muted">{% if p.record.more %}{{ p.record.more }} more, older. {% endif %}Every run is on <a href="{{ url_for('v2.history_page', list=p.network) }}">History</a>.</p>
+  {%- else %}
+    <p class="small muted">Nothing recorded yet. Every run is on <a href="{{ url_for('v2.history_page', list=p.network) }}">History</a>.</p>
+  {%- endif %}
+  </details>
+</section>
+
+{% include "v2/_fix_how.html" %}
+</div>
+{%- endif %}
+{% endblock %}

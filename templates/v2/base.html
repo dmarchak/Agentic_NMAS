@@ -61,6 +61,9 @@
   {%- set heal_net = list_name if list_name and list_name != '(unreadable)' else '' %}
   <div class="nav-head">TROUBLESHOOTING</div>
   <a class="nav-item{% if active_nav == 'incidents' %} active{% endif %}" href="{{ url_for('incidents_v2.page') }}"{% if active_nav == 'incidents' %} aria-current="page"{% endif %}>{{ icon('incidents') }}<span>Incidents</span></a>
+  {#- Troubleshooting › Fixes (C3849; board fixes-list, approved by the operator 2026-11-16):
+      every fix the network has, saved and built-in, beside Incidents and Self-healing. -#}
+  <a class="nav-item{% if active_nav == 'fixes' %} active{% endif %}" href="{{ url_for('fixes_v2.page') }}"{% if active_nav == 'fixes' %} aria-current="page"{% endif %}>{{ icon('fixes') }}<span>Fixes</span></a>
   <a class="nav-item" href="{{ url_for('settings_v2.network', list_name=heal_net, tab='heal') if heal_net else url_for('settings_v2.index') }}">{{ icon('heal') }}<span>Self-healing</span></a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
@@ -127,10 +130,14 @@
       <summary id="nmas-ai" aria-haspopup="dialog" hx-get="{{ url_for('v2.ai_chip') }}" hx-trigger="load, nmas:ai_calls from:body, nmas:settings from:body" hx-swap="innerHTML"><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">reading spend…</span><span class="ai-short" aria-hidden="true">…</span></span></summary>
       <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open, nmas:ai_spend" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
     </details>
+    {%- if assistant_on() %}
     {#- Board P7 (card P7, stage 1): the Assistant after the AI chip and before Live, one button
-        opening its panel; never hidden. The panel draws the control itself, and when it cannot
-        answer, says why in full (`ai.reason`, the control's own template's). -#}
+        opening its panel; drawn only while the Assistant is on (`ai_assistant_on`, Settings ›
+        Installation › AI; off by default, the operator, 2026-11-16). The panel draws the
+        control itself, and when it cannot answer, says why in full (`ai.reason`, the
+        control's own template's). -#}
     <button type="button" class="asb" id="nmas-assistant" aria-label="Assistant" aria-controls="asst-panel" x-bind:aria-expanded="asst ? 'true' : 'false'" x-on:click="openAssistant" title="Ask Mercury how to do something. Answers cite the manual. Each question is one recorded AI call."><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+    {%- endif %}
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="icon-btn" aria-haspopup="true" x-bind:aria-expanded="expanded" x-bind:aria-label="label" x-bind:title="label" x-on:click="toggle">{{ icon('theme', 18) }}</button>
@@ -154,6 +161,7 @@
   </div>
   <div id="help-panel-body" class="help-panel-body" aria-live="polite"></div>
 </aside>
+{%- if assistant_on() %}
 {#- The toolbar assistant's panel: its shell here, its head and body asked the first time it
     opens on the page (routes/assistant_v2.panel), so every page carries only this. -#}
 <aside class="help-panel asst-panel" id="asst-panel" aria-label="Assistant" x-show="asst" x-cloak>
@@ -162,5 +170,6 @@
     <p class="help-panel-body small faint">Opening the assistant…</p>
   </div>
 </aside>
+{%- endif %}
 </body>
 </html>

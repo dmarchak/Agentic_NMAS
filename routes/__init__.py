@@ -107,6 +107,30 @@ def register_blueprints(app) -> list:
         return time_zones.zone_names(first=getattr(mine, "key", "") or "")
     app.jinja_env.globals["zone_names"] = zone_names
 
+    # The toolbar's Assistant on or off (the operator, 2026-11-16: "hide it via a setting",
+    # off by default; `installation_settings.assistant_on`): base.html draws its button and
+    # panel only while it is on, and while it is off every assistant route refuses before it
+    # answers, naming the setting. One check at the blueprint's entry, here, because the
+    # assistant's own module is being rewritten (its conversation panel).
+    def assistant_on():
+        from modules import installation_settings
+        return installation_settings.assistant_on()
+    app.jinja_env.globals["assistant_on"] = assistant_on
+
+    @app.before_request
+    def _assistant_off():
+        from flask import request
+        if request.blueprint != "assistant_v2" or assistant_on():
+            return None
+        from flask import make_response
+        from markupsafe import escape
+
+        from modules import csp, installation_settings
+        r = make_response(f'<p class="help-panel-body small">'
+                          f'{escape(installation_settings.ASSISTANT_OFF_WORDS)}</p>', 409)
+        r.headers["Content-Security-Policy"] = csp.STRICT_POLICY
+        return r
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.
@@ -178,6 +202,9 @@ def register_blueprints(app) -> list:
     # Saved plans (Gate 1b, C3696, C3763): save a verified run as a self-heal script or a
     # reusable action, promote a script, approve a provisional shape.
     from routes.saved_plans_v2 import bp as saved_plans_v2_bp
+    # Troubleshooting › Fixes and a fix's own page (C3849 pieces 2 to 4), with Delete… and
+    # Restore… on a saved fix.
+    from routes.fixes_v2 import bp as fixes_v2_bp
 
     for bp in (integrations_bp, identity_bp,
                remote_bp,
@@ -192,7 +219,7 @@ def register_blueprints(app) -> list:
                heal_v2_bp, notify_v2_bp, heal_proposal_v2_bp, ai_classes_v2_bp,
                sdn_analyse_v2_bp, sdn_dhcp_v2_bp, sdn_policies_v2_bp, resubscribe_v2_bp,
                incident_v2_bp, fixit_v2_bp, incidents_v2_bp, plans_v2_bp, control_v2_bp,
-               saved_plans_v2_bp):
+               saved_plans_v2_bp, fixes_v2_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

@@ -1933,6 +1933,32 @@ def topology_layout(ctx):
     return _out(rows)
 
 
+def saved_fixes(ctx):
+    """Each saved fix deleted or restored on its own page (the operator, 2026-11-16: "recorded
+    in History"): who, when, the fix's name and the reason, from the fix's own ``retirements``
+    in the saved-plans store (`saved_plans.retire`), the network's fixes (its own and the
+    shared ones, deleted ones included). The network's; no device's History lists them."""
+    from modules.nsot import saved_plans as S
+    if ctx.get("device"):
+        return _out()
+    got = S.read()
+    if got.get("unreadable"):
+        return _out(errors=[f"the saved-plans store could not be read: {got['unreadable']}"])
+    events = []
+    for key, f in S.fixes(ctx["ref"].name, deleted=True).items():
+        for r in f.get("retirements") or []:
+            if not _recent(ctx, r.get("at")):
+                continue
+            action = "Deleted" if r.get("action") == "deleted" else "Restored"
+            events.append(_event(
+                r.get("at"), "fix", f"Saved fix “{f.get('name') or key}” {action.lower()}", [],
+                who=r.get("by", ""), detail=r.get("reason", ""),
+                record=[("Action", action), ("Fix", f.get("name") or key),
+                        ("Reason", r.get("reason")), ("Verified", r.get("verified"))]))
+    events.sort(key=lambda e: e["at"], reverse=True)
+    return _out(events[:ctx["limit"]])
+
+
 def saved_views(ctx):
     """Each History › Query view saved, pinned, unpinned or removed (C667): who, its title and
     the question it opens. The network's; no device's History lists them."""
@@ -3247,8 +3273,8 @@ SOURCES = {
     "privileged": privileged,
     "reloads": reloads, "console_ztp": console_ztp, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
-    "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
-    "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
+    "saved_views": saved_views, "saved_fixes": saved_fixes, "reveals": reveals,
+    "host_keys": host_keys, "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations, "sdn_collections": sdn_collections,
     "controller_deploys": controller_deploys,
@@ -3289,6 +3315,7 @@ KIND_GROUPS = (
                                ("expected", "Expected islands", ("expected",)),
                                ("layout", "Topology layouts", ("layout",)),
                                ("views", "Saved views", ("view",)),
+                               ("fixes", "Saved fixes deleted or restored", ("fix",)),
                                ("reveals", "Reveals", ("reveal",)),
                                ("hostkeys", "SSH host keys", ("hostkey",)),
                                ("secret_values", "Secret values set", ("secret_value",)),
@@ -3459,7 +3486,7 @@ SOURCE_KINDS = {
     "privileged": ("privileged",),
     "reloads": ("reload",), "console_ztp": ("console",), "credential_profiles": ("credential",),
     "topology_expected": ("expected",), "topology_layout": ("layout",), "saved_views": ("view",),
-    "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
+    "saved_fixes": ("fix",), "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
     "sdn_collections": ("sdn",),

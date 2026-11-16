@@ -47,6 +47,7 @@ body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', syste
 <tr><td>Each fix row (6)</td><td class="okc">3 (name · what it fixes · how it runs and its record)</td><td class="okc">0</td><td>1 (its name: the fix's page)</td><td class="okc">0</td><td>0 (its page is the one click deep)</td></tr>
 </table>
 <p>How it runs is the row's badge: Automatic, Dry run or Manual only. A built-in fix is read-only here: how it runs comes from the network's fix kinds (Settings › campus › Self-healing), and its page says so and links there. The summary reads the saved fixes' real modes: 1 Automatic, 1 Manual only. Large fleets: the groups collapse, each draws its first 20 rows and counts the rest.</p>
+<p>Revised 2026-11-16 after the fix page's review: no Assistant chip (parked); no raw incident or plan ids, even on hover ("Saved from: &lt;incident title&gt; (&lt;date&gt;)"); no "promoted" wording (saving is the approval). Scope (the operator, 2026-11-16): a fix belongs to the network it was saved on; one shared from another network would carry a "Shared" label after its badge (none is shared here).</p>
 </div>
 <div class="art artboard v2">
 <nav class="sidebar" aria-label="Main">
@@ -82,7 +83,6 @@ body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', syste
     <span class="grow"></span>
     <span class="strip"><span class="strip-item ok" title="Integrations 4 of 4"><span class="strip-words">Integrations 4 of 4</span></span></span>
     <details class="ai-spend menu-wrap"><summary><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">$0.21 today · 0 background on</span><span class="ai-short" aria-hidden="true">$0.21</span></span></summary></details>
-    <button type="button" class="asb" aria-label="Assistant"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
     <span class="live" data-live="connected"><span class="live-dot"></span><span class="live-word">Live</span></span>
     <span class="who" data-identified="yes" title="Signed in as Sam"><span class="avatar">S</span><span class="who-name">Sam</span></span>
   </header>
@@ -109,9 +109,9 @@ body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', syste
   <summary class="inc-group-head"><span class="badge badge-info">Saved</span> <span class="muted">2</span></summary>
   <ul class="inc-rows">
     <li class="inc-row" data-fix="bpdu-guard-recovery">
-      <span class="inc-row-state"><span class="badge badge-ok" title="Runs by itself when self-healing is On; promoted by Sam">Automatic</span></span>
+      <span class="inc-row-state"><span class="badge badge-ok" title="Runs by itself when self-healing is On; saved by Sam, which approved it">Automatic</span></span>
       <span class="inc-row-what">
-        <a class="inc-row-title" href="fix-bpdu-guard.html" title="BPDU guard recovery (access ports): saved from incident hi-0412">BPDU guard recovery (access ports)</a>
+        <a class="inc-row-title" href="fix-bpdu-guard.html" title="Saved from: s1 Gi1/0 err-disabled by BPDU guard (Nov 15)">BPDU guard recovery (access ports)</a>
         <span class="simple-impact">Fixes: an access port err-disabled by BPDU guard, once the BPDU source is gone</span>
         <span class="simple-status">4 runs, all verified · saved from an AI plan Sam approved</span>
       </span>
@@ -120,7 +120,7 @@ body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', syste
     <li class="inc-row" data-fix="port-security-recovery">
       <span class="inc-row-state"><span class="badge badge-muted" title="Never runs by itself: a person presses Run… on its page or its incident">Manual only</span></span>
       <span class="inc-row-what">
-        <a class="inc-row-title" href="#" title="Port security recovery: saved from incident hi-0398">Port security recovery</a>
+        <a class="inc-row-title" href="#" title="Saved from: s5 Gi0/3 err-disabled by a port-security violation (Nov 14)">Port security recovery</a>
         <span class="simple-impact">Fixes: an access port err-disabled by a port-security violation, once the address has gone</span>
         <span class="simple-status">1 run, verified · runs only when a person presses Run…</span>
       </span>

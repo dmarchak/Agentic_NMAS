@@ -1,0 +1,56 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, clock -%}
+{#- Troubleshooting › Fixes (C3849 piece 2; board docs/boards/fixes-list.html, approved by the
+    operator 2026-11-16 with conditions): every fix the network has, saved and built-in, one
+    summary line, then the groups, each row its name (the fix's own page), what it fixes, how
+    it runs and its record (`modules/fix_page.listing`). How a built-in runs comes from code and
+    the network's settings, never typed (condition 1). Large fleets: each group collapses and
+    draws its first 20 rows, the rest counted; Search or filter… narrows on the server. The
+    deleted saved fixes show only under the Deleted filter. One live region, drawn again when
+    the saved plans or a run record change. Nothing here acts on a device. -#}
+{% block title %}Fixes · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head"><div class="page-title"><h1>Fixes</h1></div></div>
+<div class="tab-body" id="fixes-live" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.page', list=p.network, q=p.q or none, mode=p.mode or none, kind=p.kind or none) }}" hx-select="#fixes-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">
+<p class="inc-list-sum" data-total="{{ p.total }}"><strong>{{ p.total }} fix{{ 'es' if p.total != 1 }}</strong> · {{ p.saved }} saved{% if p.saved_counts %} ({% for w, n in p.saved_counts | dictsort %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %} · {{ p.built }} built-in{% if p.deleted %} · <a href="{{ url_for('fixes_v2.page', list=p.network, kind='deleted') }}">{{ p.deleted }} deleted</a>{% endif %}</p>
+<details class="inc-search"{% if p.filtered %} open{% endif %}>
+<summary>Search or filter…</summary>
+<form class="inc-list-filter" role="search" method="get" action="{{ url_for('fixes_v2.page') }}">
+  <input type="hidden" name="list" value="{{ p.network }}">
+  <label class="sr" for="fx-q">Search the fixes</label>
+  <input id="fx-q" type="search" name="q" value="{{ p.q }}" placeholder="Search a name, what it fixes, or a device" maxlength="80">
+  <label class="sr" for="fx-mode">How it runs</label>
+  <select id="fx-mode" name="mode"><option value="">Every way it runs</option>{% for v, w in (('automatic', 'Automatic'), ('matched', 'Dry run'), ('manual', 'Manual only'), ('off', 'Off')) %}<option value="{{ v }}"{% if p.mode == v %} selected{% endif %}>{{ w }}</option>{% endfor %}</select>
+  <label class="sr" for="fx-kind">Saved, built-in or deleted</label>
+  <select id="fx-kind" name="kind"><option value="">Saved and built-in</option>{% for v, w in (('saved', 'Saved'), ('builtin', 'Built-in'), ('deleted', 'Deleted')) %}<option value="{{ v }}"{% if p.kind == v %} selected{% endif %}>{{ w }}</option>{% endfor %}</select>
+  <button type="submit" class="btn btn-small">Show</button>
+</form>
+</details>
+{%- if p.filtered %}
+<p class="small muted">Showing {{ p.shown }} that match. <a href="{{ url_for('fixes_v2.page', list=p.network) }}">Show every fix</a></p>
+{%- endif %}
+{%- for g in p.groups %}
+<details class="inc-group card" open data-keep="fixes-{{ g.key }}">
+  <summary class="inc-group-head">{{ badge(g.title, 'info' if g.key == 'saved' else 'muted') }} <span class="muted">{{ g.count }}</span>{% if g.key == 'builtin' %} <span class="muted small">· read-only; how each runs is Mercury's code and {{ p.network }}'s fix kinds</span>{% elif g.key == 'deleted' %} <span class="muted small">· kept with their record, origin and runs; Restore… on a fix's page brings it back</span>{% endif %}</summary>
+  {%- if g.rows %}
+  <ul class="inc-rows">
+  {%- for r in g.rows %}
+    <li class="inc-row" data-fix="{{ r.key }}">
+      <span class="inc-row-state">{{ badge(r.words, r.badge, title=r.hover) }}{% if r.shared %} {{ badge('Shared', 'muted', title='Saved on another network and shared with every network') }}{% endif %}</span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network) }}">{{ r.name }}</a>
+        <span class="simple-impact">Fixes: {{ r.fixes }}</span>
+        <span class="simple-status">{{ r.record.summary }} · {{ r.said }}</span>
+      </span>
+      <span class="inc-row-when muted">{% if r.record.last %}last {{ clock(r.record.last, 'date') }}{% endif %}</span>
+    </li>
+  {%- endfor %}
+  </ul>
+  {%- if g.more %}<p class="small muted">And {{ g.more }} more: Search or filter… narrows them.</p>{% endif %}
+  {%- else %}
+  <p class="small muted">{{ 'None matches.' if p.filtered else 'None yet: a fix is saved from an incident’s card, after its fix verified.' if g.key == 'saved' else 'None.' }}</p>
+  {%- endif %}
+</details>
+{%- endfor %}
+</div>
+{% endblock %}

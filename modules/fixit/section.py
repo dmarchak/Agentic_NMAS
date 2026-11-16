@@ -1338,6 +1338,11 @@ def card_of(out: dict, found: dict) -> dict:
         if card["run"] and card["how"].get("run"):
             # The plan's run is drawn on this card: its link opens it here.
             card["how"]["page"] = "#inc-run"
+        fixed = record.get("fixed") or {}
+        if fixed.get("script"):
+            # A saved fix closed it (`saved_plans.close_fixed`): its own page (C3849 piece 3).
+            card["how"]["fix"] = {"key": fixed["script"],
+                                  "name": fixed.get("name") or "the saved fix"}
         # "Fixed" shows its proof (the operator, 2026-11-16): the verify's reads, one line by
         # default, the output on expand (`fixit.proof`).
         card["proof"] = _proof_of(network, a, record, found)

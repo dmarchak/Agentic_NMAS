@@ -360,6 +360,9 @@ DECLARED = {
     "saved_plans_v2.save_action": ("saved_plans",),
     "saved_plans_v2.promote": ("saved_plans",),
     "saved_plans_v2.approve_shape": ("saved_plans",),
+    # Delete… and Restore… on a fix's page: the saved plans every card and page draws.
+    "fixes_v2.delete": ("saved_plans",),
+    "fixes_v2.restore": ("saved_plans",),
     # Not now (board R5's screen 5): the offer hidden for the incident, its choice a line of the
     # incident's troubleshooting record; the incident's page draws its card again.
     "saved_plans_v2.not_now": ("saved_plans", "drift"),

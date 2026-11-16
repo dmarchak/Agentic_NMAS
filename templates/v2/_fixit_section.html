@@ -142,7 +142,7 @@
   <h1 class="simple-title" id="inc-title" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %} title="{{ TITLE }}">{{ TITLE }}</h1>
   {%- if C.kind == 'ok' %}
   <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
-  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}</p>{% endif %}
+  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}{% if C.how.fix %} · <a data-fix-page="{{ C.how.fix.key }}" href="{{ url_for('fixes_v2.fix', key=C.how.fix.key, list=x.network) }}">{{ C.how.fix.name }}</a>{% endif %}</p>{% endif %}
   {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- if C.proof %}{% with P=C.proof, iid=x.id %}{% include "v2/_inc_proof.html" %}{% endwith %}{% endif %}
   {%- else %}
@@ -170,6 +170,8 @@
         {#- C3805: the matching Automatic saved script, run once as the person who presses, bound
             to the hash its preview drew; no AI. -#}
         {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=F.key, hash=F.hash), F.label, 'Fixing…', 'start', F.label, "Runs the saved script once as you: the device held, its checks read again, sent, verified and recorded; no AI", primary=True, kind='approve') }}
+        {#- C3849 piece 3: the fix's own page, what it sends and checks, its origin and record. -#}
+        <a class="bluf-link" data-fix-page="{{ F.key }}" href="{{ url_for('fixes_v2.fix', key=F.key, list=x.network) }}">What this fix does</a>
         {#- C3849: every other matching saved fix, its own button. -#}
         {%- for o in F.more or [] %}
         {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=o.key, hash=o.hash), o.label, 'Fixing…', 'start', o.label, "Runs this saved fix once as you: the device held, its checks read again, sent, verified and recorded; no AI", kind='approve') }}

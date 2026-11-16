@@ -835,6 +835,41 @@ def _classification(network: str, incident_id: str) -> dict:
     return of_record(inc) if inc else {}
 
 
+#: What each check here reads where its template's item names no read of its own, and what it
+#: cannot prove on a port that is down, with what proves it instead, as a fix's page says them
+#: (`modules/fix_page.py`; the operator's change 1 to board fix-bpdu-guard, 2026-11-16: "say
+#: what the built check actually reads ... or state plainly what it can't prove"). Keyed by the
+#: check's function, then, for a check that reads differently per cause, by the plan's
+#: parameter ``by`` names and its value. Each sentence is this module's, beside the code it
+#: describes: `check_cause_cleared` and `_psecure_cleared` below.
+SAYS = {
+    "check_cause_cleared": {
+        "by": "cause",
+        "bpduguard": {
+            "label": CAUSES["bpduguard"],
+            "reads": "the switch's own log lines, in Loki: a BPDU-guard line for the port "
+                     "after its err-disable's time",
+            "limit": "A port that is down processes no BPDU, so finding none since proves "
+                     "nothing: this check fails only on a BPDU-guard line after the "
+                     "err-disable, and otherwise is deferred, never passed. What proves it "
+                     "is verify's re-trip check after the bounce: a BPDU source still "
+                     "attached trips the port again within 10 s."},
+        "psecure-violation": {
+            "label": CAUSES["psecure-violation"],
+            "reads": "the port's PSECURE_VIOLATION log lines since its err-disable, in Loki, "
+                     f"and its violation count ({PSEC_IF_READ.format(port='{interface}')}); "
+                     "the violating MAC named",
+            "limit": "A violator still attached but quiet while the port is down adds no "
+                     "line and no count, so this check cannot prove it has gone: it fails only "
+                     "on a violation after the err-disable or a count that rose. What proves "
+                     "it is verify's re-trip check after the bounce: a violator still "
+                     "attached trips the port again."}},
+    "check_no_recovery": {
+        "reads": f"{RECOVERY_READ} (its timer table) at the run; the golden's errdisable "
+                 "recovery cause lines at the preview"},
+}
+
+
 def check_cause_cleared(_answer, run) -> tuple:
     """The cause has cleared: BPDU guard, no BPDU guard line for the port in its device's
     lines since the err-disable; port security, the violating MAC (from the incident's

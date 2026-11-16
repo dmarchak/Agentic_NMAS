@@ -164,29 +164,40 @@ def fix_with_script(incident_id):
     # Its own gate: a held or watching incident has no troubleshooting record yet, and none is
     # needed to run a saved script on it (the operator, 2026-11-16: "Fix now").
     network, found = _found(incident_id)
+    key, sent = (request.values.get("key") or "").strip(), (request.values.get("hash") or "")
+
+    def answer(status=200, **said):
+        """The section drawn again; or, pressed on the fix's own page (``view=fix``, its
+        Run…, C3849 piece 4), that page's run card: one run path, two places it answers."""
+        if request.values.get("view") == "fix":
+            from routes import fixes_v2
+            return fixes_v2.run_answer(network, key, status, incident=incident_id, **said)
+        return _section(network, found, status, **said)
     if found["found"] != "page":
+        if request.values.get("view") == "fix":
+            return answer(404, refused=("Not run: that incident is in no record Mercury can "
+                                        "read now. Nothing ran"))
         return _missing(incident_id, found)
     if _ended(found):
-        return _section(network, found, 409, refused=(
+        return answer(409, refused=(
             f"{incident_id} is resolved ({_ended(found)}). Nothing ran"))
     who = _person()
     why = _not_a_person(who, "Fix with saved script")
     if why:
-        return _section(network, found, 403, refused=why)
-    key, sent = (request.values.get("key") or "").strip(), (request.values.get("hash") or "")
+        return answer(403, refused=why)
     # Any fix the incident offers (C3849: every matching fix is a button), the one pressed.
     offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), {})
     if not offer:
-        return _section(network, found, 409, refused=(
+        return answer(409, refused=(
             f"Not run: {key or 'no script'} is no saved script matching this incident's "
             "problem now. Nothing ran"))
     if sent.strip() != offer["hash"]:
-        return _section(network, found, 409, refused=(
+        return answer(409, refused=(
             f"Not run: you pressed {offer['name']} at {sent or 'no hash'}, and its preview now "
             f"is {offer['hash']}: it moved since the page was drawn. Nothing ran"))
     e = S.scripts(network).get(key)
     if not e:
-        return _section(network, found, 409, refused=(
+        return answer(409, refused=(
             f"Not run: {offer['name']} is no longer saved. Nothing ran"))
 
     def work(_job):
@@ -204,7 +215,7 @@ def fix_with_script(incident_id):
                       kind="saved script", announce_keys=CR.ANNOUNCE_KEYS,
                       announcer=CR.ANNOUNCER,
                       page=f"/v2/incident/{incident_id}?list={quote(network)}")
-    return _section(network, found, done=(
+    return answer(done=(
         f"Running {offer['name']} on {offer['values'].get('device')}: held, checked, sent, "
         "verified and recorded; the incident closes Fixed when it verifies"))
 

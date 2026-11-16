@@ -188,6 +188,13 @@ DEFAULTS: dict = {
     # devices, which no measurement makes. Settings › Installation › AI, the AI
     # troubleshooting card.
     "ai_device_reads_as":       "mercury",
+    # "Assistant" on or off (the operator, 2026-11-16: "hide it via a setting (Settings > AI,
+    # "Assistant" on/off, default off for now)"; `installation_settings.ASSISTANT_KEY`). OFF by
+    # default by the operator's explicit order, which does NOT reproduce the release before
+    # (that one drew the toolbar's Assistant on every page): while off, no page draws the
+    # Assistant button or its panel, and the assistant's routes refuse, naming this setting.
+    # Settings › Installation › AI, the Assistant card.
+    "ai_assistant_on":          False,
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -1017,6 +1024,7 @@ SCHEMA: dict = {
         "ai_cap_usd_per_incident": {"type": "number", "exclusiveMinimum": 0},
         "ai_read_account_ping_traceroute": _BOOL,
         "ai_device_reads_as": {"enum": ["mercury", "read_only"]},
+        "ai_assistant_on": _BOOL,
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

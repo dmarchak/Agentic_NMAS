@@ -187,6 +187,9 @@ SCOPES: dict = {
     # `router_reads.PING_CHOICE`): one choice for the installation, since the AI read set's
     # forms are one set.
     **_group(HOST, "ai_read_account", "ai_read_account_ping_traceroute"),
+    # The toolbar's Assistant on or off (the operator, 2026-11-16): one switch for the
+    # installation, its own card on Settings › Installation › AI.
+    **_group(HOST, "ai_assistant", "ai_assistant_on"),
     # Retiring by expand, then contract (the operator, 2026-10-25: a call's cap is its task's,
     # derived from its pinned model): read by nothing from this release, declared for one
     # more so the previous release still reads it, then removed.

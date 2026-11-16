@@ -126,7 +126,7 @@ def save_script(incident):
     try:
         e = S.save_script(network, run_id=o["run"], name=(form.get("name") or "").strip(),
                           match=match, fills=o["fills"], dry_run=form.get("dry_run") == "1",
-                          **_who())
+                          incident=incident, **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
     if e.get("already"):
@@ -156,7 +156,8 @@ def save_action(incident):
         return _draw(network, incident, 409, level="danger", words=f"Not saved: {o['why']}")
     try:
         e = S.save_action(network, run_id=o["run"], name=(form.get("name") or "").strip(),
-                          words=(form.get("words") or "").strip(), **_who())
+                          words=(form.get("words") or "").strip(), incident=incident,
+                          **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
     if e.get("already"):
@@ -208,10 +209,18 @@ def _device_draw(network: str, device: str, code: int = 200, *, key: str = "",
     """The device's saved-actions card: the actions an interface fills and the device's
     interfaces; with *key* and *interface*, that action's preview by the runner's own preview
     (asking no device: the program masked, every check, the hash Run is bound to); with *run*,
-    the run's state from its own record."""
+    the run's state from its own record. Asked from a fix's own page (``view=fix``, its Run…,
+    C3849 piece 4), the same answer is drawn on that page's run card instead
+    (`routes/fixes_v2.run_answer`): one run path, two places it answers."""
     from modules.nsot import command_plan as CP
     from modules.nsot import privileged, saved_plans
 
+    if request.values.get("view") == "fix":
+        from routes import fixes_v2
+        return fixes_v2.run_answer(network, key or (request.values.get("key") or "").strip(),
+                                   code, device=device,
+                                   interface=interface or (request.values.get("interface")
+                                                           or "").strip(), run=run, **said)
     c = saved_plans.device_offer(network, device, **_who())
     c.update(list=network, device=device, said=said, preview=None, run=None, key=key,
              interface=interface)

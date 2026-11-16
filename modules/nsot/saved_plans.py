@@ -192,11 +192,13 @@ def _is_matched(e: dict) -> bool:
     return e.get("kind") == "script" or (e.get("kind") == FIX and bool(e.get("match")))
 
 
-def fixes(network: str = None) -> dict:
+def fixes(network: str = None, *, deleted: bool = False) -> dict:
     """Every saved fix, by key, each read as a fix (`as_fix`); with *network*, those it may use:
-    its own and the shared ones."""
+    its own and the shared ones. A deleted fix (`retire`) is left out unless *deleted* (its
+    page and the Fixes list's Deleted filter read it: its record, origin and runs stay)."""
     every = {k: as_fix(e) for k, e in (read().get("plans") or {}).items()
-             if isinstance(e, dict) and e.get("kind") in KINDS}
+             if isinstance(e, dict) and e.get("kind") in KINDS
+             and (deleted or not e.get("retired"))}
     if network is None:
         return every
     return {k: f for k, f in every.items() if f["network"] == network or f["shared"]}
@@ -204,14 +206,87 @@ def fixes(network: str = None) -> dict:
 
 def actions(network: str = None) -> dict:
     """The saved fixes the catalog lists (each a parameterised action, `as_fix`'s
-    ``catalog``), by key: every one, or *network*'s own and the shared ones."""
+    ``catalog``), by key: every one, or *network*'s own and the shared ones; never a deleted
+    one (`fixes`): the AI cannot propose it and the catalog's check refuses it."""
     return {k: f for k, f in fixes(network).items() if f["catalog"]}
 
 
 def scripts(network: str) -> dict:
     """*network*'s own fixes with a match (an old script or a fix saved with one), by key, each
-    read as a fix: those offered on its matching incidents and fired on them."""
+    read as a fix: those offered on its matching incidents and fired on them; never a deleted
+    one (`fixes`), so it is never fired, matched, offered, batched or retried."""
     return {k: f for k, f in fixes().items() if f["match"] and f["network"] == network}
+
+
+# ── Delete… and Restore… (the operator, 2026-11-16: kept, never removed) ───────────────────
+
+#: Each deletion and restore kept on the entry, newest last (``retirements``).
+RETIRE_ACTIONS = ("deleted", "restored")
+
+
+def change_right(e: dict) -> str:
+    """The right that changing the stored fix *e* takes, as saving it did (`save_fix`): the
+    self-healing right for a fix with a match (an old script, or a fix saved with one), the
+    admin right for one with none."""
+    return "self_healing" if _is_matched(e) else "admin"
+
+
+def _retire_refusal(e, key: str, network: str, reason: str, who: dict) -> str:
+    from modules import identity
+    from modules.nsot import authorisation
+
+    if not isinstance(e, dict) or e.get("kind") not in KINDS:
+        return f"{key} is no saved fix"
+    if as_fix(e)["network"] != network:
+        return f"{key} is a saved fix of {as_fix(e)['network'] or 'no network'}, not of {network}"
+    never = identity.ai_acting_refusal("delete or restore a saved fix")
+    if never:
+        return never
+    why = identity.right_refusal(change_right(e), **who)
+    if why:
+        return why
+    words = " ".join(str(reason or "").split())
+    if len(words.split()) < authorisation.MIN_WORDS or len(words) < authorisation.MIN_CHARS:
+        return (f"a reason is at least {authorisation.MIN_WORDS} words and "
+                f"{authorisation.MIN_CHARS} characters, and {words or 'none'!r} is not")
+    return ""
+
+
+def retire(key: str, *, network: str, reason: str, actor: str, actor_verified: str,
+           person: bool, restore: bool = False) -> dict:
+    """Delete (or, *restore*, bring back) the saved fix *key* of *network*, as a verified
+    person holding the right that changing it takes (`change_right`), with *reason*: written
+    under the store's lock, never removing the entry (expand, then contract): ``retired``
+    ``{"by", "at", "reason"}`` set (or cleared), and the action appended to its
+    ``retirements``, which History draws (`history_sources.saved_fixes`). A deleted fix is out
+    of `fixes`, `scripts` and `actions`, so nothing offers, fires or proposes it; its record,
+    origin and runs stay. Raises `Refused`, nothing written. The fix (`as_fix`)."""
+    who = dict(actor=actor, actor_verified=actor_verified, person=person)
+    words = " ".join(str(reason or "").split())[:500]
+
+    def change(doc):
+        e = doc["plans"].get(key)
+        why = _retire_refusal(e, key, network, words, who)
+        if why:
+            raise Refused(why)
+        if restore and not e.get("retired"):
+            raise Refused(f"{e.get('name') or key} is not deleted: nothing to restore")
+        if not restore and e.get("retired"):
+            raise Refused(f"{e.get('name') or key} is deleted already, by "
+                          f"{(e['retired'] or {}).get('by') or 'a person not recorded'}")
+        row = {"action": RETIRE_ACTIONS[1 if restore else 0], "by": actor, "at": _iso(),
+               "reason": words, "verified": who["actor_verified"]}
+        e["retirements"] = list(e.get("retirements") or []) + [row]
+        if restore:
+            e.pop("retired", None)
+        else:
+            e["retired"] = {k: row[k] for k in ("by", "at", "reason")}
+        return as_fix(e)
+    got = _update(change)
+    # The catalog's entries and plan steps follow at once in this process.
+    from modules import plan_engine
+    plan_engine.refresh_saved_kinds()
+    return got
 
 
 # ── The match: R4's fields only ─────────────────────────────────────────────────────────────
@@ -387,8 +462,16 @@ def _store(entry: dict) -> dict:
     def change(doc):
         for old in doc["plans"].values():
             if isinstance(old, dict) and _saved_from_run(old, network, run_id):
+                if old.get("retired"):
+                    # A deleted fix is never answered as "already saved" nor changed in place
+                    # (the review, 2026-11-16): it is said, with the way back.
+                    raise Refused(f"this run was saved as {old.get('name') or old.get('key')}, "
+                                  "which is deleted; Restore… on its page brings it back")
                 return _again(old, entry)
         if entry["key"] in doc["plans"]:
+            if (doc["plans"][entry["key"]] or {}).get("retired"):
+                raise Refused(f"a fix named {entry['name']} is saved already and deleted; "
+                              "Restore… on its page brings it back, or choose another name")
             raise Refused(f"a plan {entry['key']} is saved already")
         if entry["key"] in CP.builtin():
             raise Refused(f"{entry['key']} is the key of a plan that ships with Mercury")
@@ -423,7 +506,7 @@ def _again(old: dict, entry: dict) -> dict:
 
 def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified: str,
              person: bool, match: dict = None, fills: dict = None, words: str = "",
-             shared: bool = False, dry_run: bool = False) -> dict:
+             shared: bool = False, dry_run: bool = False, incident: str = "") -> dict:
     """Save the verified run *run_id* of *network* as one fix (C3849): its plan with its
     parameters open, named *name* and said in *words*, its network's (*shared*: every
     network's catalog lists it too), an action of the catalog from now (`actions`). With
@@ -432,8 +515,10 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
     fix is the approval (the operator, 2026-11-15); *dry_run* keeps it in Dry run until
     promoted, and the network's self-healing mode still governs whether it acts (`mode_now`).
     Needs the self-healing right with a match, the admin right without. A run already saved
-    answers its fix (`_store`). The fix (`as_fix`), with ``already`` and ``changed``. Raises
-    `Refused`, nothing saved."""
+    answers its fix (`_store`). *incident*, the incident whose card saved it, is kept on its
+    ``from_run`` (its page's "Saved from", C3849 piece 3; an entry saved before has none, and
+    its page finds the incident its run fixed). The fix (`as_fix`), with ``already`` and
+    ``changed``. Raises `Refused`, nothing saved."""
     from modules import identity
     from modules.nsot import command_plan as CP
 
@@ -458,7 +543,8 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
          "name": name[:120], "template": doc, "match": match,
          "fills": dict(fills) if match else {}, "saved_by": actor, "saved_at": _iso(),
          "from_run": {"network": network, "run": run_id, "plan": rec.get("key"),
-                      "at": rec.get("at"), "by": rec.get("actor")}, "track": []}
+                      "at": rec.get("at"), "by": rec.get("actor"),
+                      **({"incident": str(incident)[:64]} if incident else {})}, "track": []}
     if match:
         e["mode"] = "dry_run"
         if not dry_run:
@@ -473,13 +559,13 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
 
 def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dict,
                 actor: str, actor_verified: str, person: bool, dry_run: bool = False,
-                shared: bool = False) -> dict:
+                shared: bool = False, incident: str = "") -> dict:
     """The card's Save (`routes/saved_plans_v2.save_script`): the verified run saved as one fix
     with *match* and *fills* (`save_fix`), in Auto unless *dry_run*. Needs the self-healing
     right. Raises `Refused`, nothing saved."""
     return save_fix(network, run_id=run_id, name=name, match=match, fills=fills,
                     dry_run=dry_run, shared=shared, actor=actor,
-                    actor_verified=actor_verified, person=person)
+                    actor_verified=actor_verified, person=person, incident=incident)
 
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
@@ -497,8 +583,10 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
 
     def change(doc):
         e = doc["plans"].get(key)
-        if not e or not _is_matched(e):
-            raise Refused(f"{key} is no saved self-heal script")
+        if not e or not _is_matched(e) or e.get("retired"):
+            raise Refused(f"{key} is no saved self-heal script"
+                          + (" (it is deleted: Restore… on its page brings it back)"
+                             if (e or {}).get("retired") else ""))
         if network and e.get("network") != network:
             raise Refused(f"{key} is a self-heal script of {e.get('network')}, not of {network}")
         if e.get("mode") == "auto":
@@ -510,13 +598,15 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
 
 
 def save_action(network: str, *, run_id: str, name: str, words: str, actor: str,
-                actor_verified: str, person: bool, shared: bool = False) -> dict:
+                actor_verified: str, person: bool, shared: bool = False,
+                incident: str = "") -> dict:
     """The card's Save as a reusable action (`routes/saved_plans_v2.save_action`): the verified
     run saved as one fix with no match (`save_fix`), named *name* and said in *words*, its
     network's; shared with every network only when *shared* is True (an option, off by
     default: the operator, 2026-11-16). Needs the admin right. Raises `Refused`."""
     return save_fix(network, run_id=run_id, name=name, words=words, shared=shared,
-                    actor=actor, actor_verified=actor_verified, person=person)
+                    actor=actor, actor_verified=actor_verified, person=person,
+                    incident=incident)
 
 
 # ── Firing: Dry run records, Auto runs, no AI call ──────────────────────────────────────────
@@ -535,6 +625,11 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
     if never:
         return never
     e = (read().get("plans") or {}).get(key) or {}
+    if e.get("retired"):
+        # A deleted fix's standing approval stands for nothing (Delete…, 2026-11-16).
+        r = e["retired"] or {}
+        return (f"{e.get('name') or key} was deleted by {r.get('by') or 'a person not '
+                'recorded'} at {r.get('at') or 'an unrecorded time'}")
     if not _is_matched(e) or e.get("mode") != "auto":
         return f"{key} is not a saved script in Auto"
     if e.get("network") != network:
