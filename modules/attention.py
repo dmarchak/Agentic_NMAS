@@ -310,8 +310,8 @@ ROW_KINDS = {
     ("heal", "recurrence"): ("the same problem keeps coming back on a device",
                              "open its newest incident and find what keeps causing it"),
     ("heal", "fight"): ("Mercury keeps fixing something and something keeps undoing it",
-                        "find what keeps changing it on the device (heal_fight_stop stops "
-                        "the fixing meanwhile)"),
+                        "find what keeps changing it on the device (this network's "
+                        "self-healing settings can stop the fixing meanwhile)"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -654,8 +654,9 @@ CLEARS = {
                                   "time), or acknowledged with a reason once the lines are "
                                   "read and their writer found"),
     ("heal", "would_heal"): (("resolves", "time"),
-                             "a person marks the record right or wrong, or 7 days pass "
-                             "(decisions.MARK_DAYS)"),
+                             "a person marks the record right or wrong, or a later fix of the "
+                             "same problem is verified on the device (the record closes "
+                             "with it), or 7 days pass"),
     ("heal", "interrupted"): (("resolves", "acknowledge"),
                               "a later decision finds the device with nothing to heal, or a "
                               "later heal of it is healed and verified; or acknowledged with "
@@ -703,12 +704,17 @@ CLEARS = {
     ("heal", "alert_after_fix"): (("resolves",),
                                   "the alert resolves: a grafana-alerts read no longer holds "
                                   "it firing on the device"),
-    ("heal", "recurrence"): (("resolves", "time"),
-                             "the window (heal_recurrence_hours) holds fewer than "
-                             "heal_recurrence_count incidents of the problem"),
-    ("heal", "fight"): (("resolves", "time"),
-                        "the window (heal_recurrence_hours) holds fewer than heal_fight_count "
-                        "fixes of it undone within heal_fight_minutes"),
+    ("heal", "recurrence"): (("resolves", "acknowledge", "time"),
+                             "the problem happens fewer times than this network's recurrence "
+                             "count within its recurrence window (its self-healing settings), "
+                             "or a person acknowledges it; acknowledged, it comes back only "
+                             "when the count is reached again, counted from the "
+                             "acknowledgement"),
+    ("heal", "fight"): (("resolves", "acknowledge", "time"),
+                        "fewer of its fixes are undone within this network's fight window than "
+                        "its fight count (its self-healing settings), or a person acknowledges "
+                        "it; acknowledged, it comes back only when the count is reached again, "
+                        "counted from the acknowledgement"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -793,6 +799,11 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("heal", "incident"),
                                # One hold a person resolves (board H, H9), by its decision.
                                ("heal", "held"),
+                               # A recurrence or a fight (the operator, 2026-11-16), counted
+                               # from the acknowledgement: it returns only when the count
+                               # from then is reached (`_heal_finding_rows`); a note optional
+                               # (`NOTE_OPTIONAL`).
+                               ("heal", "recurrence"), ("heal", "fight"),
                                # One held or failed port bounce (board H, H20), by its
                                # decision: a later bounce of the port raises its own row.
                                ("heal", "bounce"),
@@ -6534,6 +6545,21 @@ def _heal_triggers(lst: str) -> dict:
     return {i.get("id"): i.get("triggers") or [] for i in INC.read(lst)["incidents"]}
 
 
+def _verified_fixes_of(lst: str, rows: list) -> dict:
+    """``{"incidents", "fixes", "closed", "error"}``: *lst*'s incidents and their verified
+    fixes (`findings.verified_fixes`), read once for the dry-run records `heal_source` judges.
+    An unreadable store leaves *incidents* None: every record then stands, said."""
+    from modules.heal import findings as HF
+    from modules.heal import incidents as INC
+
+    got = INC.read(lst)
+    if got.get("state") == "unreadable":
+        return {"incidents": None, "fixes": [], "closed": 0, "error": str(got.get("error"))}
+    incs = got.get("incidents") or []
+    return {"incidents": incs, "fixes": HF.verified_fixes(incs, rows), "closed": 0,
+            "error": ""}
+
+
 def heal_source(got=None, now=None, found=None) -> dict:
     """What self-healing would have done, in dry run (board H, H3; docs/HEAL_TO_INTENT.md
     section 7: "the device's ordinary drift row carries it (`attach_to`), so a person resolving
@@ -6544,6 +6570,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
     mode on the network ("self-healing: dry run on <network>"): a dry run is never read as
     AUTO."""
     from modules.heal import decisions as HD
+    from modules.heal import findings as HF
     from modules.heal import said as SAID
 
     started = time.time()
@@ -6557,12 +6584,22 @@ def heal_source(got=None, now=None, found=None) -> dict:
                              error=f"{lst}'s heal decisions could not be read: {exc}")
     out = []
     trig = None
+    fixed = None
     for d in rows:
         if d.get("outcome") != "would_heal" or d.get("mark"):
             continue
         trig = _heal_triggers(lst) if trig is None else trig
         at = float(d.get("epoch") or 0)
         if now - at > HD.MARK_DAYS * 86400:
+            continue
+        # The operator, 2026-11-16: a dry-run record whose problem a later fix put right and
+        # verified (its own incident's, or a later incident's of the same problem) is closed
+        # by that fix: no "Was that right?" for a week (`findings.later_fix`).
+        if fixed is None:
+            fixed = _verified_fixes_of(lst, rows)
+        if fixed["incidents"] is not None and HF.later_fix(d, fixed["incidents"],
+                                                           fixed["fixes"]):
+            fixed["closed"] += 1
             continue
         host = d.get("device") or ""
         units = "; ".join(u.get("words", "") for u in d.get("units") or [])
@@ -6590,6 +6627,13 @@ def heal_source(got=None, now=None, found=None) -> dict:
         r["heal_mark"] = {"list": lst, "decision": d.get("id"), "mark": None, "unreadable": ""}
         out.append(r)
     marked = len(out)
+    later_fixed = []
+    if fixed and fixed["closed"]:
+        later_fixed.append(f"{fixed['closed']} dry-run record(s) closed by a later verified fix "
+                           "of the same problem")
+    if fixed and fixed["error"]:
+        later_fixed.append("whether a later fix closed the dry-run records is not read (the "
+                           f"incidents: {fixed['error']}), so each is shown")
     out += _heal_interrupted_rows(lst, rows, found)
     interrupted_n = len(out) - marked
     out += _heal_proposal_rows(lst, rows)
@@ -6602,7 +6646,7 @@ def heal_source(got=None, now=None, found=None) -> dict:
     out += clears
     damp = _heal_dampening_rows(lst, rows, now)
     out += damp
-    said = []
+    said = list(later_fixed)
     out += _heal_cant_fix_rows(lst, rows, now, said)
     cant_fix_n = (len(out) - marked - interrupted_n - proposals_n - len(held) - len(bounces)
                   - len(clears) - len(damp))
@@ -7561,46 +7605,114 @@ def _heal_finding_rows(lst: str, rows: list, now: float, said: list, mode=None) 
         said.append(f"the findings are not read: {got.get('error')}")
         return []
     incs = got.get("incidents") or []
+    hours, count = s["heal_recurrence_hours"], s["heal_recurrence_count"]
+    acks = None
     out = []
-    for f in findings.recurrences(incs, now, s["heal_recurrence_count"],
-                                  s["heal_recurrence_hours"]):
+
+    def counted(row_id: str):
+        """``(ack, event, after)``: the newest acknowledgement of *row_id* (the operator,
+        2026-11-16: "Acknowledged, the row ... returns only if a new occurrence happens after
+        the acknowledgement (count from then)"), the event a row counted over the whole window
+        carries (the acknowledged one, so the record's acknowledgement covers it), and the
+        moment a count after it starts. Unread, none: the assembly then shows every row and
+        says the record could not be read (`_without_acknowledged`)."""
+        nonlocal acks
+        from modules import acknowledgements as ACK
+
+        if acks is None:
+            got_acks = ACK.read()
+            acks = ACK.current([a for a in got_acks["rows"] if str(a.get("row") or "")
+                                .startswith(f"heal:{lst}:")]) if got_acks["state"] == "ok" \
+                else []
+        a = ACK.latest(row_id, acks)
+        if not a or _ts(a.get("at")) is None:
+            return None, FINDING_EVENT_START, None
+        return a, a.get("event") or FINDING_EVENT_START, _ts(a.get("at"))
+
+    def since_ack(a: dict, n: int) -> str:
+        from modules import display_names
+
+        who = display_names.people(a.get("by") or "") or "a person"
+        return (f". {who} acknowledged it at {a.get('at')}; counted from then, it has happened "
+                f"{n} times since, so it is shown again")
+
+    after_recur = {}
+    for f in findings.recurrences(incs, now, count, hours):
         device, obj, condition, cause = f["key"]
-        newest = f["incidents"][-1]
         what = obj or condition.replace("_", " ")
+        key = f"{lst}:recurrence:{device}:{what}"
+        a, event, after = counted(f"heal:{key}")
+        again = None
+        if a is not None:
+            # Counted from the acknowledgement: below the count, the row stands acknowledged
+            # (its acknowledged event); at it again, it is shown, a new event.
+            if after not in after_recur:
+                after_recur[after] = {g["key"]: g for g in findings.recurrences(
+                    incs, now, count, hours, after=after)}
+            again = after_recur[after].get(f["key"])
+            if again:
+                f, event = again, f"{FINDING_EVENT_FROM}{a.get('at')}"
+        newest = f["incidents"][-1]
         out.append(row(
-            source="heal", kind="recurrence", key=f"{lst}:recurrence:{device}:{what}",
+            source="heal", kind="recurrence", key=key, event=event,
             level="warning", devices=[device] if device else [], since=f["since"],
             what=(f"{device}: {what} {condition.replace('_', ' ')}"
                   + (f" by {cause}" if cause else "")
                   + f" happened {len(f['incidents'])} times since "
                   f"{time.strftime('%H:%M', time.gmtime(f['since']))} UTC"),
             cause=(f"The same problem opened {len(f['incidents'])} incidents within "
-                   f"{s['heal_recurrence_hours']} hours (at least {s['heal_recurrence_count']} "
-                   "is a finding); fixes continue, each its own run's checks"),
+                   f"{hours} hours (at least {count} is a finding); fixes continue, each its "
+                   "own run's checks"
+                   + (since_ack(a, len(f["incidents"])) if again else "")),
             action={"label": "Open its newest incident and find what keeps causing it",
                     "href": INC.incident_href(lst, newest.get("id") or "", device=device)},
             operands={"list": lst, "incidents": [i.get("id") for i in f["incidents"]],
-                      "count": s["heal_recurrence_count"],
-                      "hours": s["heal_recurrence_hours"]}))
+                      "count": count, "hours": hours}))
+        out[-1]["ack_placeholder"] = FINDING_ACK_NOTE
+    after_fight = {}
     for f in findings.fights(incs, rows, now, s["heal_fight_count"], s["heal_fight_minutes"],
-                             s["heal_recurrence_hours"]):
+                             hours):
+        key = f"{lst}:fight:{f['device']}:{f['object']}:{f['operation']}"
+        a, event, after = counted(f"heal:{key}")
+        again = None
+        if a is not None:
+            if after not in after_fight:
+                after_fight[after] = {(g["device"], g["object"], g["operation"]): g
+                                      for g in findings.fights(
+                                          incs, rows, now, s["heal_fight_count"],
+                                          s["heal_fight_minutes"], hours, after=after)}
+            again = after_fight[after].get((f["device"], f["object"], f["operation"]))
+            if again:
+                f, event = again, f"{FINDING_EVENT_FROM}{a.get('at')}"
         newest = f["back"][-1]
         out.append(row(
-            source="heal", kind="fight",
-            key=f"{lst}:fight:{f['device']}:{f['object']}:{f['operation']}",
+            source="heal", kind="fight", key=key, event=event,
             level="warning", devices=[f["device"]] if f["device"] else [], since=f["first"],
             what=findings.headline(f),
             cause=(f"{f['operation']} fixed it and verified, and it came back within "
                    f"{s['heal_fight_minutes']} minutes, {f['times']} times; "
-                   + ("this network stops fixing it (heal_fight_stop)" if s["heal_fight_stop"]
-                      else "Mercury keeps fixing it unless heal_fight_stop is set")),
+                   + ("this network stops fixing it while it lasts" if s["heal_fight_stop"]
+                      else "Mercury keeps fixing it (this network's self-healing settings can "
+                           "stop it while a fight lasts)")
+                   + (since_ack(a, f["times"]) if again else "")),
             action={"label": f"Find what keeps changing {f['what']} on {f['device']}",
                     "href": INC.incident_href(lst, newest.get("id") or "",
                                               device=f["device"])},
             operands={"list": lst, "fixed": [i.get("id") for i in f["fixes"]],
                       "back": [i.get("id") for i in f["back"]],
                       "operation": f["operation"], "stop": bool(s["heal_fight_stop"])}))
+        out[-1]["ack_placeholder"] = FINDING_ACK_NOTE
     return out
+
+
+#: A recurrence or fight row's event (the operator, 2026-11-16): ``window`` while it is
+#: counted over its whole window, ``after:<when acknowledged>`` once it is counted from a
+#: person's acknowledgement and has reached its count again. An acknowledgement covers its
+#: event, so the row returns only when the count from it is reached.
+FINDING_EVENT_START = "window"
+FINDING_EVENT_FROM = "after:"
+#: The note's prompt on these rows: optional (`NOTE_OPTIONAL`), who and when recorded.
+FINDING_ACK_NOTE = "A note, if you want one (your name and the time are recorded)"
 
 
 def _heal_halted_rows(lst: str, halt: dict = None, stopped: dict = None) -> list:
@@ -9307,6 +9419,12 @@ DISPOSITIONS = {("ai_withheld", "withheld"): (
     ("false_positive", "A false positive: not instructions"))}
 
 
+#: The kinds acknowledged with an OPTIONAL note (the operator, 2026-11-16: recurrence and fight
+#: findings get "Acknowledge... (optional note, recorded who/when)"): who and when are recorded
+#: as for every acknowledgement, and the note when one is given.
+NOTE_OPTIONAL = frozenset({("heal", "recurrence"), ("heal", "fight")})
+
+
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                 disposition: str = "", hours: str = "") -> dict:
     """A person acknowledges ONE event row. Refused unless the row is on the page now, of a
@@ -9339,7 +9457,9 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str,
                                        f"{event!r}: a later event is acknowledged on its own")}
     # The authorisation rule's shape check (not empty, three words, eight characters),
     # with no line to compare against: its messages then begin with the empty line's repr.
-    if reason_problem({"line": "", "reason": (why or "").strip()}):
+    # A kind whose note is optional (`NOTE_OPTIONAL`) takes any note, or none.
+    optional = (found["source"].split("@", 1)[0], found["kind"]) in NOTE_OPTIONAL
+    if not optional and reason_problem({"line": "", "reason": (why or "").strip()}):
         from modules.nsot.authorisation import MIN_CHARS, MIN_WORDS
         return {"ok": False, "error": (
             f"an acknowledgement needs a reason: at least {MIN_WORDS} words and {MIN_CHARS} "
@@ -9589,6 +9709,18 @@ def needs_attention(sources=None) -> dict:
 
 #: The sources whose rows are about Mercury itself, not the network: drawn apart, collapsed.
 SELF_SOURCES = ("ci", "ci_agreement", "scheduled_jobs")
+#: The row kinds about Mercury itself whose source also draws rows about the operator's
+#: installation (the operator, 2026-11-16: "CI failed on the newest commit" stood in the
+#: operator's warnings; it is the running-commit source's, whose behind-or-failed-update rows
+#: stay the operator's): a CI verdict on a commit is Mercury's own (`about_mercury`).
+SELF_KINDS = (("pushed", "ci_failed"),)
+
+
+def about_mercury(r: dict) -> bool:
+    """Whether row *r* is about Mercury itself (its CI, its scheduled developer jobs), not the
+    network: by its source (`SELF_SOURCES`) or its source and kind (`SELF_KINDS`)."""
+    base = str(r.get("source") or "").split("@", 1)[0]
+    return base in SELF_SOURCES or (base, r.get("kind")) in SELF_KINDS
 
 
 def assemble(results: list) -> dict:
@@ -9638,9 +9770,9 @@ def assemble(results: list) -> dict:
     # Rows about Mercury itself (its CI, its scheduled developer jobs) leave the operator's
     # list for a collapsed section; a CI run still going is no finding at all (the operator,
     # 2026-11-16).
-    mercury = [r for r in rows if r["source"] in SELF_SOURCES
+    mercury = [r for r in rows if about_mercury(r)
                and not (r["source"] == "ci" and "still going" in str(r.get("what") or ""))]
-    rows = [r for r in rows if r["source"] not in SELF_SOURCES]
+    rows = [r for r in rows if not about_mercury(r)]
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     # A source waiting out its dependency's start (C2568) is not unreadable: its own line says.
     unreadable = [res["label"] for res in results if res["state"] not in ("read", WAITING)]

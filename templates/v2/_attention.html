@@ -381,7 +381,7 @@
           the decision's facts and the steps Mercury took are that page's (What's wrong, What
           Mercury has done), so they are not drawn here. -#}
       {%- set own_why = (r.heal_cause or r.steps_taken) and not r.incident_page %}
-      {%- if fx or r.packs or own_why or r.heal_diagnosis or r.heal_analysis or ops.members or r.attached %}
+      {%- if fx or r.packs or own_why or r.heal_diagnosis or r.heal_analysis or ops.members or r.attached or record_keys %}
       <details class="att-more" data-keep="att-more-{{ r.id }}">
       <summary>Details</summary>
       <div class="att-det">
@@ -496,18 +496,20 @@
       {%- endif %}
       {%- endif %}
       {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
-      </div>
-      </details>
-      {%- endif %}
       {#- C2817, C2820 (the operator, 2026-11-08, decision 1; the charter's rule 2): the record's
-          operands, its ids, hashes and steps, under a collapsed "Details for the record", last;
-          what the row says stays above it. Times there stay UTC, as the record keeps them.
-          Beside Details, never inside it (item 1, C3449). -#}
+          operands, its ids, hashes and steps, last; what the row says stays above it. Times
+          there stay UTC, as the record keeps them. Inside the row's one Details, never a
+          second disclosure beside it (the operator's R5 item, 2026-11-16: "one Details per
+          row (not "Details" plus "Details for the record")"). -#}
       {%- if record_keys %}
-      <details class="att-record" data-keep="att-rec-{{ r.id }}"><summary>Details for the record</summary>
+      <div class="att-record" data-keep="att-rec-{{ r.id }}">
+      <h3>For the record</h3>
       <dl class="att-ops">
         {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
       </dl>
+      </div>
+      {%- endif %}
+      </div>
       </details>
       {%- endif %}
       </div>
@@ -528,7 +530,7 @@
       {#- An acknowledgement that expires at a moment its row's source names (the operator,
           2026-11-11: a scheduled job's failed run, until the workflow's next scheduled run) is
           said in those words, from `acknowledgements.in_force_words`. -#}
-      {%- for k in a.acknowledged %}<li>{% if k.expires and k.said %}{{ k.what }} — {{ k.said }}{% else %}{{ k.what }} — by {{ k.by | people }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}{% endif %}</li>{% endfor %}
+      {%- for k in a.acknowledged %}<li>{% if k.expires and k.said %}{{ k.what }} — {{ k.said }}{% else %}{{ k.what }} — by {{ k.by | people }}, {{ stamp(k.at) }}{% if k.why %}: {{ k.why }}{% endif %}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}{% endif %}</li>{% endfor %}
     </ul>
   </details>
   {%- endif %}

@@ -68,11 +68,13 @@ def real(incidents: list) -> list:
     return [i for i in incidents or [] if isinstance(i, dict) and not fault_drills.tag_of(i)]
 
 
-def recurrences(incidents: list, now: float, count: int, hours: float) -> list:
+def recurrences(incidents: list, now: float, count: int, hours: float,
+                after: float = None) -> list:
     """Each problem opened *count* times or more since *hours* ago: ``{"key", "incidents",
     "since"}``, its incidents oldest first. A drill's or an exercise's incident is not counted
-    (`real`)."""
-    since = now - float(hours) * 3600
+    (`real`). *after* (a person's acknowledgement of the finding, the operator, 2026-11-16:
+    "count from then") starts the count there when it is later than the window's start."""
+    since = max(now - float(hours) * 3600, float(after or 0))
     by = {}
     for inc in real(incidents):
         at = started(inc)
@@ -103,12 +105,39 @@ def _fixes(incidents: list, decisions: list) -> list:
     return out
 
 
+def later_fix(decision: dict, incidents: list, fixes: list = None,
+              decisions: list = None) -> tuple:
+    """The first verified fix of *decision*'s problem made after it, ``(at, device, operation,
+    incident)``, or ``()``: a fix of its own incident (a later decision of it applied
+    ``healed``, or the incident closed on its fix's own device check), or of a later incident
+    of the same problem (`problem_key`). The operator, 2026-11-16: a dry-run record whose
+    problem was later fixed is closed by that fix, never asked "Was that right?" for a week.
+    *fixes*: `verified_fixes`'s, computed once by a caller judging many records."""
+    fixes = verified_fixes(incidents, decisions or []) if fixes is None else fixes
+    at, own = float(decision.get("epoch") or 0), decision.get("incident")
+    inc = next((i for i in incidents or [] if i.get("id") == own), None) if own else None
+    key = problem_key(inc) if inc else ()
+    for fix in sorted(fixes, key=lambda f: f[0]):
+        if fix[0] <= at:
+            continue
+        if (own and fix[3].get("id") == own) or (key and problem_key(fix[3]) == key):
+            return fix
+    return ()
+
+
+def verified_fixes(incidents: list, decisions: list) -> list:
+    """Each verified fix, ``(at, device, operation, incident)`` (`_fixes`): for `later_fix`."""
+    return _fixes(incidents, decisions)
+
+
 def fights(incidents: list, decisions: list, now: float, count: int, minutes: float,
-           hours: float) -> list:
+           hours: float, after: float = None) -> list:
     """Each fix verified and then undone *count* times or more since *hours* ago (the same
     problem back within *minutes* of it): ``{"device", "object", "operation", "what",
-    "times", "fixes", "back"}``, *back* the incidents it came back in, oldest first."""
-    since, within = now - float(hours) * 3600, float(minutes) * 60
+    "times", "fixes", "back"}``, *back* the incidents it came back in, oldest first. *after*
+    (a person's acknowledgement of the fight) starts the count there, as `recurrences`'."""
+    since = max(now - float(hours) * 3600, float(after or 0))
+    within = float(minutes) * 60
     # C3842: a drill's or an exercise's incident is neither a fix nor a coming back (`real`).
     incidents = real(incidents)
     keyed = [(started(i), problem_key(i), i) for i in incidents]

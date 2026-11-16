@@ -216,6 +216,15 @@ def covering(row_id: str, event: str, rows: list):
     return None
 
 
+def latest(row_id: str, rows: list):
+    """The newest acknowledgement of this row, whatever its event, or None: a finding counted
+    from its acknowledgement (`attention._heal_finding_rows`) starts its count there."""
+    for a in reversed(rows or []):
+        if a.get("row") == row_id:
+            return a
+    return None
+
+
 def within_band(ack: dict, reading: dict = None) -> dict:
     """Whether a band acknowledgement holds now (C433; C533): THE judgement, for Needs
     attention and the device page alike. The band recorded with *ack* GOVERNS, never a band a
