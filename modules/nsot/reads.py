@@ -654,7 +654,9 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     and never ``by`` a person (a read an operation asks is the operation's, `OPERATION`,
     judged by its own, smaller, allowlist; a heal's keeps its own kind).
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
-    called with each device's outcome as it lands. *session* (tests) replaces
+    called with each device's outcome as it lands. *session* (``session(dev, fn) ->
+    fn(conn)``; tests, and a command plan's run, whose reads ride the pipeline's own session
+    for its one device, `command_plan_run.pool_session`) replaces
     ``connection.with_temp_connection``. *drivers* (``{host: netmiko driver}``) opens those
     hosts' sessions with that driver instead of the inventory's, recorded in the run (board
     F4's platform map Test). *inline* asks a run of ONE device in the calling thread (its hold

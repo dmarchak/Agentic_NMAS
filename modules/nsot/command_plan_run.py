@@ -25,8 +25,18 @@ intent"). One execution path: G7's recovery is its first built-in plan
    net-zero check** (`net_zero`: the running configuration read again after the verify,
    holding the device, equals the one stage 4 read before the first step, line for line, after
    `normalize.strip_for_repo`'s volatile lines; any difference rolls back and the plan is
-   refused, the record naming each line). A transient plan is never saved to startup and
-   records no golden (`PipelineContext.transient`). Rollback is the pipeline's.
+   refused, the record naming each line; for a plan of `SECTION_CONFINED` shapes alone, each
+   of its interfaces' configuration read just before the send and again after,
+   `net_zero_scope`, and again after a rollback). A transient plan is never saved to startup
+   and records no golden (`PipelineContext.transient`). Rollback is the pipeline's.
+
+   **One device session per run** (the operator, 2026-11-16): every read the plan makes (its
+   preconditions, its verify reads, the net-zero reads) rides the pipeline's own pooled
+   session, the one stage 4 signs in on and the push sends on (`Sources.ride`,
+   `pool_session`), each read live. Stage 7 still signs in again after the push (C272)
+   until a measurement shows the push's session reads alike. The pipeline's snapshots before
+   and after are scoped by what the plan touches (`snapshot_scope`). Each step's and each
+   read's time is kept in the record's ``laps``.
 4. **The record**: the receipt (`receipts`, action ``command_plan``, no intent commit), the
    run's record in the operations' record History reads (`privileged.record`, its key the
    plan's), each new shape's measurement (`command_policy.record_measurement`), and the
@@ -37,6 +47,7 @@ does not pass.
 """
 
 import logging
+import re
 import threading
 import time
 
@@ -185,7 +196,9 @@ class Sources:
     """Where a run reads: Mercury's model (`command_plan.Sources`), the read engine, the
     clock and the sleep, and a problem's own sources by family (``of``: G7's Loki lines).
     *reuse* (a `Reused`) is a proposal's preflight's alone: a read it holds young enough
-    answers in place of the device, said in ``reused_log``; never the approved run's."""
+    answers in place of the device, said in ``reused_log``; never the approved run's.
+    *session* (`ride`): the run's one device session, which every read rides once the
+    pipeline has opened it; None, each read opens its own (a preflight's)."""
 
     def __init__(self, network: str, *, clock=time.time, sleep=time.sleep, model=None,
                  families=None, reuse=None):
@@ -196,6 +209,13 @@ class Sources:
         self._families = dict(families or {})
         self.reuse = reuse
         self.reused_log = []
+        self.session = None
+
+    def ride(self, ctx=None, dev: dict = None) -> None:
+        """From now every read rides the pipeline's pooled session for *dev* (*ctx*'s pool,
+        `pool_session`); with neither, each read opens its own again (the run's end, before
+        its pool is closed, so no read reopens a session nobody closes)."""
+        self.session = pool_session(ctx, dev) if ctx is not None and dev else None
 
     def device(self, host):
         return self.model.device(host)
@@ -215,10 +235,11 @@ class Sources:
 
     def read(self, host: str, commands: list) -> dict:
         """``{command: answer}`` (an answer None when it was not read), through THE read
-        engine, inline: the run already holds the device, so the read's hold is re-entrant.
-        With *reuse* (a proposal's preflight), a command it holds young enough is answered
-        from it and logged in ``reused_log``; the rest are read, and kept for a later
-        preflight in the same job (an alternative's)."""
+        engine, inline: the run already holds the device, so the read's hold is re-entrant,
+        and on the run's one session once it rides one (`ride`): no login per read. With
+        *reuse* (a proposal's preflight), a command it holds young enough is answered from it
+        and logged in ``reused_log``; the rest are read, and kept for a later preflight in the
+        same job (an alternative's)."""
         from modules.nsot import reads
 
         reuse = self.reuse
@@ -238,7 +259,8 @@ class Sources:
         try:
             rec = reads.run(self.network, [host], live, "Mercury (reviewed commands)",
                             purpose="a command plan's precondition or verify read",
-                            inline=True)
+                            inline=True, **({"session": self.session}
+                                            if self.session is not None else {}))
         except reads.Refused as exc:
             log.warning("command plan: a read was refused: %s", exc)
             return {c: out.get(c) for c in commands}
@@ -258,6 +280,27 @@ class Sources:
         return {c: out.get(c) for c in commands}
 
 
+def pool_session(ctx, dev: dict):
+    """The read engine's *session* (`reads.run`'s ``session(dev, fn) -> fn(conn)``) riding
+    the pipeline's pooled session for *dev* (``ctx.connections_pool``, the one stage 4 opened,
+    the push sends on and verify reads on): asked of the pool at each engine run, so a session
+    a failed read spent is replaced first (C272). A read the engine would make of another
+    address, or signed in as another account, raises (that read fails, said in its record):
+    never sent on this session."""
+    from modules.connection import get_persistent_connection
+
+    ip, user = dev.get("ip", ""), dev.get("username", "")
+
+    def session(signed, fn):
+        s_ip, s_user = (signed or {}).get("ip", ""), (signed or {}).get("username", "")
+        if s_ip != ip or (s_user and user and s_user != user):
+            raise ValueError(f"this read is of {s_ip or 'no address'} as "
+                             f"{s_user or 'no account'}, and the run's session is {ip} as "
+                             f"{user or 'no account'}: it is not read on that session")
+        return fn(get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock))
+    return session
+
+
 class CheckRun:
     """What a named check is handed: the run's network, device and inventory row, the
     validated values (`derived`), the incident it acts in, the sources and the time; *found*
@@ -267,6 +310,9 @@ class CheckRun:
         self.network, self.device, self.dev = network, device, dev
         self.derived, self.incident, self.sources = derived, incident, sources
         self.found = {}
+        #: ``{interface: its configuration}`` read just before the send, when the net-zero
+        #: check is scoped to the plan's interfaces (`net_zero_scope`); None, the whole.
+        self.sections_before = None
 
     @property
     def at(self) -> float:
@@ -301,16 +347,24 @@ def _judge(items, run: CheckRun, answers: dict) -> list:
 
 
 def preconditions(t, run: CheckRun, rec: dict):
-    """The pre-apply check: each precondition read again (one read engine run, holding the
-    device) and judged; all must pass, and stage 4 must have read the configuration before.
+    """The pre-apply check: each precondition read again, live (one read engine run over the
+    run's session, holding the device), and judged; all must pass, and stage 4 must have read
+    the configuration before. Then, when the net-zero check can be scoped to the plan's
+    interfaces (`net_zero_scope`), each interface's configuration read before the send.
     Returns the pipeline's hook, ``hook(ctx) -> why or ""``."""
     from modules.nsot import command_plan as CP
+    from modules.pipeline import lap
 
     def hook(ctx):
         ip = run.dev.get("ip", "")
-        if not ((ctx.pre_snapshots or {}).get(ip) or {}).get("running_config"):
+        pre = (ctx.pre_snapshots or {}).get(ip) or {}
+        if not pre.get("running_config"):
             why = ("the running configuration before the plan could not be read, so whether "
                    "the plan is net zero cannot be checked. Nothing was sent")
+            _step(rec, "read_before", "refused", why)
+            return why
+        why = _live_mode_refusal(rec.get("snapshot_scope") or {}, pre["running_config"])
+        if why:
             _step(rec, "read_before", "refused", why)
             return why
         _step(rec, "read_before", "ok", "the running configuration read before anything is "
@@ -318,7 +372,9 @@ def preconditions(t, run: CheckRun, rec: dict):
         cmds = list(dict.fromkeys(CP.substitute(i["read"], run.derived)
                                   for i in t.preconditions if i["read"]))
         answers = run.sources.read(run.device, cmds) if cmds else {}
+        lap(rec.get("laps"), "preconditions: read")
         judged = _judge(t.preconditions, run, answers)
+        lap(rec.get("laps"), "preconditions: judged")
         rec["preconditions"] = judged
         if run.found:
             rec["found"] = dict(run.found)
@@ -334,11 +390,199 @@ def preconditions(t, run: CheckRun, rec: dict):
                   ("these hold: " + "; ".join(held)) if held else "",
                   ("not told before the send, judged by verify: " + "; ".join(later))
                   if later else "") if x)) if judged else "no precondition")
+        # The net-zero check's before, scoped to the plan's interfaces when it can be (each
+        # one's own configuration, read now on the run's session, the last read before the
+        # send); else, or when one cannot be read, verify compares the whole configuration
+        # with stage 4's.
+        names = net_zero_scope(t, (ctx.rendered_commands or {}).get(ip) or [])
+        run.sections_before = (_sections(ctx, run.dev, names) if names else None)
+        rec["net_zero_scope"] = ({"scope": "interfaces", "interfaces": names}
+                                 if run.sections_before else
+                                 {"scope": "full", "why": (
+                                     "an interface's configuration before could not be read"
+                                     if names else "a line of the plan is not confined to an "
+                                                   "interface's section")})
+        lap(rec.get("laps"), "net zero: before")
         # From here the send may land: the record says so, so an end that raises says
         # whether anything was sent, and the run spans its lines (`heal.attribution` rule 4).
         rec["config_change"] = True
         return ""
     return hook
+
+
+#: The shapes (`command_policy.shapes`, as a template writes a line) whose every effect on
+#: the configuration stays in the interface section they are sent in: entering an
+#: interface's section, and its administrative state. A plan of these alone is net-zero-checked
+#: per interface (`net_zero_scope`); a shape added later (an admin's approved one, which may
+#: write elsewhere, as `switchport access vlan` creates a VLAN) is not on this list, so its
+#: plan keeps the whole-configuration compare until it is measured onto it.
+SECTION_CONFINED = frozenset(("interface {interface}", "interface {interface} > shutdown",
+                              "interface {interface} > no shutdown"))
+#: An interface name as one token: letters, then its number (``GigabitEthernet1/0/5``).
+_IFNAME = re.compile(r"[A-Za-z][A-Za-z\-]*\d[\d/.:]*")
+
+
+def net_zero_scope(t, program) -> list:
+    """The interfaces the net-zero check is scoped to, ``[name]`` in order, or ``[]`` (the
+    whole running configuration is compared): every line of the template a `SECTION_CONFINED`
+    shape, and every top-level line of the confirmed *program* (one per template line,
+    `command_plan.program`) ``interface <name>``, its name one token of an interface's
+    shape."""
+    from modules.nsot import command_policy
+
+    lines = list(program or [])
+    shapes = command_policy.shapes(t.commands)
+    if not shapes or len(shapes) != len([ln for ln in lines if str(ln or "").strip()]):
+        return []
+    names = []
+    for (_raw, shape), line in zip(shapes, [ln for ln in lines if str(ln or "").strip()]):
+        if shape not in SECTION_CONFINED:
+            return []
+        if str(line)[:1] in (" ", "\t"):
+            if not names:
+                return []
+            continue
+        words = str(line).split()
+        if len(words) != 2 or words[0] != "interface" or not _IFNAME.fullmatch(words[1]):
+            return []
+        names.append(words[1])
+    return list(dict.fromkeys(names))
+
+
+#: The rules that scope the pipeline's snapshots before and after (the operator, 2026-11-16,
+#: decision 2 per R3), by what the plan touches: ``access`` (every interface an access port in
+#: committed intent: its state, its spanning-tree state and its own section only), ``routed``
+#: (a trunk or routed interface: the full snapshots, every protocol's adjacencies and the route
+#: table, since the protocols each interface runs are not yet read from intent, so all are),
+#: and ``full`` (anything unclassified).
+SNAPSHOT_RULES = ("access", "routed", "full")
+#: What the access rule does not see, in its words: the basis the reviewer asked be said
+#: (finding 6).
+ACCESS_UNSEEN = ("not read: the device's other interfaces, its routing adjacencies, its route "
+                 "table and its running configuration after; an on-device script reacting to "
+                 "the link event (EEM, say) could write outside the port's section unseen here, "
+                 "and drift detection still catches such a change as its own incident")
+
+
+def snapshot_scope(network: str, t, p: dict, run: CheckRun) -> dict:
+    """The scope of the pipeline's snapshots for the plan *p* (`SNAPSHOT_RULES`), from what it
+    touches: its interfaces (`net_zero_scope`: every line a `SECTION_CONFINED` shape) and each
+    one's switchport mode in committed intent (`errdisable.intent_port`'s, the one reading of
+    a port's role, as the plan's own ``access_port`` check reads it). ``{"rule", "words",
+    "interfaces"}``, kept as the run's ``snapshot_scope``; the run also refuses, nothing sent,
+    when the device's own configuration before does not hold the mode intent says
+    (`_live_mode_refusal`)."""
+    from modules.heal.errdisable import intent_port
+
+    names = net_zero_scope(t, p.get("program") or [])
+    if not names:
+        return {"rule": "full", "interfaces": [], "words": (
+            "a line of the plan is not confined to an interface's section: the full snapshots "
+            "before and after")}
+    read_intent = getattr(run.sources, "intent", None)
+    try:
+        intent, err = read_intent(run.device) if read_intent else (None, "no intent source")
+    except Exception as exc:                          # noqa: BLE001 (unclassified: the full)
+        intent, err = None, f"{type(exc).__name__}: {exc}"
+    if intent is None or err:
+        return {"rule": "full", "interfaces": names, "words": (
+            f"committed intent could not be read ({err or 'none'}), so the plan's interfaces "
+            "are not classified: the full snapshots before and after")}
+    roles = {n: intent_port(intent, n) for n in names}
+    unknown = [n for n, r in roles.items() if not r["found"] or not r["mode"]]
+    if unknown:
+        return {"rule": "full", "interfaces": names, "words": (
+            f"committed intent names no switchport mode for {', '.join(unknown)}, so it is not "
+            "classified: the full snapshots before and after")}
+    other = [f"{n} ({r['mode']})" for n, r in roles.items() if r["port_role"] != "access"]
+    if other:
+        return {"rule": "routed", "interfaces": names, "words": (
+            f"{', '.join(other)} is not an access port in committed intent: the full snapshots "
+            "before and after, every routing protocol's adjacencies and the route table")}
+    from modules.heal.errdisable import same_port
+
+    members = [n for n in names for i in (intent.get("interfaces") or [])
+               if isinstance(i, dict) and same_port(i.get("name") or "", n)
+               and str(i.get("channel_group") or "").strip()]
+    if members:
+        # A port-channel member (the review, finding 3): its bundle's state and the bundle's
+        # own protocols move with it, which its own section and state do not show.
+        return {"rule": "full", "interfaces": names, "words": (
+            f"{', '.join(members)} is a port-channel member in committed intent "
+            "(channel-group): the full snapshots before and after")}
+    return {"rule": "access", "interfaces": names, "words": (
+        f"{', '.join(names)}: an access port in committed intent (switchport mode access), so "
+        "the snapshots before and after read its state and its spanning-tree state, and its "
+        "own section is net-zero checked; " + ACCESS_UNSEEN)}
+
+
+def _live_mode_refusal(scope: dict, running_config: str) -> str:
+    """Why the access rule does not hold on the device itself, or ``""``: each of its
+    interfaces' sections in the configuration stage 4 read live before the send must hold
+    ``switchport mode access``, the mode committed intent gave it (`snapshot_scope`), and no
+    ``channel-group`` (a port-channel member, which the access rule never covers: the
+    review's finding 3). A device departed from its intent is never verified on intent's
+    word: the snapshot before was already read under the access rule, so the run refuses,
+    nothing sent, rather than verify a member or a non-access port by it."""
+    if (scope or {}).get("rule") != "access":
+        return ""
+    from modules.nsot import ifnames
+
+    lines = (running_config or "").splitlines()
+    missing, members = [], []
+    for name in scope.get("interfaces") or []:
+        section, inside = [], False
+        for ln in lines:
+            if ln[:1] not in (" ", "\t"):
+                words = ln.split()
+                inside = (len(words) == 2 and words[0] == "interface"
+                          and ifnames.same_interface(words[1], name))
+                continue
+            if inside:
+                section.append(" ".join(ln.split()))
+        if "switchport mode access" not in section:
+            missing.append(name)
+        if any(s.startswith("channel-group ") for s in section):
+            members.append(name)
+    why = []
+    if missing:
+        why.append(f"committed intent says {', '.join(missing)} is an access port, and the "
+                   "device's running configuration before the send does not hold `switchport "
+                   "mode access` there")
+    if members:
+        why.append(f"the device's running configuration before the send makes "
+                   f"{', '.join(members)} a port-channel member (channel-group), which "
+                   "committed intent does not")
+    if not why:
+        return ""
+    return "; ".join(why) + ", so the plan is not verified on intent's word. Nothing was sent"
+
+
+def _section_read(name: str) -> str:
+    return f"show running-config interface {name}"
+
+
+def _sections(ctx, dev: dict, names: list):
+    """``{name: its configuration}`` for each interface of *names*, read on the run's session
+    (the pipeline's pool, holding the device), or None when any one cannot be read or the
+    device refuses the read (an IOS ``%`` error line): the caller then compares the whole
+    configuration."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+    from modules.pipeline import IOS_ERROR_PATTERN
+
+    out = {}
+    for name in names:
+        try:
+            text = run_device_command(get_persistent_connection(
+                dev, ctx.connections_pool, ctx.pool_lock), _section_read(name)) or ""
+        except Exception as exc:                      # noqa: BLE001 (the whole compare, said)
+            log.info("command plan: %s's configuration was not read: %s", name, exc)
+            return None
+        if not text.strip() or re.search(IOS_ERROR_PATTERN, text):
+            return None
+        out[name] = text
+    return out
 
 
 def _verify_item(item, run: CheckRun, before: str = "") -> dict:
@@ -401,16 +645,58 @@ def net_zero(before: str, after: str) -> list:
     return out
 
 
-def plan_verify(t, run: CheckRun, rec: dict):
-    """The pipeline's verify hook for the plan: its verify reads, then the net-zero check.
-    ``hook(ctx, ip, pre, post) -> {"issues", "unreadable", "checks", "net_zero"}``; an issue
-    fails verify and rolls back."""
-    def hook(ctx, ip, pre, post):
-        from modules.commands import run_device_command
-        from modules.connection import get_persistent_connection
+def _net_zero_after(ctx, run: CheckRun, pre: dict, scope: str = "") -> dict:
+    """The net-zero check, on the run's session holding the device: scoped
+    (``run.sections_before``), each interface's configuration read again and compared with its
+    own read before the send; else, or when one cannot be read again, the whole running
+    configuration compared with stage 4's. *scope* (``interfaces`` or ``full``) holds it to
+    that one compare, with no fallback: the check after a rollback uses the scope the run's
+    own check used (`_net_zero_after_rollback`). ``{"checked", "differs", "scope",
+    "interfaces"?, "error"?}``."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
 
-        checks = [_verify_item(i, run, (pre or {}).get("running_config") or "")
-                  for i in t.verify]
+    dev = run.dev
+    before = run.sections_before
+    if before and scope != "full":
+        after = _sections(ctx, dev, list(before))
+        if after is not None:
+            differs = []
+            for name in before:
+                differs += net_zero(before[name], after[name])
+            return {"checked": True, "differs": differs, "scope": "interfaces",
+                    "interfaces": list(before)}
+        if scope == "interfaces":
+            return {"checked": False, "differs": [], "scope": "interfaces",
+                    "interfaces": list(before),
+                    "error": "the configuration of " + ", ".join(before) + " could not be "
+                             "read again: whether it is net zero cannot be told"}
+    try:
+        text = run_device_command(get_persistent_connection(
+            dev, ctx.connections_pool, ctx.pool_lock), "show running-config") or ""
+    except Exception as exc:                          # noqa: BLE001 (neither pass nor fail)
+        return {"checked": False, "differs": [], "scope": "full",
+                "error": f"the running configuration after the plan could not be read "
+                         f"({type(exc).__name__}): whether it is net zero cannot be told"}
+    if not text:
+        return {"checked": False, "differs": [], "scope": "full",
+                "error": "the running configuration after the plan read empty: whether it is "
+                         "net zero cannot be told"}
+    return {"checked": True, "scope": "full",
+            "differs": net_zero((pre or {}).get("running_config") or "", text)}
+
+
+def plan_verify(t, run: CheckRun, rec: dict):
+    """The pipeline's verify hook for the plan: its verify reads, then the net-zero check
+    (`_net_zero_after`). ``hook(ctx, ip, pre, post) -> {"issues", "unreadable", "checks",
+    "net_zero"}``; an issue fails verify and rolls back."""
+    def hook(ctx, ip, pre, post):
+        from modules.pipeline import lap
+
+        checks = []
+        for i in t.verify:
+            checks.append(_verify_item(i, run, (pre or {}).get("running_config") or ""))
+            lap(rec.get("laps"), f"verify: {i['name']}")
         # A re-trip (the operator, 2026-11-16) is the run's outcome, never an issue: the port
         # is down again by its own cause, which explains the reads that fail on it, so they
         # roll nothing back; the net-zero check below still does.
@@ -420,34 +706,36 @@ def plan_verify(t, run: CheckRun, rec: dict):
         issues = [f"{c['name']}: {c['words']}" for c in checks
                   if c["result"] == "fail" and not retrip]
         unread = [f"{c['name']}: {c['words']}" for c in checks if c["result"] == "unreadable"]
-        dev = run.dev
-        try:
-            after = run_device_command(get_persistent_connection(
-                dev, ctx.connections_pool, ctx.pool_lock), "show running-config") or ""
-        except Exception as exc:                      # noqa: BLE001 (neither pass nor fail)
-            after = ""
-            unread.append(f"the running configuration after the plan could not be read "
-                          f"({type(exc).__name__}): whether it is net zero cannot be told")
-        differs = net_zero((pre or {}).get("running_config") or "", after) if after else []
+        nz = _net_zero_after(ctx, run, pre)
+        lap(rec.get("laps"), f"net zero: after ({nz['scope']})")
+        if nz.get("error"):
+            unread.append(nz["error"])
+        differs = nz["differs"]
         if differs:
-            issues.append("the running configuration after the plan differs from the one "
+            what = ("the configuration of " + ", ".join(nz["interfaces"])
+                    if nz["scope"] == "interfaces" else "the running configuration")
+            issues.append(f"{what} after the plan differs from the one "
                           f"before it ({len(differs)} line(s): " + "; ".join(differs[:8])
                           + (" …" if len(differs) > 8 else "") + "): a command plan is net "
                           "zero, so it is rolled back and refused")
+        nz = {k: v for k, v in nz.items() if k != "error"}
         rec["verify_checks"] = checks
-        rec["net_zero"] = {"checked": bool(after), "differs": differs}
+        rec["net_zero"] = nz
         if run.found:
             rec["found"] = dict(run.found)
         return {"issues": issues, "unreadable": unread, "checks": checks,
-                "net_zero": {"checked": bool(after), "differs": differs}, "stop": stop}
+                "net_zero": dict(nz), "stop": stop}
     return hook
 
 
 def context(network: str, t, p: dict, run: CheckRun, rec: dict):
     """The pipeline's context for the plan *p* (a preview): its gate's authorisations, the
-    planned window of the links it touches, transient, and the plan's pre-apply and verify
-    hooks. Its program is confirmed by `run`, beside the runner it is confirmed for (C765:
-    every product run confirms its list first, tests/test_pipeline.py)."""
+    planned window of the links it touches, transient, the plan's pre-apply and verify hooks,
+    the run's timing record, the run's reads riding the pipeline's own session
+    (`Sources.ride`), and the scope of the pipeline's snapshots before and after
+    (`snapshot_scope`, recorded as ``rec["snapshot_scope"]``). Its program is confirmed by
+    `run`, beside the runner it is confirmed for (C765: every product run confirms its list
+    first, tests/test_pipeline.py)."""
     from modules.neighbours import committed_intents_of
     from modules.nsot import authorisation as _auth
     from modules.pipeline import PipelineContext, link_window
@@ -464,7 +752,30 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
                                        committed_intents_of(network))}
     ctx.pre_apply = [preconditions(t, run, rec)]
     ctx.plan_verify = {ip: plan_verify(t, run, rec)}
+    ctx.laps = rec.get("laps")
+    # One device session per run (the operator, 2026-11-16): every read the plan makes rides
+    # the pool stage 4 opens, the push sends on and verify reads on.
+    if hasattr(run.sources, "ride"):
+        run.sources.ride(ctx, dev)
+    scope = snapshot_scope(network, t, p, run)
+    ctx.snapshot_scope = {ip: scope}
+    rec["snapshot_scope"] = scope
     return ctx
+
+
+def _laps(marks) -> list:
+    """The run's timing record from its marks ``[(lap, epoch)]`` (`pipeline.lap`), the first
+    the run's start: ``[{"lap", "at_s", "took_s"}]``, *at_s* from the start, *took_s* since
+    the lap before (what that lap's work took)."""
+    out = []
+    if not marks:
+        return out
+    t0 = prev = float(marks[0][1])
+    for name, at in marks[1:]:
+        out.append({"lap": str(name), "at_s": round(float(at) - t0, 1),
+                    "took_s": round(float(at) - prev, 1)})
+        prev = float(at)
+    return out
 
 
 def preconditions_now(network: str, key: str, p: dict, *, sources=None,
@@ -542,26 +853,25 @@ def _step(rec: dict, name: str, result: str, words: str, **more) -> None:
     op_progress.moved()
 
 
-def _net_zero_after_rollback(ctx, rec: dict, dev: dict) -> None:
-    """After a rollback of a plan that was not net zero, the running configuration read again
-    (holding the device) and compared with the one read before once more (`net_zero`): the
-    pipeline's rollback inverts only the program's own lines, so a line the device added (a
-    sticky MAC learned on recovery) is still there. Kept as ``rec["net_zero"]["after_rollback"]``
-    (the lines still differing, masked; ``None`` when it could not be read)."""
+def _net_zero_after_rollback(ctx, rec: dict, run: CheckRun) -> None:
+    """After a rollback of a plan that was not net zero, the configuration read again (holding
+    the device) and compared with the one read before once more (`net_zero`), in the scope the
+    run's own check used (`_net_zero_after`'s *scope*: the same interface sections, or the
+    whole configuration where the run's was whole): the pipeline's rollback inverts only the
+    program's own lines, so a line the device added (a sticky MAC learned on recovery) is still
+    there. Kept as ``rec["net_zero"]["after_rollback"]`` (the lines still differing, masked;
+    ``None`` when it could not be read) and ``rec["net_zero"]["after_rollback_scope"]``."""
     nz = rec.get("net_zero") or {}
     if not ctx.rollback_performed or not nz.get("differs"):
         return
-    from modules.commands import run_device_command
-    from modules.connection import get_persistent_connection
-
-    before = ((ctx.pre_snapshots or {}).get(ctx.device_ips[0]) or {}).get("running_config") or ""
-    try:
-        after = run_device_command(get_persistent_connection(
-            dev, ctx.connections_pool, ctx.pool_lock), "show running-config") or ""
-    except Exception as exc:                          # noqa: BLE001 (said: not told)
-        log.warning("command plan: the configuration after the rollback was not read: %s", exc)
-        after = ""
-    nz["after_rollback"] = net_zero(before, after) if after else None
+    pre = (ctx.pre_snapshots or {}).get(ctx.device_ips[0]) or {}
+    scope = "interfaces" if nz.get("scope") == "interfaces" else "full"
+    got = _net_zero_after(ctx, run, pre, scope=scope)
+    if got.get("error"):
+        log.warning("command plan: the configuration after the rollback was not read: %s",
+                    got["error"])
+    nz["after_rollback"] = got["differs"] if got.get("checked") else None
+    nz["after_rollback_scope"] = got["scope"]
     rec["net_zero"] = nz
 
 
@@ -637,6 +947,11 @@ def _finish(network: str, rec: dict, outcome: str, words: str, t=None) -> dict:
             CP.resolve(CP.FINISH_HOOKS[t.on_finish])(network, rec)
         except Exception as exc:                      # noqa: BLE001 (said in the record)
             rec["on_finish_error"] = f"{type(exc).__name__}: {exc}"
+    marks = rec.get("laps")
+    if isinstance(marks, list) and marks and isinstance(marks[0], tuple):
+        from modules.pipeline import lap
+        lap(marks, "record")
+        rec["laps"] = _laps(marks)
     privileged.record(network, rec)
     try:
         from modules import invalidation
@@ -675,7 +990,10 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
                                               and actor_verified else "none"),
            "reason": (reason or "").strip()[:500], "started_at": now, "finished_at": None,
            "at": _iso(now), "state": "running", "outcome": "running", "config_change": False,
-           "hash": "", "program": [], "params": {}, "steps": []}
+           "hash": "", "program": [], "params": {}, "steps": [],
+           # The run's timing record (the operator, 2026-11-16), ``(lap, epoch)`` marks until
+           # `_finish` writes them as ``[{"lap", "at_s", "took_s"}]``.
+           "laps": [("start", now)]}
     link = fixit_field(fixit)
     if link:
         rec["fixit"] = link
@@ -713,6 +1031,8 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     t = CP.template_of(key)
     rec["hash"] = p["hash"]
     _step(rec, "approve", "ok", f"the plan is the one approved ({p['hash']})")
+    from modules.pipeline import lap
+    lap(rec["laps"], "approve")
     dev = p["device_row"]
     check_run = CheckRun(network, device, dev, p["derived"], incident, src)
     ctx = None
@@ -720,6 +1040,7 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
         with device_ops.hold(network, device, OPERATION, actor, detail=p["title"],
                              ip=dev.get("ip", "")):
             _step(rec, "hold", "ok", f"{device} held for the whole run")
+            lap(rec["laps"], "hold")
             with reads.within(OPERATION, rec["id"], "preconditions", RECORD):
                 ctx = context(network, t, p, check_run, rec)
                 # What is sent is the program approved by its hash, byte for byte.
@@ -727,11 +1048,16 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
                 from modules.pipeline import PipelineRunner
                 try:
                     PipelineRunner(ctx).run()
-                    _net_zero_after_rollback(ctx, rec, dev)
+                    _net_zero_after_rollback(ctx, rec, check_run)
                 finally:
+                    # No read reopens the pool once it is closed: the run's reads open their
+                    # own again (none is made past here but `on_finish`'s, its own sources).
+                    if hasattr(src, "ride"):
+                        src.ride()
                     from modules.connection import close_persistent_connection
                     for ip in list(ctx.connections_pool):
                         close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+                    lap(rec["laps"], "pipeline: session closed")
     except device_ops.DeviceBusy as exc:
         _step(rec, "hold", "refused", str(exc))
         return _finish(network, rec, "refused", f"{exc}. Nothing was sent", t)

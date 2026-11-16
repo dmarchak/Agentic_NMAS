@@ -329,6 +329,16 @@ class PipelineContext:
     #: run inside stage 8 after its own checks: an issue fails verify and rolls back like any
     #: other; an unreadable read neither passes nor fails.
     plan_verify:         dict = None
+    #: The caller's timing record (the operator, 2026-11-16: "where each second goes"): a
+    #: list of ``(lap, epoch)`` each stage and each read inside one appends to as it ends
+    #: (`lap`), kept by a command plan's run in its record; None keeps none.
+    laps:                list = None
+    #: ip -> the scope of stage 4's and stage 7's operational snapshots (the operator,
+    #: 2026-11-16, decision 2 per R3; a command plan's run sets it,
+    #: `command_plan_run.snapshot_scope`): ``{"rule", "words", "interfaces"}``. Only the
+    #: ``access`` rule on a transient run narrows them (`_access_scope`); any other rule, or
+    #: none, reads the full snapshots.
+    snapshot_scope:      dict = None
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -506,6 +516,7 @@ class PipelineRunner:
                     # stops the run with nothing sent (`receipts.stages_before_send`).
                     device_ops.note(PRE_APPLY)
                     refused = _pre_apply(self.ctx)
+                    lap(self.ctx.laps, PRE_APPLY)
                     if refused:
                         self.ctx.stages_failed.append(PRE_APPLY)
                         self.ctx.error = refused
@@ -515,9 +526,11 @@ class PipelineRunner:
                 device_ops.note(_verify_note(self.ctx) if name == "verify" else name)
                 try:
                     handler(self.ctx)
+                    lap(self.ctx.laps, name)
                     self.ctx.stages_completed.append(name)
                     self._next_expected = idx + 1
                 except PipelineStageError as exc:
+                    lap(self.ctx.laps, f"{name} (failed)")
                     self.ctx.stages_failed.append(name)
                     log.error("pipeline: stage '%s' FAILED: %s", name, exc)
                     if on_failure == "continue":
@@ -534,6 +547,7 @@ class PipelineRunner:
                     # and "the device is unchanged" are different claims.
                     if on_failure == "rollback":
                         _capture_failure_state(self.ctx)
+                        lap(self.ctx.laps, "failure state read")
                     # A push was ATTEMPTED if any device has a push result —
                     # including a failed one. The old condition required
                     # "deploy" in stages_completed, which is false precisely
@@ -545,6 +559,7 @@ class PipelineRunner:
                     if on_failure == "rollback" and attempted:
                         log.warning("pipeline: initiating rollback after stage '%s' failure", name)
                         _stage_rollback(self.ctx)
+                        lap(self.ctx.laps, "rollback")
                     break
             else:
                 self.ctx.final_status = "success"
@@ -574,6 +589,14 @@ class PipelineRunner:
 
 #: The pre-apply checks' place in the record (C3757): after stage 5, before the send.
 PRE_APPLY = "pre_apply"
+
+
+def lap(laps, name: str) -> None:
+    """*name* ended now, appended to *laps* (`PipelineContext.laps`, a command plan's run's
+    timing record) as ``(name, epoch)``; nothing when *laps* is None. Timing only: nothing
+    reads it to decide."""
+    if laps is not None:
+        laps.append((str(name), time.time()))
 
 
 def _pre_apply(ctx: PipelineContext) -> str:
@@ -779,7 +802,9 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
         hostname = dev.get("hostname", ip)
         try:
             get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
-            snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)
+            lap(ctx.laps, "pre_snapshot: signed in")
+            snap = _capture_scoped(ctx, dev, ip, hostname)
+            lap(ctx.laps, "pre_snapshot: operational reads")
             bad = _unreadable(snap)
             if bad:
                 # Refuse, never guess (C272): a baseline read that cannot be
@@ -804,6 +829,7 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
             except Exception as cfg_exc:          # noqa: BLE001
                 log.warning("pipeline[4/pre_snapshot]: %s running-config read failed: %s",
                             hostname, cfg_exc)
+            lap(ctx.laps, "pre_snapshot: running configuration")
             if running_cfg:
                 snap["running_config"] = running_cfg
                 _record_pre_change(ctx, dev, running_cfg)
@@ -983,6 +1009,7 @@ def _stage_deploy(ctx: PipelineContext) -> None:
 
         try:
             output = _push_config(dev, cmds, ctx.connections_pool, ctx.pool_lock)
+            lap(ctx.laps, "deploy: sent")
             ctx.pushed_at[ip] = (ctx.settle_clock or time.monotonic)()
             ctx.push_results[ip] = {"ok": True, "output": output[:500]}
             log.info("pipeline[6/deploy]: %s%s pushed — %d command(s)",
@@ -1281,10 +1308,36 @@ def _read_vlans(ctx: PipelineContext, dev: dict, snap: dict) -> None:
             snap["vlan_errors"][vlan] = f"{type(exc).__name__}: {exc}"
 
 
+def _read_post_config(ctx: PipelineContext, dev: dict, snap: dict) -> None:
+    """Stage 7's read of the configuration after the push into *snap* (``running_config``,
+    and ``running_config_error`` when it failed), as it always was: the same lines moved into
+    a function so the access rule can leave it out (`_stage_post_snapshot`)."""
+    from modules.connection import get_persistent_connection
+
+    hostname = dev.get("hostname", dev["ip"])
+    try:
+        from modules.commands import run_device_command
+        # Asked of the pool again: a read above that failed spent its
+        # session, and the pool replaces a spent one (C272).
+        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+        snap["running_config"] = run_device_command(
+            conn, "show running-config")
+    except Exception as cfg_exc:
+        log.warning("pipeline[7/post_snapshot]: %s config capture failed: %s",
+                    hostname, cfg_exc)
+        snap["running_config"] = ""
+        # Verify says it could not read it (C272), never "not removed".
+        snap["running_config_error"] = f"{type(cfg_exc).__name__}: {cfg_exc}"
+
+
 def _stage_post_snapshot(ctx: PipelineContext) -> None:
     """Capture the same operational metrics as Stage 4, now AFTER deploy,
     on a NEW session (C272): the push's session is where the prompt read as
-    `^@` after a save, and a read on it could not see its own end."""
+    `^@` after a save, and a read on it could not see its own end. Kept for a command plan's
+    transient run too (the operator, 2026-11-16) until stage 7's reads on the push's session
+    are measured equal to a fresh session's, byte for byte, over several transient runs.
+
+    Scoped by :attr:`PipelineContext.snapshot_scope` as stage 4 is (`_capture_scoped`)."""
     from modules.connection import close_persistent_connection, get_persistent_connection
 
     errors: list[str] = []
@@ -1295,25 +1348,26 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
         try:
             close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
             get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
-            snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)
+            lap(ctx.laps, "post_snapshot: session")
+            snap = _capture_scoped(ctx, dev, ip, hostname)
+            lap(ctx.laps, "post_snapshot: operational reads")
 
             # The operational snapshot is metrics only — neighbours, interface
             # counts. Stage 8.5 needs the post-deploy CONFIG to commit as
             # golden; without this it would commit stage 4's pre-deploy copy
             # and record the wrong thing entirely.
-            try:
-                from modules.commands import run_device_command
-                # Asked of the pool again: a read above that failed spent its
-                # session, and the pool replaces a spent one (C272).
-                conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-                snap["running_config"] = run_device_command(
-                    conn, "show running-config")
-            except Exception as cfg_exc:
-                log.warning("pipeline[7/post_snapshot]: %s config capture failed: %s",
-                            hostname, cfg_exc)
+            if _access_scope(ctx, ip) and not (ctx.removals or {}).get(ip) \
+                    and ip not in (ctx.expect_ip_sla or {}):
+                # The access rule (decision 2): a transient run saves nothing and records no
+                # golden (stage 8.2, 8.5), reads no line back, removes nothing, compares no IP
+                # SLA, and with no routing read watches no BGP hold time, so nothing reads the
+                # configuration after it but the plan's own net-zero check, which reads its
+                # interfaces' sections itself. Not read; said so, never read as empty.
                 snap["running_config"] = ""
-                # Verify says it could not read it (C272), never "not removed".
-                snap["running_config_error"] = f"{type(cfg_exc).__name__}: {cfg_exc}"
+                snap["running_config_scoped"] = _access_scope(ctx, ip)["words"]
+            else:
+                _read_post_config(ctx, dev, snap)
+            lap(ctx.laps, "post_snapshot: running configuration")
 
             # C1646: each VLAN the program configures, read where the device keeps it (a
             # switch in VTP server or client mode prints none in its running configuration).
@@ -1899,13 +1953,18 @@ def _stage_verify(ctx: PipelineContext) -> None:
             if watch.get("unreadable"):
                 cant_read.append(watch["unreadable"])
 
+        snap_scope = pre.get("scope") or post.get("scope") or {}
+        if snap_scope:
+            # Which snapshots verify compared (decision 2): a subset says so.
+            record["snapshot_scope"] = dict(snap_scope)
         if not checked:
             # No routing protocol detected at all. Record it explicitly so a
             # device that checked nothing cannot look the same as one that
             # checked something and passed.
             record["neighbors"] = {
                 "state": _SKIPPED, "protocol": "none",
-                "reason": "no routing protocol detected on this device"}
+                "reason": (f"not read: the snapshots are scoped ({snap_scope['words']})"
+                           if snap_scope else "no routing protocol detected on this device")}
 
         # ── Route table size ──────────────────────────────────────────────
         # Skip for routing-protocol config types: the table is expected to grow
@@ -2083,6 +2142,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # the pipeline's own; not waited out over a hard failure already visible (C506).
         plan_checked = None
         hook = (ctx.plan_verify or {}).get(ip)
+        lap(ctx.laps, "verify: the pipeline's checks")
         if hook is not None and not hard:
             try:
                 plan_checked = hook(ctx, ip, pre, post) or {}
@@ -2104,6 +2164,25 @@ def _stage_verify(ctx: PipelineContext) -> None:
                     said = "The change brings up " + ", ".join(named["not_up"])
                     stop["explains"] = [i for i in issues if i.startswith(said)]
                     issues = [i for i in issues if not i.startswith(said)]
+
+        # ── The access rule's spanning-tree state (decision 2; the review's findings 1, 2
+        # and 5) ── read again now, after the interfaces' settle wait and the plan's own
+        # verify (a guard's inconsistency shows only once the link is up and BPDUs arrive), and
+        # judged on that read against stage 4's (`_stp_verdict`).
+        if (pre.get("scope") or {}).get("interfaces") and "stp" in pre:
+            stp_seen = {}
+            for name in pre["scope"]["interfaces"]:
+                now = _read_stp(ctx, ip, name)
+                v = _stp_verdict((pre.get("stp") or {}).get(name),
+                                 None if now.get("error") else now.get("text"))
+                stp_seen[name] = {"before": v["before"], "after": v["after"],
+                                  "at_stage_7": _stp_rows((post.get("stp") or {}).get(name))
+                                  ["words"]}
+                if now.get("error") or v["unreadable"]:
+                    cant_read.append(f"spanning tree: `{_STP_READ.format(name=name)}`: "
+                                     + (now.get("error") or v["unreadable"]))
+                issues += [f"{name}: {w}" for w in v["issues"]]
+            record["spanning_tree"] = stp_seen
 
         ctx.verify_result[ip] = {
             "ok":     (not issues and not unmet and not cant_read
@@ -2869,6 +2948,15 @@ def _stage_audit_log(ctx: PipelineContext) -> None:
                 "interfaces_up_post":     post.get("interfaces", {}).get("up_count"),
                 "verify":                 ctx.verify_result.get(ip, {}),
             }
+            scoped = pre.get("scope") or post.get("scope")
+            if scoped:
+                # A subset says so (the review's finding 4): the -1 counts above are "not
+                # read under the scope", never "none".
+                delta[ip]["snapshot_scope"] = {
+                    "rule": scoped.get("rule"), "interfaces": scoped.get("interfaces"),
+                    "words": scoped.get("words"),
+                    "not_read": "routing neighbours and the route table (-1 above), the "
+                                "other interfaces' states and the configuration after"}
 
         entry: dict[str, Any] = {
             "schema_version":   1,
@@ -2938,6 +3026,160 @@ def _session_for(ctx, dev):
     """The pool's session for *dev*, asked again at every read (`_conn_of`)."""
     from modules.connection import get_persistent_connection
     return lambda: get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+
+
+#: The access rule's reads (decision 2, `_capture_scoped`): one interface's state lines, as
+#: `_INTERFACES_READ` reads every interface's, and its spanning-tree state.
+_INTERFACE_READ = "show interfaces {name} | include (line protocol|Internet address)"
+_STP_READ = "show spanning-tree interface {name}"
+#: An interface name as one token (``GigabitEthernet1/0/5``): what a scope may splice into a
+#: read, never more.
+_IFNAME_TOKEN = re.compile(r"[A-Za-z][A-Za-z\-]*\d[\d/.:]*")
+#: A spanning-tree row a port must not be in after a change: broken (``BKN``), or held by an
+#: inconsistency guard (``*ROOT_Inc``, ``*LOOP_Inc``, ``*PVID_Inc``, ``*TYPE_Inc``, ``*BA_Inc``).
+_STP_BLOCKED = re.compile(r"\bBKN\b|\*\w+_Inc\b")
+
+
+def _access_scope(ctx, ip: str) -> dict:
+    """*ip*'s snapshot scope when the access rule narrows it (`PipelineContext.
+    snapshot_scope`): a transient run, the rule ``access``, and every interface one token of
+    an interface's shape; else ``{}``, the full snapshots."""
+    if not getattr(ctx, "transient", False):
+        return {}
+    s = (getattr(ctx, "snapshot_scope", None) or {}).get(ip) or {}
+    names = [n for n in s.get("interfaces") or [] if isinstance(n, str)]
+    if s.get("rule") != "access" or not names or not all(
+            _IFNAME_TOKEN.fullmatch(n) for n in names):
+        return {}
+    return {"rule": "access", "words": str(s.get("words") or ""), "interfaces": names}
+
+
+def _capture_scoped(ctx, dev: dict, ip: str, hostname: str) -> dict:
+    """Stage 4's and stage 7's operational snapshot: the full one
+    (`_capture_operational_snapshot`), or under the access rule (`_access_scope`; the
+    operator's decision 2, 2026-11-16) each named interface's state (``interfaces``, as the
+    full read gives it, for those interfaces) and its spanning-tree state (``stp``,
+    ``stp_errors``), with no routing read (``routing_neighbors`` count -1: none checked) and
+    no route table (``total_count`` -1: not checked), the snapshot's ``scope`` saying so."""
+    session = _session_for(ctx, dev)
+    scope = _access_scope(ctx, ip)
+    if not scope:
+        return _capture_operational_snapshot(session, ip, hostname)
+    from modules.commands import run_device_command
+    from modules.nsot.expected_effects import interface_states
+
+    snap: dict[str, Any] = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "ip": ip, "hostname": hostname,
+        "scope": scope,
+        "routing_neighbors": {"protocol": "none", "count": -1, "output": "", "protocols": {},
+                              "unreadable": {}},
+        "routes": {"output": "", "total_count": -1},
+    }
+    texts, errors = [], []
+    for name in scope["interfaces"]:
+        try:
+            texts.append(run_device_command(_conn_of(session),
+                                            _INTERFACE_READ.format(name=name)) or "")
+        except Exception as exc:                      # noqa: BLE001 (said: an unreadable read)
+            errors.append(f"{name}: {_why(exc)}")
+    if errors:
+        snap["interfaces"] = {"error": "; ".join(errors), "up_count": -1, "down_count": -1}
+    else:
+        text = "\n".join(texts)
+        snap["interfaces"] = {"output": text[:3000],
+                              "up_count": text.lower().count("line protocol is up"),
+                              "down_count": text.lower().count("line protocol is down"),
+                              "states": interface_states(text)}
+    snap["stp"], snap["stp_errors"] = {}, {}
+    for name in scope["interfaces"]:
+        try:
+            snap["stp"][name] = run_device_command(_conn_of(session),
+                                                   _STP_READ.format(name=name)) or ""
+        except Exception as exc:                      # noqa: BLE001 (said: an unreadable read)
+            snap["stp_errors"][name] = _why(exc)
+    return snap
+
+
+#: A spanning-tree row's columns as IOS prints them (``VLAN0010  Desg FWD 4  128.6  P2p
+#: Edge``): its instance, role and state, then the rest (the type and any guard's flag).
+_STP_ROW = re.compile(r"^\s*((?:VLAN|MST)\d+)\s+(\S+)\s+(\S+)\s*(.*)$")
+#: The roles a port takes only when another bridge's BPDUs reach it: on an access port, a
+#: switch behind it (``Root``, ``Altn``) or its own BPDUs looped back (``Back``).
+_STP_SWITCH_BEHIND = ("Root", "Altn", "Back")
+
+
+def _stp_rows(text) -> dict:
+    """One ``show spanning-tree interface`` answer read: ``{"state", "rows", "words"}``,
+    state ``rows`` (each ``{"vlan", "role", "sts", "rest"}``, the state its letters alone),
+    ``no_state`` (the port is not up, so it takes part in no instance), ``unread`` (None) or
+    ``unreadable`` (the device refused it, a ``%`` line, or no row could be read)."""
+    if text is None:
+        return {"state": "unread", "rows": [], "words": "not read"}
+    m = re.search(IOS_ERROR_PATTERN, text)
+    if m:
+        line = next((ln.strip() for ln in text[m.start():].splitlines() if ln.strip()), "")
+        return {"state": "unreadable", "rows": [], "words": f"the device answered `{line}`"}
+    if "no spanning tree info" in text.lower():
+        return {"state": "no_state", "rows": [],
+                "words": "no spanning-tree state (the port takes part in no instance)"}
+    rows = []
+    for ln in text.splitlines():
+        got = _STP_ROW.match(ln)
+        if got:
+            # IOS runs a broken state into its cost (``BKN*4``): the state is its letters.
+            sts = re.match(r"[A-Za-z]*", got.group(3)).group(0) or got.group(3)
+            rows.append({"vlan": got.group(1), "role": got.group(2), "sts": sts,
+                         "rest": got.group(4).strip()})
+    if not rows:
+        return {"state": "unreadable", "rows": [], "words": "no spanning-tree row in the answer"}
+    return {"state": "rows", "rows": rows, "words": "; ".join(
+        f"{r['vlan']} {r['role']} {r['sts']}" + (f" ({r['rest']})" if r["rest"] else "")
+        for r in rows)}
+
+
+def _stp_verdict(before, after) -> dict:
+    """An access port's spanning-tree state after a change judged, from the answers *before*
+    (stage 4's) and *after* (read once verify has waited): ``{"before", "after", "issues",
+    "unreadable"}``, each state in the role and state read. An issue: a row broken (``BKN``)
+    or held by a guard (``*ROOT_Inc``, ``*LOOP_Inc`` and the rest); a role only another
+    bridge's BPDUs give (`_STP_SWITCH_BEHIND`: a switch behind the access port); an instance
+    forwarding before and not after. A port with no state after (not up) judges nothing here
+    (the plan's own checks judge its link); an answer that cannot be read neither passes nor
+    fails (``unreadable``)."""
+    b, a = _stp_rows(before), _stp_rows(after)
+    out = {"before": b["words"], "after": a["words"], "issues": [], "unreadable": ""}
+    if a["state"] in ("unread", "unreadable"):
+        out["unreadable"] = a["words"]
+        return out
+    was = {r["vlan"]: r["sts"] for r in b["rows"]}
+    for r in a["rows"]:
+        said = f"{r['vlan']} {r['role']} {r['sts']}" + (f" ({r['rest']})" if r["rest"] else "")
+        if r["sts"] == "BKN" or _STP_BLOCKED.search(r["rest"]):
+            out["issues"].append(f"its spanning-tree state after the change is broken or held "
+                                 f"by a guard: {said}")
+        elif r["role"] in _STP_SWITCH_BEHIND:
+            out["issues"].append(f"it reads {said} after the change, a role only another "
+                                 "bridge's BPDUs give: a switch is behind this access port")
+        elif was.get(r["vlan"]) == "FWD" and r["sts"] != "FWD":
+            out["issues"].append(f"it forwarded in {r['vlan']} before the change and reads "
+                                 f"{r['sts']} after it: {said}")
+    return out
+
+
+def _read_stp(ctx, ip: str, name: str) -> dict:
+    """*name*'s spanning-tree state read now on the run's pooled session: ``{"text"}`` or
+    ``{"error"}``."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    if dev is None or not _IFNAME_TOKEN.fullmatch(name or ""):
+        return {"error": "not this run's device or interface"}
+    try:
+        return {"text": run_device_command(get_persistent_connection(
+            dev, ctx.connections_pool, ctx.pool_lock), _STP_READ.format(name=name)) or ""}
+    except Exception as exc:                          # noqa: BLE001 (said: unreadable)
+        return {"error": _why(exc)}
 
 
 def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
