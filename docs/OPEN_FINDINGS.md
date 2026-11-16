@@ -2378,6 +2378,8 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
+**1909 open at 2026-11-16 07:53 UTC, COUNTED from the rows (A 8, B 469, UNKNOWN 262, C 1170; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** the overnight run's close: C3852 registered (UNKNOWN, the runner's review), C3850 re-sorted to B (measured: the mutation run's masking scan counts mutmut's generated names), C3849's piece 1 built. Rows of parked, unshipped work are not in it. **Blocking: Phase 8 57 of 60; Lab 10 69; Lab 9 36.**
+
 **1908 open at 2026-11-16 07:31 UTC, COUNTED from the rows (A 8, B 468, UNKNOWN 262, C 1170; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** the overnight run's count, with the rows of the work shipped since the last one: open C3804 to C3806, C3815, C3849 and C3850 (a scheduled failure); closed C3808 to C3814 (R5 and items 2, 5, 6 and 7, shipped in becced07) and C3851 (the `nmas-deploy` symlink). Rows of parked, unshipped work (C3711, C3741 and C3762 closing, C3803, C3807) are not in it. **Blocking: Phase 8 57 of 60; Lab 10 69; Lab 9 36.**
 
 **1883 open at 2026-11-15 21:06 UTC, COUNTED from the rows (A 8, B 451, UNKNOWN 260, C 1164; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755):** the stuck-job fix registers C3800 to C3802 closed (the room measured without end, the card's seconds, the job's bound). **Blocking: Phase 8 57 of 60; Lab 10 61; Lab 9 36.**
