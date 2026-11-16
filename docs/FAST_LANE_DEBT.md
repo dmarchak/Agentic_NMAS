@@ -8,6 +8,13 @@ list: every change shipped this way, with the tests, boards and reviews it skipp
 cleared in one full pass (tests, fidelity, full gate, CI green) before the Lab 10 recording and
 before the demo."
 
+**When (the operator, 2026-11-16):** the full pass waits until the features are complete,
+after the Lab 10 demo AND Lab 9's SDN work (which continues in skip mode this week), and then
+runs as long unattended sessions. The Lab 10 recording and the demo run on the rehearsed
+build; the backup video is the fallback. Code that writes to devices keeps its independent
+review before every deploy meanwhile. The plan for then, to be re-sized once the SDN work is
+done: the operator's reports folder, `full-pass-plan-2026-11-16.md`.
+
 Each change shipped this way is one row. **Cleared** only by the full pass: its tests run and
 green (the written ones below are in the working tree, unshipped), its fidelity and manual
 updated, a full gate and CI green on the final sha.

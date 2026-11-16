@@ -316,7 +316,11 @@ place is named. Where this list and another document disagree, the charter gover
   operator's words is parked until they are given, and a renamed approved item is a new item
   (memory, "Park what needs words"). Under the fast lane's skip mode (2026-11-15) a change
   ships without tests, its debt listed in docs/FAST_LANE_DEBT.md, cleared in one full pass
-  (tests, fidelity, full gate, CI green) before the Lab 10 recording and before the demo.
+  (tests, fidelity, full gate, CI green) once the features are complete: after the Lab 10
+  demo and Lab 9's SDN work, which continues in skip mode, run as long unattended sessions
+  (the operator, 2026-11-16). The Lab 10 recording and the demo run on the rehearsed build,
+  the backup video their fallback; code that writes to devices keeps its independent review
+  before every deploy meanwhile (CLAUDE.md, "Temporary skip mode within the fast lane").
 
 ## Human-facing means human-readable
 
