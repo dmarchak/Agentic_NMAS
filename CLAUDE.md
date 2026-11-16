@@ -164,6 +164,20 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   operations). Cost: CI's protection moves after the deploy, not before it. Prevents: a gate
   of about an hour for each small fix while the operator tests live.
   [tests/test_nmas_deploy_fast_lane.py; the review and the off-before rule: not mechanised]
+- **Temporary skip mode within the fast lane (the operator, 2026-11-15, until the operator
+  ends it; cleared before the Lab 10 recording and before the demo):** a change is written and
+  deployed with no test run, no new test, no red-green proof, no board, fidelity or manual
+  update; the commit hooks as they run, the nightly backup window, the preflight and
+  nmas-deploy's smoke check with its automatic rollback still hold, and code that writes to
+  devices still gets its independent review before its deploy (the operator, 2026-11-16).
+  Every change shipped this way is one row in docs/FAST_LANE_DEBT.md naming the tests,
+  boards and reviews it skipped, and the rows are cleared together in one full pass (tests,
+  fidelity, a full gate, CI green on the final sha) before the recording and before the demo.
+  Where this rule and the fast lane above disagree, this one governs while it is in force; the
+  charter states it ("Standing rules decided 2026-11-14 to 2026-11-16"). Cost: every shipped
+  change carries untested code until the full pass, sized at about 91 agent-hours on
+  2026-11-16. Prevents: features waiting on tests while the operator rehearses live.
+  [not mechanised; the debt list: docs/FAST_LANE_DEBT.md]
 - **The gate:** `git add -A` → `scripts/nmas-stage-guard` → a snapshot worktree of the staged
   tree → the suite in CI's interpreter and command there (docs/TESTING.md, "CI's interpreter
   here"; a commit whose every path is under docs/ runs the doc set alone) → commit in the
