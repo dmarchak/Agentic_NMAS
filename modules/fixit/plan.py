@@ -220,6 +220,48 @@ def _unverified_mark(line: dict, n: int) -> str:
     return ""
 
 
+#: How a command plan's and a deploy's lines reach the device: the pipeline's one push
+#: (`pipeline._push_via_netmiko`, netmiko's ``send_config_set``) enters config mode with
+#: `CONFIG_IN` and leaves it with `CONFIG_OUT`; a re-subscribe's units carry both themselves.
+CONFIG_IN, CONFIG_OUT = "configure terminal", "end"
+#: Whether a step kind saves to startup: a command plan is transient (`command_plan_run`,
+#: ``ctx.transient``), a re-subscribe refuses a save shape (`bounce.assert_no_save`), a deploy
+#: saves once its verify passes (`pipeline._stage_save_startup`: ``write memory``).
+NOT_SAVED, SAVED_AFTER_VERIFY = "not saved", "write memory (once its verify passes)"
+
+
+def sent_of(operation: str, drawn, device: str) -> dict:
+    """What a step sends to *device*, as the operator's rule (2026-11-16) asks the plan card to
+    show before Approve, from what the step's hash binds (*drawn*, its own preview's): ``{"device",
+    "lines", "save", "diff", "host", "binds"}``. *lines* in the order sent, config mode's entry
+    and exit included; *diff* an intent change's before/after; *host* what it does on Mercury's
+    host (no device line); *binds* what the hash binds instead, for a step that names no lines."""
+    from modules.heal import catalog
+    from modules.heal import resubscribe as R
+
+    d = drawn if isinstance(drawn, dict) else {}
+    out = {"device": device, "lines": [], "save": "", "diff": "", "host": "", "binds": ""}
+    if catalog.is_command_plan(operation):
+        # The hash binds the program between entry and exit (`command_plan.bound_fields`).
+        return dict(out, lines=[CONFIG_IN, *[str(x) for x in d.get("program") or []], CONFIG_OUT],
+                    save=NOT_SAVED)
+    if operation in (R.KEY, R.READD_KEY, R.COLLECTOR_KEY):
+        # The hash binds this program whole, entry and exit in each unit (`program_hash`).
+        close = d.get("close") or {}
+        return dict(out, lines=R.program_of(d.get("units") or [], operation == R.READD_KEY),
+                    save=NOT_SAVED, host=(f"closes the collector's session from {close['remote']} "
+                                          f"to {close['local']}" if close else ""))
+    if operation == "intent-deploy":
+        # The hash binds the program's fingerprint (`plan_engine`'s deploy preview).
+        return dict(out, lines=[CONFIG_IN, *[str(x) for x in d.get("program") or []], CONFIG_OUT],
+                    save=SAVED_AFTER_VERIFY)
+    if operation == "intent-edit":
+        # The hash binds the intent before and after (`base`, `changes`, `text`): no device line.
+        return dict(out, diff=str(d.get("diff") or ""),
+                    binds="sends nothing to the device: a deploy step sends its lines")
+    return dict(out, binds=f"its hash binds {operation}'s parameters, not lines it sends")
+
+
 def lines_of(drawn) -> dict:
     """A command plan step's preview (`command_plan.drawn`) as the plan card draws it (board R5's
     screen 4, approved 2026-11-15): ``{"program", "checks", "verify"}``, *program* the exact
@@ -321,7 +363,10 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                       "resolved": dict(got.get("resolved") or {}),
                       # A command plan's exact lines, its checks and its verify (board R5's
                       # screen 4: the plan card lists what Approve sends), from its preview.
-                      "lines": lines_of(got.get("drawn"))})
+                      "lines": lines_of(got.get("drawn")),
+                      # What it sends, per device, from what its hash binds (2026-11-16).
+                      "sent": sent_of(s["operation"], own,
+                                      str(s["params"].get("device") or incident.device))})
         if not got["ok"] and not refused:
             refused = f"Step {n} would be refused: {got['refused']}"
     # Each collector step's session, as read when the plan was proposed (PE.read_sessions):

@@ -3542,6 +3542,21 @@ details.simple-step[open] > summary { margin-bottom: 4px; }
   border-radius: 0; padding: 8px 0 0; margin: 8px 0 0; background: none; }
 .simple-details > .fixit { display: flex; flex-direction: column; margin-top: 8px; }
 .inc-plan .bluf-refused { margin: 0; }
+/* What a plan step sends, per device, as a code block (the operator, 2026-11-16). */
+.plan-sent { margin: 2px 0 4px; padding: 8px 12px; border-radius: var(--r); background: var(--code-bg);
+  color: var(--code-ink); font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan-sent-label { margin: 6px 0 0; color: var(--ink-2); }
+.plan-reads { margin: 0 0 8px; }
+/* The previous plan while a new investigation runs: greyed and inert (the operator, 2026-11-16). */
+.inc-plan.plan-previous { opacity: .55; filter: grayscale(1); }
+/* The incident card's compact live stepper (the operator, 2026-11-16): one wrapping row. */
+.inc-stepper { display: inline-flex; flex-wrap: wrap; gap: 2px 14px; white-space: normal;
+  list-style: none; margin: 0; padding: 0; }
+.inc-stepper-done { color: var(--ink-2); }
+.inc-stepper-running { color: var(--ink); font-weight: 500; }
+.inc-stepper-waiting { color: var(--ink-3); }
+.inc-stepper-failed { color: var(--danger); }
 @media (max-width: 640px) {
   .simple-plan > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .simple-plan dd, .simple-step, details.simple-step > summary { white-space: normal; overflow: visible; }

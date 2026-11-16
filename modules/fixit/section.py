@@ -802,7 +802,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         out["status"] = newest_try.get("words") or out["status"]
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
-    out["working"], out["working_step"] = "", ""
+    out["working"], out["working_step"], out["investigating"] = "", "", False
     if not done:
         from modules import troubleshoot_job
         from modules.nsot import saved_plans
@@ -815,6 +815,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         elif state == "investigating":
             out["working"] = "The AI is investigating"
             out["working_step"] = troubleshoot_job.shown(network, iid)
+            # A plan still drawn is the previous one: greyed and not pressable while the new
+            # investigation runs (the operator, 2026-11-16).
+            out["investigating"] = True
 
 
 #: The most characters of the AI's finding the status line says, cut at a word (the operator,

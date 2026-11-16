@@ -414,43 +414,54 @@
 </section>
 {#- The plan waiting on Approve, its own card under the incident (board R5's screen 4, approved
     2026-11-15: a person approves only what they can read, so its steps are never behind
-    Details): for one command plan its exact lines as the title, then "Checks first" and "Then
-    verifies" with the connect bound as derived for this port (`fixit.plan.lines_of`); for more
-    steps one line each, and past three (the operator's item 3: "collapse only long plans, and
+    Details): each step one line, then what it sends (`sent_block`, below); its checks and the
+    verify with the connect bound as derived for this port (`fixit.plan.lines_of`) are the
+    card's Details; past three steps (the operator's item 3: "collapse only long plans, and
     then Approve stays disabled until each step has been opened") each step collapsed and
     Approve disabled until every one was opened (static/js/nmas_v2.js, `planStepOpened`).
     Approve is THE confirm pattern (tests/test_v2_one_confirm.py): its route named here, the
     plan's hash carried with the press, busy on itself, gated confirm. Modify and Deny are one
     link opening a two-item menu, each its modal (below). Each step's preflight, the hash and
     what it binds, and the AI's reasoning are the card's Details. -#}
+{#- The operator's rule (2026-11-16): before Approve or Modify, each step shows exactly what it
+    sends, per device, as a code block (config mode's entry and exit, the lines in order, and
+    whether it is saved), an intent change its before/after; rendered from what the step's hash
+    binds (`fixit.plan.sent_of`), so the two can't differ. Its checks and verify reads are the
+    card's Details. -#}
+{%- macro sent_block(st) -%}
+{%- set SB = st.sent or {} %}
+{%- if SB.diff %}<p class="small plan-sent-label">{{ SB.device }}'s intent, before and after:</p><pre class="plan-sent plan-diff" data-step-diff="{{ st.n }}"><code>{{ SB.diff }}</code></pre>{% endif %}
+{%- if SB.lines %}<p class="small plan-sent-label">Sent to {{ SB.device }}, in order:</p><pre class="plan-sent" data-step-sent="{{ st.n }}"><code>{% for l in SB.lines %}{{ l }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</code></pre>
+<p class="small muted" data-step-save="{{ st.n }}">{{ 'Not saved: its startup configuration is unchanged' if SB.save == 'not saved' else 'Then saved: ' ~ SB.save }}.</p>{% endif %}
+{%- if SB.host %}<p class="small" data-step-host="{{ st.n }}">On Mercury's host, not sent to {{ SB.device }}: {{ SB.host }}.</p>{% endif %}
+{%- if SB.binds %}<p class="small muted" data-step-binds="{{ st.n }}">No device lines: {{ SB.binds }}.</p>{% endif %}
+{%- endmacro -%}
+{%- macro checks_of(st) -%}
+{%- set lines = st.lines or {} %}
+{%- if lines.checks or lines.verify %}<div class="plan-reads" data-plan-reads="{{ st.n }}"><p class="small"><strong>Step {{ st.n }}</strong></p>
+{%- if lines.checks %}<p class="small">Checks first: {{ lines.checks | join(' · ') }}</p>{% endif %}
+{%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}</div>{% endif %}
+{%- endmacro -%}
 {%- if NP %}
 {%- set steps = NP.steps or [] %}
 {%- set long = steps | length > 3 %}
-{%- set L = (steps[0].lines if steps | length == 1 and steps[0].lines else none) %}
 {%- set approve_ok = (ACT.approve or {}).offered and NP.approvable %}
-<section class="card fixit simple inc-plan" id="inc-plan" data-card="plan" aria-labelledby="plan-title" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable else 'no' }}"{% if not L %} data-card-items="{{ steps | length }}"{% endif %}>
-  {%- if L %}
-  <h2 class="simple-title" id="plan-title" title="{{ steps[0].words }}">The plan: on {{ x.device }}, in config mode, never saved: {% for l in L.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</h2>
-  <dl class="simple-plan">
-    {%- if L.checks %}<div><dt>Checks first</dt><dd>{{ L.checks | join(' · ') }}</dd></div>{% endif %}
-    {%- if L.verify %}<div><dt>Then verifies</dt><dd>{% for v in L.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</dd></div>{% endif %}
-  </dl>
-  {%- else %}
-  <h2 class="simple-title" id="plan-title">The plan: {{ steps | length }} step{{ '' if steps | length == 1 else 's' }} on {{ x.device }}</h2>
+{#- While a new investigation runs, the plan drawn is the previous one: greyed, inert, and said
+    so (the operator, 2026-11-16). -#}
+{%- set previous = x.investigating %}
+<section class="card fixit simple inc-plan{{ ' plan-previous' if previous }}" id="inc-plan" data-card="plan" aria-labelledby="plan-title" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable and not previous else 'no' }}" data-card-items="{{ steps | length }}"{% if previous %} data-previous inert aria-disabled="true"{% endif %}>
+  <h2 class="simple-title" id="plan-title">{{ 'The previous plan' if previous else 'The plan' }}: {{ steps | length }} step{{ '' if steps | length == 1 else 's' }} on {{ x.device }}</h2>
+  {%- if previous %}<p class="small muted" data-previous-why>A new investigation is running; its plan replaces this one.</p>{% endif %}
   {%- for st in steps %}
-  {%- set lines = st.lines or {} %}
   {%- if long %}
   <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ st.n }}: {{ st.words | times }}</summary>
-    {%- if lines.program %}<p class="small">Sends, in config mode, never saved: {% for l in lines.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
-    {%- if lines.checks %}<p class="small">Checks first: {{ lines.checks | join(' · ') }}</p>{% endif %}
-    {%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
-    <p class="small muted">{{ st.params }}</p>
+    {{ sent_block(st) }}
   </details>
   {%- else %}
-  <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ st.n }}: {{ st.words | times }}{% if lines.program %}: {% for l in lines.program %}<code class="mono">{{ l }}</code>{{ ' · ' if not loop.last }}{% endfor %}{% endif %}</p>
+  <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ st.n }}: {{ st.words | times }}</p>
+  {{ sent_block(st) }}
   {%- endif %}
   {%- endfor %}
-  {%- endif %}
   <div class="simple-acts">
     {%- if approve_ok %}
     <span class="bluf-form"><input type="hidden" name="proposal" value="{{ NP.id }}"><input type="hidden" name="hash" value="{{ NP.hash }}"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-post="{{ url_for('fixit_v2.approve', incident_id=x.id, list=x.network) }}" hx-include="closest .bluf-form" hx-vals='{"hash": "{{ NP.hash }}"}' hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{% if long %}Open each step first: Approve waits until every step has been opened. {% endif %}Runs this plan exactly as drawn, held to its hash {{ NP.hash[:12] }}: a step that moved since is refused, naming what moved"{% if long %} disabled data-needs-steps{% endif %}{{ gate('confirm') }}><span class="op-idle">Approve</span><span class="op-busy">Approving…</span></button>{{ how('fixit-troubleshoot', 'approve', compact=True, op='Approve') }}</span></span>
@@ -476,6 +487,7 @@
   <p class="small bluf-refused" data-refused="approve">Approve isn't offered: {% if steps | selectattr('preflight.ok', 'false') | list %}a step was refused at its preflight (Details, below, says why){% else %}{{ NP.why_refused or (ACT.approve or {}).refused or 'the plan cannot be held to its hash' }}{% endif %}.</p>
   {%- endif %}
   <details class="simple-details" id="inc-plan-details" data-card-details data-keep="inc-plan-details-{{ x.id }}"><summary>Details</summary>
+    {%- for st in steps %}{{ checks_of(st) }}{% endfor %}
     {{ plan_block }}
     {{ why_block }}
   </details>
