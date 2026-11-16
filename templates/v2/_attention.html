@@ -26,7 +26,7 @@
 <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: the row's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by | people }}</span>
 {%- endmacro -%}
 {%- macro held_open(r) -%}
-<a class="btn btn-small btn-outline" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
+<a class="btn btn-small btn-outline" href="{{ run_href(r.held.device, r.held.list, page=r.held.page or none) }}">Open the run</a>
 {%- endmacro -%}
 {%- macro primary(r, nets) -%}
 {#- WHICH action is `attention.first_action`'s answer (the `first_action` filter), the one

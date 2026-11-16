@@ -87,8 +87,9 @@ def _local(name: str, words: str) -> RL.Operation:
 LOCAL = (
     _local("collector_sessions", "the collector's side of the subscription's stream on "
                                  "Mercury's host: its listener and the device's sessions on "
-                                 "the receiver's port, each with bytes received and time since "
-                                 "its last receive"),
+                                 "the receiver's port, each with bytes received and sent and "
+                                 "time since its last receive and send (bytes_sent null: not "
+                                 "printed, the kernel's tool prints it only when not zero)"),
     _local("stream_series", "whether the subscription's stream has data in Prometheus now, by "
                             "the lost-stream alert's own query"),
 )
@@ -108,8 +109,8 @@ def _collector(fx: dict, sub: str) -> dict:
     return {"collector": f"{got['address']} port {got['port']}",
             "listening": list(got.get("listening") or []),
             "sessions": [{k: s.get(k) for k in ("remote", "rport", "state", "bytes_received",
-                                                "lastrcv_ms")} for s in got.get("sessions")
-                         or []],
+                                                "lastrcv_ms", "bytes_sent", "lastsnd_ms")}
+                         for s in got.get("sessions") or []],
             "others_established": int(got.get("others") or 0),
             "activity": got.get("activity") or ""}
 
@@ -247,19 +248,79 @@ def say_round(verdicts: list) -> None:
 
     if not verdicts:
         return
-    first = step_words(verdicts[0].get("op") or "", verdicts[0].get("args") or {})
-    more = len(verdicts) - 1
-    # Done, the round says its reads (the operator, 2026-11-16: "Read s5: <the commands>"):
-    # each allowlisted read's own words, Mercury's own reads by what they read.
-    device = str((verdicts[0].get("args") or {}).get("device") or "the device")
-    said = [(f"{v.get('op')} {(v.get('args') or {}).get('words') or ''}".strip()
-             if v.get("op") in ("show", "show_config", "ping", "traceroute")
-             else OWN_STEP.get(v.get("op") or "", str(v.get("op") or "")))
-            for v in verdicts]
-    troubleshoot_job.say(first if not more else
-                         f"{first.rstrip('…')} and {more} more read{'s' if more != 1 else ''}…",
-                         done=f"Read {device}: " + "; ".join(said).replace("show_config",
-                                                                           "show"))
+    # The AI's call before this round asked for it: its step says how many (the operator,
+    # 2026-11-16: "The AI's first look: it asked to check N things").
+    n = len(verdicts)
+    things = f"{n} thing{'' if n == 1 else 's'}"
+    before = troubleshoot_job.last_done()
+    if before.startswith("The AI's first look"):
+        troubleshoot_job.amend(f"The AI's first look: it asked to check {things}")
+    elif before.startswith("The AI "):
+        troubleshoot_job.amend(f"The AI asked to check {things} more")
+    # The round in plain words, what was checked and on which device, never an internal name
+    # or a command (the operator, 2026-11-16: "Checked r7's telemetry connection and the
+    # collector's sessions").
+    words = checked_words(verdicts)
+    troubleshoot_job.say(f"Checking {words}…", done=f"Checked {words}")
+
+
+#: What a read checks, in a person's words (the operator, 2026-11-16: never an internal name
+#: such as collector_sessions). A read of the device is said as the device's; one of
+#: Mercury's own sources as itself.
+READ_NOUN = {"telemetry_brief": "telemetry subscriptions",
+             "telemetry_receiver": "telemetry receivers",
+             "telemetry_connection": "telemetry connection",
+             "collector_sessions": "the collector's sessions",
+             "stream_series": "the stream's data in Prometheus",
+             "show_config": "configuration", "ping": "reachability (a ping)",
+             "traceroute": "path (a traceroute)"}
+#: The show families' plain nouns, where the family's own words are not one.
+SHOW_NOUN = {"telemetry ietf subscription": "telemetry subscriptions",
+             "telemetry internal connection": "telemetry connection",
+             "interfaces": "interfaces", "errdisable recovery": "errdisable recovery setting",
+             "port-security": "port security", "ip route": "IPv4 routes",
+             "ipv6 route": "IPv6 routes", "ip ospf": "OSPF", "ipv6 ospf": "OSPFv3",
+             "ospfv3": "OSPFv3", "ip bgp": "BGP", "bgp ipv6 unicast": "BGP for IPv6"}
+#: Mercury's own sources, said without a device.
+OWN_SOURCES = ("collector_sessions", "stream_series")
+
+
+def _noun(op: str, args: dict) -> str:
+    if op in READ_NOUN:
+        return READ_NOUN[op]
+    if op in OWN_STEP:
+        return OWN_STEP[op]
+    words = " ".join(str((args or {}).get("words") or "").lower().split())
+    best = ""
+    for family, _tails in RR.SHOW_FAMILIES:
+        if (words == family or words.startswith(family + " ")) and len(family) > len(best):
+            best = family
+    return SHOW_NOUN.get(best, best) if best else "state"
+
+
+def _and(items: list) -> str:
+    items = list(dict.fromkeys(i for i in items if i))
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def checked_words(verdicts: list) -> str:
+    """A round of reads in a person's words: each device's reads as that device's ("r7's
+    telemetry connection and telemetry receivers"), then Mercury's own sources ("the
+    collector's sessions")."""
+    by_device, own = {}, []
+    for v in verdicts:
+        op, args = v.get("op") or "", v.get("args") or {}
+        if op in OWN_SOURCES:
+            own.append(_noun(op, args))
+        else:
+            dev = str(args.get("device") or "the device")
+            by_device.setdefault(dev, []).append(_noun(op, args))
+    parts = [f"{d}'s {_and(nouns)}" for d, nouns in by_device.items()] + own
+    if not parts:
+        return "what the AI asked for"
+    if len(parts) > 1 and any(" and " in p for p in parts):
+        return ", ".join(parts[:-1]) + ", and " + parts[-1]
+    return _and(parts)
 
 
 def run(op: str, args: dict, requests: list, scope: dict):
@@ -318,8 +379,6 @@ def scope_for(network: str, incident, *, actor: str, collector=None, series=None
     receiver from committed intent (``streams``) and the device's addresses (``sources``).
     *collector* and *series* replace the two local reads (tests). Reads committed intent; one
     that cannot be read names no stream, so every local read is refused."""
-    from modules.heal import diagnose_stream as DS
-
     try:
         scope = RR.scope_for(network, [incident.device], incident=incident.id,
                              turned_on_by=actor)
@@ -328,6 +387,29 @@ def scope_for(network: str, incident, *, actor: str, collector=None, series=None
         log.error("fixit reads: the scope of %s could not be built: %s", incident.id, exc)
         scope, intents = {"network": network, "devices": {}, "addresses": [],
                           "prefixes": []}, {}
+    scope["subscriptions"] = list(incident.subscriptions)
+    scope["fixit"] = dict(stream_scope(network, incident, intents), collector=collector,
+                          series=series)
+    scope["actor"] = (f"AI troubleshooting of incident {incident.id}, pressed by "
+                      f"{actor or 'nobody named'}")
+    return scope
+
+
+def stream_scope(network: str, incident, intents: dict = None) -> dict:
+    """``{"device", "streams", "sources"}``: *incident*'s device, each subscription it names
+    with its receiver from committed intent (`diagnose_stream.receiver_of`, or ``{"why"}``),
+    and the device's addresses: what `_collector` and `_series` read against (`scope_for`'s
+    ``fixit``; the after-run state's, `fixit_troubleshoot.after_run_section`). *intents* are
+    the committed intents already read (`router_reads._committed`), else read here; one that
+    cannot be read names no stream."""
+    from modules.heal import diagnose_stream as DS
+
+    if intents is None:
+        try:
+            intents, _goldens = RR._committed(network, [incident.device])
+        except Exception as exc:                      # noqa: BLE001 (closed: no stream named)
+            log.error("fixit reads: %s's intent could not be read: %s", incident.id, exc)
+            intents = {}
     hv = intents.get(incident.device) or {}
     declared = {str(s.get("subscription")): s.get("settings") or []
                 for s in hv.get("telemetry") or [] if isinstance(s, dict)}
@@ -335,9 +417,4 @@ def scope_for(network: str, incident, *, actor: str, collector=None, series=None
     for sub in incident.subscriptions:
         streams[sub] = (DS.receiver_of(declared[sub]) if sub in declared else
                         {"why": f"{incident.device}'s intent declares no subscription {sub}"})
-    scope["subscriptions"] = list(incident.subscriptions)
-    scope["fixit"] = {"device": incident.device, "streams": streams,
-                      "sources": DS._addresses(hv), "collector": collector, "series": series}
-    scope["actor"] = (f"AI troubleshooting of incident {incident.id}, pressed by "
-                      f"{actor or 'nobody named'}")
-    return scope
+    return {"device": incident.device, "streams": streams, "sources": DS._addresses(hv)}

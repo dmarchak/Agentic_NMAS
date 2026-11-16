@@ -163,9 +163,11 @@ def _fixit_of(network: str, found: dict) -> dict:
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(last.get("epoch") or 0)))
         if v.get("state") == "investigating":
             ai = {"state": "investigating", "since": since, "words": "AI investigating"}
-        else:
-            ai = {"state": "ended", "since": since,
-                  "words": v.get("status") or "The AI's investigation ended"}
+        elif str(v.get("status") or "").startswith("The AI"):
+            # The AI's own words only (the operator, 2026-11-16: r7's row said "AI: Mercury
+            # has no fix it runs by itself… Retried at 04:53 UTC", the retry's reason): a
+            # status that is not the AI's is the row's own status, never prefixed "AI:".
+            ai = {"state": "ended", "since": since, "words": v["status"]}
     # Whether a plan stands to approve: a proposal line with no plan (an answer that named no
     # fix, a gap) is the section's "proposed" too, and must never be said as one to approve.
     return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal")),

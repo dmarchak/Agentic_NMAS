@@ -317,8 +317,12 @@ def _dir(list_name: str) -> str:
     return os.path.join(config.get_list_data_dir(list_name), "privileged")
 
 
+#: A run's id, as its record's file is named.
+RUN_ID = r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}"
+
+
 def _path(list_name: str, run_id: str) -> str:
-    if not re.fullmatch(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}", run_id or ""):
+    if not re.fullmatch(RUN_ID, run_id or ""):
         raise ValueError(f"not a run id: {run_id!r}")
     return os.path.join(_dir(list_name), f"{run_id}.json")
 
@@ -329,9 +333,17 @@ def _write(list_name: str, record: dict) -> None:
     write_atomic(_path(list_name, record["id"]), json.dumps(record, indent=1, sort_keys=True))
 
 
-def get(list_name: str, run_id: str):
+def get(list_name: str, run_id: str, data_dir: str = ""):
+    """The run's record, or None; *data_dir* (the list's, `config.list_data_path`) reads
+    without creating the list's folder, as `runs` does."""
+    if data_dir:
+        if not re.fullmatch(RUN_ID, run_id or ""):
+            raise ValueError(f"not a run id: {run_id!r}")
+        path = os.path.join(data_dir, "privileged", f"{run_id}.json")
+    else:
+        path = _path(list_name, run_id)
     try:
-        with open(_path(list_name, run_id), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return None

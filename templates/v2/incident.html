@@ -109,7 +109,7 @@
   <div class="inc-act" data-first="{{ it.first }}" data-item="{{ it.state }}">
     {%- if it.first == 'run' %}
     <span class="att-running" role="status" data-held="{{ r.held.device }}" title="One operation per device at a time: this incident's action returns when the run ends">{{ r.held.name }} running since {{ clock(r.held.since) }}, by {{ r.held.by | people }}</span>
-    <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list) }}">Open the run</a>
+    <a class="btn btn-small btn-primary" href="{{ run_href(r.held.device, r.held.list, page=r.held.page or none) }}">Open the run</a>
     {%- elif it.first == 'start' %}
     {#- The item's action is Start AI troubleshooting, the BLUF's own button above: never a
         second one here. -#}

@@ -540,7 +540,7 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         if planned:
             status = {"state": "warn" if planned["level"] == "plan" else "danger",
                       "words": planned["short"], "title": planned["title"],
-                      "link": planned["link"], "since": None}
+                      "link": planned["link"], "href": planned.get("href") or "", "since": None}
         if dev.get("_login"):
             # C2607: listed by NetBox, unreadable by Mercury: the state, never a probe's
             # answer (no session is opened to it); its words on hover.

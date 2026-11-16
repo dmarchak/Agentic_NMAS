@@ -1318,8 +1318,13 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         out["pass"] = 1
         return dict(out, state="refused_by_check", why=why,
                     words=f"AI analysis: refused by Mercury's check: {why}")
-    out.update(ok=True, state="answered", answer=answer)
+    out.update(ok=True, state="answered", answer=answer, answer_call=got.get("call_id") or "")
     out["pass"] = 1
+    if feature.rounds:
+        # The kept answer's own prompt and call (2026-11-16: a later pass refused left pass 1's
+        # answer kept under the last pass's prompt and call): moved only by an answer that
+        # stands (`_investigate`).
+        out["prompt"] = f"{prompt[0]}.v{prompt[1]}"
     if plain:
         out["words"] = f"AI analysis: reads not asked: {off}"
         return out
@@ -1365,7 +1370,8 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         out["words"] = (f"AI analysis: {summary}; second pass refused by Mercury's check: "
                         f"{why}; the first pass's answer is shown")
         return out
-    out.update(answer=final, words=f"AI analysis: {summary}; second pass answered")
+    out.update(answer=final, words=f"AI analysis: {summary}; second pass answered",
+               answer_call=got.get("call_id") or "")
     out["pass"] = 2
     return out
 
@@ -1413,6 +1419,17 @@ def again_request(feature: LoopFeature, data: dict, context: dict, records: list
     return prompt, schema, parts, dict(context or {}, reads_format=READS_FORMAT)
 
 
+def _stopped(out: dict, rounds: int, why: str) -> dict:
+    """*out* with ``stopped``: ``{"rounds", "why"}`` (the operator, 2026-11-16: "an
+    investigation must never end on 'I am reading first'"). Set when an iterative loop ends
+    while the answer it keeps is one that ASKED for reads (its reads ran, and no answer to them
+    stands): the feature then says plainly that the AI stopped after *rounds* rounds of reads
+    and why (*why*: the bound, the cap, a pass not answered or refused), and what it had found
+    so far, never that answer's own "reading first" words. Returns *out*."""
+    out["stopped"] = {"rounds": int(rounds), "why": str(why or "")}
+    return out
+
+
 def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: list, *,
                  started: float, ask, common: dict, data: dict, ctx: dict, network: str,
                  scope, actable, subject, trigger, asked, records=()) -> dict:
@@ -1425,8 +1442,10 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
     pass's start, and its *may_go_on*), else the *second* pass, which cannot. A read refused,
     failed or empty is fed back as its record says, so the model may choose another. The loop
     ends when an answer asks for no read (it is confident), at the last pass, or when a pass is
-    not answered or is refused by the check (the newest checked answer stands, said). ``out``
-    as `run` returns it, ``pass`` the calls made and ``rounds`` the rounds of reads run."""
+    not answered or is refused by the check (the newest checked answer stands, said, and, as
+    that answer asked for reads, ``stopped`` says the loop stopped and why, `_stopped`). ``out``
+    as `run` returns it, ``pass`` the calls made, ``rounds`` the rounds of reads run, and
+    ``answer_call`` the call whose answer is kept."""
     # *records*: the reads run before the first call (`run`'s *pregather*), ids continuing.
     records, rounds, asking = list(records or ()), 0, out["first"].get("call_id") or ""
     # The wall-time bound as a deadline (`modules/waits.py`, ``read_loop.py::_investigate``).
@@ -1458,7 +1477,8 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
             out["state"] = "first_pass"
             out["words"] = (f"AI analysis: {summary}; not asked again: the send log could not "
                             f"be written ({unlogged}), so nothing of the reads is sent")
-            return out
+            return _stopped(out, rounds, f"the send log could not be written ({unlogged}), so "
+                                         "nothing of its last reads was sent")
         bound = ("its rounds of reads" if rounds >= feature.rounds else
                  "its reads" if len(records) >= feature.max_reads else
                  "its room for reads in the prompt" if full else
@@ -1467,7 +1487,7 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
         if why_not:
             out["state"] = "first_pass"
             out["words"] = f"AI analysis: {summary}; not asked again: {why_not}"
-            return out
+            return _stopped(out, rounds, f"it was not asked again: {why_not}")
         last = bool(bound)
         prompt, schema, parts, ctx2 = (second_request(feature, data, ctx, records) if last
                                        else again_request(feature, data, ctx, records))
@@ -1478,7 +1498,9 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
         if not got.get("ok"):
             out["state"] = "first_pass"
             out["words"] = f"AI analysis: {summary}; {_second_failed(got)}"
-            return out
+            return _stopped(out, rounds, f"pass {out['pass']} was not answered "
+                                         f"({got.get('error') or 'no answer'}: "
+                                         f"{str(got.get('detail') or '')[:160]})")
         answer = got["output"]
         why = second_check(feature, answer, records, actable)
         if why:
@@ -1486,8 +1508,10 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
             out["state"] = "first_pass"
             out["words"] = (f"AI analysis: {summary}; pass {out['pass']} refused by Mercury's "
                             f"check: {why}; the answer before it is shown")
-            return out
-        out.update(answer=answer, state="answered", prompt=f"{prompt[0]}.v{prompt[1]}")
+            return _stopped(out, rounds, f"pass {out['pass']}'s answer was refused by Mercury's "
+                                         f"check ({why})")
+        out.update(answer=answer, state="answered", prompt=f"{prompt[0]}.v{prompt[1]}",
+                   answer_call=got.get("call_id") or "")
         wanted = [] if last else _reads_of(answer)
         if not wanted:
             out["words"] = (f"AI analysis: {summary}; {rounds} round{'s' if rounds != 1 else ''}"

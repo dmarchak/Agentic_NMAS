@@ -48,6 +48,13 @@ STATE_WORDS = {
     "console onboard": "Onboarding over its console",
     "sdn flows": "Changing its flows",
     "controller app deploy": "Deploying its controller apps",
+    # The telemetry operations' holds (`resubscribe.OPERATION`, `READD_OPERATION`,
+    # `COLLECTOR_OPERATION`), in a person's words, never the hold's key (the operator,
+    # 2026-11-16).
+    "telemetry re-subscribe": "Re-subscribing its telemetry",
+    "telemetry receiver re-add": "Adding its telemetry receiver back",
+    "telemetry collector close and re-subscribe": "Re-subscribing its telemetry "
+                                                  "(collector session closed first)",
 }
 #: Holds that only read the device: it is not under an operation a person should wait for,
 #: and a read lasts seconds, so its row draws as it always did.
@@ -77,13 +84,22 @@ def read(list_name: str, now: float = None) -> dict:
     from modules.nsot import device_ops
 
     now = time.time() if now is None else now
-    out = {"holds": {}, "windows": [], "error": ""}
+    out = {"holds": {}, "windows": [], "error": "", "plans": {}}
     errors = []
     try:
         out["holds"] = {h.get("device", ""): h for h in device_ops.held(list_name)
                         if h.get("operation") not in READS}
     except OSError as exc:
         errors.append(f"what holds its devices could not be read ({exc})")
+    if out["holds"]:
+        # A hold an approved plan's step took opens the run's home (its incident's card,
+        # `plan_engine.run_page`), never its device's page: one read per running plan job.
+        try:
+            from modules import plan_engine
+            out["plans"] = plan_engine.jobs_by_device(list_name)
+        except Exception:                             # noqa: BLE001 (each hold drawn as its own)
+            log.warning("planned_state: %s's running plans could not be read", list_name,
+                        exc_info=True)
     try:
         ended = R.ends()
         for p in R.planned_rows():
@@ -151,20 +167,32 @@ def state(ctx: dict, host: str, list_name: str, reach: dict = None, now: float =
     open_own = next(((p, end) for p, end in reversed(windows)
                      if _own(p, host, list_name) and now <= end), None)
     if hold:
+        from modules import display_names
         op = hold.get("operation", "")
         lead = STATE_WORDS.get(op) or op[:1].upper() + op[1:]
         step = _steps(hold, list_name, host, now)
         back = f"back by ~{_clock(open_own[1])}" if open_own else ""
-        parts = [lead, f"by {hold.get('actor') or 'an unrecorded person'}", step, back]
+        # A person by display name, as the rest of v2 draws one (the operator, 2026-11-16:
+        # the header said "by <email>").
+        who = (display_names.people(hold.get("actor")) if hold.get("actor")
+               else "an unrecorded person")
+        parts = [lead, f"by {who}", step, back]
+        plan = (ctx.get("plans") or {}).get(host)
+        if plan and plan.get("page"):
+            return _drawn("plan", parts, lead, back, host,
+                          f"{lead}, by {who}, a step of an approved plan: its run is on its "
+                          "incident's card", href=plan["page"])
         return _drawn("plan", parts, lead, back, host,
-                      f"{lead}, by {hold.get('actor') or 'an unrecorded person'}: its card is "
-                      f"on {host}'s page")
+                      f"{lead}, by {who}: its card is on {host}'s page")
     answering = bool((reach or {}).get("answering"))
     # A device back inside its window answers, and is drawn so (the device page's B3 rule).
     if open_own and not answering:
         p, end = open_own
         back = f"back by ~{_clock(end)}"
-        parts = ["Restarting as planned", f"by {p.get('by') or 'an unrecorded person'}", back]
+        from modules import display_names
+        parts = ["Restarting as planned",
+                 f"by {display_names.people(p['by']) if p.get('by') else 'an unrecorded person'}",
+                 back]
         return _drawn("plan", parts, "Restarting as planned", back, _operating(p),
                       f"Inside the planned-restart window {p.get('why') or ''}: Needs "
                       "attention raises it only if it is still down when the window and its "
@@ -309,9 +337,13 @@ def expected_effects(window: dict, list_name: str, now: float = None, sources=No
             "errors": errors, "back_by": R._iso(end + R.SETTLE_SECONDS)}
 
 
-def _drawn(level: str, parts: list, lead: str, back: str, link: str, title: str) -> dict:
+def _drawn(level: str, parts: list, lead: str, back: str, link: str, title: str,
+           href: str = "") -> dict:
+    """*link* the device whose page opens the operation's card; *href*, when given, the page
+    that is its run's home instead (an approved plan's: its incident's card)."""
     parts = [p for p in parts if p]
     words = " · ".join(parts)
     return {"level": level, "parts": parts, "words": words,
             "short": " · ".join(p for p in parts if not p.startswith("by ")),
-            "tag": " · ".join(p for p in (lead, back) if p), "title": title, "link": link}
+            "tag": " · ".join(p for p in (lead, back) if p), "title": title, "link": link,
+            "href": href}

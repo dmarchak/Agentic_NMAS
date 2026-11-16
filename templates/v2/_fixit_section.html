@@ -80,6 +80,13 @@
 {%- else -%}{{ text | times }}{%- endif -%}
 {%- endmacro -%}
 {#- The state's own words, for a section drawn before `x.status` existed. -#}
+{#- An approved plan's run once it ended, kept on its card with each step's result (the
+    operator, 2026-11-16: "a finished run's stepper stays drawn on the card"; `card_of`'s
+    *run*, `progress.recorded`): the run's one home, where every link to it lands (#inc-run,
+    `plan_engine.run_page`). -#}
+{%- macro ended_run(x, steps) -%}
+<div class="inc-run" id="inc-run" data-run-steps><p class="small muted">The approved plan's run, step by step:</p>{% with iid=x.id, network=x.network, steps=steps, said='', static=True %}{% include "v2/_inc_step.html" %}{% endwith %}</div>
+{%- endmacro -%}
 {%- macro legacy_status() -%}
 {%- if S in ('none', 'resolved') %}{{ ai_said() }}
 {%- elif S == 'ready' %}No fix has been tried in this incident.
@@ -116,10 +123,12 @@
   <h1 class="simple-title" id="inc-title" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %} title="{{ TITLE }}">{{ TITLE }}</h1>
   {%- if C.kind == 'ok' %}
   <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
-  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}</p>{% endif %}
+  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}</p>{% endif %}
+  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- else %}
   <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</p>
-  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}" data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' %} <a href="{{ run_href(x.device, x.network, x.stop.run) }}">Open the run</a>{% endif %}</div>
+  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
+  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- endif %}
       {#- Which control the fix names: its kind, and for a "button" the action whose route it
           names (Ask the AI again posts, so it is pressed, never followed as a link). "item"
@@ -172,7 +181,9 @@
       {%- endif %}
       </div>
   {#- The card's ONE Details (R5): everything else, nothing removed (board R5's screen 6). -#}
-  <details class="simple-details" id="inc-details" data-card-details data-keep="inc-details-{{ x.id }}"><summary>Details</summary>
+  {#- While the AI investigates the stepper is the view (the operator, 2026-11-16): Details is
+      closed by default, its open state kept apart from the one after (its own key). -#}
+  <details class="simple-details" id="inc-details" data-card-details data-keep="inc-details-{{ x.id }}{{ '-live' if x.investigating }}"><summary>Details</summary>
   {%- if page_head is defined %}{{ page_head }}{% endif %}
   {%- if page_notes is defined %}{{ page_notes }}{% endif %}
   {%- if B.since %}<p class="small muted inc-since">Began {{ clock(B.since) }}.</p>{% endif %}
@@ -324,11 +335,12 @@
       collapsed; one about another incident is superseded, its content withheld. -#}
   {%- set outdated = (x.ai_answer or {}).outdated %}
   {%- set prev = (PP.previous or PP.superseded or outdated) and true %}
-  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP and not prev %} open{% endif %}>
+  <details class="fixit-more" data-keep="fixit-why-{{ x.id }}" data-more="why"{% if not NP and not prev and not x.investigating %} open{% endif %}>
     <summary>{{ 'Why the AI proposes this' if (po_has or (x.ai_answer or {}).has_plan) else 'What the AI found' }}{% if outdated %} ({{ outdated }}){% elif prev %} (previous answer){% endif %}</summary>
     <div class="fixit-ai-answer">
       {%- if prev %}<p class="small muted" data-answer-label>{{ 'Outdated answer' if outdated else 'Previous answer' }}{% if PP.at %}, {{ clock(PP.at) }}{% endif %}{% if PP.version %}, prompt {{ PP.version }}{% endif %}{% if PP.superseded %}, superseded{% endif %}{% if outdated %}: {{ outdated }}{% endif %}</p>{% endif %}
-      {%- if sh.rationale %}<p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}</p>{% endif %}
+      {%- if sh.stopped %}<p><strong>The investigation stopped:</strong> {{ sh.stopped }}</p>
+      {%- elif sh.rationale %}<p><strong>What's wrong (the AI, checked against what was sent):</strong> {{ sh.rationale }}{% if sh.rationale_unverified_words %} <span class="muted">{{ sh.rationale_unverified_words }}</span>{% endif %}</p>{% endif %}
       {%- if sh.hypotheses %}
       <ol class="small fixit-hyp">{% for h in sh.hypotheses %}<li>{{ h.claim | times }} <span class="mono faint">{{ h.cites | join(' · ') }}</span>{% if h.unverified_words %} <span class="warn-text fixit-unverified" data-unverified>{{ h.unverified_words }}</span>{% endif %}{% if h.confirm %}<br><span class="muted">To confirm: <span class="mono">{{ h.confirm }}</span></span>{% endif %}</li>{% endfor %}</ol>
       {%- endif %}
@@ -436,6 +448,14 @@
 {%- if SB.host %}<p class="small" data-step-host="{{ st.n }}">On Mercury's host, not sent to {{ SB.device }}: {{ SB.host }}.</p>{% endif %}
 {%- if SB.binds %}<p class="small muted" data-step-binds="{{ st.n }}">No device lines: {{ SB.binds }}.</p>{% endif %}
 {%- endmacro -%}
+{#- One system's step of a combined operation (the operator, 2026-11-16: "show a combined
+    operation's actions as separate numbered steps, each with its own system and exact actions,
+    in order"; `fixit.plan.sent_of`'s *parts*): its exact actions, or the lines sent. -#}
+{%- macro part_block(st, part, k) -%}
+{%- if part.actions %}<pre class="plan-sent" data-step-actions="{{ k }}"><code>{% for a in part.actions %}{{ a }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</code></pre>{% endif %}
+{%- if part.lines %}<p class="small plan-sent-label">Sent to {{ part.system }}, in order:</p><pre class="plan-sent" data-step-sent="{{ k }}"><code>{% for l in part.lines %}{{ l }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</code></pre>
+<p class="small muted" data-step-save="{{ k }}">{{ 'Not saved: its startup configuration is unchanged' if part.save == 'not saved' else 'Then saved: ' ~ part.save }}.</p>{% endif %}
+{%- endmacro -%}
 {%- macro checks_of(st) -%}
 {%- set lines = st.lines or {} %}
 {%- if lines.checks or lines.verify %}<div class="plan-reads" data-plan-reads="{{ st.n }}"><p class="small"><strong>Step {{ st.n }}</strong></p>
@@ -451,15 +471,24 @@
     so (the operator, 2026-11-16). -#}
 {%- set previous = x.investigating %}
 <section class="card fixit simple inc-plan{{ ' plan-previous' if previous }}" id="inc-plan" data-card="plan" aria-labelledby="plan-title" data-plan="{{ NP.hash }}" data-approvable="{{ 'yes' if NP.approvable and not previous else 'no' }}" data-card-items="{{ steps | length }}"{% if previous %} data-previous inert aria-disabled="true"{% endif %}>
-  <h2 class="simple-title" id="plan-title">{{ 'The previous plan' if previous else 'The plan' }}: {{ steps | length }} step{{ '' if steps | length == 1 else 's' }} on {{ x.device }}</h2>
+  {#- Each system's step counted on its own: a combined operation is as many steps as systems. -#}
+  {%- set ns = namespace(n=0, k=0) %}
+  {%- for st in steps %}{% set ns.n = ns.n + ((st.sent or {}).parts or [1]) | length %}{% endfor %}
+  <h2 class="simple-title" id="plan-title">{{ 'The previous plan' if previous else 'The plan' }}: {{ ns.n }} step{{ '' if ns.n == 1 else 's' }}{% if ns.n == steps | length %} on {{ x.device }}{% endif %}</h2>
   {%- if previous %}<p class="small muted" data-previous-why>A new investigation is running; its plan replaces this one.</p>{% endif %}
   {%- for st in steps %}
-  {%- if long %}
-  <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ st.n }}: {{ st.words | times }}</summary>
+  {%- set parts = (st.sent or {}).parts or [] %}
+  {%- if parts | length > 1 %}
+  {%- for part in parts %}{% set ns.k = ns.k + 1 %}
+  <p class="simple-step" data-plan-step="{{ st.n }}" data-plan-part="{{ ns.k }}" title="{{ st.params }}">Step {{ ns.k }}, on {{ part.system }}{% if part.lines %}: {{ st.words | times }}{% endif %}</p>
+  {{ part_block(st, part, ns.k) }}
+  {%- endfor %}
+  {%- elif long %}{% set ns.k = ns.k + 1 %}
+  <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ ns.k }}: {{ st.words | times }}</summary>
     {{ sent_block(st) }}
   </details>
-  {%- else %}
-  <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ st.n }}: {{ st.words | times }}</p>
+  {%- else %}{% set ns.k = ns.k + 1 %}
+  <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ ns.k }}: {{ st.words | times }}</p>
   {{ sent_block(st) }}
   {%- endif %}
   {%- endfor %}

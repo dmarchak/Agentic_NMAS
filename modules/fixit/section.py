@@ -765,7 +765,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "none", "label": "Mercury is working on it"}
     else:
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
-    out["why_person"] = _why_person(nxt, offer, found)
+    out["why_person"] = _why_person(nxt, offer, found, out.get("ai_answer"))
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
                             "problem", "kept")}
@@ -847,7 +847,7 @@ def _refused_plan_words(answer, why_refused) -> str:
     return lead + (f"Its fix can't run yet: {reason}." if reason else "Its fix can't run yet.")
 
 
-def _why_person(nxt: dict, offer: dict, found: dict) -> str:
+def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str:
     """Why a person is needed, one short reason beside its one action (the operator,
     2026-11-16), or ``""``: guard 4's disagreement, guard 6's many devices, a saved script, the
     AI's plan, no saved fix yet (the AI can investigate), or nothing safe found."""
@@ -866,6 +866,16 @@ def _why_person(nxt: dict, offer: dict, found: dict) -> str:
     if kind == "approve":
         return "The AI's plan is ready: needs your approval"
     if kind == "start" or (kind == "button" and not nxt.get("script") and not nxt.get("read")):
+        # The AI's latest finding is the best current knowledge, ahead of the retry's reason
+        # (the operator, 2026-11-16: r7's status said the 04:53 retry, not the AI's 05:17
+        # finding); an answer superseded or withheld is not drawn as this incident's.
+        a = answer if isinstance(answer, dict) else {}
+        if a and not a.get("superseded") and not a.get("previous"):
+            shown = a.get("shown") if isinstance(a.get("shown"), dict) else {}
+            said = _first_sentence(a.get("words") or shown.get("rationale")
+                                   or shown.get("diagnosis"), FINDING_CHARS)
+            if said:
+                return f"The AI found: {said}{'' if said.endswith('…') else '.'}"
         # What Mercury tried on THIS incident and that the AI can investigate, from its own
         # record (the retry policy, the operator, 2026-11-16; `heal.retry.reason`): a lost
         # stream says Mercury has no fix it runs by itself.
@@ -1136,8 +1146,11 @@ PLAN_READY = {"the AI": "The AI's plan", "Mercury's diagnosis": "Mercury's plan"
 
 def card_of(out: dict, found: dict) -> dict:
     """The incident card's default view (MERCURY_CHARTER R5; board R5, approved 2026-11-15,
-    screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready", "live"}``, *live* the live
-    stepper's steps while a job runs (`progress.of`). *status*
+    screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready", "live",
+    "run", "run_page"}``, *live* the live stepper's steps while a job runs (`progress.of`),
+    *run* an approved plan's run's steps once it ended, each its result (`progress.recorded`),
+    *run_page* where Open the run opens a running approved plan (its incident's card at its
+    stepper, `plan_engine.run_page`; ``""`` for any other run). *status*
     the one status line (an instant in its words, drawn in the viewer's zone), *kind* ``ai``
     while the AI investigates, ``ok`` once fixed and verified, else ``""``; *step* the
     investigation's live step (`troubleshoot_job.shown`); *how* how a fixed incident was fixed
@@ -1147,9 +1160,37 @@ def card_of(out: dict, found: dict) -> dict:
     from modules import display_names
     from modules import problem as P
 
+    from modules.fixit import progress
+
     state = out.get("state") or ""
     card = {"status": out.get("status") or "", "kind": "", "step": "", "how": None,
-            "fixed_at": "", "plan_ready": False}
+            "fixed_at": "", "plan_ready": False, "run": [], "run_page": ""}
+    network, iid, device = out.get("network") or "", out.get("id") or "", out.get("device") or ""
+    # The compact live stepper while the AI investigates or a run goes (the operator,
+    # 2026-11-16): its steps stand in for the one status line (`progress.of`).
+    card["live"] = progress.of(network, iid, device, state)
+    rid = (progress.approved_run(network, found)
+           if state in ("running", "passed", "stopped", "resolved") else "")
+    if not card["live"] and rid:
+        # The approved plan's run, once it ended (or while it runs in another process), drawn
+        # on the card with each step's result: the run's one home (the operator, 2026-11-16).
+        newest = (out.get("stop") or {}).get("run") or ""
+        if state == "resolved":
+            passed = [a.get("run") for a in out.get("attempts") or []
+                      if a.get("state") == "passed"]
+            newest = passed[-1] if passed else newest
+        card["run"] = progress.recorded(network, found, device, newest=newest, rid=rid)
+        if state == "running" and card["run"]:
+            # Running in another process: its record's steps, redrawn as the live ones are.
+            card["live"], card["run"] = card["run"], []
+    if state == "running":
+        # Open the run opens the run's home: an approved plan's its incident's card at its
+        # stepper (`plan_engine.run_page`); a saved script's run its device's page, as before.
+        from modules import plan_engine as PE
+        rec = PE.record_of(network, rid) if rid else None
+        if rec and rec.get("state") == "running":
+            card["run_page"] = PE.run_page(network, rec.get("plan"),
+                                           {"incident": rec.get("incident") or iid}, rid)
     if state == "resolved" and out.get("ended") == "fixed":
         passed = [a for a in out.get("attempts") or [] if a.get("state") == "passed"]
         a = passed[-1] if passed else None
@@ -1171,12 +1212,10 @@ def card_of(out: dict, found: dict) -> dict:
         else:
             card["how"] = {"words": "Mercury's self-healing, verified on the device",
                            "device": "", "run": ""}
+        if card["run"] and card["how"].get("run"):
+            # The plan's run is drawn on this card: its link opens it here.
+            card["how"]["page"] = "#inc-run"
         return card
-    from modules.fixit import progress
-    # The compact live stepper while the AI investigates or a run goes (the operator,
-    # 2026-11-16): its steps stand in for the one status line (`progress.of`).
-    card["live"] = progress.of(out.get("network") or "", out.get("id") or "",
-                               out.get("device") or "", state)
     if state == "investigating":
         from modules import troubleshoot_job
         card.update(kind="ai", step=troubleshoot_job.shown(out.get("network") or "",

@@ -155,6 +155,16 @@ PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "obser
                  "observer", "logs", "tried", "diagnosis")
 #: This incident's own sections, beside the pack's.
 ATTEMPTS = "attempts"
+#: Each failed attempt's own steps (`run_steps_section`), and the state read after the newest
+#: failed run (`after_run_section`; the operator, 2026-11-16). The after-run parts' caps: at
+#: most `AFTER_SESSIONS` collector sessions a subscription, and `AFTER_SYSLOG_LINES` syslog
+#: lines (the first and last halves, the rest counted) of at most `AFTER_LINE_CHARS` each;
+#: about 3,500 characters of the pack at most beside the collector's journal (1,900).
+RUN_STEPS = "run_steps"
+AFTER_RUN = "after_run"
+AFTER_SESSIONS = 4
+AFTER_SYSLOG_LINES = 12
+AFTER_LINE_CHARS = 200
 SEEN = "seen_before"
 NOTE = "note"
 READS_SECTION = "mercury_reads"
@@ -475,12 +485,14 @@ def _section(name: str, state: str, why: str = "", pieces=(), source: str = "",
             "pieces": list(pieces), **extra}
 
 
-def attempts_section(incident, resolved: float = None, *, now: float = None) -> dict:
-    """The incident's attempts as sent (`payload.tried_parts`, every person a stable label),
-    each piece ``attempt:<n>``."""
+def attempts_section(incident, resolved: float = None, *, now: float = None,
+                     got: dict = None) -> dict:
+    """The incident's attempts as sent (`payload.tried_parts`, every person a stable label,
+    or *got*, its answer already read), each piece ``attempt:<n>``."""
     from modules.fixit import payload
 
-    got = payload.tried_parts(incident, resolved, now=now)
+    if got is None:
+        got = payload.tried_parts(incident, resolved, now=now)
     pieces = []
     for key, part in sorted(got["parts"].items(), key=lambda kv: int(kv[0].split(":")[1])):
         pieces.append(dict(part, ref="attempt:" + key.split(":", 1)[1],
@@ -492,6 +504,151 @@ def attempts_section(incident, resolved: float = None, *, now: float = None) -> 
     return _section(ATTEMPTS, "ok" if pieces else "empty",
                     "" if pieces else "no catalog operation has run in this incident", pieces,
                     source)
+
+
+def run_steps_section(incident, got: dict) -> dict:
+    """Each failed attempt's own steps (*got*, `payload.tried_parts`'s ``run_steps``; the
+    operator, 2026-11-16), each piece ``run_steps:<n>`` by the attempt's number: its steps in
+    order, each its name, result, words and reads' line, masked and capped
+    (`payload.RUN_STEPS_CHARS` a piece, the newest `payload.RUN_STEPS_ATTEMPTS` failed
+    attempts)."""
+    from modules.fixit import payload
+
+    steps = (got or {}).get("run_steps") or {}
+    pieces = [dict(part, ref=key, device=incident.device)
+              for key, part in sorted((steps.get("parts") or {}).items(),
+                                      key=lambda kv: int(kv[0].split(":")[1]))]
+    source = "each failed attempt's own run record, its steps in order (modules/fixit/payload.py)"
+    said = list(steps.get("unread") or [])
+    if steps.get("left_out"):
+        said.append(f"{steps['left_out']} older failed attempt(s) left out: the newest "
+                    f"{payload.RUN_STEPS_ATTEMPTS} are sent")
+    if not pieces:
+        return _section(RUN_STEPS, "unreadable" if steps.get("unread") else "empty",
+                        "; ".join(said) or "no attempt in this incident failed", (), source)
+    return _section(RUN_STEPS, "ok", "; ".join(said), pieces, source)
+
+
+def after_run_section(network: str, incident, newest: dict, *, now: float = None,
+                      loki=None, stream_reads: dict = None) -> dict:
+    """The state read AFTER a failed run, for a re-investigation the run's failure started or a
+    person's after it (*newest*, `payload.tried_parts`'s ``newest_failed``; the operator,
+    2026-11-16): from Mercury's own sources, read now, each piece citable:
+
+    - ``after_run:collector``: for each subscription, the collector's sessions from the
+      device's addresses with their counters (bytes received and sent, the last receive and
+      send, `diagnose_stream.read_collector` through `fixit_reads._collector`); at most
+      `AFTER_SESSIONS` sessions a subscription;
+    - ``after_run:series``: each subscription's series now (`diagnose_stream.series_of`);
+    - ``after_run:collector_log``: the collector's own journal since the run started, its unit
+      measured from the listener's owner (`diagnose_stream.collector_unit`, never typed), at
+      most `diagnose_stream.JOURNAL_LINES` lines of `diagnose_stream.JOURNAL_LINE_CHARS`;
+    - ``after_run:syslog``: the device's syslog lines since the run started, through the
+      pack's own Loki read (`evidence_pack.logs_section`, its window from the run's start), at
+      most `AFTER_SYSLOG_LINES` lines of `AFTER_LINE_CHARS`.
+
+    ``None`` when the newest attempt passed or none ran. A telemetry part is read only for an
+    incident naming subscriptions. Everything is masked (`redact_payload`). *loki* and
+    *stream_reads* (``{"collector", "series", "journal", "unit"}``) replace the reads (tests)."""
+    import time as _time
+
+    from modules import evidence_pack as EP
+    from modules.heal import diagnose_stream as DS
+    from modules.nsot import listref
+    from modules.redact import redact_payload
+
+    if not newest or not newest.get("started_at"):
+        return None
+    fx_reads = dict(stream_reads or {})
+    since = float(newest["started_at"])
+    now = float(now if now is not None else _time.time())
+    at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(since))
+    pieces = []
+    if incident.subscriptions:
+        fx = dict(FR.stream_scope(network, incident), collector=fx_reads.get("collector"),
+                  series=fx_reads.get("series"))
+        coll, series, units = [], [], {}
+        for sub in incident.subscriptions:
+            try:
+                got = FR._collector(fx, sub)
+                got["sessions"] = got["sessions"][:AFTER_SESSIONS]
+                coll.append(dict(got, subscription=sub, state="read"))
+            except (RuntimeError, KeyError, ValueError, OSError) as exc:
+                coll.append({"subscription": sub, "state": "unread", "why": str(exc)[:200]})
+            try:
+                series.append(dict(FR._series(fx, incident.device, sub), subscription=sub))
+            except Exception as exc:                  # noqa: BLE001 (said, never raised)
+                series.append({"subscription": sub, "state": "unread",
+                               "why": f"not read ({type(exc).__name__})"})
+            stream = (fx.get("streams") or {}).get(sub) or {}
+            if stream.get("address"):
+                units[(stream["address"], int(stream["port"]))] = sub
+        pieces.append({"ref": f"{AFTER_RUN}:collector", "device": incident.device,
+                       "what": "the collector's sessions from the device's addresses, read "
+                               "now, after the run", "subscriptions": coll,
+                       "note": "bytes_sent null: not printed (the kernel's tool prints it only "
+                               "when it is not zero)"})
+        pieces.append({"ref": f"{AFTER_RUN}:series", "device": incident.device,
+                       "what": "each subscription's series in Prometheus now",
+                       "subscriptions": series})
+        pieces.append(_collector_log_piece(units, since, at, fx_reads, DS))
+    try:
+        ref = listref.resolve(network)
+        logs = EP.logs_section(ref, incident.device, since, now, client=loki)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        logs = {"state": "unreadable", "why": f"not read ({type(exc).__name__})", "pieces": []}
+    lines = [p for p in logs.get("pieces") or [] if p.get("after_onset")]
+    kept = (lines if len(lines) <= AFTER_SYSLOG_LINES else
+            lines[:AFTER_SYSLOG_LINES // 2] + lines[-(AFTER_SYSLOG_LINES // 2):])
+    pieces.append({"ref": f"{AFTER_RUN}:syslog", "device": incident.device,
+                   "what": f"{incident.device}'s syslog lines since the run started ({at}), "
+                           "from the network's Loki",
+                   "state": ("read" if lines else "empty" if logs.get("state") in ("ok", "empty")
+                             else "unread"),
+                   "why": "" if lines else (logs.get("why") or "no line since the run started"),
+                   "lines": [{"at": p.get("at") or "", "severity": p.get("severity_word") or "",
+                              "text": _line_cut(p.get("text"))} for p in kept],
+                   "total": len(lines), "left_out": len(lines) - len(kept)})
+    source = (f"Mercury's own reads after attempt:{newest.get('n')} ({newest.get('operation')}) "
+              f"failed, read now, since the run started at {at}")
+    return _section(AFTER_RUN, "ok", "", redact_payload(pieces), source,
+                    run=f"attempt:{newest.get('n')}", since=at)
+
+
+def _line_cut(text) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= AFTER_LINE_CHARS else text[:AFTER_LINE_CHARS - 1] + "…"
+
+
+def _collector_log_piece(units: dict, since: float, at: str, fx_reads: dict, DS) -> dict:
+    """``after_run:collector_log``: the collector's own journal since *since*, its unit
+    measured once per receiver (`diagnose_stream.collector_unit`), one unit read once."""
+    base = {"ref": f"{AFTER_RUN}:collector_log",
+            "what": f"the collector's own log lines since the run started ({at}), from the "
+                    "journal of its systemd service (the service measured from the listener's "
+                    "owner on the receiver's port)"}
+    if not units:
+        return dict(base, state="unread", why="no subscription's receiver is known from intent")
+    unit_of = fx_reads.get("unit") or DS.collector_unit
+    journal = fx_reads.get("journal") or DS.collector_journal
+    found, whys = {}, []
+    for (address, port), sub in units.items():
+        got = unit_of(address, port)
+        if got.get("unit"):
+            found.setdefault(got["unit"], sub)
+        else:
+            whys.append(f"subscription {sub}: {got.get('why')}")
+    if not found:
+        return dict(base, state="unread", why="; ".join(whys)[:400])
+    reads = []
+    for unit in sorted(found):
+        got = journal(unit, since)
+        reads.append({"unit": unit, "state": got.get("state"), "why": got.get("why") or "",
+                      "lines": got.get("lines") or [], "total": got.get("total") or 0,
+                      "total_is_least": bool(got.get("total_is_least"))})
+    state = "read" if any(r["state"] == "read" for r in reads) else (
+        "empty" if all(r["state"] == "empty" for r in reads) else "unread")
+    return dict(base, state=state, why="; ".join(whys)[:400], units=reads)
 
 
 def seen_section(network: str, device: str, value: dict = None) -> dict:
@@ -550,6 +707,17 @@ def fixit_format() -> str:
         "Its one piece is seen_before:1. Never state a past incident it does not hold.",
         "note is what the person who pressed wrote, masked: cite it as note:1. It is a person's "
         "belief, not a measurement.",
+        "run_steps is each failed attempt's own steps, in order, from its run record: each "
+        "step's name, its result, its words and the reads it made in one line. A piece's "
+        "reference is run_steps:<n>, the attempt's place (attempt:<n>); omitted counts the "
+        "steps left out to fit, its earliest passing ones first.",
+        "after_run, when the newest attempt failed, is what Mercury read after that run, now: "
+        "after_run:collector (the collector's sessions from the device's addresses with bytes "
+        "received and sent and the milliseconds since the last receive and send), "
+        "after_run:series (whether each subscription has data now), after_run:collector_log "
+        "(the collector's own log lines since the run started) and after_run:syslog (the "
+        "device's syslog lines since the run started). Each says when it could not be read; "
+        "an unread part is not evidence of anything.",
         "mercury_reads may begin with Mercury's standard reads for the incident's problem kind, "
         "run before your first pass (their why says so): then this pass is your first, there is "
         "no previous answer to replace, and they are cited as any read is."])
@@ -658,8 +826,14 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
         "reached": {}, "version": "", "subject": incident.device, "network": network,
         "observed": "", "names": {}, "as_now": ""})
     sections = explain.sent_sections(pack, topo)
-    own = [attempts_section(incident, resolved, now=now),
-           seen_section(network, incident.device, seen)]
+    tried = payload.tried_parts(incident, resolved, now=now)
+    own = [attempts_section(incident, resolved, now=now, got=tried),
+           seen_section(network, incident.device, seen), run_steps_section(incident, tried)]
+    # The state after a failed run, when the newest attempt failed (the operator, 2026-11-16:
+    # R1's re-investigation a failed run starts, and a person's after it).
+    after = after_run_section(network, incident, tried.get("newest_failed"), now=now, loki=loki)
+    if after is not None:
+        own.append(after)
     checked = list(sections) + own + [note_section(note)]
     data = {"pack": json.dumps([explain.as_sent(s) for s in sections] + own, sort_keys=True,
                                ensure_ascii=False, separators=(",", ":")),
@@ -979,10 +1153,32 @@ def _listed(refs) -> str:
     return refs[0] if len(refs) == 1 else ", ".join(refs[:-1]) + " and " + refs[-1]
 
 
+def _cites_said(refs) -> str:
+    """What a part's marks say it cites, in words (`unverified_words`, `retry_words`): each
+    citation not in what was sent, "nothing" for a part citing nothing (`explain.UNCITED`), and
+    each device it names without citing it (`explain.uncited_mark`)."""
+    from modules.ai import explain
+
+    refs = list(dict.fromkeys(refs or ()))
+    real = [r for r in refs if not explain.is_mark(r)]
+    devices = [explain.marked_device(r) for r in refs if explain.marked_device(r)]
+    said = []
+    if real:
+        said.append(f"cites {_listed(real)}, not in the evidence")
+    if explain.UNCITED in refs:
+        said.append("cites nothing in the evidence")
+    if devices:
+        said.append(f"names {_listed(devices)} without citing "
+                    f"{'it' if len(devices) == 1 else 'them'}")
+    return "; ".join(said)
+
+
 def unverified_words(refs) -> str:
-    """How a claim, a hypothesis or a step resting on *refs* (citations not in what was sent)
-    is marked: ``unverified (cites history:3, not in the evidence)``."""
-    return f"unverified (cites {_listed(refs)}, not in the evidence)"
+    """How a claim, a hypothesis or a step resting on *refs* (citations not in what was sent,
+    and the marks of a missing citation, `explain.UNCITED` and `explain.uncited_mark`) is
+    marked: ``unverified (cites history:3, not in the evidence)``, ``unverified (cites nothing
+    in the evidence)``."""
+    return f"unverified ({_cites_said(refs)})"
 
 
 def _parts(answer) -> list:
@@ -996,12 +1192,19 @@ def _parts(answer) -> list:
     return [(name, p) for name, p in out if p is not None]
 
 
-def unverified(answer, sections: list, topo: dict) -> dict:
+def unverified(answer, sections: list, topo: dict, pack: dict = None) -> dict:
     """``{part: [citation, ...]}``: each citation of *answer* that resolves to nothing sent
     (*sections*, this incident's own and the reads that ran among them) nor to the topology
     sent, by the part citing it (``hypothesis <i>``, ``fix``, ``gap``, ``plan's step <n>``,
     ``improvement's step <n>``); ``{}`` when every one resolves. A hypothesis's citations are
-    read as Explain's check reads them (`explain.normalised`)."""
+    read as Explain's check reads them (`explain.normalised`).
+
+    A MISSING citation is marked too (the operator, 2026-11-16: r7's pass 2 was discarded
+    whole for "hypothesis 2 cites nothing in the pack"): a part citing nothing is marked
+    `explain.UNCITED`, and, with *pack*, each device the answer names and cites nowhere (as
+    Explain's check finds them, Mercury's own citations of it added first, `mercury_cites`)
+    is marked `explain.uncited_mark` on the part naming it (``hypothesis <i>`` or ``the
+    rationale``, `explain._named_in`)."""
     from modules import evidence_pack as EP
     from modules.ai import explain
 
@@ -1010,6 +1213,8 @@ def unverified(answer, sections: list, topo: dict) -> dict:
     normal, _written = explain.normalised(answer, sent, tuple(ids))
 
     def bad(refs):
+        if not refs:
+            return [explain.UNCITED]
         return [r for r in dict.fromkeys(refs) if EP.resolve(sent, r) is None and r not in ids]
 
     out = {}
@@ -1019,6 +1224,14 @@ def unverified(answer, sections: list, topo: dict) -> dict:
     for name, part in _parts(answer):
         if bad(part.evidence_refs):
             out[name] = bad(part.evidence_refs)
+    if pack is not None and normal.outcome.value != "refuse":
+        names = explain.sent_names(topo.get("names") if topo.get("sent") else None,
+                                   tuple(ids))
+        own = pack.get("device") or ""
+        added = [a["ref"] for a in explain.mercury_cites(normal, sent, names, own)]
+        for name in explain.uncited_devices(normal, sent, names, own, added):
+            out.setdefault(explain._named_in(normal, name), []).append(
+                explain.uncited_mark(name))
     return out
 
 
@@ -1028,12 +1241,20 @@ def _flat(marks: dict) -> list:
 
 def retry_words(marks: dict) -> str:
     """What a retry tells the model (`RETRY_PART`): Mercury's check of its previous answer,
-    each citation it could not find and the part that made it."""
-    each = "; ".join(f"{part} cites {_listed(refs)}" for part, refs in marks.items())
-    return ("Mercury's check of the previous answer to this request: these references it cited "
-            f"are not in what was sent, so what rests on them was marked unverified: {each}. "
-            "The references sent are the pack's, this incident's own sections', the note's and "
-            "the reads' that ran, exactly as written in them.")
+    each citation it could not find, each part citing nothing and each device named without a
+    citation, by the part that made it."""
+    return ("Mercury's check of the previous answer to this request marked these parts "
+            "unverified, because a reference they cite is not in what was sent, they cite "
+            f"nothing, or they name a device without citing it: {_marks_said(marks)}. Every "
+            "hypothesis, fix, gap and step cites what was sent. The references sent are the "
+            "pack's, this incident's own sections', the note's and the reads' that ran, exactly "
+            "as written in them.")
+
+
+def _marks_said(marks: dict) -> str:
+    """*marks* (`unverified`'s) in words, part by part: ``hypothesis 2 cites nothing in the
+    evidence; plan's step 1 cites history:9, not in the evidence``."""
+    return "; ".join(f"{part} {_cites_said(refs)}" for part, refs in (marks or {}).items())
 
 
 def check(answer, pack: dict, sections: list, topo: dict, unverified=()) -> str:
@@ -1087,6 +1308,8 @@ def check(answer, pack: dict, sections: list, topo: dict, unverified=()) -> str:
         if part is None:
             continue
         if not part.evidence_refs:
+            if explain.UNCITED in unv:
+                continue                # kept, marked unverified (`unverified`, 2026-11-16)
             return f"the {name} cites nothing that was sent"
         ref = _unresolved([r for r in part.evidence_refs if r not in unv], sections)
         if ref and ref not in set(ids or ()):
@@ -1171,10 +1394,17 @@ def _marked(refs, marks_of_part) -> dict:
     """A part's citations and its unverified mark (`unverified_words`): ``{"cites",
     "unverified_words", "only_unverified"}``, the last True when every citation it makes is
     unverified."""
+    from modules.ai import explain
+
     cited = list(dict.fromkeys(refs))
-    bad = [r for r in cited if r in set(marks_of_part or ())]
-    return {"cites": cited[:8], "unverified_words": unverified_words(bad) if bad else "",
-            "only_unverified": bool(cited) and len(bad) == len(cited)}
+    marks = list(marks_of_part or ())
+    bad = [r for r in cited if r in set(marks)]
+    # A missing citation's marks (`explain.UNCITED`, `explain.uncited_mark`) are said too; a
+    # part citing nothing rests on nothing sent, so it is unverified only (never approvable).
+    said = bad + [m for m in marks if explain.is_mark(m)]
+    return {"cites": cited[:8], "unverified_words": unverified_words(said) if said else "",
+            "only_unverified": (bool(cited) and len(bad) == len(cited))
+            or (not cited and explain.UNCITED in marks)}
 
 
 def shown(answer, said: dict = None, pass_: int = 1, fit=(), marks: dict = None,
@@ -1193,6 +1423,9 @@ def shown(answer, said: dict = None, pass_: int = 1, fit=(), marks: dict = None,
                      "confirm": _cut(h.confirm_with)})
     out = {"rationale": _cut(answer.rationale), "needs_human": bool(answer.needs_human),
            "hypotheses": hyps, "passes": pass_}
+    if marks.get("the rationale"):
+        # A device the rationale names and nothing cites (`unverified`, 2026-11-16).
+        out["rationale_unverified_words"] = unverified_words(marks["the rationale"])
     # The read the AI lacked (C3797): what "How to fix it" offers a person to run.
     lacked = " ".join(str(getattr(answer, "lacked_read", "") or "").split())
     if lacked:
@@ -1252,7 +1485,7 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
                              "pieces": [{"ref": r} for r in read_ids]})
         # A citation not in what was sent is marked, never a reason to refuse the answer
         # (the operator, 2026-11-15); the marks are kept beside the answer they belong to.
-        marks = unverified(answer, sections, prep["topo"])
+        marks = unverified(answer, sections, prep["topo"], prep["pack"])
         why = check(answer, prep["pack"], sections, prep["topo"], unverified=_flat(marks))
         if not why:
             kept.append((answer, marks))
@@ -1326,21 +1559,23 @@ def retry_once(prep: dict, feature, got: dict, incident, *, ask, network: str, a
     got["call_ids"] = list(got.get("call_ids") or []) + [out["call_id"]]
     got["cost_usd"] = float(got.get("cost_usd") or 0.0) + float(r.get("cost_usd") or 0.0)
     if not r.get("ok"):
-        out["words"] = (f"asked once more, naming {_listed(_flat(marks))}, and not answered "
-                        f"({r.get('error')}: {(r.get('detail') or '')[:160]}); the first "
-                        "answer is shown, marked")
+        out["words"] = (f"asked once more, naming what it marked ({_marks_said(marks)}), and "
+                        f"not answered ({r.get('error')}: {(r.get('detail') or '')[:160]}); "
+                        "the first answer is shown, marked")
         return out
     why = RL.second_check(feature, r["output"], records, prep["actable"])
     if why:
-        out["words"] = (f"asked once more, naming {_listed(_flat(marks))}; Mercury's check "
-                        f"refused the second answer ({why}), so the first is shown, marked")
+        out["words"] = (f"asked once more, naming what it marked ({_marks_said(marks)}); "
+                        f"Mercury's check refused the second answer ({why}), so the first is "
+                        "shown, marked")
         return out
     again = marks_of(prep, r["output"])
     got["answer"] = r["output"]
     out.update(accepted=True, marks=again, words=(
-        f"asked once more, naming {_listed(_flat(marks))}: "
+        f"asked once more, naming what it marked ({_marks_said(marks)}): "
         + ("every citation of the second answer is in what was sent" if not again else
-           "the second answer still cites what was not sent, and is shown marked")))
+           "the second answer still has a citation that is bad or missing, and is shown "
+           "marked")))
     return out
 
 
@@ -1535,7 +1770,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     from modules import troubleshoot_job as TJ
     TJ.step("building the request (the evidence pack, the attempts, the catalogue)")
     # The step a person reads on the status line (board R5's screen 3): plain words only.
-    TJ.say("Gathering the evidence…", done="Gathered the evidence")
+    TJ.say("Gathering what Mercury already knows about this incident…",
+           done="Gathered what Mercury already knows about this incident")
     lap = _laps(incident.id)
     prep = request(network, found, incident, note=note, now=now, resolved=resolved,  # pack
                    seen=seen, loki=loki, prometheus=prometheus)
@@ -1556,7 +1792,14 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         # said back to the person.
         memo["calls"] = memo.get("calls", 0) + 1
         TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
-        TJ.say(f"Asking the AI ({memo['calls']})…", done=f"Asked the AI ({memo['calls']})")
+        # Plain steps (the operator, 2026-11-16): the first call is the AI's first look, every
+        # later one works out a fix from what it found; the calls' numbers are Details' alone
+        # (`TJ.step`). A round of reads after it says how many it asked for (`say_round`).
+        if memo["calls"] == 1:
+            TJ.say("The AI's first look…", done="The AI's first look")
+        else:
+            TJ.say("The AI is working out a fix from what it found…",
+                   done="The AI worked out a fix from what it found")
         lap(f"before call {memo['calls']}")
         got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
         lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its count and its send)")
@@ -1578,7 +1821,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     # 2026-11-16): a classification's read of seconds ago is reused, never read again.
     pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
     if pre:
-        TJ.say("Reading the device…", done="Read the device")
+        TJ.say(f"Reading what this problem needs from {incident.device}…",
+               done=f"Read what this problem needs from {incident.device}")
     got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
                  data=prep["data"], actor=actor, trigger=trig,
                  context=prep["ctx"], subject=prep["subject"], scope=scope,
@@ -1637,9 +1881,15 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         if ids and RL.left_host(first):
             out["proposal"] = keep(words)
         return out
+    # The call whose answer is kept: the retry's when it stands, else the loop's own record of
+    # it (`answer_call`: a later pass refused leaves the earlier call's answer kept).
     final_call = ((retry or {}).get("call_id") if (retry or {}).get("accepted") else
-                  (got.get("second") or {}).get("call_id") if got["pass"] >= 2
-                  else first.get("call_id")) or (ids[-1] if ids else "")
+                  got.get("answer_call") or (
+                      (got.get("second") or {}).get("call_id") if got["pass"] >= 2
+                      else first.get("call_id"))) or (ids[-1] if ids else "")
+    # The loop stopped while the answer it keeps asked for reads (`read_loop._stopped`): said
+    # plainly in place of that answer's "reading first" words (the operator, 2026-11-16).
+    stopped = None if (retry or {}).get("accepted") else got.get("stopped")
     if got["state"] == "refused_by_check":
         why = got.get("why") or ""
         calls.record_use(first.get("call_id") or "", fix_proposal.REFUSED_USE, actor=actor,
@@ -1657,9 +1907,15 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                          marks=marks, retry=retry)
     if overlooked:
         out["shown"]["gap_overlooked"] = overlooked_words(overlooked)
+    stopped_said = stopped_words(stopped, answer) if stopped else ""
+    if stopped_said:
+        # What the section draws as the answer's rationale is Mercury's words, never the
+        # kept answer's own "I am reading first"; the model's are kept beside them.
+        out["shown"].update(stopped=stopped_said, rationale=stopped_said,
+                            model_rationale=_cut(answer.rationale))
     marked = (f" Marked unverified: {len(marks)} part{'s' if len(marks) != 1 else ''} of the "
-              "answer cite what was not sent; a step resting only on those is not approvable."
-              if marks else "")
+              "answer cite what was not sent or cite nothing; a step resting only on those is "
+              "not approvable." if marks else "")
     if answer.outcome.value == "refuse":
         calls.record_use(final_call, "shown: the evidence cannot say", actor=actor,
                          detail=answer.why_not[:200], links=links)
@@ -1729,10 +1985,32 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         if overlooked:
             out["overlooked"] = list(overlooked)
         return out
+    if stopped_said:
+        calls.record_use(final_call, "shown: the investigation stopped before an answer",
+                         actor=actor, detail=stopped_said[:200], links=links)
+        words = stopped_said + marked
+        out.update(state="no_fix", words=words, proposal=keep(words, shown=out["shown"]),
+                   stopped=dict(stopped))
+        return out
     calls.record_use(final_call, "shown: no fix named", actor=actor, links=links)
     words = "The AI named no fix: " + (_cut(answer.rationale) or "it gave no reason") + marked
     out.update(state="no_fix", words=words, proposal=keep(words, shown=out["shown"]))
     return out
+
+
+def stopped_words(stopped: dict, answer) -> str:
+    """What an investigation that stopped while its kept answer asked for reads says
+    (`read_loop._stopped`; the operator, 2026-11-16): "The AI stopped after N rounds of reads:
+    <why>; what it found so far: <its hypotheses' claims>", never that answer's own rationale
+    (which says it is reading first). ``""`` for no *stopped*."""
+    if not stopped:
+        return ""
+    n = int(stopped.get("rounds") or 0)
+    found = "; ".join(" ".join(str(h.claim or "").split())
+                      for h in (answer.hypotheses or [])[:MAX_HYPOTHESES] if h.claim)
+    return _cut(f"The AI stopped after {n} round{'s' if n != 1 else ''} of reads: "
+                f"{stopped.get('why') or 'no reason recorded'}; what it found so far: "
+                + (found or "no hypothesis yet") + ".")
 
 
 # ── The preview (C3406: scripts/nmas-fixit-cases --preview) ─────────────────────────────────

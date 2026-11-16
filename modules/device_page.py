@@ -114,6 +114,7 @@ def answering(dev: dict, list_name: str = "") -> dict:
         down = bool(row) and not row.get("answering")
         return {"state": "planned" if planned["level"] == "plan" else "danger",
                 "text": planned["words"], "title": planned["title"], "link": planned["link"],
+                "href": planned.get("href") or "",
                 "since": row.get("since") if down else None,
                 "checked_at": (row or {}).get("checked_at"),
                 "last_result": (row or {}).get("last_result"), "value_at": at}

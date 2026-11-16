@@ -463,6 +463,12 @@ def _recent() -> dict:
     # the policy's setter after it, and the lines it re-applied as its card counts them.
     rows = [dict(r, heal=True, doer=receipts.HEAL_DOER, config_lines=receipts.config_lines(r))
             if receipts.is_heal(r) else r for r in rows]
+    # A command plan is "Reviewed commands", never its action's key, and one its precondition
+    # refused with nothing sent is "skipped: nothing to fix", never "failed" (the operator,
+    # 2026-11-16; C3821's words, `receipts.skipped`).
+    rows = [dict(r, label="Reviewed commands",
+                 **({"outcome": receipts.SKIPPED_WORDS} if receipts.skipped(r) else {}))
+            if r.get("action") == "command_plan" else r for r in rows]
     return {"state": got["state"], "rows": rows, "list": ref.name}
 
 

@@ -903,11 +903,18 @@ def finished_records(network: str, viewer: str, now: float = None, have=()) -> l
         o = record_outcome(rec)
         at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(
             rec.get("finished_at") or rec.get("started_at") or 0)))
+        # A step of an incident's approved plan opens the run's one home, its incident's card
+        # at its stepper (`plan_engine.run_page`; the operator, 2026-11-16), never its device's.
+        from modules import plan_engine as PE
+        from modules.heal import resubscribe as R
+        link = rec.get(R.FIXIT_FIELD) if isinstance(rec.get(R.FIXIT_FIELD), dict) else {}
+        href = (PE.run_page(network, PE.INCIDENT_FIX, {"incident": link["incident"]}, run)
+                if link.get("incident") else "")
         out.append({"device": rec.get("device") or "", "list": network, "card": RESUB_CARD,
                     "name": in_flight.OPERATION_NAMES[RESUB_CARD], "level": o["level"],
                     "outcome": in_flight.OUTCOMES[o["level"]], "words": o["words"],
                     "at": in_flight._clock(at), "who": "you", "run": run, "job": "",
-                    "steps": len(rec.get("steps") or [])})
+                    "steps": len(rec.get("steps") or []), "href": href})
     return out
 
 

@@ -22,13 +22,15 @@
   </div>
 </div>
 {%- if strip %}{% with s = strip %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
-<nav class="tabs" aria-label="Incidents">
+{#- The tabs' counts are redrawn with the list (`hx-select-oob` below): the list alone was
+    redrawn, so "Open · 2" stood beside "1 open" after a change (the operator, 2026-11-16). -#}
+<nav class="tabs" id="incidents-tabs" aria-label="Incidents">
   {%- for t in p.tabs %}
   <a class="tab{{ ' on' if t.key == p.tab }}" href="{{ url_for('incidents_v2.page', tab=t.key, list=p.network) }}"{% if t.key == p.tab %} aria-current="page"{% endif %} data-tab="{{ t.key }}">{{ t.words }} · {{ t.n }}</a>
   {%- endfor %}
   <span class="inc-list-age muted">checked {{ stamp(p.read_at) }}</span>
 </nav>
-<div id="incidents-live" class="tab-body" hx-disinherit="*" hx-get="{{ url_for('incidents_v2.page', tab=p.tab, q=p.q or None, device=p.device or None, list=p.network) }}" hx-select="#incidents-live" hx-trigger="nmas:drift from:body, nmas:attention from:body, nmas:ai_step from:body" hx-swap="outerHTML">
+<div id="incidents-live" class="tab-body" hx-disinherit="*" hx-get="{{ url_for('incidents_v2.page', tab=p.tab, q=p.q or None, device=p.device or None, list=p.network) }}" hx-select="#incidents-live" hx-select-oob="#incidents-tabs" hx-trigger="nmas:drift from:body, nmas:attention from:body, nmas:ai_step from:body" hx-swap="outerHTML">
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of {{ p.network }}'s self-healing record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. What could be read is listed below, so this list may be short: an incident it does not show is not known to be absent.</div></div>
 {%- endif %}

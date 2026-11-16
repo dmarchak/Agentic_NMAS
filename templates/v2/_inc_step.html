@@ -1,14 +1,16 @@
-{#- The incident card's compact live stepper (the operator, 2026-11-16), in place of its one status
+{#- The incident card's compact stepper (the operator, 2026-11-16), in place of its one status
     line while the AI investigates or an approved plan or a saved script runs
     (`fixit.progress.of`, steps in `run_stepper.step`'s model): each done step ticked with its
     seconds, the current one with a spinner (`working-now`) and a counter that ticks in the page
     (`time[data-elapsed]`, static/js/nmas_v2.js), the next ones greyed. Redrawn when the job says
     a step (`ai_step`) or a run records one (`device_progress`, `in_progress`); nothing polls.
-    *said* the status words drawn while no step is kept here. Drawn by _fixit_section.html and by
-    routes/incident_v2.step. -#}
-<span class="inc-live" id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body, nmas:device_progress from:body, nmas:in_progress from:body" hx-swap="outerHTML" hx-select="unset">
+    *said* the status words drawn while no step is kept here. *static*: a run that ended (an
+    approved plan's, `progress.recorded`), or a plan's own page: drawn once, each step's
+    result, a step never reached said so; its region redraws it, so it asks for nothing. Drawn
+    by _fixit_section.html, _plan_card.html and routes/incident_v2.step. -#}
+<span class="inc-live"{% if not static %} id="inc-step-{{ iid }}" role="status" aria-live="polite" hx-get="{{ url_for('incident_v2.step', incident_id=iid, list=network) }}" hx-trigger="nmas:ai_step from:body, nmas:device_progress from:body, nmas:in_progress from:body" hx-swap="outerHTML" hx-select="unset"{% endif %}>
 {%- if steps %}<span class="inc-stepper" data-steps="{{ steps | length }}">
-  {%- for s in steps %}<span class="inc-stepper-step inc-stepper-{{ s.state }}{{ ' working-now' if s.state == 'running' }}" data-step="{{ s.key }}" data-state="{{ s.state }}">{% if s.state == 'done' %}<span aria-hidden="true">✓</span> {% elif s.state == 'failed' %}<span aria-hidden="true">✗</span> {% endif %}{{ s.words }}{% if s.state in ('done', 'failed') and s.took_s is not none %} <span class="muted">{{ s.took_s }} s</span>{% elif s.state == 'running' and s.since %} <time class="muted" data-elapsed="{{ s.since }}">0 s</time>{% endif %}</span>{% endfor %}
+  {%- for s in steps %}<span class="inc-stepper-step inc-stepper-{{ s.state }}{{ ' working-now' if s.state == 'running' }}" data-step="{{ s.key }}" data-state="{{ s.state }}"{% if s.note %} title="{{ s.note }}"{% endif %}>{% if s.state == 'done' %}<span aria-hidden="true">✓</span> {% elif s.state == 'failed' %}<span aria-hidden="true">✗</span> {% endif %}{{ s.words }}{% if s.state in ('done', 'failed') and s.took_s is not none %} <span class="muted">{{ s.took_s }} s</span>{% elif s.state == 'running' and s.since %} <time class="muted" data-elapsed="{{ s.since }}">0 s</time>{% elif s.state == 'not_reached' %} <span class="muted">not run</span>{% endif %}</span>{% endfor %}
 </span>
 {%- elif said %}{{ said }}{% endif -%}
 </span>

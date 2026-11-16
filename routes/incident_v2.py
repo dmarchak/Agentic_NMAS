@@ -69,9 +69,11 @@ def step(incident_id):
     if F.valid_id(incident_id):
         # The live stepper (the operator, 2026-11-16): the investigation's, else the run's (an
         # approved plan's, or a saved script's, 2026-11-15).
-        device = ((incident_page.resolve(ref.name, incident_id).get("incident") or {})
-                  .get("device") or "")
+        found = incident_page.resolve(ref.name, incident_id)
+        device = (found.get("incident") or {}).get("device") or ""
+        # An approved plan running in another process: its record's steps (`recorded`).
         steps = (progress.investigation(ref.name, incident_id)
-                 or progress.run(ref.name, incident_id, device))
+                 or progress.run(ref.name, incident_id, device)
+                 or progress.recorded(ref.name, found, device, running=True))
     return _strict(render_template("v2/_inc_step.html", iid=incident_id, network=ref.name,
                                    steps=steps, said=""), 200)

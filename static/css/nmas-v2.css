@@ -3550,9 +3550,12 @@ details.simple-step[open] > summary { margin-bottom: 4px; }
 .plan-reads { margin: 0 0 8px; }
 /* The previous plan while a new investigation runs: greyed and inert (the operator, 2026-11-16). */
 .inc-plan.plan-previous { opacity: .55; filter: grayscale(1); }
-/* The incident card's compact live stepper (the operator, 2026-11-16): one wrapping row. */
-.inc-stepper { display: inline-flex; flex-wrap: wrap; gap: 2px 14px; white-space: normal;
-  list-style: none; margin: 0; padding: 0; }
+/* The incident card's live stepper (the operator, 2026-11-16): a vertical list, one step per
+   line, each new step directly under the one before; never inline or wrapped like text. */
+.inc-live { display: block; }
+.inc-stepper { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  white-space: normal; list-style: none; margin: 4px 0 0; padding: 0; }
+.inc-stepper-step { display: block; white-space: normal; }
 .inc-stepper-done { color: var(--ink-2); }
 .inc-stepper-running { color: var(--ink); font-weight: 500; }
 .inc-stepper-waiting { color: var(--ink-3); }
@@ -3758,3 +3761,7 @@ h1.simple-title { font-size: 22px; }
   h1.simple-title { font-size: 20px; }
   .att-line .att-status { grid-column: 1 / -1; white-space: normal; }
 }
+/* An approved plan's run once it ended, kept on its incident's card (the operator, 2026-11-16):
+   each step's result; a step never reached greyed, said "not run". */
+.inc-run { margin: 6px 0 0; }
+.inc-stepper-not_reached { color: var(--ink-3); }

@@ -14,6 +14,7 @@ A READ: it lists lock files and reads the receipt logs; it writes nothing.
 
 import calendar
 import logging
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -82,10 +83,24 @@ def merge(holds: list, ops: list, jobs: list) -> list:
     out = [dict(h) for h in holds]
     index = {(h.get("list", ""), h.get("device", "")): i for i, h in enumerate(out)}
     rest = []
+    # An approved plan's job is a page's (its incident's card) and holds a device through its
+    # step's own operation: one run, one row (the operator, 2026-11-16: the chip said "1
+    # running" and its list "Running now · 2", the plan's job and its device's hold, each a
+    # row). Joined by the plan's own record (`plan_engine.jobs_by_device`), once per network.
+    from modules import plan_engine as PE
+    plan_held = {}
+    for net in {j["list"] for j in by_id.values() if j.get("kind") == PE.JOB_KIND}:
+        for dev, j in _plans_of(net).items():
+            plan_held[j["job"]] = (net, dev)
     for op in ops:
         job = by_id.get(op.get("id"))
         key = (job["list"], job["device"]) if job else None
-        if job and job.get("page"):
+        if job and job.get("page") and plan_held.get(job["job"]) in held:
+            row = out[index[plan_held[job["job"]]]]
+            row.update(job=job["job"], plan_href=job["page"],
+                       actor_kind=job.get("actor_kind", ""),
+                       run_words=_plan_step_words(job, row.get("device", "")))
+        elif job and job.get("page"):
             # A job a page that is no device's started (board R's 0(a)): its row opens that
             # page, which reopens the job.
             rest.append(dict(op, page_url=job["page"], job=job["job"], net=job["list"],
@@ -268,8 +283,11 @@ def running_row(row: dict, viewer: str) -> dict:
                 "since": _clock(row.get("started", "")), "card": bool(row.get("job")),
                 "page": True, "stalled": bool(row.get("stalled")),
                 # A console run opens its own page, its live stepper (its device may have no
-                # page yet); every other hold, its device's page, which reopens its card.
-                "run": bool(_console_steps(row.get("operation", "")))}
+                # page yet); an approved plan's, the run's home (its incident's card,
+                # `plan_engine.run_page`); every other hold, its device's page, which reopens
+                # its card.
+                "run": bool(_console_steps(row.get("operation", ""))),
+                "href": row.get("plan_href") or ""}
     return {"device": row.get("device", ""), "list": "",
             "name": (row.get("operation") or "an operation")[:1].upper()
                     + (row.get("operation") or "an operation")[1:],
@@ -459,9 +477,13 @@ def chip(networks, viewer: str, now: float = None) -> dict:
     from modules.heal import run_card
     finished = [f for f in finished if not (f.get("run") and run_card.opened(f["run"], viewer))]
     have = {f["run"] for f in finished if f.get("run")}
+    # One run, one row: a step's record whose home a kept job's row already opens (an
+    # incident's approved plan, both its incident's card) is that job's row, not a second.
+    homes = {f["href"] for f in finished if f.get("href")}
     for name in networks:
         try:
-            finished += run_card.finished_records(name, viewer, now, have)
+            finished += [f for f in run_card.finished_records(name, viewer, now, have)
+                         if not (f.get("href") and f["href"] in homes)]
         except Exception as exc:                      # noqa: BLE001
             unread.append((name, f"its finished runs: {type(exc).__name__}: {exc}"))
     counts = {k: sum(1 for f in finished if f["outcome"] == k) for k in OUTCOMES.values()}
@@ -512,6 +534,9 @@ def _held_words(holder: dict, viewer: str, job: dict = None) -> dict:
     who = (_row_who(job, viewer) if card in HEAL_RUNS
            else _who(holder.get("actor", ""), viewer))
     return {"name": name, "since": started, "by": who,
+            # Where Open the run goes: a job a page started (an approved plan's run, its
+            # incident's card, `plan_engine.run_page`) opens that page; else its device's.
+            "page": (job or {}).get("page") or "",
             "words": f"{name} running since {_clock(started)}, by {who}",
             # A greyed menu item's reason, on hover and for a reader: short (the operator,
             # 2026-11-11: "menus hold items and short reasons, never paragraphs").
@@ -534,8 +559,46 @@ def held_action(list_name: str, hostname: str, viewer: str = ""):
     if not holder:
         return None
     job = capture_job.for_device(list_name, hostname)
-    job = job if job and job["state"] == "running" else None
+    job = job if job and job["state"] == "running" else _plan_job(list_name, hostname)
     return _held_words(holder, viewer, job)
+
+
+def _plan_job(network: str, device: str, plans: dict = None):
+    """The running approved plan's job whose step acts on *device* (`plan_engine.jobs_by_device`,
+    *plans* when the caller has read it), or None: a plan's job is a page's, so its device's
+    hold is joined to it by its run's record, never by a device on the job."""
+    return (_plans_of(network) if plans is None else plans).get(device)
+
+
+def _plan_step_words(job: dict, device: str) -> str:
+    """A running approved plan's step as its incident's card says it (`progress.plan_lines`'s
+    running line, without its number), or ``""`` (the hold's own words stand)."""
+    from modules import op_progress
+    from modules import plan_engine as PE
+    from modules.fixit import progress
+
+    try:
+        rid = PE.run_of_job(job["job"])
+        rec = PE.record_of(job["list"], rid) if rid else None
+        if not rec:
+            return ""
+        steps = progress.plan_lines(job["list"], rec, device, op_progress.run_of(job["job"]))
+    except Exception:                                 # noqa: BLE001 (the hold's words stand)
+        log.warning("in_flight: a plan's step could not be read", exc_info=True)
+        return ""
+    now = next((s for s in steps if s["state"] == "running"), None)
+    return re.sub(r"^\d+\. ", "", now["words"]) if now else ""
+
+
+def _plans_of(network: str) -> dict:
+    """`plan_engine.jobs_by_device` for *network*, or ``{}`` when its records cannot be read
+    (each hold then drawn as its own, as before)."""
+    from modules import plan_engine
+    try:
+        return plan_engine.jobs_by_device(network)
+    except Exception:                                 # noqa: BLE001 (drawn as the hold's own)
+        log.warning("in_flight: %s's running plans could not be read", network, exc_info=True)
+        return {}
 
 
 def _row_networks(row: dict, device: str) -> list:
@@ -575,10 +638,13 @@ def mark_held(rows: list, viewer: str = "") -> list:
             log.warning("in_flight: %s's holds could not be read for Needs attention: %s",
                         network, exc)
             continue
+        plans = None
         for r, device in pairs:
             if device in holds:
                 job = capture_job.for_device(network, device)
-                job = job if job and job["state"] == "running" else None
+                if not (job and job["state"] == "running"):
+                    plans = _plans_of(network) if plans is None else plans
+                    job = _plan_job(network, device, plans)
                 r["held"] = dict(_held_words(holds[device], viewer, job), device=device,
                                  list=network)
     return rows

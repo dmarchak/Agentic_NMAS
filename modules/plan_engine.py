@@ -1562,10 +1562,20 @@ PLANS = {p.key: p for p in (
     # the AI (or Mercury's diagnosis) proposed, each step held to its incident's scope and the
     # heal guards at its own preview (`fixit.plan.step_preview`).
     Plan(INCIDENT_FIX, "Fix an incident: the steps its proposal names, in order",
-         (INCIDENT, PROPOSAL, FIX_STEPS), _fix_steps,
-         lambda p: (f"Fix {p['incident']}: {len(p['steps'])} step"
-                    f"{'s' if len(p['steps']) != 1 else ''}")),
+         (INCIDENT, PROPOSAL, FIX_STEPS), _fix_steps, lambda p: _fix_title(p)),
 )}
+
+
+def _fix_title(p: dict) -> str:
+    """An incident plan's title by the devices it acts on, never by the incident's id (the
+    operator, 2026-11-16: "No IDs as titles"): "Fix r7's incident: 1 step"."""
+    devices = list(dict.fromkeys(str((s.get("params") or {}).get("device") or "")
+                                 for s in p["steps"] if isinstance(s, dict)))
+    devices = [d for d in devices if d]
+    on = (f"{devices[0]}'s incident" if len(devices) == 1 else
+          f"the incident on {', '.join(devices)}" if devices else "the incident")
+    n = len(p["steps"])
+    return f"Fix {on}: {n} step{'s' if n != 1 else ''}"
 
 
 def checked(plan, params) -> tuple:
@@ -1779,6 +1789,10 @@ def run(network: str, plan, params, confirmed: str, *, actor: str, actor_verifie
            "finished_at": None, "state": "running", "outcome": "running", "hash": "",
            "command": f"plan {str(plan)[:64]}", "config_change": False, "plan_steps": [],
            "steps": []}
+    # An incident's plan names its incident, so every link to the run opens the incident's
+    # card (`run_page`), its record read back by History and the In progress chip.
+    if plan == INCIDENT_FIX and isinstance(params, dict) and params.get("incident"):
+        rec["incident"] = str(params["incident"])[:64]
 
     def step(name, result, words, **more):
         rec["steps"].append(dict({"step": name, "result": result, "words": words,
@@ -1909,16 +1923,17 @@ def start(network: str, plan, params, confirmed: str, *, actor: str, actor_verif
                             f"{confirmed or 'no hash'}, and the plan previewed now is "
                             f"{p['hash']}. Nothing ran; preview it again")}
     run_id = run_id or reads.new_id()
-    # Listed under In progress, its card reopenable at its own address (capture_job's *page*).
-    from urllib.parse import quote
-    page = (f"/v2/plans/preview?list={quote(network)}&plan={quote(str(plan))}&run={run_id}"
-            "&job={job}")
+    # Listed under In progress, its card reopenable at its own address (capture_job's *page*):
+    # an incident's plan its incident's card, any other its own page (`run_page`).
+    page = run_page(network, plan, params, run_id)
     # What the job's end announces: the record, and what each of its steps' own operations
     # announce (`StepKind.announces`).
     keys = tuple(dict.fromkeys(("privileged",) + tuple(
         k for s in p["steps"] for k in STEP_KINDS[s["kind"]].announces)))
 
     def work(_job_id):
+        with _lock:
+            _JOB_RUNS[_job_id] = (network, run_id)
         rec = run(network, plan, params, confirmed, actor=actor, actor_verified=actor_verified,
                   person=person, reason=reason, run_id=run_id)
         return payload_of(rec)
@@ -1949,6 +1964,61 @@ def record_of(network: str, run_id: str):
     except (ValueError, OSError):
         return None
     return rec if isinstance(rec, dict) and rec.get("key") == KEY else None
+
+
+#: A running plan job's id -> (its network, its run's record id): the run a chip row, a held
+#: device or an incident's card names, in this process's memory as the jobs are. Set as the
+#: job's work begins (`start`), read only while `capture_job` still holds the job.
+_JOB_RUNS: dict = {}
+_lock = threading.Lock()
+
+
+def run_page(network: str, plan, params, run_id: str) -> str:
+    """Where a plan's run is opened, while it runs and for its result (the operator,
+    2026-11-16: "One home: the run's home is its incident card, with the run's stepper"): an
+    incident's plan its incident's card, at the stepper (``#inc-run``); any other plan its own
+    page (``{job}`` standing for its job's id, `capture_job.start`'s *page*). The one place it
+    is built."""
+    from urllib.parse import quote
+
+    incident = (params or {}).get("incident") if isinstance(params, dict) else None
+    if plan == INCIDENT_FIX and incident:
+        return f"/v2/incident/{quote(str(incident))}?list={quote(network)}#inc-run"
+    return (f"/v2/plans/preview?list={quote(network)}&plan={quote(str(plan))}&run={run_id}"
+            "&job={job}")
+
+
+def run_of_job(job_id: str) -> str:
+    """The run record id of plan job *job_id*, or ``""`` (not a plan's job, or not held)."""
+    from modules.nsot import capture_job
+
+    with _lock:
+        for gone in [j for j in _JOB_RUNS if capture_job.get(j) is None]:
+            _JOB_RUNS.pop(gone, None)
+        return (_JOB_RUNS.get(job_id) or ("", ""))[1]
+
+
+def jobs_by_device(network: str) -> dict:
+    """Each device a running plan job of *network* acts on now (the step running, else the
+    first not yet run) -> that job's row (`capture_job.card_jobs`), with its ``run``: what
+    joins a held device to the plan's run, so the device's banner, header and In progress row
+    open the run's home (`run_page`), never a second copy of it. One record read per running
+    plan job; none when none runs."""
+    from modules.nsot import capture_job
+
+    out = {}
+    for job in capture_job.card_jobs():
+        if job["state"] != "running" or job["kind"] != JOB_KIND or job["list"] != network:
+            continue
+        rid = run_of_job(job["job"])
+        rec = record_of(network, rid) if rid else None
+        steps = (rec or {}).get("plan_steps") or []
+        now = next((s for s in steps if s.get("state") == "running"),
+                   next((s for s in steps if s.get("state") == "not_run"), None))
+        device = str(((now or {}).get("params") or {}).get("device") or "")
+        if device:
+            out.setdefault(device, dict(job, run=rid))
+    return out
 
 
 # ── Command plans as steps (C3757, path 2: "One execution path: G7's recovery becomes the

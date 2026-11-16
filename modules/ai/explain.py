@@ -820,6 +820,32 @@ def normalised(answer, sent: dict, topology_ids=()):
     return answer.model_copy(update=update), written
 
 
+#: The marks a caller keeps for a MISSING citation, beside the citations it keeps for a bad one
+#: (`check`'s *unverified*; AI troubleshooting's, the operator, 2026-11-16: "a hypothesis (or
+#: any claim) with a bad or missing citation is kept marked unverified"): `UNCITED` for a part
+#: citing nothing, `uncited_mark` of a device the answer names without citing it. Neither is a
+#: reference any pack holds (each is parenthesised), so neither resolves to anything.
+UNCITED = "(nothing cited)"
+UNCITED_DEVICE = "(no citation of {})"
+
+
+def uncited_mark(name: str) -> str:
+    """The mark of the device *name* named in an answer and cited nowhere in it."""
+    return UNCITED_DEVICE.format(name)
+
+
+def is_mark(ref) -> bool:
+    """Whether *ref* is one of the marks for a missing citation (`UNCITED`, `uncited_mark`)."""
+    text = str(ref or "")
+    return text == UNCITED or (text.startswith("(no citation of ") and text.endswith(")"))
+
+
+def marked_device(ref) -> str:
+    """The device an `uncited_mark` names, or ``""``."""
+    text = str(ref or "")
+    return text[len("(no citation of "):-1] if is_mark(text) and text != UNCITED else ""
+
+
 def _uncited_words(names: list) -> str:
     said = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
     return (f"the answer names {said} but cites nothing of {'it' if len(names) == 1 else 'them'}"
@@ -839,7 +865,9 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
     holds no hypothesis and cites at least one piece it checked. *unverified* are citations
     the caller keeps marked instead of refusing the answer for them (AI troubleshooting's,
     the operator, 2026-11-15: "never discard a whole answer for a bad citation"): one is not
-    a reason here; every other caller passes none."""
+    a reason here; every other caller passes none. A missing citation is no reason either when
+    the caller keeps it marked: `UNCITED` in *unverified* for a hypothesis citing nothing, and
+    `uncited_mark` of each device named and cited nowhere (2026-11-16)."""
     unverified = set(unverified or ())
     from modules import evidence_pack as EP
     from modules import readonly_commands as R
@@ -871,14 +899,15 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
             return f"the evidence checked cites {ref[:40]!r}, which was not read ({state})"
     own = pack.get("device") or ""
     if outcome == "no_fault_found":
-        uncited = uncited_devices(answer, sent, names, own, added)
+        uncited = [n for n in uncited_devices(answer, sent, names, own, added)
+                   if uncited_mark(n) not in unverified]
         return _uncited_words(uncited) if uncited else ""
     if not answer.hypotheses and not answer.needs_human:
         return "the answer holds no hypothesis and does not ask for a person"
     if len(answer.hypotheses) > MAX_HYPOTHESES:
         return f"{len(answer.hypotheses)} hypotheses; at most {MAX_HYPOTHESES} are taken"
     for i, h in enumerate(answer.hypotheses, 1):
-        if not h.evidence_refs:
+        if not h.evidence_refs and UNCITED not in unverified:
             return f"hypothesis {i} cites nothing in the pack"
         for ref in h.evidence_refs:
             if EP.resolve(sent, ref) is None and ref not in known and ref not in unverified:
@@ -888,7 +917,8 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
         refused = R.refusal(h.confirm_with)
         if refused:
             return f"hypothesis {i}'s confirming read is not a read Mercury allows: {refused}"
-    uncited = uncited_devices(answer, sent, names, own, added)
+    uncited = [n for n in uncited_devices(answer, sent, names, own, added)
+               if uncited_mark(n) not in unverified]
     return _uncited_words(uncited) if uncited else ""
 
 

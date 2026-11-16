@@ -159,6 +159,30 @@ def say(words: str, done: str = "") -> bool:
         return False
 
 
+def last_done() -> str:
+    """The running investigation's current step's done words (`say`'s *done*), or ``""``: what
+    a step said once it knew more (`amend`)."""
+    from modules import op_progress
+
+    job = op_progress.current()
+    where = _job_incident.get(job) if job else None
+    t = _trails.get(where) if where else None
+    return (t["steps"][-1].get("done") or "") if t and t["job"] == job and t["steps"] else ""
+
+
+def amend(done: str) -> None:
+    """The running investigation's current step's done words replaced by *done*, once what it
+    found is known (the operator, 2026-11-16: "The AI's first look: it asked to check 4
+    things"); nothing outside an investigation's job."""
+    from modules import op_progress
+
+    job = op_progress.current()
+    where = _job_incident.get(job) if job else None
+    t = _trails.get(where) if where else None
+    if t and t["job"] == job and t["steps"]:
+        t["steps"][-1]["done"] = " ".join(str(done or "").split())[:SHOWN_CHARS]
+
+
 def shown(network: str, incident_id: str) -> str:
     """The step *incident_id*'s investigation shows now (`say`), or ``""`` when none is kept or
     its job no longer runs."""

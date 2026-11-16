@@ -86,7 +86,7 @@
   {%- set rid = cid ~ '-readd-' ~ x.sub %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }}'s receiver for {{ x.sub }} is removed.</strong> A re-subscribe removed it and it has not been added back, so subscription {{ x.sub }} sends nothing until it is. Re-add the receiver adds intent's receiver line back, holding {{ c.host }}, then checks the stream as a re-subscribe does.</p></div>
   {%- if x.hash and c.held %}
-  <p class="small" data-held="{{ c.host }}">Re-add the receiver is not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by | people }}{% endif %}. <a href="{{ run_href(c.host, c.list) }}">Open the run</a></p>
+  <p class="small" data-held="{{ c.host }}">Re-add the receiver is not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by | people }}{% endif %}. <a href="{{ run_href(c.host, c.list, page=c.held.page or none) }}">Open the run</a></p>
   {%- elif x.hash %}
   {#- The one confirm pattern: the button carries the hash its route binds the confirm to
       (the re-add's own, its whole program). -#}
@@ -171,7 +171,7 @@
   {%- if p.ok and c.held %}
   {#- Another run holds the device (the operator, 2026-11-11): the confirm is not offered, and
       says which run, since when and by whom, with a link to it. -#}
-  <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by | people }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ run_href(c.host, c.list) }}">Open the run</a></div>
+  <div class="att-action"><span class="att-held muted" role="status" data-held="{{ c.host }}" title="{{ c.held.words }}">Not offered while {{ c.host }} is held: {% if c.held.unread %}{{ c.held.words }}{% else %}{{ c.held.name }} running since {{ clock(c.held.since) }}, by {{ c.held.by | people }}{% endif %}. One operation per device at a time.</span><a class="btn btn-small btn-outline" href="{{ run_href(c.host, c.list, page=c.held.page or none) }}">Open the run</a></div>
   {%- elif p.ok and p.close %}
   {#- The collector step's confirm (C3078): bound to the selection's hash, which holds the
       session the dry run named; the session's device end goes with it from the form. -#}

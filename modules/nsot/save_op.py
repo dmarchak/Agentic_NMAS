@@ -438,10 +438,35 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
     ok = bool(rows) and good == len(rows)
     log.info("save: %s saved and recorded %d of %d in %s (commit %s)", actor, good, len(rows),
              list_name, commit or "none")
+    if save.get("baseline"):
+        _reread_baselines(list_name, save.get("baseline"))
     return {"ok": ok, "state": "done" if ok else ("partial" if good else "failed"), "plan": p,
             "outcomes": rows, "commit": commit, "fleet": p["fleet"],
             "save": {k: save[k] for k in ("ok", "error", "baseline", "baseline_denied", "tags",
                                           "decision_only") if k in save}}
+
+
+def _reread_baselines(list_name: str, tag) -> None:
+    """A Save All that earned a baseline asks the baseline-usability reader to run now, through
+    its own run path, so "No stored baseline can be re-applied" clears with the save (C3835: the
+    announcement's wake did not run after a Save All at 05:22 UTC on 2026-11-16, and the row
+    stood until the reader's next scheduled run, 5 minutes on). Never raises: the reader's own
+    schedule still holds, and a refusal is logged with the reader's words."""
+    from modules import reader_job
+
+    try:
+        reader = next((r for r in reader_job.readers() if r.name == "baseline-usability"), None)
+        if reader is None or not reader_job.running(reader.name):
+            log.warning("save: %s earned %s, and the baseline-usability reader does not run in "
+                        "this process; its schedule reads it", list_name, tag)
+            return
+        got = reader_job.request_run(reader, "save", kind="after_operation",
+                                     announce=reader_job.announce_via_page)
+        log.info("save: %s earned %s; the baseline-usability reader %s", list_name, tag,
+                 "runs now" if got.get("started") else "was already running")
+    except Exception as exc:                          # noqa: BLE001 (its schedule holds)
+        log.warning("save: %s earned %s, and the baseline-usability reader was not asked "
+                    "(%s: %s); its schedule reads it", list_name, tag, type(exc).__name__, exc)
 
 
 def start(list_name: str, hostnames: list, actor: str, confirmed_hash: str) -> dict:

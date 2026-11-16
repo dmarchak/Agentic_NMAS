@@ -19,7 +19,8 @@ name of each person the record names replaced by that person's label, word by wo
 **Masked, then by kind.** Every text is masked (`redact.redact_payload`, by value and by
 position). No configuration line is a part: an attempt says its operation, its parameters (a
 device's name and subscription ids, which the catalog holds to their shapes), its outcome and
-its run's own words. What leaves the host is the gateway's, which masks every byte again
+its run's own words; a failed attempt's steps, in order, are sent too (`run_steps`: each
+step's name, result, words and reads' line, from its run record, capped). What leaves the host is the gateway's, which masks every byte again
 (`redact.egress_payload`); this module sends nothing, calls no model and starts nothing.
 
 A part names each attempt as the incident's record derives it (`incident.attempts`), so what
@@ -115,11 +116,114 @@ def catalogue_part(incident=None, condition: str = "") -> list:
     return out
 
 
+#: A failed attempt's own steps as a call is sent them (the operator, 2026-11-16: "a failed
+#: run's own step results ... are part of the evidence"): the newest `RUN_STEPS_ATTEMPTS`
+#: failed attempts that have a run record, each part at most `RUN_STEPS_CHARS` characters as
+#: JSON (its earliest passing steps left out first, counted), at most `RUN_STEPS_MOST` steps,
+#: each step's words cut at `RUN_STEP_WORDS` and its reads' line (`reads.reads_words`) at
+#: `RUN_STEP_READS_WORDS`. Worst case about 4,500 characters in the pack; a re-subscribe's run
+#: is about eight steps.
+RUN_STEPS_ATTEMPTS = 3
+RUN_STEPS_CHARS = 1500
+RUN_STEPS_MOST = 16
+RUN_STEP_WORDS = 200
+RUN_STEP_READS_WORDS = 160
+#: A step's results that passed, the first left out when a part is over its size.
+STEP_PASSED = ("ok", "pass", "passed", "done", "skipped")
+
+
+def _cut(text, most: int) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= most else text[:most - 1] + "…"
+
+
+def _record_steps(rec: dict, actors=()) -> list:
+    """*rec*'s steps in order, each ``{"step", "result", "words", "at"}`` and its reads in one
+    line (``reads``) when it made any: a plan engine run's are its plan's steps (each its
+    state and what it said), every other run's its own ``steps`` (`resubscribe`, the command
+    plan run, the catalogue's others)."""
+    from modules import plan_engine as PE
+    from modules.nsot import reads
+
+    out = []
+    if rec.get("key") == PE.KEY:
+        for st in rec.get("plan_steps") or []:
+            if isinstance(st, dict):
+                out.append({"step": _cut(f"step {st.get('n')}: "
+                                         f"{st.get('words') or st.get('kind') or ''}", 120),
+                            "result": str(st.get("state") or ""),
+                            "words": _cut(unnamed(st.get("words_said") or st.get("outcome")
+                                                  or "", actors), RUN_STEP_WORDS), "at": ""})
+        return out
+    for s in rec.get("steps") or []:
+        if not isinstance(s, dict):
+            continue
+        step = {"step": _cut(s.get("step"), 60), "result": str(s.get("result") or ""),
+                "words": _cut(unnamed(s.get("words") or "", actors), RUN_STEP_WORDS),
+                "at": str(s.get("at") or "")}
+        said = reads.reads_words(s)
+        if said:
+            step["reads"] = _cut(said, RUN_STEP_READS_WORDS)
+        out.append(step)
+    return out
+
+
+def _within(part: dict) -> dict:
+    """*part* held to `RUN_STEPS_CHARS`: its earliest passing steps left out first, then its
+    earliest of any result (its last, the one that failed, always kept), each counted in
+    ``omitted``."""
+    import json
+
+    steps = part["steps"]
+    if len(steps) > RUN_STEPS_MOST:
+        part["omitted"] += len(steps) - RUN_STEPS_MOST
+        del steps[:len(steps) - RUN_STEPS_MOST]
+    while len(steps) > 1 and len(json.dumps(part, ensure_ascii=False)) > RUN_STEPS_CHARS:
+        i = next((k for k, s in enumerate(steps[:-1]) if s["result"] in STEP_PASSED), 0)
+        del steps[i]
+        part["omitted"] += 1
+    return part
+
+
+def run_steps(incident, attempts: list, actors=()) -> dict:
+    """``{"parts", "unread", "left_out"}``: each failed attempt's own steps from its run record
+    (`privileged.get`, read without creating the list's folder), the newest
+    `RUN_STEPS_ATTEMPTS` of them, ``parts`` keyed ``run_steps:<n>`` by the attempt's number,
+    each ``{"attempt", "run", "operation", "outcome", "steps", "omitted"}`` (`_within`);
+    *unread* the attempts whose record could not be read, in words; *left_out* the older
+    failed attempts not sent. Every person a stable label (`unnamed`); masked by the caller."""
+    from modules.config import list_data_path
+    from modules.nsot import privileged
+
+    failed = [a for a in attempts if not a.get("passed") and a.get("run")]
+    chosen, parts, unread = failed[-RUN_STEPS_ATTEMPTS:], {}, []
+    for a in chosen:
+        try:
+            rec = privileged.get(incident.network, a["run"],
+                                 data_dir=list_data_path(incident.network))
+        except (OSError, ValueError) as exc:
+            unread.append(f"attempt:{a['n']}'s run record could not be read "
+                          f"({type(exc).__name__})")
+            continue
+        if not isinstance(rec, dict):
+            unread.append(f"attempt:{a['n']}'s run record {a['run']} is not held")
+            continue
+        parts[f"run_steps:{a['n']}"] = _within({
+            "attempt": f"attempt:{a['n']}", "run": a["run"], "operation": a["operation"],
+            "outcome": a.get("outcome") or "", "steps": _record_steps(rec, actors),
+            "omitted": 0})
+    return {"parts": parts, "unread": unread, "left_out": len(failed) - len(chosen)}
+
+
 def tried_parts(incident, resolved: float = None, *, now: float = None) -> dict:
-    """``{"state": "ok"|"incomplete", "parts", "error"}``: *incident*'s attempts as a call
-    would be sent them, ``parts`` keyed ``tried:<n>``, each ``{"operation", "operation_words",
-    "params", "outcome", "passed", "words", "approved_by", "verified", "proposed_by", "at"}``,
-    every person a stable label. *incomplete* says what could not be read (`incident.attempts`)."""
+    """``{"state": "ok"|"incomplete", "parts", "error", "run_steps", "newest_failed"}``:
+    *incident*'s attempts as a call would be sent them, ``parts`` keyed ``tried:<n>``, each
+    ``{"operation", "operation_words", "params", "outcome", "passed", "words", "approved_by",
+    "verified", "proposed_by", "at"}``, every person a stable label. *incomplete* says what
+    could not be read (`incident.attempts`). *run_steps* is each failed attempt's own steps
+    (`run_steps`, masked); *newest_failed* the newest attempt when it failed (``{"n", "run",
+    "operation", "started_at"}``, the start epoch seconds), else None: what a re-investigation
+    after a failed run reads the state after (`fixit_troubleshoot.after_run_section`)."""
     from modules import display_names
     from modules.fixit import incident as F
     from modules.heal import catalog
@@ -137,8 +241,14 @@ def tried_parts(incident, resolved: float = None, *, now: float = None) -> dict:
             "approved_by": display_names.label(a["actor"]) if a["actor"] else "",
             "verified": a["actor_verified"],
             "proposed_by": SOURCE_WORDS.get(a["source"], a["source"]), "at": a["at"]}
+    steps = run_steps(incident, got["attempts"], actors)
+    last = got["attempts"][-1] if got["attempts"] else None
+    newest = ({"n": last["n"], "run": last["run"], "operation": last["operation"],
+               "started_at": last["started_at"]} if last and not last["passed"] else None)
     return {"state": got["state"], "parts": redact_payload(parts),
-            "error": unnamed(got["error"], actors)}
+            "error": unnamed(got["error"], actors),
+            "run_steps": dict(steps, parts=redact_payload(steps["parts"])),
+            "newest_failed": newest}
 
 
 def pack(incident, resolved: float = None, *, now: float = None) -> dict:

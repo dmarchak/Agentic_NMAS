@@ -10,7 +10,7 @@
 {%- if ip.shown %}
 {%- set c = ip.counts %}
 <details class="ip menu-wrap" data-keep="in-progress">
-  <summary class="ip-chip ip-{{ ip.level }}" aria-haspopup="dialog" aria-label="In progress: {{ ip.words }}" title="In progress: {{ ip.words }}">
+  <summary class="ip-chip ip-{{ ip.level }}" data-draws-state aria-haspopup="dialog" aria-label="In progress: {{ ip.words }}" title="In progress: {{ ip.words }}">
     {#- Each part its mark, count and word; at phone width only the part that leads (the
         chip's own level: red, then amber, then running, then green) is drawn, the rest in
         the list and the chip's label. -#}

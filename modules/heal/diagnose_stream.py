@@ -390,8 +390,9 @@ def _hex_ip(text: str):
 
 def sockets(proc: str = "/proc") -> tuple:
     """``(rows, why)``: every TCP socket of both families, ``{"local", "lport", "remote",
-    "rport", "state", "family"}`` (*family* the table's: 6 for a dual-stack socket even when
-    its addresses are IPv4), or ``([], why)`` when a table cannot be read."""
+    "rport", "state", "family", "uid"}`` (*family* the table's: 6 for a dual-stack socket even
+    when its addresses are IPv4; *uid* the socket's owner, the table's eighth column, None when
+    the line lacks it), or ``([], why)`` when a table cannot be read."""
     rows = []
     for name, family in (("tcp", 4), ("tcp6", 6)):
         path = os.path.join(proc, "net", name)
@@ -408,7 +409,8 @@ def sockets(proc: str = "/proc") -> tuple:
                 (la, lp), (ra, rp) = w[1].rsplit(":", 1), w[2].rsplit(":", 1)
                 rows.append({"local": _hex_ip(la), "lport": int(lp, 16),
                              "remote": _hex_ip(ra), "rport": int(rp, 16),
-                             "state": TCP_STATES.get(w[3].upper(), w[3]), "family": family})
+                             "state": TCP_STATES.get(w[3].upper(), w[3]), "family": family,
+                             "uid": int(w[7]) if len(w) > 7 and w[7].isdigit() else None})
             except ValueError:
                 return [], f"{path} holds a line this reader cannot read"
     return rows, ""
@@ -457,7 +459,11 @@ def _v6only(proc: str) -> bool:
 SS_COMMAND = ("ss", "-tni", "state", "established")
 _SS_SESSION = re.compile(r"^\s*\d+\s+\d+\s+(?P<local>\S+):(?P<lport>\d+)\s+"
                          r"(?P<remote>\S+):(?P<rport>\d+)\s*$")
-_SS_FIELD = re.compile(r"\b(bytes_received|lastrcv):(\d+)\b")
+#: Since 2026-11-16 the sent side too (``bytes_sent``, ``lastsnd``: what the collector sent the
+#: device, and when; `ss` prints ``bytes_sent`` only when it is not zero, so its absence from a
+#: detail line that was read is said as not printed, never as a count).
+_SS_FIELD = re.compile(r"\b(bytes_received|bytes_sent|lastrcv|lastsnd):(\d+)\b")
+_SS_NAMES = {"lastrcv": "lastrcv_ms", "lastsnd": "lastsnd_ms"}
 #: `ss` answered in well under a second on the development laptop (2026-11-10); a local read
 #: of the kernel's tables, bounded at 5 s so a hung one is named, never waited on.
 SS_TIMEOUT_S = 5
@@ -471,9 +477,9 @@ def _ss_address(text: str):
 
 def parse_ss(text: str) -> tuple:
     """``(rows, why)``: each established session `ss -tni` printed, ``{"local", "lport",
-    "remote", "rport", "bytes_received", "lastrcv_ms"}`` (an IPv4-mapped IPv6 address read as
-    its IPv4 address; a field the detail line lacks is None), or ``([], why)`` when the answer
-    holds no heading `ss` prints."""
+    "remote", "rport", "bytes_received", "lastrcv_ms", "bytes_sent", "lastsnd_ms"}`` (an
+    IPv4-mapped IPv6 address read as its IPv4 address; a field the detail line lacks is None),
+    or ``([], why)`` when the answer holds no heading `ss` prints."""
     lines = (text or "").splitlines()
     if not lines or not lines[0].startswith("Recv-Q"):
         return [], "the answer is not `ss`'s table (no Recv-Q heading)"
@@ -486,13 +492,14 @@ def parse_ss(text: str) -> tuple:
                              "lport": int(m.group("lport")),
                              "remote": _ss_address(m.group("remote")),
                              "rport": int(m.group("rport")),
-                             "bytes_received": None, "lastrcv_ms": None})
+                             "bytes_received": None, "lastrcv_ms": None,
+                             "bytes_sent": None, "lastsnd_ms": None})
             except ValueError:
                 return [], f"`ss` printed a session this reader cannot read: {line.strip()!r}"
             continue
         if rows and line[:1].isspace():
             for name, value in _SS_FIELD.findall(line):
-                rows[-1]["lastrcv_ms" if name == "lastrcv" else name] = int(value)
+                rows[-1][_SS_NAMES.get(name, name)] = int(value)
     return rows, ""
 
 
@@ -559,10 +566,7 @@ def read_collector(address: str, port: int, sources, proc: str = "/proc", ss=Non
             continue
         local = r["local"]
         if r["state"] == LISTEN:
-            takes = (local == want or (local.is_unspecified and local.version == want.version)
-                     or (local.is_unspecified and local.version == 6 and want.version == 4
-                         and not v6only))
-            if takes:
+            if _takes(local, want, v6only):
                 base["listening"].append(f"[{local}]:{port}" if local.version == 6
                                          else f"{local}:{port}")
             continue
@@ -589,8 +593,154 @@ def read_collector(address: str, port: int, sources, proc: str = "/proc", ss=Non
                 x = seen.get((s["remote"], s["rport"])) or {}
                 s["bytes_received"] = x.get("bytes_received")
                 s["lastrcv_ms"] = x.get("lastrcv_ms")
+                # The sent side (2026-11-16): what the collector sent the device, and when.
+                s["bytes_sent"] = x.get("bytes_sent")
+                s["lastsnd_ms"] = x.get("lastsnd_ms")
             base["activity"] = "read"
     return dict(base, state="read", why="")
+
+
+def _takes(local, want, v6only: bool) -> bool:
+    """Whether a listener bound to *local* takes connections to *want*: bound to it, a
+    wildcard of its family, or IPv6's wildcard taking IPv4 unless bindv6only."""
+    return (local == want or (local.is_unspecified and local.version == want.version)
+            or (local.is_unspecified and local.version == 6 and want.version == 4
+                and not v6only))
+
+
+# ── The collector's own log (2026-11-16) ─────────────────────────────────────────────────────
+#
+# The operator, 2026-11-16: a re-investigation after a failed run is sent "Telegraf's own log
+# lines for the collector since the run started", the unit "named from the collector settings,
+# never typed". No setting names the collector's unit (the receiver is intent's address and
+# port, `receiver_of`), so the unit is MEASURED: the listener on the receiver's port is owned
+# by one user (/proc/net/tcp's uid column); the systemd service whose processes run as that
+# user (each process's /proc/<pid>/status and /proc/<pid>/cgroup, both readable by any user)
+# is the collector's, when exactly one does. A listener owned by root or by Mercury's own user
+# names no one unit (many run as those), and one in no service (a container's scope) names
+# none: each is said, and nothing is read.
+
+#: A systemd service's name, as one argument to journalctl (never a shell).
+_UNIT = re.compile(r"^[A-Za-z0-9@._:\\-]{1,120}\.service$")
+#: `journalctl -u <unit> --since @<t> -n 40` answered in 0.17 s cold on the development laptop
+#: (2026-11-16); a local read, bounded at 5 s as `ss` is, so a hung one is named, never waited
+#: on. The host's journal is larger and not measured.
+JOURNAL_TIMEOUT_S = 5
+#: The collector's log lines a part holds at most (the newest), each cut at
+#: `JOURNAL_LINE_CHARS`: about 1,900 characters at most.
+JOURNAL_LINES = 12
+JOURNAL_LINE_CHARS = 160
+#: The most lines asked of the journal (its newest since the run started): a chatty collector
+#: is read to a bound, its total then said as at least this.
+JOURNAL_READ = 200
+
+
+def collector_unit(address: str, port: int, proc: str = "/proc") -> dict:
+    """The systemd service the collector at *address* port *port* runs as: ``{"unit", "why",
+    "uid"}``, *unit* ``""`` with *why* when it cannot be told (the section's comment: measured
+    from the listener's owner, never typed). Reads /proc only; nothing is written."""
+    try:
+        want = ipaddress.ip_address(address)
+    except ValueError:
+        return {"unit": "", "uid": None, "why": f"{address!r} is not one IPv4 or IPv6 address"}
+    rows, why = sockets(proc)
+    if why:
+        return {"unit": "", "uid": None, "why": why}
+    v6only = _v6only(proc)
+    uids = {r["uid"] for r in rows if r["state"] == LISTEN and r["lport"] == int(port)
+            and _takes(r["local"], want, v6only)}
+    if not uids:
+        return {"unit": "", "uid": None,
+                "why": f"nothing listens on port {port} for {want} on Mercury's host"}
+    if len(uids) != 1 or None in uids:
+        return {"unit": "", "uid": None, "why": f"the listeners on port {port} are owned by "
+                                                f"{len(uids)} users, so no one unit is the "
+                                                "collector's"}
+    uid = uids.pop()
+    if uid == 0 or uid == os.getuid():
+        owner = "root" if uid == 0 else "Mercury's own user"
+        return {"unit": "", "uid": uid, "why": (
+            f"the listener on port {port} is owned by {owner}, which many units run as, so "
+            "the collector's unit cannot be told")}
+    units = set()
+    try:
+        pids = [p for p in os.listdir(proc) if p.isdigit()]
+    except OSError as exc:
+        return {"unit": "", "uid": uid, "why": f"{proc} could not be listed "
+                                               f"({type(exc).__name__})"}
+    for pid in pids:
+        try:
+            with open(os.path.join(proc, pid, "status"), encoding="ascii",
+                      errors="replace") as fh:
+                real = next((ln.split()[1] for ln in fh if ln.startswith("Uid:")), "")
+            if real != str(uid):
+                continue
+            with open(os.path.join(proc, pid, "cgroup"), encoding="ascii",
+                      errors="replace") as fh:
+                for ln in fh:
+                    last = ln.strip().rsplit("/", 1)[-1]
+                    if last.endswith(".service"):
+                        units.add(last)
+        except (OSError, IndexError):
+            continue                    # a process that ended while it was read
+    if len(units) != 1:
+        return {"unit": "", "uid": uid, "why": (
+            f"the listener's owner (uid {uid}) runs in {len(units)} systemd services"
+            + (" (a container's scope, or no service)" if not units else
+               f" ({', '.join(sorted(units)[:3])})") + ", so no one unit is the collector's")}
+    unit = units.pop()
+    if not _UNIT.match(unit):
+        return {"unit": "", "uid": uid, "why": f"the unit {unit[:60]!r} is not one service name"}
+    return {"unit": unit, "uid": uid, "why": ""}
+
+
+def collector_journal(unit: str, since: float, run=None) -> dict:
+    """The collector's own log lines since *since* (epoch seconds), from the journal of its
+    service *unit* (`collector_unit`): ``{"state", "why", "unit", "lines", "total"}``, *state*
+    ``read`` (*lines* the newest `JOURNAL_LINES`, each ``{"at", "text"}``, masked by
+    `redact_text` and cut at `JOURNAL_LINE_CHARS`; *total* how many it printed), ``empty`` or
+    ``unread`` (the journal could not be read, in words). A local read: no shell, nothing
+    written. *run(argv) -> (rc, stdout, stderr)* replaces the call (tests)."""
+    from modules.redact import redact_text
+
+    base = {"unit": unit, "lines": [], "total": 0}
+    if not _UNIT.match(str(unit or "")):
+        return dict(base, state="unread", why=f"{unit!r} is not one service name")
+    argv = ["journalctl", "-u", unit, "-o", "short-unix", "--no-pager",
+            "--since", f"@{int(since)}", "-n", str(JOURNAL_READ)]
+    if run is None:
+        import subprocess
+
+        def run(cmd):
+            got = subprocess.run(cmd, capture_output=True, text=True, check=False,
+                                 timeout=JOURNAL_TIMEOUT_S)
+            return got.returncode, got.stdout, got.stderr
+    try:
+        rc, out, err = run(argv)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return dict(base, state="unread", why=f"journalctl could not be run "
+                                              f"({type(exc).__name__})")
+    if rc != 0:
+        return dict(base, state="unread", why=f"journalctl exited {rc}: "
+                                              f"{' '.join(str(err or '').split())[:160]}")
+    rows = []
+    for line in (out or "").splitlines():
+        head, _, rest = line.partition(" ")
+        try:
+            at = float(head)
+        except ValueError:
+            continue
+        text = " ".join(redact_text(rest).split())
+        rows.append({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at)),
+                     "text": text if len(text) <= JOURNAL_LINE_CHARS
+                     else text[:JOURNAL_LINE_CHARS - 1] + "…"})
+    if not rows:
+        said = " ".join(str(err or "").split())[:160]
+        return dict(base, state="empty", why=(
+            f"the journal holds no line of {unit} since the run started"
+            + (f" (journalctl said: {said})" if said else "")))
+    return dict(base, state="read", why="", lines=rows[-JOURNAL_LINES:], total=len(rows),
+                total_is_least=len(rows) >= JOURNAL_READ)
 
 
 # ── The stream itself: its series in Prometheus (C2892) ─────────────────────────────────────

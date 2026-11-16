@@ -416,6 +416,10 @@
     // would show the state from before a change made elsewhere, a wrong thing looking right.
     // It moves no row, so it is never held; its press sends the change it names.
     if (el && el.getAttribute && el.getAttribute('role') === 'switch') el = null;
+    // So is a disclosure's summary that draws a count (the In progress chip, `data-draws-state`):
+    // held under the pointer it said "1 running" while the list it opens said "Running now · 2"
+    // (the operator, 2026-11-16); it moves no row, so it is drawn with its list.
+    if (el && el.hasAttribute && el.hasAttribute('data-draws-state')) el = null;
     if (el && region.contains(el)) return el;
     var a = root.document.activeElement;
     return a && a.tagName === 'BUTTON' && a.getAttribute('role') !== 'switch' && a !== region &&

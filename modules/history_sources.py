@@ -2200,9 +2200,13 @@ def privileged(ctx):
         state = r.get("state", "")
         outcome = {"done": "done, verified", "unverified": "done, not verified",
                    "refused": "not sent", "failed": "failed", "running": "running"}.get(state, state)
-        # C2838: a telemetry re-subscribe or re-add keeps its record here too, said as itself.
+        # C2838: a telemetry re-subscribe or re-add keeps its record here too, said as itself;
+        # an approved plan's run by its title, never its key (the operator, 2026-11-16: "No
+        # IDs as titles").
+        from modules import plan_engine as PE
         title = (f"Telemetry: {r.get('command', '')}" if str(r.get("key") or "").startswith(
-            "telemetry-") else f"Privileged: {r.get('command', '')}")
+            "telemetry-") else f"Plan: {r.get('title') or PE.words_of(r.get('plan'))}"
+            if r.get("key") == PE.KEY else f"Privileged: {r.get('command', '')}")
         # A record that says how its person was verified (a re-subscribe's ``actor_verified``)
         # is drawn with it; one that does not (a Tier 2 run's) names its actor as before.
         how = r.get("actor_verified")
@@ -2226,7 +2230,18 @@ def privileged(ctx):
         # device's page (`run_card.named_record`). A Tier 2 run's card is drawn only from its
         # job, so its row has none yet (C3177).
         from modules.heal import resubscribe as RS
-        if r.get("key") in RS.RUN_KEYS and r.get("id") and host:
+        # A run an incident's approved plan made (the plan's own record, or a step's run whose
+        # record names the incident) opens the run's one home, its incident's card at its
+        # stepper (`plan_engine.run_page`; the operator, 2026-11-16).
+        incident = (r.get("incident") if r.get("key") == PE.KEY else
+                    (r.get(RS.FIXIT_FIELD) or {}).get("incident")
+                    if isinstance(r.get(RS.FIXIT_FIELD), dict) else "")
+        home = (PE.run_page(ctx["ref"].name, PE.INCIDENT_FIX, {"incident": incident},
+                            r.get("id") or "") if incident else "")
+        if home and r.get("id"):
+            events[-1]["card"] = {"device": host, "list": ctx["ref"].name, "run": r["id"],
+                                  "page": home}
+        elif r.get("key") in RS.RUN_KEYS and r.get("id") and host:
             events[-1]["card"] = {"device": host, "list": ctx["ref"].name, "run": r["id"]}
     return _out(events, errors)
 

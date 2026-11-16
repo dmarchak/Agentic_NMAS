@@ -48,18 +48,48 @@ def _params(text):
 
 
 def _kept(rec: dict) -> dict:
-    """The run's record as the card draws it: its steps are drawn by THE stepper (`_drawn`),
-    so the record goes without them (a route hands its template only what it draws)."""
+    """The run's record as the card draws it: its steps are drawn by the stepper
+    (`_run_view`), so the record goes without them (a route hands its template only what it
+    draws)."""
     return {k: v for k, v in rec.items() if k != "plan_steps"}
 
 
-def _drawn(card: dict) -> dict:
-    """`plan_engine.run_card`'s stepper as the card draws it: one row, so no counts, total or
-    groups (`run_stepper` draws the bar and counts for more than one row, and groups from
-    `run_stepper.GROUP_FROM`), and a row's time as its words (``elapsed_words``), never its
-    seconds."""
-    return dict({k: v for k, v in card.items() if k not in ("counts", "total", "groups")},
-                rows=[{k: v for k, v in r.items() if k != "elapsed_s"} for r in card["rows"]])
+def _run_view(network: str, rec: dict, job: str) -> dict:
+    """A plan's run as its own page draws it (the operator, 2026-11-16: "A plan with no
+    incident (an assistant plan) gets the same stepper on its own page, with its title, the
+    device, and the exact actions"): ``{"steps", "devices", "actions"}``, *steps* the incident
+    card's stepper (`fixit.progress.plan_lines`: each step's own operation's steps, the step
+    running read live from *job*), *devices* those its steps act on, *actions* each step's
+    words and what it sent (its own run's program, masked) or its parameters."""
+    from modules import op_progress
+    from modules.fixit import progress
+    from modules.nsot import privileged
+    from modules.redact import redact_text
+
+    plan_steps = rec.get("plan_steps") or []
+    devices = [d for d in dict.fromkeys(str((s.get("params") or {}).get("device") or "")
+                                        for s in plan_steps) if d]
+    actions = []
+    for s in plan_steps:
+        params = s.get("params") if isinstance(s.get("params"), dict) else {}
+        run_id = str((s.get("receipt") or {}).get("run") or "")
+        own = None
+        if run_id:
+            try:
+                own = privileged.get(network, run_id)
+            except (OSError, ValueError):
+                own = None
+        sent = [redact_text(str(x)) for x in (own or {}).get("program") or []]
+        actions.append({"n": s.get("n"), "words": str(s.get("words") or ""),
+                        "device": str(params.get("device") or ""), "lines": sent,
+                        "params": [] if sent else [
+                            (k, redact_text(", ".join(map(str, v)) if isinstance(v, (list, tuple))
+                                            else str(v)))
+                            for k, v in params.items() if k not in ("incident", "proposal")]})
+    live = op_progress.run_of(job) if job else None
+    return {"steps": progress.plan_lines(network, rec, devices[0] if len(devices) == 1 else "",
+                                         live),
+            "devices": devices, "actions": actions}
 
 
 def card(network: str, args, **answer) -> dict:
@@ -82,8 +112,10 @@ def card(network: str, args, **answer) -> dict:
         if rec is None or rec.get("state") == "running":
             c["state"] = "running"
             c["record"] = _kept(rec or {})
-            # Its steps on THE stepper once the run has recorded them (`plan_engine.run_card`).
-            c["stepper"] = _drawn(E.run_card(rec)) if rec and rec.get("plan_steps") else None
+            # Its steps on the incident card's stepper once the run has recorded them, with its
+            # title, its devices and each step's exact actions (`_run_view`).
+            c.update(_run_view(network, rec, c["job"]) if rec and rec.get("plan_steps")
+                     else {"steps": [], "devices": [], "actions": []})
             c["job_failed"] = ""
             if c["job"]:
                 # The job's own state while the record says running (or there is none yet): a
@@ -95,7 +127,8 @@ def card(network: str, args, **answer) -> dict:
                     c["job_failed"] = redact_text(job.get("error") or job.get("reason") or
                                        f"its job {c['job']} ended, and no record was written")
         else:
-            c.update(state="result", record=_kept(rec), stepper=_drawn(E.run_card(rec)),
+            c.update(_run_view(network, rec, ""))
+            c.update(state="result", record=_kept(rec),
                      level=("ok" if rec.get("state") == "done" else
                             "warn" if rec.get("outcome") == "partial" else "danger"))
         return c

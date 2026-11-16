@@ -236,7 +236,10 @@ def sent_of(operation: str, drawn, device: str) -> dict:
     "lines", "save", "diff", "host", "binds"}``. *lines* in the order sent, config mode's entry
     and exit included; *diff* an intent change's before/after; *host* what it does on Mercury's
     host (no device line); *binds* what the hash binds instead, for a step that names no lines."""
+    import os
+
     from modules.heal import catalog
+    from modules.heal import collector_close as CC
     from modules.heal import resubscribe as R
 
     d = drawn if isinstance(drawn, dict) else {}
@@ -246,11 +249,18 @@ def sent_of(operation: str, drawn, device: str) -> dict:
         return dict(out, lines=[CONFIG_IN, *[str(x) for x in d.get("program") or []], CONFIG_OUT],
                     save=NOT_SAVED)
     if operation in (R.KEY, R.READD_KEY, R.COLLECTOR_KEY):
-        # The hash binds this program whole, entry and exit in each unit (`program_hash`).
+        # The hash binds this program whole, entry and exit in each unit (`program_hash`), and
+        # the session to close (`close_id`): a combined operation is its systems' steps, in the
+        # order run (the operator, 2026-11-16: "Step 1, on the Mercury host (collector): close
+        # TCP session <device end> -> <collector end>. Step 2, on r7: ..."; the run stops at
+        # the close's failure with nothing sent to the device, `resubscribe` `not_closed`).
         close = d.get("close") or {}
-        return dict(out, lines=R.program_of(d.get("units") or [], operation == R.READD_KEY),
-                    save=NOT_SAVED, host=(f"closes the collector's session from {close['remote']} "
-                                          f"to {close['local']}" if close else ""))
+        lines = R.program_of(d.get("units") or [], operation == R.READD_KEY)
+        host = (f"close TCP session {close['remote']} -> {close['local']} "
+                f"({os.path.basename(CC.HELPER)})" if close else "")
+        parts = ([{"system": "the Mercury host (collector)", "actions": [host]}] if host else [])
+        parts.append({"system": device, "lines": lines, "save": NOT_SAVED})
+        return dict(out, lines=lines, save=NOT_SAVED, host=host, parts=parts)
     if operation == "intent-deploy":
         # The hash binds the program's fingerprint (`plan_engine`'s deploy preview).
         return dict(out, lines=[CONFIG_IN, *[str(x) for x in d.get("program") or []], CONFIG_OUT],

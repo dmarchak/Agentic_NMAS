@@ -405,8 +405,8 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     shown_ = dict(shown or {})
     from modules import troubleshoot_job
     # The card's live stepper (the operator, 2026-11-16): the plan's own reads of the switch.
-    troubleshoot_job.say("Checking the plan against the switch…",
-                         done="Checked the plan against the switch")
+    troubleshoot_job.say("Checking the plan is safe to run…",
+                         done="Checked the plan is safe to run")
     if reuse is None:
         reuse = job_reads(incident.network, investigated)
     reads = _command_plan_reads(incident.network, steps, incident.id, reuse=reuse)
