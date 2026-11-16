@@ -2213,7 +2213,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             words = (f"The AI reported a gap, and Mercury's check flags it: "
                      f"{overlooked_words(overlooked)}. Its gap is not recorded as a missing "
                      f"capability. What it said: {_cut(answer.gap.what)}" + marked)
-        out.update(state="gap", words=words, proposal=keep(words, shown=out["shown"]))
+        out.update(state="gap", words=words, proposal=keep(
+            words, shown=out["shown"], **({"overlooked": list(overlooked)} if overlooked
+                                          else {})))
         if overlooked:
             out["overlooked"] = list(overlooked)
         return out

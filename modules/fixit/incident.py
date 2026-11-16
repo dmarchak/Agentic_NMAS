@@ -436,6 +436,10 @@ SHOWN_BYTES = 8192
 #: An investigation's timings kept on its proposal line (`record_proposal`'s *took*): at most
 #: this many parts (reasoned: about 25 today), each named in at most this many characters.
 TOOK_MOST = 60
+#: The catalog steps an AI gap overlooked, kept on its line (`record_proposal`'s
+#: *overlooked*): reasoned, the catalog's built-in plans number under ten today.
+OVERLOOKED_MOST = 10
+OVERLOOKED_CHARS = 64
 TOOK_CHARS = 100
 #: What is kept of each collector step's session read (`plan_engine.read_sessions`, C3725).
 SESSION_FIELDS = ("session", "local", "quiet_s", "dry_run", "refused", "at")
@@ -445,7 +449,7 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
                     calls=(), prompt: str = "", now: float = None, by: str = "",
                     verified: str = "", note: str = "", words: str = "",
                     shown: dict = None, steps=None, sessions: dict = None,
-                    took: dict = None) -> dict:
+                    took: dict = None, overlooked=None) -> dict:
     """Record one proposal made in *incident*, the line as stored (its ``proposal`` the id an
     operation's confirm carries into its run record, `run_link`). *source* is one of
     `SOURCES`; *operation* a catalogue operation's key with its *params* (kept canonical,
@@ -465,8 +469,14 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
     *took* (an AI investigation's, `fixit_troubleshoot._laps`: ``{"<nn> <part>": seconds}``)
     keeps how long each part of the investigation took, for the next measurement of a press
     (the operator, 2026-11-16: the host logs below info); at most `TOOK_MOST` parts, each name
-    at most `TOOK_CHARS`, kept only when given and never drawn."""
+    at most `TOOK_CHARS`, kept only when given and never drawn.
+
+    *overlooked* (an AI gap Mercury's check flags, `fixit_troubleshoot.overlooked_steps`) keeps
+    the catalog steps the gap overlooked, by key, at most `OVERLOOKED_MOST` of at most
+    `OVERLOOKED_CHARS` each, so the card names them without reading its words back
+    (`section._flagged`)."""
     _check(incident)
+    overlooked = [str(k)[:OVERLOOKED_CHARS] for k in (overlooked or ()) if k][:OVERLOOKED_MOST]
     if took is not None and not isinstance(took, dict):
         raise Refused(f"a proposal's timings are {{part: seconds}}, and {took!r:.80} was given")
     took = {str(k)[:TOOK_CHARS]: round(float(v), 1) for k, v in list((took or {}).items())
@@ -543,7 +553,7 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
                               ("note", typed),
                               ("words", " ".join(str(words or "").split())[:WORDS_CHARS]),
                               ("shown", dict(shown or {})), ("steps", kept_steps),
-                              ("took", took))
+                              ("took", took), ("overlooked", overlooked))
             if v}
 
     def build(lines):
