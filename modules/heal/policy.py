@@ -376,21 +376,21 @@ def current(network: str, now: float = None, *, kill: dict = None) -> dict:
         return dict(out, words=(f"off: {network}'s heal policy holds values that are not {said}, "
                                 "so it is not in force until a person confirms it"))
     if mode == "auto":
+        # No expiry held is "until turned off" (N8 as changed by the operator, 2026-11-16), on
+        # any network; an expiry held still returns it to dry run when it passes.
         until = values.get(UNTIL_KEY) or ""
-        try:
-            until_epoch = parse_until(until)
-        except PolicyRefused:
-            until_epoch = 0.0
-        if now >= until_epoch:
-            return dict(out, mode="dry_run", expired=True,
-                        words=(f"dry run: AUTO by {confirmed.get('by')} expired "
-                               f"{until or '(no expiry held)'}, and an expired AUTO is dry run"))
-        refused = sdn_modes.auto_refusal(network)
-        if refused:
-            return dict(out, mode="dry_run", suspended=refused,
-                        words=f"dry run: AUTO is set and suspended, since {refused}")
+        if until:
+            try:
+                until_epoch = parse_until(until)
+            except PolicyRefused:
+                until_epoch = 0.0
+            if now >= until_epoch:
+                return dict(out, mode="dry_run", expired=True,
+                            words=(f"dry run: AUTO by {confirmed.get('by')} expired {until}, "
+                                   "and an expired AUTO is dry run"))
         return dict(out, mode="auto",
-                    words=(f"AUTO until {until}, by {confirmed.get('by')}: "
+                    words=(f"AUTO {'until ' + until if until else 'until turned off'}, by "
+                           f"{confirmed.get('by')}: "
                            f"{confirmed.get('reason')} (allows {_words(out['kinds_auto'])})"))
     return dict(out, mode="dry_run",
                 words=(f"dry run, by {confirmed.get('by')}: {confirmed.get('reason')}; every "
@@ -419,14 +419,12 @@ def _proposed(before: dict, proposed: dict, now: float) -> dict:
         after[UNTIL_KEY] = ""
     else:
         until = after.get(UNTIL_KEY) or ""
-        if not until:
-            raise PolicyRefused("AUTO is set with an expiry (at most 7 days; it then returns "
-                                "to dry run), and none was given")
-        epoch = parse_until(until)
-        if epoch <= now:
+        # None given is "until turned off" (N8 as changed by the operator, 2026-11-16).
+        epoch = parse_until(until) if until else None
+        if epoch is not None and epoch <= now:
             raise PolicyRefused(f"AUTO's expiry is in the future, and {until} is not (now "
                                 f"{_iso(now)})")
-        if epoch - now > MAX_AUTO_SECONDS:
+        if epoch is not None and epoch - now > MAX_AUTO_SECONDS:
             raise PolicyRefused(f"AUTO may be on for at most {MAX_AUTO_SECONDS // 86400} days "
                                 f"(N8); {until} is {round((epoch - now) / 86400, 1)} days away")
     for key, allowed, tier in ((KINDS_AUTO_KEY, TIER1_KINDS, "Tier 1"),
@@ -484,21 +482,16 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
     in_force = confirmed.get("fingerprint") == policy_fingerprint(before)
     gates = []
     if after[MODE_KEY] == "auto":
-        refused = sdn_modes.auto_refusal(network)
-        gates.append({"name": "AUTO only on a network marked lab (C2009)",
-                      "state": "fail" if refused else "pass",
-                      "why": refused or stage["words"]})
+        # AUTO on any network (N8 as changed by the operator, 2026-11-16): no lab gate.
         gates.append({"name": "AUTO names the Tier 1 kinds it heals",
                       "state": "pass" if after[KINDS_AUTO_KEY] else "fail",
                       "why": (f"allows {_words(after[KINDS_AUTO_KEY])}" if after[KINDS_AUTO_KEY]
                               else "AUTO allows no kind, so it would heal nothing while looking "
                                    "on: choose dry run, or allow one Tier 1 kind")})
-        gates.append({"name": "AUTO's expiry, at most 7 days (N8)", "state": "pass",
-                      "why": f"until {after[UNTIL_KEY]}, then dry run"})
-    else:
-        gates.append({"name": "AUTO only on a network marked lab (C2009)",
-                      "state": "not_applicable",
-                      "why": f"the mode is {MODE_WORDS[after[MODE_KEY]]}"})
+        gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days (N8)",
+                      "state": "pass",
+                      "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]
+                              else "until a person turns it off")})
     added = [k for k in after[KINDS_AUTO_KEY] if k not in (before.get(KINDS_AUTO_KEY) or [])]
     gates.append({"name": "Tier 1 kinds allowed AUTO one at a time (N8)",
                   "state": "fail" if len(added) > 1 else "pass",

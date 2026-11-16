@@ -236,12 +236,15 @@ def turn_on_auto(network: str, *, actor: str, verified: str, person: bool, reaso
     cur = policy.current(network, now)
     if cur["mode"] == "auto":
         return {"ok": True, "nothing": True, "until": cur.get("until") or "",
-                "words": f"self-healing is already in Auto until {cur.get('until')}"}
-    proposed = {policy.MODE_KEY: "auto", policy.UNTIL_KEY: default_until(network, now)}
+                "words": "self-healing is already in Auto"
+                + (f" until {cur.get('until')}" if cur.get("until") else "")}
+    # Until turned off (N8 as changed by the operator, 2026-11-16): the strip's On has no
+    # expiry; Settings keeps the 1 h, 8 h and 7 d choices.
+    proposed = {policy.MODE_KEY: "auto", policy.UNTIL_KEY: ""}
     got = policy.apply_planned(network, proposed, actor=actor, actor_verified=verified,
                                person=person, reason=reason, now=now)
     return {"ok": True, "nothing": False, "until": got["until"],
-            "words": f"self-healing turned on in Auto until {got['until']}"}
+            "words": "self-healing turned on in Auto, until someone turns it off"}
 
 
 def may_press(ident) -> str:
@@ -286,8 +289,7 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
     from modules.heal import policy
     now = time.time()
     if policy.current(network, now).get("mode") != "auto":
-        planned = policy.plan(network, {policy.MODE_KEY: "auto",
-                                        policy.UNTIL_KEY: default_until(network, now)}, now)
+        planned = policy.plan(network, {policy.MODE_KEY: "auto", policy.UNTIL_KEY: ""}, now)
         if not planned["confirmable"]:
             failed = [g["name"] for g in planned["gates"] if g["state"] == "fail"]
             raise Refused("self-healing cannot be turned on in Auto for this network ("
