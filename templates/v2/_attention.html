@@ -92,6 +92,7 @@
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
     {%- if a.acknowledged %} · {{ a.acknowledged|length }} acknowledged{% endif %}
     · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
+    {%- if store.restored %} · <span class="muted" data-restored>as last checked before Mercury restarted; refreshing now</span>{% endif %}
     {%- if store.checked_at %} {{ stamp(store.checked_at, note='when the background last assembled this list') }}{% if store.oldest_at and store.oldest_at != store.checked_at %}, the oldest {{ stamp(store.oldest_at, note='the oldest read among its sources; each source has its own under What was checked') }}{% endif %}{% endif %}
     {%- if a.unreadable %} · <span class="warn-text">{{ a.unreadable|length }} could not be read: {{ a.unreadable|join(', ') }}</span>{% endif -%}
     {%- if store.failed %} · <span class="warn-text">{{ store.failed|length }} refresh{{ '' if store.failed|length == 1 else 'es' }} failed, the last value kept: {{ store.failed|join(', ') }}</span>{% endif -%}

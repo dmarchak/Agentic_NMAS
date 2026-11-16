@@ -63,6 +63,7 @@ Process memory: a restart starts empty, and the warm-up fills the installation's
 
 import copy
 import logging
+import os
 import threading
 import time
 
@@ -211,6 +212,52 @@ def runs() -> dict:
         return dict(_runs)
 
 
+#: The last held page per network, kept on disk so a restart draws it at once, its own age
+#: shown, while the readers refresh (the operator, 2026-11-16: "never a blank inbox after a
+#: deploy"). Owner-only, replaced whole.
+HELD_DIR = "attention_held"
+_kept = {}
+
+
+def _kept_path(network: str) -> str:
+    import re
+
+    from modules import config
+    return os.path.join(config.DATA_DIR, HELD_DIR,
+                        re.sub(r"[^A-Za-z0-9_.-]", "_", network) + ".json")
+
+
+def _keep(network: str, page: dict) -> None:
+    """The page just held, written whole for the next start. Logged, never raised."""
+    import json
+
+    from modules.filestore import write_atomic
+    from modules.outbound import mask_payload
+    try:
+        path = _kept_path(network)
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        # Masked at rest, as every drawing of it is masked (`read_masked`).
+        write_atomic(path, json.dumps(mask_payload(copy.deepcopy(page)), default=str))
+    except Exception as exc:                          # noqa: BLE001 (the live value stands)
+        log.warning("attention: %s's page was not kept for the next start: %s", network, exc)
+
+
+def kept(network: str):
+    """The page this network last held before a restart (read once), its store marked
+    ``restored`` and its ``checked_at`` its own; None when none was kept."""
+    import json
+
+    if network not in _kept:
+        try:
+            with open(_kept_path(network), encoding="utf-8") as fh:
+                page = json.load(fh)
+            page["store"] = dict(page.get("store") or {}, state="read", restored=True)
+            _kept[network] = page
+        except (OSError, ValueError):
+            _kept[network] = None
+    return copy.deepcopy(_kept[network])
+
+
 def reading(network: str) -> dict:
     """The page before its network's first value lands: nothing claimed, "Reading …" drawn,
     filled when the value is pushed."""
@@ -252,7 +299,7 @@ def read(network: str = None) -> dict:
         # Viewed now: marks collected while it was not are due within DEBOUNCE_S (C3230).
         _wake.set()
     if held is None:
-        return reading(name)
+        return kept(name) or reading(name)
     return copy.deepcopy(held)
 
 
@@ -298,7 +345,9 @@ def badge(network: str = None):
     if held is None or pending:
         _wake.set()
     if held is None:
-        return None
+        held = kept(name)                             # the last page before a restart
+        if not held or not held.get("badge"):
+            return None
     return dict(held["badge"], at=held["store"]["checked_at"])
 
 
@@ -441,6 +490,8 @@ def refresh(network: str, names=None, *, publish: bool = True, compute: bool = T
             n.value, n.value_at = page, now
             n.timed = {k: t for k, t in timed.items() if t}
             n.assemble_at = _ack_ends(page)
+        if not COMPUTE_ON_READ:
+            _keep(network, page)
     if publish:
         _publish(network, page)
     if compute:
