@@ -440,6 +440,7 @@
 {%- set lines = st.lines or {} %}
 {%- if lines.checks or lines.verify %}<div class="plan-reads" data-plan-reads="{{ st.n }}"><p class="small"><strong>Step {{ st.n }}</strong></p>
 {%- if lines.checks %}<p class="small">Checks first: {{ lines.checks | join(' · ') }}</p>{% endif %}
+{%- if st.checked %}<p class="small muted" data-plan-checked="{{ st.n }}">When proposed: {% for c in st.checked %}<span data-check-result="{{ c.result }}">{{ c.name }}: {{ c.words }}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
 {%- if lines.verify %}<p class="small">Then verifies: {% for v in lines.verify %}<span{% if v.within_why %} title="{{ v.within_why }}"{% endif %} data-verify="{{ loop.index }}">{{ v.name }}{% if v.within %} within {{ v.within }} s{% elif v.after and (v.after ~ ' s') not in v.name %} for {{ v.after }} s{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}</div>{% endif %}
 {%- endmacro -%}
 {%- if NP %}

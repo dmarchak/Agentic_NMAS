@@ -293,10 +293,11 @@ class PlanStep:
     rework), beside `Operation`, which it leaves as it is:
 
     - ``params``: its typed inputs, as `Param`s;
-    - ``preflight(network, params, *, reads=False, sources=None)``: at proposal time, the plan's
-      own preview (Mercury's rule for raw lines, the parameters against Mercury's model; with
-      *reads*, the preconditions read through the read engine too), ``{"ok", "refused",
-      "drawn", "hash"}``;
+    - ``preflight(network, params, *, reads=False, sources=None, incident="", reuse=None)``: at
+      proposal time, the plan's own preview (Mercury's rule for raw lines, the parameters
+      against Mercury's model; with *reads*, the preconditions read through the read engine
+      too, *reuse* answering a read the proposing job took young enough), ``{"ok", "refused",
+      "drawn", "hash", "checked"}``;
     - ``binds``: the fields its hash binds (`command_plan.BINDS`);
     - ``apply(network, params, confirmed_hash, *, actor, reason, actor_verified="",
       person=False) -> dict``: the one contract, which enters the deploy pipeline
@@ -330,18 +331,22 @@ class PlanStep:
 
 def _plan_preflight(key: str):
     def preflight(network: str, params: dict, *, reads: bool = False, sources=None,
-                  incident: str = "") -> dict:
+                  incident: str = "", reuse=None) -> dict:
         from modules.nsot import command_plan, command_plan_run
 
         p = command_plan.preview(network, key, params, sources=sources)
         refused = "; ".join(p["refusals"])
+        got = []
         if p["ok"] and reads:
-            # *incident*: the one it is proposed in, whose classification a check reads.
-            got = command_plan_run.preconditions_now(network, key, p, incident=incident)
+            # *incident*: the one it is proposed in, whose classification a check reads;
+            # *reuse*: the proposing job's own reads (`command_plan_run.Reused`), the card's
+            # alone, each reused one said with its age in its check's words.
+            got = command_plan_run.preconditions_now(network, key, p, incident=incident,
+                                                     reuse=reuse)
             refused = "; ".join(f"{j['name']}: {j['words']}" for j in got
                                 if j["result"] not in command_plan_run.HOLDS)
         return {"ok": not refused, "refused": refused, "drawn": p["drawn"],
-                "hash": "" if refused else p["hash"]}
+                "hash": "" if refused else p["hash"], "checked": got}
     return preflight
 
 

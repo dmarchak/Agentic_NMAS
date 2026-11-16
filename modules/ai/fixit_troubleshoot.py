@@ -1692,7 +1692,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         door = fix_proposal.plan_for_incident(
             [as_door(s) for s in answer.plan], incident, improvement=answer.improvement,
             call_id=final_call, calls=ids, actor=actor, actor_verified=actor_verified,
-            note=note, shown=out["shown"], prompt=common["prompt"], now=now)
+            note=note, shown=out["shown"], prompt=common["prompt"], now=now,
+            # The investigation's own device reads, reused by the plan's preflight (its card
+            # alone) when the same command on the same device is young enough (2026-11-16).
+            investigated=got.get("reads") or ())
         lap("the plan's door (its preconditions read, the alternative's too, the record)")
         out["checked"] = door
         out["proposal"] = door.get("line") or {}

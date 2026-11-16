@@ -281,6 +281,16 @@ def lines_of(drawn) -> dict:
                        for v in d.get("verify") or [] if isinstance(v, dict) and v.get("name")]}
 
 
+def checked_of(line: dict, n: int) -> list:
+    """Step *n*'s preconditions as the job that proposed *line* read and judged them
+    (`fix_proposal._command_plan_reads`), each ``{"name", "result", "words", "reused"}``, a
+    read it reused from that job saying its age in its words; ``[]`` when none was kept.
+    Read from the record: a page draw reads nothing."""
+    shown = line.get("shown") if isinstance(line.get("shown"), dict) else {}
+    pre = (shown.get("preconditions_read") or {}).get(str(n)) or {}
+    return [c for c in pre.get("checked") or [] if isinstance(c, dict)]
+
+
 def preflight(incident, line: dict, *, resolved: float = None, now: float = None,
               sources=None, planned=None) -> dict:
     """*line*'s plan, every step preflighted (the module's docstring), as the section's
@@ -364,6 +374,9 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                       # A command plan's exact lines, its checks and its verify (board R5's
                       # screen 4: the plan card lists what Approve sends), from its preview.
                       "lines": lines_of(got.get("drawn")),
+                      # Each precondition as the proposing job judged it (`fix_proposal.
+                      # _command_plan_reads`), a reused read's age in its words (2026-11-16).
+                      "checked": checked_of(line, n),
                       # What it sends, per device, from what its hash binds (2026-11-16).
                       "sent": sent_of(s["operation"], own,
                                       str(s["params"].get("device") or incident.device))})

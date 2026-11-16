@@ -41,6 +41,7 @@ calls `proposal` itself yet (Explain's proposal, step 3, is a later slice).
 """
 
 import logging
+import time
 
 from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
 
@@ -268,25 +269,63 @@ def _attempt_form(step: dict) -> dict:
             "params": validate.as_attempt(step["operation"], held_)}
 
 
-def _command_plan_reads(network: str, steps: list, incident: str = "") -> dict:
+def job_reads(network: str, investigated=()):
+    """The proposing job's device reads, for its preflights to reuse (`command_plan_run.
+    Reused`, the operator, 2026-11-16: "time to a ready plan toward 45 s"): each read-engine
+    run the investigation's read records name (*investigated*, `read_loop.run`'s ``reads``:
+    its own and the classification's reused one), kept at each answer's own time. The
+    preflight's card alone reads from it; the approved run reads live."""
+    from modules.nsot import command_plan_run as CPR
+
+    reuse = CPR.Reused()
+    runs = [str(r.get("run") or "") for r in investigated or ()
+            if isinstance(r, dict) and r.get("verdict") == "run"]
+    try:
+        reuse.add_runs(network, runs)
+    except Exception as exc:                              # noqa: BLE001 (then all read live)
+        log.info("fix_proposal: the investigation's reads are not reused: %s", exc)
+    return reuse
+
+
+def _command_plan_reads(network: str, steps: list, incident: str = "", reuse=None) -> dict:
     """Each built-in command plan step's preconditions read NOW, through the read engine,
     inside the job making the proposal (`catalog.PlanStep.preflight` with *reads*), so the page
-    draws them from the record and never waits: ``{"<n>": {"ok", "refused", "hash"}}``."""
+    draws them from the record and never waits: ``{"<n>": {"ok", "refused", "hash", "checked",
+    "reuse"}}``. *reuse* (`job_reads`) answers a read this job already took young enough;
+    *checked* is each precondition's ``{"name", "result", "words", "reused"}`` (a reused read's
+    words say its age), *reuse* the step's ``{"took_s", "reused", "live", "live_s"}``: its
+    seconds, and how many reads were reused or read live, in how long, logged too."""
     from modules.heal import catalog
 
     out = {}
     for n, s in enumerate(steps, 1):
         if not catalog.is_command_plan(s["operation"]):
             continue
+        before = dict(reuse.stats) if reuse is not None else {}
+        t0 = time.monotonic()
         try:
             got = catalog.COMMAND_PLANS[s["operation"]].preflight(network, s["params"],
                                                                   reads=True,
-                                                                  incident=incident)
+                                                                  incident=incident,
+                                                                  reuse=reuse)
         except Exception as exc:                          # noqa: BLE001 (kept, never raised)
             got = {"ok": False, "refused": f"its preconditions could not be read "
                                            f"({type(exc).__name__})", "hash": ""}
+        took = round(time.monotonic() - t0, 1)
+        after = dict(reuse.stats) if reuse is not None else {}
+        lap = {"took_s": took,
+               **{k: round(after.get(k, 0) - before.get(k, 0), 1)
+                  for k in ("reused", "live", "live_s")}}
+        log.info("fix_proposal: %s step %d's preconditions read in %.1f s: %d read(s) reused "
+                 "from this job, %d read live in %.1f s", incident or network, n, took,
+                 lap["reused"], lap["live"], lap["live_s"])
         out[str(n)] = {"ok": bool(got.get("ok")), "refused": str(got.get("refused") or ""),
-                       "hash": str(got.get("hash") or "")}
+                       "hash": str(got.get("hash") or ""), "reuse": lap,
+                       "checked": [{"name": str(j.get("name") or ""),
+                                    "result": str(j.get("result") or ""),
+                                    "words": str(j.get("words") or ""),
+                                    "reused": list(j.get("reused") or [])}
+                                   for j in got.get("checked") or [] if isinstance(j, dict)]}
     return out
 
 
@@ -308,7 +347,8 @@ def _propose_shapes(network: str, shapes, call_id: str) -> list:
 
 def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=(),
                       actor: str, actor_verified: str, note: str = "", shown: dict = None,
-                      prompt: str = "", now: float = None, alternative_of: str = "") -> dict:
+                      prompt: str = "", now: float = None, alternative_of: str = "",
+                      investigated=(), reuse=None) -> dict:
     """What an AI call's plan proposes in *incident*: *steps* ``[{"operation", "params"}]`` in
     order, each held to this door (`step_held`), then kept as the incident's proposal line with
     its steps (`fixit.incident.record_proposal`), whose preflight on the page (`fixit.plan.
@@ -318,7 +358,11 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     once (`plan_engine.read_sessions`, `_command_plan_reads`), kept with the line; each shape
     the *improvement* names proposed provisional (`_propose_shapes`); and the improvement's
     shorter route, when it names steps, kept as a second line beside the first
-    (``alternative``), the person choosing. ``{"ok", "steps", "line", "alternative",
+    (``alternative``), the person choosing. *investigated* is the investigation's read
+    records (`read_loop.run`'s ``reads``): a precondition read of the same command on the same
+    device it took at most `command_plan_run.REUSE_S` before is reused, its age said, and the
+    alternative's preflight reuses the first's reads the same way (*reuse*, `job_reads`: the
+    card's alone; the approved run reads live). ``{"ok", "steps", "line", "alternative",
     "shapes", "refused", "code"}``. Never runs, holds, opens or starts anything."""
     from modules import plan_engine as PE
     from modules.fixit import incident as F
@@ -363,7 +407,9 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
     # The card's live stepper (the operator, 2026-11-16): the plan's own reads of the switch.
     troubleshoot_job.say("Checking the plan against the switch…",
                          done="Checked the plan against the switch")
-    reads = _command_plan_reads(incident.network, steps, incident.id)
+    if reuse is None:
+        reuse = job_reads(incident.network, investigated)
+    reads = _command_plan_reads(incident.network, steps, incident.id, reuse=reuse)
     if reads:
         shown_["preconditions_read"] = reads
     if shapes:
@@ -384,7 +430,7 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
                                        "improvement": {"what": imp.get("what") or "",
                                                        "saves": imp.get("saves") or ""}},
                                 prompt=prompt, now=now,
-                                alternative_of=str(line.get("proposal") or ""))
+                                alternative_of=str(line.get("proposal") or ""), reuse=reuse)
         alt = got.get("line") or {}
     log.info("fixit: %s: an AI plan of %d step(s) kept as %s", incident.id, len(steps),
              line.get("proposal"))

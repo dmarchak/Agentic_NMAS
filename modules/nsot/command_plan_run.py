@@ -90,17 +90,112 @@ RECORD_STATE = {"done": "done", "refused": "refused", "not_net_zero": "failed",
                 RETRIPPED: "failed"}
 
 
+#: How old a device read taken earlier in the same proposing job may be and still answer a
+#: proposal's preflight (`Reused`). Reasoned, not measured: s5's port-security run
+#: (2026-11-16) took 87 s from the press to a ready plan, 25 s of it this preflight, so the
+#: investigation's reads were at most about 62 s old when the preflight asked; 2.5x that is
+#: about 150 s. An err-disabled port changes only by IOS's own recovery (300 s by default,
+#: and a plan whose switch recovers the cause itself is refused) or a person, and the approved
+#: run reads every precondition again live, holding the device, so a stale answer can only
+#: misdraw the card, never send. The measurement owed: each preflight's ``reuse`` record (the
+#: ages it reused, `fix_proposal._command_plan_reads`) over the next runs.
+REUSE_S = 150.0
+#: Where a reused read came from, as its words say it ("read 6 s ago, during the
+#: investigation").
+FROM_INVESTIGATION = "during the investigation"
+FROM_PREFLIGHT = "by the first plan's check"
+
+
+class Reused:
+    """The device reads one proposing job already took (the investigation's, through the read
+    engine, and each preflight's own), answering a later preflight's same command on the same
+    device while at most `REUSE_S` old (the operator, 2026-11-16: "time to a ready plan toward
+    45 s"). For the proposal's preflight only, which draws the plan card: the approved run's
+    `Sources` never carries one (`run`), so its preconditions and verify read live. Only a
+    read that signed in as Mercury's account is kept, the account a preflight's own read signs
+    in as (`reads.signs_in_as`), so a reused answer is the one a live read would give, masked
+    and capped by the same engine. ``stats``: what it answered and what was read live."""
+
+    def __init__(self, clock=time.time):
+        self.clock = clock
+        self._kept = {}
+        self.stats = {"reused": 0, "live": 0, "live_s": 0.0}
+
+    @staticmethod
+    def key(host: str, command: str) -> tuple:
+        """*command* on *host* as one read: its words, spacing collapsed, each interface name
+        in its canonical long form (`ifnames.canonical`: IOS answers ``Gi1/0/5`` and
+        ``GigabitEthernet1/0/5`` alike)."""
+        from modules.nsot import ifnames
+
+        words = [ifnames.canonical(w) if any(ch.isdigit() for ch in w) else w
+                 for w in str(command or "").split()]
+        return (str(host or ""), " ".join(words).lower())
+
+    def keep(self, host: str, command: str, answer: str, at: float, *, run: str = "",
+             source: str = FROM_PREFLIGHT) -> None:
+        """One answered read, kept unless a younger one of the same read is."""
+        k = self.key(host, command)
+        old = self._kept.get(k)
+        if old is None or float(old["at"]) <= float(at):
+            self._kept[k] = {"answer": answer or "", "at": float(at), "run": str(run or ""),
+                             "from": source}
+
+    def take(self, host: str, command: str):
+        """The kept answer of *command* on *host* with its ``age_s``, or None when none is
+        kept or it is older than `REUSE_S` (or from the future: a clock that moved)."""
+        got = self._kept.get(self.key(host, command))
+        if got is None:
+            return None
+        age = float(self.clock()) - got["at"]
+        if not 0 <= age <= REUSE_S:
+            return None
+        return dict(got, command=command, age_s=round(age, 1))
+
+    def add_runs(self, network: str, run_ids, source: str = FROM_INVESTIGATION) -> int:
+        """Each read-engine run of *run_ids* (History › Reads' records) kept: every answered
+        command of each device, at its own answer's time, when it signed in as Mercury's
+        account. How many answers were kept; a run that cannot be read keeps none, logged."""
+        from modules.nsot import reads
+
+        n = 0
+        for rid in dict.fromkeys(r for r in run_ids or () if r):
+            try:
+                rec = reads.get(network, rid) or {}
+            except (OSError, ValueError) as exc:
+                log.info("command plan: read run %s is not reused: %s", rid, exc)
+                continue
+            if rec.get("signs_in_as") == "read_only":
+                continue
+            for host, res in (rec.get("results") or {}).items():
+                for a in (res or {}).get("answers") or []:
+                    if a.get("state") == reads.ANSWERED and a.get("at"):
+                        self.keep(host, a.get("command") or "", a.get("answer") or "",
+                                  float(a["at"]), run=rid, source=source)
+                        n += 1
+        return n
+
+
+def reused_words(r: dict) -> str:
+    """A reused read's age and where it came from: "read 6 s ago, during the investigation"."""
+    return f"read {int(round(float(r.get('age_s') or 0)))} s ago, {r.get('from') or ''}".rstrip(", ")
+
+
 class Sources:
     """Where a run reads: Mercury's model (`command_plan.Sources`), the read engine, the
-    clock and the sleep, and a problem's own sources by family (``of``: G7's Loki lines)."""
+    clock and the sleep, and a problem's own sources by family (``of``: G7's Loki lines).
+    *reuse* (a `Reused`) is a proposal's preflight's alone: a read it holds young enough
+    answers in place of the device, said in ``reused_log``; never the approved run's."""
 
     def __init__(self, network: str, *, clock=time.time, sleep=time.sleep, model=None,
-                 families=None):
+                 families=None, reuse=None):
         from modules.nsot import command_plan
 
         self.network, self.clock, self.sleep = network, clock, sleep
         self.model = model or command_plan.Sources(network)
         self._families = dict(families or {})
+        self.reuse = reuse
+        self.reused_log = []
 
     def device(self, host):
         return self.model.device(host)
@@ -120,20 +215,47 @@ class Sources:
 
     def read(self, host: str, commands: list) -> dict:
         """``{command: answer}`` (an answer None when it was not read), through THE read
-        engine, inline: the run already holds the device, so the read's hold is re-entrant."""
+        engine, inline: the run already holds the device, so the read's hold is re-entrant.
+        With *reuse* (a proposal's preflight), a command it holds young enough is answered
+        from it and logged in ``reused_log``; the rest are read, and kept for a later
+        preflight in the same job (an alternative's)."""
         from modules.nsot import reads
 
+        reuse = self.reuse
+        held = {}
+        if reuse is not None:
+            for c in commands:
+                r = reuse.take(host, c)
+                if r is not None:
+                    held[c] = r
+                    self.reused_log.append(r)
+            reuse.stats["reused"] += len(held)
+        live = [c for c in commands if c not in held]
+        out = {c: r["answer"] for c, r in held.items()}
+        if not live:
+            return {c: out.get(c) for c in commands}
+        t0 = time.monotonic()
         try:
-            rec = reads.run(self.network, [host], commands, "Mercury (reviewed commands)",
+            rec = reads.run(self.network, [host], live, "Mercury (reviewed commands)",
                             purpose="a command plan's precondition or verify read",
                             inline=True)
         except reads.Refused as exc:
             log.warning("command plan: a read was refused: %s", exc)
-            return {c: None for c in commands}
+            return {c: out.get(c) for c in commands}
+        finally:
+            if reuse is not None:
+                reuse.stats["live"] += len(live)
+                reuse.stats["live_s"] = round(reuse.stats["live_s"] + time.monotonic() - t0, 2)
         r = (rec.get("results") or {}).get(host) or {}
-        got = {a["command"]: a.get("answer") or "" for a in r.get("answers") or []
-               if a.get("state") == reads.ANSWERED}
-        return {c: got.get(c) for c in commands}
+        got = {}
+        for a in r.get("answers") or []:
+            if a.get("state") == reads.ANSWERED:
+                got[a["command"]] = a.get("answer") or ""
+                if reuse is not None and a.get("at"):
+                    reuse.keep(host, a["command"], got[a["command"]], float(a["at"]),
+                               run=rec.get("id") or "")
+        out.update({c: got.get(c) for c in live})
+        return {c: out.get(c) for c in commands}
 
 
 class CheckRun:
@@ -346,20 +468,41 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
 
 
 def preconditions_now(network: str, key: str, p: dict, *, sources=None,
-                      incident: str = "") -> list:
+                      incident: str = "", reuse=None) -> list:
     """The plan *p*'s preconditions read now through the read engine and judged, holding
     nothing beyond the reads' own holds (a proposal's preflight, `catalog.PlanStep`); the run
     reads them again holding the device. *incident* is the one it is proposed in, so a check
-    reads its classification as the run's does. ``[{"name", "read", "result", "words"}]``."""
+    reads its classification as the run's does. *reuse* (a `Reused`, the proposing job's
+    reads) answers a read it holds young enough in place of the device; each item answered
+    so says it in its words and ``reused`` (``[{"command", "age_s", "from", "run"}]``), so a
+    reused read never reads as a fresh one. ``[{"name", "read", "result", "words"}]``."""
     from modules.nsot import command_plan as CP
 
     t = CP.template_of(key)
-    src = sources or Sources(network)
+    src = sources or Sources(network, reuse=reuse)
     run_ = CheckRun(network, p["values"].get("device") or "", p["device_row"], p["derived"],
                     str(incident or ""), src)
     cmds = list(dict.fromkeys(CP.substitute(i["read"], p["derived"])
                               for i in t.preconditions if i["read"]))
-    return _judge(t.preconditions, run_, src.read(run_.device, cmds) if cmds else {})
+    answers = src.read(run_.device, cmds) if cmds else {}
+    log_ = getattr(src, "reused_log", None)
+    if log_ is None:
+        return _judge(t.preconditions, run_, answers)
+    batch = list(log_)
+    out = []
+    for i in t.preconditions:
+        # Each item judged alone, so a read its own check makes (G7's port-security read in
+        # `cause_cleared`) is told apart from the others'.
+        before = len(log_)
+        j = _judge([i], run_, answers)[0]
+        mine = [r for r in batch if j["read"] and r["command"] == j["read"]] + log_[before:]
+        if mine:
+            j["reused"] = [{"command": r["command"], "age_s": r["age_s"], "from": r["from"],
+                            "run": r.get("run") or ""} for r in mine]
+            j["words"] = (f"{j['words']} ("
+                          + "; ".join(f"`{r['command']}` {reused_words(r)}" for r in mine) + ")")
+        out.append(j)
+    return out
 
 
 def step_apply(key: str):
@@ -518,6 +661,12 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     from modules.nsot import command_policy, device_ops, reads
 
     src = sources or Sources(network)
+    if getattr(src, "reuse", None) is not None:
+        # The approved run reads its device live, always (CLAUDE.md's display-only rule): a
+        # proposing job's kept reads (`Reused`) answer its preflight's card alone.
+        log.warning("command plan: a run was handed kept reads; it reads live instead")
+        src = Sources(network, clock=src.clock, sleep=src.sleep, model=src.model,
+                      families=getattr(src, "_families", None))
     now = time.time()
     device = str((values or {}).get("device") or "") if isinstance(values, dict) else ""
     rec = {"id": run_id or reads.new_id(), "list": network, "device": device,
