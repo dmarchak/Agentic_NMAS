@@ -106,7 +106,9 @@ def line_filter() -> str:
     # The mnemonics are letters, digits, % and -: literal in RE2 as they are.
     # An err-disable too: an event, decided from its device read as soon as its line arrives,
     # not after Grafana's minute (R3, the operator, 2026-11-16).
-    alts = [r"%(?:SYS|DMI)-\d-CONFIG_[IP]\b", r"%PM-\d-ERR_DISABLE\b"] + list(flaps.MNEMONICS)
+    alts = [r"%(?:SYS|DMI)-\d-CONFIG_[IP]\b", r"%PM-\d-ERR_DISABLE\b",
+            r"%SPANTREE-\d-BLOCK_BPDUGUARD\b", r"%PORT_SECURITY-\d-PSECURE_VIOLATION\b"] + list(
+                flaps.MNEMONICS)
     return "|".join(alts)
 
 

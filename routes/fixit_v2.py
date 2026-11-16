@@ -160,9 +160,18 @@ def fix_with_script(incident_id):
     from modules.nsot import command_plan_run as CR
     from modules.nsot import saved_plans as S
 
-    network, found, _inc, who, refused = _gate(incident_id, "Fix with saved script")
-    if refused is not None:
-        return refused
+    # Its own gate: a held or watching incident has no troubleshooting record yet, and none is
+    # needed to run a saved script on it (the operator, 2026-11-16: "Fix now").
+    network, found = _found(incident_id)
+    if found["found"] != "page":
+        return _missing(incident_id, found)
+    if _ended(found):
+        return _section(network, found, 409, refused=(
+            f"{incident_id} is resolved ({_ended(found)}). Nothing ran"))
+    who = _person()
+    why = _not_a_person(who, "Fix with saved script")
+    if why:
+        return _section(network, found, 403, refused=why)
     offer = S.script_offer(network, found)
     key, sent = (request.values.get("key") or "").strip(), (request.values.get("hash") or "")
     if not offer or offer["key"] != key:

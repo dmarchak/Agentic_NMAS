@@ -199,6 +199,9 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     tl = IP.timeline(inc, entry, decisions, network)
     resolved = st["state"] in IP.RESOLVED
     how = IP.fixed_how(network, inc) if st["state"] == "fixed" else {}
+    held = IP.held_words(inc)
+    if held and not fx.get("working"):
+        fx = dict(fx, held=held)
     if not resolved and not fx.get("working"):
         # A saved script running on an incident with no troubleshooting record of its own (the
         # heal decision fired it): Mercury working all the same (the operator, 2026-11-16).
@@ -225,7 +228,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "waits": "" if resolved else WAITS.get(st["why"], ""),
             # R5 (board R5, approved 2026-11-15): the row's status line, what it waits for in
             # one line ("Waiting for a person: …" while it needs one), "" once resolved.
-            "status": "" if resolved else (fx.get("working") or status_words(
+            "status": "" if resolved else (fx.get("working") or fx.get("held") or status_words(
                 st["state"], WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",

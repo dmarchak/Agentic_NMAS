@@ -670,7 +670,7 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
         return                                   # claimed: H4's or H5's
     if d["outcome"] in ("deferred", "held") and d.get("until"):
         incidents.defer(network, incident["id"], d["until"], d["words"], now,
-                        quiet=bool(d.get("quiet")))
+                        quiet=bool(d.get("quiet")), guard=(d.get("guard") or {}).get("guard"))
         return
     if d["outcome"] in incidents.STANDS:
         # C2813: its cause still stands, so the incident stays open on this decision: a later

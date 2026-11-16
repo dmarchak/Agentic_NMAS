@@ -186,11 +186,27 @@ def run(network: str, *, now: float = None, check=None, clock=time.time,
     return out
 
 
+def _hold_lifted(network: str, inc: dict, now: float) -> bool:
+    """Whether a topology-hold deferral (guard 5) no longer holds: the hold read again now
+    (`hold.topology`), so a change that stops counting (Mercury's net-zero command plans, the
+    operator, 2026-11-16) frees the incident at once, never at the old deferral's end."""
+    from modules.heal import hold
+
+    d = inc.get("deferred") or {}
+    if d.get("guard") != hold.GUARD and "-minute topology hold" not in str(d.get("why") or ""):
+        return False
+    try:
+        return not hold.topology(network, inc.get("device") or "", now)["held"]
+    except Exception as exc:                          # noqa: BLE001 (it stays deferred)
+        log.error("heal: %s's hold could not be read again: %s", inc.get("id"), exc)
+        return False
+
+
 def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     """One watching incident's step of a pass; returns the reads left."""
     from modules.heal import grace, incidents
 
-    if float(inc.get("defer_until") or 0) > now:
+    if float(inc.get("defer_until") or 0) > now and not _hold_lifted(network, inc, now):
         out["waiting"].append({"incident": inc["id"], "device": inc["device"],
                                "state": "deferred", "due_at": inc["defer_until"],
                                "words": (inc.get("deferred") or {}).get("why") or "deferred"})

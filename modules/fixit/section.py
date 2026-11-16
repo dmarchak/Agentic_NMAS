@@ -733,8 +733,10 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     if done:
         nxt = {"kind": "none", "label": ""}
     elif offer:
+        held_now = bool(_held_of(found))
         nxt = {"kind": "button", "script": True,
-               "label": f"Fix with saved script: {offer['name']}",
+               "label": (f"Fix now with saved script {offer['name']}" if held_now
+                         else f"Fix with saved script: {offer['name']}"),
                "key": offer["key"], "hash": offer["hash"]}
     elif actions["approve"]["offered"] or proposed:
         nxt = {"kind": "approve", "label": "Approve the plan" if plan["approvable"] else
@@ -775,6 +777,10 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                                         and ln.get("operation") for ln in rec["lines"]))
     out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
                                  proposed and plan.get("approvable"))
+    if not done and _held_of(found):
+        # A guard holds it: said, with when the next automatic heal is allowed (the operator,
+        # 2026-11-16), never "reading it, before it decides".
+        out["status"] = _held_of(found)
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"] = "", ""
@@ -790,6 +796,12 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         elif state == "investigating":
             out["working"] = "The AI is investigating"
             out["working_step"] = troubleshoot_job.shown(network, iid)
+
+
+def _held_of(found: dict) -> str:
+    """The guard's hold on the incident, said (`incident_page.held_words`), or ``""``."""
+    from modules import incident_page
+    return incident_page.held_words((found or {}).get("incident") or {})
 
 
 #: A failed start's words when the press never reached the AI (a refusal before any call):

@@ -145,6 +145,10 @@ def topology(network: str, device: str, now: float = None, *, hold_minutes=None,
     for d in [device] + list(peers):
         try:
             for r in (receipts or _receipts)(network, d):
+                if r.get("action") == "command_plan":
+                    # A command plan is net zero, verified: the configuration as before, no
+                    # topology change to wait out (the operator, 2026-11-16: "always fix").
+                    continue
                 within(_epoch(r.get("at")), f"Mercury's {r.get('action') or 'operation'} of "
                                             f"{d} (receipt {r.get('id') or '?'})")
         except Exception as exc:

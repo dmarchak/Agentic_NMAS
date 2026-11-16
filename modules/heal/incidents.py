@@ -635,7 +635,7 @@ def claim(network: str, incident_id: str, *, by: str, now: float = None) -> dict
 
 
 def defer(network: str, incident_id: str, until: float, why: str, now: float = None,
-          quiet: bool = False) -> dict:
+          quiet: bool = False, guard=None) -> dict:
     """The decision (H3) sends a claimed incident back to watching until *until* (a planned
     window's end and its settle time, the topology hold's end, a person working): no read
     before it, and the grace period restarts at it (`detect.outside_changes`), so the decision
@@ -653,7 +653,7 @@ def defer(network: str, incident_id: str, until: float, why: str, now: float = N
             raise Refused(f"{incident_id} is {inc.get('state')}, so it is not deferred")
         inc.update(state="watching", settled=None, claimed=None, updated_at=_iso(now),
                    defer_until=float(until), deferred={"at": _iso(now), "until": _iso(until),
-                                                        "why": why})
+                                                        "why": why, "guard": guard})
         if quiet:
             inc["quiet_deferred"] = True
         return inc

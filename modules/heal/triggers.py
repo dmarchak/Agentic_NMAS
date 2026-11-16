@@ -326,12 +326,24 @@ def far_ends(intents: dict, device: str, interface: str) -> list:
 #: An err-disable line's port and cause ("bpduguard error detected on Gi1/0, putting Gi1/0 in
 #: err-disable state", tests/fixtures/errdisable/s1_loki_lines.txt).
 ERRDISABLE_TEXT = re.compile(r"^(?P<cause>[\w-]+) error detected on (?P<iface>[A-Za-z][\w./:-]{0,47}),")
+#: Each port event's line by its mnemonic's end, its port (and cause) as the line names them
+#: (the err-disable, BPDU guard's block and a port-security violation; captured and documented
+#: in tests/fixtures/errdisable/): each a trigger at once (the operator, 2026-11-16).
+PORT_EVENT_LINES = {
+    "-ERR_DISABLE": ERRDISABLE_TEXT,
+    "-BLOCK_BPDUGUARD": re.compile(r"on port (?P<iface>[A-Za-z][\w./:-]{0,47}) with BPDU Guard"
+                                   r"(?P<cause>)"),
+    "-PSECURE_VIOLATION": re.compile(r"on port (?P<iface>[A-Za-z][\w/:-]{0,47}(?:\.\d+)?)"
+                                     r"\.?\s*$(?P<cause>)"),
+}
+#: The cause a line names when its text does not (the switch's own cause names).
+PORT_EVENT_CAUSE = {"-BLOCK_BPDUGUARD": "bpduguard", "-PSECURE_VIOLATION": "psecure-violation"}
 #: An err-disable's trigger kind: an event, its incident decided from the device read at once.
 ERRDISABLE_KIND = "errdisable"
 
 
 def _errdisable_trigger(ctx, counts: dict, out: list, store: str, allowed, line: dict,
-                        m) -> None:
+                        m, cause: str = "") -> None:
     """An err-disable line as its incident's trigger (R3's per-kind timing, the operator,
     2026-11-16): the port and cause the line names; classified from the device read."""
     dev = line.get("dev") or ""
@@ -346,7 +358,7 @@ def _errdisable_trigger(ctx, counts: dict, out: list, store: str, allowed, line:
     out.append((network, dev, {
         "kind": ERRDISABLE_KIND, "key": "errdis:" + _key(dev, line.get("ts"), line.get("text")),
         "epoch": at, "at": line.get("at") or _iso(at), "source": store,
-        "interface": m.group("iface"), "cause": m.group("cause"),
+        "interface": m.group("iface"), "cause": cause,
         "words": f"{line.get('mn')} on {dev} at {line.get('at') or _iso(at)}: {line.get('text')}"}))
 
 
@@ -366,10 +378,11 @@ def from_syslog(store: str, value: dict, now: float = None) -> dict:
     ctx, counts, out = _Context(now), _counts(), []
     allowed = _store_networks(store, SYSLOG_READER)
     for l in new:
-        port = ERRDISABLE_TEXT.search(str(l.get("text") or "")) if str(
-            l.get("mn") or "").endswith("-ERR_DISABLE") else None
+        ending = next((e for e in PORT_EVENT_LINES if str(l.get("mn") or "").endswith(e)), "")
+        port = PORT_EVENT_LINES[ending].search(str(l.get("text") or "")) if ending else None
         if port:
-            _errdisable_trigger(ctx, counts, out, store, allowed, l, port)
+            _errdisable_trigger(ctx, counts, out, store, allowed, l, port,
+                                cause=port.group("cause") or PORT_EVENT_CAUSE.get(ending, ""))
             continue
         if not AT.is_change(l.get("mn"), l.get("text")):
             continue

@@ -293,6 +293,23 @@ def who_of(entry: dict, decisions: list) -> dict:
     return {"kind": "unknown", "actor": ""}
 
 
+def held_words(incident, now: float = None) -> str:
+    """An incident a guard holds, said (the operator, 2026-11-16: never "reading it, before it
+    decides" while held): "Held: <what the guard read> (guard N). Next automatic heal allowed at
+    <instant>." ``""`` when nothing holds it."""
+    inc = incident or {}
+    until = float(inc.get("defer_until") or 0)
+    now = time.time() if now is None else float(now)
+    if inc.get("state") != "watching" or until <= now:
+        return ""
+    d = inc.get("deferred") or {}
+    why = str(d.get("why") or "")
+    tail = why.split(": ", 2)[-1] if "held until" in why else why
+    g = f" (guard {d['guard']})" if d.get("guard") else ""
+    when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(until))
+    return f"Held: {tail.rstrip('.')}{g}. Next automatic heal allowed at {when}."
+
+
 #: The closed list's groups for a close on a verified run (`fixed_how`), the operator's labels.
 FIXED_GROUPS = {"ai": ("fixed_ai", "Fixed by AI"),
                 "script": ("fixed_script", "Fixed by Mercury: saved script")}
