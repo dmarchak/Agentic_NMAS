@@ -79,8 +79,12 @@ STEP_LABELS = {"approve": "Check hash", "hold": "Hold {device}", "read_before": 
 #: again by its own cause (the operator, 2026-11-16): a finding, never a verify failure; no
 #: retry and no rollback (the port is already safely down), nothing more sent.
 RETRIPPED = "retripped"
+#: A precondition's result saying the plan has nothing to do (the review of 2026-11-16: a lost
+#: stream whose collector close alone brought it back): the run ends ``not_needed``, nothing
+#: sent, a plan step that passes; said, never drawn as a fix the plan made.
+NOT_NEEDED = "not_needed"
 OUTCOMES = ("done", "refused", "not_net_zero", "rolled_back", "unverified", "failed",
-            RETRIPPED)
+            RETRIPPED, NOT_NEEDED)
 OUTCOME_WORDS = {"done": "ran, verified, and the configuration is as it was before",
                  RETRIPPED: "tripped again after the bounce: the port was left err-disabled, "
                             "nothing more was sent and nothing was rolled back",
@@ -90,15 +94,16 @@ OUTCOME_WORDS = {"done": "ran, verified, and the configuration is as it was befo
                  "rolled_back": "did not verify, and was rolled back",
                  "unverified": "ran; verify could not read everything it needs, so it did not "
                                "pass: read the device before anything else",
-                 "failed": "failed during the run: read the device before anything else"}
+                 "failed": "failed during the run: read the device before anything else",
+                 NOT_NEEDED: "not needed: what it repairs already holds, so nothing was sent"}
 #: A precondition's result that lets the run go on: it holds, or it cannot be told before the
 #: send and is judged after it by the plan's own verify (``deferred``: never a pass; G7's
 #: BPDU guard, since no BPDU is processed while the port is err-disabled).
 DEFERRED = "deferred"
-HOLDS = ("pass", DEFERRED)
+HOLDS = ("pass", DEFERRED, NOT_NEEDED)
 RECORD_STATE = {"done": "done", "refused": "refused", "not_net_zero": "failed",
                 "rolled_back": "failed", "unverified": "unverified", "failed": "failed",
-                RETRIPPED: "failed"}
+                RETRIPPED: "failed", NOT_NEEDED: "done"}
 
 
 #: How old a device read taken earlier in the same proposing job may be and still answer a
@@ -394,6 +399,14 @@ def preconditions(t, run: CheckRun, rec: dict):
             why = "; ".join(f"{j['name']}: {j['words']}" for j in bad) + ". Nothing was sent"
             _step(rec, "preconditions", "refused", why)
             return why
+        # Judged after every other precondition (the third review): a not-needed answer never
+        # hides one that fails.
+        done_already = [j for j in judged if j["result"] == NOT_NEEDED]
+        if done_already:
+            why = "; ".join(f"{j['name']}: {j['words']}" for j in done_already)
+            rec["not_needed"] = why
+            _step(rec, "preconditions", "ok", f"{why}: nothing to do, nothing was sent")
+            return f"{why}. Nothing was sent"
         held = [j["name"] for j in judged if j["result"] == "pass"]
         later = [f"{j['name']}: {j['words']}" for j in judged if j["result"] == DEFERRED]
         _step(rec, "preconditions", "ok",
@@ -758,6 +771,9 @@ def context(network: str, t, p: dict, run: CheckRun, rec: dict):
                           config_id=f"plan-{run.device}-{rec['id']}", list_name=network)
     ctx.params["allowed_dangerous"] = _auth.valid_keys(p["authorised"])
     ctx.transient = True
+    # Over SSH always (the review of 2026-11-16): the plan's shapes are measured as SSH sends
+    # them, and a plan touching netconf-yang must never ride NETCONF.
+    ctx.ssh_only = True
     ctx.declared_protocols = {ip: None}
     ctx.link_window = {ip: link_window(network, run.device, p["program"],
                                        committed_intents_of(network))}
@@ -941,11 +957,21 @@ def _net_zero_after_rollback(ctx, rec: dict, run: CheckRun) -> None:
     whole configuration where the run's was whole): the pipeline's rollback inverts only the
     program's own lines, so a line the device added (a sticky MAC learned on recovery) is still
     there. Kept as ``rec["net_zero"]["after_rollback"]`` (the lines still differing, masked;
-    ``None`` when it could not be read) and ``rec["net_zero"]["after_rollback_scope"]``."""
+    ``None`` when it could not be read) and ``rec["net_zero"]["after_rollback_scope"]``.
+
+    After EVERY rollback (the review of 2026-11-16), whether or not the run's own net-zero
+    check ran (a push that failed part-way never reaches verify): a rollback that inverts only
+    pushed lines can say nothing to undo while a section the program removed is gone, so the
+    compare is the run's word on it. Where the run's check never ran, the compare is the whole
+    configuration; the lines the failure capture found lost (``failure_state``'s ``lost``) are
+    kept beside it."""
     nz = rec.get("net_zero") or {}
-    if not ctx.rollback_performed or not nz.get("differs"):
+    if not ctx.rollback_performed:
         return
     pre = (ctx.pre_snapshots or {}).get(ctx.device_ips[0]) or {}
+    lost = ((ctx.failure_state or {}).get(ctx.device_ips[0]) or {}).get("lost")
+    if lost:
+        nz["lost_at_failure"] = [" > ".join(list(c) + [ln]) for c, ln in lost][:40]
     scope = "interfaces" if nz.get("scope") == "interfaces" else "full"
     got = _net_zero_after(ctx, run, pre, scope=scope)
     if got.get("error"):
@@ -1147,19 +1173,32 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
         return _finish(network, rec, "failed" if rec["config_change"] else "refused",
                        f"{type(exc).__name__}: {exc}", t)
     outcome, words = _outcome(ctx, rec)
+    if rec.get("not_needed") and outcome == "refused" and not ctx.push_results:
+        # Its precondition said there is nothing to do (`NOT_NEEDED`): the run passes, said.
+        outcome, words = NOT_NEEDED, f"{OUTCOME_WORDS[NOT_NEEDED]} ({rec['not_needed']})"
     if ctx.stages_failed and outcome == "refused" and not any(
             s["step"] in ("read_before", "preconditions") and s["result"] == "refused"
             for s in rec["steps"]):
         _step(rec, "preconditions", "refused", words)
-    if outcome != "refused":
+    if outcome not in ("refused", NOT_NEEDED):
+        # A not-needed run sent nothing and verified nothing: its preconditions step says so,
+        # and no send or verify step is drawn failed (the third review).
         # Recorded as each stage ended (`stage_steps`); here only what it did not record (a
         # send whose result is absent, a verify that never started), as before.
         _send_step(ctx, rec, absent=True)
         _verify_step(ctx, rec)
         if ctx.rollback_performed:
             o = (ctx.rollback_outcome or {}).get(ctx.device_ips[0]) or {}
-            _step(rec, "rollback", "ok" if o.get("state") in ("restored", "nothing_to_undo")
-                  else "fail", f"{o.get('state') or 'not recorded'}: {o.get('detail') or ''}",
+            # Never rolled back while the full compare still differs (the review of
+            # 2026-11-16): the compare's lines are the step's words then.
+            left = (rec.get("net_zero") or {}).get("after_rollback", [])
+            restored = o.get("state") in ("restored", "nothing_to_undo") and left == []
+            _step(rec, "rollback", "ok" if restored else "fail",
+                  (f"{o.get('state') or 'not recorded'}: {o.get('detail') or ''}" if restored
+                   else "NOT RESTORED: " + ("; ".join(left[:8]) if left else
+                                            "the configuration after the rollback could not "
+                                            "be read" if left is None else
+                                            f"{o.get('state')}: {o.get('detail') or ''}")),
                   commands=list((ctx.rollback_commands or {}).get(ctx.device_ips[0]) or []))
     rec.update(outcome=outcome, why=words)
     rec["receipt"] = _receipt(network, ctx, rec, p, outcome)

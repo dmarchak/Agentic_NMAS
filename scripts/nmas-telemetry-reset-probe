@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+"""Measure, on one lab device, one rung of the lost stream's ladder (the operator, 2026-11-16:
+"Make both rungs' shapes (removing and re-adding a subscription from intent; the netconf-yang
+toggle) provisional, and measure both on r2 first as Mercury probes, before the rehearsal:
+telemetry pause duration, net-zero result, and whether r2's stream returns by itself. Tell me
+before each probe; I approve the shapes as admin when measured").
+
+**What it sends:** the rung's built-in command plan's program exactly as Mercury renders it
+(`command_plan.preview` of ``telemetry-subscription-recreate`` with ``--rung recreate``: EVERY
+subscription intent sends to ``--subscription``'s receiver, removed and re-added from intent
+in one batch, as rung 2 does; of ``telemetry-stack-restart`` with ``--rung restart``), between
+``configure terminal`` and ``end``, as ONE held batch over SSH (`heal.bounce.Session.send`, the
+re-subscribe's one send path: it refuses a save shape). The plans' lines are PROVISIONAL
+shapes; this probe is how they are measured before an admin approves them, so it previews them
+with the shapes the network's store holds provisional (or does not hold) taken as approved for
+this run alone, a stand-in store passed to the preview and never written. A shape the store
+holds in any other state (an admin's refusal) stays as the store says, and the preview refuses.
+
+**Refused before anything is sent** (each naming what it compared): a device the lab declares
+never-probe (``lab/never-probe.json``, s3) and a run whose watch overlaps the nightly backup
+window, both by `nmas-revert-probe`'s own readings; a preview Mercury refuses; and, holding the
+device, THE PLAN'S OWN PRECONDITIONS judged by the same named checks the runner uses
+(`command_plan_run._judge`): the device IOS-XE, the subscriptions on the device exactly
+intent's (recreate), netconf-yang on and alone, neither restconf nor gnmi-yang configured
+(restart), the receivers and the collector read before. Only "the stream is still lost" is not
+asked: the probe measures a healthy stream on purpose. With ``--apply``: a ``--confirm`` that is
+not the hash the dry run printed (the operator's run-time confirmation of exactly this
+program), or no ``--actor``.
+
+**What it records:** a run record in Mercury's operations' record (`privileged.record`, key
+``telemetry-reset-probe``, History reads it), written before the send with ``config_change``
+so the device's own configuration lines during it are Mercury's, and finished with the
+outcome; and, under ``--out``, JSON and markdown, every line masked (`redact_text` with the
+known secret values), every time UTC:
+- before: each subscription's receiver (state, connection id), the collector's sessions from
+  the device on its port, the preconditions as judged;
+- t0 the send, its masked answer and any device error;
+- the net-zero result: the running configuration read back after the batch against BEFORE
+  (`roundtrip.configs_equivalent`), each differing line masked;
+- the watch, every ``--poll`` s until ``--watch`` s after t0 (the device released): for each
+  subscription its receiver, the collector's sessions and its series in Prometheus, each sample
+  timed; and from them, per subscription, t_connected (`resubscribe._device_check`),
+  t_new_session, t_bytes_twice (`resubscribe._bytes_check`) and t_series
+  (`resubscribe._stream_check`); the pause is t0 to each; "returned by itself" is every
+  subscription connected and its data back inside the watch, with nothing more sent;
+- the repair, when the read-back differs or the device answered an error: the program's
+  re-add part sent again, read back, and whether it restored BEFORE. A failed repair's first
+  output line says NOT RESTORED.
+
+It holds the device from the preconditions to the read-back, never saves, and never sends a
+reload. Self-healing may act on the lost-stream alert the pause can raise: the operator sets the
+network's heal mode before the run.
+
+    nmas-telemetry-reset-probe --list Default --device r2 --subscription 101 --rung recreate
+    nmas-telemetry-reset-probe --list Default --device r2 --subscription 101 --rung recreate \\
+        --apply --confirm <hash> --actor you@example.com --out /dev/shm/telemetry-reset-probe
+
+Exit 0 the run finished (its verdict in the record), 1 refused before anything was sent, 2 NOT
+RESTORED, 3 the device answered an error and the repair restored it.
+"""
+
+import argparse
+import calendar
+import json
+import os
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: Each rung's plan, by its probe name.
+RUNGS = {"recreate": "telemetry-subscription-recreate", "restart": "telemetry-stack-restart"}
+#: The precondition the probe does not ask: it measures a healthy stream on purpose.
+NOT_ASKED = ("telemetry.collector_not_receiving",)
+#: The watch: how long after the send, and how often (UNMEASURED for these rungs, which is what
+#: the probe measures; reasoned from the re-add's measured 116 s back, with a margin).
+WATCH_S = 600
+POLL_S = 5
+KEY = "telemetry-reset-probe"
+OPERATION = "telemetry reset probe"
+CLOCK = time.time
+SLEEP = time.sleep
+
+
+def _sibling(name: str):
+    """Another probe's helpers, loaded from its file (one home for each)."""
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+    path = os.path.join(ROOT, "scripts", name)
+    loader = SourceFileLoader(name.replace("-", "_"), path)
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def utc(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(epoch)))
+
+
+def stand_in_store(list_name: str, dialect: str, shapes) -> tuple:
+    """``(store, why)``: the network's shape store with each of *shapes* it holds provisional,
+    or does not hold, taken as approved for this run alone; a shape in any other state is left
+    as the store holds it. A store that cannot be read refuses."""
+    from modules.nsot import command_policy as POL
+
+    real = POL.read_store(list_name)
+    if real.get("unreadable"):
+        return None, f"the network's shape store could not be read ({real['unreadable']})"
+    held = dict(real.get("shapes") or {})
+    for s in shapes:
+        k = POL.key_of(dialect, s)
+        if (held.get(k) or {}).get("state", "provisional") == "provisional":
+            held[k] = {"state": "approved", "for": "this probe run alone"}
+    return {"shapes": held}, ""
+
+
+def preview(list_name: str, rung: str, device: str, sub: str) -> dict:
+    """The rung's plan previewed by Mercury with the stand-in store: ``{"ok", "refusals",
+    "program", "hash", "dialect", "repair", "shapes", "derived", "device_row"}``. *repair* is
+    the program's re-add part (every line after the removals)."""
+    from modules.nsot import command_plan as CP
+
+    key = RUNGS[rung]
+    values = {"device": device, **({"subscription": sub} if rung == "recreate" else {})}
+    first = CP.preview(list_name, key, values)
+    unknown = [u["shape"] for u in first.get("unknown_shapes") or []]
+    store, why = stand_in_store(list_name, first.get("dialect") or "", unknown)
+    if store is None:
+        return {"ok": False, "refusals": [why]}
+    p = CP.preview(list_name, key, values, store=store)
+    program = list(p["program"])
+    removals = [x for x in program if x.startswith("no ")]
+    return {"ok": p["ok"], "refusals": list(p["refusals"]), "program": program,
+            "hash": p.get("hash") or "", "dialect": p.get("dialect") or "",
+            "repair": program[len(removals):], "shapes": unknown,
+            "derived": dict(p.get("derived") or {}), "device_row": dict(p.get("device_row") or {}),
+            "values": dict(p.get("values") or {})}
+
+
+def refusal(args, now: float = None) -> str:
+    rp = _sibling("nmas-revert-probe")
+    now = CLOCK() if now is None else now
+    if args.rung not in RUNGS:
+        return f"REFUSED: --rung {args.rung!r} is not one of {', '.join(RUNGS)}"
+    if not (args.subscription.isdigit() and len(args.subscription) <= 10):
+        return f"REFUSED: --subscription {args.subscription!r} is not a subscription id"
+    if not (args.list_name and args.device):
+        return "REFUSED: --list and --device name the device"
+    why = rp.never_probe(args.device) or rp.window_refusal(now, args.watch + 120)
+    if why:
+        return why
+    if args.apply and not (args.actor and args.out and args.confirm):
+        return "REFUSED: --apply needs --confirm <the dry run's hash>, --actor and --out"
+    return ""
+
+
+def preconditions(list_name: str, rung: str, p: dict) -> tuple:
+    """``(judged, why)``: the plan's own preconditions but `NOT_ASKED`, read through the run's
+    reads (the read engine) and judged by the runner's named checks (`command_plan_run._judge`),
+    and why the probe refuses (a result that does not hold), or ``""``. The check run object
+    is returned too, its baseline kept on it."""
+    from modules.nsot import command_plan as CP
+    from modules.nsot import command_plan_run as CPR
+
+    t = CP.template_of(RUNGS[rung])
+    items = tuple(i for i in t.preconditions if i.get("expect") not in NOT_ASKED)
+    src = CPR.Sources(list_name)
+    run = CPR.CheckRun(list_name, p["values"]["device"], p["device_row"], p["derived"], "", src)
+    cmds = list(dict.fromkeys(CP.substitute(i["read"], p["derived"]) for i in items
+                              if i["read"]))
+    answers = src.read(run.device, cmds) if cmds else {}
+    judged = CPR._judge(items, run, answers)                  # noqa: SLF001 (the runner's own)
+    bad = [j for j in judged if j["result"] not in ("pass",)]
+    why = "; ".join(f"{j['name']}: {j['words']}" for j in bad)
+    return judged, (f"REFUSED: the plan's preconditions do not hold: {why}" if why else ""), run
+
+
+def _units(p: dict, hv: dict, rung: str) -> list:
+    from modules.heal.diagnose_stream import receiver_of
+
+    declared = {str(s.get("subscription")): s.get("settings") or []
+                for s in hv.get("telemetry") or [] if isinstance(s, dict)}
+    subs = list(p["derived"].get("subscription_each") or []) if rung == "recreate" else \
+        list(declared)
+    out = []
+    for sub in subs:
+        r = receiver_of(declared.get(sub) or [])
+        if not r.get("why"):
+            out.append({"sub": sub, "address": r["address"], "port": r["port"]})
+    return out
+
+
+def _sample(src, host: str, u: dict, addresses: list, actor: str, dialect: str) -> dict:
+    return {"at": CLOCK(), "receiver": src.receiver(host, u["sub"], actor, dialect),
+            "collector": src.collector(u["address"], u["port"], addresses),
+            "series": src.series(host, u["sub"])}
+
+
+def run(args, p: dict) -> dict:
+    """The measured run (the module docstring): the record."""
+    from modules.heal import resubscribe as R
+    from modules.heal.bounce import Session
+    from modules.nsot import device_ops, privileged, reads
+    from modules.redact import redact_text
+
+    src = R.Sources(args.list_name, clock=CLOCK, sleep=SLEEP)
+    values = src.values()
+
+    def mask(x):
+        return redact_text(str(x or ""), values)
+
+    dev = src.device(args.device)
+    intents, err = src.intents()
+    hv = (intents or {}).get(args.device) or {}
+    now = CLOCK()
+    rec = {"id": reads.new_id(), "list": args.list_name, "device": args.device, "key": KEY,
+           "command": f"{OPERATION}: {RUNGS[args.rung]}", "at": utc(now), "started_at": now,
+           "finished_at": None, "state": "running", "outcome": "running",
+           "actor": args.actor, "actor_verified": "host_shell", "rung": args.rung,
+           "plan": RUNGS[args.rung], "subscription": args.subscription, "hash": p["hash"],
+           "program": [mask(x) for x in p["program"]], "shapes": p["shapes"],
+           "config_change": False, "samples": {}, "times": {}, "steps": []}
+    units = _units(p, hv, args.rung)
+    if not dev or not units:
+        rec["refused"] = (f"REFUSED: {args.device} is not a device of {args.list_name}" if not dev
+                          else f"REFUSED: no subscription with a known receiver to measure "
+                               f"({err or 'intent read'})")
+        return rec
+    addresses = src.addresses(hv)
+    s = Session(args.list_name, dev, "", args.actor, values, operation=OPERATION,
+                detail=f"{RUNGS[args.rung]} on {args.device}", label="telemetry reset probe",
+                opener=src.opener, clock=CLOCK)
+    with device_ops.hold(args.list_name, args.device, OPERATION, args.actor,
+                         detail=f"measuring {RUNGS[args.rung]}", ip=dev.get("ip", "")):
+        judged, why, _check = preconditions(args.list_name, args.rung, p)
+        rec["preconditions"] = [dict(j, words=mask(j["words"])) for j in judged]
+        if why:
+            rec["refused"] = mask(why)
+            return rec
+        before = {u["sub"]: _sample(src, args.device, u, addresses, args.actor, p["dialect"])
+                  for u in units}
+        running, why = R._running(s)                       # noqa: SLF001 (its one home)
+        if running is None:
+            rec["refused"] = f"REFUSED: the running configuration could not be read ({why})"
+            return rec
+        s.before = running
+        rec["before"] = {k: _shown(v) for k, v in before.items()}
+        rec["config_change"] = True                         # Mercury's lines from here on
+        privileged.record(args.list_name, rec)
+        t0 = CLOCK()
+        rec["times"]["t0_send"] = utc(t0)
+        sent = R._send(s, ["configure terminal", *p["program"], "end"])  # noqa: SLF001
+        # Every word of the send masked, its exception text too (the third review).
+        rec["send"] = {"sent": sent["sent"], "answer": sent["answer"],
+                       "errors": [mask(e) for e in sent["errors"]],
+                       "lost": mask(sent["lost"]), "why": mask(sent["why"])}
+        if not sent["sent"]:
+            # The session never opened: nothing was sent, so there is nothing to watch.
+            rec.update(config_change=False, finished_at=CLOCK(), state="refused",
+                       outcome="refused", why=f"nothing was sent: {rec['send']['why']}")
+            rec["refused"] = f"REFUSED: nothing was sent: {rec['send']['why']}"
+            privileged.record(args.list_name, rec)
+            return rec
+        after, why = R._running(s)                         # noqa: SLF001
+        rec["net_zero"] = _masked_diff(R, s, after, why, mask)
+        if sent["errors"] or rec["net_zero"].get("equal") is not True:
+            rec["repair"] = _repair(s, p, R, mask)
+    first = {u["sub"]: {} for u in units}
+    done = {u["sub"]: {} for u in units}
+    try:
+        while CLOCK() - t0 <= args.watch:
+            for u in units:
+                got = _sample(src, args.device, u, addresses, args.actor, p["dialect"])
+                rec["samples"].setdefault(u["sub"], []).append(_shown(got))
+                _times(R, args.device, u, before[u["sub"]], got, first[u["sub"]],
+                       done[u["sub"]])
+            if all(d.get("t_connected") and (d.get("t_bytes_twice") or d.get("t_series"))
+                   for d in done.values()):
+                break
+            SLEEP(args.poll)
+    except BaseException as exc:                          # noqa: BLE001 (recorded, re-raised)
+        # A crash or an interrupt in the watch finishes the record as failed, never running.
+        rec.update(finished_at=CLOCK(), state="failed", outcome="failed",
+                   why=mask(f"the watch stopped ({type(exc).__name__}: {exc}); "
+                            + ("the repair ran" if rec.get("repair") else
+                               "the send's read-back was as recorded")))
+        privileged.record(args.list_name, rec)
+        raise
+    rec["times"]["by_subscription"] = done
+    rec["pause_s"] = {sub: {k: calendar.timegm(time.strptime(v, "%Y-%m-%dT%H:%M:%SZ"))
+                            - int(t0) for k, v in d.items()} for sub, d in done.items()}
+    rec["returned_by_itself"] = bool(not rec.get("repair") and all(
+        d.get("t_connected") and (d.get("t_bytes_twice") or d.get("t_series"))
+        for d in done.values()))
+    restored = (rec.get("repair") or {}).get("restored", True)
+    rec.update(finished_at=CLOCK(), state="done" if restored else "failed",
+               outcome=("measured" if restored else "not_restored"),
+               why=("returned by itself" if rec["returned_by_itself"] else
+                    "did not return by itself inside the watch" if restored else
+                    "NOT RESTORED: read the device"))
+    privileged.record(args.list_name, rec)
+    return rec
+
+
+def _times(R, device: str, u: dict, before: dict, got: dict, first: dict, done: dict) -> None:
+    at = utc(got["at"])
+    if "t_connected" not in done and R._device_check(  # noqa: SLF001
+            device, u["sub"], before["receiver"], got["receiver"])["state"] == "pass":
+        done["t_connected"] = at
+    old = {(x["remote"], x["rport"]) for x in before["collector"].get("sessions") or []}
+    if "t_new_session" not in done and any(
+            (x["remote"], x["rport"]) not in old and x.get("state") == "ESTABLISHED"
+            for x in got["collector"].get("sessions") or []):
+        done["t_new_session"] = at
+    direct, _read = R._bytes_check(device, u, before["collector"], got["collector"],  # noqa: SLF001
+                                   first)
+    if "t_bytes_twice" not in done and direct and direct["state"] == "pass":
+        done["t_bytes_twice"] = at
+    if "t_series" not in done and R._stream_check(  # noqa: SLF001
+            device, u["sub"], got["series"])["state"] == "pass":
+        done["t_series"] = at
+
+
+def _masked_diff(R, s, after, why, mask) -> dict:
+    if after is None:
+        return {"equal": None, "why": mask(why)}
+    d = R._diff(s, after)                                    # noqa: SLF001
+    return {"equal": d["equal"], "only_before": [mask(x) for x in d["only_before"] or []],
+            "only_now": [mask(x) for x in d["only_now"] or []]}
+
+
+def _shown(sample: dict) -> dict:
+    r, c, se = sample["receiver"], sample["collector"], sample["series"]
+    return {"at": utc(sample["at"]),
+            "receiver": {"state": r.get("state"), "why": r.get("why") or "",
+                         "rows": [{k: x.get(k) for k in ("state", "connection", "explanation")}
+                                  for x in r.get("rows") or []]},
+            "collector": {"state": c.get("state"), "why": c.get("why") or "",
+                          "sessions": [{k: x.get(k) for k in
+                                        ("remote", "rport", "state", "bytes_received",
+                                         "lastrcv_ms")} for x in c.get("sessions") or []]},
+            "series": {k: se.get(k) for k in ("state", "why")}}
+
+
+def _repair(s, p: dict, R, mask) -> dict:
+    """The program's re-add part sent again, read back against BEFORE."""
+    sent = R._send(s, ["configure terminal", *p["repair"], "end"])  # noqa: SLF001
+    after, why = R._running(s)                                       # noqa: SLF001
+    diff = _masked_diff(R, s, after, why, mask)
+    return {"sent": [mask(x) for x in p["repair"]], "answer": sent["answer"],
+            "errors": [mask(e) for e in sent["errors"]], "net_zero": diff,
+            "restored": diff.get("equal") is True}
+
+
+def markdown(rec: dict) -> str:
+    nz = rec.get("net_zero") or {}
+    lines = [f"# Telemetry reset probe: {rec['device']} {rec['rung']} ({rec['at']})", "",
+             f"- plan: {rec['plan']} (hash {rec['hash']}); shapes measured: "
+             f"{', '.join(rec.get('shapes') or []) or 'none'}",
+             f"- sent at {(rec.get('times') or {}).get('t0_send')}; device errors: "
+             f"{'; '.join((rec.get('send') or {}).get('errors') or []) or 'none'}",
+             f"- net zero: {nz.get('equal')}"
+             + (f" (before only: {nz.get('only_before')}; now only: {nz.get('only_now')})"
+                if nz.get("equal") is False else ""),
+             f"- pause (s from the send), by subscription: "
+             f"{json.dumps(rec.get('pause_s') or {}, sort_keys=True)}",
+             f"- returned by itself: {rec.get('returned_by_itself')}",
+             f"- Mercury's record: run {rec.get('id')} (History)"]
+    if rec.get("repair"):
+        lines.append(f"- repair: restored {rec['repair']['restored']}")
+    return "\n".join(lines) + "\n"
+
+
+def write_record(rec: dict, out: str) -> list:
+    from modules.config import open_secure
+    os.makedirs(out, exist_ok=True)
+    stamp = rec["at"].replace("-", "").replace(":", "")
+    base = os.path.join(out, f"telemetry-reset-probe-{rec['device']}-{rec['rung']}-{stamp}")
+    with open_secure(base + ".json", "w") as fh:
+        fh.write(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+    with open_secure(base + ".md", "w") as fh:
+        fh.write(markdown(rec))
+    return [base + ".json", base + ".md"]
+
+
+def main() -> int:
+    from modules.redact import known_secret_values, redact_text
+
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", dest="list_name", default="")
+    ap.add_argument("--device", default="")
+    ap.add_argument("--subscription", default="",
+                    help="one subscription; with --rung recreate, every subscription on its "
+                         "receiver is recreated with it")
+    ap.add_argument("--rung", default="recreate", help="recreate or restart")
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--confirm", default="", help="the hash the dry run printed")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="", help="the folder the record is written under")
+    ap.add_argument("--watch", type=int, default=WATCH_S)
+    ap.add_argument("--poll", type=int, default=POLL_S)
+    args = ap.parse_args()
+
+    why = refusal(args)
+    if why:
+        print(why)
+        return 1
+    values = known_secret_values()
+    p = preview(args.list_name, args.rung, args.device, args.subscription)
+    if not p["ok"]:
+        print(redact_text("REFUSED: Mercury's preview of the plan refuses it: "
+                          + "; ".join(p["refusals"]), values))
+        return 1
+    if not args.apply:
+        group = p["derived"].get("subscription_each") or []
+        print(f"DRY RUN: nothing is sent. {RUNGS[args.rung]} on {args.device}"
+              + (f", subscriptions {', '.join(group)} (every one on {args.subscription}'s "
+                 "receiver)" if group else "")
+              + ", as ONE batch over SSH, never saved:\n")
+        for line in ["configure terminal", *p["program"], "end"]:
+            print(f"  {redact_text(line, values)}")
+        print(f"\nprovisional shapes it measures: {', '.join(p['shapes']) or 'none'}")
+        print("the plan's preconditions are judged holding the device before the send (all "
+              "but the stream still being lost)")
+        print(f"hash: {p['hash']}\n\n--apply --confirm {p['hash']} --actor <you> --out <folder> "
+              "runs it, once the operator has been told and the heal mode is set.")
+        return 0
+    if args.confirm != p["hash"]:
+        print(f"REFUSED: --confirm {args.confirm or 'none'} is not the program's hash "
+              f"{p['hash']}: the program moved since the dry run, or another was confirmed")
+        return 1
+    rec = run(args, p)
+    if rec.get("refused"):
+        print(rec["refused"])
+        return 1
+    files = write_record(rec, args.out)
+    repair = rec.get("repair") or {}
+    if repair and not repair["restored"]:
+        print(f"NOT RESTORED: {args.device}: the repair did not return the running "
+              "configuration to BEFORE. Nothing was saved, so a reload returns it.")
+    print(markdown(rec))
+    for f in files:
+        print(f"written: {f}")
+    if repair and not repair["restored"]:
+        return 2
+    return 3 if (rec.get("send") or {}).get("errors") else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

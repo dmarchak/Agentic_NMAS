@@ -342,6 +342,8 @@ OPERATIONS = {
     "telemetry-readd": ("modules.heal.resubscribe", "READD_STEPS"),
     # C3078: the re-subscribe with the collector step, on the same page.
     "telemetry-collector-resubscribe": ("modules.heal.resubscribe", "COLLECTOR_STEPS"),
+    # The collector step alone, a plan's step (2026-11-16), on the same page.
+    "telemetry-collector-close": ("modules.heal.resubscribe", "CLOSE_STEPS"),
     # G7 (C3712): an err-disabled switch port recovered, the first built-in command plan, run
     # by the command-plan runner (C3757, path 2): its steps are the runner's.
     "errdisable-recover": ("modules.nsot.command_plan_run", "STEPS"),
@@ -394,6 +396,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "paired-deploy": "deploy", "diagnose-reach": "diagnose",
                   "diagnose-stream": "diagnose", "telemetry-readd": "telemetry-resubscribe",
                   "telemetry-collector-resubscribe": "telemetry-resubscribe",
+                  "telemetry-collector-close": "telemetry-resubscribe",
                   "heal-detect": "heal", "heal-act": "heal",
                   "heal-bounce-decide": "heal", "heal-bounce": "heal",
                   "heal-clear-decide": "heal", "heal-clear": "heal",

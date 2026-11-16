@@ -94,7 +94,7 @@ from dataclasses import dataclass
 
 from modules.heal import catalog as _catalog
 from modules.heal.resubscribe import KEY as RESUBSCRIBE_KEY
-from modules.heal.resubscribe import COLLECTOR_KEY, READD_KEY, header
+from modules.heal.resubscribe import CLOSE_KEY, COLLECTOR_KEY, READD_KEY, header
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +119,8 @@ PARAMETERS = {RESUBSCRIBE_KEY: (("subs", "set"), ("collector_step", "flag")),
               # C3078: the re-subscribe with the collector step, its runs recorded under its
               # own key (`resubscribe.COLLECTOR_KEY`, each record's ``collector_step`` true).
               COLLECTOR_KEY: (("subs", "set"),),
+              # The collector step alone (2026-11-16), by the subscriptions it was for.
+              CLOSE_KEY: (("subs", "set"),),
               # G7 (C3712): Recover an err-disabled interface, by its port and cause.
               "errdisable-recover": (("interface", "one"), ("cause", "one"))}
 #: Given with a proposal and no parameter of it: the incident names the device, and the reason
@@ -422,8 +424,8 @@ def _run_params(run: dict) -> dict:
                     subs.append(sub)
     if run.get("key") == READD_KEY:
         return canonical(READD_KEY, {"sub": subs[0] if subs else ""})
-    if run.get("key") == COLLECTOR_KEY:
-        return canonical(COLLECTOR_KEY, {"subs": subs})
+    if run.get("key") in (COLLECTOR_KEY, CLOSE_KEY):
+        return canonical(run["key"], {"subs": subs})
     return canonical(RESUBSCRIBE_KEY, {"subs": subs,
                                        "collector_step": run.get("collector_step") is True})
 

@@ -87,9 +87,13 @@ def _local(name: str, words: str) -> RL.Operation:
 LOCAL = (
     _local("collector_sessions", "the collector's side of the subscription's stream on "
                                  "Mercury's host: its listener and the device's sessions on "
-                                 "the receiver's port, each with bytes received and sent and "
-                                 "time since its last receive and send (bytes_sent null: not "
-                                 "printed, the kernel's tool prints it only when not zero)"),
+                                 "the receiver's port, each with bytes received, sent and "
+                                 "acked, the milliseconds since its last receive, send and "
+                                 "ACK, its path MTU and its timer (keepalive and when it is "
+                                 "due), as the device's Monitoring tab shows them (bytes_sent "
+                                 "and bytes_acked null: not printed, the kernel's tool prints "
+                                 "each only when not zero; lastack moving while lastrcv grows "
+                                 "is keepalives answered with no data)"),
     _local("stream_series", "whether the subscription's stream has data in Prometheus now, by "
                             "the lost-stream alert's own query"),
 )
@@ -101,18 +105,14 @@ def _collector(fx: dict, sub: str) -> dict:
     stream = (fx.get("streams") or {}).get(sub) or {}
     if stream.get("why"):
         raise RuntimeError(f"subscription {sub}'s collector is not known: {stream['why']}")
-    read = fx.get("collector") or DS.read_collector
-    got = read(stream["address"], int(stream["port"]), list(fx.get("sources") or []))
-    if got.get("state") != "read":
+    # The person's reader (C3720: the device's Monitoring tab draws `DS.device_collector`,
+    # each stream through `DS.collector_of`), so a person and the AI read the same view.
+    got = DS.collector_of(stream, fx.get("sources") or [], read=fx.get("collector"))
+    if got["state"] != "read":
         raise RuntimeError(f"the collector at {stream['address']} port {stream['port']} was not "
                            f"read: {got.get('why') or 'no reason given'}")
-    return {"collector": f"{got['address']} port {got['port']}",
-            "listening": list(got.get("listening") or []),
-            "sessions": [{k: s.get(k) for k in ("remote", "rport", "state", "bytes_received",
-                                                "lastrcv_ms", "bytes_sent", "lastsnd_ms")}
-                         for s in got.get("sessions") or []],
-            "others_established": int(got.get("others") or 0),
-            "activity": got.get("activity") or ""}
+    return {k: got[k] for k in ("collector", "listening", "sessions", "others_established",
+                                "activity")}
 
 
 def _series(fx: dict, device: str, sub: str) -> dict:

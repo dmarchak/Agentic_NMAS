@@ -132,9 +132,14 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: v11, v12 and v13 (C3797, the same day): the investigation, iterative: v11 its first pass,
 #: v12 a later pass with the reads so far (it may ask again), v13 its last pass (and the plain
 #: one); each answer names the read it lacked. v9 and v10 stay readable, never asked.
-PROMPT_PLAN = (FEATURE, 13)
-PROMPT_PLAN_READS = (FEATURE, 11)
-PROMPT_AGAIN = (FEATURE, 12)
+#: v14, v15 and v16 (the operator, 2026-11-16, r7's wedged session): v11, v12 and v13 with a
+#: lost stream's stalled session said: test the path first (DF pings at full size and a
+#: traceroute), and, when it is clean, reset one end, least disruptive first, by the ladder
+#: section's first untried rung (`modules/fixit/ladder.py`). v11 to v13 stay readable, never
+#: asked; the answers' schemas are theirs, unchanged.
+PROMPT_PLAN = (FEATURE, 16)
+PROMPT_PLAN_READS = (FEATURE, 14)
+PROMPT_AGAIN = (FEATURE, 15)
 #: The investigation's bounds (C3797; the operator: "the incident's cost cap, plus a declared
 #: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): at most
 #: `ROUNDS` rounds of reads, `MAX_READS` reads in all (three a pass, the family's limit), and
@@ -388,6 +393,23 @@ class TroubleshootInvestigated(TroubleshootPlanFlat):
     lacked_read: str = ""
 
 
+# v14 to v16 (2026-11-16): the same answers as v11 to v13, asked by the prompts that say a
+# stalled stream's session and the ladder; registered apart so a call names its version.
+@register(FEATURE, 14)
+class TroubleshootInvestigateV14(TroubleshootInvestigate):
+    """v11's first pass, asked by v14's prompt."""
+
+
+@register(FEATURE, 15)
+class TroubleshootInvestigateAgainV15(TroubleshootInvestigateAgain):
+    """v12's later pass, asked by v15's prompt."""
+
+
+@register(FEATURE, 16)
+class TroubleshootInvestigatedV16(TroubleshootInvestigated):
+    """v13's last pass, asked by v16's prompt."""
+
+
 #: How a call that was sent and got no answer begins its line (the operator, 2026-11-15: a
 #: refused request was drawn as "the AI named no fix"): `fixit.section` reads it as a failure,
 #: never as an answer.
@@ -441,7 +463,8 @@ SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
              4: TroubleshootFixitReads, 5: TroubleshootEngineerReads, 7: TroubleshootPlan,
              8: TroubleshootPlanReads, 9: TroubleshootPlanFlat, 10: TroubleshootPlanReadsFlat,
              11: TroubleshootInvestigate, 12: TroubleshootInvestigateAgain,
-             13: TroubleshootInvestigated}
+             13: TroubleshootInvestigated, 14: TroubleshootInvestigateV14,
+             15: TroubleshootInvestigateAgainV15, 16: TroubleshootInvestigatedV16}
 
 
 class Refused(ValueError):
@@ -504,6 +527,19 @@ def attempts_section(incident, resolved: float = None, *, now: float = None,
     return _section(ATTEMPTS, "ok" if pieces else "empty",
                     "" if pieces else "no catalog operation has run in this incident", pieces,
                     source)
+
+
+def failed_of(got: dict) -> list:
+    """The failed attempts of *got* (`payload.tried_parts`'s, as sent), as the ladder reads
+    them (`ladder.tried`): ``[{"n", "operation", "params", "outcome"}]``."""
+    out = []
+    for key, part in sorted(((got or {}).get("parts") or {}).items(),
+                            key=lambda kv: int(kv[0].split(":")[1])):
+        if not part.get("passed"):
+            out.append({"n": int(key.split(":")[1]), "operation": part.get("operation") or "",
+                        "params": dict(part.get("params") or {}),
+                        "outcome": part.get("outcome") or ""})
+    return out
 
 
 def run_steps_section(incident, got: dict) -> dict:
@@ -718,6 +754,14 @@ def fixit_format() -> str:
         "(the collector's own log lines since the run started) and after_run:syslog (the "
         "device's syslog lines since the run started). Each says when it could not be read; "
         "an unread part is not evidence of anything.",
+        "ladder, for a lost stream, is Mercury's ladder of repairs, least disruptive first, "
+        "never a reload: each rung ladder:<n> names its reset (tried_words), the plan of "
+        "Mercury's steps that makes it (steps, empty with why when no step does yet), what its "
+        "verify reads and its impact, tried (the failed attempt that already made the same "
+        "reset, by equivalence: a re-subscribe, a re-add and a re-subscribe with the collector "
+        "step are one reset) and first_untried. Never propose a step whose rung is tried; "
+        "propose the first_untried rung's steps as they stand, or, when none is left, say so "
+        "as a gap.",
         "mercury_reads may begin with Mercury's standard reads for the incident's problem kind, "
         "run before your first pass (their why says so): then this pass is your first, there is "
         "no previous answer to replace, and they are cited as any read is. They are what this "
@@ -859,7 +903,15 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
     after = after_run_section(network, incident, tried.get("newest_failed"), now=now, loki=loki)
     if after is not None:
         own.append(after)
-    part("run_steps and after_run")
+    # The ladder (the operator, 2026-11-16): what counts as tried by equivalence, and the first
+    # untried rung, from the same attempts as sent.
+    from modules.fixit import ladder
+    tried_as = ladder.tried(failed_of(tried))
+    rungs = ladder.rungs(incident, tried_as)
+    lad = ladder.section(incident, tried_as)
+    if lad is not None:
+        own.append(lad)
+    part("run_steps, after_run and the ladder")
     checked = list(sections) + own + [note_section(note)]
     data = {"pack": json.dumps([explain.as_sent(s) for s in sections] + own, sort_keys=True,
                                ensure_ascii=False, separators=(",", ":")),
@@ -888,7 +940,10 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
             "subject": {"kind": "heal_incident", "id": incident.id,
                         "devices": [incident.device] if incident.device else []},
             "actable": [incident.device, *incident.subscriptions],
-            "own": own, "note_part": note_section(note)}
+            "own": own, "note_part": note_section(note),
+            # Plain data the answer check reads (`loop_feature`): the failed attempts by their
+            # equivalence class, and the ladder's rungs.
+            "tried_as": tried_as, "ladder": rungs}
     part("held, the catalogue and the contexts")
     got = fit(prep)
     part("the fit")
@@ -1517,6 +1572,8 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         marks = unverified(answer, sections, prep["topo"], prep["pack"])
         why = check(answer, prep["pack"], sections, prep["topo"], unverified=_flat(marks))
         if not why:
+            why = tried_refusal(answer, prep)
+        if not why:
             kept.append((answer, marks))
         return why
 
@@ -1528,13 +1585,34 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
 
     # The investigation (C3797): iterative within its bounds, the incident's cost cap asked
     # before each further pass (`prep["may_go_on"]`, the press's; none in a preview).
-    return RL.LoopFeature(task=FEATURE, first=(PROMPT_PLAN_READS, TroubleshootInvestigate),
-                          second=(PROMPT_PLAN, TroubleshootInvestigated),
-                          plain=(PROMPT_PLAN, TroubleshootInvestigated), check=check_,
+    # Each pass's schema is its prompt version's (`SCHEMA_OF`), so a call names one version.
+    return RL.LoopFeature(task=FEATURE,
+                          first=(PROMPT_PLAN_READS, SCHEMA_OF[PROMPT_PLAN_READS[1]]),
+                          second=(PROMPT_PLAN, SCHEMA_OF[PROMPT_PLAN[1]]),
+                          plain=(PROMPT_PLAN, SCHEMA_OF[PROMPT_PLAN[1]]), check=check_,
                           cites=cites_, acts_on=acts_on, first_only=("read_set",),
-                          again=(PROMPT_AGAIN, TroubleshootInvestigateAgain), rounds=ROUNDS,
+                          again=(PROMPT_AGAIN, SCHEMA_OF[PROMPT_AGAIN[1]]), rounds=ROUNDS,
                           max_reads=MAX_READS, wall_s=WALL_S, read_room=_room_of(prep),
                           may_go_on=prep.get("may_go_on"))
+
+
+def tried_refusal(answer, prep: dict) -> str:
+    """Why *answer*'s fix or plan names a step whose equivalent already failed in the incident
+    (the operator, 2026-11-16: "The AI never proposes a step whose equivalent already failed on
+    the incident"; `ladder.step_refusal`, by the request's own ``tried_as`` and ``ladder``),
+    or ``""``. An improvement's steps are held the same way."""
+    from modules.fixit import ladder
+
+    rows = (prep or {}).get("tried_as") or []
+    if answer is None:
+        return ""
+    # Asked of every answer (the third review): close-first holds also where the incident
+    # names no subscription and no ladder was built.
+    steps = [as_door(answer.fix)] if getattr(answer, "fix", None) is not None else []
+    steps += [as_door(s) for s in getattr(answer, "plan", None) or []]
+    imp = getattr(answer, "improvement", None)
+    steps += [as_door(s) for s in (imp.steps if imp else [])]
+    return ladder.step_refusal(steps, rows, (prep or {}).get("ladder") or [])
 
 
 def marks_of(prep: dict, answer) -> dict:
@@ -1630,8 +1708,12 @@ def overlooked_steps(answer, found, incident=None) -> list:
         except Exception as exc:                      # noqa: BLE001 (none excluded, said)
             log.info("fixit troubleshoot: %s's attempts could not be read: %s",
                      getattr(incident, "id", "?"), exc)
+    # A step whose equivalent failed counts as tried too (`ladder.TRIED_AS`, 2026-11-16).
+    from modules.fixit.ladder import TRIED_AS
+    classes = {TRIED_AS[k] for k in failed if k in TRIED_AS}
     return sorted(k for k, fixes in fix_proposal.capabilities().items()
-                  if condition in fixes and k not in failed)
+                  if condition in fixes and k not in failed
+                  and TRIED_AS.get(k, object()) not in classes)
 
 
 def overlooked_words(keys) -> str:

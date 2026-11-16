@@ -56,6 +56,7 @@ log = logging.getLogger(__name__)
 AS_ATTEMPT = {"telemetry-resubscribe": {"subscriptions": "subs"},
               "telemetry-readd": {"subscription": "sub"},
               "telemetry-collector-resubscribe": {"subscriptions": "subs"},
+              "telemetry-collector-close": {"subscriptions": "subs"},
               # G7 (C3712): its port and cause, by the same names.
               "errdisable-recover": {"interface": "interface", "cause": "cause"}}
 #: The checks, in the order they are made, each one's name as a refusal's code says it.

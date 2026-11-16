@@ -53,7 +53,16 @@ BUILTIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command_
 FIELDS = ("kind", "key", "title", "words", "net_zero", "parameters", "preconditions", "steps",
           "verify", "reason", "on_finish", "fixes")
 REQUIRED = ("kind", "key", "title", "words", "parameters", "steps", "reason")
-PARAM_TYPES = ("device", "interface", "choice")
+#: ``subscription`` (2026-11-16, the lost stream's ladder, rung 2): a telemetry subscription the
+#: device's committed intent declares. It derives ``{<name>_each}``, EVERY subscription intent
+#: sends to the same receiver (address and port) as the one named, in intent's order (the
+#: review of 2026-11-16: subscriptions to one receiver share one connection, so all of them
+#: are reset in one batch, or the connection survives), and ``{<name>_each_lines}``, each
+#: one's lines exactly as intent renders them under its header (`templates/cisco_iosxe/
+#: base.j2`). A command naming ``{<name>_each}`` is repeated for each of them; a whole
+#: indented ``{<name>_each_lines}`` right after it repeats with it (`program`).
+PARAM_TYPES = ("device", "interface", "choice", "subscription")
+_SUB_ID = re.compile(r"[0-9]{1,10}\Z")
 _KEY = re.compile(r"[a-z][a-z0-9-]{1,48}\Z")
 _NAME = re.compile(r"[a-z][a-z0-9_]{0,30}\Z")
 _IFNAME = re.compile(r"[A-Za-z][A-Za-z-]{0,30}[0-9][0-9/.:]{0,15}\Z")
@@ -71,6 +80,17 @@ NAMED_CHECKS = {
     "errdisable.not_recovering_itself": ("modules.heal.errdisable", "check_no_recovery",
                                          "preview_no_recovery"),
     "errdisable.cause_cleared": ("modules.heal.errdisable", "check_cause_cleared", None),
+    # The lost stream's ladder, rungs 2 and 3 (the operator, 2026-11-16; modules/fixit/ladder.py;
+    # modules/heal/stream_checks.py: the re-subscribe's own checks, the baseline read first).
+    "telemetry.read_before": ("modules.heal.stream_checks", "check_read_before", None),
+    "telemetry.stream_back": ("modules.heal.stream_checks", "check_stream_back", None),
+    "telemetry.collector_not_receiving": ("modules.heal.stream_checks",
+                                          "check_collector_not_receiving", None),
+    "telemetry.netconf_yang_on": ("modules.heal.stream_checks", "check_netconf_yang_on", None),
+    "telemetry.dmi_others_off": ("modules.heal.stream_checks", "check_dmi_others", None),
+    "telemetry.iosxe": ("modules.heal.stream_checks", "check_iosxe", None),
+    "telemetry.subscription_as_intent": ("modules.heal.stream_checks",
+                                         "check_subscription_as_intent", None),
 }
 #: The hooks a template's ``on_finish`` names: name -> (module, function).
 FINISH_HOOKS = {"errdisable.notify": ("modules.heal.errdisable", "on_finish")}
@@ -166,6 +186,17 @@ def _names(params) -> list:
     return out
 
 
+def command_names(params) -> list:
+    """Each placeholder a template's COMMANDS may use: its parameters, and a subscription's
+    receiver group (``{<name>_each}``, ``{<name>_each_lines}``: whole lines only)."""
+    out = []
+    for name, spec in (params if isinstance(params, dict) else dict(params)).items():
+        out.append(name)
+        if spec.get("type") == "subscription":
+            out += [f"{name}_each", f"{name}_each_lines"]
+    return out
+
+
 def parse(doc) -> Template:
     """*doc* (a template, as loaded) held to the schema, or raises `Refused` naming what is
     wrong. Reads nothing."""
@@ -200,6 +231,7 @@ def parse(doc) -> Template:
                                       f"{', '.join(PARAM_TYPES)}")
         keys = {"type", "words"} | ({"access_port", "not_management"} if t == "interface"
                                     else {"of"} if t == "choice" else set())
+        # (a subscription takes its type and words alone)
         if set(spec) - keys:
             raise Refused("template", f"parameter {name} ({t}) takes {', '.join(sorted(keys))}")
         if (name == "device") != (t == "device"):
@@ -228,9 +260,17 @@ def parse(doc) -> Template:
         w, obj = command_policy.refused_word(raw), command_policy.literal_object(raw)
         if w or obj:
             raise Refused("policy", command_policy.check("cisco_ios", [raw], held)["refusals"][0])
-    stray = sorted({p for c in commands for p in _PLACEHOLDER.findall(c)} - set(held))
+    stray = sorted({p for c in commands for p in _PLACEHOLDER.findall(c)}
+                   - set(command_names(held)))
     if stray:
         raise Refused("template", f"the commands name {', '.join(stray)}, not a parameter")
+    for n, c in enumerate(commands):
+        lines_of = [p for p in _PLACEHOLDER.findall(c) if p.endswith("_each_lines")]
+        if lines_of and (c.strip() != "{" + lines_of[0] + "}" or not c[:1].isspace()
+                         or n == 0 or "{" + lines_of[0][:-len("_lines")] + "}"
+                         not in commands[n - 1]):
+            raise Refused("template", f"{{{lines_of[0]}}} is a whole indented line of its own, "
+                                      f"right after the line naming its subscription: `{c}`")
     pre = doc.get("preconditions") or []
     ver = doc.get("verify") or []
     if not isinstance(pre, list) or len(pre) > MOST["preconditions"]:
@@ -301,6 +341,8 @@ def shape_refusal(spec: dict, value) -> str:
         return "" if _IFNAME.match(value) else "not an interface's name"
     if t == "choice":
         return "" if value in (spec.get("of") or []) else f"not one of {', '.join(spec['of'])}"
+    if t == "subscription":
+        return "" if _SUB_ID.match(value) else "not a subscription id of 1 to 10 digits"
     return "of no type"
 
 
@@ -449,6 +491,23 @@ def validate(network: str, t: Template, values, *, sources=None) -> dict:
             out["values"][name] = canon
             out["derived"][name] = canon
             out["derived"][f"{name}_short"] = ifnames.abbreviate(canon)
+        elif spec["type"] == "subscription":
+            # One the device's committed intent declares; its lines are intent's, exactly as
+            # the template renders them under its header, never typed (2026-11-16).
+            if intent is None:
+                intent, err = src.intent(device)
+                if intent is None:
+                    out["refusals"].append(f"{device}'s committed intent could not be read "
+                                           f"({err})")
+                    return out
+            group, why = receiver_group(intent, v)
+            if why:
+                out["refusals"].append(f"{device}'s committed intent: {why}")
+                continue
+            out["values"][name] = v
+            out["derived"][name] = v
+            out["derived"][f"{name}_each"] = [s for s, _l in group]
+            out["derived"][f"{name}_each_lines"] = {s: lines for s, lines in group}
         else:
             out["values"][name] = v
             out["derived"][name] = v
@@ -458,12 +517,83 @@ def validate(network: str, t: Template, values, *, sources=None) -> dict:
 
 # ── Rendering and the preview ───────────────────────────────────────────────────────────────
 
+#: A line that would leave the subscription's section, or end configuration mode (the review of
+#: 2026-11-16): never one of a subscription's lines.
+_LEAVES = re.compile(r"^\s*(exit|end|quit)\b", re.I)
+
+
+def subscription_lines(intent: dict, sub: str):
+    """Subscription *sub*'s lines in *intent* (a device's committed host vars), stripped, in
+    intent's order, as `templates/cisco_iosxe/base.j2` renders them under ``telemetry ietf
+    subscription <sub>``; None when intent declares no such subscription."""
+    for s in (intent or {}).get("telemetry") or []:
+        if isinstance(s, dict) and str(s.get("subscription")) == str(sub):
+            return [str(x).strip() for x in s.get("settings") or []]
+    return None
+
+
+def lines_refusal(sub: str, raw_lines) -> str:
+    """Why subscription *sub*'s intent lines (*raw_lines*, as committed) cannot be sent under its
+    header, or ``""``: none, a line not printable ASCII (a line break among them), a line that
+    leaves the section (``exit``, ``end``, ``quit``), or a line naming another section's
+    header (an object word, `command_policy.literal_object`, or the subscription header
+    itself), which IOS would take at global level, leaving the section. Every rendered line is
+    held to the rule's refused words at preview too, and the net-zero compare reads the rest."""
+    from modules.nsot import command_policy
+
+    raw = [str(x) for x in raw_lines or []]
+    if not raw:
+        return f"subscription {sub} holds no line"
+    for x in raw:
+        if not (x.isascii() and x.isprintable() and x.strip()):
+            return f"subscription {sub} holds a line that is not printable ASCII text"
+        if _LEAVES.match(x):
+            return f"subscription {sub} holds `{x.strip()}`, which leaves its section"
+        words = x.split()
+        if (command_policy.literal_object(x) or command_policy.refused_word(x)
+                or words[:3] == ["telemetry", "ietf", "subscription"]):
+            return (f"subscription {sub} holds `{x.strip()}`, another section's line, which "
+                    "would leave its section")
+    return ""
+
+
+def receiver_group(intent: dict, sub: str) -> tuple:
+    """``([(id, lines)], why)``: every subscription *intent* sends to the receiver *sub* sends
+    to (the same address and port, `diagnose_stream.receiver_of`), *sub* among them, in
+    intent's order, each with its lines (`subscription_lines`, held by `lines_refusal`); or
+    ``([], why)``."""
+    from modules.heal.diagnose_stream import receiver_of
+
+    declared = [(str(s.get("subscription")), s.get("settings") or [])
+                for s in (intent or {}).get("telemetry") or [] if isinstance(s, dict)]
+    mine = next((settings for s, settings in declared if s == str(sub)), None)
+    if mine is None:
+        return [], (f"it declares no telemetry subscription {sub} (it declares "
+                    f"{', '.join(s for s, _x in declared) or 'none'})")
+    rec = receiver_of(mine)
+    if rec.get("why"):
+        return [], f"subscription {sub}'s receiver is not known: {rec['why']}"
+    out = []
+    for s, settings in declared:
+        r = receiver_of(settings)
+        if r.get("why") or (r["address"], r["port"]) != (rec["address"], rec["port"]):
+            continue
+        why = lines_refusal(s, settings)
+        if why:
+            return [], why
+        out.append((s, [str(x).strip() for x in settings]))
+    return out, ""
+
+
 def substitute(text: str, derived: dict) -> str:
     """*text* with each placeholder replaced by its VALIDATED value (*derived*); a placeholder
-    with no value raises: nothing is joined from unvalidated text."""
+    with no value raises: nothing is joined from unvalidated text. A list value (a
+    subscription's lines) is expanded by `program` alone, never joined into a line here."""
     def one(m):
         if m.group(1) not in derived:
             raise Refused("render", f"{{{m.group(1)}}} has no validated value")
+        if isinstance(derived[m.group(1)], (list, tuple)):
+            raise Refused("render", f"{{{m.group(1)}}} is several lines, a whole line of its own")
         return str(derived[m.group(1)])
     return _PLACEHOLDER.sub(one, text)
 
@@ -485,7 +615,30 @@ def title_of(key: str, values: dict) -> str:
 
 
 def program(t: Template, derived: dict) -> list:
-    return [substitute(c, derived) for c in t.commands]
+    """The lines sent: each command substituted. A command naming ``{<name>_each}`` (a
+    subscription's receiver group) is sent once for each subscription of the group, in its
+    order, followed each time by that subscription's lines when the next command is the whole
+    indented ``{<name>_each_lines}`` (each line with that command's indentation): so a removal
+    line repeats for every subscription, then a header and its lines for every one."""
+    out, cmds, n = [], list(t.commands), 0
+    while n < len(cmds):
+        c = cmds[n]
+        each = next((p for p in _PLACEHOLDER.findall(c) if p.endswith("_each")), "")
+        if not each:
+            out.append(substitute(c, derived))
+            n += 1
+            continue
+        body = None
+        if n + 1 < len(cmds) and cmds[n + 1].strip() == "{" + each + "_lines}":
+            body = cmds[n + 1]
+        lines_of = derived.get(each + "_lines") or {}
+        for sub in derived.get(each) or []:
+            out.append(substitute(c, dict(derived, **{each: sub})))
+            if body is not None:
+                indent = body[:len(body) - len(body.lstrip())]
+                out += [indent + str(x) for x in lines_of.get(sub) or []]
+        n += 2 if body is not None else 1
+    return out
 
 
 def line_matches(pattern: str, answer: str, derived: dict) -> bool:
@@ -559,12 +712,26 @@ def preview(network: str, key, values, *, sources=None, store=None) -> dict:
     if not got["ok"]:
         out["refusals"] += got["refusals"]
         return out
-    pol = command_policy.check(got["dialect"], t.commands, tuple(t.parameters),
+    pol = command_policy.check(got["dialect"], t.commands, tuple(command_names(t.parameters)),
                                network=network, store=store)
     out["unknown_shapes"] = pol["unknown"]
     out["refusals"] += pol["refusals"]
     derived = got["derived"]
     lines = program(t, derived)
+    # Each line intent supplies (a subscription's, the ``<name>_each_lines`` expansion) is held
+    # to the rule's refused words and objects too: its shape is approved as the subscription's
+    # lines, never as any line. Only those lines: the template's own commands are held by
+    # `command_policy.check` above, where a parameter-named object is allowed.
+    from_intent = [str(x) for name, value in derived.items() if name.endswith("_each_lines")
+                   and isinstance(value, dict) for group in value.values() for x in group]
+    for ln in from_intent:
+        w, obj = command_policy.refused_word(ln), command_policy.literal_object(ln)
+        if w or obj:
+            out["refusals"].append(f"`{' '.join(ln.split())}` "
+                                   + (f"begins with `{w}`, which Mercury never sends in a "
+                                      "command plan" if w else
+                                      f"names its {obj} as text")
+                                   + ", and it came from committed intent")
     reads = [substitute(i["read"], derived) for i in t.preconditions + t.verify if i["read"]]
     for r in dict.fromkeys(reads):
         why = R.refusal([r], 1, R.OPERATION)

@@ -241,9 +241,11 @@ def _monitored_by(ref, dev) -> dict:
 
 def _monitoring_ctx(ref, dev):
     hw = device_page.hardware(ref, dev)
-    return {"device": dev, "mb": _monitored_by(ref, dev), "m": device_page.monitoring(
+    streams = device_page.streams_telemetry(ref, dev)
+    return {"device": dev, "mb": _monitored_by(ref, dev), "streams": streams,
+            "m": device_page.monitoring(
         dev, ref.name, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
-        streams=device_page.streams_telemetry(ref, dev),
+        streams=streams,
         model=(hw.get("model") or "", hw.get("model_from") or ""))}
 
 
@@ -691,6 +693,44 @@ def monitoring(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_monitoring.html", **_monitoring_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/collector", methods=["GET"])
+def collector(name):
+    """The collector's side of the device's streams (C3720; the operator, 2026-11-16): for each
+    subscription its committed intent declares, the collector's sessions from the device's
+    addresses on the receiver's port, each with bytes received, sent and acked, the last
+    receive, send and ACK, its path MTU and its timer, read now on Mercury's own host
+    (`diagnose_stream.device_collector`, the reader the AI's ``collector_sessions`` reads
+    through). Drawn in the Monitoring tab when a person opens it, never on the tab's load: a
+    local read of this host's tables, no device and no service asked."""
+    import time
+
+    from modules.heal import diagnose_stream as DS
+    from modules.neighbours import committed_intents_of
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    host = dev.get("hostname") or name
+    intents, error = committed_intents_of(ref.name)
+    rows, why = [], ""
+    if error and host not in (intents or {}):
+        # Another device's document that does not parse is that file's error, never this
+        # device's (as `stream_checks._intent` reads it): only a read that lacks this one is.
+        why = f"{ref.name}'s committed intent could not be read ({error})"
+    else:
+        try:
+            rows = DS.device_collector(intents.get(host) or {})
+        except Exception as exc:                      # noqa: BLE001 (said in place)
+            log.warning("device_v2: %s's collector sessions could not be read: %s", host, exc)
+            why = f"the collector's sessions could not be read ({type(exc).__name__})"
+        if not rows and not why:
+            why = f"{host}'s committed intent declares no telemetry subscription"
+    return _strict(render_template("v2/_collector_sessions.html", device=dev, rows=rows,
+                                   why=why, read_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                                  time.gmtime())))
 
 
 @bp.route("/device/<name>/status", methods=["GET"])

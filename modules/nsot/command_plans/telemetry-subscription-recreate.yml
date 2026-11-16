@@ -1,0 +1,61 @@
+# Recreate a receiver's telemetry subscriptions from committed intent (the lost stream's ladder,
+# rung 2; the operator, 2026-11-16: "Don't skip rung 2: it's less disruptive than rung 3 (two
+# subscriptions vs all NETCONF/telemetry)"). Its plan is [close the collector's stale half
+# (telemetry-collector-close), this].
+# EVERY subscription committed intent sends to the named one's receiver is recreated in ONE
+# batch (the review of 2026-11-16: subscriptions to one receiver share one connection, so
+# recreating one leaves it on the other's connection): each removed whole, then each added back
+# with its lines exactly as committed intent renders them under its header
+# (modules/nsot/templates/cisco_iosxe/base.j2), over SSH, never saved. The running
+# configuration after must equal the one before, line for line, or the run is refused and
+# rolled back; the rollback puts back every removed subscription from the pre-change snapshot
+# (pipeline `transient_removal_units`, `removal.restore_program`), then compares the whole
+# configuration again and says NOT RESTORED with each line still differing. Its shapes are
+# PROVISIONAL (modules/nsot/command_policy.py) until an admin approves them, after
+# scripts/nmas-telemetry-reset-probe measures them on r2; nothing runs before. Whether the
+# device takes the removals and re-adds in one batch, and how long the streams take to return,
+# are UNMEASURED: the probe measures both.
+kind: command_plan
+key: telemetry-subscription-recreate
+title: "Recreate {device}'s subscriptions on {subscription}'s receiver from intent: those streams pause (time not yet measured); traffic unaffected"
+words: >-
+  Recreate a receiver's telemetry subscriptions from committed intent: every subscription the
+  device sends to that receiver removed whole and added back exactly as intent renders it, in one
+  batch, after the collector's stale session is closed, for a lost stream whose receiver re-add
+  already failed in the incident. Only those subscriptions' streams pause (unmeasured);
+  routing, forwarding and the device's other subscriptions are untouched. Its lines wait on an
+  admin's approval before it can run
+net_zero: true
+parameters:
+  device:
+    type: device
+    words: one IOS-XE device the network's inventory holds, the incident's own
+  subscription:
+    type: subscription
+    words: one telemetry subscription id the device's committed intent declares and the incident names; every subscription on its receiver is recreated with it
+preconditions:
+  - name: The device is IOS-XE
+    expect: telemetry.iosxe
+  - name: The subscriptions on the device are exactly intent's
+    read: "show running-config | section ^telemetry ietf subscription"
+    expect: telemetry.subscription_as_intent
+  - name: The stream is still lost
+    expect: telemetry.collector_not_receiving
+  - name: The receivers and the collector read before
+    expect: telemetry.read_before
+steps:
+  - mode: config
+    commands:
+      - "no telemetry ietf subscription {subscription_each}"
+      - "telemetry ietf subscription {subscription_each}"
+      - " {subscription_each_lines}"
+verify:
+  - name: The streams are back
+    expect: telemetry.stream_back
+    poll: telemetry-poll
+    within: telemetry-back
+reason: >-
+  Recreate a receiver's telemetry subscriptions from committed intent to clear a wedged gRPC
+  dial-out session: each removed and added back in one batch over SSH, never saved; the
+  configuration after equals the one before
+fixes: [telemetry_lost]

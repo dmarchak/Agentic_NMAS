@@ -1,0 +1,220 @@
+{
+  "$defs": {
+    "Gap": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "type": "string"
+        },
+        "confirm_with": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "type": "object"
+    },
+    "Improvement": {
+      "additionalProperties": false,
+      "properties": {
+        "saves": {
+          "type": "string"
+        },
+        "shapes": {
+          "items": {
+            "$ref": "#/$defs/ShapeAsk"
+          },
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/PlanStepAnswer"
+          },
+          "type": "array"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "what",
+        "saves",
+        "steps",
+        "shapes"
+      ],
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "type": "string"
+    },
+    "PlanStepAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/StepParams"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "params",
+        "why",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "ShapeAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "dialect": {
+          "type": "string"
+        },
+        "shape": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "dialect",
+        "shape",
+        "why"
+      ],
+      "type": "object"
+    },
+    "StepParams": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "interface": {
+          "type": "string"
+        },
+        "remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subscription": {
+          "type": "string"
+        },
+        "subscriptions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "device",
+        "subscriptions",
+        "subscription",
+        "interface",
+        "cause",
+        "changes",
+        "remove"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "gap": {
+      "$ref": "#/$defs/Gap"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "type": "array"
+    },
+    "improvement": {
+      "$ref": "#/$defs/Improvement"
+    },
+    "lacked_read": {
+      "type": "string"
+    },
+    "needs_human": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "plan": {
+      "items": {
+        "$ref": "#/$defs/PlanStepAnswer"
+      },
+      "type": "array"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "why_not": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "gap",
+    "needs_human",
+    "why_not",
+    "plan",
+    "improvement",
+    "lacked_read"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,42 @@
+{%- from "v2/_macros.html" import badge, stamp -%}
+{#- The collector's side of a device's streams (C3720; the operator, 2026-11-16): each
+    subscription its committed intent declares, the collector's sessions from the device on the
+    receiver's port, read on Mercury's own host by the reader the AI's collector_sessions read
+    goes through (`diagnose_stream.device_collector`). Drawn in the Monitoring tab on open. -#}
+{%- macro ms(v) -%}{%- if v is none -%}<span class="muted">not printed</span>{%- elif v >= 60000 -%}{{ (v // 60000) }} min {{ ((v % 60000) // 1000) }} s{%- else -%}{{ '%.1f' % (v / 1000) }} s{%- endif -%}{%- endmacro -%}
+{%- macro n(v) -%}{%- if v is none -%}<span class="muted">not printed</span>{%- else -%}{{ '{:,}'.format(v) }}{%- endif -%}{%- endmacro -%}
+<div class="collector-sessions" id="collector-sessions-body">
+{%- if why %}
+<p class="limits">{{ why }}.</p>
+{%- endif %}
+{%- for r in rows %}
+<section class="card">
+  <div class="card-head"><h3>Subscription {{ r.subscription }}{% if r.receiver %} <span class="muted">to {{ r.receiver }}</span>{% endif %}</h3>
+    {%- if r.state == 'read' %}{% if r.sessions %}{{ badge(r.sessions|length ~ ' session' ~ ('' if r.sessions|length == 1 else 's'), 'info') }}{% else %}{{ badge('no session', 'warn') }}{% endif %}
+    {%- elif r.state == 'elsewhere' %}{{ badge('not on this host', 'neutral') }}
+    {%- else %}{{ badge("couldn't read", 'muted') }}{% endif %}</div>
+  {%- if r.state != 'read' %}
+  <p class="limits">{{ r.why }}</p>
+  {%- else %}
+  <p class="limits">Listening: {{ r.listening|join(', ') or 'nothing on this port' }}. {{ r.others_established }} other established session{{ '' if r.others_established == 1 else 's' }} on the port{% if r.activity != 'read' %}; the per-session figures were {{ r.activity }}{% endif %}.</p>
+  {%- if r.sessions %}
+  <table class="table">
+    <thead><tr><th>From</th><th>State</th><th>Received</th><th>Last receive</th><th>Sent</th><th>Acked</th><th>Last send</th><th>Last ACK</th><th>Path MTU</th><th>Timer</th></tr></thead>
+    <tbody>
+    {%- for s in r.sessions %}
+      <tr><td class="mono">{{ s.remote }} port {{ s.rport }}</td><td>{{ s.state }}</td>
+        <td>{{ n(s.bytes_received) }}</td><td>{{ ms(s.lastrcv_ms) }}{% if s.lastrcv_ms is not none %} ago{% endif %}</td>
+        <td>{{ n(s.bytes_sent) }}</td><td>{{ n(s.bytes_acked) }}</td>
+        <td>{{ ms(s.lastsnd_ms) }}{% if s.lastsnd_ms is not none %} ago{% endif %}</td>
+        <td>{{ ms(s.lastack_ms) }}{% if s.lastack_ms is not none %} ago{% endif %}</td>
+        <td>{{ n(s.pmtu) }}</td>
+        <td>{% if s.timer %}{{ s.timer }}, due in {{ ms(s.timer_ms) }}{% if s.retrans %} ({{ s.retrans }} retransmitted){% endif %}{% else %}<span class="muted">none running</span>{% endif %}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+  {%- endif %}
+</section>
+{%- endfor %}
+<p class="card-foot">Read on Mercury's host {{ stamp(read_at) }} from the kernel's socket tables (ss). A session whose last ACK stays recent while its last receive grows is keepalives answered with no data: the stream is stalled on a session both ends still hold.</p>
+</div>

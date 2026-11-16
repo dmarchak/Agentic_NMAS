@@ -1,0 +1,62 @@
+# Restart a device's telemetry stack (the lost stream's ladder, rung 3; the operator,
+# 2026-11-16, incident hi-22cfdc299000: r7's gRPC dial-out session wedged, both ends holding
+# it). Its plan is [close the collector's stale half (telemetry-collector-close), this].
+# The least disruptive restart IOS-XE offers for gRPC dial-out that Mercury could find: Cisco
+# documents no command restarting the telemetry process (pubd) alone; turning netconf-yang off
+# and on stops and starts the NETCONF-YANG (DMI) processes, pubd among them, and leaves IOSd,
+# routing and forwarding running. Never a reload.
+# Its two lines are NOT measured shapes: each is PROVISIONAL (modules/nsot/command_policy.py)
+# until an admin approves it, after scripts/nmas-telemetry-reset-probe measures it on r2, so
+# this plan's preview refuses it, naming each, and nothing runs before.
+# What is NOT restored if `no netconf-yang` takes other lines: the pipeline's rollback inverts
+# the lines it pushed and restores from the pre-change snapshot what the program's own `no`
+# lines removed (the transient restore: `netconf-yang` itself), but not a line the device drops
+# by itself as a consequence (a `netconf-yang feature candidate-datastore`, a `netconf-yang
+# ssh` line): the full compare after the rollback would say NOT RESTORED, naming it. So the
+# plan refuses up front any device whose running configuration holds a netconf-yang line
+# other than `netconf-yang` itself, and any with `restconf` or `gnmi-yang` configured (either
+# may keep the processes up: UNKNOWN). Whether `no netconf-yang` prompts, or needs a pause
+# before `netconf-yang`, is UNMEASURED: the probe measures it. Sent over SSH always
+# (pipeline `ssh_only`): it must never ride the NETCONF session it ends.
+kind: command_plan
+key: telemetry-stack-restart
+title: "Restart {device}'s telemetry stack: {device}'s NETCONF and telemetry pause (for a time not yet measured); traffic unaffected"
+words: >-
+  Restart an IOS-XE device's telemetry stack (its NETCONF-YANG processes, never the device), after
+  the collector's stale session is closed: for a lost stream whose receiver re-add and
+  subscription re-creation already failed in the incident. NETCONF, RESTCONF and every telemetry
+  subscription on the device pause while the processes restart (unmeasured); routing and
+  forwarding are unaffected. Its two lines wait on an admin's approval before it can run
+net_zero: true
+parameters:
+  device:
+    type: device
+    words: one IOS-XE device the network's inventory holds, the incident's own
+preconditions:
+  - name: The device is IOS-XE
+    expect: telemetry.iosxe
+  - name: netconf-yang is on, and no other netconf-yang line is configured
+    read: "show running-config | include ^netconf-yang"
+    expect: telemetry.netconf_yang_on
+  - name: Neither restconf nor gnmi-yang is configured
+    read: "show running-config | include ^restconf|^gnmi-yang"
+    expect: telemetry.dmi_others_off
+  - name: The stream is still lost
+    expect: telemetry.collector_not_receiving
+  - name: The receivers and the collector read before
+    expect: telemetry.read_before
+steps:
+  - mode: config
+    commands:
+      - "no netconf-yang"
+      - "netconf-yang"
+verify:
+  - name: Every stream is back
+    expect: telemetry.stream_back
+    poll: telemetry-poll
+    within: telemetry-back
+reason: >-
+  Restart the device's NETCONF-YANG processes to clear a wedged gRPC dial-out session: netconf-yang
+  is turned off and on in one batch over SSH, never saved; the configuration after equals the one
+  before; never a reload
+fixes: [telemetry_lost]

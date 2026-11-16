@@ -188,6 +188,17 @@ def _collector_plan(network: str, params: dict, sources=None) -> dict:
                                   "run runs when you open it, never on a proposal")
 
 
+def _close_plan_proposed(network: str, params: dict, sources=None) -> dict:
+    """The collector step alone, as a PROPOSAL previews it (`resubscribe.plan` with
+    ``close_only``): the receivers from committed intent and the step named, never its session:
+    the close helper's dry run runs at the plan's proposal inside its job
+    (`plan_engine.read_sessions`) and at Approve, never on a preview a page draws."""
+    p = resubscribe.plan(network, params["device"], list(params["subscriptions"]),
+                         close_only=True, sources=sources)
+    return dict(p, collector_step="named when the plan is proposed and again at Approve: the "
+                                  "close helper's dry run, which closes nothing")
+
+
 def _resubscribe_drawn(p: dict) -> dict:
     """What Re-subscribe's card draws of a plan (`routes/resubscribe_v2.py`, `_masked`: no
     inventory row, no intent, every line masked; ``hash`` the selection's; ``close`` the
@@ -268,6 +279,32 @@ CATALOG = {op.key: op for op in (
         drawn=_resubscribe_drawn,
         preview_endpoint="resubscribe_v2.preview",
         confirm_endpoint="resubscribe_v2.close_confirm",
+        runs="modules.heal.resubscribe.apply",
+    ),
+    # The collector step alone (the operator, 2026-11-16: "a plan step with the same guards"):
+    # the first step of each later rung of the lost stream's ladder (modules/fixit/ladder.py),
+    # approved as a step of its incident's plan, its session bound at Approve.
+    Operation(
+        key=resubscribe.CLOSE_KEY,
+        words=(resubscribe.CLOSE_TITLE.format(device="a device") + ", and nothing else: the "
+               "first step of a plan that then resets the device's side of a lost stream (its "
+               "subscriptions recreated, or its telemetry stack restarted), for a stream whose "
+               "collector still holds an established, idle session from the device. Mercury "
+               "closes that one session through its close helper and reads the device's "
+               "connection gone; nothing is sent to the device"),
+        params=(
+            Param("device", "one name the network's inventory holds (1 to "
+                            f"{NAME_CHARS} printable ASCII characters, no space)",
+                  _device_refusal),
+            Param("subscriptions", f"a list of 1 to {IDS_AT_MOST} subscription ids, each text "
+                                   f"of 1 to {ID_DIGITS} digits, each once, that the device's "
+                                   "committed intent declares, all to one receiver",
+                  _ids_refusal),
+        ),
+        plan=_close_plan_proposed,
+        drawn=_resubscribe_drawn,
+        preview_endpoint="incident_v2.incident",
+        confirm_endpoint="fixit_v2.approve",
         runs="modules.heal.resubscribe.apply",
     ),
 )}
@@ -427,7 +464,8 @@ refresh_saved()
 #: The problem conditions each catalog operation fixes (`modules/problem.py`): what an
 #: investigation that lacked it is restarted on once it exists (C3733, `ai.missing.available`).
 FIXES = {resubscribe.KEY: ("telemetry_lost",), resubscribe.READD_KEY: ("telemetry_lost",),
-         resubscribe.COLLECTOR_KEY: ("telemetry_lost",)}
+         resubscribe.COLLECTOR_KEY: ("telemetry_lost",),
+         resubscribe.CLOSE_KEY: ("telemetry_lost",)}
 
 
 def capabilities() -> dict:

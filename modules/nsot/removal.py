@@ -797,6 +797,27 @@ def restore_program(units: list, pre_config: str, now_config: str) -> list:
     return program
 
 
+def transient_removal_units(pushed: list) -> list:
+    """The units a net-zero (transient) program's own top-level ``no X`` lines remove (the
+    review of 2026-11-16: a command plan such as ``no telemetry ietf subscription N`` then its
+    re-add, or ``no netconf-yang`` then ``netconf-yang``), as `restore_program` takes them:
+    ``[{"chain": [], "line": X}]``. Its rollback puts back, from the pre-change snapshot, what
+    those lines took: the program's re-add may not have landed, and inverting the pushed lines
+    alone would leave the section gone. An indented ``no`` line is left to the line inversion
+    (it removes a line under a section the program also names)."""
+    out = []
+    for raw in pushed or ():
+        text = str(raw or "")
+        if text[:1].isspace():
+            continue
+        words = text.split()
+        if len(words) > 1 and words[0] == "no":
+            unit = {"chain": [], "line": " ".join(words[1:])}
+            if unit not in out:
+                out.append(unit)
+    return out
+
+
 def removal_keys(units: list) -> list:
     """Each removal's line as the authorisation mechanism keys it: every
     removed line needs a STATED REASON (the operator, 2026-09-28: a removal

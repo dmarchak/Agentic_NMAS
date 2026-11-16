@@ -322,6 +322,11 @@ class PipelineContext:
     #: (nothing to save, nothing new to record as a golden), and stage 7 reads no configuration
     #: after the push (`_post_config_not_read`: the net-zero check reads it).
     transient:           bool = False
+    #: The push goes over SSH whatever the platform map and the host's NETCONF setting say
+    #: (the review of 2026-11-16): a command plan's lines are measured as sent over SSH, and a
+    #: plan that turns ``netconf-yang`` off would end its own NETCONF session, then be sent
+    #: again by the SSH fallback. Every command plan run sets it (`command_plan_run.context`).
+    ssh_only:            bool = False
     #: Checks run AFTER stage 5 and before the send (``hook(ctx) -> why or ""``, in order): a
     #: why stops the run there, nothing sent, recorded as the stage ``pre_apply``. A command
     #: plan's preconditions are the first; a later layer (a sandbox dry run) adds its own.
@@ -1039,7 +1044,9 @@ def _stage_deploy(ctx: PipelineContext) -> None:
             continue
 
         try:
-            output = _push_config(dev, cmds, ctx.connections_pool, ctx.pool_lock)
+            output = (_push_via_netmiko(dev, cmds, ctx.connections_pool, ctx.pool_lock)
+                      if ctx.ssh_only else
+                      _push_config(dev, cmds, ctx.connections_pool, ctx.pool_lock))
             lap(ctx.laps, "deploy: sent")
             ctx.pushed_at[ip] = (ctx.settle_clock or time.monotonic)()
             ctx.push_results[ip] = {"ok": True, "output": output[:500]}
@@ -2527,6 +2534,17 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             pushed = split_pushed(pushed, removal.get("commands") or [])
             re_add = (restore_program(removal.get("units") or [], pre_cfg, "")
                       if removal.get("units") else [])
+            # A net-zero (transient) plan whose own lines remove a section (the review of
+            # 2026-11-16: `no telemetry ietf subscription N`, `no netconf-yang`): its undo puts
+            # back from the snapshot what that removal took, by the Mode B restore's own path
+            # (`removal.restore_program`), since its re-add may not have landed and the line
+            # inversion below never re-adds a removed section.
+            transient_units = []
+            if ctx.transient:
+                from modules.nsot.removal import transient_removal_units
+                transient_units = transient_removal_units(pushed)
+                if transient_units:
+                    re_add = re_add + restore_program(transient_units, pre_cfg, "")
             # Before the removals, the re-created IP SLA operations: undone by
             # restoring each OLD definition from the snapshot (delete what is
             # there, put the device's own lines back), never by inverting the
@@ -2592,7 +2610,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                 # still held the push). A read-back that finds the push still there is
                 # `incomplete`, naming what remains.
                 back = _rollback_readback(ctx, dev, pushed, pre_cfg,
-                                          removal.get("units") or [], recreated)
+                                          (removal.get("units") or []) + transient_units,
+                                          recreated)
                 if back["state"] == "restored":
                     log.info("pipeline[rollback]: %s — nothing to undo (read back)", hostname)
                     ctx.rollback_outcome[ip] = {"state": "nothing_to_undo", "remaining": [],
@@ -2625,7 +2644,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                      hostname, len(undo), undo)
             # Sent is not restored: read it back.
             ctx.rollback_outcome[ip] = _rollback_readback(
-                ctx, dev, pushed, pre_cfg, removal.get("units") or [], recreated)
+                ctx, dev, pushed, pre_cfg, (removal.get("units") or []) + transient_units,
+                recreated)
             _unrestorable_is_incomplete(ctx, ip, unrestorable)
             if ctx.rollback_outcome[ip]["state"] != "restored":
                 log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,

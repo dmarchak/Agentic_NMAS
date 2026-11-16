@@ -345,6 +345,31 @@ def _propose_shapes(network: str, shapes, call_id: str) -> list:
     return out
 
 
+def _plan_shapes(network: str, steps: list) -> list:
+    """Each line shape a built-in command plan step of *steps* sends that Mercury's rule for raw
+    lines has not measured (`command_plan.preview`'s ``unknown_shapes``, state ``unknown``),
+    as `_propose_shapes` takes them: proposed PROVISIONAL with the plan (the operator,
+    2026-11-16: the telemetry stack's restart is "provisional shape for my admin approval"), so
+    the incident's card lists them for an admin; the AI approves none, and the plan's preview
+    refuses until each is approved. A preview that cannot be read proposes nothing (logged)."""
+    from modules.heal import catalog
+    from modules.nsot import command_plan
+
+    out = []
+    for s in steps or ():
+        if s.get("operation") not in catalog.COMMAND_PLANS:
+            continue
+        try:
+            p = command_plan.preview(network, s["operation"], s.get("params") or {})
+        except Exception as exc:                          # noqa: BLE001 (none proposed, said)
+            log.info("fix_proposal: %s's shapes were not read: %s", s.get("operation"), exc)
+            continue
+        out += [{"dialect": p.get("dialect") or "", "shape": u["shape"],
+                 "why": f"a line of the built-in plan {s['operation']}, proposed with it"}
+                for u in p.get("unknown_shapes") or [] if u.get("state") == "unknown"]
+    return out
+
+
 def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=(),
                       actor: str, actor_verified: str, note: str = "", shown: dict = None,
                       prompt: str = "", now: float = None, alternative_of: str = "",
@@ -402,7 +427,10 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
                                     actor_verified)}
     imp = improvement.model_dump(mode="json") if hasattr(improvement, "model_dump") else (
         dict(improvement) if isinstance(improvement, dict) else {})
-    shapes = _propose_shapes(incident.network, imp.get("shapes") or [], call_id)
+    shapes = _propose_shapes(incident.network,
+                             list(imp.get("shapes") or []) + _plan_shapes(incident.network,
+                                                                          steps),
+                             call_id)
     sessions = PE.read_sessions(incident.network, steps, now=now) or None
     shown_ = dict(shown or {})
     from modules import troubleshoot_job

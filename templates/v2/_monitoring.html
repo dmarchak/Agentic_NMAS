@@ -114,4 +114,12 @@
   </section>
   {% endif %}
 {%- endif %}
+{#- The collector's side of the device's streams (C3720; the operator, 2026-11-16), read on
+    Mercury's host when a person opens it, never on the tab's load. -#}
+{%- if streams is defined and streams[0] %}
+<details class="limits folded" id="collector-sessions" data-keep="collector-sessions" hx-get="{{ url_for('device_v2.collector', name=dev_name) }}" hx-trigger="toggle once" hx-target="find .collector-rows" hx-swap="innerHTML" data-what="the collector's sessions">
+  <summary>The collector's side of {{ dev_name }}'s streams <span class="muted">· sessions, bytes and last receive on Mercury's host</span></summary>
+  <div class="collector-rows"><p class="limits">Reading the collector's sessions…</p></div>
+</details>
+{%- endif %}
 </div>

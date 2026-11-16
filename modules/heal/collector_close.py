@@ -16,11 +16,18 @@ operation `modules/heal/resubscribe.py`, and reads intent as that operation and 
 diagnosis do (`diagnose_stream.receiver_of`, `resubscribe.Sources.addresses`). `modules/apps/`
 is the controller's apps.
 
-**ONE OPERATION CALLS IT** (C3078): the re-subscribe with the collector step
-(`resubscribe.Sources.close`): its preview asks a dry run, which closes nothing, and its apply,
-holding the device and confirmed by a verified person's hash, the one close. Beside it only
-the dry-run script (`scripts/nmas-collector-close-dry-run`, which never closes) and the peers
-script reach this module; no other screen or job closes a session.
+**ONLY BEHIND A PREVIEWED, HASH-CONFIRMED OPERATION OR PLAN STEP** (C3078's rule, amended by
+the operator, 2026-11-16: "I approve a second caller for the collector close: a plan step with
+the same guards (dry-run close at preview, real close only at apply under the person's hash,
+the root helper's allowlist unchanged)"). Both callers are one code path,
+`resubscribe.Sources.close` in `modules/heal/resubscribe.py`: the re-subscribe with the
+collector step (`resubscribe.COLLECTOR_KEY`) and the collector step alone as a plan's step
+(`resubscribe.CLOSE_KEY`, `apply` with ``close_only``: each later rung of the lost stream's
+ladder closes the collector's stale half first, `modules/fixit/ladder.py`). Each preview asks a
+dry run, which closes nothing; each apply, holding the device and confirmed by a verified
+person's hash that binds the session, makes the one close. Beside them only the dry-run script
+(`scripts/nmas-collector-close-dry-run`, which never closes) and the peers script reach this
+module; no other screen or job closes a session, and the helper's allowlist is unchanged.
 
 - `request(peer, port, dry_run=, run_id=)`: one request and its outcome,
   ``{"ok", "code", "exit", "words", "tuple", "at"}``, for an operation's record and stepper.

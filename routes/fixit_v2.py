@@ -257,10 +257,10 @@ def approve(incident_id):
     # the collector holds another; the step's own preview and apply check it once more.
     params, bound = FP.plan_params(inc, line), plan["hash"]
     from modules.heal import resubscribe as R
-    if any(s["operation"] == R.COLLECTOR_KEY for s in params["steps"]):
+    if any(s["operation"] in R.COLLECTOR_STEP_KEYS for s in params["steps"]):
         read = {str(s.get("n")): s for s in plan.get("sessions") or []}
         for n, s in enumerate(params["steps"], 1):
-            if s["operation"] != R.COLLECTOR_KEY:
+            if s["operation"] not in R.COLLECTOR_STEP_KEYS:
                 continue
             kept = read.get(str(n)) or {}
             got = PE.collector_session(network, s["params"]["device"],

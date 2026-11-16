@@ -700,7 +700,7 @@ def _catalog_params(key: str) -> tuple:
     from modules.heal.catalog import CATALOG
 
     return ((INCIDENT, PROPOSAL) + tuple(CATALOG[key].params)
-            + ((SESSION,) if key == R.COLLECTOR_KEY else ()))
+            + ((SESSION,) if key in R.COLLECTOR_STEP_KEYS else ()))
 
 
 def collector_session(network: str, device: str, subs) -> dict:
@@ -713,9 +713,16 @@ def collector_session(network: str, device: str, subs) -> dict:
     draw."""
     from modules.heal import resubscribe as R
 
-    got = R.plan(network, device, list(subs), collector=True)
+    # The close alone names the session (`close_only`: the same dry run, without the
+    # receiver removal's measurement, which is the re-subscribe's own preview's to ask).
+    got = R.plan(network, device, list(subs), collector=True, close_only=True)
     close = got.get("close") or {}
     remote = str(close.get("remote") or "")
+    if got.get("ok") and got.get("nothing_to_close"):
+        # Nothing stale to close (the review of 2026-11-16): the collector step alone passes
+        # on it, said; ``nothing`` carries why, and no session is bound.
+        return {"session": "", "refused": "", "nothing": str(got["nothing_to_close"]),
+                "local": "", "quiet_s": None, "dry_run": ""}
     if not got.get("ok") or not remote:
         return {"session": "", "refused": "; ".join(got.get("refusals") or [])
                 or "the collector's session could not be named", "local": "", "quiet_s": None,
@@ -743,7 +750,7 @@ def read_sessions(network: str, steps: list, *, now: float = None) -> dict:
     at = time.time() if now is None else float(now)
     out = {}
     for n, s in enumerate(steps or (), 1):
-        if not isinstance(s, dict) or s.get("operation") != R.COLLECTOR_KEY:
+        if not isinstance(s, dict) or s.get("operation") not in R.COLLECTOR_STEP_KEYS:
             continue
         p = s.get("params") or {}
         try:
@@ -753,6 +760,7 @@ def read_sessions(network: str, steps: list, *, now: float = None) -> dict:
             got = {"session": "", "refused": f"the collector's sessions could not be read "
                                              f"({type(exc).__name__}: {exc})"}
         out[str(n)] = {"session": str(got.get("session") or ""),
+                       "nothing": redact_text(str(got.get("nothing") or "")),
                        "local": str(got.get("local") or ""), "quiet_s": got.get("quiet_s"),
                        "dry_run": redact_text(str(got.get("dry_run") or "")),
                        "refused": redact_text(str(got.get("refused") or "")),
@@ -766,6 +774,7 @@ def _catalog_preview(key: str):
     (`fixit.plan.step_preview`, a read)."""
     def preview(network: str, p: dict) -> dict:
         from modules.fixit import plan as FP
+        from modules.heal import resubscribe as R
 
         got = FP.step_preview(network, key, p)
         bound = str(p.get("session") or "")
@@ -773,6 +782,10 @@ def _catalog_preview(key: str):
             # The collector step's session, bound at Approve: read again (the close helper's
             # dry run) and refused, naming both, when it moved since.
             now = collector_session(network, p["device"], p.get("subscriptions") or [])
+            if key == R.CLOSE_KEY and now.get("nothing"):
+                # The collector step alone: the approved session is gone, so nothing is
+                # closed and nothing is bound; its run says so.
+                return got
             if now["session"] != bound:
                 return {"ok": False, "hash": "", "drawn": got.get("drawn") or {}, "refused": (
                     f"the collector's session moved since the plan was approved: the approval "
@@ -797,9 +810,11 @@ def _catalog_apply(key: str):
         from modules.heal import resubscribe as R
 
         readd = key == R.READD_KEY
-        collector = key == R.COLLECTOR_KEY
+        collector = key in R.COLLECTOR_STEP_KEYS
+        # The collector step alone (the operator, 2026-11-16): the same close, nothing sent.
+        close_only = key == R.CLOSE_KEY
         subs = [p["subscription"]] if readd else list(p["subscriptions"])
-        now = R.plan(network, p["device"], subs, readd=readd)
+        now = R.plan(network, p["device"], subs, readd=readd, close_only=close_only)
         if not now.get("ok") or now.get("hash") != confirmed:
             return {"ok": False, "outcome": "moved", "receipt": {}, "words": (
                 f"its program moved since it was approved (approved {confirmed}, now "
@@ -807,11 +822,17 @@ def _catalog_apply(key: str):
                 "nothing was sent")}
         program, close = now["hash"], ""
         if collector:
-            withc = R.plan(network, p["device"], subs, collector=True)
+            withc = R.plan(network, p["device"], subs, collector=True, close_only=close_only)
             program = withc.get("hash") or ""
             close = str((withc.get("close") or {}).get("remote") or "")
             bound = str(p.get("session") or "")
-            if not bound or close != bound:
+            nothing = close_only and withc.get("ok") and withc.get("nothing_to_close")
+            if nothing:
+                # The collector step alone with nothing stale to close now (none at Approve, or
+                # the approved session already gone): it closes nothing, so no session needs
+                # binding; its run says so (the review of 2026-11-16).
+                close = ""
+            elif not bound or close != bound:
                 return {"ok": False, "outcome": "moved", "receipt": {}, "words": (
                     f"the collector's session is not the one approved: the approval bound the "
                     f"session from {bound or 'no session'}, and the collector holds "
@@ -820,7 +841,7 @@ def _catalog_apply(key: str):
         rec = R.apply(network, p["device"], subs, actor=actor, actor_verified=actor_verified,
                       person=person, confirmed={u["sub"]: u["hash"] for u in now["units"]},
                       program=program, previewed=",".join(subs), reason=reason, readd=readd,
-                      collector=collector, previewed_close=close,
+                      collector=collector, previewed_close=close, close_only=close_only,
                       fixit=FP.run_link_of(network, p))
         ok = rec.get("state") == "done"
         words = R.OUTCOME_WORDS.get(rec.get("outcome") or "", "") or str(rec.get("why") or "")
@@ -1702,6 +1723,7 @@ STEP_LABELS = {"dhcp-reservation": "DHCP reservation", "intent-description": "Se
                "ztp-create": "Create by ZTP", "telemetry-resubscribe": "Re-subscribe telemetry",
                "telemetry-readd": "Re-add the receiver",
                "telemetry-collector-resubscribe": "Close, then re-subscribe",
+               "telemetry-collector-close": "Close the collector session",
                "intent-edit": "Change intent", "intent-deploy": "Deploy intent"}
 #: A run's outcome -> its one row's group on THE stepper (never done over a partial or a stop).
 ROW_GROUP = {"running": "running", "done": "done", "partial": "partial", "stopped": "failed",

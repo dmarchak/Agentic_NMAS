@@ -421,6 +421,19 @@ PLAN_BOUNDS = {
         30, "an access link comes up within seconds of no shutdown, so 30 s bounds it with "
             "room; reasoned, not measured: the first live run keeps took_s on its "
             "verify step and measures it", "reasoned"),
+    # The lost stream's ladder, rung 3 (the operator, 2026-11-16; telemetry-stack-restart).
+    "telemetry-poll": _b(5, "how often the receivers and the collector's session are read: "
+                            "the re-subscribe's direct poll (resubscribe.DIRECT_POLL_S)",
+                         "reasoned"),
+    # ONE wait for the stream's return (the review of 2026-11-16: the plan's one verify item,
+    # `telemetry.stream_back`, so the drawn bound is the real one).
+    "telemetry-back": _b(
+        290, "UNMEASURED for rungs 2 and 3: a subscription recreated or the NETCONF-YANG "
+             "processes restarted have not been timed. Borrowed from the re-add: 2.5 times "
+             "the 116 s a re-added receiver took to stream again (measured 2026-11-08, "
+             "resubscribe.MEASURED_BACK_S; resubscribe.VERIFY_BOUND_S). "
+             "scripts/nmas-telemetry-reset-probe measures each rung on r2, and this bound "
+             "becomes 2.5 times the longer measured return", "reasoned"),
     "errdisable-quiet": _b(
         10, "five 2 s BPDU hellos: a guard that trips again does so inside it; reasoned, not "
             "measured", "reasoned"),

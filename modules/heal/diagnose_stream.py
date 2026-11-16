@@ -456,14 +456,53 @@ def _v6only(proc: str) -> bool:
 #: Each session's last receive, from the kernel's socket diagnostics (inet_diag) as `ss -tni`
 #: prints them (C2892; tests/fixtures/diagnose/collector/README.md): a session line, then its
 #: indented detail line holding ``bytes_received:<n>`` and ``lastrcv:<ms>``.
-SS_COMMAND = ("ss", "-tni", "state", "established")
+#: Since 2026-11-16 (r7's wedged session, incident hi-22cfdc299000: its keepalives answered,
+#: its data stopped at 227 bytes) with ``-o`` too, the session's timer: `ss -tnio` prints
+#: ``timer:(keepalive,4.7sec,0)`` at the end of the session line (iproute2 6.19.0, captured on
+#: the development laptop's loopback, 2026-11-16), so a session whose keepalives still run can
+#: be told from one carrying data.
+SS_COMMAND = ("ss", "-tnio", "state", "established")
 _SS_SESSION = re.compile(r"^\s*\d+\s+\d+\s+(?P<local>\S+):(?P<lport>\d+)\s+"
-                         r"(?P<remote>\S+):(?P<rport>\d+)\s*$")
+                         r"(?P<remote>\S+):(?P<rport>\d+)"
+                         r"(?:\s+timer:\((?P<timer>[a-z_]+),(?P<due>[0-9.a-z]*),"
+                         r"(?P<retrans>\d+)\))?\s*$")
 #: Since 2026-11-16 the sent side too (``bytes_sent``, ``lastsnd``: what the collector sent the
 #: device, and when; `ss` prints ``bytes_sent`` only when it is not zero, so its absence from a
-#: detail line that was read is said as not printed, never as a count).
-_SS_FIELD = re.compile(r"\b(bytes_received|bytes_sent|lastrcv|lastsnd):(\d+)\b")
-_SS_NAMES = {"lastrcv": "lastrcv_ms", "lastsnd": "lastsnd_ms"}
+#: detail line that was read is said as not printed, never as a count), and the per-session
+#: view a person reads (C3720): ``bytes_acked`` (printed only when not zero, as bytes_sent),
+#: ``lastack`` (the last ACK received: a keepalive's answer moves it while no data arrives) and
+#: ``pmtu``.
+_SS_FIELD = re.compile(r"\b(bytes_received|bytes_sent|bytes_acked|lastrcv|lastsnd|lastack|"
+                       r"pmtu):(\d+)\b")
+_SS_NAMES = {"lastrcv": "lastrcv_ms", "lastsnd": "lastsnd_ms", "lastack": "lastack_ms"}
+#: The per-session fields `parse_ss` reads, each None when its line lacks it.
+SS_FIELDS = ("bytes_received", "lastrcv_ms", "bytes_sent", "lastsnd_ms", "bytes_acked",
+             "lastack_ms", "pmtu", "timer", "timer_ms", "retrans")
+#: `ss`'s timer as it prints it: minutes (``119min``, ``1min5sec``), seconds with or without
+#: their fraction (``4.603sec``, ``3.194sec``, ``12sec``), milliseconds (``580ms``, iproute2
+#: 6.19; older releases print them as three digits and ``sec``, ``500sec``, seconds being at
+#: most two digits there), or nothing for 0. Each part a number and its unit, in that order.
+_SS_DUE_PART = re.compile(r"(\d+(?:\.\d+)?)(min|sec|ms)")
+
+
+def _ss_due_ms(text: str):
+    """*text*, `ss`'s timer due time, in milliseconds, or None when it is not that shape."""
+    text = text or ""
+    parts = _SS_DUE_PART.findall(text)
+    if "".join(n + u for n, u in parts) != text:
+        return None
+    total, units = 0.0, [u for _n, u in parts]
+    if len(set(units)) != len(units):
+        return None
+    for n, u in parts:
+        v = float(n)
+        if u == "min":
+            total += v * 60000
+        elif u == "ms" or (u == "sec" and "." not in n and len(n) == 3):
+            total += v                    # milliseconds (the older form's three digits too)
+        else:
+            total += v * 1000
+    return int(round(total))
 #: `ss` answered in well under a second on the development laptop (2026-11-10); a local read
 #: of the kernel's tables, bounded at 5 s so a hung one is named, never waited on.
 SS_TIMEOUT_S = 5
@@ -476,10 +515,11 @@ def _ss_address(text: str):
 
 
 def parse_ss(text: str) -> tuple:
-    """``(rows, why)``: each established session `ss -tni` printed, ``{"local", "lport",
-    "remote", "rport", "bytes_received", "lastrcv_ms", "bytes_sent", "lastsnd_ms"}`` (an
-    IPv4-mapped IPv6 address read as its IPv4 address; a field the detail line lacks is None),
-    or ``([], why)`` when the answer holds no heading `ss` prints."""
+    """``(rows, why)``: each established session `ss -tni` or `ss -tnio` printed, ``{"local",
+    "lport", "remote", "rport"}`` and each of `SS_FIELDS` (an IPv4-mapped IPv6 address read as
+    its IPv4 address; a field the lines lack is None: the timer's three only with ``-o``, and
+    then only on a session that has one running), or ``([], why)`` when the answer holds no
+    heading `ss` prints."""
     lines = (text or "").splitlines()
     if not lines or not lines[0].startswith("Recv-Q"):
         return [], "the answer is not `ss`'s table (no Recv-Q heading)"
@@ -488,12 +528,14 @@ def parse_ss(text: str) -> tuple:
         m = _SS_SESSION.match(line)
         if m:
             try:
-                rows.append({"local": _ss_address(m.group("local")),
-                             "lport": int(m.group("lport")),
-                             "remote": _ss_address(m.group("remote")),
-                             "rport": int(m.group("rport")),
-                             "bytes_received": None, "lastrcv_ms": None,
-                             "bytes_sent": None, "lastsnd_ms": None})
+                row = {"local": _ss_address(m.group("local")),
+                       "lport": int(m.group("lport")),
+                       "remote": _ss_address(m.group("remote")),
+                       "rport": int(m.group("rport")), **{k: None for k in SS_FIELDS}}
+                if m.group("timer"):
+                    row.update(timer=m.group("timer"), timer_ms=_ss_due_ms(m.group("due")),
+                               retrans=int(m.group("retrans")))
+                rows.append(row)
             except ValueError:
                 return [], f"`ss` printed a session this reader cannot read: {line.strip()!r}"
             continue
@@ -591,13 +633,90 @@ def read_collector(address: str, port: int, sources, proc: str = "/proc", ss=Non
                     if x["lport"] == int(port) and x["local"] == want}
             for s in base["sessions"]:
                 x = seen.get((s["remote"], s["rport"])) or {}
-                s["bytes_received"] = x.get("bytes_received")
-                s["lastrcv_ms"] = x.get("lastrcv_ms")
-                # The sent side (2026-11-16): what the collector sent the device, and when.
-                s["bytes_sent"] = x.get("bytes_sent")
-                s["lastsnd_ms"] = x.get("lastsnd_ms")
+                # The received and sent sides, the last ACK, the path MTU and the timer
+                # (2026-11-16, C3720): each as `ss` printed it, None where it did not.
+                for k in SS_FIELDS:
+                    s[k] = x.get(k)
             base["activity"] = "read"
     return dict(base, state="read", why="")
+
+
+#: One session of the collector's as a person and the AI read it (C3720: one reader, two uses;
+#: `session_view`): its far end, state, and each of `SS_FIELDS`.
+SESSION_VIEW = ("remote", "rport", "state") + SS_FIELDS
+
+
+def session_view(s: dict) -> dict:
+    """*s*, one of `read_collector`'s sessions, as both readers show it (`SESSION_VIEW`)."""
+    return {k: (s or {}).get(k) for k in SESSION_VIEW}
+
+
+def run_ss_ports(ports) -> tuple:
+    """`run_ss` for several ports in ONE `ss` run (``( sport = :a or sport = :b )``): what one
+    screen's read of several streams asks (the review of 2026-11-16: one `ss` per request,
+    never one per subscription)."""
+    import subprocess
+
+    ports = sorted({int(p) for p in ports or ()})
+    if not ports:
+        return "", "no port to read"
+    expr = "( " + " or ".join(f"sport = :{p}" for p in ports) + " )"
+    try:
+        got = subprocess.run([*SS_COMMAND, expr], capture_output=True, text=True,
+                             timeout=SS_TIMEOUT_S, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "", f"`ss` could not be run ({type(exc).__name__})"
+    if got.returncode != 0:
+        return "", f"`ss` exited {got.returncode}"
+    return got.stdout, ""
+
+
+def collector_of(stream: dict, sources, read=None, ss=None) -> dict:
+    """The collector's side of one stream as a person's screen and the AI's read both take it
+    (C3720, the operator, 2026-11-16: "The collector's per-session view ... gets a
+    person-facing home too, and the AI reads it through that"): *stream* a receiver as
+    `receiver_of` gives it (``{"address", "port"}`` or ``{"why"}``), *sources* the device's
+    addresses. ``{"state", "why", "collector", "listening", "sessions", "others_established",
+    "activity"}``, *state* ``read``, ``elsewhere``, ``unread`` or ``unknown`` (intent names no
+    receiver), each session `session_view`'s. *read* replaces `read_collector` (tests); *ss* is
+    `read_collector`'s (one `ss` answer shared by several streams, `device_collector`)."""
+    if (stream or {}).get("why"):
+        return {"state": "unknown", "why": stream["why"], "collector": "", "listening": [],
+                "sessions": [], "others_established": 0, "activity": ""}
+    if read is None:
+        got = read_collector(stream["address"], int(stream["port"]), list(sources or []),
+                             ss=ss)
+    else:
+        got = read(stream["address"], int(stream["port"]), list(sources or []))
+    return {"state": got.get("state") or "unread", "why": got.get("why") or "",
+            "collector": f"{got.get('address')} port {got.get('port')}",
+            "listening": list(got.get("listening") or []),
+            "sessions": [session_view(s) for s in got.get("sessions") or []],
+            "others_established": int(got.get("others") or 0),
+            "activity": got.get("activity") or ""}
+
+
+def device_collector(hv: dict, read=None) -> list:
+    """Every subscription *hv* (a device's committed intent) declares, each with its collector
+    side (`collector_of`): ``[{"subscription", "receiver", ...collector_of}]``, in intent's
+    order. What a device's Monitoring tab draws (C3720). Reads this host's own tables only, and
+    runs `ss` ONCE for every receiver's port (`run_ss_ports`)."""
+    out = []
+    sources = _addresses(hv or {})
+    subs = [(s, receiver_of(s.get("settings") or [])) for s in (hv or {}).get("telemetry") or []
+            if isinstance(s, dict) and s.get("subscription") is not None]
+    ss = None
+    if read is None:
+        answer = run_ss_ports([r["port"] for _s, r in subs if not r.get("why")])
+
+        def ss(_port, _answer=answer):
+            return _answer
+    for s, rec in subs:
+        got = collector_of(rec, sources, read=read, ss=ss)
+        out.append(dict(got, subscription=str(s.get("subscription")),
+                        receiver=("" if rec.get("why") else
+                                  f"{rec['address']} port {rec['port']}")))
+    return out
 
 
 def _takes(local, want, v6only: bool) -> bool:

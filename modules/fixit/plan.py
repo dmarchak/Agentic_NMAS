@@ -92,7 +92,7 @@ def plan_params(incident, line: dict) -> dict:
     steps = steps_of(line, incident.device)
     for n, s in enumerate(steps, 1):
         got = str((kept.get(str(n)) or {}).get("session") or "")
-        if s["operation"] == R.COLLECTOR_KEY and got:
+        if s["operation"] in R.COLLECTOR_STEP_KEYS and got:
             s["session"] = got
     return {"incident": incident.id, "proposal": line.get("proposal") or "", "steps": steps}
 
@@ -248,6 +248,15 @@ def sent_of(operation: str, drawn, device: str) -> dict:
         # The hash binds the program between entry and exit (`command_plan.bound_fields`).
         return dict(out, lines=[CONFIG_IN, *[str(x) for x in d.get("program") or []], CONFIG_OUT],
                     save=NOT_SAVED)
+    if operation == R.CLOSE_KEY:
+        # The collector step alone (2026-11-16): the host's one action; nothing to the device.
+        close = d.get("close") or {}
+        host = (f"close TCP session {close['remote']} -> {close['local']} "
+                f"({os.path.basename(CC.HELPER)})" if close else
+                "close the collector's stale session, as the close helper's dry run names it "
+                "at Approve")
+        return dict(out, host=host, binds=f"sends nothing to {device}",
+                    parts=[{"system": "the Mercury host (collector)", "actions": [host]}])
     if operation in (R.KEY, R.READD_KEY, R.COLLECTOR_KEY):
         # The hash binds this program whole, entry and exit in each unit (`program_hash`), and
         # the session to close (`close_id`): a combined operation is its systems' steps, in the
@@ -399,10 +408,14 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
     kept = line.get("sessions") if isinstance(line.get("sessions"), dict) else {}
     sessions = []
     for d in drawn:
-        if d["operation"] != R.COLLECTOR_KEY:
+        if d["operation"] not in R.COLLECTOR_STEP_KEYS:
             continue
         s = dict(kept.get(str(d["n"])) or {}, n=d["n"])
-        if not s.get("session"):
+        if not s.get("session") and d["operation"] == R.CLOSE_KEY and s.get("nothing"):
+            # The collector step alone with nothing stale to close (the review of 2026-11-16):
+            # approvable; it closes nothing and says so.
+            pass
+        elif not s.get("session"):
             s["refused"] = s.get("refused") or (
                 "the plan was proposed before Mercury read the session it closes; Ask again "
                 "for a plan that reads it")
@@ -433,6 +446,12 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                 (label, redact_text(words)) for label, words in PE.bound_rows(
                     incident.network, PE.INCIDENT_FIX, held, engine_steps, got_hash)]
     shown = line.get("shown") if isinstance(line.get("shown"), dict) else {}
+    # A person's plan keeps what they approve; one that resets a stream's device side with no
+    # close of the collector's stale half before it says so (the review of 2026-11-16).
+    from modules.fixit.ladder import close_first_note
+    note_close = close_first_note(steps)
+    found = " ".join(x for x in (str(shown.get("rationale") or line.get("words") or ""),
+                                 note_close) if x)
     return {"id": line.get("proposal") or "", "hash": plan_hash, "refused_hash": refused_hash,
             "approvable": not refused and bool(plan_hash), "steps": drawn, "bound": bound,
             # The collector steps' sessions as read when the plan was proposed, each
@@ -440,7 +459,7 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
             # binds each session (`plan_params`), and Approve reads it again and refuses,
             # naming both, when it moved since.
             "sessions": sessions,
-            "found": str(shown.get("rationale") or line.get("words") or ""),
+            "found": found,
             "why_refused": refused, "source": SOURCE_WORDS.get(line.get("source"), ""),
             "by": line.get("by") or "", "at": line.get("at") or "",
             "calls": list(line.get("calls") or []), "note": line.get("note") or "",

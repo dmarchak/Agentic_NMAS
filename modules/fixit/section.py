@@ -296,6 +296,9 @@ def short_words(operation: str, device: str, params: dict) -> str:
     if operation == R.COLLECTOR_KEY:
         subs = ", ".join(map(str, params.get("subs") or [])) or "no subscription"
         return R.COLLECTOR_TITLE.format(device=device) + f" ({subs})"
+    if operation == R.CLOSE_KEY:
+        subs = ", ".join(map(str, params.get("subs") or [])) or "no subscription"
+        return R.CLOSE_TITLE.format(device=device) + f" ({subs})"
     from modules.heal import catalog
     if catalog.is_command_plan(operation):
         # A built-in command plan (C3757): its own title with the attempt's values.
@@ -350,7 +353,8 @@ def _proposal(incident, line: dict, resolved, now, usd: dict = None) -> dict:
     from modules.heal import resubscribe as R
 
     params = line.get("params") if isinstance(line.get("params"), dict) else {}
-    subs = (list(params.get("subs") or []) if line.get("operation") in (R.KEY, R.COLLECTOR_KEY)
+    subs = (list(params.get("subs") or []) if line.get("operation") in (R.KEY, R.COLLECTOR_KEY,
+                                                                         R.CLOSE_KEY)
             else [params["sub"]] if params.get("sub") else [])
     return {"id": line["proposal"], "source": SOURCE_WORDS.get(line.get("source"), ""),
             "operation": line.get("operation") or "",
