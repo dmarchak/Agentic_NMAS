@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1320">
+<title>Fixes list board</title>
+<!-- Board: Troubleshooting › Fixes, a sidebar page beside Incidents and Self-healing: every fix
+     a network has, saved (from an incident, by a person) and built-in (the network's fix kinds).
+     Drawn under board R5 (docs/boards/r5-simple-by-default.html): BLUF first, each row a title,
+     an impact, a status and one link, the rest one click deep on the fix's own page
+     (docs/boards/fix-bpdu-guard.html). On the product's real stylesheet, linked relatively.
+     Inline CSS: only the board's chrome (the caption, the artboard frame and its static
+     sidebar), copied from board R5's part (1); no product look is added. One new icon: the
+     Fixes nav item's wrench, an SVG path in the markup. Example names only: s1 to s5, r1 to r8,
+     h1 to h7; a person is "Sam". Unsigned: drawn for the operator's approval. -->
+<link rel="stylesheet" href="../../static/css/nmas-v2.css">
+<style>
+/* Board chrome only, outside the product (board R5's part (1), unchanged). */
+body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #15191E; }
+.boardhead { width: 1280px; margin: 0 auto; padding: 22px 0 8px; font-size: 13px; color: #333; }
+.boardhead h1 { font-size: 18px; margin: 0 0 4px; }
+.artlabel { width: 1280px; margin: 28px auto 8px; font-size: 13px; color: #333; box-sizing: border-box; }
+.art { width: 1280px; margin: 0 auto 40px; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
+.mock-cap { background: #FFFBEA; color: #1B1F24; border-bottom: 3px solid #8A6A00; padding: 10px 24px 12px; font-size: 12.5px; line-height: 1.45; }
+.mock-cap h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.mock-cap p { margin: 2px 0; }
+.mock-cap table { border-collapse: collapse; margin-top: 6px; }
+.mock-cap th, .mock-cap td { border: 1px solid #D8C98A; padding: 2px 8px; text-align: left; vertical-align: top; }
+.mock-cap th { background: #F6EDC4; font-weight: 600; }
+.mock-cap .okc { color: #0B6B45; font-weight: 600; }
+.artboard { font-family: var(--sans); font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--ground); display: flex; }
+@media (min-width: 861px) { .artboard .sidebar { position: static; height: auto; } }
+@media (max-width: 860px) { .artboard { display: block; } .art, .artlabel, .boardhead { width: auto; } }
+</style>
+</head>
+<body class="board">
+<div class="boardhead">
+<h1>Troubleshooting › Fixes (unsigned, for the operator's approval)</h1>
+<div>Every fix on the network, saved and built-in, on one page beside Incidents and Self-healing. BLUF first: one summary line of counts, then the fixes grouped Saved and Built-in, each row three lines (its name, what it fixes, how it runs and its record) and one link, its name, opening the fix's own page. Search and the filters sit behind one "Search or filter…" link, as on Incidents. Nothing on this page acts on a device; a fix is saved from an incident's "Save this fix" card, so the page has no New button.</div>
+</div>
+
+<div class="artlabel mock-cap">
+<h1>Screen 1 · Troubleshooting › Fixes, default view, 1280 px · 23:40 America/Denver</h1>
+<table>
+<tr><th>Card</th><th>Lines</th><th>Buttons</th><th>Links</th><th>Fields</th><th>Details</th></tr>
+<tr><td>The summary line</td><td class="okc">1</td><td class="okc">0</td><td>1 (Search or filter…)</td><td class="okc">0 (behind the link)</td><td>0</td></tr>
+<tr><td>Each fix row (6)</td><td class="okc">3 (name · what it fixes · how it runs and its record)</td><td class="okc">0</td><td>1 (its name: the fix's page)</td><td class="okc">0</td><td>0 (its page is the one click deep)</td></tr>
+</table>
+<p>How it runs is the row's badge: Automatic, Dry run or Manual only. A built-in fix is read-only here: how it runs comes from the network's fix kinds (Settings › campus › Self-healing), and its page says so and links there. The summary reads the saved fixes' real modes: 1 Automatic, 1 Manual only. Large fleets: the groups collapse, each draws its first 20 rows and counts the rest.</p>
+</div>
+<div class="art artboard v2">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><svg class="mercury-mark" viewBox="-82 -42 164 84" role="img" aria-label="Mercury"><title>Mercury</title><g transform="rotate(-20)"><ellipse class="mk-orbit" rx="72" ry="26"></ellipse></g><circle class="mk-planet" r="26"></circle><path class="mk-hi" d="M-15.6,-9 A18 18 0 0 1 -4.7,-17.4"></path><g transform="rotate(-20)"><path class="mk-gap" d="M-72,0 A72 26 0 0 0 72,0"></path><path class="mk-orbit" d="M-72,0 A72 26 0 0 0 72,0"></path><circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle><circle class="mk-node" cy="26" r="9"></circle></g></svg><div class="brand-words"><span class="brand-name">Mercury</span><span class="brand-sub">Network Automation Platform</span></div></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span class="grow">Needs attention</span><span class="count count-warning" title="1 item; the worst is a warning">1</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"></rect><rect x="2" y="13" width="20" height="8" rx="2"></rect><path d="M6 7h.01"></path><path d="M6 17h.01"></path></svg><span>Devices</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span>History</span></a>
+  <div class="nav-head">TROUBLESHOOTING</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg><span>Incidents</span></a>
+  <a class="nav-item active" href="fixes-list.html" aria-current="page"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg><span>Fixes</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Self-healing</span></a>
+  <div class="nav-head">OBSERVE</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>Monitoring</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="19" cy="6" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="M7 6h10"></path><path d="m6 8 5 8"></path><path d="m18 8-5 8"></path></svg><span>Topology</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"></rect><rect x="2" y="17" width="6" height="5" rx="1"></rect><rect x="16" y="17" width="6" height="5" rx="1"></rect><path d="M12 7v5"></path><path d="M5 17v-5h14v5"></path></svg><span>SDN</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-5-6-5"></path><path d="M12 19h8"></path></svg><span>Show commands</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg><span>Logs</span></a>
+  <div class="nav-head">SOURCE OF TRUTH</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5z"></path><path d="m2 12 10 5 10-5"></path><path d="m2 17 10 5 10-5"></path></svg><span>Intent</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m10 13-2 2 2 2"></path><path d="m14 17 2-2-2-2"></path></svg><span>Templates</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg><span>NetBox</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="14" width="18" height="7" rx="2"></rect><path d="M7 17.5h.01"></path><path d="M12 14v-4"></path><circle cx="12" cy="7" r="3"></circle></svg><span>DHCP</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg><span>Credentials</span></a>
+  <div class="grow"></div>
+  <div class="nav-rule"></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg><span>Help</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></svg><span>Settings</span></a>
+</nav>
+<div class="frame">
+  <header class="topbar">
+    <details class="net net-pick menu-wrap"><summary title="Choose the network these pages show"><span class="net-label">Network</span> <strong>campus</strong></summary></details>
+    <form class="jump"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off"><kbd>/</kbd></form>
+    <span class="grow"></span>
+    <span class="strip"><span class="strip-item ok" title="Integrations 4 of 4"><span class="strip-words">Integrations 4 of 4</span></span></span>
+    <details class="ai-spend menu-wrap"><summary><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">$0.21 today · 0 background on</span><span class="ai-short" aria-hidden="true">$0.21</span></span></summary></details>
+    <button type="button" class="asb" aria-label="Assistant"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+    <span class="live" data-live="connected"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <span class="who" data-identified="yes" title="Signed in as Sam"><span class="avatar">S</span><span class="who-name">Sam</span></span>
+  </header>
+  <main class="main">
+<div class="page-head">
+  <div class="page-title"><h1>Fixes <a class="info-link" href="#" title="How this works" aria-label="How this works"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg></a></h1></div>
+</div>
+<div class="tab-body" id="fixes-live">
+<p class="inc-list-sum" data-total="6"><strong>6 fixes</strong> · 2 saved (1 Automatic, 1 Manual only) · 4 built-in <span class="muted small">· checked 12 s ago</span></p>
+<details class="inc-search">
+<summary>Search or filter…</summary>
+<form class="inc-list-filter" role="search">
+  <label class="sr" for="fx-q">Search the fixes</label>
+  <input id="fx-q" type="search" name="q" placeholder="Search a name, what it fixes, or a device" maxlength="80">
+  <label class="sr" for="fx-mode">How it runs</label>
+  <select id="fx-mode" name="mode"><option value="">Every way it runs</option><option>Automatic</option><option>Dry run</option><option>Manual only</option></select>
+  <label class="sr" for="fx-kind">Saved or built-in</label>
+  <select id="fx-kind" name="kind"><option value="">Saved and built-in</option><option>Saved</option><option>Built-in</option></select>
+  <button type="submit" class="btn btn-small">Show</button>
+</form>
+</details>
+
+<details class="inc-group card" open>
+  <summary class="inc-group-head"><span class="badge badge-info">Saved</span> <span class="muted">2</span></summary>
+  <ul class="inc-rows">
+    <li class="inc-row" data-fix="bpdu-guard-recovery">
+      <span class="inc-row-state"><span class="badge badge-ok" title="Runs by itself when self-healing is On; promoted by Sam">Automatic</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="fix-bpdu-guard.html" title="BPDU guard recovery (access ports): saved from incident hi-0412">BPDU guard recovery (access ports)</a>
+        <span class="simple-impact">Fixes: an access port err-disabled by BPDU guard, once the BPDU source is gone</span>
+        <span class="simple-status">4 runs, all verified · saved from an AI plan Sam approved</span>
+      </span>
+      <span class="inc-row-when muted">last 23:00</span>
+    </li>
+    <li class="inc-row" data-fix="port-security-recovery">
+      <span class="inc-row-state"><span class="badge badge-muted" title="Never runs by itself: a person presses Run… on its page or its incident">Manual only</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="#" title="Port security recovery: saved from incident hi-0398">Port security recovery</a>
+        <span class="simple-impact">Fixes: an access port err-disabled by a port-security violation, once the address has gone</span>
+        <span class="simple-status">1 run, verified · runs only when a person presses Run…</span>
+      </span>
+      <span class="inc-row-when muted">last Nov 14</span>
+    </li>
+  </ul>
+</details>
+
+<details class="inc-group card" open>
+  <summary class="inc-group-head"><span class="badge badge-muted">Built-in</span> <span class="muted">4</span> <span class="muted small">· read-only; how each runs is campus's fix kinds</span></summary>
+  <ul class="inc-rows">
+    <li class="inc-row" data-fix="missing_line">
+      <span class="inc-row-state"><span class="badge badge-ok" title="From campus's fix kinds: Tier 1, Automatic">Automatic</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="#">Put back a missing line</a>
+        <span class="simple-impact">Fixes: a line intent holds that the device lost (re-applied, merge-only)</span>
+        <span class="simple-status">9 runs: 8 verified, 1 rolled back · from campus's fix kinds</span>
+      </span>
+      <span class="inc-row-when muted">last 21:14</span>
+    </li>
+    <li class="inc-row" data-fix="added_line">
+      <span class="inc-row-state"><span class="badge badge-info" title="From campus's fix kinds: Tier 2, recorded in dry run until a person approves">Dry run</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="#">Remove an added line</a>
+        <span class="simple-impact">Fixes: a line on the device intent does not hold (one measured removal unit; never a security control)</span>
+        <span class="simple-status">2 dry-run records, nothing changed · from campus's fix kinds</span>
+      </span>
+      <span class="inc-row-when muted">last Nov 12</span>
+    </li>
+    <li class="inc-row" data-fix="telemetry-resubscribe">
+      <span class="inc-row-state"><span class="badge badge-ok" title="From campus's fix kinds: Automatic">Automatic</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="#">Re-subscribe a telemetry stream</a>
+        <span class="simple-impact">Fixes: a device that stopped sending a telemetry stream Mercury subscribed it to</span>
+        <span class="simple-status">3 runs, all verified · from campus's fix kinds</span>
+      </span>
+      <span class="inc-row-when muted">last 09:10</span>
+    </li>
+    <li class="inc-row" data-fix="readd-receiver">
+      <span class="inc-row-state"><span class="badge badge-muted" title="Offered only after a re-subscribe whose receiver did not come back">Manual only</span></span>
+      <span class="inc-row-what">
+        <a class="inc-row-title" href="#">Re-add the receiver</a>
+        <span class="simple-impact">Fixes: a telemetry receiver a re-subscribe did not bring back</span>
+        <span class="simple-status">1 run, verified · offered after a re-subscribe, never by itself</span>
+      </span>
+      <span class="inc-row-when muted">last Nov 14</span>
+    </li>
+  </ul>
+</details>
+</div>
+  </main>
+</div>
+</div>
+</body>
+</html>

@@ -241,6 +241,83 @@ a non-expert approves, and the checks that prove it.
   acting. **Prevents:** incidents named after their symptoms, a fix chosen from an alert's
   name, and a script matching a problem it was never made for.
 
+- **R5. Simple by default** (the operator, 2026-11-15). Every screen and card shows, by
+  default, only a title (one line), the impact (one line), a status (one line) and one
+  primary action, plus at most one secondary link. The default view has no paragraphs, IDs,
+  hashes, citations, prompt versions, cost breakdowns, guard names or form fields. Everything
+  else sits behind ONE "Details" control per card, which opens the full record: logs, the
+  AI's reasoning and evidence, attempts, timings, hashes, holds, costs, the full plan record
+  and customise forms. **Budgets, enforced by tests on the demo-path pages:** at most 3 lines
+  of default-visible text per card, at most 2 visible buttons per card, and 0 visible form
+  fields until "Customize" is pressed. **Acceptance:** the five-second test per screen, in
+  which a newcomer can say what's wrong and what to press. Built only from mockups the
+  operator approved. **Cost:** a Details control per card, and a budget test per demo-path
+  page. **Prevents:** a screen that makes a person read Mercury's record to find the one
+  thing to press.
+
+## Standing rules decided 2026-11-14 to 2026-11-16 (the operator)
+
+Each is the operator's decision in those sessions; where a rule is also stated elsewhere, the
+place is named. Where this list and another document disagree, the charter governs.
+
+- **R3. An event is decided on its own device read, at once; verify scales to what the fix
+  touches and passes the moment its direct checks pass.** An err-disable or port-security
+  line opens its incident and is classified from the device read, not after an alert's minute;
+  a fix's verify reads what it changed (a port's status, its spanning tree, its own section) and
+  ends when those checks pass, never on a fixed wait beyond the rule's own windows (the 10 s
+  re-trip window, the connect check). Snapshots and verify are scoped by what the plan touches:
+  access ports read the port, a routed, uplink or trunk interface keeps its protocols' checks,
+  anything unclassified keeps the full snapshots; the rule applied is recorded on the run.
+- **Proportionality: a plan's disruption never exceeds its problem's impact.** Options are
+  ranked least disruptive first; a step whose impact exceeds the problem's (an outage to fix a
+  monitoring-only problem) is never the primary fix. A reload is the last resort, offered only
+  as a separate "schedule a reload" choice, a person's explicit decision in a maintenance
+  window, after the lesser fixes failed. The AI's composing prompt carries this rule, and the
+  preflight compares a step's impact with the problem's (C3837).
+- **No time-based holds in self-healing: every occurrence is fixed.** A problem that keeps
+  coming back is a recurrence finding, a fix something keeps undoing is a fight finding, each
+  said to a person; a fight stops a fix only where the network set it to. Guards 4 (the
+  approved state) and 6 (many devices at once) stay, a person deciding. **The retry policy:** a
+  failed fix is retried once per trigger (self-healing switched on, a matching fix saved,
+  every 24 h while the incident stays open), never in a loop; each retry and its trigger
+  recorded on the incident (C3824).
+  Faults inside a declared drill or exercise count toward no finding (C3842).
+- **Switching self-healing On is the approval for what is already open** (C3823, C3844): its
+  line names what it also fixes, and a self-healing batch runs every device at once, each held,
+  checked, verified and rolled back on its own; rollouts keep one device first (CLAUDE.md,
+  "Reads across devices run concurrently").
+- **The AI never interacts with devices.** It reads only through Mercury's reads (the read
+  engine's allowlist, as Mercury's account), and every change it proposes is a plan of
+  Mercury's own catalog steps, run by Mercury after a person approves it by hash ("AI-assisted
+  actions", below).
+- **The AI is an engineer, never an admin.** It changes no setting, cap or switch, approves
+  nothing, and acts under its own engineer-role identity (C3596, C3597); a person approves
+  every plan it proposes.
+- **Everything the hash binds is shown before Approve:** every step on every system (each
+  system's exact actions as its own numbered step, in order), and what the AI saw and said
+  beside the button (C3840); and **Fixed shows its proof** (the verify's reads, their output
+  and times, one click deep).
+- **No email or person's name in an AI payload:** people are stable HMAC labels
+  (`display_names.label`), never an identity, in everything sent to a model.
+- **Severity is impact times criticality** (the problem's impact on traffic and service,
+  weighted by the affected endpoint's or device's criticality; C3798, after the demo).
+- **Compose before reporting a gap.** Before the AI reports that Mercury lacks a capability, it
+  composes a plan from Mercury's existing steps (and a provisional shape through the admin's
+  approval path); a gap is reported only when no composition of existing steps can do it, and
+  Mercury's check says when a catalog step for the problem was not yet tried.
+- **One catalog, two uses.** Every capability the AI uses is a Mercury feature a person can use
+  too, with its own person-facing home (C3718; e.g. the collector's log, C3836).
+- **Never duplicate what already exists** (CLAUDE.md, "Never duplicate", Reused / New in every
+  report), and **one object for a saved fix**: a saved fix is both the self-heal script and
+  the reusable action, one entry with its match and how it runs (C3849).
+- **On screen, people by display name, never an email or identity** (C3834); a status line is
+  one sentence in an engineer's words, its source a small label (AI / Mercury) shown once.
+- **Deploys and approvals:** the operator is told before every deploy; anything needing the
+  operator's words is parked until they are given, and a renamed approved item is a new item
+  (memory, "Park what needs words"). Under the fast lane's skip mode (2026-11-15) a change
+  ships without tests, its debt listed in docs/FAST_LANE_DEBT.md, cleared in one full pass
+  (tests, fidelity, full gate, CI green) before the Lab 10 recording and before the demo.
+
 ## Human-facing means human-readable
 
 **A standing design rule (the operator, 2026-11-08), applied to everything human-facing from

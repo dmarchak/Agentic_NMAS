@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1320">
+<title>BPDU guard fix board</title>
+<!-- Board: a saved fix's own page, Troubleshooting › Fixes › BPDU guard recovery (access
+     ports), opened from a row of docs/boards/fixes-list.html. Drawn under board R5
+     (docs/boards/r5-simple-by-default.html): the fix's BLUF card first (title, impact, status,
+     one action, Run…), then four folded cards, each one line until opened: Contents, Origin,
+     Record, How it runs. Artboard 2 is the state after Run… is pressed: the device and the
+     interface chosen from Mercury's model (two selects, never a typed field), then the exact
+     preview for that choice and one primary button that approves it by hash. On the product's
+     real stylesheet, linked relatively. Inline CSS: only the board's chrome (the caption, the
+     artboard frame and its static sidebar), copied from board R5's part (1). One new icon: the
+     Fixes nav item's wrench, an SVG path in the markup. Example names only: s1 to s5, h1 to h7,
+     incident ids hi-0412; a person is "Sam". Unsigned: drawn for the operator's approval. -->
+<link rel="stylesheet" href="../../static/css/nmas-v2.css">
+<style>
+/* Board chrome only, outside the product (board R5's part (1), unchanged). */
+body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #15191E; }
+.boardhead { width: 1280px; margin: 0 auto; padding: 22px 0 8px; font-size: 13px; color: #333; }
+.boardhead h1 { font-size: 18px; margin: 0 0 4px; }
+.artlabel { width: 1280px; margin: 28px auto 8px; font-size: 13px; color: #333; box-sizing: border-box; }
+.art { width: 1280px; margin: 0 auto 40px; box-shadow: 0 2px 14px rgba(0,0,0,.18); }
+.mock-cap { background: #FFFBEA; color: #1B1F24; border-bottom: 3px solid #8A6A00; padding: 10px 24px 12px; font-size: 12.5px; line-height: 1.45; }
+.mock-cap h1 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.mock-cap p { margin: 2px 0; }
+.mock-cap table { border-collapse: collapse; margin-top: 6px; }
+.mock-cap th, .mock-cap td { border: 1px solid #D8C98A; padding: 2px 8px; text-align: left; vertical-align: top; }
+.mock-cap th { background: #F6EDC4; font-weight: 600; }
+.mock-cap .okc { color: #0B6B45; font-weight: 600; }
+.artboard { font-family: var(--sans); font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--ground); display: flex; }
+@media (min-width: 861px) { .artboard .sidebar { position: static; height: auto; } }
+@media (max-width: 860px) { .artboard { display: block; } .art, .artlabel, .boardhead { width: auto; } }
+</style>
+</head>
+<body class="board">
+<div class="boardhead">
+<h1>A saved fix's page: BPDU guard recovery (access ports) (unsigned, for the operator's approval)</h1>
+<div>Two artboards: (1) the page as it opens, every card folded but the fix's own, two folds drawn open to show what they hold; (2) the same page after Run… is pressed, its preview drawn in place of the folds' first position, under the BLUF card. Nothing reaches a device before the primary button of artboard 2, which runs exactly the previewed program, held to its hash.</div>
+</div>
+
+<!-- ============================================================ 1-default -->
+<div class="artlabel mock-cap">
+<h1>Screen 1 · The fix's page, default view, 1280 px · 23:40 America/Denver (Contents and Record drawn open)</h1>
+<table>
+<tr><th>Card</th><th>Lines</th><th>Buttons</th><th>Links</th><th>Fields</th><th>Details</th></tr>
+<tr><td>The fix (BLUF)</td><td class="okc">3 (title · impact · status)</td><td class="okc">1 (Run…)</td><td>1 (the incident it was saved from)</td><td class="okc">0</td><td>0 (the four folds below are its one click deep)</td></tr>
+<tr><td>Contents, Origin, Record, How it runs</td><td class="okc">1 each, folded</td><td class="okc">0 each, folded</td><td>0 folded; inside, one per run, one per source</td><td class="okc">0</td><td>1 each (the fold itself)</td></tr>
+</table>
+<p>The brief asked for each part under its own disclosure: each is a folded card (the incident page's <code>inc-fold-d</code>), so the page shows five lines of headings and one button until a person opens one. How it runs has no control in its fold: changing it is Self-healing's, and the fold says who changed it and when.</p>
+</div>
+<div class="art artboard v2">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><svg class="mercury-mark" viewBox="-82 -42 164 84" role="img" aria-label="Mercury"><title>Mercury</title><g transform="rotate(-20)"><ellipse class="mk-orbit" rx="72" ry="26"></ellipse></g><circle class="mk-planet" r="26"></circle><path class="mk-hi" d="M-15.6,-9 A18 18 0 0 1 -4.7,-17.4"></path><g transform="rotate(-20)"><path class="mk-gap" d="M-72,0 A72 26 0 0 0 72,0"></path><path class="mk-orbit" d="M-72,0 A72 26 0 0 0 72,0"></path><circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle><circle class="mk-node" cy="26" r="9"></circle></g></svg><div class="brand-words"><span class="brand-name">Mercury</span><span class="brand-sub">Network Automation Platform</span></div></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span class="grow">Needs attention</span><span class="count count-warning" title="1 item; the worst is a warning">1</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"></rect><rect x="2" y="13" width="20" height="8" rx="2"></rect><path d="M6 7h.01"></path><path d="M6 17h.01"></path></svg><span>Devices</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span>History</span></a>
+  <div class="nav-head">TROUBLESHOOTING</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg><span>Incidents</span></a>
+  <a class="nav-item active" href="fixes-list.html" aria-current="page"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg><span>Fixes</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Self-healing</span></a>
+  <div class="nav-head">OBSERVE</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>Monitoring</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="19" cy="6" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="M7 6h10"></path><path d="m6 8 5 8"></path><path d="m18 8-5 8"></path></svg><span>Topology</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"></rect><rect x="2" y="17" width="6" height="5" rx="1"></rect><rect x="16" y="17" width="6" height="5" rx="1"></rect><path d="M12 7v5"></path><path d="M5 17v-5h14v5"></path></svg><span>SDN</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-5-6-5"></path><path d="M12 19h8"></path></svg><span>Show commands</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg><span>Logs</span></a>
+  <div class="nav-head">SOURCE OF TRUTH</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5z"></path><path d="m2 12 10 5 10-5"></path><path d="m2 17 10 5 10-5"></path></svg><span>Intent</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m10 13-2 2 2 2"></path><path d="m14 17 2-2-2-2"></path></svg><span>Templates</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg><span>NetBox</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="14" width="18" height="7" rx="2"></rect><path d="M7 17.5h.01"></path><path d="M12 14v-4"></path><circle cx="12" cy="7" r="3"></circle></svg><span>DHCP</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg><span>Credentials</span></a>
+  <div class="grow"></div>
+  <div class="nav-rule"></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg><span>Help</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></svg><span>Settings</span></a>
+</nav>
+<div class="frame">
+  <header class="topbar">
+    <details class="net net-pick menu-wrap"><summary title="Choose the network these pages show"><span class="net-label">Network</span> <strong>campus</strong></summary></details>
+    <form class="jump"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off"><kbd>/</kbd></form>
+    <span class="grow"></span>
+    <span class="strip"><span class="strip-item ok" title="Integrations 4 of 4"><span class="strip-words">Integrations 4 of 4</span></span></span>
+    <details class="ai-spend menu-wrap"><summary><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">$0.21 today · 0 background on</span><span class="ai-short" aria-hidden="true">$0.21</span></span></summary></details>
+    <button type="button" class="asb" aria-label="Assistant"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+    <span class="live" data-live="connected"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <span class="who" data-identified="yes" title="Signed in as Sam"><span class="avatar">S</span><span class="who-name">Sam</span></span>
+  </header>
+  <main class="main">
+<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="fixes-list.html">Fixes</a><span aria-hidden="true">/</span><a href="fixes-list.html">Saved</a><span aria-hidden="true">/</span><span class="crumb-last">BPDU guard recovery (access ports)</span></nav>
+<div class="inc">
+<section class="card inc-bluf simple" aria-labelledby="fx-title" data-fix="bpdu-guard-recovery">
+  <h1 class="simple-title" id="fx-title">BPDU guard recovery (access ports)</h1>
+  <p class="simple-impact" title="Recovers an access port err-disabled by BPDU guard, once the BPDU source is gone">Recovers an access port err-disabled by BPDU guard, once the BPDU source is gone</p>
+  <p class="simple-status" role="status"><span class="badge badge-ok">Automatic</span> runs by itself when self-healing is On · 4 runs, all verified</p>
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" aria-haspopup="true" title="Choose a device and an interface, then see exactly what it sends before anything runs"><span class="op-idle">Run…</span></button><a class="how-link compact" href="#" title="How does this work?" aria-label="How does running a saved fix work?"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg></a></span>
+    <a class="bluf-link" href="#" title="Incident hi-0412: s1 Gi1/0 err-disabled by BPDU guard, fixed 14:29 Nov 15">Saved from incident hi-0412</a>
+  </div>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-contents">
+  <details class="inc-fold-d" open><summary class="card-head"><h2 id="h-fx-contents">Contents</h2></summary>
+    <div class="simple-sec">
+      <h3>Sends, in config mode, never saved</h3>
+      <pre class="plan-sent">interface {interface}
+ shutdown
+ no shutdown</pre>
+      <p class="small muted"><span class="mono">{interface}</span> is the matched port, from Mercury's model of the switch; nothing else is a parameter. Startup configuration is never written.</p>
+    </div>
+    <div class="simple-sec">
+      <h3>Checks before, each read live; any one failing refuses the run</h3>
+      <ol class="fixit-plan-items">
+        <li>The port is err-disabled by <span class="mono">bpduguard</span> now <span class="fixit-pre">· <span class="mono">show interfaces status err-disabled</span></span></li>
+        <li>The switch does not recover it itself <span class="fixit-pre">· <span class="mono">show errdisable recovery</span>: bpduguard disabled</span></li>
+        <li>The cause has cleared: no BPDU on the port since it tripped <span class="fixit-pre">· <span class="mono">show spanning-tree interface {interface} detail</span></span></li>
+      </ol>
+    </div>
+    <div class="simple-sec">
+      <h3>Verifies after; a failure rolls back and says so</h3>
+      <ol class="fixit-plan-items">
+        <li>The port reads connected within 12 s</li>
+        <li>Re-checked for 10 s for a re-trip: no new err-disable</li>
+        <li>The interface's section is unchanged from before the run</li>
+      </ol>
+    </div>
+  </details>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-origin">
+  <details class="inc-fold-d"><summary class="card-head"><h2 id="h-fx-origin">Origin</h2></summary>
+    <dl class="tl-record">
+      <dt>Saved from</dt><dd><a href="#">Incident hi-0412: s1 Gi1/0 err-disabled by BPDU guard</a>, fixed and verified 14:29 Nov 15</dd>
+      <dt>The plan</dt><dd>Proposed by the AI 14:26 Nov 15, approved by Sam by its hash <span class="mono">3f9a0c41</span> 14:28</dd>
+      <dt>The AI</dt><dd><a href="#">What the AI saw and said (2 calls)</a></dd>
+      <dt>Saved</dt><dd>by Sam 14:32 Nov 15, in Dry run</dd>
+      <dt>Promoted</dt><dd>to Automatic by Sam 09:05 Nov 16, after 2 dry-run records</dd>
+    </dl>
+  </details>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-record">
+  <details class="inc-fold-d" open><summary class="card-head"><h2 id="h-fx-record">Record · 4 runs, all verified</h2></summary>
+    <ol class="fixit-attempts">
+      <li class="fixit-a fixit-a-passed">23:00 · s2 Gi1/2 (h4) · Automatic · <strong>verified:</strong> connected 23:00:14, no re-trip for 10 s · <a href="#">Open the run</a></li>
+      <li class="fixit-a fixit-a-passed">17:41 · s1 Gi1/0 (h1) · Automatic · <strong>verified:</strong> connected 17:41:12, no re-trip for 10 s · <a href="#">Open the run</a></li>
+      <li class="fixit-a fixit-a-passed">13:18 · s4 Gi0/3 (h6) · run by Sam · <strong>verified:</strong> connected 13:18:20, no re-trip for 10 s · <a href="#">Open the run</a></li>
+      <li class="fixit-a fixit-a-passed">10:02 · s2 Gi1/2 (h4) · Automatic · <strong>verified:</strong> connected 10:02:15, no re-trip for 10 s · <a href="#">Open the run</a></li>
+    </ol>
+    <p class="small muted">Before it was promoted: 2 dry-run records (Nov 15 18:20 s1 Gi1/0, Nov 16 07:44 s2 Gi1/2), nothing changed. Every run is on <a href="#">History</a>.</p>
+  </details>
+</section>
+
+<section class="card inc-fold" aria-labelledby="h-fx-how">
+  <details class="inc-fold-d"><summary class="card-head"><h2 id="h-fx-how">How it runs · Automatic</h2></summary>
+    <dl class="tl-record">
+      <dt>Automatic</dt><dd>Runs by itself on a matching problem while campus's self-healing is On; a person can also press Run…</dd>
+      <dt>Dry run</dt><dd>Records what it would do on a match and changes nothing</dd>
+      <dt>Manual only</dt><dd>Never by itself: only Run… here or on a matching incident</dd>
+      <dt>Changed</dt><dd>Dry run to Automatic by Sam, 09:05 Nov 16 · saved in Dry run by Sam, 14:32 Nov 15</dd>
+    </dl>
+    <p class="small muted">Changed on <a href="#">Self-healing</a>, which holds every saved fix's mode.</p>
+  </details>
+</section>
+</div>
+  </main>
+</div>
+</div>
+
+<!-- ============================================================ 2-run-preview -->
+<div class="artlabel mock-cap">
+<h1>Screen 2 · Run… pressed: the preview, in place under the fix's card, 1280 px · 23:41 America/Denver</h1>
+<table>
+<tr><th>Card</th><th>Lines</th><th>Buttons</th><th>Links</th><th>Fields</th><th>Details</th></tr>
+<tr><td>The fix (BLUF)</td><td class="okc">3</td><td class="okc">0 (Run… is busy on itself while its preview is open)</td><td>1</td><td class="okc">0</td><td>0</td></tr>
+<tr><td>Run this fix (the preview)</td><td>title, 2 choices, the program, 2 labelled lines, the hash</td><td class="okc">2 (Run on s1 Gi1/0, Cancel)</td><td>0</td><td>2 selects, pressed for (R5: fields only once a person asked)</td><td>0</td></tr>
+</table>
+<p>The choices come from Mercury's model, never a typed field: the device list holds only switches with this fix's match (an access port err-disabled by BPDU guard now, or any access port when none is); the interface list is that device's access ports, each with its host and state. Changing a choice redraws the preview and its hash; the button names the exact device and port and approves that hash. The checks still run live at apply: a port that recovered since is refused, naming what moved.</p>
+</div>
+<div class="art artboard v2">
+<nav class="sidebar" aria-label="Main">
+  <div class="brand"><svg class="mercury-mark" viewBox="-82 -42 164 84" role="img" aria-label="Mercury"><title>Mercury</title><g transform="rotate(-20)"><ellipse class="mk-orbit" rx="72" ry="26"></ellipse></g><circle class="mk-planet" r="26"></circle><path class="mk-hi" d="M-15.6,-9 A18 18 0 0 1 -4.7,-17.4"></path><g transform="rotate(-20)"><path class="mk-gap" d="M-72,0 A72 26 0 0 0 72,0"></path><path class="mk-orbit" d="M-72,0 A72 26 0 0 0 72,0"></path><circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle><circle class="mk-node" cy="26" r="9"></circle></g></svg><div class="brand-words"><span class="brand-name">Mercury</span><span class="brand-sub">Network Automation Platform</span></div></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><span class="grow">Needs attention</span><span class="count count-warning" title="1 item; the worst is a warning">1</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"></rect><rect x="2" y="13" width="20" height="8" rx="2"></rect><path d="M6 7h.01"></path><path d="M6 17h.01"></path></svg><span>Devices</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg><span>History</span></a>
+  <div class="nav-head">TROUBLESHOOTING</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"></path></svg><span>Incidents</span></a>
+  <a class="nav-item active" href="fixes-list.html" aria-current="page"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"></path></svg><span>Fixes</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg><span>Self-healing</span></a>
+  <div class="nav-head">OBSERVE</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>Monitoring</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2"></circle><circle cx="19" cy="6" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="M7 6h10"></path><path d="m6 8 5 8"></path><path d="m18 8-5 8"></path></svg><span>Topology</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"></rect><rect x="2" y="17" width="6" height="5" rx="1"></rect><rect x="16" y="17" width="6" height="5" rx="1"></rect><path d="M12 7v5"></path><path d="M5 17v-5h14v5"></path></svg><span>SDN</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-5-6-5"></path><path d="M12 19h8"></path></svg><span>Show commands</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg><span>Logs</span></a>
+  <div class="nav-head">SOURCE OF TRUTH</div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5z"></path><path d="m2 12 10 5 10-5"></path><path d="m2 17 10 5 10-5"></path></svg><span>Intent</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m10 13-2 2 2 2"></path><path d="m14 17 2-2-2-2"></path></svg><span>Templates</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg><span>NetBox</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="14" width="18" height="7" rx="2"></rect><path d="M7 17.5h.01"></path><path d="M12 14v-4"></path><circle cx="12" cy="7" r="3"></circle></svg><span>DHCP</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path></svg><span>Credentials</span></a>
+  <div class="grow"></div>
+  <div class="nav-rule"></div>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg><span>Help</span></a>
+  <a class="nav-item" href="#"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path></svg><span>Settings</span></a>
+</nav>
+<div class="frame">
+  <header class="topbar">
+    <details class="net net-pick menu-wrap"><summary title="Choose the network these pages show"><span class="net-label">Network</span> <strong>campus</strong></summary></details>
+    <form class="jump"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off"><kbd>/</kbd></form>
+    <span class="grow"></span>
+    <span class="strip"><span class="strip-item ok" title="Integrations 4 of 4"><span class="strip-words">Integrations 4 of 4</span></span></span>
+    <details class="ai-spend menu-wrap"><summary><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">$0.21 today · 0 background on</span><span class="ai-short" aria-hidden="true">$0.21</span></span></summary></details>
+    <button type="button" class="asb" aria-label="Assistant"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+    <span class="live" data-live="connected"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <span class="who" data-identified="yes" title="Signed in as Sam"><span class="avatar">S</span><span class="who-name">Sam</span></span>
+  </header>
+  <main class="main">
+<nav class="crumbs crumbs-cut" aria-label="Breadcrumb"><a href="fixes-list.html">Fixes</a><span aria-hidden="true">/</span><a href="fixes-list.html">Saved</a><span aria-hidden="true">/</span><span class="crumb-last">BPDU guard recovery (access ports)</span></nav>
+<div class="inc">
+<section class="card inc-bluf simple" aria-labelledby="fx-title-2" data-fix="bpdu-guard-recovery">
+  <h1 class="simple-title" id="fx-title-2">BPDU guard recovery (access ports)</h1>
+  <p class="simple-impact">Recovers an access port err-disabled by BPDU guard, once the BPDU source is gone</p>
+  <p class="simple-status" role="status"><span class="badge badge-ok">Automatic</span> runs by itself when self-healing is On · 4 runs, all verified</p>
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" aria-expanded="true" disabled><span class="op-idle">Run…</span></button></span>
+    <a class="bluf-link" href="#">Saved from incident hi-0412</a>
+  </div>
+</section>
+
+<section class="card fixit simple" aria-labelledby="run-title" data-plan="9b27e04c5a13">
+  <h2 class="simple-title" id="run-title">Run this fix</h2>
+  <form class="simple-form" aria-label="Where to run it">
+    <fieldset><legend>Where</legend>
+      <label for="run-dev">Device
+        <select id="run-dev" name="device">
+          <option selected>s1 (1 port err-disabled by BPDU guard)</option>
+          <option>s2 (none err-disabled)</option>
+          <option>s3 (none err-disabled)</option>
+          <option>s4 (none err-disabled)</option>
+          <option>s5 (none err-disabled)</option>
+        </select>
+      </label>
+      <label for="run-if">Interface
+        <select id="run-if" name="interface">
+          <option selected>Gi1/0 (h1, access, err-disabled)</option>
+          <option>Gi1/1 (h2, access, connected)</option>
+          <option>Gi1/2 (h3, access, connected)</option>
+        </select>
+      </label>
+    </fieldset>
+  </form>
+  <p class="plan-sent-label small">Sends on s1, in config mode, never saved:</p>
+  <pre class="plan-sent">interface GigabitEthernet1/0
+ shutdown
+ no shutdown</pre>
+  <dl class="simple-plan">
+    <div><dt>Checks first</dt><dd>Gi1/0 is err-disabled by BPDU guard now · s1 doesn't recover it itself · no BPDU on Gi1/0 since it tripped</dd></div>
+    <div><dt>Then verifies</dt><dd>Gi1/0 connected within 12 s · re-checked 10 s for a re-trip · Gi1/0's section unchanged</dd></div>
+    <div><dt>Plan</dt><dd><span class="mono" title="sha256 9b27e04c5a13d8f6...">9b27e04c</span> · s1 held while it runs; rolled back if a verify fails</dd></div>
+  </dl>
+  <div class="simple-acts">
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" title="Runs exactly this program on s1 Gi1/0, held to its hash 9b27e04c: a check that moved since is refused, naming what moved"><span class="op-idle">Run on s1 Gi1/0</span></button><a class="how-link compact" href="#" title="How does this work?" aria-label="How does running a saved fix work?"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg></a></span>
+    <button type="button" class="btn btn-small">Cancel</button>
+  </div>
+</section>
+
+<section class="card inc-fold"><details class="inc-fold-d"><summary class="card-head"><h2>Contents</h2></summary></details></section>
+<section class="card inc-fold"><details class="inc-fold-d"><summary class="card-head"><h2>Origin</h2></summary></details></section>
+<section class="card inc-fold"><details class="inc-fold-d"><summary class="card-head"><h2>Record · 4 runs, all verified</h2></summary></details></section>
+<section class="card inc-fold"><details class="inc-fold-d"><summary class="card-head"><h2>How it runs · Automatic</h2></summary></details></section>
+</div>
+  </main>
+</div>
+</div>
+</body>
+</html>
