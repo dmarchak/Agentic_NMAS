@@ -565,8 +565,12 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
         try:
+            # Its verify kept on the close, as a heal's act keeps it (`act.verified_of`): the
+            # proof the incident's Fixed card draws (the operator, 2026-11-16).
             incidents.close(network, decision["incident"],
-                            f"{outcome}: {words} (decision {decision['id']})", now)
+                            f"{outcome}: {words} (decision {decision['id']})", now,
+                            fixed=act.verified_of(decision, steps) if outcome == "healed"
+                            else None)
         except Exception as exc:
             log.error("heal: %s's incident %s was not closed: %s", network,
                       decision.get("incident"), exc)
