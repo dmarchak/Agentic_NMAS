@@ -8,8 +8,10 @@ changes nothing: the decision records, and H4 acts.
 2. guard 4, the approved state (N5): the device's newest golden carries ``Intent-Match:`` at
    intent for it (`device_list._golden_history`), or, where no trailer was recorded, the golden
    matches committed intent now (`intent_match.intent_match`);
-3. guards 5 to 11: the topology hold (`hold.topology`), many devices at once, a person working,
-   the grace period, and the rates per device, per network and of the same deviation;
+3. guard 6, many devices at once (a person decides), and guard 11 where the network stops a
+   fight (`heal_fight_stop`). Guards 5, 7, 8's wait, 9 and 10 hold nothing since the operator's
+   decision of 2026-11-16 ("Remove all time-based holds"): `heal.findings` says a problem that
+   keeps coming back and a fix something keeps undoing instead;
 4. a FRESH read of the device (`Sources.read`, the capture path's one checked read), its
    departure from the golden compared with the one the grace period settled on
    (`drift_check.drift_diff`, `departure`): moved since, the incident is checked again;
@@ -55,7 +57,7 @@ log = logging.getLogger(__name__)
 STEPS = (("claim", "Take a ready incident"),
          ("stops", "Check the kill switch, the mode and planned work"),
          ("approved", "Find the approved state: the golden that matched intent"),
-         ("guards", "Check the hold, the fleet, a person working, the grace and the rates"),
+         ("guards", "Check many devices at once, and a fight the network stops"),
          ("read", "Read the device again and compare"),
          ("classify", "Class each unit and its tier, and compute the program and its hash"),
          ("decide", "Decide: heal, would heal, propose or can't fix"),
@@ -496,29 +498,26 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     except Exception as exc:
         return stop(guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a "
                                              "rate that cannot be counted holds", {}))
-    outcome_counted = "heal" if mode.get("mode") == "auto" else "would_heal"
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
     got = incidents.read(network)
     settled_dep = ((incident.get("settled") or {}).get("operands") or {}).get("departure", "")
-    # C2840: the rates (guards 9 to 11) bound HEALS. An incident whose grace period settled at
-    # its golden (its newest read, after every outside change, found the device at its golden:
-    # a person's revert, say) has nothing to heal, and can end only nothing to heal or a Tier 3
-    # can't-fix, neither of which sends; so it passes them, said, never held by the rate its
-    # own departure's would-heal used.
-    at_golden = base["settled"] == "at_golden"
-    rates = () if at_golden else (
-        guards.g9_device_rate(rows, device, outcome_counted, now,
-                              value(mode, "heal_max_per_device_hour"), drill=drill),
-        guards.g10_network_rate(rows, network, outcome_counted, now,
-                                value(mode, "heal_max_per_network_hour")),
-        guards.g11_repeat(rows, device, settled_dep, outcome_counted, now,
-                          value(mode, "heal_repeat_halts_hours"), drill=drill))
-    for g in (guards.g5_topology(src.topology(device, now), now),
-              guards.g6_many(got["incidents"], now, grace_s,
+    # The operator, 2026-11-16: "Remove all time-based holds from self-healing ... Keep guard 4
+    # and guard 6 as 'a person decides'". Guards 5 (the topology hold), 7 (a person working),
+    # 8's wait and the rates 9 to 11 hold or defer nothing now: each run's own preconditions
+    # and verify are the safety, and the findings (`heal.findings`) say a problem that keeps
+    # coming back or a fix something keeps undoing. A fight stops a fix only where the network
+    # set heal_fight_stop (guard 11, a person's setting, no time).
+    # A port problem its classification's device read confirmed (`detect._settle_port`) is
+    # judged on that read, as one settled at its golden is: its symptom, not a departure.
+    at_golden = base["settled"] in ("at_golden", "confirmed")
+    from modules.heal import findings
+    key = findings.problem_key(incident)
+    fight = (findings.fight_on(network, device, key[1] if key else "", mode=mode, now=now)
+             if value(mode, "heal_fight_stop") else {})
+    for g in (guards.g6_many(got["incidents"], now, grace_s,
                              value(mode, "heal_max_devices_drifting")),
-              guards.g7_person(incident, now, value(mode, "heal_person_working_changes"),
-                               value(mode, "heal_person_working_minutes")),
-              guards.g8_grace(incident)) + rates:
+              guards.g8_grace(incident),
+              guards.g11_fight(fight, bool(value(mode, "heal_fight_stop")))):
         if _resolves(batch, g, incident):
             continue
         if g:
@@ -534,48 +533,32 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         # C2817: the step's words name no id or hash, and a person by display name only.
         batch_words = (f"many devices at once resolved, and the grace dropped, by "
                        f"{batch.get('by_shown') or 'a person'}'s approval of the batch; ")
-    passed("guards", batch_words +
-           "no topology hold, not many devices at once, no person working, the grace "
-                     "period settled, " + (
-                         "and no rate counted: its read found it at its golden, so there is "
-                         "nothing to heal" if at_golden else
-                         "under the network's rate; a declared fault drill, so the per-device "
-                         "rate and the same-deviation guard do not apply" if drill else
-                         "under every rate"), "read")
+    passed("guards", batch_words + "not many devices at once, and no fight stopped by the "
+                                   "network's setting", "read")
     if at_golden:
         base["phase"] = "decide"
         symptom = _symptom(incident)
         judged = judged_triggers(incident)
-        # C2750: an incident held past its symptom (guard 5's topology hold held one for four
-        # hours, 2026-11-07) is judged on what its stores read now, never on its triggers'
-        # words alone: a symptom gone by itself is nothing to heal, and no can't-fix row. Gone
-        # means read gone AND quiet for the flap window since its last trigger, so a link still
-        # flapping (I5), up at the moment it is read, is never called cleared.
+        if base["settled"] == "confirmed":
+            # Its port problem, confirmed by the device read that settled it: a can't-fix of
+            # configuration (Tier 3), as one settled at its golden is, so the saved fix or AI
+            # troubleshooting takes it. Its symptom stores are not read: that read is the
+            # problem's own.
+            out = {"kind": symptom or "physical", "tier": 3, "units": [], "blocked": None}
+            return dict(base, kind=out["kind"], tier=3, outcome="cant_fix",
+                        words=_outcome(mode, out, [], [], device)[1])
+        # C2750: judged on what its stores read now, never on its triggers' words alone: a
+        # symptom read gone is nothing to heal at once (the operator, 2026-11-16: "an incident
+        # whose device read finds no problem closes at once on that read, never on a quiet
+        # timer"), and no can't-fix row.
         now_state = (src.symptom_now(device, judged)
                      if symptom and hasattr(src, "symptom_now") else "")
-        quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
-        last = max((float(t.get("epoch") or 0) for t in judged), default=0.0)
-        if symptom and now_state == "gone" and now - last >= quiet_s:
+        if symptom and now_state == "gone":
             return dict(base, outcome="nothing",
                         words=(f"nothing to heal: every symptom the incident named has cleared "
                                f"by itself at {_hhmm(now)} UTC, nothing to do: {device} is at "
                                "its golden, which matches its intent (each symptom read again "
-                               f"after it, and quiet {int(quiet_s // 60)} minutes since its "
-                               "last trigger)"))
-        if symptom and now_state == "gone" and not incident.get("quiet_deferred"):
-            # C2825 (H11 W5): read gone inside the flap window is not yet cleared (a link still
-            # flapping reads up between its drops), and not a can't-fix either: no Critical row
-            # and no "could not fix" message for what Mercury reads gone. Checked again once
-            # the window has passed since its last trigger; once only, so a link that keeps
-            # flapping is a can't-fix after one window, as before.
-            until = last + quiet_s
-            return dict(base, kind=symptom, tier=3, outcome="deferred", until=until, quiet=True,
-                        words=(f"checked again at {_hhmm(until)} UTC: every symptom the "
-                               f"incident named reads gone now, and {device} is at its golden, "
-                               f"which matches its intent; it is called cleared only once "
-                               f"nothing is logged for {int(quiet_s // 60)} minutes since its "
-                               "last trigger, so a link still flapping is never called "
-                               "cleared"))
+                               "after it)"))
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",
@@ -682,7 +665,7 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
 
 
 def end_standing(network: str, incident_id: str, words: str, *, now: float, by: str,
-                 read_words: str, fixed: dict = None) -> dict:
+                 read_words: str, fixed: dict = None, also_watching: bool = False) -> dict:
     """Close a STANDING incident (C2813, C2825) because what read its device back found its
     cause gone: a drift run that read the device at its golden after its decision, the detect
     pass reading every symptom it named gone and quiet for the flap window, or the can't-fix
@@ -694,11 +677,14 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
     returned. Returns the decision recorded. *fixed* is the fix whose own device check
     verified it (`detect.verified_fix`: the run, its device and when), kept on the decision and
     on the closed incident (the operator's item 4, 2026-11-15: it closes on the problem's own
-    verification, not on an alert clearing)."""
+    verification, not on an alert clearing). *also_watching*: a watching incident too, closed
+    on a device read that found no problem before any decision (the operator, 2026-11-16)."""
     from modules.heal import decisions, incidents, policy
 
     try:
-        inc = incidents.take_standing(network, incident_id, by=by, now=now)
+        inc = incidents.take_standing(network, incident_id, by=by, now=now,
+                                      states=("standing", "watching") if also_watching
+                                      else ("standing",))
     except incidents.Refused as exc:
         log.info("heal: %s's %s is not ended: %s", network, incident_id, exc)
         return {}
@@ -726,7 +712,10 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
         d = decisions.record(network, made, now)
     except Exception as exc:
         log.error("heal: %s's %s could not be ended (%s): it stands", network, incident_id, exc)
-        incidents.stand(network, incident_id, None, now=now)
+        try:
+            incidents.stand(network, incident_id, None, now=now)
+        except incidents.Refused as why:          # taken from watching: it stood on nothing
+            log.error("heal: %s's %s stays claimed: %s", network, incident_id, why)
         return {}
     incidents.close(network, incident_id, f"nothing: {words} (decision {d['id']})", now,
                     fixed=fixed)
@@ -762,14 +751,14 @@ SCRIPT_OUTCOMES = ("cant_fix",)
 def script_hold(network: str, incident: dict, *, now: float = None, sources=None):
     """The heal guard that holds a promoted script's run on *incident*'s device now, as
     `_decide_one` judges each (guard 1 the kill switch, 2 the mode and a halt, 3 planned work,
-    4 the device Mercury's to change, 5 a topology hold, 6 many devices at once, 7 a person
-    working, 9 and 10 the rates), its `guards.hit` shape; None when none does. A read."""
+    4 the device Mercury's to change, 6 many devices at once), its `guards.hit` shape; None
+    when none does. A read. *sources* is kept for its callers; no guard here reads it now."""
     from modules.heal import decisions, guards, incidents, policy
     from modules.heal.guards import value
     from modules.inventory.management import refusal_for
 
     now = time.time() if now is None else float(now)
-    src = sources or Sources(network)
+    del sources
     device = incident.get("device") or ""
     mode = policy.current(network, now)
     try:
@@ -783,24 +772,12 @@ def script_hold(network: str, incident: dict, *, now: float = None, sources=None
     why = refusal_for(network, device, what="a saved script")
     if why:
         return guards.hit(4, "held", f"heal off for this device: {why}", {})
-    try:
-        rows = decisions.decisions(network)
-    except Exception as exc:
-        return guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a rate "
-                                        "that cannot be counted holds", {})
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
-    for g in (guards.g5_topology(src.topology(device, now), now),
-              guards.g6_many(incidents.read(network)["incidents"], now, grace_s,
-                             value(mode, "heal_max_devices_drifting")),
-              guards.g7_person(incident, now, value(mode, "heal_person_working_changes"),
-                               value(mode, "heal_person_working_minutes")),
-              guards.g9_device_rate(rows, device, "heal", now,
-                                    value(mode, "heal_max_per_device_hour")),
-              guards.g10_network_rate(rows, network, "heal", now,
-                                      value(mode, "heal_max_per_network_hour"))):
-        if g:
-            return g
-    return None
+    # The operator, 2026-11-16: no time-based hold (guards 5, 7, 9 and 10 no longer hold), as
+    # in `_decide_one`; guard 6 stays, a person's decision.
+    g = guards.g6_many(incidents.read(network)["incidents"], now, grace_s,
+                       value(mode, "heal_max_devices_drifting"))
+    return g or None
 
 
 def run(network: str, *, now: float = None, sources=None, by: str = "heal to intent") -> dict:

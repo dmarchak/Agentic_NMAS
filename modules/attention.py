@@ -305,6 +305,13 @@ ROW_KINDS = {
                                   "verified on the device",
                                   "read the port on the device's Monitoring tab, then the "
                                   "alert's rule in Grafana: one of them is wrong"),
+    # The operator, 2026-11-16 (`heal.findings`): the findings that replace self-healing's
+    # time-based limits; neither stops a fix.
+    ("heal", "recurrence"): ("the same problem keeps coming back on a device",
+                             "open its newest incident and find what keeps causing it"),
+    ("heal", "fight"): ("Mercury keeps fixing something and something keeps undoing it",
+                        "find what keeps changing it on the device (heal_fight_stop stops "
+                        "the fixing meanwhile)"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -696,6 +703,12 @@ CLEARS = {
     ("heal", "alert_after_fix"): (("resolves",),
                                   "the alert resolves: a grafana-alerts read no longer holds "
                                   "it firing on the device"),
+    ("heal", "recurrence"): (("resolves", "time"),
+                             "the window (heal_recurrence_hours) holds fewer than "
+                             "heal_recurrence_count incidents of the problem"),
+    ("heal", "fight"): (("resolves", "time"),
+                        "the window (heal_recurrence_hours) holds fewer than heal_fight_count "
+                        "fixes of it undone within heal_fight_minutes"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -6596,6 +6609,10 @@ def heal_source(got=None, now=None, found=None) -> dict:
     after_fix = _heal_alert_after_fix_rows(lst, now, said)
     out += after_fix
     try:
+        out += _heal_finding_rows(lst, rows, now, said)
+    except Exception as exc:                          # noqa: BLE001 (the other rows stand)
+        said.append(f"the recurrence and fight findings could not be read: {exc}")
+    try:
         halted = _heal_halted_rows(lst)
     except Exception as exc:
         return source_result("heal", label, read_at=started, took_ms=0,
@@ -7443,6 +7460,63 @@ def _heal_alert_after_fix_rows(lst: str, now: float, said: list, incidents_now=N
     if unread:
         said.append(f"{len(unread)} alert(s) of incidents closed on a verified fix not read "
                     f"since {int(bound // 60)} minutes after it: " + ", ".join(unread[:3]))
+    return out
+
+
+def _heal_finding_rows(lst: str, rows: list, now: float, said: list, mode=None) -> list:
+    """The operator's findings (2026-11-16, `heal.findings`): ONE ``recurrence`` row per problem
+    opened ``heal_recurrence_count`` times within ``heal_recurrence_hours``, and ONE ``fight``
+    row per fix undone ``heal_fight_count`` times; each links its incidents, and neither stops
+    a fix (a fight does only where ``heal_fight_stop`` is on, said)."""
+    from modules.heal import findings, policy
+    from modules.heal import incidents as INC
+
+    mode = policy.current(lst, now) if mode is None else mode
+    s = findings.settings(mode)
+    got = INC.read(lst)
+    if got.get("state") == "unreadable":
+        said.append(f"the findings are not read: {got.get('error')}")
+        return []
+    incs = got.get("incidents") or []
+    out = []
+    for f in findings.recurrences(incs, now, s["heal_recurrence_count"],
+                                  s["heal_recurrence_hours"]):
+        device, obj, condition, cause = f["key"]
+        newest = f["incidents"][-1]
+        what = obj or condition.replace("_", " ")
+        out.append(row(
+            source="heal", kind="recurrence", key=f"{lst}:recurrence:{device}:{what}",
+            level="warning", devices=[device] if device else [], since=f["since"],
+            what=(f"{device}: {what} {condition.replace('_', ' ')}"
+                  + (f" by {cause}" if cause else "")
+                  + f" happened {len(f['incidents'])} times since "
+                  f"{time.strftime('%H:%M', time.gmtime(f['since']))} UTC"),
+            cause=(f"The same problem opened {len(f['incidents'])} incidents within "
+                   f"{s['heal_recurrence_hours']} hours (at least {s['heal_recurrence_count']} "
+                   "is a finding); fixes continue, each its own run's checks"),
+            action={"label": "Open its newest incident and find what keeps causing it",
+                    "href": INC.incident_href(lst, newest.get("id") or "", device=device)},
+            operands={"list": lst, "incidents": [i.get("id") for i in f["incidents"]],
+                      "count": s["heal_recurrence_count"],
+                      "hours": s["heal_recurrence_hours"]}))
+    for f in findings.fights(incs, rows, now, s["heal_fight_count"], s["heal_fight_minutes"],
+                             s["heal_recurrence_hours"]):
+        newest = f["back"][-1]
+        out.append(row(
+            source="heal", kind="fight",
+            key=f"{lst}:fight:{f['device']}:{f['object']}:{f['operation']}",
+            level="warning", devices=[f["device"]] if f["device"] else [], since=f["first"],
+            what=findings.headline(f),
+            cause=(f"{f['operation']} fixed it and verified, and it came back within "
+                   f"{s['heal_fight_minutes']} minutes, {f['times']} times; "
+                   + ("this network stops fixing it (heal_fight_stop)" if s["heal_fight_stop"]
+                      else "Mercury keeps fixing it unless heal_fight_stop is set")),
+            action={"label": f"Find what keeps changing {f['what']} on {f['device']}",
+                    "href": INC.incident_href(lst, newest.get("id") or "",
+                                              device=f["device"])},
+            operands={"list": lst, "fixed": [i.get("id") for i in f["fixes"]],
+                      "back": [i.get("id") for i in f["back"]],
+                      "operation": f["operation"], "stop": bool(s["heal_fight_stop"])}))
     return out
 
 

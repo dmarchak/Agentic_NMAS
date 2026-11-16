@@ -34,7 +34,9 @@ RETRY_SECONDS = 60
 #: What `judge` answers. ``need_read`` and ``waiting`` keep the incident watching; the others
 #: settle it, ready for the decision (H3).
 WAITING_STATES = ("need_read", "waiting")
-SETTLED_STATES = ("persisted", "at_golden", "not_checkable", "unreadable")
+#: ``confirmed``: a port problem settled on its classification's device read, never on this
+#: grace (the operator, 2026-11-16; `detect._settle_port`).
+SETTLED_STATES = ("persisted", "at_golden", "not_checkable", "unreadable", "confirmed")
 
 
 def _s(seconds: float) -> str:
@@ -60,7 +62,8 @@ def _same(a: dict, b: dict) -> tuple:
                   "departure fingerprint)")
 
 
-def judge(reads: list, changes: list, grace_seconds: float, now: float) -> dict:
+def judge(reads: list, changes: list, grace_seconds: float, now: float, *,
+          once: str = "") -> dict:
     """The grace period's state for one device: ``{"state", "due_at", "words", "first",
     "second", "operands"}``.
 
@@ -68,7 +71,9 @@ def judge(reads: list, changes: list, grace_seconds: float, now: float) -> dict:
     "changed_lines", "error"}``. *changes*: the receive times of the configuration-change lines
     from outside Mercury (or of unknown author) on the device. *state* is one of
     `WAITING_STATES` (``due_at``: when the next read is due) or `SETTLED_STATES`; *first* and
-    *second* are the reads it judged by (indexes into *reads*), where it judged by two."""
+    *second* are the reads it judged by (indexes into *reads*), where it judged by two.
+    *once* (why there is no grace: the operator, 2026-11-16, "No grace for unattributed changes
+    or any event kind"): a drifted read settles ``persisted`` on its own, at once."""
     grace = float(grace_seconds)
     last_change = max((float(c) for c in changes or []), default=None)
     usable = [(i, r) for i, r in enumerate(reads or [])
@@ -109,6 +114,12 @@ def judge(reads: list, changes: list, grace_seconds: float, now: float) -> dict:
                 "words": (f"the last read could not be made ({newest.get('error') or '?'}): an "
                           f"unreadable read neither passes nor fails, and it is read again "
                           f"{_s(RETRY_SECONDS)} after it")}
+    if once:
+        operands.update(first_at=newest.get("epoch"), second_at=newest.get("epoch"),
+                        apart_seconds=0, departure=newest.get("departure", ""), no_grace=once)
+        return {"state": "persisted", "due_at": None, "first": i_new, "second": i_new,
+                "operands": operands,
+                "words": f"the read found it departed, and there is no grace: {once}"}
     # The first read of the run of drifted reads holding the newest one's departure, errors
     # between them skipped (they say nothing of the device's state).
     i_first, how = i_new, ""

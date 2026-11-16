@@ -79,7 +79,7 @@
             status while it says something; else what the row waits for. -#}
         {%- if r.busy and p.tab == 'open' %}<span class="inc-row-sub simple-status working-now" data-status data-busy title="{{ r.status }}">{{ r.status }}</span>
         {%- elif r.ai %}<span class="inc-row-ai simple-status simple-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>
-        {%- elif p.tab == 'open' %}{% if r.status %}<span class="inc-row-sub simple-status" data-status title="{{ r.status }}" data-waits="{{ r.waits }}">{{ r.status }}</span>{% endif %}
+        {%- elif p.tab == 'open' %}{% if r.status %}<span class="inc-row-sub simple-status" data-status title="{{ r.status }}" data-waits="{{ r.waits }}">{{ r.status | times }}</span>{% endif %}
         {%- elif r.fixed_words %}<span class="inc-row-sub simple-status muted" data-fixed>{{ r.fixed_words | times }}{% if r.ttr %} · {{ r.ttr }}{% endif %}</span>
         {%- elif r.by or r.ttr %}<span class="inc-row-sub simple-status muted">{% if r.by %}fixed by {{ r.by | people }}{% endif %}{% if r.by and r.ttr %} · {% endif %}{% if r.ttr %}time to repair {{ r.ttr }}{% endif %}</span>{% endif %}
       </span>

@@ -57,13 +57,16 @@ FIXED_KINDS = (
 #: The hard stops in the board's order: (label, keys, how a value is said, the unit's words).
 GUARD_ROWS = (
     ("Grace: a change must persist", ("heal_grace_seconds",), "{0} s"),
-    ("Heals per device per hour", ("heal_max_per_device_hour",), "{0}"),
-    ("Heals per network per hour", ("heal_max_per_network_hour",), "{0}"),
-    ("The same fix twice halts, within", ("heal_repeat_halts_hours",), "{0} h"),
+    # The operator, 2026-11-16: the rates, the topology hold and a person working no longer
+    # hold a fix; the findings replace them (`heal.findings`). The fight's stop
+    # (heal_fight_stop, a yes or no) has no row here: this table's editor takes numbers.
+    ("A problem back this often is a finding",
+     ("heal_recurrence_count", "heal_recurrence_hours"), "{0} times in {1} h"),
+    ("A fix undone this often is a fight",
+     ("heal_fight_count", "heal_fight_minutes"), "{0} times, back within {1} min"),
+    ("The repeat window: a second bounce need becomes a dampening proposal",
+     ("heal_repeat_halts_hours",), "{0} h"),
     ("Devices departing at once: stop above", ("heal_max_devices_drifting",), "{0}"),
-    ("Hold after a change or re-cabling nearby", ("heal_topology_hold_minutes",), "{0} min"),
-    ("A person working: outside changes",
-     ("heal_person_working_changes", "heal_person_working_minutes"), "{0} in {1} min"),
     ("Largest heal", ("heal_max_removed_units", "heal_max_units"),
      "{0} removal unit (an added line; one feature on one interface, N13), or {1} section "
      "re-applied"),

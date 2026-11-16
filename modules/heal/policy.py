@@ -102,7 +102,13 @@ GUARD_KEYS = ("heal_topology_hold_minutes", "heal_max_devices_drifting",
               "heal_person_working_changes", "heal_person_working_minutes",
               "heal_grace_seconds", "heal_max_per_device_hour", "heal_max_per_network_hour",
               "heal_repeat_halts_hours", "heal_max_removed_units", "heal_max_units",
-              "heal_flap_transitions", "heal_flap_minutes", "heal_bounce_per_port_hour")
+              "heal_flap_transitions", "heal_flap_minutes", "heal_bounce_per_port_hour",
+              "heal_recurrence_count", "heal_recurrence_hours", "heal_fight_count",
+              "heal_fight_minutes", "heal_fight_stop")
+#: The findings' settings (the operator, 2026-11-16; `heal.findings`), counted by a policy's
+#: fingerprint only once not their default, so a policy confirmed before them keeps its own.
+FINDING_KEYS = ("heal_recurrence_count", "heal_recurrence_hours", "heal_fight_count",
+                "heal_fight_minutes", "heal_fight_stop")
 #: The action guards' settings (19.4, H19: 13d and 13e), added after the policies confirmed
 #: before them. A policy's fingerprint leaves each out while it holds its default, so a policy
 #: a person confirmed before H19 is still the one they confirmed (`policy_fingerprint`).
@@ -121,6 +127,11 @@ GUARD_WORDS = {
     "heal_flap_transitions": "a flap: UPDOWN transitions of one interface",
     "heal_flap_minutes": "a flap: within (minutes), the stability window too",
     "heal_bounce_per_port_hour": "bounces per port an hour",
+    "heal_recurrence_count": "a problem back this many times is a finding",
+    "heal_recurrence_hours": "a recurrence or a fight: within (hours)",
+    "heal_fight_count": "a fix undone this many times is a fight",
+    "heal_fight_minutes": "a fix undone: the problem back within (minutes)",
+    "heal_fight_stop": "stop fixing what something keeps undoing",
 }
 #: N1 and N3: on a network marked lab, a hard stop the network does not set reads these.
 LAB_DEFAULTS = {"heal_grace_seconds": 120, "heal_topology_hold_minutes": 60}
@@ -136,9 +147,14 @@ GUARDS = (
     (6, "many devices at once", ("heal_max_devices_drifting",)),
     (7, "a person working", ("heal_person_working_changes", "heal_person_working_minutes")),
     (8, "the grace period", ("heal_grace_seconds",)),
-    (9, "rate: per device", ("heal_max_per_device_hour",)),
-    (10, "rate: per network", ("heal_max_per_network_hour",)),
-    (11, "the same deviation healed twice", ("heal_repeat_halts_hours",)),
+    # The operator, 2026-11-16: guards 5 and 7 to 11 hold or defer nothing; the rates (9 to 11)
+    # are replaced by the findings (`heal.findings`), named here with the guards they replace.
+    # Guard 11 stops a fix only when the network's heal_fight_stop is on, a person's setting.
+    (9, "rate: per device (replaced: a problem that keeps coming back)",
+     ("heal_max_per_device_hour", "heal_recurrence_count", "heal_recurrence_hours")),
+    (10, "rate: per network (no longer holds)", ("heal_max_per_network_hour",)),
+    (11, "a fix something keeps undoing", ("heal_repeat_halts_hours", "heal_fight_count",
+                                            "heal_fight_minutes", "heal_fight_stop")),
     (12, "the program's size", ("heal_max_removed_units", "heal_max_units")),
     # With its action guards, 13a to 13e (19.4; `heal.actions.GUARDS`, their own table).
     (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + ACTION_GUARD_KEYS
@@ -151,7 +167,7 @@ POLICY_KEYS = (MODE_KEY, UNTIL_KEY, KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + GUARD_K
     SECURITY_REVERT_KEY,)
 #: The keys a fingerprint counts only once they are not their default (absent counts as the
 #: default), so a policy confirmed before they existed keeps its fingerprint.
-LATER_KEYS = ACTION_GUARD_KEYS + (SECURITY_REVERT_KEY,)
+LATER_KEYS = ACTION_GUARD_KEYS + (SECURITY_REVERT_KEY,) + FINDING_KEYS
 
 #: N8: AUTO is on for at most 7 days per enablement, then dry run.
 MAX_AUTO_SECONDS = 7 * 24 * 3600

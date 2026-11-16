@@ -494,8 +494,9 @@ def _due(inc: dict, now: float) -> bool:
     c = of_record(inc)
     if c.get("state") == "classified":
         conf = c.get("confirmed") or {}
-        return not conf or (conf.get("unread") is True
-                            and now - float(conf.get("epoch") or 0) >= RECHECK_S)
+        # Read again every RECHECK_S while open (the operator, 2026-11-16): a port read no longer
+        # err-disabled closes its incident at once on that read (`detect._port_clear`).
+        return not conf or now - float(conf.get("epoch") or 0) >= RECHECK_S
     if not c:
         return True
     return (now - float(c.get("checked_epoch") or 0) >= RECHECK_S

@@ -131,7 +131,7 @@ ANNOUNCER = "heal-act"
 #: The decision's steps, in order (`consider`), for the manual's How it works page.
 DECIDE_STEPS = (("choose", "Choose the action from the diagnosis's first hypothesis"),
                 ("stops", "Check the kill switch, the mode, a halt and planned work"),
-                ("rates", "Check the rates per device and per network"),
+                ("rates", "Read the record of past fixes (no rate holds a fix)"),
                 ("fresh", "Read both ends again, and the device's route to Mercury"),
                 ("guards", "Judge guards 13a to 13e, the archive and the measured timer"),
                 ("decide", "Decide: bounce, would bounce, held or can't fix"),
@@ -937,13 +937,10 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
     except Exception as exc:
         return stop(guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a "
                                              "rate that cannot be counted holds", {}))
-    for g in (guards.g9_device_rate(rows, device, counted, now,
-                                    value(mode, "heal_max_per_device_hour"), drill=drill),
-              guards.g10_network_rate(rows, network, counted, now,
-                                      value(mode, "heal_max_per_network_hour"))):
-        if g:
-            return stop(g)
-    passed("rates", "under the rates per device and per network", "fresh")
+    # The operator, 2026-11-16: no rate per device or network holds a fix (guards 9 and 10);
+    # the step stays, its record read for 13d below.
+    passed("rates", "no rate holds it (the per-device and per-network rates are retired)",
+           "fresh")
 
     # The fresh reads (13a, 13b, 13c's route): both ends through the reads engine.
     dev = src.device(device) or {}

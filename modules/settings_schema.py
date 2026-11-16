@@ -800,6 +800,16 @@ DEFAULTS: dict = {
     # AUTO only by name in `heal_kinds_auto`. Its fingerprint counts it only once it is not its
     # default (`heal.policy.LATER_KEYS`), so a policy confirmed before it keeps its fingerprint.
     "heal_security_revert_adjacency": False,
+    # The findings that replace self-healing's time-based limits (the operator, 2026-11-16;
+    # modules/heal/findings.py): a recurrence is the same problem 3 times in 24 hours, a fight
+    # the same fix undone (the problem back within 10 minutes) 3 times; neither stops a fix,
+    # but a fight does when heal_fight_stop is on (off: the operator's "keep fixing unless I
+    # set a stop"). Their fingerprint counts each only once not its default (`LATER_KEYS`).
+    "heal_recurrence_count": 3,
+    "heal_recurrence_hours": 24,
+    "heal_fight_count": 3,
+    "heal_fight_minutes": 10,
+    "heal_fight_stop": False,
     # C3749 (the operator, 2026-11-15): how many hours a one-press Auto lasts (the control
     # strip's Self-healing toggle, G6's Turn on self-healing and fix all), per network: 1 hour
     # (the default) or 8 hours. Not part of the heal policy (no fingerprint counts it): N8's
@@ -1308,6 +1318,11 @@ SCHEMA: dict = {
         "heal_flap_minutes": {"type": "integer", "minimum": 1, "maximum": 60},
         "heal_bounce_per_port_hour": {"type": "integer", "minimum": 0, "maximum": 1},
         "heal_security_revert_adjacency": _BOOL,
+        "heal_recurrence_count": {"type": "integer", "minimum": 2, "maximum": 100},
+        "heal_recurrence_hours": {"type": "integer", "minimum": 1, "maximum": 720},
+        "heal_fight_count": {"type": "integer", "minimum": 2, "maximum": 100},
+        "heal_fight_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+        "heal_fight_stop": _BOOL,
         "heal_auto_default_hours": {"type": "integer", "enum": [1, 8]},
         "heal_stopped": _BOOL,
         "heal_notify_team": {"type": "string", "pattern": r"^(|[0-9a-f]{12})$"},

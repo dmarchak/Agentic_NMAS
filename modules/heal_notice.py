@@ -998,6 +998,46 @@ def detected_words(trigger: dict, device: str, *, named: bool = True) -> str:
     return f"{words} ({person})" if person else words
 
 
+#: A named person's change waiting for them (the operator, 2026-11-16), told as a fix that waits
+#: for a person: Mercury holds no address of a device's account, so the network's team named
+#: for proposals is told, the message naming the person.
+GRACE_EVENT, GRACE_TOLD_AS = "heal_grace", "proposal"
+
+
+def grace_links(network: str, device: str) -> dict:
+    """The two answers' existing controls on the device's page: Keep it (Edit intent, the
+    intent editor) and Put it back now (its Deploy plan)."""
+    from urllib.parse import quote, urlencode
+
+    base = f"/v2/device/{quote(device, safe='')}?"
+    return {"keep": base + urlencode({"list": network, "tab": "intent", "edit": 1}),
+            "put_back": base + urlencode({"list": network, "op": "deploy"})}
+
+
+def grace_notice(network: str, inc: dict, grace: dict, *, deliver=None) -> dict:
+    """Tell *grace*'s person once, through the network's team (`GRACE_TOLD_AS`): "You changed
+    <device> (<n> lines differ from intent). Keep it: adopt into intent / Put it back now"."""
+    from modules import heal_notify
+    from modules.notify import delivery
+
+    device = inc.get("device") or ""
+    links = grace_links(network, device)
+    lines = grace.get("lines")
+    event = {"incident": str(inc.get("id") or "")[:80], "event": GRACE_EVENT,
+             "network": network, "device": device,
+             "title": (f"You changed {device} ({lines if lines is not None else 'some'} lines "
+                       "differ from intent)")[:120],
+             "happened": f"{grace.get('person') or 'a person'} changed {device}",
+             "outcome": f"Put back automatically at {grace.get('until')} unless kept",
+             "todo": (f"Keep it: adopt into intent ({links['keep']}) / Put it back now "
+                      f"({links['put_back']})"),
+             "link": incident_link(network, str(inc.get("id") or ""), device)}
+    teams = heal_notify.teams_for(network, GRACE_TOLD_AS)
+    if not teams:
+        return {"sent": 0, "nobody": True}
+    return (deliver or delivery.deliver_event)(event, teams)
+
+
 def incident_link(network: str, incident_id: str, device: str) -> str:
     """The incident's page, as a message links it: `incidents.incident_href`, the ONE place an
     incident's address is built (the operator, 2026-11-12, objective 2: "links to the

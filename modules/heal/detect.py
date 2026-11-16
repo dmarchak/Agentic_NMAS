@@ -186,25 +186,162 @@ def run(network: str, *, now: float = None, check=None, clock=time.time,
     return out
 
 
-def _hold_lifted(network: str, inc: dict, now: float) -> bool:
-    """Whether a topology-hold deferral (guard 5) no longer holds: the hold read again now
-    (`hold.topology`), so a change that stops counting (Mercury's net-zero command plans, the
-    operator, 2026-11-16) frees the incident at once, never at the old deferral's end."""
-    from modules.heal import hold
+#: The guards whose time-based deferral the operator retired (2026-11-16: "Remove all time-based
+#: holds from self-healing"): one already recorded on an open incident is lifted at the next
+#: pass. A deferral recorded before deferrals named their guard is told by its words.
+RETIRED_HOLDS = (5, 7, 8, 9, 10, 11)
+RETIRED_WORDS = ("-minute topology hold", "a person appears to be working",
+                 # The flap-window quiet (C2825), retired with them.
+                 "every symptom the incident named reads gone now")
 
+
+def _hold_lifted(network: str, inc: dict, now: float) -> bool:
+    """Whether *inc*'s deferral was one of the retired time-based holds (`RETIRED_HOLDS`, or
+    their words), so it ends now; planned work (guard 3) and a read that could not be made keep
+    theirs."""
+    del network, now                              # kept for its callers; nothing is read
     d = inc.get("deferred") or {}
-    if d.get("guard") != hold.GUARD and "-minute topology hold" not in str(d.get("why") or ""):
-        return False
+    why = str(d.get("why") or "")
+    return bool(d.get("guard") in RETIRED_HOLDS or any(w in why for w in RETIRED_WORDS))
+
+
+def _outside(inc: dict) -> list:
+    """*inc*'s configuration-change triggers from outside Mercury (or of unknown author)."""
+    from modules.heal.attribution import MERCURY
+
+    return [t for t in inc.get("triggers") or [] if isinstance(t, dict)
+            and t.get("kind") == "config_change"
+            and (t.get("attribution") or {}).get("by") != MERCURY]
+
+
+def _from_outside(inc: dict) -> bool:
+    return bool(_outside(inc))
+
+
+def _change_person(inc: dict) -> dict:
+    """The person the newest outside change's CONFIG_I line names (`attribution.person_of`'s
+    ``user``), or ``{}``: only a named person's change has a grace (the operator, 2026-11-16)."""
+    got = _outside(inc)
+    person = (got[-1].get("person") or {}) if got else {}
+    return person if person.get("user") else {}
+
+
+def _pressed(network: str, inc: dict) -> str:
+    """Whether a person answered the grace since it started: ``kept`` (the device's intent
+    committed after the change: its Edit intent), ``put_back`` (a deploy receipt of the device
+    after it: its Deploy plan), else ``""``. Reads the repository's log and the receipts."""
+    from modules.nsot import listref, receipts, repo
+
+    g = inc.get("grace") or {}
+    since = float(g.get("change_epoch") or 0)
+    if not since:
+        return ""
+    device = inc.get("device") or ""
     try:
-        return not hold.topology(network, inc.get("device") or "", now)["held"]
-    except Exception as exc:                          # noqa: BLE001 (it stays deferred)
-        log.error("heal: %s's hold could not be read again: %s", inc.get("id"), exc)
+        rel = f"host_vars/{device}.yml"
+        got = repo.run_git(listref.resolve(network).repo_dir, "log", "-1", "--format=%ct",
+                           "--", rel)
+        if got.returncode == 0 and got.stdout.strip() and float(got.stdout.strip()) > since:
+            return "kept"
+        rows = receipts.read(network, device, limit=5).get("rows") or []
+        if any(_epoch_of(r.get("completed_at") or r.get("at")) > since for r in rows):
+            return "put_back"
+    except Exception as exc:                          # noqa: BLE001 (the grace runs on, said)
+        log.error("heal: whether %s's change was answered could not be read: %s",
+                  inc.get("id"), exc)
+    return ""
+
+
+def _epoch_of(iso) -> float:
+    import calendar
+
+    try:
+        return float(calendar.timegm(time.strptime(str(iso)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _grace_started(network: str, inc: dict, person: dict, j: dict, reads: list,
+                   now: float) -> None:
+    """Keep the grace on *inc* and tell its person once (`heal_notice.grace_notice`): the
+    window's end is the existing grace's (`grace.judge`'s ``due_at``), no new timer."""
+    from modules import heal_notice
+    from modules.heal import incidents
+
+    change = max(outside_changes(dict(inc, defer_until=None)) or [0.0])
+    g = inc.get("grace") or {}
+    if g.get("change_epoch") == change and g.get("told"):
+        return
+    lines = next((r.get("changed_lines") for r in reversed(reads)
+                  if r.get("state") == "drifted"), None)
+    g = {"person": person.get("words") or person.get("user"), "user": person.get("user"),
+         "change_epoch": change, "until": _iso(float(j.get("due_at") or now)),
+         "lines": lines, "told": False}
+    try:
+        g["told"] = bool(heal_notice.grace_notice(network, inc, g).get("sent") is not None)
+    except Exception as exc:                          # noqa: BLE001 (the grace runs, said)
+        log.error("heal: %s's person could not be told: %s", inc.get("id"), exc)
+    incidents.record_grace(network, inc["id"], g)
+
+
+def _port_only(inc: dict, c: dict) -> bool:
+    """Whether *inc*'s triggers are only port events: its err-disable lines and Grafana alerts,
+    each alert naming no port or the classified one (`errdisable.same_port`)."""
+    from modules.heal import errdisable
+
+    trig = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
+    if not trig or any(t.get("kind") not in errdisable.PORT_TRIGGERS for t in trig):
         return False
+    port = c.get("port") or ""
+    return all(not t.get("interface") or not port or errdisable.same_port(t["interface"], port)
+               for t in trig if t.get("kind") == "alert")
+
+
+def _settle_port(network, inc, out, budget, now, by):
+    """A port event settles on its classification's device read, never on the configuration's
+    grace (the operator, 2026-11-16): err-disabled as classified, ready for the decision at
+    once (``confirmed``); not err-disabled, closed at once as "No problem found", its read
+    named. Returns the reads left, or None when *inc* is no port event to judge so (its
+    configuration read and grace, as before)."""
+    from modules.heal import errdisable, incidents
+
+    c = errdisable.of_record(inc)
+    if not _port_only(inc, c):
+        return None
+    if errdisable._due(inc, now) and budget > 0:
+        budget -= 1
+        out["reads"] += 1
+        c = errdisable.reclassify(network, inc, now=now)
+        incidents.record_problem(network, inc["id"], errdisable.FIELD, c)
+    found = _port_found(c)
+    if found is None:
+        if c.get("state") == "classified" and (c.get("confirmed") or {}).get("unread"):
+            out["waiting"].append({"incident": inc["id"], "device": inc["device"],
+                                   "state": "need_read", "due_at": None,
+                                   "words": c["confirmed"].get("why") or "the port is read again"})
+            return budget
+        return None                               # not a classified err-disable: as before
+    conf = c.get("confirmed") or {}
+    if found is False:
+        d = _no_problem(network, inc, c, now, by, watching=True)
+        if d:
+            out["cleared"].append({"incident": inc["id"], "device": inc["device"],
+                                   "decision": d["id"]})
+        return budget
+    words = (f"{errdisable.CONFIRM_READ} on {inc['device']} at {conf.get('at') or '?'}: "
+             f"{(conf.get('found') or {}).get('port') or c.get('port')} err-disabled by "
+             f"{(conf.get('found') or {}).get('reason') or c.get('cause')}, as classified")
+    incidents.settle(network, inc["id"], {"state": "confirmed", "words": words,
+                                          "operands": {"port": c.get("port"),
+                                                       "run": conf.get("run") or ""}}, now)
+    out["ready"].append({"incident": inc["id"], "device": inc["device"], "how": "confirmed",
+                         "words": words})
+    return budget
 
 
 def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
     """One watching incident's step of a pass; returns the reads left."""
-    from modules.heal import grace, incidents
+    from modules.heal import decide, grace, incidents
 
     if float(inc.get("defer_until") or 0) > now and _hold_lifted(network, inc, now):
         # Its hold no longer holds: the deferral ends now, and the grace restarts now.
@@ -215,10 +352,32 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
                                "state": "deferred", "due_at": inc["defer_until"],
                                "words": (inc.get("deferred") or {}).get("why") or "deferred"})
         return budget
+    port = _settle_port(network, inc, out, budget, now, by)
+    if port is not None:
+        return port
     reads = list(inc.get("reads") or [])
     changes = outside_changes(inc)
-    j = grace.judge(reads, changes, grace_s, now)
-    if j["state"] in grace.WAITING_STATES and (j["due_at"] or now) <= now:
+    # The operator, 2026-11-16: the grace is a named person's decision, not a silent timer;
+    # none for an unattributed change or an event. Either of that person's presses ends it.
+    person = _change_person(inc)
+    pressed = _pressed(network, inc) if person else ""
+    if pressed == "kept":
+        g = inc.get("grace") or {}
+        d = decide.end_standing(
+            network, inc["id"], f"kept: {person.get('words') or 'the person'}'s change on "
+                                f"{inc['device']} was adopted into intent",
+            now=now, by=by, also_watching=True,
+            read_words=(f"host_vars/{inc['device']}.yml committed after the change at "
+                        f"{_iso(float(g.get('change_epoch') or 0))}"))
+        if d:
+            out["cleared"].append({"incident": inc["id"], "device": inc["device"],
+                                   "decision": d["id"]})
+        return budget
+    once = ("put back now by a person's press" if pressed == "put_back" else "" if person
+            else "the change names no person" if _from_outside(inc)
+            else "an event, not a configuration change")
+    j = grace.judge(reads, changes, grace_s, now, once=once)
+    if j["state"] in grace.WAITING_STATES and ((j["due_at"] or now) <= now or pressed):
         if budget <= 0:
             out["deferred"].append(inc["id"])
             return budget
@@ -228,7 +387,9 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
         if r["state"] != "busy":
             incidents.record_read(network, inc["id"], inc["device"], r)
             reads.append(r)
-        j = grace.judge(reads, changes, grace_s, now)
+        j = grace.judge(reads, changes, grace_s, now, once=once)
+    if person and j["state"] == "waiting" and not pressed:
+        _grace_started(network, inc, person, j, reads, now)
     for m in inc.get("attached") or []:
         if m.get("reads") or budget <= 0:
             continue
@@ -326,25 +487,26 @@ def _proposals(network, incidents_now, out, budget, grace_s, now, by, check, clo
 def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
     """Each incident standing on a decision at its golden with a symptom (a Tier 3 can't-fix,
     ``on: symptom``; C2813, C2825) has its symptoms read from their stores (no device: the
-    readers' stored values, `decide.Sources.symptom_now`, verify's rule): every one read gone,
-    and nothing logged for the flap window since its last trigger, ends it as cleared by itself
-    (`decide.end_standing`), so its can't-fix item leaves and nothing later folds into it. A
-    symptom present, stale or unreadable leaves it standing: an unread symptom is not gone."""
+    readers' stored values, `decide.Sources.symptom_now`, verify's rule): every one read gone
+    ends it at once as cleared by itself (`decide.end_standing`; the operator, 2026-11-16: "an
+    incident whose device read finds no problem closes at once on that read, never on a quiet
+    timer"), so its can't-fix item leaves and nothing later folds into it. A port problem is
+    judged on its classification's device read instead (`_port_clear`). A symptom present,
+    stale or unreadable leaves it standing: an unread symptom is not gone."""
     from modules.heal import decide
-    from modules.heal.guards import value
 
-    quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
+    del mode                                      # no quiet window: nothing here waits
     read = symptom or decide.Sources(network).symptom_now
     out.setdefault("fixed", [])
     for inc in incidents_now:
         if inc.get("state") != "standing" or (inc.get("standing") or {}).get("on") != "symptom":
             continue
         trig = decide.judged_triggers(inc)
-        last = max((float(t.get("epoch") or 0) for t in trig), default=0.0)
         if _fixed(network, inc, trig, out, now, by):
             continue
-        if now - last < quiet_s:
-            continue
+        port = _port_clear(network, inc, out, now, by)
+        if port is not None:
+            continue                              # judged on its device read
         try:
             state = read(inc["device"], trig)
         except Exception as exc:                      # said; it stands, read at the next pass
@@ -353,18 +515,60 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
             continue
         if state != "gone":
             continue
-        minutes = int(quiet_s // 60)
         d = decide.end_standing(
             network, inc["id"],
             (f"nothing to heal: every symptom the incident named has cleared by itself at "
-             f"{decide._hhmm(now)} UTC, nothing to do: {inc['device']} is at its golden, and "
-             f"nothing was logged for {minutes} minutes since its last trigger"),
+             f"{decide._hhmm(now)} UTC, nothing to do: {inc['device']} is at its golden"),
             now=now, by=by,
-            read_words=(f"every symptom {inc['id']} named read again from its store after it: "
-                        f"gone, and quiet {minutes} minutes since its last trigger"))
+            read_words=f"every symptom {inc['id']} named read again from its store: gone")
         if d:
             out["cleared"].append({"incident": inc["id"], "device": inc["device"],
                                    "decision": d["id"]})
+
+
+def _port_found(c: dict):
+    """What the classification's newest device read (`errdisable.confirm`) says of its port:
+    ``True`` err-disabled as classified, ``False`` not listed (no problem), ``None`` unread,
+    disagreeing or not classified (judged as before)."""
+    conf = (c or {}).get("confirmed") or {}
+    if c.get("state") != "classified" or not conf or conf.get("unread"):
+        return None
+    if conf.get("agrees"):
+        return True
+    return False if not conf.get("found") else None
+
+
+def _no_problem(network, inc, c, now, by, *, watching: bool) -> dict:
+    """Close *inc* at once on its device read finding the port not err-disabled (the operator,
+    2026-11-16), through `decide.end_standing`, the read named."""
+    from modules.heal import decide, errdisable
+
+    conf = c.get("confirmed") or {}
+    port = c.get("short") or c.get("port") or "its port"
+    return decide.end_standing(
+        network, inc["id"],
+        f"No problem found: {inc['device']}'s {port} is not err-disabled",
+        now=now, by=by, also_watching=watching,
+        read_words=(f"{errdisable.CONFIRM_READ} on {inc['device']} at {conf.get('at') or '?'} "
+                    f"does not list {port} (run {conf.get('run') or 'not recorded'})"))
+
+
+def _port_clear(network, inc, out, now, by):
+    """A standing port problem (`errdisable`) judged on its device read: not err-disabled
+    closes it at once; still err-disabled leaves it standing. None when it is no classified
+    port problem, so its symptoms are read as before."""
+    from modules.heal import errdisable
+
+    c = errdisable.of_record(inc)
+    found = _port_found(c)
+    if found is None:
+        return None
+    if found is False:
+        d = _no_problem(network, inc, c, now, by, watching=False)
+        if d:
+            out["cleared"].append({"incident": inc["id"], "device": inc["device"],
+                                   "decision": d["id"]})
+    return found
 
 
 def _fixed(network, inc, trig, out, now, by) -> bool:
@@ -532,6 +736,9 @@ def _notify_step() -> None:
         except Exception as exc:
             log.error("heal: %s's can't-fix notices could not start: %s: %s", name,
                       type(exc).__name__, exc)
+        # The fight finding's notice (the operator, 2026-11-16): once per fight; never raises.
+        from modules.heal import findings
+        findings.notify_fights(name)
 
 
 def start() -> bool:

@@ -418,8 +418,7 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
          sources=None) -> dict:
     """One device of the batch: ``{"device", "outcome", "words", "decision", "job"}``, its
     *outcome* the heal act's (`act.OUTCOMES`), else ``refused`` or the decision's outcome."""
-    from modules.heal import act, decide, decisions, guards, incidents, interrupted, policy
-    from modules.heal.guards import value
+    from modules.heal import act, decide, decisions, incidents, interrupted
 
     device, by = item["device"], f"{BUTTON} ({approval['id']})"
     now = time.time()
@@ -431,17 +430,8 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
     steps, phase = made.pop("steps", []), made.pop("phase", "decide")
     from modules import filestore
     with filestore.PathLock(decisions.rate_lock_path(network)):
-        # Guard 10 counts every heal, this batch's included: counted again as it is recorded,
-        # so devices decided at once never all pass against the same count, in this process or
-        # another (the lock decide's record step takes too, Gate 2's review).
-        if made.get("outcome") == "heal":
-            mode = policy.current(network, now)
-            g = guards.g10_network_rate(decisions.decisions(network), network, "heal", now,
-                                        value(mode, "heal_max_per_network_hour"))
-            if g:
-                made = dict(made, outcome="halted", guard={k: g[k] for k in (
-                    "guard", "name", "words", "operands")},
-                    words=f"Self-healing stops on {network}: {g['words']}")
+        # The operator, 2026-11-16: no rate holds a heal (guard 10's recount is gone); the
+        # record is still written under the lock decide's record step takes.
         d = decisions.record(network, made, now)
     decide._act(network, inc, d, now)
     decide._log_steps(network, dict(d, steps=steps, phase=phase), now)

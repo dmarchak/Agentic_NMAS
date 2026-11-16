@@ -193,13 +193,27 @@ def g8_grace(incident: dict):
     persisted is healed; a device that cannot be read or checked can't be fixed. At its golden
     is no departure: the decision goes on to say nothing to heal, or a Tier 3 can't-fix."""
     s = incident.get("settled") or {}
-    if s.get("how") in ("persisted", "at_golden"):
-        return None
     if s.get("how") in ("not_checkable", "unreadable"):
         return hit(8, "cant_fix", f"the device could not be judged: {s.get('words')}",
                    {"settled": s.get("how")})
-    return hit(8, "held", "the grace period has not settled it", {"settled": s.get("how")},
-               time.time() + 60)
+    # The operator, 2026-11-16: no time-based hold. An incident not settled is judged by the
+    # decision's own fresh read (step 4), never held a minute.
+    return None
+
+
+# ── 11 (the operator, 2026-11-16): a fix something keeps undoing ────────────────────────────
+
+def g11_fight(fight: dict, stop: bool):
+    """The fight finding (`findings.fights`) on this device and object, when the network's
+    ``heal_fight_stop`` is on: held for a person, no time (they find what keeps undoing it)."""
+    from modules.heal import findings
+
+    if not fight or not stop:
+        return None
+    return hit(11, "held", (f"{findings.headline(fight)}: fixed and undone {fight['times']} "
+                            "times, and this network stops fixing it (heal_fight_stop)"),
+               {"times": fight["times"], "operation": fight["operation"],
+                "object": fight["object"], "heal_fight_stop": True})
 
 
 # ── 9, 10, 11: the rates ────────────────────────────────────────────────────────────────────

@@ -585,6 +585,21 @@ def record_problem(network: str, incident_id: str, field: str, classified: dict)
     return _mutate(network, change)
 
 
+def record_grace(network: str, incident_id: str, grace: dict) -> dict:
+    """Keep the configuration grace a named person's change started (the operator, 2026-11-16:
+    a decision, not a silent timer) on *incident_id*'s record as ``grace``: ``{"person",
+    "change_epoch", "until", "lines", "told"}``. A closed incident is not changed."""
+    keep = json.loads(json.dumps(grace or {}))
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if inc.get("state") in OPEN_STATES:
+            inc["grace"] = keep
+        return inc
+
+    return _mutate(network, change)
+
+
 def settle(network: str, incident_id: str, judged: dict, now: float = None) -> dict:
     """The grace period settled *incident_id* (`grace.judge`'s answer, a settled state): it is
     ``ready`` for the decision."""
@@ -709,7 +724,10 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
                              "words": (decision.get("words") or "")[:300],
                              "at": _iso(now), "epoch": now, "departure": dep,
                              "guard": (decision.get("guard") or {}).get("guard"),
-                             "on": "symptom" if how.get("how") == "at_golden" else "departure"})
+                             # A port problem settled on its device read stands on its
+                             # symptom too (`detect._settle_port`, 2026-11-16).
+                             "on": "symptom" if how.get("how") in ("at_golden", "confirmed")
+                             else "departure"})
         return inc
 
     return _mutate(network, change)
@@ -737,18 +755,21 @@ def restand(network: str, incident_id: str, judged: dict, now: float = None) -> 
     return _mutate(network, change)
 
 
-def take_standing(network: str, incident_id: str, *, by: str, now: float = None) -> dict:
+def take_standing(network: str, incident_id: str, *, by: str, now: float = None,
+                  states=("standing",)) -> dict:
     """A standing incident taken to be closed by what read its device back (`decide.
-    end_standing`): ``claimed`` by *by*, refused when it is not standing (another took it, or a
-    change sent it back to watching)."""
+    end_standing`): ``claimed`` by *by*, refused when it is not in *states* (another took it,
+    or a change sent it back to watching). *states* adds ``watching`` for a port read finding
+    no problem before any decision (`detect._settle_port`)."""
     now = time.time() if now is None else float(now)
 
     def change(doc):
         inc = _find(doc, incident_id)
-        if inc.get("state") != "standing":
-            raise Refused(f"{incident_id} is {inc.get('state')}, not standing, so it is not "
-                          "taken")
-        inc.update(state="claimed", claimed={"by": by, "at": _iso(now), "from": "standing"},
+        if inc.get("state") not in states:
+            raise Refused(f"{incident_id} is {inc.get('state')}, not "
+                          f"{' or '.join(states)}, so it is not taken")
+        inc.update(state="claimed", claimed={"by": by, "at": _iso(now),
+                                             "from": inc.get("state")},
                    updated_at=_iso(now))
         return inc
 

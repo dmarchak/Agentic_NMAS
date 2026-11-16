@@ -166,7 +166,8 @@ def _fixit_of(network: str, found: dict) -> dict:
     # Whether a plan stands to approve: a proposal line with no plan (an answer that named no
     # fix, a gap) is the section's "proposed" too, and must never be said as one to approve.
     return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal")),
-            "working": " · ".join(w for w in (v.get("working"), v.get("working_step")) if w)}
+            "working": " · ".join(w for w in (v.get("working"), v.get("working_step")) if w),
+            "why_person": v.get("why_person") or ""}
 
 
 def _group(st: dict, tl: dict, how: dict = None) -> str:
@@ -193,7 +194,10 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     inc, entry, decisions = found["incident"], found["entry"], found["decisions"]
     device = (inc or {}).get("device") or entry.get("device") or ""
     heal = IP.state_of(inc, entry, decisions)
-    fx = (_fixit_of(network, found) if heal not in IP.RESOLVED and found["id"] in fixit_ids
+    # Read for one with a troubleshooting record, and for any that needs a person, whose row
+    # says why (the operator, 2026-11-16).
+    fx = (_fixit_of(network, found) if heal not in IP.RESOLVED and (
+        found["id"] in fixit_ids or heal == "needs_person")
           else {"state": "", "ai": None, "plan": False})
     fixit = fx["state"]
     st = IP.status(inc, entry, decisions, fixit)
@@ -230,8 +234,11 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "waits": "" if resolved else WAITS.get(st["why"], ""),
             # R5 (board R5, approved 2026-11-15): the row's status line, what it waits for in
             # one line ("Waiting for a person: …" while it needs one), "" once resolved.
-            "status": "" if resolved else (fx.get("working") or fx.get("held") or status_words(
-                st["state"], WAITS.get(st["why"], ""))),
+            "status": "" if resolved else (
+                fx.get("working") or fx.get("held")
+                or (fx.get("why_person") if st["state"] == "needs_person" else "")
+                or grace_words(inc, st["why"])
+                or status_words(st["state"], WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",
             "ended": tl["ended"] if resolved else "",
@@ -258,6 +265,17 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     # R5: the row's impact line, its BLUF's (Mercury's own table).
     out["impact"] = out["bluf"].get("impact") or ""
     return out
+
+
+def grace_words(inc, why: str) -> str:
+    """A named person's change waiting for them (`detect._grace_started`, the operator,
+    2026-11-16): "Waiting for <person>: put back automatically at <instant> unless kept", the
+    instant drawn by the page's clock; "" otherwise."""
+    g = (inc or {}).get("grace") or {}
+    if why != "watching" or not g.get("until"):
+        return ""
+    return (f"Waiting for {g.get('person') or 'the person who changed it'}: put back "
+            f"automatically at {g['until']} unless kept")
 
 
 def status_words(state: str, waits: str) -> str:
