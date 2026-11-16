@@ -592,6 +592,11 @@ def _authorisation_counts(rows: list, want=None) -> dict:
     for row in reversed(rows):                         # oldest first
         if row.get("outcome") == "refused" or not row.get("sent"):
             continue
+        if row.get("action") == "command_plan":
+            # A command plan is net zero, verified (shutdown then no shutdown, the configuration
+            # as before): a transient run, never a line authorised into the device's config (the
+            # operator, 2026-11-16).
+            continue
         for a in authorisation.normalise(
                 [a if isinstance(a, dict) else {"line": a, "reason": ""}
                  for a in (row.get("authorised") or [])]):

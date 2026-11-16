@@ -9397,6 +9397,10 @@ def needs_attention(sources=None) -> dict:
                      for src in (every_source() if sources is None else sources)])
 
 
+#: The sources whose rows are about Mercury itself, not the network: drawn apart, collapsed.
+SELF_SOURCES = ("ci", "ci_agreement", "scheduled_jobs")
+
+
 def assemble(results: list) -> dict:
     """The page from each source's result (`run_source`), in order: attached, folded, the
     acknowledged taken out, worst first, with the badge and What was checked. *results* is
@@ -9438,6 +9442,12 @@ def assemble(results: list) -> dict:
     if ack_result:
         results.append(ack_result)
     in_force = _standing_acknowledgements(acknowledged, held)
+    # Rows about Mercury itself (its CI, its scheduled developer jobs) leave the operator's
+    # list for a collapsed section; a CI run still going is no finding at all (the operator,
+    # 2026-11-16).
+    mercury = [r for r in rows if r["source"] in SELF_SOURCES
+               and not (r["source"] == "ci" and "still going" in str(r.get("what") or ""))]
+    rows = [r for r in rows if r["source"] not in SELF_SOURCES]
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     # A source waiting out its dependency's start (C2568) is not unreadable: its own line says.
     unreadable = [res["label"] for res in results if res["state"] not in ("read", WAITING)]
@@ -9445,7 +9455,7 @@ def assemble(results: list) -> dict:
         headline = f"{len(rows)} thing(s) need attention"
     else:
         headline = "Nothing needs attention"
-    return {"ok": True, "headline": headline, "rows": rows,
+    return {"ok": True, "headline": headline, "rows": rows, "mercury": mercury,
             "unreadable": unreadable, "acknowledged": acknowledged, "in_force": in_force,
             "badge": badge_of(rows, results, acknowledged),
             "expected": _expected_on_cards(results),

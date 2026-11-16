@@ -531,6 +531,16 @@
     </ul>
   </details>
   {%- endif %}
+  {%- if a.mercury %}
+  {#- About Mercury itself (its CI, its scheduled developer jobs), not the network: apart and
+      collapsed, never in the operator's count (the operator, 2026-11-16). -#}
+  <details class="evidence" data-keep="mercury-itself">
+    <summary>Mercury itself · {{ a.mercury|length }}</summary>
+    <ul class="tl-record">
+      {%- for r in a.mercury %}<li data-mercury="{{ r.id }}">{{ r.what }}{% if (r.action or {}).label %}: {{ r.action.label }}{% endif %}</li>{% endfor %}
+    </ul>
+  </details>
+  {%- endif %}
   <details class="evidence" data-keep="evidence">
     <summary>What was checked · {{ sources|length }} sources</summary>
     <table class="table">
