@@ -83,7 +83,7 @@
         {%- set ls = live_step(p.network, r.id, r.device) if p.tab == 'open' else none %}
         {%- if ls %}<span class="inc-row-sub simple-status working-now" data-status data-live-step="{{ ls.key }}">{{ ls.words }}{% if ls.since %} <time class="muted" data-elapsed="{{ ls.since }}">0 s</time>{% endif %}</span>
         {%- elif r.busy and p.tab == 'open' %}<span class="inc-row-sub simple-status working-now" data-status data-busy title="{{ r.status }}">{{ r.status }}</span>
-        {%- elif r.ai %}<span class="inc-row-ai simple-status simple-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}AI: {{ r.ai.words }}{% endif %}</span>
+        {%- elif r.ai %}<span class="inc-row-ai simple-status simple-ai small" data-ai="{{ r.ai.state }}">{% if r.ai.state == 'investigating' %}{{ r.ai.words }} since {{ clock(r.ai.since) }}{% else %}{{ badge(r.ai.source or 'AI', 'info') }} {{ r.ai.words }}{% endif %}</span>
         {%- elif p.tab == 'open' %}{% if r.status %}<span class="inc-row-sub simple-status" data-status title="{{ r.status }}" data-waits="{{ r.waits }}">{{ r.status | times }}</span>{% endif %}
         {%- elif r.fixed_words %}<span class="inc-row-sub simple-status muted" data-fixed>{{ r.fixed_words | times }}{% if r.ttr %} · {{ r.ttr }}{% endif %}</span>
         {%- elif r.by or r.ttr %}<span class="inc-row-sub simple-status muted">{% if r.by %}fixed by {{ r.by | people }}{% endif %}{% if r.by and r.ttr %} · {% endif %}{% if r.ttr %}time to repair {{ r.ttr }}{% endif %}</span>{% endif %}

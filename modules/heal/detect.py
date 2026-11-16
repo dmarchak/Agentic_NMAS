@@ -579,6 +579,19 @@ def _fixed(network, inc, trig, out, now, by) -> bool:
     incident), whatever its alerts still say. Whether such an alert clears after it is its own
     finding (`attention._heal_alert_after_fix_rows`). True when it was ended; a fix that cannot
     be read leaves it standing, said in the log."""
+    d = _close_on_fix(network, inc, trig, now, by)
+    if d:
+        out["fixed"].append({"incident": inc["id"], "device": inc["device"],
+                             "decision": d["id"], "run": d["fixed"]["run"]})
+    return bool(d)
+
+
+def _close_on_fix(network, inc, trig, now, by, *, also_watching: bool = False) -> dict:
+    """End *inc* as fixed when a fix a person approved passed its own device check
+    (`verified_fix`) and no trigger came after that check: the ONE close of an incident on its
+    fix's verify, for the detect pass (`_fixed`) and for the verified run itself, at once
+    (`close_verified`). Through `decide.end_standing` (taken first under the incidents
+    store's lock, so it closes once). The decision recorded, with its ``fixed``, or ``{}``."""
     from modules.heal import decide
 
     try:
@@ -586,26 +599,46 @@ def _fixed(network, inc, trig, out, now, by) -> bool:
     except Exception as exc:                          # said; it stands, read at the next pass
         log.error("heal: %s's %s: whether its fix verified could not be read: %s: %s",
                   network, inc["id"], type(exc).__name__, exc)
-        return False
+        return {}
     if not fix or any(float(t.get("epoch") or 0) > fix["epoch"] for t in trig):
         # A trigger after the fix's check (an err-disable again, a re-fired alert) is the
         # problem back, not the fix's: the incident stands on it.
-        return False
+        return {}
     when = time.strftime("%H:%M", time.gmtime(fix["epoch"]))
     d = decide.end_standing(
         network, inc["id"],
         (f"fixed: the plan's run {fix['run'][-8:] or '?'} verified on {fix['device']} at "
          f"{when} UTC (attempt {fix['attempt']}, {fix['operation']}): the incident closes on "
          "its fix's own device check, not on its alerts clearing"),
-        now=now, by=by,
+        now=now, by=by, also_watching=also_watching,
         read_words=(f"{inc['id']}'s attempt {fix['attempt']} (run {fix['run']}) passed its "
                     f"verify on {fix['device']} at {fix['at']}, its troubleshooting record's "
                     "newest step"),
         fixed=fix)
-    if d:
-        out["fixed"].append({"incident": inc["id"], "device": inc["device"],
-                             "decision": d["id"], "run": fix["run"]})
-    return bool(d)
+    return dict(d, fixed=fix) if d else {}
+
+
+def close_verified(network: str, incident_id: str, *, by: str, now: float = None) -> dict:
+    """An approved plan's run on *incident_id* ended verified: its incident closes now, Fixed,
+    on that verify (`_close_on_fix`), never at a later detect pass (the operator, 2026-11-16:
+    s5's verified run left its incident open, its page on the hand-over words). A standing or
+    still-watching incident only (one claimed or ready is the decision's); ``{}`` when it did
+    not close (not found, not verified, a trigger since), the detect pass then reads it again.
+    Never raises: a failure is logged and the incident stands."""
+    from modules.heal import decide, incidents
+
+    now = time.time() if now is None else float(now)
+    try:
+        got = incidents.read(network)
+        inc = next((i for i in got.get("incidents") or [] if i.get("id") == incident_id), None)
+        if not inc or inc.get("state") not in ("standing", "watching"):
+            return {}
+        return _close_on_fix(network, inc, decide.judged_triggers(inc), now, by,
+                             also_watching=True)
+    except Exception as exc:                          # noqa: BLE001 (said; it stands)
+        log.error("heal: %s's %s was not closed on its verified run: %s: %s", network,
+                  incident_id, type(exc).__name__, exc)
+        return {}
 
 
 def verified_fix(network: str, inc: dict) -> dict:

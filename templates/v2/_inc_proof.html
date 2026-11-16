@@ -1,0 +1,25 @@
+{%- from "v2/_macros.html" import clock -%}
+{#- A fixed incident's proof (the operator, 2026-11-16: ""Fixed" shows its proof"), from
+    `modules/fixit/proof.py` (*P*, the card's ``proof``): one line by default ("Verified:
+    connected, no re-trip, config unchanged · show proof"); open, each verify check with its
+    words and seconds, the net-zero check's before and after, and each read the fix made with
+    its time from the run's start and its answer, masked as the read engine kept it. Drawn
+    under the card's run by _fixit_section.html; it asks for nothing. -#}
+{%- if P and P.line %}
+<details class="inc-proof small" data-proof data-keep="inc-proof-{{ iid }}"><summary>{{ P.line }} · show proof</summary>
+  <ul class="inc-proof-checks">
+  {%- for c in P.checks %}
+    <li data-check="{{ c.result }}"><span aria-hidden="true">{{ '✓' if c.result == 'pass' else '✗' }}</span> {{ c.name }}{% if c.words %}: {{ c.words }}{% endif %}{% if c.took_s is not none %} <span class="muted">{{ c.took_s | round | int }} s</span>{% endif %}</li>
+  {%- endfor %}
+  {%- if P.net_zero and P.net_zero.words %}
+    <li data-check="net-zero">{{ P.net_zero.words }}{% for ln in P.net_zero.lines %}<br><span class="mono">{{ ln }}</span>{% endfor %}</li>
+  {%- endif %}
+  </ul>
+  {%- for r in P.reads %}
+  <details class="inc-proof-read" data-read="{{ r.read }}"><summary><span class="mono">{{ r.command }}</span> <span class="muted">+{{ r.offset_s }} s, {{ clock(r.at) }}</span>{% if r.said %}: {{ r.said }}{% endif %}</summary>
+    {%- if r.answer %}<pre class="mono small">{{ r.answer }}</pre>{% else %}<p class="small muted">Its answer is not kept here.</p>{% endif %}
+    {%- if r.cut %}<p class="small muted">Cut here: the whole masked answer is in the read's own record.</p>{% endif %}
+  </details>
+  {%- endfor %}
+</details>
+{%- endif %}

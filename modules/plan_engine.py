@@ -1809,8 +1809,14 @@ def run(network: str, plan, params, confirmed: str, *, actor: str, actor_verifie
         return rec
 
     try:
-        return _run(network, plan, params, confirmed, rec, step, finish, actor=actor,
-                    actor_verified=actor_verified, person=person)
+        got = _run(network, plan, params, confirmed, rec, step, finish, actor=actor,
+                   actor_verified=actor_verified, person=person)
+        if got.get("incident") and got.get("state") == RECORD_STATE["done"]:
+            # Verified: its incident closes now, Fixed, on this run's verify (the operator,
+            # 2026-11-16), as a verified saved script's does (`saved_plans.close_fixed`).
+            from modules.heal import detect
+            detect.close_verified(network, got["incident"], by=actor)
+        return got
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         log.exception("plan engine: %s on %s failed", rec["plan"], network)
         for kept in rec.get("plan_steps") or []:

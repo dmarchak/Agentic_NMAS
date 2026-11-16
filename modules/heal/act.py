@@ -892,8 +892,13 @@ def apply_decision(network: str, decision: dict, *, now: float = None, sources=N
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
         try:
+            # Closed at once, in this one step, under the incidents store's lock: a verified
+            # heal with its verify kept on the close (`verified_of`, the proof the incident's
+            # card draws; the operator, 2026-11-16).
             incidents.close(network, decision["incident"],
-                            f"{outcome}: {words} (decision {decision['id']})", now)
+                            f"{outcome}: {words} (decision {decision['id']})", now,
+                            fixed=verified_of(decision, steps) if outcome == "healed"
+                            else None)
         except Exception as exc:
             log.error("heal: %s's incident %s was not closed: %s", network,
                       decision.get("incident"), exc)
@@ -1129,6 +1134,26 @@ def symptom_bound(triggers: list) -> int:
     """The longest the symptom read waits for *triggers* (`read_symptom`'s own bound: the
     largest of the symptoms' bounds named, `_bound`), or 0 when none is named."""
     return max((_bound(t) for t in symptom_triggers(triggers)), default=0)
+
+
+#: A heal's verify, the steps after its apply that prove it (`verified_of`).
+VERIFY_STEPS = ("intent", "symptom", "saved", "golden")
+
+
+def verified_of(decision: dict, steps: list) -> dict:
+    """A verified heal's proof as its incident's close keeps it (``fixed``): ``{"act",
+    "device", "at", "epoch", "verify": [{"step", "result", "words", "at", "reads"?}]}``, each
+    `VERIFY_STEPS` step as the act recorded it (its words masked as recorded; its reads the
+    read engine's references, `reads.read_entry`). No ``run``: it names no operation's run
+    record (`incident_page.fixed_how` says nothing of it)."""
+    now = time.time()
+    kept = []
+    for s in steps or []:
+        if isinstance(s, dict) and s.get("step") in VERIFY_STEPS:
+            kept.append(dict({k: s.get(k) for k in ("step", "result", "words", "at")},
+                             **({"reads": list(s["reads"])} if s.get("reads") else {})))
+    return {"act": decision.get("id") or "", "device": decision.get("device") or "",
+            "at": _iso(now), "epoch": now, "verify": kept}
 
 
 def live_steps(steps: list, declared, run_id: str = "", labels: dict = None,

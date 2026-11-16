@@ -92,17 +92,40 @@ def investigation(network: str, incident_id: str) -> list:
     return out
 
 
+def systems(declared) -> int:
+    """How many system steps *declared* opens (`SYSTEM_OF`: a change on one system, its reads
+    and waits not counted): what a plan's "step n of N" counts."""
+    count, system = 0, ""
+    for key, *_ in declared or ():
+        if SYSTEM_OF.get(key) and SYSTEM_OF[key] != system:
+            count, system = count + 1, SYSTEM_OF[key]
+    return count
+
+
+def numbered(label: str, n: int, total: int, key: str = "", device: str = "") -> str:
+    """A plan step's line in words (the operator, 2026-11-16: never "1. Sending" beside the
+    unnumbered Holding and Checks, read as the first step): a plan of one step is not numbered;
+    of more, "Sending: step 1 of 2, on s5"."""
+    if total <= 1:
+        return label
+    on = f", on {device}" if key == "send" and device else ""
+    return f"{label}: step {n} of {total}{on}"
+
+
 def lines(declared, recorded, labels=None, *, device: str = "", subs: str = "",
           start: float = 0.0, ended: bool = False, passed: bool = False, n: int = 1,
-          prefix: str = "") -> tuple:
+          prefix: str = "", total: int = 1, proof: dict = None) -> tuple:
     """One operation's run as the card's lines: ``(steps, the next number)``. *declared* its
     steps in order (``(key, words)``), *recorded* what it recorded (``{"step", "result",
     "at"}``), *labels* its own short words. Each recorded step done (or failed) with its
     seconds since the step before it; while it runs (*ended* false) the next declared one
     running since the last was recorded and the rest waiting; once it ended, a step never
     reached says so. The bookkeeping (`HIDDEN`) is not drawn unless it failed; nor, for a run
-    that did not pass, its "Fixed". A line opening a system's step is numbered from *n*
-    (`SYSTEM_OF`)."""
+    that did not pass, its "Fixed". A line opening a system's step is that plan step's, said
+    in words where the plan has *total* of them (`numbered`; `SYSTEM_OF`), counted from *n*.
+    *proof* (`fixit.proof.of_record`, a finished run's): Verifying's own checks drawn under it,
+    each with its seconds, and Verifying's seconds theirs where the run recorded its steps
+    together (the operator, 2026-11-16: never "Verifying 0 s" when its reads ran)."""
     from modules import run_stepper as RS
     from modules.heal import resubscribe as R
 
@@ -122,13 +145,24 @@ def lines(declared, recorded, labels=None, *, device: str = "", subs: str = "",
         label = _fill((RESUB_WORDS.get(key) if resub else None) or RUN_WORDS.get(key)
                       or labels.get(key) or words, **fill)
         if SYSTEM_OF.get(key) and SYSTEM_OF[key] != system:
-            label, n, system = f"{n}. {label}", n + 1, SYSTEM_OF[key]
+            label = numbered(label, n, total, key, fill["device"])
+            n, system = n + 1, SYSTEM_OF[key]
+        own = key
         key = prefix + key
         if rec:
             at = _epoch(rec[-1].get("at"))
-            out.append(RS.step(key, label, "failed" if failed else "done",
-                               took_s=round(at - prev) if prev else None,
+            took = round(at - prev) if prev else None
+            checks = (proof or {}).get("checks") or [] if own == "verify" else []
+            if checks and not took and (proof or {}).get("verify_s"):
+                took = proof["verify_s"]
+            out.append(RS.step(key, label, "failed" if failed else "done", took_s=took,
                                note=str(rec[-1].get("words") or "")[:300] if failed else ""))
+            for i, c in enumerate(checks):
+                ct = c.get("took_s")
+                out.append(RS.step(f"{key}-{i + 1}", f"· {c.get('name') or 'a check'}",
+                                   "failed" if c.get("result") == "fail" else "done",
+                                   took_s=round(ct) if isinstance(ct, (int, float)) else None,
+                                   note=str(c.get("words") or "")[:300]))
             prev = at
         elif ended:
             out.append(RS.step(key, label, "not_reached"))
@@ -169,12 +203,17 @@ def plan_lines(network: str, rec: dict, device: str = "", live: dict = None) -> 
     from modules.heal import resubscribe as R
     from modules.nsot import privileged
 
+    from modules.fixit import proof as PR
+
     ended = rec.get("state") != "running"
     out, n = [], 1
+    # The plan's system steps, counted before any is drawn, so each says "step n of N".
+    total = sum((systems(R.steps_for(s.get("kind"))) if s.get("kind") in R.RUN_KEYS else 1)
+                for s in rec.get("plan_steps") or [])
     for st in rec.get("plan_steps") or []:
         params = st.get("params") if isinstance(st.get("params"), dict) else {}
         on = dict(device=str(params.get("device") or device), subs=_subs_of(params),
-                  prefix=f"s{st.get('n')}-")
+                  prefix=f"s{st.get('n')}-", total=total)
         state, kind = st.get("state") or "", st.get("kind") or ""
         run_id = str((st.get("receipt") or {}).get("run") or "")
         own = None
@@ -187,9 +226,13 @@ def plan_lines(network: str, rec: dict, device: str = "", live: dict = None) -> 
             got, n = lines(live["declared"], live["steps"], live.get("labels"), n=n,
                            start=float(rec.get("started_at") or 0), **on)
         elif isinstance(own, dict) and own.get("steps"):
+            try:
+                pf = PR.of_record(network, own) if own.get("key") not in R.RUN_KEYS else {}
+            except Exception:                         # noqa: BLE001 (drawn without it)
+                pf = {}
             got, n = lines(_declared_of(own), own["steps"], n=n,
                            start=float(own.get("started_at") or 0), ended=True,
-                           passed=own.get("state") == "done", **on)
+                           passed=own.get("state") == "done", proof=pf, **on)
         elif kind in R.RUN_KEYS and state in ("not_run", "running"):
             got, n = lines(R.steps_for(kind), [], n=n, ended=ended,
                            start=float(rec.get("started_at") or 0), **on)
@@ -197,7 +240,7 @@ def plan_lines(network: str, rec: dict, device: str = "", live: dict = None) -> 
             words = PE.STEP_LABELS.get(kind) or st.get("words") or f"Step {st.get('n')}"
             shown = {"done": "done", "running": "running", "failed": "failed",
                      "refused": "failed"}.get(state, "not_reached" if ended else "waiting")
-            got = [RS.step(f"s{st.get('n')}", f"{n}. {words}", shown,
+            got = [RS.step(f"s{st.get('n')}", numbered(words, n, total), shown,
                            note=str(st.get("words_said") or "")[:300]
                            if shown == "failed" else "")]
             n += 1

@@ -568,6 +568,9 @@ def _answer_drawn(line: dict, other: set, rec: dict, state: str) -> dict:
             "calls": list(line.get("calls") or []), "prompt": prompt,
             "version": prompt.rsplit(".", 1)[-1] if "." in prompt else "",
             "at": line.get("at") or "", "note": line.get("note") or "",
+            # The steps Mercury's check says a gap overlooked, where the line keeps them
+            # (`finding_words` reads them back from its words otherwise).
+            "overlooked": [] if superseded else list(line.get("overlooked") or []),
             "superseded": superseded,
             "previous": bool(state == "investigating" or (newer_start and state != "proposed"))}
 
@@ -730,7 +733,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     # C3805: an Automatic saved script matching the problem fixes it with no AI; an AI answer
     # it overtakes is labelled outdated (the operator's status-line rule, 2026-11-15).
     offer = {}
-    if not done:
+    if not done and state != "passed":
         from modules.nsot import saved_plans
         try:
             offer = saved_plans.script_offer(network, found)
@@ -739,7 +742,11 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     out["script"] = offer
     if offer and out["ai_answer"]:
         out["ai_answer"]["outdated"] = f"outdated: a saved script now fixes this ({offer['name']})"
-    if done:
+    if done or state == "passed":
+        # A run that passed its verify leaves nothing to press (the operator, 2026-11-16: s5's
+        # verified AI plan read "No saved fix, and the AI found no safe plan", its next action
+        # fallen through to Hand over): its incident closes on that verify at once
+        # (`detect.close_verified`), and until it has, the status says the run passed.
         nxt = {"kind": "none", "label": ""}
     elif offer:
         held_now = bool(_held_of(found))
@@ -770,7 +777,8 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "none", "label": "Mercury is working on it"}
     else:
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
-    out["why_person"] = _why_person(nxt, offer, found, out.get("ai_answer"))
+    out["why_person"] = ("" if state == "passed" else
+                         _why_person(nxt, offer, found, out.get("ai_answer")))
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
                             "problem", "kept")}
@@ -794,10 +802,15 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     elif not done and out["why_person"] and state not in ("investigating", "running"):
         # Why a person is needed, at a glance, beside its one action (the operator, 2026-11-16).
         out["status"] = out["why_person"]
+    # Who said the status line, drawn once as a small label beside it (the operator's wording
+    # rule, 2026-11-16): ``AI`` when it is the AI's finding, else none.
+    ai_lines = {w for w in (finding_words(out.get("ai_answer")), finding_words(newest_ai))
+                if w}
     if not done and plan is not None and state == "proposed" and not plan.get("approvable"):
         # The AI's one-line finding and, plainly, why its fix can't run yet (the operator,
         # 2026-11-16: never "Mercury would refuse a step of it as it stands").
         out["status"] = _refused_plan_words(out.get("ai_answer"), plan.get("why_refused"))
+        ai_lines.add(out["status"])
     # A recovery whose port tripped again is its own finding, never "the last attempt did not
     # fix it" (the operator, 2026-11-16): the run's words, "The device with MAC <mac> is still
     # connected to <device> <port>. Port left err-disabled; nothing more sent."
@@ -805,6 +818,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     newest_try = (tried.get("attempts") or [{}])[-1]
     if not done and state == "stopped" and newest_try.get("outcome") == RETRIPPED:
         out["status"] = newest_try.get("words") or out["status"]
+    out["status_source"] = "AI" if out["status"] in ai_lines else ""
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"], out["investigating"] = "", "", False
@@ -816,7 +830,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
             out["working"] = (f"Self-healing: fixing with saved script "
                               f"{offer.get('name') or 'a saved script'}")
             out["working_step"] = run["step"]
-            out["status"] = out["working"]
+            out["status"], out["status_source"] = out["working"], ""
         elif state == "investigating":
             out["working"] = "The AI is investigating"
             out["working_step"] = troubleshoot_job.shown(network, iid)
@@ -841,15 +855,90 @@ def _first_sentence(text, most: int = 0) -> str:
 
 
 def _refused_plan_words(answer, why_refused) -> str:
-    """"The AI found: <its finding>. Its fix can't run yet: <the plain reason>." from the AI's
-    answer (its rationale) and the plan's refusal, its step and preflight wording dropped."""
+    """"<the AI's finding>; Mercury refuses its fix as it stands: <the plain reason>." (one
+    sentence, its source the AI's label beside it: the operator's wording rule, 2026-11-16)
+    from the AI's answer (its rationale) and the plan's refusal, its step and preflight wording
+    dropped."""
     shown = (answer or {}).get("shown") or {}
-    found = _first_sentence((answer or {}).get("words") or shown.get("rationale"),
-                            FINDING_CHARS)
+    found = _plain(_first_sentence(shown.get("rationale") or (answer or {}).get("words"),
+                                   FINDING_CHARS))
     reason = re.sub(r"^(?:step \d+(?: \([^)]*\))?:\s*|refused at its preflight:\s*)+", "",
                     _first_sentence(why_refused), flags=re.I)
-    lead = f"The AI found: {found}{'' if found.endswith('…') else '.'} " if found else ""
-    return lead + (f"Its fix can't run yet: {reason}." if reason else "Its fix can't run yet.")
+    tail = (f"Mercury refuses its fix as it stands: {reason}" if reason
+            else "Mercury refuses its fix as it stands")
+    if not found:
+        return tail + "."
+    return f"{found.rstrip('.…')}; {tail}."
+
+
+#: The meta-leads an answer's kept words may open with (the AI loop's, before the wording
+#: rule): never said, its source is the label beside the line.
+META_LEADS = re.compile(
+    r"^(?:(?:ai|mercury)\s*:\s*|the ai (?:named no fix|found|thinks|stopped[^:]*|reported a gap"
+    r"[^:]*)\s*:\s*|no mercury operation does what the fix needs yet \(a gap\)\s*:\s*)+", re.I)
+#: The flag Mercury's check puts on a gap it knows a step for (`fixit_troubleshoot.
+#: overlooked_words`), read back from a line kept before the line kept its keys.
+FLAGGED = re.compile(r"Mercury's catalogue has (.+?) for this incident's problem, not yet "
+                     r"tried here")
+
+
+def _plain(said: str) -> str:
+    """*said* without its meta-leads (`META_LEADS`), its first letter a capital, unless its
+    first word is a name with a digit in it (a device or a port: "s5 Gi0/3 saw…" stays)."""
+    said = META_LEADS.sub("", str(said or "")).strip()
+    first = said.split(" ", 1)[0]
+    if not said or any(ch.isdigit() for ch in first):
+        return said
+    return said[:1].upper() + said[1:]
+
+
+def _flagged(answer: dict) -> list:
+    """The steps Mercury's check says the AI's gap overlooked (its line's ``overlooked``,
+    else read back from its words, `FLAGGED`), or ``[]``."""
+    keys = [str(k) for k in answer.get("overlooked") or [] if k]
+    if keys:
+        return keys
+    m = FLAGGED.search(str(answer.get("words") or ""))
+    if not m:
+        return []
+    return [k.strip() for k in re.split(r",\s*|\s+and\s+", m.group(1)) if k.strip()]
+
+
+def finding_words(answer) -> str:
+    """The AI's finding as ONE sentence in an engineer's words (the operator's wording rule,
+    2026-11-16: "a status line is one sentence in an engineer's words, no meta-prefixes"):
+    its rationale's first sentence (else its gap's, else its words without their leads) and,
+    where Mercury's check flags the answer, the disagreement said plainly in the same sentence
+    ("…; Mercury notes telemetry-readd (Re-add the receiver) exists and is not yet tried
+    here."). Its source is drawn once beside it as a label (the section's
+    ``status_source``), never in it. ``""`` for no answer, or one superseded or withheld."""
+    a = answer if isinstance(answer, dict) else {}
+    if not a or a.get("superseded") or a.get("previous"):
+        return ""
+    shown = a.get("shown") if isinstance(a.get("shown"), dict) else {}
+    gap = shown.get("gap") or a.get("gap") or ""
+    gap = gap.get("what") if isinstance(gap, dict) else gap
+    words = str(a.get("words") or "")
+    flagged = _flagged(a)
+    if flagged:
+        own = shown.get("rationale") or gap or words.split("What it said:", 1)[-1]
+    else:
+        own = shown.get("rationale") or words or gap or shown.get("diagnosis")
+    said = _plain(_first_sentence(own, FINDING_CHARS))
+    if flagged:
+        from modules import plan_engine as PE
+        named = _and_words([f"{k} ({PE.STEP_LABELS.get(k) or PE.words_of(k)})"
+                            for k in flagged])
+        verb = "exists and is" if len(flagged) == 1 else "exist and are"
+        note = f"Mercury notes {named} {verb} not yet tried here"
+        said = f"{said.rstrip('.…')}; {note}" if said else note
+    if not said:
+        return ""
+    return said if said.endswith(("…", ".")) else said + "."
+
+
+def _and_words(items: list) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str:
@@ -881,17 +970,11 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
     if kind == "start" or (kind == "button" and not nxt.get("script") and not nxt.get("read")):
         # The AI's latest finding is the best current knowledge, ahead of the retry's reason
         # (the operator, 2026-11-16: r7's status said the 04:53 retry, not the AI's 05:17
-        # finding); an answer superseded or withheld is not drawn as this incident's.
-        a = answer if isinstance(answer, dict) else {}
-        if a and not a.get("superseded") and not a.get("previous"):
-            shown = a.get("shown") if isinstance(a.get("shown"), dict) else {}
-            said = _first_sentence(a.get("words") or shown.get("rationale")
-                                   or shown.get("diagnosis"), FINDING_CHARS)
-            # One lead (C3841: "The AI found: The AI named no fix: …" said it twice).
-            said = re.sub(r"^(?:the ai (?:named no fix|found|stopped[^:]*)\s*:\s*)+", "", said,
-                          flags=re.I).strip()
-            if said:
-                return f"The AI found: {said}{'' if said.endswith('…') else '.'}"
+        # finding); an answer superseded or withheld is not drawn as this incident's. Its
+        # source is the label beside it (`status_source`), never a lead in its words.
+        said = finding_words(answer)
+        if said:
+            return said
         # What Mercury tried on THIS incident and that the AI can investigate, from its own
         # record (the retry policy, the operator, 2026-11-16; `heal.retry.reason`): a lost
         # stream says Mercury has no fix it runs by itself.
@@ -964,8 +1047,8 @@ def _best_status(status: str, offer: dict, done: bool, found: dict, starts: list
     unasked = last.get("state") == "failed" and any(
         w in str(last.get("words") or "") for w in UNASKED)
     if unasked and newest_ai:
-        said = str(newest_ai.get("words") or "").strip()
-        return "The AI found: " + (said.split(". ")[0].rstrip(".") + "." if said else "see Details.")
+        # The AI's finding, its source the label beside it (`status_source`).
+        return finding_words(newest_ai) or "The AI's finding is in Details."
     return status
 
 
@@ -1180,7 +1263,9 @@ PLAN_READY = {"the AI": "The AI's plan", "Mercury's diagnosis": "Mercury's plan"
 def card_of(out: dict, found: dict) -> dict:
     """The incident card's default view (MERCURY_CHARTER R5; board R5, approved 2026-11-15,
     screens 3 to 5): ``{"status", "kind", "step", "how", "fixed_at", "plan_ready", "live",
-    "run", "run_page"}``, *live* the live stepper's steps while a job runs (`progress.of`),
+    "run", "run_page", "proof"}``, *proof* a fixed incident's verify (`_proof_of`, drawn one
+    line by default and its reads on expand), *live* the live stepper's steps while a job runs
+    (`progress.of`),
     *run* an approved plan's run's steps once it ended, each its result (`progress.recorded`),
     *run_page* where Open the run opens a running approved plan (its incident's card at its
     stepper, `plan_engine.run_page`; ``""`` for any other run). *status*
@@ -1196,8 +1281,8 @@ def card_of(out: dict, found: dict) -> dict:
     from modules.fixit import progress
 
     state = out.get("state") or ""
-    card = {"status": out.get("status") or "", "kind": "", "step": "", "how": None,
-            "fixed_at": "", "plan_ready": False, "run": [], "run_page": ""}
+    card = {"status": out.get("status") or "", "source": out.get("status_source") or "",
+            "kind": "", "step": "", "how": None, "fixed_at": "", "plan_ready": False, "run": [], "run_page": "", "proof": {}}
     network, iid, device = out.get("network") or "", out.get("id") or "", out.get("device") or ""
     # The compact live stepper while the AI investigates or a run goes (the operator,
     # 2026-11-16): its steps stand in for the one status line (`progress.of`).
@@ -1234,7 +1319,7 @@ def card_of(out: dict, found: dict) -> dict:
             back = B.restored(P.classify(found))
         except Exception:                             # noqa: BLE001 (said without it)
             back = ""
-        card.update(kind="ok", fixed_at=at, status=(
+        card.update(kind="ok", source="", fixed_at=at, status=(
             f"Fixed{' at ' + at if at else ''}, verified" + (f"; {back}" if back else "") + "."))
         if a:
             source = {v: k for k, v in SOURCE_WORDS.items()}.get(a.get("source") or "", "")
@@ -1248,6 +1333,9 @@ def card_of(out: dict, found: dict) -> dict:
         if card["run"] and card["how"].get("run"):
             # The plan's run is drawn on this card: its link opens it here.
             card["how"]["page"] = "#inc-run"
+        # "Fixed" shows its proof (the operator, 2026-11-16): the verify's reads, one line by
+        # default, the output on expand (`fixit.proof`).
+        card["proof"] = _proof_of(network, a, record, found)
         return card
     if state == "investigating":
         from modules import troubleshoot_job
@@ -1261,10 +1349,32 @@ def card_of(out: dict, found: dict) -> dict:
         who = PLAN_READY.get(plan.get("source") or "", "The plan")
         took = _plan_took(out, found)
         # Collapsed to one line once ready ("Plan ready in 1 min 27 s").
-        card.update(plan_ready=True, status=(
+        card.update(plan_ready=True, source="", status=(
             f"Plan ready in {progress.took_words(took)}: approve it below" if took else
             f"{who} is ready for your approval, below"))
     return card
+
+
+def _proof_of(network: str, attempt, record: dict, found: dict) -> dict:
+    """The proof of the fix that closed the incident (`fixit.proof`): the passed attempt's run
+    (an approved plan's step, a saved script's), else the run its close names, else the heal
+    act's verify (kept on its close, else the act's own steps). ``{}`` when none is kept."""
+    from modules import incident_page
+    from modules.fixit import proof as PR
+
+    fixed = (record or {}).get("fixed") or {}
+    try:
+        for run_id in ((attempt or {}).get("run"), fixed.get("run")):
+            got = PR.of_run(network, run_id or "")
+            if got:
+                return got
+        if fixed.get("verify"):
+            return PR.of_act(network, fixed["verify"])
+        ran = [a for a in incident_page.acts((found or {}).get("entry") or {}) if a["passed"]]
+        return PR.of_act(network, ran[-1]["steps"]) if ran else {}
+    except Exception as exc:                          # noqa: BLE001 (drawn without it)
+        log.error("fixit: %s's proof could not be read: %s", (record or {}).get("id"), exc)
+        return {}
 
 
 def _plan_took(out: dict, found: dict):

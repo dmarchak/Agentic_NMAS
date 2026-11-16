@@ -3765,3 +3765,14 @@ h1.simple-title { font-size: 22px; }
    each step's result; a step never reached greyed, said "not run". */
 .inc-run { margin: 6px 0 0; }
 .inc-stepper-not_reached { color: var(--ink-3); }
+/* "Fixed" shows its proof, and what the AI saw and said beside Approve (the operator,
+   2026-11-16): one folded line each; open, the checks and each read's masked answer. */
+.inc-proof, .inc-ai-saw { margin: 6px 0 0; }
+.inc-proof > summary, .inc-ai-saw > summary { cursor: pointer; color: var(--ink-2); }
+.inc-proof-checks { margin: 4px 0; padding-left: 18px; }
+.inc-proof-checks [data-check="fail"] { color: var(--danger); }
+.inc-proof-read { margin: 2px 0 2px 18px; }
+.inc-proof-read pre, .inc-ai-call pre { max-height: 320px; overflow: auto; white-space: pre-wrap;
+  overflow-wrap: anywhere; background: var(--line-2); border: 1px solid var(--line);
+  border-radius: 4px; padding: 6px 8px; margin: 4px 0; }
+.inc-ai-call { margin: 4px 0 4px 12px; }

@@ -87,6 +87,25 @@
 {%- macro ended_run(x, steps) -%}
 <div class="inc-run" id="inc-run" data-run-steps><p class="small muted">The approved plan's run, step by step:</p>{% with iid=x.id, network=x.network, steps=steps, said='', static=True %}{% include "v2/_inc_step.html" %}{% endwith %}</div>
 {%- endmacro -%}
+{#- What the AI was told and what it answered, beside the action it informs (C3840, the
+    operator, 2026-11-16: "An approval should never be one where the person couldn't easily
+    see what the AI was told"): each of the answer's own calls (*calls*, its proposal line's),
+    in order, its Sent and Received fetched from History's view of one call
+    (`v2.history_ai_call`, its Copy buttons with it) when this is opened, the message a person
+    sent with it (*note*, as kept, masked) first. Each call says it is being read until it
+    arrives. -#}
+{%- macro ai_saw(calls, note, key) -%}
+{%- if calls %}
+<details class="small inc-ai-saw" id="ai-saw-{{ key }}" data-keep="ai-saw-{{ key }}" data-calls="{{ calls | length }}"><summary class="bluf-link">What the AI saw and said ({{ calls | length }} call{{ '' if calls | length == 1 else 's' }})</summary>
+  {%- if note %}<p class="small" data-ai-note>Your message, sent with it: “{{ note }}”</p>{% endif %}
+  {%- for cid in calls %}
+  <div class="inc-ai-call" data-call="{{ cid }}"><p class="small muted">Call {{ loop.index }} of {{ calls | length }}, <span class="mono">{{ cid }}</span></p>
+    <div hx-get="{{ url_for('v2.history_ai_call', call_id=cid) }}" hx-trigger="toggle once from:#ai-saw-{{ key }}" hx-swap="innerHTML" hx-select="unset"><p class="small muted working-now">Reading what was sent and what came back…</p></div>
+  </div>
+  {%- endfor %}
+</details>
+{%- endif %}
+{%- endmacro -%}
 {%- macro legacy_status() -%}
 {%- if S in ('none', 'resolved') %}{{ ai_said() }}
 {%- elif S == 'ready' %}No fix has been tried in this incident.
@@ -125,9 +144,10 @@
   <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
   {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}</p>{% endif %}
   {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
+  {%- if C.proof %}{% with P=C.proof, iid=x.id %}{% include "v2/_inc_proof.html" %}{% endwith %}{% endif %}
   {%- else %}
   <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</p>
-  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
+  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{% if x.status_source %}{{ badge(x.status_source, 'info') }} {% endif %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
   {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- endif %}
       {#- Which control the fix names: its kind, and for a "button" the action whose route it
@@ -163,6 +183,10 @@
       {%- if acting and F.kind != 'hand_over' and (ACT.hand_over or {}).get('offered', True) %}
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='bluf-link') }}
       {%- endif %}
+      {#- A finding that waits for a person (an answer with no plan): what the AI saw and said
+          beside its one action (C3840). -#}
+      {%- set AA = x.ai_answer or {} %}
+      {%- if acting and AA and not AA.has_plan and not NP and not AA.superseded %}{{ ai_saw(AA.calls or [], AA.note, x.id ~ '-answer') }}{% endif %}
       </div>
       {%- if start_offered or (ACT.ask_again or {}).offered %}{{ ai.reason(ct) }}{% endif %}
       {#- The answer to a press, under the controls, in space kept for it. A refusal, or a done
@@ -510,6 +534,7 @@
       </div>
     </details>
     {%- endif %}
+    {{ ai_saw(NP.calls or [], NP.note, x.id ~ '-plan') }}
   </div>
   {%- if not approve_ok %}
   {#- Why, once: a refused step says its own why in the plan's Details, and the incident's
