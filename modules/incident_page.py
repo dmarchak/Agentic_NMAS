@@ -117,7 +117,8 @@ FIXIT_WORKING = {"running": "attempt_running", "passed": "attempt_passed",
                  "investigating": "ai_investigating"}
 #: Why the page's state is what it is (`status`), each said once, as What to do's words.
 WHYS = RESOLVED + ("healing", "watching", "verify_failed", "proposal", "decided",
-                   "lost_stream") + tuple(FIXIT_WAITS.values()) + tuple(FIXIT_WORKING.values())
+                   "lost_stream", "mercury_working") + tuple(FIXIT_WAITS.values()) + tuple(
+                       FIXIT_WORKING.values())
 #: A level in Needs attention's own words (`templates/v2/_attention.html`, ``LEVEL_WORDS``).
 LEVEL_WORDS = {"danger": "Critical", "warning": "Warning", "unknown": "Unknown"}
 #: The level a decision's outcome has on Needs attention (`attention.heal_source`'s rows).
@@ -291,6 +292,19 @@ def who_of(entry: dict, decisions: list) -> dict:
         actor, kind = run_card.entry_by(entry)
         return {"kind": "none", "actor": actor if kind == "policy" else ""}
     return {"kind": "unknown", "actor": ""}
+
+
+#: Mercury working on an open incident now: a saved script's run or an AI investigation.
+MERCURY_WORKING = "mercury_working"
+
+
+def working_status(st: dict, working: str, resolved: bool) -> dict:
+    """The one status while Mercury works on it (the operator, 2026-11-16: "Mercury working"
+    while a fix or an AI investigation runs; "Needs a person" only when a plan awaits approval
+    or nothing Mercury has can fix it): *st* unchanged otherwise."""
+    if working and not resolved:
+        return dict(st, state="open", why=MERCURY_WORKING, words="Mercury working")
+    return st
 
 
 def held_words(incident, now: float = None) -> str:
@@ -1140,7 +1154,8 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
                           resolved=(closed or time.time()) if resolved else None,
                           ended=state_of(found["incident"], entry, decisions) if resolved
                           else "")
-    st = status(found["incident"], entry, decisions, fixit["state"])
+    st = working_status(status(found["incident"], entry, decisions, fixit["state"]),
+                        fixit.get("working"), resolved)
     state = st["state"]
     # The incident's own Needs attention item, as that list holds it: its action is the
     # page's one primary button while a person is needed, and its lost-stream lines are

@@ -78,12 +78,15 @@ TRIGGERS_KEPT = 100
 READS_KEPT = 20
 
 CAUSE_KINDS = ("config_change", "drift")
-SYMPTOM_KINDS = ("alert", "adjacency", "adjacency_log", "duplicate_router_id")
+SYMPTOM_KINDS = ("alert", "adjacency", "adjacency_log", "duplicate_router_id",
+                 # A port event's own syslog line (`triggers.ERRDISABLE_KIND`, 2026-11-16).
+                 "errdisable")
 KIND_WORDS = {"config_change": "a configuration change from outside Mercury",
               "drift": "the drift check found it departed from its golden",
               "alert": "a firing alert", "adjacency": "a routing adjacency down",
               "adjacency_log": "a logged routing adjacency drop",
-              "duplicate_router_id": "a duplicate OSPF router-id logged (C2446)"}
+              "duplicate_router_id": "a duplicate OSPF router-id logged (C2446)",
+              "errdisable": "a port err-disabled, by its own syslog line"}
 OPEN_STATES = ("watching", "ready", "claimed", "standing")
 STATES = OPEN_STATES + ("closed",)
 #: The decision's outcomes that leave an incident standing (C2813): the cause is still there

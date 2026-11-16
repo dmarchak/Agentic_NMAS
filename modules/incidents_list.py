@@ -84,10 +84,11 @@ DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
 #: The `status` whys in which Mercury, or a fix a person approved, is working now.
-WORKING = ("healing", "attempt_running", "attempt_passed")
+WORKING = ("healing", "attempt_running", "attempt_passed", "mercury_working")
 #: What an open row waits for, one short line per `incident_page.WHYS` an open incident can
 #: have (its page says it in full under What to do).
 WAITS = {"healing": "Mercury is fixing it now",
+         "mercury_working": "Mercury is fixing it now",
          "attempt_running": "a fix a person approved is running",
          "attempt_passed": "its fix passed; it closes when its symptom clears",
          "watching": "Mercury is reading it, before it decides",
@@ -202,6 +203,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     held = IP.held_words(inc)
     if held and not fx.get("working"):
         fx = dict(fx, held=held)
+    st = IP.working_status(st, fx.get("working"), resolved)
     if not resolved and not fx.get("working"):
         # A saved script running on an incident with no troubleshooting record of its own (the
         # heal decision fired it): Mercury working all the same (the operator, 2026-11-16).

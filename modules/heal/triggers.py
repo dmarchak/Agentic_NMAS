@@ -482,6 +482,19 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
             if not is_again:
                 counts["off"] += 1
             continue
+        if not is_again:
+            # An alert Mercury's own run caused (a recovery's shutdown fires Interface down):
+            # attributed as a change line is (`attribution.attribute`: a run spanning it), so
+            # it opens no incident of its own (the operator's s2 record, 2026-11-16).
+            from modules.heal import attribution as AT
+            fired = (_epoch(inst.get("active_at")) or _epoch(inst.get("starts_at")) or now)
+            try:
+                if AT.attribute(network, device, fired)["by"] == AT.MERCURY:
+                    counts["mercury"] += 1
+                    continue
+            except Exception as exc:                  # noqa: BLE001 (sighted as before)
+                log.warning("heal: whose the alert on %s was could not be read: %s", device,
+                            exc)
         again_words = ""
         if is_again:
             if network not in held:

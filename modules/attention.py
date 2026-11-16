@@ -6735,7 +6735,7 @@ def _link_stream_incidents(rows: list, read=None) -> None:
 
 #: Why an open incident needs nobody while a fix a person approved runs or passed its verify
 #: (`incident_page.FIXIT_WORKING`'s ``running`` and ``passed``): its can't-fix row stays linked.
-FIX_UNDER_WAY = ("attempt_running", "attempt_passed")
+FIX_UNDER_WAY = ("attempt_running", "attempt_passed", "mercury_working")
 
 
 def _incidents_agree(rows: list, lst: str = None, listed=None) -> list:
