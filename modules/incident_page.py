@@ -1232,7 +1232,9 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
         state_kind={"open": "info", "fixed": "ok",
                     "needs_person": "danger" if sev["kind"] == "danger" else "warn"}.get(
                         state, "muted"),
-        severity=sev, device=device, resolved=resolved,
+        # Resolved as the Incidents list counts it (its state, `incidents_list`): an incident the
+        # AI's plan fixed is closed there, so its breadcrumb says Closed (the operator, 2026-11-16).
+        severity=sev, device=device, resolved=resolved or state in RESOLVED,
         opened=tl["detected"]["at"] or inc.get("opened_at") or entry.get("first_at") or "",
         # When it closed, and when a resolved one ended (the operator's test, 2026-11-13: a
         # fixed incident ends when its fix is verified), each from a record written then.
