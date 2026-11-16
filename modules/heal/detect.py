@@ -25,7 +25,9 @@ processes, refused by name). In it:
    recorded in the decisions store and the step log, with the read and the bound state;
 6. each incident standing at its golden on a symptom (a Tier 3 can't-fix; C2813, C2825) has
    its symptoms read from their stores, no device: every one gone, and nothing logged for the
-   flap window since its last trigger, ends it as cleared by itself (`_standing`).
+   flap window since its last trigger, ends it as cleared by itself (`_standing`); before that,
+   one whose approved fix passed its own device check ends as fixed, its alerts read no more
+   (`_fixed`, the operator's item 4, 2026-11-15).
 
 **Where H2 ends.** A ready incident is the decision's (H3): `incidents.ready(network)` lists
 them, each whole, and the decision takes one with `incidents.claim`. Nothing here classifies,
@@ -66,8 +68,9 @@ STEPS = (("mode", "Read the network's mode"),
                     "again when it read the departure that decision judged"),
          ("proposals", "Read each waiting proposal's device again, and withdraw one it no "
                        "longer fits"),
-         ("standing", "Read each standing can't-fix's symptoms from their stores, and end one "
-                      "that cleared by itself"))
+         ("standing", "End each standing can't-fix whose approved fix passed its own device "
+                      "check; read the others' symptoms from their stores, and end one that "
+                      "cleared by itself"))
 
 _wake = threading.Event()
 _stop = threading.Event()
@@ -132,15 +135,15 @@ def outside_changes(incident: dict) -> list:
 def run(network: str, *, now: float = None, check=None, clock=time.time,
         by: str = "heal to intent", symptom=None) -> dict:
     """One detect pass of *network*: ``{"ran", "network", "mode", "words", "ready", "waiting",
-    "reads", "deferred", "closed", "busy", "withdrawn", "stood", "cleared"}``. *check* stands in
-    for `drift_check.check_device`, *clock* for the time a read was made, and *symptom* for
+    "reads", "deferred", "closed", "busy", "withdrawn", "stood", "cleared", "fixed"}``. *check*
+    stands in for `drift_check.check_device`, *clock* for the time a read was made, and *symptom* for
     `decide.Sources.symptom_now` (``(device, triggers) -> state``), in a test."""
     from modules.heal import incidents, policy
 
     now = clock() if now is None else float(now)
     out = {"ran": False, "network": network, "mode": "off", "words": "", "ready": [],
            "waiting": [], "reads": 0, "deferred": [], "closed": [], "busy": "",
-           "withdrawn": [], "stood": [], "cleared": []}
+           "withdrawn": [], "stood": [], "cleared": [], "fixed": []}
     mode = policy.current(network, now)
     out.update(mode=mode["mode"], words=mode["words"])
     if mode["mode"] == "off":
@@ -312,11 +315,14 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
 
     quiet_s = float(value(mode, "heal_flap_minutes") or 10) * 60
     read = symptom or decide.Sources(network).symptom_now
+    out.setdefault("fixed", [])
     for inc in incidents_now:
         if inc.get("state") != "standing" or (inc.get("standing") or {}).get("on") != "symptom":
             continue
         trig = decide.judged_triggers(inc)
         last = max((float(t.get("epoch") or 0) for t in trig), default=0.0)
+        if _fixed(network, inc, trig, out, now, by):
+            continue
         if now - last < quiet_s:
             continue
         try:
@@ -339,6 +345,77 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
         if d:
             out["cleared"].append({"incident": inc["id"], "device": inc["device"],
                                    "decision": d["id"]})
+
+
+def _fixed(network, inc, trig, out, now, by) -> bool:
+    """The operator's item 4 (2026-11-15: "an incident closes on the problem's own verification
+    (the run's direct device check), not on an alert clearing"): a standing incident whose fix
+    a person approved and ran PASSED its own device check (`verified_fix`), with no trigger
+    since that check, is ended now through `decide.end_standing` (the one close of a standing
+    incident), whatever its alerts still say. Whether such an alert clears after it is its own
+    finding (`attention._heal_alert_after_fix_rows`). True when it was ended; a fix that cannot
+    be read leaves it standing, said in the log."""
+    from modules.heal import decide
+
+    try:
+        fix = verified_fix(network, inc)
+    except Exception as exc:                          # said; it stands, read at the next pass
+        log.error("heal: %s's %s: whether its fix verified could not be read: %s: %s",
+                  network, inc["id"], type(exc).__name__, exc)
+        return False
+    if not fix or any(float(t.get("epoch") or 0) > fix["epoch"] for t in trig):
+        # A trigger after the fix's check (an err-disable again, a re-fired alert) is the
+        # problem back, not the fix's: the incident stands on it.
+        return False
+    when = time.strftime("%H:%M", time.gmtime(fix["epoch"]))
+    d = decide.end_standing(
+        network, inc["id"],
+        (f"fixed: the plan's run {fix['run'][-8:] or '?'} verified on {fix['device']} at "
+         f"{when} UTC (attempt {fix['attempt']}, {fix['operation']}): the incident closes on "
+         "its fix's own device check, not on its alerts clearing"),
+        now=now, by=by,
+        read_words=(f"{inc['id']}'s attempt {fix['attempt']} (run {fix['run']}) passed its "
+                    f"verify on {fix['device']} at {fix['at']}, its troubleshooting record's "
+                    "newest step"),
+        fixed=fix)
+    if d:
+        out["fixed"].append({"incident": inc["id"], "device": inc["device"],
+                             "decision": d["id"], "run": fix["run"]})
+    return bool(d)
+
+
+def verified_fix(network: str, inc: dict) -> dict:
+    """The fix a person approved and ran in incident *inc* that passed its own device check:
+    ``{"run", "attempt", "operation", "device", "epoch", "at"}`` (*epoch* and *at* when its run
+    finished, after its verify), or ``{}``. Passed as its page says it: the troubleshooting
+    section's state ``passed`` (`fixit.section.view`, which the incident page reads as
+    ``attempt_passed``), its newest attempt's own run record ``done`` (`fixit.incident.passed`:
+    the state a command plan's run writes when its verify passed). Read only for an incident
+    with a troubleshooting record, and only once its newest attempt passed, so the section is
+    read for the rare case alone. ``{}`` when the attempts are incomplete (an attempt not read
+    is never read as passed)."""
+    from modules import incident_page, incidents_list
+    from modules.fixit import incident as F
+    from modules.fixit import section
+
+    if inc.get("id") not in incidents_list._fixit_ids(network):
+        return {}
+    found = incident_page.resolve(network, inc["id"])
+    if found["found"] != "page":
+        return {}
+    fi = section.incident_of(network, found)["incident"]
+    if fi is None:
+        return {}
+    tried = F.attempts(fi)
+    last = tried["attempts"][-1] if tried["attempts"] else None
+    if (tried["state"] != "ok" or not last or not last["passed"]
+            or last["finished_at"] is None):
+        return {}
+    if section.view(network, found).get("state") != "passed":
+        return {}
+    return {"run": last["run"], "attempt": last["n"], "operation": last["operation"],
+            "device": last["device"] or inc.get("device") or "",
+            "epoch": float(last["finished_at"]), "at": _iso(float(last["finished_at"]))}
 
 
 def watching_networks() -> list:

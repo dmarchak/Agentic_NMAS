@@ -298,6 +298,13 @@ ROW_KINDS = {
     ("heal", "fold_window"): ("an alert rule can fire after self-healing stops taking a symptom "
                               "into its cause's incident, or whether it can is not read",
                               "shorten the rule's pending period or its group's interval"),
+    # The operator's item 4 (2026-11-15): an incident closed on its fix's own verified device
+    # check whose alert still fires past `waits.HEAL_BOUNDS["alert-after-fix"]`: the device
+    # and the alert disagree, its own finding, never a reopened incident.
+    ("heal", "alert_after_fix"): ("an alert still fires after the fix for its incident was "
+                                  "verified on the device",
+                                  "read the port on the device's Monitoring tab, then the "
+                                  "alert's rule in Grafana: one of them is wrong"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
     # C1999: a HITL network's threat is seen without opening Responses, one row per incident
     # (one attack, however many switches saw it).
@@ -686,6 +693,9 @@ CLEARS = {
                               "a grafana-alerts read holds every rule's pending period and its "
                               "group's interval, and each sum is within the fold window "
                               "(250 s), or self-healing is turned off on the network"),
+    ("heal", "alert_after_fix"): (("resolves",),
+                                  "the alert resolves: a grafana-alerts read no longer holds "
+                                  "it firing on the device"),
     ("notify", "failed"): (("resolves", "acknowledge"),
                            "the next delivery to that destination succeeds (an incident's "
                            "notice or a Test send), or the destination is turned off or "
@@ -6583,6 +6593,8 @@ def heal_source(got=None, now=None, found=None) -> dict:
                   - len(clears) - len(damp))
     out += _heal_capped_rows(lst, now, said)
     out += _heal_fold_rows(lst, said)
+    after_fix = _heal_alert_after_fix_rows(lst, now, said)
+    out += after_fix
     try:
         halted = _heal_halted_rows(lst)
     except Exception as exc:
@@ -6601,8 +6613,9 @@ def heal_source(got=None, now=None, found=None) -> dict:
                                   f"not ended bounced, {len(clears)} BGP session clear(s) "
                                   f"held or not ended cleared, {len(damp)} dampening change(s) "
                                   f"waiting or not ended dampened, {cant_fix_n} can't-fix "
-                                  f"incident(s), {len(halted)} halt(s) in force"
-                                  + "".join(f"; {w}" for w in said)))
+                                  f"incident(s), {len(halted)} halt(s) in force, "
+                                  f"{len(after_fix)} alert(s) still firing after a verified "
+                                  "fix" + "".join(f"; {w}" for w in said)))
 
 
 def _fold_into_batch(rows: list) -> list:
@@ -7283,6 +7296,83 @@ def _heal_fold_rows(lst: str, said: list, cached=None, mode=None) -> list:
                 operands={"list": lst, "window_s": win, "state": fw["state"],
                           "rules": [{"title": i["title"], "for_s": i["for_seconds"],
                                      "interval_s": i["interval_seconds"]} for i in items]})]
+
+
+def _heal_alert_after_fix_rows(lst: str, now: float, said: list, incidents_now=None,
+                               cached=None) -> list:
+    """The operator's item 4 (2026-11-15: "If the alert still fires N minutes after a verified
+    fix (declared in the wait registry), raise 'the alert didn't clear after a verified fix' as
+    its own finding"): ONE row per incident of *lst* closed on its fix's own verified device
+    check (its record's ``fixed``, `detect._fixed`) one of whose alert episodes, the same one it
+    named (its trigger's key), its store read later than `waits.HEAL_BOUNDS["alert-after-fix"]`
+    after that check still holds firing. Never a reopened incident (`triggers.from_alerts`
+    sights such an episode again into nothing). Within the bound, or with a store not read
+    since it, nothing: a store not read is said in *said*, never read as cleared or as firing.
+    Clears when the alert resolves. *incidents_now* is the incidents' read and *cached* the
+    stores' read (``store -> read_cached``), in a test."""
+    from modules import reader_job, waits
+    from modules.evidence_pack import alert_key, firing
+    from modules.heal import act
+    from modules.heal import incidents as INC
+
+    bound = float(waits.HEAL_BOUNDS["alert-after-fix"]["seconds"])
+    held = INC.read(lst) if incidents_now is None else incidents_now
+    stores, unread, out = {}, [], []
+    for inc in held.get("incidents") or []:
+        fix = inc.get("fixed") or {}
+        if inc.get("state") != "closed" or not fix.get("epoch"):
+            continue
+        since = float(fix["epoch"]) + bound
+        if now < since:
+            continue
+        still = []
+        for t in inc.get("triggers") or []:
+            if t.get("kind") != "alert" or not t.get("key"):
+                continue
+            store = act._store_for(t)
+            if store not in stores:
+                got = ((cached or {}).get(store) if cached is not None
+                       else reader_job.read_cached(store)) or {}
+                good = (got.get("doc") or {}).get("last_good") or {}
+                stores[store] = (
+                    float(good.get("read_started") or 0) if got.get("state") == "ok" else 0.0,
+                    {f"alert:{alert_key(i)}" for i in firing(good.get("value") or {})})
+            read_at, keys = stores[store]
+            if read_at <= since:
+                unread.append(f"{inc.get('id')}'s {t.get('rule') or 'alert'} ({store})")
+                continue
+            if t["key"] in keys:
+                still.append(t)
+        if not still:
+            continue
+        host = inc.get("device") or fix.get("device") or ""
+        rules = sorted({(t.get("rule") or "?") + (f" on {t['interface']}"
+                                                   if t.get("interface") else "")
+                        for t in still})
+        verified = float(fix["epoch"])
+        mins = int((now - verified) // 60)
+        out.append(row(
+            source="heal", kind="alert_after_fix", key=f"{inc.get('id')}:alert_after_fix",
+            level="warning", devices=[host] if host else [], since=since,
+            what=(f"{host}: the alert didn't clear after a verified fix ("
+                  + "; ".join(rules) + ")"),
+            cause=(f"{inc.get('id')} closed on its fix's own device check: run "
+                   f"{str(fix.get('run') or '?')[-8:]} verified on {fix.get('device') or host} "
+                   f"at {time.strftime('%H:%M', time.gmtime(verified))} UTC. The same alert "
+                   f"still fires {mins} minutes after it, past the {int(bound // 60)} minutes "
+                   "an alert is given to clear (waits.HEAL_BOUNDS). The device's check and the "
+                   "alert disagree: the alert's rule or the port is wrong, and no incident is "
+                   "reopened for it"),
+            action={"label": f"Read {host}'s port on its Monitoring tab, then the alert's "
+                             "rule in Grafana",
+                    "href": f"/v2/device/{host}?tab=monitoring" if host else ""},
+            operands={"list": lst, "incident": inc.get("id"), "run": fix.get("run"),
+                      "verified_at": fix.get("at"), "bound_s": int(bound),
+                      "rules": rules}))
+    if unread:
+        said.append(f"{len(unread)} alert(s) of incidents closed on a verified fix not read "
+                    f"since {int(bound // 60)} minutes after it: " + ", ".join(unread[:3]))
+    return out
 
 
 def _heal_halted_rows(lst: str, halt: dict = None, stopped: dict = None) -> list:

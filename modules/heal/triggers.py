@@ -395,6 +395,7 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
     `RESIGHT_MOST` bounds the times one episode is."""
     from modules.evidence_pack import alert_key, firing
     from modules.heal import incidents
+    from modules.heal.attribution import address_of
 
     now = time.time() if now is None else float(now)
     insts = firing(value or {})
@@ -412,9 +413,13 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
     held, redone = {}, {}
     for key, inst, is_again in new + again:
         device = inst.get("device") or ""
+        placed_at = ""
         if not device and inst.get("address"):
             found = ctx.by_address(inst["address"])
             device = found[0] if len(found) == 1 else ""
+            # The address it was placed by, kept on the trigger: an instance naming no device
+            # is judged this device's again only at this address (`act.alert_firing`).
+            placed_at = (address_of(inst["address"]) or str(inst["address"])) if device else ""
             if not device:
                 counts["unplaced"].append(
                     f"the polled address {inst['address']} is "
@@ -443,6 +448,13 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
             done = list(resighted.get(key) or [])
             if not closed or closed.get("id") in done:
                 continue
+            if closed.get("fixed"):
+                # The operator's item 4 (2026-11-15): an incident closed on its fix's own
+                # verified device check is never reopened by its alert still firing. Within
+                # `waits.HEAL_BOUNDS["alert-after-fix"]` that is the alert catching up; past it,
+                # Needs attention's "the alert didn't clear after a verified fix" is the finding
+                # (`attention._heal_alert_after_fix_rows`), never a new incident.
+                continue
             if len(done) >= RESIGHT_MOST:
                 log.warning("heal: the alert %s on %s still fires with no open incident, "
                             "and it was sighted again %d times already: not again",
@@ -460,6 +472,8 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
         silenced = " (silenced in Grafana)" if inst.get("silenced_by") else ""
         base = {"kind": "alert", "epoch": at, "at": _iso(at), "source": store,
                 "rule": inst.get("rule") or "", "interface": iface}
+        if placed_at:
+            base["address"] = placed_at
         if labels.get("nmas") == "telemetry" and labels.get("subscription"):
             # A lost telemetry stream (scripts/nmas-telemetry-rules' labels): its subscription,
             # and how long its alert takes to see a stopped stream, for the stream runbook

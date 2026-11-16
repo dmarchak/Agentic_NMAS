@@ -836,7 +836,11 @@ def symptoms_words(symptoms: list) -> str:
     return "; ".join(named)
 
 
-def close(network: str, incident_id: str, why: str, now: float = None) -> dict:
+def close(network: str, incident_id: str, why: str, now: float = None, *,
+          fixed: dict = None) -> dict:
+    """Close the incident, saying *why*. *fixed* is the fix whose own device check verified it
+    (`decide.end_standing`'s, from `detect.verified_fix`), kept on it as ``fixed``: an alert
+    of its still firing then reopens nothing (`triggers.from_alerts`)."""
     now = time.time() if now is None else float(now)
     if not (why or "").strip():
         raise Refused("an incident is closed with why, and none was given")
@@ -846,6 +850,8 @@ def close(network: str, incident_id: str, why: str, now: float = None) -> dict:
         if inc.get("state") == "closed":
             return inc
         inc.update(state="closed", closed_at=_iso(now), closed_why=why, updated_at=_iso(now))
+        if fixed:
+            inc["fixed"] = dict(fixed)
         return inc
 
     return _mutate(network, change)

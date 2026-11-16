@@ -306,7 +306,8 @@ def state_of(incident, entry: dict, decisions: list) -> str:
       hold), a proposal waits for a person, self-healing halted on it, or an act ended
       without a passed verify (**a failed verify is never fixed**; a heal refused at its
       apply sent nothing and fixed nothing, so a person reads it too);
-    - ``fixed``: its last act's verify passed;
+    - ``fixed``: its last act's verify passed, or it closed on a fix verified on the device
+      (its record's ``fixed``);
     - ``cancelled``: a person declined the fix proposed;
     - ``cleared``: closed with no fix recorded."""
     from modules.heal import incidents
@@ -324,6 +325,11 @@ def state_of(incident, entry: dict, decisions: list) -> str:
     if last and last["running"]:
         return "open"
     if last and last["passed"]:
+        return "fixed"
+    if inc.get("fixed"):
+        # Closed on a fix whose own device check verified it (`incidents.close`'s ``fixed``: an
+        # approved plan that passed), not a heal act of its own: fixed, never "cleared" (board
+        # R5's screen 5, the operator's item 8, 2026-11-15).
         return "fixed"
     if _declined(decisions):
         return "cancelled"
@@ -683,7 +689,12 @@ def title(incident, entry: dict, decisions: list, state: str = "", who: dict = N
     who = who or who_of(entry, decisions)
     end = ""
     if state == "fixed":
-        end = (", and Mercury's fix was verified"
+        end = (", fixed and verified"
+               # Closed on a plan's run verified on the device (`incidents.close`'s ``fixed``):
+               # no heal act of Mercury's put it back, and who approved it is said on the
+               # page's "How it was fixed" line (board R5's screen 5).
+               if not acts(entry) and (incident or {}).get("fixed") else
+               ", and Mercury's fix was verified"
                if steplog.ACTION_FAMILY.get(entry.get("kind") or "") else
                f", put back by {_name(who['actor'])}" if who["kind"] == "person" else
                ", and Mercury put it back")

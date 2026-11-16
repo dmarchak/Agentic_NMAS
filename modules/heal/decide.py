@@ -682,7 +682,7 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
 
 
 def end_standing(network: str, incident_id: str, words: str, *, now: float, by: str,
-                 read_words: str) -> dict:
+                 read_words: str, fixed: dict = None) -> dict:
     """Close a STANDING incident (C2813, C2825) because what read its device back found its
     cause gone: a drift run that read the device at its golden after its decision, the detect
     pass reading every symptom it named gone and quiet for the flap window, or the can't-fix
@@ -691,7 +691,10 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
     closed and its Needs attention item leaves (a later decision of nothing to heal resolves a
     can't-fix, `attention._later_done`). Taken first (`incidents.take_standing`), so a change
     that sent it back to watching meanwhile wins: then nothing is recorded and ``{}`` is
-    returned. Returns the decision recorded."""
+    returned. Returns the decision recorded. *fixed* is the fix whose own device check
+    verified it (`detect.verified_fix`: the run, its device and when), kept on the decision and
+    on the closed incident (the operator's item 4, 2026-11-15: it closes on the problem's own
+    verification, not on an alert clearing)."""
     from modules.heal import decisions, incidents, policy
 
     try:
@@ -713,6 +716,8 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
             "units": [], "kind": "", "tier": 0, "program": [], "program_hash": "",
             "removal_ids": [], "departure": "", "until": None, "ends": s.get("decision") or "",
             "triggers": [t.get("words") for t in (inc.get("triggers") or [])[-5:]]}
+    if fixed:
+        made["fixed"] = dict(fixed)
     steps = [{"step": "claim", "result": "ok",
               "words": f"the incident on {made['device']} taken by {by}: it stood on its "
                        f"decision ({s.get('outcome') or '?'})"},
@@ -723,7 +728,8 @@ def end_standing(network: str, incident_id: str, words: str, *, now: float, by: 
         log.error("heal: %s's %s could not be ended (%s): it stands", network, incident_id, exc)
         incidents.stand(network, incident_id, None, now=now)
         return {}
-    incidents.close(network, incident_id, f"nothing: {words} (decision {d['id']})", now)
+    incidents.close(network, incident_id, f"nothing: {words} (decision {d['id']})", now,
+                    fixed=fixed)
     _log_steps(network, dict(d, steps=steps, phase="decide"), now)
     try:
         from modules import invalidation

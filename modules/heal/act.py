@@ -361,12 +361,24 @@ def adjacency_down(value: dict, network: str, devices: list, protocol: str) -> b
     return False
 
 
-def alert_firing(value: dict, device: str, rule: str, interface: str = "") -> bool:
+def alert_firing(value: dict, device: str, rule: str, interface: str = "",
+                 addresses=None) -> bool:
     """Whether the Grafana alerts reader's *value* still holds *rule* firing on *device* (on
     *interface*, when the trigger named one). The episode's key is not compared: a resolve and
-    a re-fire is a new key, and the symptom is the same."""
-    from modules.evidence_pack import firing
+    a re-fire is a new key, and the symptom is the same.
 
+    An instance that names no device (a rule with no device label, Interface down among them:
+    the reader keeps its polled address alone, `grafana_alerts._instance_device`) is *device*'s
+    only when its address is one of *device*'s own: *addresses* is a callable giving them,
+    asked once and only when such an instance is met (`device_addresses`). Its answer None (the
+    inventory could not be read) counts the instance, as before: an address not read is never
+    read as gone. Without this, another switch's Interface down on a port of the same name
+    kept this device's symptom present, and its incident open after its fix verified (measured
+    on the host, 2026-11-15)."""
+    from modules.evidence_pack import firing
+    from modules.heal.attribution import address_of
+
+    mine = {}
     for i in firing(value or {}):
         if (i.get("rule") or "") != rule:
             continue
@@ -375,8 +387,36 @@ def alert_firing(value: dict, device: str, rule: str, interface: str = "") -> bo
         labels = i.get("labels") or {}
         if interface and interface not in (labels.get("ifDescr"), labels.get("ifName")):
             continue
+        if device and not i.get("device") and addresses is not None:
+            if "known" not in mine:
+                mine["known"] = addresses()
+            known = mine["known"]
+            at = str(i.get("address") or "")
+            if known is not None and (address_of(at) or at) not in known:
+                continue
         return True
     return False
+
+
+def device_addresses(trigger: dict, device: str):
+    """*device*'s own polled addresses, each in its compressed form (`attribution.address_of`),
+    for an alert symptom judged on it (`alert_firing`): the address the trigger was placed by
+    (``address``, which `triggers.from_alerts` records when it placed the device by its polled
+    address), else every address the inventory holds for *device* (`attention._inventory`, the
+    read the trigger's own placing makes: an incident opened before the trigger carried its
+    address). None when the inventory cannot be read."""
+    from modules.heal.attribution import address_of
+
+    given = str(trigger.get("address") or "")
+    own = address_of(given) or given
+    if own:
+        return {own}
+    from modules import attention as A
+
+    inv, _why = A._inventory()
+    if inv is None:
+        return None
+    return {address_of(ip) or ip for ip, names in (inv[1] or {}).items() if device in names}
 
 
 def duplicate_logged(value: dict, network: str, protocol: str, router_id: str, at: float,
@@ -429,7 +469,8 @@ def judge(trigger: dict, doc: dict, network: str, device: str, since: float) -> 
         return heartbeat_seen(value, device, since)[0]
     if trigger["kind"] == "alert":
         present = alert_firing(value, device, trigger.get("rule") or "",
-                               trigger.get("interface") or "")
+                               trigger.get("interface") or "",
+                               addresses=lambda: device_addresses(trigger, device))
     elif trigger["kind"] == "duplicate_router_id":
         present = duplicate_logged(value, network, trigger.get("protocol") or "",
                                    trigger.get("router_id"), at, since)

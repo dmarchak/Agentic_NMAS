@@ -38,6 +38,26 @@ def _w(waits_for: str, why: str, basis: str, early: bool, constants=()) -> dict:
             "constants": tuple(constants)}
 
 
+#: The times self-healing gives a symptom after something its own check verified, each
+#: ``{"seconds", "why", "basis"}`` (the shape of `PLAN_BOUNDS`' entries); no sleep waits on
+#: one: each is a threshold a pass compares against.
+HEAL_BOUNDS = {
+    # The operator's item 4 (2026-11-15): an incident closes on its fix's own verified device
+    # check; its alert still firing this long after is "the alert didn't clear after a
+    # verified fix" (`attention._heal_alert_after_fix_rows`), never a reopened incident.
+    "alert-after-fix": {
+        "seconds": 300,
+        "why": ("Grafana's Interface down rule is evaluated every 60 s and fires after 60 s "
+                "pending (tests/fixtures/grafana/ruler.json: interval 1m, for 1m), so a "
+                "cleared port's alert resolves within about two evaluations, 120 s; on the "
+                "lab's err-disabled switch (2026-11-15) Prometheus read the port up at the "
+                "21:30:01Z step, 40 s after its fix verified at 21:29:21Z. 2.5 times 120 s, "
+                "rounded up to whole minutes: "
+                "reasoned from the rule's timing and one reading, not measured over many"),
+        "basis": "reasoned"},
+}
+
+
 WAITS = {
     # ── The heal and its operations ──────────────────────────────────────────────────────
     "modules/heal/act.py::read_symptom": _w(
