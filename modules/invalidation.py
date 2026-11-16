@@ -427,6 +427,9 @@ DECLARED = {
     # the incidents with no fix (their troubleshooting records), and the batch's job, which
     # announces what its heals change at its end (`heal-batch`).
     "control_v2.fix_all": ("settings", "drift"),
+    # A finished batch run's line dismissed from the strip by one person (`seen_runs`, the
+    # In progress list's own per-person marks): their chip and list draw without it too.
+    "control_v2.run_seen": ("in_progress",),
     # The device state class's switch (board H artboard N, H28): a network setting.
     "ai_classes_v2.device_state_on": ("settings",),
     "ai_classes_v2.device_state_off": ("settings",),

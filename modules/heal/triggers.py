@@ -194,6 +194,7 @@ class _Context:
         self.now = now
         self._nets = self._inv = None
         self._modes, self._intents, self._radius, self._peers = {}, {}, {}, {}
+        self._ports = {}
 
     def networks_of(self, device: str, allowed=None) -> list:
         from modules import attention as A
@@ -242,6 +243,39 @@ class _Context:
                 log.warning("heal: %s's committed intent cannot be read (%s)", network, err)
             self._intents[network] = got or {}
         return self._intents[network]
+
+    def port_far_ends(self, network: str, device: str, interface: str) -> list:
+        """C3845: the devices the network model (`network_model.model_for`: committed intent's
+        subnets and NetBox's cables) links to *device*'s *interface*, by name; [] when the
+        model cannot be read or holds no link at that port (said in the log)."""
+        from modules import network_model
+        from modules.nsot.ifnames import abbreviate
+
+        if not interface:
+            return []
+        key = (network, device, abbreviate(interface))
+        cache = self._ports
+        if key in cache:
+            return cache[key]
+        try:
+            model, err = network_model.model_for(network)
+        except Exception as exc:                      # noqa: BLE001 (logged; no link)
+            model, err = None, f"{type(exc).__name__}: {exc}"
+        if model is None:
+            log.warning("heal: %s's network model cannot be read (%s); %s %s links nothing",
+                        network, err, device, interface)
+            cache[key] = []
+            return []
+        names = {nid: (n or {}).get("name") for nid, n in (model.get("nodes") or {}).items()}
+        mine = {nid for nid, n in names.items() if n == device}
+        out = set()
+        for link in (model.get("links") or {}).values():
+            members = link.get("members") or []
+            if any(m.get("dev") in mine and abbreviate(m.get("interface") or "") == key[2]
+                   for m in members):
+                out |= {names.get(m.get("dev")) for m in members if m.get("dev") not in mine}
+        cache[key] = sorted(n for n in out if n)
+        return cache[key]
 
     def radius_of(self, network: str):
         from modules.nsot import blast_radius
@@ -355,10 +389,18 @@ def _errdisable_trigger(ctx, counts: dict, out: list, store: str, allowed, line:
         counts["off"] += 1
         return
     at = float(line.get("ts") or 0)
+    # C3845: a port event's far end is the network model's link at its port, so it folds into
+    # a change on that device only (`incidents._fold_target`), never into another device's
+    # change by reach alone.
+    try:
+        far = ctx.port_far_ends(network, dev, m.group("iface"))
+    except Exception as exc:                          # noqa: BLE001 (logged; no link)
+        log.warning("heal: %s %s's far end cannot be read: %s", dev, m.group("iface"), exc)
+        far = []
     out.append((network, dev, {
         "kind": ERRDISABLE_KIND, "key": "errdis:" + _key(dev, line.get("ts"), line.get("text")),
         "epoch": at, "at": line.get("at") or _iso(at), "source": store,
-        "interface": m.group("iface"), "cause": cause,
+        "interface": m.group("iface"), "cause": cause, "related": far,
         "words": f"{line.get('mn')} on {dev} at {line.get('at') or _iso(at)}: {line.get('text')}"}))
 
 

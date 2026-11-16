@@ -420,8 +420,8 @@ def _status(reach: dict, ip: str) -> dict:
     row = ((reach or {}).get("devices") or {}).get(ip)
     if reach is None or not row:
         return {"state": "unknown", "words": "not probed yet"}
-    return ({"state": "ok", "words": "Answering"} if row.get("answering") else
-            {"state": "danger", "words": "Not answering", "since": row.get("since")})
+    return ({"state": "ok", "words": "Reachable"} if row.get("answering") else
+            {"state": "danger", "words": "Not reachable", "since": row.get("since")})
 
 
 def _iso(ts) -> str:

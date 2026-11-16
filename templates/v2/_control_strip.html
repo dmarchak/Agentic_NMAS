@@ -23,9 +23,25 @@
   {%- elif an.ai_set %}
   <p class="small set-result" role="status" data-answer="ai">{{ an.ai_set }}.</p>
   {%- elif an.pressed %}
-  <p class="small set-result" role="status" data-answer="fix-all">Started: {{ an.pressed.fixable }} device{{ '' if an.pressed.fixable == 1 else 's' }} to fix, one first{% if an.pressed.ai_started %}; the AI started on {{ an.pressed.ai_started }} incident{{ '' if an.pressed.ai_started == 1 else 's' }} with no fix{% endif %}{% if an.pressed.ai_capped %}; {{ an.pressed.ai_capped }} not started by a cap, each page says which{% endif %}{% if an.pressed.ai_skipped %}; {{ an.pressed.ai_skipped }} not started, each page says why{% endif %}.</p>
+  <p class="small set-result" role="status" data-answer="fix-all">Started: {{ an.pressed.fixable }} device{{ '' if an.pressed.fixable == 1 else 's' }} to fix, all at once{% if an.pressed.ai_started %}; the AI started on {{ an.pressed.ai_started }} incident{{ '' if an.pressed.ai_started == 1 else 's' }} with no fix{% endif %}{% if an.pressed.ai_capped %}; {{ an.pressed.ai_capped }} not started by a cap, each page says which{% endif %}{% if an.pressed.ai_skipped %}; {{ an.pressed.ai_skipped }} not started, each page says why{% endif %}.</p>
   {%- endif %}
-  {%- if s.run %}
+  {%- if s.run and s.run.line %}
+  {#- The operator, 2026-11-16: a finished run collapses to one line, its steps under Details,
+      for `control_strip.RUN_LINE_S` after it ended or until this person dismisses it
+      (`seen_runs`, the In progress list's own marks). -#}
+  {%- set ln = s.run.line %}
+  <div class="ctl-run ctl-run-done" data-run-state="{{ s.run.state }}" data-run-outcome="{{ s.run.outcome }}">
+    <details class="ctl-run-details" data-keep="ctl-run-{{ s.run.job }}">
+      <summary><span class="ctl-run-line{{ '' if ln.ok else ' warn-text' }}">{{ ln.name }} at {{ clock(ln.at) }}: {{ ln.counts | people }}{% if ln.took %} in {{ ln.took }}{% endif %}</span> · Details</summary>
+      {{ run_stepper(s.run.stepper) }}
+      {%- if s.run.words %}<p class="small{{ ' warn-text' if s.run.outcome and s.run.outcome != 'fixed' }}">{{ s.run.words | people }}</p>{% endif %}
+    </details>
+    <form class="ctl-run-dismiss" method="post" action="{{ url_for('control_v2.run_seen', list_name=s.network) }}" hx-post="{{ url_for('control_v2.run_seen', list_name=s.network) }}" hx-target="#{{ s.anchor }}" hx-swap="outerHTML">
+      <input type="hidden" name="job" value="{{ s.run.job }}">{% if s.run_only %}<input type="hidden" name="part" value="run">{% endif %}
+      <span class="op-act"><button type="submit" class="btn btn-small btn-outline" hx-disabled-elt="this" title="Remove this line from your strip; the run's record stays on each incident and in History"{{ gate('configure') }}><span class="op-idle">Dismiss</span><span class="op-busy">Dismissing…</span></button></span>
+    </form>
+  </div>
+  {%- elif s.run %}
   <div class="ctl-run" data-run-state="{{ s.run.state }}" data-run-outcome="{{ s.run.outcome }}">
     {{ run_stepper(s.run.stepper) }}
     {%- if s.run.words %}<p class="small{{ ' warn-text' if s.run.outcome and s.run.outcome != 'fixed' }}">{{ s.run.words | people }}</p>{% endif %}
@@ -56,7 +72,7 @@
           that line's hash; none, no hash, and it turns on as before. -#}
       <input type="hidden" name="hash" value="{{ h.hash if not h.on and h.also else '' }}">
       <span class="ctl-name">Self-healing:</span>
-      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes problems by itself on {{ s.network }}{% if h.until %} until {{ h.until }} UTC{% else %} until someone turns it off{% endif %}. Turn it off: Dry run, where it only says what it would fix.{% elif h.also %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d), and it fixes the open problems the line below names now, as approved by this press ({{ h.hash[:12] }}): one first, verified, then the rest at once. It does not start the AI.{% else %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d).{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}{% if h.until %}{{ ('On until ' ~ h.until) | times }}{% else %}On{% endif %}{% elif h.mode == 'dry_run' %}Off (dry run){% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', compact=True, op='the Self-healing toggle') }}</span>
+      <span class="op-act"><button type="submit" class="ctl-switch" role="switch" aria-checked="{{ 'true' if h.on else 'false' }}" data-op="heal-batch" hx-disabled-elt="this"{% if not s.may or not h.known %} disabled{% else %}{{ gate('configure') }}{% endif %} title="{% if h.on %}Self-healing fixes problems by itself on {{ s.network }}{% if h.until %} until {{ h.until }} UTC{% else %} until someone turns it off{% endif %}. Turn it off: Dry run, where it only says what it would fix.{% elif h.also %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d), and it fixes the open problems the line below names now, as approved by this press ({{ h.hash[:12] }}): all at once, each verified on its own. It does not start the AI.{% else %}Turn on: Auto until someone turns it off (Settings offers 1 h, 8 h and 7 d).{% endif %}"><span class="ctl-knob" aria-hidden="true"></span><span class="op-idle ctl-word">{% if h.on %}{% if h.until %}{{ ('On until ' ~ h.until) | times }}{% else %}On{% endif %}{% elif h.mode == 'dry_run' %}Off (dry run){% elif h.mode == 'off' %}Off{% else %}Not known{% endif %}</span><span class="op-busy">{{ 'Turning to Dry run…' if h.on else 'Turning on Auto…' }}</span></button>{{ how('heal-batch', 'self-healing-toggle', compact=True, op='the Self-healing toggle') }}</span>
     </form>
     {#- AI troubleshooting: Automatic (Gate 2, C3769; the operator's minimal design,
         2026-11-15). On is one press, bound to the line drawn beside it (the open incidents it

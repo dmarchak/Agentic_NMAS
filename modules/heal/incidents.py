@@ -44,7 +44,9 @@ open incident of its own is ATTACHED to an open incident when:
 - the incident's device CHANGED and the symptom's device is inside its blast radius
   (`blast_radius.radius`: the devices Mercury loses reach to without it, from committed
   intent's IPv4 subnets; a radius that cannot be judged, IPv6 alone included, folds nothing
-  and says why).
+  and says why). A port event (`PORT_EVENT_KINDS`, C3845) is never folded by this rule: it
+  is its port's own, so only the network model's link at that port (its ``related``,
+  `triggers._Context.port_far_ends`) attaches it to a change on another device.
 A cause on a device with no incident opens one and takes in the open symptom-only incidents its
 radius or its links hold. A cause on an attached member makes it the incident's device when the
 incident's own device only showed a symptom (the member changed, the device it was attached to
@@ -87,6 +89,11 @@ KIND_WORDS = {"config_change": "a configuration change from outside Mercury",
               "adjacency_log": "a logged routing adjacency drop",
               "duplicate_router_id": "a duplicate OSPF router-id logged (C2446)",
               "errdisable": "a port err-disabled, by its own syslog line"}
+#: C3845: the symptoms that are a port's own event (an err-disable, BPDU guard's block, a
+#: port-security violation, `triggers.PORT_EVENT_LINES`): attached to another device's change
+#: only by the network model's link at the port (the trigger's ``related``), never by the
+#: changed device's blast radius.
+PORT_EVENT_KINDS = ("errdisable",)
 OPEN_STATES = ("watching", "ready", "claimed", "standing")
 STATES = OPEN_STATES + ("closed",)
 #: The decision's outcomes that leave an incident standing (C2813): the cause is still there
@@ -340,6 +347,13 @@ def _fold_target(doc: dict, device: str, trigger: dict, radius_of, now: float = 
                 continue
             return inc, (f"{inc['device']} is the far end of the link this "
                          f"{KIND_WORDS.get(trigger['kind'], trigger['kind'])} names")
+    if trigger.get("kind") in PORT_EVENT_KINDS:
+        # C3845 (the operator, 2026-11-16): a port event is its port's own (what is plugged into
+        # it), so it folds into another device's change only where the network model links
+        # that device to the port (the trigger's ``related``, above), never by reach or time.
+        return None, "; ".join(whys + [
+            f"a port event on {device} folds only into a change on the far end of its port's "
+            "link in the network model, and no open incident's device is"])
     for inc in _open(doc):
         if inc.get("cause") != "change":
             continue
@@ -370,7 +384,9 @@ def _absorb(doc: dict, inc: dict, radius_of, now: float) -> list:
             continue
         linked = any(inc["device"] in (t.get("related") or []) for t in other.get("triggers")
                      or [])
-        if not linked and not (cut and other["device"] in cut):
+        # C3845: an incident of port events alone is taken only by its port's link.
+        ports_only = all(t.get("kind") in PORT_EVENT_KINDS for t in other.get("triggers") or [])
+        if not linked and (ports_only or not (cut and other["device"] in cut)):
             continue
         reason = (f"{inc['device']} is the far end of its link" if linked else
                   f"{other['device']} is inside {inc['device']}'s blast radius ({why}), and "
@@ -724,6 +740,9 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
                              "words": (decision.get("words") or "")[:300],
                              "at": _iso(now), "epoch": now, "departure": dep,
                              "guard": (decision.get("guard") or {}).get("guard"),
+                             # The mode it was decided in (C3844: a dry run's would-heal
+                             # is decided again once in Auto, `heal.retry.now_auto`).
+                             "mode": decision.get("mode") or "",
                              # A port problem settled on its device read stands on its
                              # symptom too (`detect._settle_port`, 2026-11-16).
                              "on": "symptom" if how.get("how") in ("at_golden", "confirmed")

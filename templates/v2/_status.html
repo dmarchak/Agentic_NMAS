@@ -1,12 +1,12 @@
 {%- from "v2/_macros.html" import badge -%}
-{#- The answering badge, or the device's planned state (board PS, `planned_state`): amber and
+{#- The reachability badge, or the device's planned state (board PS, `planned_state`): amber and
     linked to the page whose card is the operation's while it runs (an approved plan's step,
     its run's home: its incident's card, `href`); red past its window, naming the operation it
-    outlasted. "Answering" is the reachability reader's word: the device answered Mercury's
+    outlasted. "Reachable" is the reachability reader's word: the device answered Mercury's
     last probes (fewer consecutive misses than the threshold, modules/readers/reachability.py),
     said on hover in plain words. -#}
 <span class="status" id="dev-status" hx-get="{{ url_for('device_v2.status', name=device.hostname) }}" hx-trigger="nmas:reachability from:body, nmas:device_holds from:body, nmas:device_progress from:body, nmas:restarts from:body" hx-swap="outerHTML">
-{%- if answer.state == 'ok' %}{{ badge('Answering', 'ok', 'check', 'Reachable: it answers Mercury\'s reachability probe (a ping, or a connection to its SSH port)' ~ (', checked ' ~ answer.checked_at if answer.checked_at else '')) }}
+{%- if answer.state == 'ok' %}{{ badge('Reachable', 'ok', 'check', 'It answers Mercury\'s reachability probe (a ping, or a connection to its SSH port)' ~ (', checked ' ~ answer.checked_at if answer.checked_at else '')) }}
 {%- elif answer.state == 'danger' %}{% if answer.href or answer.link %}<a class="status-op" href="{{ answer.href or url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'danger', 'warn', answer.title or '') }}{% if answer.href or answer.link %}</a>{% endif %}
 {%- elif answer.state == 'planned' %}{% if answer.href or answer.link %}<a class="status-op" href="{{ answer.href or url_for('device_v2.device', name=answer.link) }}">{% endif %}{{ badge(answer.text, 'warn', 'history', answer.title) }}{% if answer.href or answer.link %}</a>{% endif %}
 {%- else %}{{ badge('Not probed yet', 'muted') }}{% endif -%}

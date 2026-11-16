@@ -38,9 +38,9 @@
   {#- When to press Verify: its answer, from the reader's own read-only probe (no login, nothing
       sent), or why there is none yet. -#}
   {%- if answer.state == 'answering' %}
-  <p class="notice notice-ok ob-answer" role="status">{{ icon('check', 16) }}<span><strong>Answering: ready to Verify.</strong> <span class="mono">{{ answer.address }}</span> {{ answer.claim }}, {{ stamp(answer.at) }}. Mercury probed it and sent nothing: no login was tried. Verify… reaches it with its one-time account.</span></p>
+  <p class="notice notice-ok ob-answer" role="status">{{ icon('check', 16) }}<span><strong>Reachable: ready to Verify.</strong> <span class="mono">{{ answer.address }}</span> {{ answer.claim }}, {{ stamp(answer.at) }}. Mercury probed it and sent nothing: no login was tried. Verify… reaches it with its one-time account.</span></p>
   {%- elif answer.state == 'silent' %}
-  <p class="notice ob-answer" role="status">{{ icon('info', 16) }}<span><strong>Not answering yet.</strong> <span class="mono">{{ answer.address }}</span> {{ answer.claim }}, {{ stamp(answer.at) }}. Mercury probes it every {{ answer.every }} s and sends nothing; this says so when it answers.</span></p>
+  <p class="notice ob-answer" role="status">{{ icon('info', 16) }}<span><strong>Not reachable yet.</strong> <span class="mono">{{ answer.address }}</span> {{ answer.claim }}, {{ stamp(answer.at) }}. Mercury probes it every {{ answer.every }} s and sends nothing; this says so when it answers.</span></p>
   {%- elif answer.state == 'unread' %}
   <p class="notice ob-answer" role="status">{{ icon('info', 16) }}<span><strong>Not probed yet:</strong> {{ answer.why }}.</span></p>
   {%- endif %}

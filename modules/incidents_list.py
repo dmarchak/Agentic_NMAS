@@ -236,14 +236,16 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             # its status the live step (the operator, 2026-11-15).
             "group": "working" if fx.get("working") else _group(st, tl, how),
             "resolved": resolved, "busy": bool(fx.get("working")),
-            "waits": "" if resolved else WAITS.get(st["why"], ""),
+            # A decided or failed one says its reason (`incident_page.waits_words`, the
+            # operator, 2026-11-16: never a reasonless "waits for a person").
+            "waits": "" if resolved else (st.get("reason") or WAITS.get(st["why"], "")),
             # R5 (board R5, approved 2026-11-15): the row's status line, what it waits for in
             # one line ("Waiting for a person: …" while it needs one), "" once resolved.
             "status": "" if resolved else (
                 fx.get("working") or fx.get("held")
                 or (fx.get("why_person") if st["state"] == "needs_person" else "")
                 or grace_words(inc, st["why"])
-                or status_words(st["state"], WAITS.get(st["why"], ""))),
+                or status_words(st["state"], st.get("reason") or WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")
             or entry.get("first_at") or "",
             "ended": tl["ended"] if resolved else "",
@@ -290,6 +292,10 @@ def status_words(state: str, waits: str) -> str:
     if not waits:
         return "Waiting for a person" if state == "needs_person" else ""
     if state == "needs_person":
+        # A reason in its own sentence (`incident_page.waits_words`) continues this one: its
+        # first word lower-cased, unless it is a name or an acronym ("BGP", "R1").
+        if waits[:1].isupper() and waits[1:2].islower():
+            waits = waits[:1].lower() + waits[1:]
         return f"Waiting for a person: {waits}"
     return waits[:1].upper() + waits[1:]
 

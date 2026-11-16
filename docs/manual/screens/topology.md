@@ -34,7 +34,7 @@ A device under a planned operation is drawn amber and dashed, its state under it
 ("Reloading · back by ~01:12 UTC", "Unreachable as expected · back by ~…"), the whole state on
 hover, and never with the red cross while that lasts; its page opens the operation
 ([Under a planned operation](devices#planned)). Past the operation's time, a device still down
-is crossed as any device not answering is, and its page's header names the operation it
+is crossed as any device not reachable is, and its page's header names the operation it
 outlasted.
 
 Every link is labelled:

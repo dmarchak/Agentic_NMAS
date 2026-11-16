@@ -75,7 +75,7 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   Credentials) has **Open its card**, which opens that page with its card, and once it finishes
   it waits under **Finished, not opened yet** like a device's. A device being
   onboarded is listed too, as **Onboarding: waiting for it**, from its Create until Verify or
-  Abandon ends it, with where it has got to ("leased not fetched", "answering: ready to
+  Abandon ends it, with where it has got to ("leased not fetched", "reachable: ready to
   Verify"); **Open <device>** goes to its pending page.
 - **"In progress unread"** (or a count marked **unread**): the tool could not ask which
   operations are running, or could not read what runs in a network. It says so, and that this

@@ -913,22 +913,30 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
     from modules import incident_page
     from modules.nsot import saved_plans
     fired = {}
-    for rec in decided_records:
+
+    def fire_on(rec):
         iid = rec.get("id") or ""
-        try:
-            found = incident_page.resolve(network, iid)
-            if found.get("found") != "page":
-                found = {"incident": rec, "entry": {}}
-            # A retry's scripts fire under its key (`saved_plans.fire`'s *retry*): each once
-            # for this retry, a run that failed before tried again (the operator, 2026-11-16).
-            got = saved_plans.fire_matching(network, found,
-                                            retry=(retried.get(iid) or ("",))[0])
-            fired[iid] = got
-            out["scripts"] += got
-        except Exception as exc:                      # noqa: BLE001 (said; the next is tried)
+        found = incident_page.resolve(network, iid)
+        if found.get("found") != "page":
+            found = {"incident": rec, "entry": {}}
+        # A retry's scripts fire under its key (`saved_plans.fire`'s *retry*): each once
+        # for this retry, a run that failed before tried again (the operator, 2026-11-16).
+        return saved_plans.fire_matching(network, found, retry=(retried.get(iid) or ("",))[0])
+
+    # Every incident's scripts at once, each run holding its own device, verified and rolled
+    # back on its own, a failure stopping no other (the operator, 2026-11-16: "a self-healing
+    # batch (switch-on, Fix all, retries) runs every device at once ... no canary device
+    # first"); one incident's scripts stay in order (`fire_matching`: one incident, one change).
+    from modules.fanout import Failed, read_each
+    for rec, got in zip(decided_records, read_each(fire_on, decided_records,
+                                                   name="heal-scripts")):
+        if isinstance(got, Failed):
             log.error("heal: %s's saved scripts did not fire on %s: %s", network,
-                      rec.get("id"), exc)
-            out["failed"].append(f"saved scripts on {rec.get('id')}: {exc}")
+                      rec.get("id"), got)
+            out["failed"].append(f"saved scripts on {rec.get('id')}: {got.error}")
+            continue
+        fired[rec.get("id") or ""] = got
+        out["scripts"] += got
     if retried:
         from modules.heal import retry
         for iid, (rid, d) in retried.items():

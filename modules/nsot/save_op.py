@@ -124,7 +124,7 @@ def plan(list_name: str, hostnames: list) -> dict:
     """What Save would do for *hostnames*, from stored records only (no device is asked):
     ``{"devices": [{"host", "group", "why", "startup", "hash"}], "counts", "save", "hash",
     "fleet", "startup_unreadable"}``. A device not in the inventory, without a driver or a
-    credential, held by another operation or not answering at the last reachability read is
+    credential, held by another operation or not reachable at the last reachability read is
     left out, named with why."""
     from modules.nsot import device_ops, persist_op
     from modules.nsot.restore import _devices_of
@@ -149,7 +149,7 @@ def plan(list_name: str, hostnames: list) -> dict:
             entry.update(group="held", why=busy)
         elif answering.get(host) is False:
             entry.update(group="not_answering",
-                         why="not answering at the last reachability read")
+                         why="not reachable at the last reachability read")
         else:
             entry.update(group="save", why="")
         out.append(entry)

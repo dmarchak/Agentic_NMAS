@@ -151,7 +151,7 @@ ROW_KINDS = {
     ("ci_agreement", "unread"): ("the gate's note or the local CI runner's record of a commit "
                                  "could not be trusted or read",
                                  "read why, and repair the note or the runner's store"),
-    ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
+    ("reachability", "not-answering"): ("devices are not reachable", "check the path, then each"),
     # C1693: a hand-formatted document cannot be patched (Change it in words, bulk intent).
     ("intent-format", "hand"): ("a device's committed intent does not round-trip through "
                                 "Mercury's serialiser, so a patch cannot change it",
@@ -2864,18 +2864,18 @@ def device_answers(device: str, got: dict, now: float, by_name: dict = None) -> 
     d = max(found, key=lambda x: int(x.get("consecutive_misses") or 0))
     misses, threshold = int(d.get("consecutive_misses") or 0), d.get("threshold")
     record = (f"the reachability reading of {good.get('value_at')}: {device} "
-              f"({d.get('address')}) {'answering' if d.get('answering') else 'not answering'}, "
-              f"{misses} consecutive miss(es), not answering at {threshold}")
+              f"({d.get('address')}) {'reachable' if d.get('answering') else 'not reachable'}, "
+              f"{misses} consecutive miss(es), not reachable at {threshold}")
     if not d.get("answering"):
         return {"state": "down", "record": record,
-                "words": (f"{device} is not answering Mercury's reachability probe ({misses} "
+                "words": (f"{device} is not reachable by Mercury's reachability probe ({misses} "
                           "consecutive misses), so its telemetry is lost with it.")}
     if misses:
         return {"state": "missed", "record": record,
                 "words": (f"{device} missed Mercury's last {misses} reachability "
-                          f"probe{'' if misses == 1 else 's'}; it is counted as not answering "
-                          f"at {threshold}. If it stops answering, this becomes part of its "
-                          "not-answering item.")}
+                          f"probe{'' if misses == 1 else 's'}; it is counted as not reachable "
+                          f"at {threshold}. If it becomes not reachable, this becomes part of its "
+                          "not-reachable item.")}
     return {"state": "answers", "record": record,
             "words": (f"{device} answers Mercury's reachability probe (ICMP, then TCP 22): "
                       "it is reachable, and its telemetry is not arriving.")}
@@ -3864,8 +3864,8 @@ def reachability_source(cached=None) -> dict:
         names = [d.get("hostname") or d.get("address") for d in down]
         rows.append(row(
             source="reachability", kind="not-answering", key="not-answering", level="danger",
-            what=(f"{names[0]} is not answering" if len(down) == 1
-                  else f"{len(down)} devices are not answering"),
+            what=(f"{names[0]} is not reachable" if len(down) == 1
+                  else f"{len(down)} devices are not reachable"),
             devices=names, since=_ts(down[0].get("since")),
             cause="; ".join(f"{d.get('hostname') or d.get('address')} ({d.get('address')}): "
                             f"{d.get('consecutive_misses')} consecutive misses, the threshold is "
@@ -3883,7 +3883,7 @@ def reachability_source(cached=None) -> dict:
         "reachability", "Reachability", read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
         reader="reachability", held=held_for,
-        checked=(f"{c.get('answering', 0)} answering, {c.get('not_answering', 0)} not answering"
+        checked=(f"{c.get('answering', 0)} reachable, {c.get('not_answering', 0)} not reachable"
                  + (f", {c.get('missed_last_probe', 0)} missed only the last probe"
                     if c.get("missed_last_probe") else "")
                  + "".join(f"; {w}" for w in held.values())
@@ -3915,7 +3915,7 @@ def _planned_down(down: list, now: float = None) -> tuple:
                                          if got["window"].get("via") == "reload" else
                                          f": {got['window'].get('why', '')}"))
             held_for.append(_held("reachability", got, [key[0]],
-                                  f"{key[0]} not answering", margin=0))
+                                  f"{key[0]} not reachable", margin=0))
             continue
         # A device the window's operation predicted unreachable (PHASE8_PLAN 20.2), until the
         # window's end plus the settle time; past it, it is raised (overdue) as before.
@@ -3930,7 +3930,7 @@ def _planned_down(down: list, now: float = None) -> tuple:
         if p:
             after[key] = (f"; its planned-restart window (by {p.get('by') or 'an unrecorded '
                           'person'}) ended at {R._iso(R.window_end(p, ended))} and it is still "
-                          "not answering")
+                          "not reachable")
     return held, "", after, held_for
 
 
@@ -7082,6 +7082,83 @@ def _fold_signals_into_problems(rows: list, lst: str = None, listed=None,
     return [r for r in rows if id(r) not in taken]
 
 
+#: How long before an incident opened a device-wide alert on its device may have started and
+#: still be its evidence (C3843): an alert's own evaluation can stamp it a little before the
+#: line the incident opened on reached Mercury. 60 s, a choice: Grafana's evaluation interval
+#: in this lab is 60 s or less (an alert seen earlier than that is older than the incident).
+DEVICE_ALERT_SLACK_S = 60.0
+
+
+def _fold_device_rows_into_incidents(rows: list, lst: str = None, listed=None) -> list:
+    """C3843 (the operator, 2026-11-16: Needs attention drew 10 rows for 6 problems): a row from
+    another source about an open incident's device and problem folds under that incident's row,
+    as its evidence (``folded``, ``folded_evidence``, as `_fold_signals_into_problems` folds):
+    - the device's drift row (``drift``/``drifted``: "r3 has drifted from its golden", "r2 was
+      changed from outside Mercury, and something broke at the same time"): the departure the
+      incident holds, said again. `_fold_drift_into_heal` folds it only under a proposal, a
+      can't-fix or a hold row, and runs before the incident's own row is made
+      (`_incidents_agree`), so a standing would-heal's or a can't-fix incident's row never
+      took it;
+    - a Grafana row whose alerts are all on that device and name no interface (Grafana's
+      "Critical syslog received" beside an err-disable), started inside the incident's life
+      (from `DEVICE_ALERT_SLACK_S` before it opened): one device has one open incident
+      (`heal.incidents`), so a device-wide alert while it is open is that incident's evidence.
+      An alert naming an interface is `_fold_signals_into_problems`' to judge (the problem's
+      port), never folded here, and an alert older than the incident stays its own row.
+    Each folded row keeps its own level, drawn in the evidence. *listed* is
+    `incidents_list.rows`' answer. An unreadable list changes nothing."""
+    lst = lst or _page_network()
+    got = listed if listed is not None else _incidents_listed(lst)
+    if not got or got.get("unreadable"):
+        return rows
+    opened = {}
+    for r in got.get("rows") or []:
+        if not r.get("resolved") and r.get("device"):
+            opened[r["id"]] = r
+    if not opened:
+        return rows
+    parents = {}
+    for top in rows:
+        iid = str((top.get("incident_page") or {}).get("id") or "")
+        if iid in opened and not top.get("batch") and not top.get("alike"):
+            if iid not in parents or (parents[iid].get("kind") == "held"
+                                      and top.get("kind") != "held"):
+                parents[iid] = top
+    by_device = {opened[iid]["device"]: (iid, top) for iid, top in parents.items()}
+    taken = set()
+    for other in rows:
+        if other.get("incident_page") or other.get("evidence_of") or len(
+                other.get("devices") or []) != 1:
+            continue
+        dev = other["devices"][0]
+        hit = by_device.get(dev)
+        if hit is None:
+            continue
+        iid, top = hit
+        if other is top:
+            continue
+        ops = other.get("operands") or {}
+        if (other.get("source"), other.get("kind")) == ("drift", "drifted"):
+            if ops.get("list") and ops["list"] != lst:
+                continue
+        elif other.get("source") == "grafana":
+            members = ops.get("members") or []
+            since = _ts(opened[iid].get("since"))
+            began = _ts(other.get("since"))
+            if not members or any(m.get("device") != dev or m.get("interface")
+                                  for m in members):
+                continue
+            if since is None or began is None or began < since - DEVICE_ALERT_SLACK_S:
+                continue
+        else:
+            continue
+        other["evidence_of"] = iid
+        top["folded"] = list(top.get("folded") or []) + [other]
+        top["folded_evidence"] = int(top.get("folded_evidence") or 0) + 1
+        taken.add(id(other))
+    return [r for r in rows if id(r) not in taken]
+
+
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
 #: incident's page draw a control for.
 FIRST_ACTIONS = ("run", "alike", "start", "ai_spend_panel", "heal_proposal", "heal_halt",
@@ -7942,8 +8019,8 @@ def _heal_held_rows(lst: str, rows: list) -> list:
                       f"{g.get('name') or 'many devices at once'}"),
                 cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. "
                        f"Self-healing is not On for {lst}: turning it on fixes the {n} open "
-                       f"problem{'' if n == 1 else 's'} Mercury can fix, one first, verified, "
-                       "then the rest at once"),
+                       f"problem{'' if n == 1 else 's'} Mercury can fix, all at once, each "
+                       "verified on its own"),
                 action={"label": "Turn on self-healing (Troubleshoot › Incidents)",
                         "href": f"/v2/incidents?list={quote(lst)}#control-strip"},
                 operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
@@ -9547,6 +9624,9 @@ def assemble(results: list) -> dict:
     rows = _incidents_agree(rows, listed=listed)
     # C3731: a Grafana signal of a classified port problem folds under its incident's row.
     rows = _fold_signals_into_problems(rows, listed=listed)
+    # C3843: another source's row about an open incident's device and problem (its drift
+    # row, a device-wide alert while it is open) folds under the incident's row too.
+    rows = _fold_device_rows_into_incidents(rows, listed=listed)
     # R5: each batch card's default view, its held problems inside it.
     rows = _batch_cards(rows, listed=listed)
     # The acknowledgement record and its current list read ONCE for both uses (C3230).

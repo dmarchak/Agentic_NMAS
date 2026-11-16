@@ -12,7 +12,7 @@ mode and logged in docs/STANDING_APPROVAL_LOG.md).
 - The confirm (`confirm`) runs `oob_onboard.run` as a job and answers at once with THE stepper
   (C1579's pattern): Preview and Confirm done, Hold running from now, every other step not yet
   run; each step's `device_progress` fills it in place and the run's record replaces it
-  (`console_ztp`). The Answering step says until when the SSH key settles.
+  (`console_ztp`). The Reachable step says until when the SSH key settles.
 - Each run has a page of its own (`run_page`), opened by the device's name: the In progress
   list's rows open it, and the running card says it is safe to leave (C1595).
 
@@ -130,7 +130,7 @@ def source_view():
 
 def run_steps(list_name: str, device: str, rec=None, *, now=None) -> list:
     """The run's rows for THE stepper: Preview and Confirm done, then the run's declared steps
-    read from the device's hold (`device_actions.stepper`, *starts*). The Answering step's
+    read from the device's hold (`device_actions.stepper`, *starts*). The Reachable step's
     words are the record's: until when the SSH key settles, then SSH at the address."""
     from modules import device_actions, run_stepper
     from modules.nsot import device_ops

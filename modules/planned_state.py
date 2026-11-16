@@ -17,7 +17,7 @@ Devices and Topology draw ONE amber state, linked to the operation, for
   drawn as answering, never as an expectation that did not happen;
 
 and red once a device is still not answering past that time, naming the operation it outlasted:
-"Not answering · overdue after edge1's reload (back by 01:31 UTC)".
+"Not reachable · overdue after edge1's reload (back by 01:31 UTC)".
 
 The same function the sources consult decides it (`restarts.window_end`, `SETTLE_SECONDS`, the
 window's own and expected devices), never a second list. A READ: holds, windows and their ends
@@ -222,8 +222,8 @@ def state(ctx: dict, host: str, list_name: str, reach: dict = None, now: float =
             who = ", ".join(d for d in p.get("devices") or [] if d != "*") or "the network"
             owner = f"its {noun}" if own else f"{who}'s {noun}"
             words = f"overdue after {owner} (back by {_clock(back_at)})"
-            return _drawn("danger", ["Not answering", words], "Not answering", words,
-                          _operating(p), f"Still not answering past the {noun}'s window"
+            return _drawn("danger", ["Not reachable", words], "Not reachable", words,
+                          _operating(p), f"Still not reachable past the {noun}'s window"
                                          + ("" if own else f" and its settle time "
                                                            f"({margin // 60} min)"))
     return None

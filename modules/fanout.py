@@ -14,7 +14,12 @@ conversions use, so each read loop does not grow its own pool.
 
 WRITES do not use this. A write across devices runs concurrently only where
 nothing depends on order, and the deploy batch is sequential on purpose (its
-circuit breaker): the ordering is the safety.
+circuit breaker): the ordering is the safety. The one write that does is the
+self-healing batch (`heal.batch.run`; the operator, 2026-11-16: every device
+at once, each held, checked, verified and rolled back on its own, a failure
+stopping no other, no canary): each device goes back to its own approved
+state, so nothing depends on order. Rollouts and template pushes keep their
+canary (`nsot.fleet_change`).
 
 An AI call per item that changes no device uses it too, with its own bound:
 the SDN loop's classify, one call per detection (`sdn.loop.CLASSIFY_WORKERS`,
@@ -75,7 +80,9 @@ def each_until_failure(fn: Callable[[Any], Any], items: Iterable, ok: Callable[[
     devices run concurrently", its heal-batch clause, the operator 2026-11-14): every item at
     once, bounded as `read_each`, starting NO new item once one has failed (*ok* False on its
     result, or it raised); an item never started answers `NOT_STARTED`. The items' order is
-    kept. The caller runs the first device alone, verified, before this."""
+    kept. The caller runs the first device alone, verified, before this. The heal batch no
+    longer uses it (the operator, 2026-11-16: every device at once, `read_each`); kept for a
+    write whose later devices depend on the first."""
     import threading
 
     items = list(items)

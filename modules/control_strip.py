@@ -12,9 +12,10 @@ Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, t
   problems Mercury can fix stand (guard 6's held departures, the incidents an Automatic saved
   script matches), one line beside it says so ("Also fixes the 7 open problems (5 restores, 2
   saved scripts)", `heal.batch.switch_words`) and the switch carries that line's hash; turning
-  it on runs them as C3819's batch (`switch_on`, `heal.batch.press` with ``switch``: one first,
-  verified, then the rest at once, guard 6 resolved for those listed, the runs named after the
-  switch-on), never the AI, and is refused, nothing turned on, when they moved since drawn.
+  it on runs them as C3819's batch (`switch_on`, `heal.batch.press` with ``switch``: every
+  device at once, each verified on its own, guard 6 resolved for those listed, the runs named
+  after the switch-on), never the AI, and is refused, nothing turned on, when they moved since
+  drawn.
   G6's Fix all card on Needs attention stays only for guard 6 holds formed while it is On.
 - **AI troubleshooting** (Gate 2, C3769; the operator's minimal design, 2026-11-15): "AI
   troubleshooting: Automatic", the network's one control's Automatic (`troubleshoot_control`). On
@@ -25,8 +26,13 @@ Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, t
   their estimate are acknowledged in Settings (the refusal links the limits card). Off goes
   back to Manual at once.
 - A gear to each full setting (the network's Self-healing tab, Settings › AI).
-- **The batch's run**: the newest Turn on self-healing and fix all of the network this server
-  holds, drawn on THE stepper while it runs and after (`heal.batch.STEPS`).
+- **The batch's run**: the newest Turn on self-healing and fix all (or switch-on) of the
+  network this server holds, drawn on THE stepper while it runs (`heal.batch.STEPS`); once it
+  ended, one line ("Self-healing switched on at 23:00: 2 fixed and verified in 3 min 17 s ·
+  Details", `_run_line`), its steps under Details, for `RUN_LINE_S` after its end or until the
+  person looking dismisses it (`routes/control_v2.run_seen`, the In progress list's own
+  per-person marks, `seen_runs`). The strip draws again only when something announces, so the
+  line leaves at the first redraw past its bound.
 
 Both toggles show the live state, are usable only by a person who may change those settings
 (`heal.batch.may_press`: a verified person, `identity.may` ``configure``); anyone else sees the
@@ -76,7 +82,58 @@ def _run_card(job: dict) -> dict:
     return {"job": job["job"], "state": got.get("state") or job.get("state"),
             "outcome": outcome, "words": result.get("words") or got.get("error") or "",
             "stepper": RS.card(rows, label=label, key="heal-batch"),
-            "started_at": job.get("started_at")}
+            "started_at": job.get("started_at"), "ended": ended,
+            "line": _run_line(label, job, result, got) if ended else None}
+
+
+#: How long a finished batch run's one line stays on the strip after it ended (the operator,
+#: 2026-11-16: "the line leaves the strip a few minutes after the run ended"): 5 minutes, a
+#: choice, nothing measured: long enough for the person who switched it on to read the outcome
+#: when the page next redraws, short enough that the strip is back to its two switches by the
+#: time a later problem is looked at. Its record stays: each device's outcome on its own
+#: incident (`heal.batch._on_incident`), the batch's rows in the heal decisions, and the In
+#: progress list's Finished entry until `capture_job.KEEP_S`.
+RUN_LINE_S = 300
+#: The run's name on its one line, by its press.
+RUN_LINE_NAMES = {"Self-healing switched on": "Self-healing switched on",
+                  "Turn on self-healing and fix all": "Fix all"}
+
+
+def _iso(epoch) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(epoch))) if epoch else ""
+
+
+def _run_line(label: str, job: dict, result: dict, got: dict) -> dict:
+    """A finished batch run in one line (the operator, 2026-11-16: "Self-healing switched on at
+    23:00: 2 fixed and verified in 3 min 17 s · Details"): ``{"name", "at", "counts", "took",
+    "ok"}``, *at* the run's start (the switch-on), drawn by the page's clock; *counts* from the
+    batch's own record of each device; *took* its wall time, from the job's own start and end
+    (`run_stepper.duration_words`)."""
+    from modules.run_stepper import duration_words
+
+    devices = list(result.get("devices") or [])
+    healed = sum(1 for d in devices if d.get("outcome") == "healed")
+    if devices:
+        counts = (f"{healed} fixed and verified" if healed == len(devices) else
+                  f"{healed} of {len(devices)} fixed and verified; "
+                  + ", ".join(d.get("device") or "?" for d in devices
+                              if d.get("outcome") != "healed")[:120] + " did not")
+    else:
+        counts = result.get("words") or got.get("error") or "nothing was fixed"
+    start, end = job.get("started_at"), job.get("finished_at")
+    took = duration_words(float(end) - float(start)) if start and end else ""
+    return {"name": RUN_LINE_NAMES.get(label, label), "at": _iso(start), "counts": counts,
+            "took": took, "ok": bool(devices) and healed == len(devices)}
+
+
+def newest_batch_job(network: str):
+    """*network*'s newest kept batch job on this server (`capture_job.card_jobs`' row), or
+    None: the one the strip draws."""
+    from modules.heal import batch
+    from modules.nsot import capture_job
+
+    return next((j for j in capture_job.card_jobs() if j["kind"] == batch.KIND
+                 and j["list"] == network), None)
 
 
 def batch_ai_items(network: str) -> dict:
@@ -169,14 +226,27 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
                        script_items=batch_script_items(network), switch=True)
 
 
-def batch_run(network: str):
-    """The newest kept batch job of *network* on this server, drawn, or None."""
-    from modules.heal import batch
-    from modules.nsot import capture_job
-
-    job = next((j for j in capture_job.card_jobs() if j["kind"] == batch.KIND
-                and j["list"] == network), None)
-    return _run_card(job) if job else None
+def batch_run(network: str, now: float = None):
+    """The newest kept batch job of *network* on this server, drawn, or None: while it runs,
+    THE stepper; once it ended, one line (``line``, its steps under Details) for `RUN_LINE_S`
+    after its end, unless the viewer dismissed it (`seen_runs`, the In progress list's own
+    per-person marks, `routes/control_v2.run_seen`); then nothing."""
+    job = newest_batch_job(network)
+    if not job:
+        return None
+    now = time.time() if now is None else float(now)
+    end = job.get("finished_at")
+    if end is not None and job.get("state") != "running":
+        if now - float(end) > RUN_LINE_S:
+            return None
+        from modules import seen_runs
+        from routes.operations import viewer_key
+        try:
+            if seen_runs.is_seen(viewer_key(), job["job"]):
+                return None
+        except Exception as exc:                      # noqa: BLE001 (drawn: never hidden by a guess)
+            log.warning("control strip: whether the run was dismissed is not known: %s", exc)
+    return _run_card(job)
 
 
 def view(network: str, now: float = None, **answer) -> dict:

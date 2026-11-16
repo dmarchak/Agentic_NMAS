@@ -411,8 +411,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   tests/test_settings_concurrency.py; open items: docs/CONCURRENCY_AUDIT.md] [why](docs/LESSONS.md#many-people-tabs-and-processes)
 - **Reads across devices run concurrently (`fanout.read_each`); a serial loop states why;** the
   deploy batch is sequential for its circuit breaker, and a heal batch a person approved as one
-  runs one device first, verified, then the rest in parallel, each held and verified, starting no
-  new device after the first failure (the operator, 2026-11-14). [tests/test_device_loops_state_why.py] [why](docs/LESSONS.md#concurrent-reads-across-devices)
+  runs every device at once, each held, checked and verified on its own, with its own rollback; a
+  rollout keeps one device first (the operator, 2026-11-16; one device first until then). [tests/test_device_loops_state_why.py] [why](docs/LESSONS.md#concurrent-reads-across-devices)
 - **One owner per piece of state; one home per action** (one resolver, one table, one write path;
   two entry points share one code path). [tests/test_one_home_per_action.py (device effects);
   tests/test_platform_keying.py; tests/test_one_template_resolver.py; otherwise not mechanised] [why](docs/LESSONS.md#one-owner-one-home)

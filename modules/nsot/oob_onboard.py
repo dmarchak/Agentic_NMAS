@@ -29,7 +29,7 @@ bootstrap, the pending static intent and the manifest entry with the NetBox id; 
 on any later failure, `undo`), the kick-start (the blank check again, then each line, its
 answer read: any IOS refusal stops it, naming the line), the read-back (each typed line in the
 running configuration, and the MAC the management interface uses, recorded in the manifest),
-the copy (verified), the console released, then Answering (the SSH key's settle,
+the copy (verified), the console released, then Reachable (the SSH key's settle,
 `onboard.KEY_SETTLE_S`, waited out and SHOWN, then SSH at the static address answers), and the
 record. Every stop names the comparison and both operands, what was sent and what was undone.
 
@@ -92,7 +92,7 @@ BEFORE_RUN = ("preview", "confirm")
 STEP_LABELS = {"preview": "Preview", "confirm": "Confirm", "hold": "Hold", "wake": "Wake",
                "blank": "Blank check", "create": "Create", "kickstart": "Kick-start",
                "readback": "Read back", "copy": "Copy the bootstrap", "release": "Release",
-               "answering": "Answering", "record": "Record"}
+               "answering": "Reachable", "record": "Record"}
 #: The progress notes each step makes as it BEGINS (`device_ops.note`; the stepper's names).
 STEP_NOTES = {"hold": ("opening the console",), "wake": ("waking the console",),
               "blank": ("onboard: blank",), "create": ("onboard: create",),

@@ -551,23 +551,29 @@ def store_rows_since(store: str, path: str, since, slack_s: float,
     return {"state": "ok", "error": "", "rows": kept}
 
 
-def store_append(store: str, path: str, row: dict, network: str = "") -> None:
+def store_append(store: str, path: str, row: dict, network: str = ""):
     """Append *row* to a line store: its file, owner-only and under its cross-process lock
     (C1328), or, once moved, the records database. Raises naming why when it could not be kept:
-    the caller decides whether its record failing stops it."""
+    the caller decides whether its record failing stops it. Returns ``(offset, length)``, the
+    bytes the row's line holds in the file, read under the same lock (C3839: the AI calls
+    record's offsets, `calls.find` one seek), or None on the records database."""
     from modules import records_db
 
     line = json.dumps(row, sort_keys=True)
     if records_db.backend(store) == records_db.POSTGRES:
         append_lines("", [line], store=store, network=network)
-        return
+        return None
     from modules.config import open_secure
     from modules.filestore import PathLock
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = line + "\n"
     with PathLock(path):
         with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+            # Under the lock no other writer moves the end: the file's size is where it starts.
+            offset = os.fstat(fh.fileno()).st_size
+            fh.write(data)
+    return offset, len(data.encode("utf-8"))
 
 
 def file_of(path: str) -> dict:

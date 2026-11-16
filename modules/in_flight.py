@@ -119,8 +119,9 @@ def merge(holds: list, ops: list, jobs: list) -> list:
             said = CARD_WORDS.get(job["card"]) or OPERATION_WORDS.get(job["card"], job["card"])
             # A self-heal is Mercury's, never a person's (C3161): its words name the policy's
             # setter by display name, as the chip does.
+            # A person by display name (C3838; board E2a), never the raw actor.
             by = (_row_who(job, "") if job["card"] in HEAL_RUNS
-                  else op.get("actor") or "unknown")
+                  else _who(op.get("actor") or "", ""))
             rest.append(dict(op, device=job["device"], list=job["list"], operation=job["card"],
                              words=said, actor_kind=job.get("actor_kind", ""),
                              job=job["job"], card=job["card"], stalled=False,
@@ -235,28 +236,31 @@ def _row_who(row: dict, viewer: str) -> str:
 
 
 def _step(row: dict) -> str:
-    """The step a held device's operation is on, in the stepper's own words where its card
-    draws one (`device_actions.job_steps`: "Persist: … · step 6 of 6"), else the hold's own
-    words for its last progress."""
+    """The step a held device's operation is on, in its plain words, as a run's card says a
+    step (C3838: never "step i of n"): an approved plan's step as its incident's card says it
+    (`merge`'s ``run_words``, `_plan_step_words`), else the stepper's own words where its card
+    draws one (`device_actions.job_steps`: "Persist: …"), else the hold's own words for its
+    last progress."""
+    if row.get("plan_href") and row.get("run_words"):
+        return row["run_words"]
     op = row.get("operation", "")
     console = _console_steps(op)
     if console:
         # The step its last note began (`STEP_NOTES`), in its own stepper's words.
-        for i, (_key, words, waits, names) in enumerate(console):
+        for _key, words, waits, names in console:
             if row.get("step") in names:
-                return f"{words}: {waits} · step {i + 1} of {len(console)}"
-        return f"{console[0][1]}: {console[0][2]} · step 1 of {len(console)}"
+                return f"{words}: {waits}"
+        return f"{console[0][1]}: {console[0][2]}"
     if op in STEPPED and row.get("list"):
         from modules import device_actions
         try:
             steps = device_actions.job_steps(op, row["list"], row.get("device", ""))
         except Exception:                             # noqa: BLE001 (the hold's words stand)
             steps = []
-        for i, s in enumerate(steps):
+        for s in steps:
             if s.get("state") == "running":
                 waits = s.get("waits") or ""
-                return (f"{s['words']}" + (f": {waits}" if waits else "")
-                        + f" · step {i + 1} of {len(steps)}")
+                return f"{s['words']}" + (f": {waits}" if waits else "")
     # A run that records its own steps (`merge`'s ``run_words``): its newest step, never the
     # hold's "started".
     return row.get("run_words") or row.get("step_words") or row.get("step") or "started"
@@ -302,12 +306,12 @@ def pending_step(d) -> str:
     if not d:
         return "waiting for it to boot (not read yet)"
     if d.get("answering"):
-        return "answering: ready to Verify"
+        return "reachable: ready to Verify"
     if d.get("stop"):
         return "no fetch 15 minutes after its Create: stop"
     if d.get("stage"):
         return d["stage"].replace("_", " ")
-    return "waiting for it to boot" + (": not answering yet" if d.get("answering") is False
+    return "waiting for it to boot" + (": not reachable yet" if d.get("answering") is False
                                        else "")
 
 

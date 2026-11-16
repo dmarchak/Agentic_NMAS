@@ -264,7 +264,7 @@
     <ol class="fixit-attempts">
       {%- if x.more %}<li class="muted small">and {{ x.more }} earlier attempt{{ 's' if x.more != 1 }}, each on {{ x.device }}'s History</li>{% endif %}
       {%- for a in x.attempts %}
-      <li class="fixit-a fixit-a-{{ a.state }}" data-attempt="{{ a.n }}" value="{{ a.n }}">{{ clock(a.started) }}{% if a.finished %} to {{ clock(a.finished) }}{% endif %} · <span title="{{ a.params }}">{{ a.operation }}</span> · {% if a.source %}proposed by {{ a.source }}, {% endif %}approved by {{ (a.actor or 'nobody recorded') | people }} · <strong>{{ {'passed': 'passed', 'running': 'running', 'failed': 'failed'}[a.state] }}:</strong> <span title="{{ a.detail }}">{{ a.words }}</span> · AI {{ a.ai_usd }} · <a href="{{ run_href(a.device, x.network, a.run) }}">Open the run</a></li>
+      <li class="fixit-a fixit-a-{{ a.state }}" data-attempt="{{ a.n }}" value="{{ a.n }}">{{ clock(a.started) }}{% if a.finished %} to {{ clock(a.finished) }}{% endif %} · <span title="{{ a.params }}">{{ a.operation }}</span> · {% if a.source %}proposed by {{ a.source }}, {% endif %}approved by {{ (a.actor or 'nobody recorded') | people }} · <strong>{{ {'passed': 'passed', 'running': 'running', 'failed': 'failed'}[a.state] }}:</strong> <span title="{{ a.detail }}">{{ a.words }}</span> · AI {{ a.ai_usd }} · <a href="{{ run_href(a.device, x.network, a.run, a.page) }}">Open the run</a></li>
       {%- endfor %}
     </ol>
     {%- if x.incomplete %}<p class="small warn-text">Not every attempt could be read: {{ x.incomplete }}.</p>{% endif %}

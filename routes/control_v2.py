@@ -81,7 +81,7 @@ def heal(list_name):
     shown = request.form.get("hash") or ""
     if on and shown:
         # C3823: turned on with the open problems its line drew, bound to that line's hash:
-        # C3819's batch (restores and saved scripts, one first, then the rest; never the AI),
+        # C3819's batch (restores and saved scripts, all at once; never the AI),
         # which turns self-healing on itself; refused, nothing turned on, when they moved.
         try:
             got = control_strip.switch_on(list_name, shown, actor=who["actor"],
@@ -93,7 +93,7 @@ def heal(list_name):
         return _strip(list_name, heal_set=(
             "turning on in Auto, until someone turns it off, and "
             + batch.switch_words(len(p["items"]), len(p["scripts"]), verb="fixing")
-            + ": one first, verified, then the rest at once"))
+            + ": all at once, each verified on its own"))
     # C3789: the strip, and so its toggle, is on Troubleshoot › Incidents alone
     # (`control_strip.set_heal`'s page).
     try:
@@ -102,6 +102,43 @@ def heal(list_name):
     except policy.PolicyRefused as exc:
         return _strip(list_name, 409, refused=f"Self-healing was not changed: {exc}")
     return _strip(list_name, heal_set=got["words"])
+
+
+@bp.route("/<list_name>/run-seen", methods=["POST"])
+def run_seen(list_name):
+    """A finished batch run's one line dismissed from the strip by the person looking (the
+    operator, 2026-11-16), kept in the In progress list's own per-person marks
+    (`seen_runs.mark`, ``dismissed``; no store of its own): it leaves their strip, list and
+    chip; everyone else still sees it until its bound (`control_strip.RUN_LINE_S`). Form:
+    ``job``, which must be this network's newest batch job; ``part=run`` draws the run part
+    alone (Needs attention's). Refused, nothing written, with no verified person."""
+    from modules import control_strip, seen_runs
+    from routes.operations import viewer_key
+
+    run_only = request.form.get("part") == "run"
+    job = (request.form.get("job") or "").strip()
+    newest = control_strip.newest_batch_job(list_name)
+    if not job or newest is None or newest["job"] != job:
+        return _strip(list_name, 409, run_only=run_only,
+                      refused=f"Nothing was dismissed: the run named ({job[:12] or 'none'}) "
+                              f"is not this network's newest batch run "
+                              f"({(newest or {}).get('job', 'none')[:12]})")
+    got = seen_runs.mark(viewer_key(), [job], "dismissed")
+    if not got.get("ok"):
+        return _strip(list_name, 403 if "verified" in (got.get("error") or "") else 409,
+                      run_only=run_only, refused=f"Nothing was dismissed: {got.get('error')}")
+    if got.get("news"):
+        # As the In progress list's own mark announces it (`operations.mark_seen`).
+        from modules import invalidation
+        from modules.nsot import capture_job
+        try:
+            invalidation.announce(capture_job.MOVED_KEYS, by=capture_job.MOVED_ANNOUNCER,
+                                  ok=True)
+        except RuntimeError:
+            pass                                      # no emitter: nobody else to tell
+        except Exception as exc:                      # noqa: BLE001 (said in the log)
+            log.warning("control strip: a dismissal was not announced to open pages: %s", exc)
+    return _strip(list_name, run_only=run_only)
 
 
 @bp.route("/<list_name>/fix-all", methods=["POST"])

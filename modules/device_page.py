@@ -106,7 +106,7 @@ def answering(dev: dict, list_name: str = "") -> dict:
     """The reachability reader's word on this device, or its planned state (board PS,
     `planned_state`): under an operation, inside its planned-restart window, or predicted
     unreachable by one, it reads as that operation, amber and linked to its card (B3, the
-    operator 2026-10-17: never plain "Not answering"); still down past it, red naming it."""
+    operator 2026-10-17: never plain "Not reachable"); still down past it, red naming it."""
     value, at, why = _cached("reachability")
     row = (value.get("devices") or {}).get(dev.get("ip")) if value is not None else None
     planned = _planned(dev.get("hostname", ""), list_name or (row or {}).get("list") or "", row)
@@ -123,7 +123,7 @@ def answering(dev: dict, list_name: str = "") -> dict:
     if not row:
         return {"state": "unknown", "text": "not probed yet", "why": "the reader has no row for it"}
     return {"state": "ok" if row.get("answering") else "danger",
-            "text": "Answering" if row.get("answering") else "Not answering",
+            "text": "Reachable" if row.get("answering") else "Not reachable",
             "since": row.get("since"), "checked_at": row.get("checked_at"),
             "last_result": row.get("last_result"), "value_at": at}
 

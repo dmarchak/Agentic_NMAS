@@ -7,7 +7,7 @@
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>
     <dl class="facts">
-      <div><dt>Answering</dt><dd>
+      <div><dt>Reachable</dt><dd>
         {%- if answer.state == 'unknown' %}not probed yet <span class="muted">({{ answer.why }})</span>
         {%- else %}{{ answer.text }}{% if answer.since %}, since {{ stamp(answer.since) }}{% endif %}
         {%- if answer.last_result %} <span class="muted">· last probe {{ answer.last_result }}, {{ stamp(answer.checked_at) }}</span>{% endif %}{% endif -%}

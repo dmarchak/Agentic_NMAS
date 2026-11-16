@@ -8,7 +8,7 @@ since its Create); and, once there is something to answer (a ZTP device that FET
 config, or a static or DHCP device's address), the reachability reader's own read-only probe of
 its address (`readers.reachability.probe`: ICMP from Mercury, then a TCP connection to port 22,
 2 s each). No login is tried and nothing is sent: a device that accepts the connection is
-"answering: ready to Verify", which is the claim the probe measured and no more (M4 fetched,
+"reachable: ready to Verify", which is the claim the probe measured and no more (M4 fetched,
 applied its config and still refused SSH; Verify is what reaches it).
 
 It announces `pending` when a device's stage, its answer or the stop rule moves (never for a
@@ -191,14 +191,14 @@ def row_words(d: dict, onboarded_at: str = "") -> tuple:
     claim = (f"{d.get('address')} {d['claim']}" if d.get("claim") else "")
     why = "; ".join(x for x in (d.get("summary"), claim) if x)
     if d.get("answering"):
-        return "answering: ready to Verify", why
+        return "reachable: ready to Verify", why
     if d.get("stop"):
         return f"ZTP: no fetch {STOP_AFTER_S // 60} minutes after its Create: stop", why
     if d.get("source") == "ztp":
         words = ZTP_WORDS.get(d.get("stage") or "unknown", ZTP_WORDS["unknown"])
-        return (words + ("; not answering yet" if d.get("answering") is False else "")), why
+        return (words + ("; not reachable yet" if d.get("answering") is False else "")), why
     if d.get("answering") is False:
-        return "pending: not answering yet", why
+        return "pending: not reachable yet", why
     return "pending: not probed yet", why or "it has no address to probe"
 
 

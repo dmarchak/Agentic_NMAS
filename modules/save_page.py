@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 #: The plan's groups as the page names them: (key, words, chip kind).
 PLAN_GROUPS = (
     ("save", "to save", "info"),
-    ("not_answering", "not answering: left out", "warn"),
+    ("not_answering", "not reachable: left out", "warn"),
     ("held", "held by another operation: left out", "warn"),
     ("refused", "cannot be saved from here: left out", "danger"),
 )
@@ -31,7 +31,7 @@ OUTCOME_WORDS = (
     ("not_persisted", "saved; the read-back did not match: not recorded", "danger"),
     ("unread", "saved; not recorded", "danger"),
     ("held", "held by another operation", "warn"),
-    ("not_answering", "not answering", "warn"),
+    ("not_answering", "not reachable", "warn"),
     ("refused", "cannot be saved from here", "danger"),
     ("saved_recorded", "saved and recorded", "ok"),
     ("saved_unchanged", "saved; its golden already matched", "ok"),

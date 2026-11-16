@@ -16,7 +16,7 @@ It is built from two operations that already exist, never a third copy of either
 
 1. **Plan** (`plan`). Read: the network's inventory (each device's address, driver, account and stored credential), the hourly startup check's last reading, the reachability reader's last reading and the holds; for every device of the network, also the repository's newest earned baseline and the manifest. Sent: nothing. Recorded: nothing. Each device chosen goes into one group:
    - **to save**;
-   - **not answering: left out**, when the last reachability reading had it not answering;
+   - **not reachable: left out**, when the last reachability reading had it not reachable;
    - **held by another operation: left out**, naming that operation and who runs it;
    - **cannot be saved from here: left out**, when it is not in the inventory, has no driver recorded or has no stored credential.
 

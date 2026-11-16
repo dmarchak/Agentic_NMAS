@@ -6,12 +6,12 @@ search or a filter, the list says "Showing N of M".
 
 ## The list {#the-list}
 
-Each row: the device's status (answering or not, from the reachability reader), its address
+Each row: the device's status (Reachable or Not reachable, from the reachability reader), its address
 and platform, whether it was at its committed intent when it was last MEASURED and by
 what, and when that was. Hover the time to see when its golden last changed. Onboardings
 still pending are rows too, and open their own page. A pending row says where its onboarding
-has got to as its page does, from the onboarding-progress reader's last read: "answering:
-ready to Verify", a ZTP device's stage ("ZTP: fetched its config; not answering yet"), or
+has got to as its page does, from the onboarding-progress reader's last read: "reachable:
+ready to Verify", a ZTP device's stage ("ZTP: fetched its config; not reachable yet"), or
 "pending: not read yet", the stage's detail on hover and "read <age>" after it; a ZTP device's
 address says ZTP. The list draws itself again when that reader sees a pending device move.
 
@@ -20,14 +20,14 @@ address says ZTP. The list draws itself again when that reader sees a pending de
 A device an operation is working on reads as that operation in its status, amber and linked
 to the page whose card is the operation's: "Reloading · step 4 of 6 (wait) · back by ~01:12
 UTC", "Deploying · step 7 of 9 (verify)" (who started it is on hover). A device inside a
-planned-restart window that is not answering reads "Restarting as planned · back by ~…". A
+planned-restart window that is not reachable reads "Restarting as planned · back by ~…". A
 device the operation's preview said Mercury loses its path to (a Reload's **What else goes
 down**) reads "Unreachable as expected · edge1 reloading · back by ~…" while it does not answer;
-one that still answers is drawn as answering, since the prediction did not happen. "Back by" is
+one that still answers is drawn as reachable, since the prediction did not happen. "Back by" is
 the operation's own window for its device, and the window's end plus the settle time (19
 minutes) for a predicted one; inside that time Needs attention holds the same signals
 ([Restarting as planned](needs-attention#restarting-as-planned)). Past it, a device still down
-is red, naming what it outlasted: "Not answering · overdue after edge1's reload (back by 01:31
+is red, naming what it outlasted: "Not reachable · overdue after edge1's reload (back by 01:31
 UTC)". A device only being read (a capture, show commands) is drawn as it always is. The list
 redraws when a hold ends or a window is declared, and as an operation steps, at most once in 5
 s, so a batch over a large fleet does not redraw it for every device's every step.
@@ -208,8 +208,8 @@ seconds: a ZTP device's stage, and whether the device answers), and when anyone 
 verifies or abandons an onboarding; nothing on the page polls. Once a ZTP device has fetched
 its configuration (a static or DHCP device at once), the reader probes its address the way the
 online dot does, ICMP and then a TCP connection to port 22, sending nothing and trying no
-login: **Answering: ready to Verify** says it accepted, with which probe and when; **Not
-answering yet** says it did not. For ZTP the card states the stop rule, "no fetch 15 minutes
+login: **Reachable: ready to Verify** says it accepted, with which probe and when; **Not
+reachable yet** says it did not. For ZTP the card states the stop rule, "no fetch 15 minutes
 after boot: stop", and marks it in amber once 15 minutes have passed since the Create with no
 fetch of its own (the tool cannot see the boot, only the Create before it). The wait is also
 listed in the top bar's In progress chip ([What is running now](getting-started#in-progress)),

@@ -1312,9 +1312,10 @@ def run(network: str, *, now: float = None, starter=None, by: str = "heal to int
                                                  f"{exc}"])
     for d in pending:
         if d.get("batch"):
-            # G6: a decision of a batch a person approved is its batch job's to take, one
-            # device first and verified, then the rest (`heal.batch.run`); never started here
-            # all at once. One its job left untaken past the batch's bound (the job ended) is
+            # G6: a decision of a batch a person approved is its batch job's to take
+            # (`heal.batch.run`, every device at once, each waited for and recorded by the
+            # batch); never started here. One its job left untaken past the batch's bound (the
+            # job ended) is
             # refused with nothing sent, so it never waits for ever or heals later unwatched.
             from modules.heal import batch as B
             if now - float(d.get("epoch") or now) < B.UNTAKEN_S:

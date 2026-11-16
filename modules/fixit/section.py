@@ -427,7 +427,12 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     # here for `_contract`'s answer: never drawn as this incident's.
     out["_other_calls"] = {c["id"] for c in calls["calls"] if c.get("about_other")}
     proposals = {ln["proposal"]: ln for ln in rec["lines"] if "proposal" in ln}
-    drawn = [_attempt(a, proposals, usd) for a in tried["attempts"]]
+    # Each attempt's "Open the run" opens the run's home, its incident's card (the operator,
+    # 2026-11-16, one home; C3838), never the device page.
+    from modules import plan_engine as PE
+    drawn = [dict(_attempt(a, proposals, usd),
+                  page=PE.run_page(network, PE.INCIDENT_FIX, {"incident": inc.id}, a["run"]))
+             for a in tried["attempts"]]
     out.update(
         attempts=drawn[-SHOWN:], more=max(0, len(drawn) - SHOWN),
         incomplete=tried["error"] if tried["state"] != "ok" else "",
@@ -860,6 +865,14 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
         return "Saved config and intent disagree: decide which is right"
     if g == 6:
         return "Many devices changed at once: approve fixing them all"
+    standing = inc.get("standing") or {}
+    if standing.get("outcome") == "would_heal":
+        # A dry run's would-heal says what Mercury would put back and why it has not (the
+        # operator, 2026-11-16: "Would put back the description on Gi3 (self-healing was in
+        # dry run)"), from its decision's own units (`incident_page.waits_words`).
+        said = _standing_words(found)
+        if said:
+            return said
     if offer:
         return f"A saved script can fix this: {offer['name']}"
     kind = (nxt or {}).get("kind")
@@ -874,6 +887,9 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
             shown = a.get("shown") if isinstance(a.get("shown"), dict) else {}
             said = _first_sentence(a.get("words") or shown.get("rationale")
                                    or shown.get("diagnosis"), FINDING_CHARS)
+            # One lead (C3841: "The AI found: The AI named no fix: …" said it twice).
+            said = re.sub(r"^(?:the ai (?:named no fix|found|stopped[^:]*)\s*:\s*)+", "", said,
+                          flags=re.I).strip()
             if said:
                 return f"The AI found: {said}{'' if said.endswith('…') else '.'}"
         # What Mercury tried on THIS incident and that the AI can investigate, from its own
@@ -897,7 +913,24 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
                 else "No saved fix yet: the AI can investigate")
     if kind == "hand_over":
         return "No saved fix, and the AI found no safe plan"
-    return ""
+    # Standing on a decision with nothing above to say: the decision's own reason, never a
+    # reasonless "waits for a person" (the operator, 2026-11-16).
+    return _standing_words(found) if standing else ""
+
+
+def _standing_words(found: dict) -> str:
+    """Why the standing incident of *found* waits for a person, from its decision
+    (`incident_page.waits_words`, the one home of that reason), or ``""``."""
+    from modules import incident_page
+
+    try:
+        return incident_page.waits_words((found or {}).get("incident") or {},
+                                         (found or {}).get("entry") or {},
+                                         (found or {}).get("decisions") or [], "decided")
+    except Exception as exc:                          # noqa: BLE001 (said without it)
+        log.error("fixit: why %s waits could not be said: %s",
+                  ((found or {}).get("incident") or {}).get("id"), exc)
+        return ""
 
 
 def _held_of(found: dict) -> str:

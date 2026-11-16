@@ -324,6 +324,105 @@ def held_words(incident, now: float = None) -> str:
     return f"Held: {tail.rstrip('.')}{g}. Next automatic heal allowed at {when}."
 
 
+#: The most characters of a configuration line a reason quotes (masked), cut at a word.
+REASON_LINE_CHARS = 80
+
+
+def _where(section: str, lines: list) -> str:
+    """Where a unit's lines sit, plainly: an interface's name, a section's own line, or "the
+    global configuration" (a unit with no section of its own)."""
+    s = str(section or "").strip()
+    if not s or s in lines:
+        return "the global configuration"
+    return s[len("interface "):] if s.lower().startswith("interface ") else s
+
+
+def _quoted(line: str) -> str:
+    line = " ".join(str(line or "").split())
+    if len(line) > REASON_LINE_CHARS:
+        line = line[:REASON_LINE_CHARS].rsplit(" ", 1)[0] + "…"
+    return f"“{line}”"
+
+
+def put_back_words(units: list) -> str:
+    """What a heal decision would send, from its own units (masked, as the record keeps them,
+    `kinds.masked_unit`), in one line: "put back “description Uplink” on GigabitEthernet3",
+    "remove “ip route …” from the global configuration", "set back GigabitEthernet3", with
+    "and N more" for the other units; ``""`` with none."""
+    units = [u for u in units or [] if isinstance(u, dict)]
+    if not units:
+        return ""
+    u = units[0]
+    add, rem = list(u.get("add") or []), list(u.get("remove") or [])
+    where = _where(u.get("section"), add + rem)
+    op = u.get("op") or ("add" if add and not rem else "remove" if rem and not add else
+                         "change")
+    if op == "add" and add:
+        said = f"put back {_quoted(add[0])} on {where}"
+    elif op == "remove" and rem:
+        said = f"remove {_quoted(rem[0])} from {where}"
+    else:
+        said = f"set back {where}" + (f" to {_quoted(add[0])}" if add else "")
+    more = len(add) + len(rem) - 1 + sum(len(x.get("add") or []) + len(x.get("remove") or [])
+                                         for x in units[1:])
+    return said + (f", and {more} more line{'' if more == 1 else 's'}" if more > 0 else "")
+
+
+def _first(text: str) -> str:
+    text = " ".join(str(text or "").split())
+    return text.split(". ")[0].rstrip(".") if text else ""
+
+
+def waits_words(incident, entry: dict, decisions: list, why: str) -> str:
+    """Why an incident waits for a person, in plain words (the operator, 2026-11-16: "every
+    'waits for a person', and every dry-run 'would heal', states its reason in plain words;
+    never a reasonless line"), for *why* ``decided`` or ``verify_failed`` (`status`), or ``""``:
+    - a would-heal: "Would put back “<line>” on <interface> (self-healing was in dry run)"
+      from its decision's own units (`put_back_words`), or "(self-healing in Auto does not fix
+      <kind> by itself)" for one decided in Auto;
+    - a hold: the guard and what it read, from the decision's guard;
+    - a can't-fix or a halt: the decision's own first sentence;
+    - a failed put-back (*why* ``verify_failed``): what it tried and what failed, from the
+      act's own words."""
+    inc = incident or {}
+    if why == "verify_failed":
+        ran = acts(entry or {})
+        last = ran[-1] if ran else {}
+        tried = next((d for d in reversed(decisions or [])
+                      if d.get("id") == last.get("decision")), {})
+        what = put_back_words(tried.get("units") or [])
+        failed = _first(last.get("words"))
+        if not (what or failed):
+            return ""
+        return ((f"Tried to {what}" if what else "Its fix ran")
+                + (f", and it failed: {failed}" if failed else ", and its verify did not pass"))
+    if why != "decided":
+        return ""
+    s = inc.get("standing") or {}
+    d = next((x for x in reversed(decisions or []) if s.get("decision")
+              and x.get("id") == s.get("decision")), None)
+    if d is None:
+        d = (decisions or [{}])[-1] if decisions else {}
+    outcome = s.get("outcome") or d.get("outcome") or ""
+    if outcome == "would_heal":
+        what = put_back_words(d.get("units") or [])
+        mode = s.get("mode") or d.get("mode") or ""
+        from modules.heal.kinds import KIND_WORDS
+        how = ("self-healing was in dry run" if mode != "auto" else
+               f"self-healing in Auto does not fix "
+               f"{KIND_WORDS.get(d.get('kind'), d.get('kind') or 'this kind')} by itself")
+        return (f"Would {what} ({how})" if what else
+                f"Would put back what changed on {inc.get('device') or 'the device'} ({how})")
+    if outcome == "held":
+        g = d.get("guard") if isinstance(d.get("guard"), dict) else {}
+        words = _first(g.get("words") or d.get("outcome_words") or d.get("words"))
+        n = g.get("guard") or s.get("guard")
+        return (f"Held{f' by guard {n}' if n else ''}: {words}" if words else "")
+    if outcome in ("cant_fix", "halted"):
+        return _first(d.get("outcome_words") or d.get("words") or s.get("words"))
+    return _first(s.get("words") or d.get("outcome_words") or d.get("words"))
+
+
 #: The closed list's groups for a close on a verified run (`fixed_how`), the operator's labels.
 FIXED_GROUPS = {"ai": ("fixed_ai", "Fixed by AI"),
                 "script": ("fixed_script", "Fixed by Mercury: saved script")}
@@ -472,8 +571,16 @@ def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
         state, why = "needs_person", "lost_stream"
     else:
         state, why = "open", "watching"
+    # The reason in plain words for a decided or failed one (`waits_words`): every part that
+    # says it waits for a person says why from this one answer.
+    try:
+        reason = waits_words(incident, entry, decisions, why)
+    except Exception as exc:                          # noqa: BLE001 (said without it)
+        log.error("incident page: why %s waits could not be said: %s",
+                  (incident or {}).get("id"), exc)
+        reason = ""
     return {"state": state, "words": STATE_WORDS[state], "needs": state == "needs_person",
-            "why": why}
+            "why": why, "reason": reason}
 
 
 # ── The timeline ───────────────────────────────────────────────────────────────────────────
@@ -994,12 +1101,16 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
                          "approves it.", "more": "", "links": ["device"]}
     words = {
         # Its item's own words say what failed and what to do about it; with no item, here.
-        "verify_failed": ("It needs a person." if item["state"] == "stands" else
-                          "It needs a person. Read the stage that failed under What Mercury "
-                          f"has done, then {device} itself."),
+        "verify_failed": ((f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
+                           if st.get("reason") else "It needs a person.")
+                          + ("" if item["state"] == "stands" else
+                             " Read the stage that failed under What Mercury has done, then "
+                             f"{device} itself.")),
         "proposal": "It needs a person: a fix waits for a person's decision. Nothing is sent "
                     "until it is approved.",
-        "decided": "It needs a person.",
+        # Its reason in plain words (`waits_words`), never a reasonless line.
+        "decided": (f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
+                    if st.get("reason") else "It needs a person."),
         "lost_stream": f"It needs a person: the fix changes {device}'s configuration, so a "
                        f"person approves it. Until one does, {device}'s telemetry stays lost.",
         # The next step is the page's top line, never Cancel or Retry with more information

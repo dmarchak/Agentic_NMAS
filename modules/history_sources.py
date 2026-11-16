@@ -408,8 +408,12 @@ def ai_call(call_id: str) -> dict:
     meta = [("Most tokens out", body.get("max_tokens")),
             ("Thinking", (r.get("thinking") or "the model's default") if body else ""),
             ("Stopped", STOP_WORDS.get(stop, stop))]
+    # What Copy gives for Sent (C3839): every part in the order it left the host, each under
+    # its name, the same masked text the parts draw.
+    sent_text = "\n\n".join(f"── {p['name']} ──\n{p['text']}" for p in sent)
     return {"ok": True, "error": "", "meta": [(k, v) for k, v in meta if v not in (None, "")],
-            "sent": sent, "received": received, "raw": raw, "received_names": names(received),
+            "sent": sent, "sent_text": sent_text,
+            "received": received, "raw": raw, "received_names": names(received),
             "not_sent": not body, "verdict": r.get("verdict") or "", "id": call_id}
 
 
@@ -3000,7 +3004,7 @@ CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in
                     "create_failed": "Create failed: undone",
                     "refused_line": "a line was refused: undone",
                     "read_back": "read-back differs: undone", "copy_failed": "copy failed: undone",
-                    "not_answering": "copied, not answering", "busy": "held by another operation"}
+                    "not_answering": "copied, not reachable", "busy": "held by another operation"}
 
 
 def console_ztp(ctx):

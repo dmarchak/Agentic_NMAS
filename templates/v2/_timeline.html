@@ -138,7 +138,7 @@
           {#- What an AI call's answer produced (15.14's links both ways): its last use row's page and anchor. -#}
           {%- if e.produced %}<a href="{{ e.produced }}">Open what it produced</a>{% endif %}
           {#- An AI call's prompt as sent and answer as received (15.14), drawn when opened, as a commit's change is. -#}
-          {%- if e.call %}<span id="ai-{{ e.call }}" class="tl-window"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_ai_call', call_id=e.call) }}" hx-target="#ai-{{ e.call }}" hx-swap="innerHTML">Show the prompt and the answer</button></span>{% endif %}
+          {%- if e.call %}<span id="ai-{{ e.call }}" class="tl-window"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_ai_call', call_id=e.call) }}" hx-target="#ai-{{ e.call }}" hx-swap="innerHTML" hx-disabled-elt="this"><span class="op-idle">Show the prompt and the answer</span><span class="op-busy working-now">Loading…</span></button></span>{% endif %}
           {#- Each window's id is its row's (15.14 part B): unique across the pages Load more appends. -#}
           {%- if e.sha %}<span id="diff-{{ e.id }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=e.sha) }}" hx-target="#diff-{{ e.id }}" hx-swap="innerHTML">Show the change</button></span>{% endif %}
           {#- One device's golden version, revealed in place to a person and recorded (2026-10-10). -#}

@@ -138,7 +138,7 @@
       <dt>Address</dt><dd class="mono">{{ r.address }} {{ r.mask }} on {{ r.interface }}, default gateway {{ r.gateway }}</dd>
       <dt>MAC in use</dt><dd class="mono">{{ r.mac or 'not read' }}{% if r.mac_record_error %} <span class="badge badge-warn">not recorded: {{ r.mac_record_error }}</span>{% endif %}</dd>
       {%- if r['copy'] %}<dt>Copy</dt><dd class="mono">{{ r['copy'].why }}</dd>{% endif %}
-      {%- if r.answering %}<dt>Answering</dt><dd>{{ r.answering.claim }} ({{ r.answering.tries }} tr{{ 'y' if r.answering.tries == 1 else 'ies' }})</dd>{% endif %}
+      {%- if r.answering %}<dt>Reachable</dt><dd>{{ r.answering.claim }} ({{ r.answering.tries }} tr{{ 'y' if r.answering.tries == 1 else 'ies' }})</dd>{% endif %}
       <dt>Bytes written</dt><dd class="mono">{{ r.bytes_written or 0 }}</dd>
     </dl>
     {%- if r.sent %}<details data-keep="oob-sent"><summary>What was sent (masked)</summary><pre class="ask-pre">{{ r.sent | replace('\r', '⏎\n') }}</pre></details>{% endif %}

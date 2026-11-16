@@ -10,8 +10,10 @@ Never the API key, and nothing unmasked. History draws each row; the caps sum it
 """
 import datetime
 import functools
+import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -155,10 +157,13 @@ def record(entry: dict) -> dict:
     try:
         from modules import records_migrate
         with _lock:
-            records_migrate.store_append(STORE, _path(), row)
+            at = records_migrate.store_append(STORE, _path(), row)
         recorded = True
     except Exception as exc:                  # noqa: BLE001
         log.error("ai_calls: COULD NOT RECORD the call %s (%s)", row.get("id"), exc)
+    else:
+        if at and row.get("id") and "use_of" not in row:
+            _index_add(str(row["id"]), *at)
     return dict(row, recorded=recorded)
 
 
@@ -208,14 +213,199 @@ def uses() -> dict:
     return out
 
 
-def find(call_id: str) -> dict:
-    """``{"state", "row", "uses", "error"}``: one call by its id, and what became of it."""
+# ── C3839: where each call's row starts, so `find` is one seek ─────────────────────────────
+#
+# `find` read the whole record for one id: 471 MB on the host, 8.00 s for one History "Show
+# the prompt and the answer" (2026-11-16). A second file beside the record, `ai_calls.offsets`,
+# holds one line per call, ``<id> <offset> <length>``, appended as the call is recorded: the
+# offset is read under the record's own cross-process lock (`records_migrate.store_append`),
+# so it is where the row starts; the index line is one O_APPEND write of under 100 bytes, so
+# writers in several processes never interleave one. Lines ``# built <dev> <ino> <end>`` say
+# the record's bytes before *end* have all been indexed (the record's identity beside it).
+#
+# What was recorded before the index existed, or by a process that did not write it, is
+# indexed by `_catch_up`, from the last built end to the record's end, under the index's own
+# cross-process lock (`PathLock`), once: a second process waiting on it reads the new end and
+# scans nothing. Only the bytes past the last build are ever scanned again, so the first ask
+# after the deploy pays the one scan (said in the log, with its bytes and time) and no other.
+#
+# Nothing in the index is trusted: every row it points at is read and parsed, and returned
+# only when its id is the one asked and it is a call, not a use row. An entry that does not
+# hold (the record rewritten, a torn line) is passed over, and an id every entry of which
+# failed is read the old way, the whole record (`_find_scan`), never answered as absent.
+
+#: A call's id as `new_id` makes it, the shape the catch-up indexes (a nested id too: each
+#: entry is checked on use, so one that is no call's row is passed over).
+_ID_IN_LINE = re.compile(rb'"id": "(ai-[0-9a-f]{16})"')
+#: The block the catch-up reads the record in.
+_SCAN_BLOCK = 8 * 1024 * 1024
+
+_index = {"ident": None, "end": 0, "map": {}, "built": None}
+_index_lock = threading.Lock()
+
+
+def _index_path() -> str:
+    from modules.config import DATA_DIR
+    return os.path.join(DATA_DIR, "ai_calls.offsets")
+
+
+def _index_write(text: str) -> None:
+    """Append *text* (whole lines) to the index in one write, owner-only."""
+    from modules.config import open_secure
+    with open_secure(_index_path(), "ab") as fh:
+        fh.write(text.encode("ascii"))
+
+
+def _index_add(call_id: str, offset: int, length: int) -> None:
+    """Note where the call *call_id*'s row is. Never raises: a call the index misses is found
+    by the catch-up, so a failed write costs one later scan of the bytes past it, logged."""
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", call_id):
+        return
+    try:
+        _index_write(f"{call_id} {int(offset)} {int(length)}\n")
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("ai_calls: the offsets index missed %s (%s); the catch-up finds it",
+                    call_id, exc)
+
+
+def _index_refresh() -> dict:
+    """The index as this process holds it, after reading the lines appended since (the whole
+    file again when it is another file or shorter). Called under `_index_lock`."""
+    path = _index_path()
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        _index.update(ident=None, end=0, map={}, built=None)
+        return _index
+    ident = (st.st_dev, st.st_ino)
+    if _index["ident"] != ident or st.st_size < _index["end"]:
+        _index.update(ident=ident, end=0, map={}, built=None)
+    if st.st_size > _index["end"]:
+        with open(path, "rb") as fh:
+            fh.seek(_index["end"])
+            added = fh.read(st.st_size - _index["end"])
+        whole = added.rfind(b"\n") + 1
+        for raw in added[:whole].split(b"\n"):
+            parts = raw.decode("ascii", "replace").split()
+            if len(parts) == 5 and parts[:2] == ["#", "built"]:
+                try:
+                    _index["built"] = (int(parts[2]), int(parts[3]), int(parts[4]))
+                except ValueError:
+                    pass
+            elif len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+                _index["map"].setdefault(parts[0], []).append((int(parts[1]), int(parts[2])))
+        _index["end"] += whole
+    return _index
+
+
+def _candidates(call_id: str) -> list:
+    """Where the index says *call_id*'s row may be, the newest entry first."""
+    with _index_lock:
+        return list(reversed(_index_refresh()["map"].get(call_id) or []))
+
+
+def _row_at(path: str, call_id: str, spots: list):
+    """The call *call_id*'s row at the first of *spots* that holds it, or None."""
+    try:
+        with open(path, "rb") as fh:
+            for offset, length in spots:
+                fh.seek(offset)
+                raw = fh.read(length)
+                try:
+                    row = json.loads(raw.decode("utf-8"))
+                except ValueError:
+                    continue
+                if isinstance(row, dict) and row.get("id") == call_id and "use_of" not in row:
+                    return row
+    except OSError as exc:
+        log.warning("ai_calls: could not read a call's row at its offset (%s)", exc)
+    return None
+
+
+def _catch_up(path: str) -> None:
+    """Index the record's bytes from the last built end to its end, once across processes."""
+    from modules.filestore import PathLock
+
+    with PathLock(_index_path()):
+        st = os.stat(path)
+        with _index_lock:
+            built = _index_refresh()["built"]
+        start = built[2] if built and built[:2] == (st.st_dev, st.st_ino) \
+            and built[2] <= st.st_size else 0
+        if start >= st.st_size:
+            return
+        t, lines, pos, out = time.monotonic(), 0, start, []
+        with open(path, "rb") as fh:
+            fh.seek(start)
+            rest = b""
+            while pos + len(rest) < st.st_size:
+                chunk = fh.read(min(_SCAN_BLOCK, st.st_size - pos - len(rest)))
+                if not chunk:
+                    break
+                buf = rest + chunk
+                at = 0
+                while True:
+                    nl = buf.find(b"\n", at)
+                    if nl < 0:
+                        break
+                    line = buf[at:nl]
+                    for found in dict.fromkeys(_ID_IN_LINE.findall(line)):
+                        out.append(f"{found.decode('ascii')} {pos + at} {nl + 1 - at}\n")
+                    lines += 1
+                    at = nl + 1
+                pos += at
+                rest = buf[at:]
+        # A last line still being written is left for the next catch-up: `pos` ends at the
+        # last whole line.
+        out.append(f"# built {st.st_dev} {st.st_ino} {pos}\n")
+        _index_write("".join(out))
+        log.info("ai_calls: indexed %d lines (%d bytes from %d) in %.1f s", lines,
+                 pos - start, start, time.monotonic() - t)
+
+
+def _find_scan(call_id: str) -> dict:
+    """The old read: the whole record for one id (the index's last resort)."""
     got = _all()
     if got["state"] == "unreadable":
         return {"state": "unreadable", "row": None, "uses": [], "error": got["error"]}
     row = next((r for r in got["rows"] if r.get("id") == call_id and "use_of" not in r), None)
     return {"state": "ok" if row else "absent", "row": row, "error": "",
             "uses": [r for r in got["rows"] if r.get("use_of") == call_id]}
+
+
+def _uses_of(call_id: str) -> list:
+    """What became of the call, oldest first, from the rows this process keeps (`kept_all`,
+    which drops only the request a use row never has)."""
+    return [r for r in kept_all().get("rows") or [] if r.get("use_of") == call_id]
+
+
+def find(call_id: str) -> dict:
+    """``{"state", "row", "uses", "error"}``: one call by its id, and what became of it. On
+    the file, one seek through the offsets index (the section above); on the records
+    database, its read."""
+    from modules import records_db
+
+    if records_db.backend(STORE) == records_db.POSTGRES:
+        return _find_scan(call_id)
+    path = _path()
+    if not os.path.exists(path):
+        return {"state": "absent", "row": None, "uses": [], "error": ""}
+    spots = _candidates(call_id)
+    row = _row_at(path, call_id, spots) if spots else None
+    if row is None:
+        try:
+            _catch_up(path)
+        except Exception as exc:              # noqa: BLE001 (the scan answers instead)
+            log.warning("ai_calls: the offsets index could not catch up (%s)", exc)
+            return _find_scan(call_id)
+        again = _candidates(call_id)
+        row = _row_at(path, call_id, again) if again else None
+        if row is None and (again or not re.fullmatch(r"ai-[0-9a-f]{16}", call_id or "")):
+            # Entries that do not hold, or an id the catch-up does not index: the whole record.
+            return _find_scan(call_id)
+    if row is None:
+        return {"state": "absent", "row": None, "uses": [], "error": ""}
+    return {"state": "ok", "row": row, "error": "", "uses": _uses_of(call_id)}
 
 
 def cache_summary(day: str, feature: str = None) -> dict:
@@ -306,11 +496,18 @@ def warm() -> None:
     """Read the record once into the kept rows (`kept_all`), so a page's first read after a
     start is not the cold parse (10 s on the host, 2026-10-29). Started by the app's own
     start-up on a background task, never on import; a failure is logged and the first read
-    pays it instead."""
+    pays it instead. The offsets index catches up here too (C3839), so the first "Show the
+    prompt and the answer" after a deploy is one seek, not the one scan."""
     t = time.monotonic()
     got = kept_all()
     log.info("ai_calls: kept %d rows in %.1f s (%s)", len(got.get("rows") or []),
              time.monotonic() - t, got.get("state"))
+    try:
+        from modules import records_db
+        if records_db.backend(STORE) != records_db.POSTGRES and os.path.exists(_path()):
+            _catch_up(_path())
+    except Exception as exc:                  # noqa: BLE001 (the first find catches up instead)
+        log.warning("ai_calls: the offsets index could not catch up at start (%s)", exc)
 
 
 def day_rows(day: str, zone: str = None) -> dict:

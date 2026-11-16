@@ -79,7 +79,7 @@ Where the credential travels: over TFTP, which is cleartext, on the ZTP segment,
 
 Timing, measured on IOS-XE 17.6: the fetch is a few blocks and takes seconds; AutoInstall retries roughly every 8 seconds and gives up after about 2.5 minutes and nine unanswered requests, after which the device needs a reload to ask again. So a responder that is down or refusing during that window fails the onboarding rather than delaying it.
 
-Mercury's onboarding-progress reader reads each stage below again every 10 seconds and the pending page draws itself again when one moves. After `fetched_not_reached` it probes the reserved address (ICMP, then a TCP connection to port 22; nothing sent, no login), and the page says **Answering: ready to Verify** once the device accepts. The stop rule is the operator's: no fetch 15 minutes after boot: stop; the page marks it 15 minutes after the Create with no fetch of its own.
+Mercury's onboarding-progress reader reads each stage below again every 10 seconds and the pending page draws itself again when one moves. After `fetched_not_reached` it probes the reserved address (ICMP, then a TCP connection to port 22; nothing sent, no login), and the page says **Reachable: ready to Verify** once the device accepts. The stop rule is the operator's: no fetch 15 minutes after boot: stop; the page marks it 15 minutes after the Create with no fetch of its own.
 
 How to tell where it is: the device's pending page shows its ZTP stage, each from its own source (Kea's running configuration, Kea's lease table, the responder's reveal rows):
 

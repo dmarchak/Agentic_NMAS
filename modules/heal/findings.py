@@ -11,6 +11,9 @@ when the network's ``heal_fight_stop`` is on.
   verified, then the same problem back within ``heal_fight_minutes``, ``heal_fight_count``
   times or more within ``heal_recurrence_hours``: Needs attention's ``heal``/``fight`` row and
   one ``heal_fight`` notice per fight (`notify_fights`).
+
+An incident tagged a declared fault drill or drill exercise (`fault_drills.tag_of`, taken at
+its creation) counts toward neither (`real`, C3842): its fault was injected on purpose.
 """
 
 import calendar
@@ -55,12 +58,23 @@ def problem_key(inc: dict) -> tuple:
     return (p.device, p.object, p.condition, p.cause) if p.condition else ()
 
 
+def real(incidents: list) -> list:
+    """*incidents* less those tagged a declared fault drill or drill exercise at their creation
+    (`fault_drills.tag_of`, C3842): a fault injected on purpose counts toward no recurrence or
+    fight, as the guards' drill exemption already counts its heals apart
+    (`guards.GUARDS_A_DRILL_PASSES`)."""
+    from modules import fault_drills
+
+    return [i for i in incidents or [] if isinstance(i, dict) and not fault_drills.tag_of(i)]
+
+
 def recurrences(incidents: list, now: float, count: int, hours: float) -> list:
     """Each problem opened *count* times or more since *hours* ago: ``{"key", "incidents",
-    "since"}``, its incidents oldest first."""
+    "since"}``, its incidents oldest first. A drill's or an exercise's incident is not counted
+    (`real`)."""
     since = now - float(hours) * 3600
     by = {}
-    for inc in incidents or []:
+    for inc in real(incidents):
         at = started(inc)
         key = problem_key(inc) if at >= since else ()
         if key:
@@ -95,7 +109,9 @@ def fights(incidents: list, decisions: list, now: float, count: int, minutes: fl
     problem back within *minutes* of it): ``{"device", "object", "operation", "what",
     "times", "fixes", "back"}``, *back* the incidents it came back in, oldest first."""
     since, within = now - float(hours) * 3600, float(minutes) * 60
-    keyed = [(started(i), problem_key(i), i) for i in incidents or []]
+    # C3842: a drill's or an exercise's incident is neither a fix nor a coming back (`real`).
+    incidents = real(incidents)
+    keyed = [(started(i), problem_key(i), i) for i in incidents]
     by = {}
     for at, device, op, inc in _fixes(incidents, decisions):
         key = problem_key(inc)

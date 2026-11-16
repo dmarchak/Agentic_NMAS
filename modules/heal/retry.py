@@ -13,6 +13,16 @@ its cause still standing) whose newest decision is
   guard no longer holds (`decide.guard_holds`: guard 4 and guard 6 as the decision judges them;
   the others hold nothing since 2026-11-16). One still holding is recorded as not tried, under
   the trigger's key, so it is not asked again for that trigger.
+- C3844 (the operator, 2026-11-16: "a grace that ends with no answer puts the line back (in
+  Auto) or shows 'Would put back: <line>' (in Dry run)"): a dry-run "would heal" (decided while
+  self-healing was not in Auto: its decision's ``mode``) once self-healing is in Auto. Its fix
+  did not fail; it was withheld by the mode, which no longer withholds it, so it is decided
+  again in Auto. Besides the switch-on's own retry, the detect pass asks for it on every pass
+  (``now_auto``, `now_auto`, keyed by the Auto confirmation's instant), so it heals with no
+  press whichever path turned Auto on, once per confirmation. A would-heal decided in Auto (a
+  kind Auto does not fix) is not in it: deciding it again changes nothing.
+An incident a batch claimed (`heal.batch.claimed_by_batch`: its restore is the batch's, marked
+under the incidents store's lock before the batch turned Auto on) is left to that batch.
 A heal whose act failed closes its incident (`act.py`, `incidents.close`), so no open incident
 stands on one: the act's failure starts the AI by its own key (`fixit.auto.failures`). An
 incident a saved script is firing on now (a ``firing`` track row, the batch's claim included)
@@ -49,7 +59,7 @@ import uuid
 log = logging.getLogger(__name__)
 
 #: The triggers, and how each is said.
-TRIGGERS = ("switched_on", "script_saved", "daily")
+TRIGGERS = ("switched_on", "script_saved", "daily", "now_auto")
 #: A daily retry waits this long after the incident's last retry (or its standing decision).
 DAY_S = 86400.0
 #: How many retries an incident keeps, newest last.
@@ -80,6 +90,8 @@ def trigger_words(trigger: str, script_name: str = "", how: str = "saved") -> st
     if trigger == "script_saved":
         return (f"script {script_name} promoted to Auto" if how == "promoted"
                 else f"a new script {script_name} saved")
+    if trigger == "now_auto":
+        return "self-healing is in Auto now, and this was decided in dry run"
     return "the daily retry"
 
 
@@ -115,10 +127,33 @@ def due_daily(inc: dict, now: float) -> bool:
     return now - _last_epoch(inc) >= DAY_S
 
 
-def _in_population(network: str, inc: dict, now: float) -> tuple:
+def _dry_run_decisions(network: str, incs: list) -> set:
+    """The ids of the decisions a standing would-heal of *incs* stands on that were decided
+    while self-healing was not in Auto (the decision's own ``mode``): one read of the
+    decisions, only when such an incident stands. Unreadable: none (logged), so nothing is
+    sent back on a guess."""
+    want = {(i.get("standing") or {}).get("decision") for i in incs
+            if i.get("state") == "standing"
+            and (i.get("standing") or {}).get("outcome") == "would_heal"}
+    want.discard(None)
+    if not want:
+        return set()
+    from modules.heal import decisions
+
+    try:
+        rows = decisions.decisions(network)
+    except Exception as exc:                          # noqa: BLE001 (none; logged)
+        log.error("heal: %s's decisions could not be read for the would-heals: %s", network,
+                  exc)
+        return set()
+    return {d["id"] for d in rows if d.get("id") in want and d.get("mode") != "auto"}
+
+
+def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tuple:
     """``(kind, hold)``: *kind* ``decide`` (sent back for a fresh decision) or ``skip`` (held,
     its guard still holding: *hold* the guard's hit), or ``("", None)`` when *inc* is not an
-    incident whose fixes failed (the module's docstring)."""
+    incident whose fixes failed or a dry-run would-heal (*dry*, `_dry_run_decisions`; the
+    module's docstring)."""
     from modules.fixit.auto import HELD_FOR_A_PERSON
     from modules.heal import decide
 
@@ -127,6 +162,8 @@ def _in_population(network: str, inc: dict, now: float) -> tuple:
     s = inc.get("standing") or {}
     if s.get("outcome") == "cant_fix":
         return "decide", None
+    if s.get("outcome") == "would_heal":
+        return ("decide", None) if s.get("decision") in dry else ("", None)
     if s.get("outcome") == "held" and _guard_of(s) in HELD_FOR_A_PERSON:
         try:
             g = decide.guard_holds(network, inc, _guard_of(s), now=now)
@@ -175,14 +212,18 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
     if got["state"] == "unreadable":
         return dict(out, words=got["error"])
     plans, skip = {}, set(skip or ())
+    from modules.heal import batch as B
+    dry = _dry_run_decisions(network, got["incidents"])
     for inc in got["incidents"]:
-        if inc.get("id") in skip:
+        if inc.get("id") in skip or B.claimed_by_batch(inc, now):
             continue
         if trigger == "daily" and not due_daily(inc, now):
             continue
         if any(r.get("key") == key for r in inc.get("retries") or []):
             continue
-        kind, hold = _in_population(network, inc, now)
+        kind, hold = _in_population(network, inc, now, dry)
+        if trigger == "now_auto" and (inc.get("standing") or {}).get("outcome") != "would_heal":
+            continue                                  # the catch-up is the would-heals' alone
         if not kind or _firing(network, inc["id"]):
             continue
         if trigger == "script_saved":
@@ -204,6 +245,7 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
             s = inc.get("standing") or {}
             if (not plan or inc.get("state") != "standing"
                     or (s.get("decision") or "") != plan["decision"]
+                    or B.claimed_by_batch(inc, now)
                     or any(r.get("key") == key for r in inc.get("retries") or [])
                     or (trigger == "daily" and not due_daily(inc, now))):
                 continue                              # moved since it was read, or taken
@@ -288,6 +330,34 @@ def daily(network: str, now: float = None) -> dict:
         return {"ran": False, "network": network, "trigger": "daily", "words": "none due"}
     return run(network, "daily", instance=time.strftime("%Y-%m-%d", time.gmtime(now)),
                by="Mercury", now=now)
+
+
+def now_auto(network: str, now: float = None) -> dict:
+    """C3844's catch-up, asked on every detect pass (`detect._retry_step`): while *network* is
+    in Auto, each standing would-heal decided in dry run is decided again once (`run` with
+    ``now_auto``), keyed by the Auto confirmation's instant (``now_auto:<at>``, recorded on the
+    incident under the incidents store's lock, so another worker's pass or a restart never
+    takes it twice for that confirmation); otherwise one read of the policy and the incidents
+    store and nothing else."""
+    from modules.heal import incidents, policy
+
+    now = time.time() if now is None else float(now)
+    mode = policy.current(network, now)
+    if mode.get("mode") != "auto":
+        return {"ran": False, "network": network, "trigger": "now_auto", "words": "not in Auto"}
+    at = str((mode.get("confirmed") or {}).get("at") or mode.get("fingerprint") or "")
+    key = f"now_auto:{at}"
+    got = incidents.read(network)
+    if got["state"] != "ok" or not any(
+            i.get("state") == "standing"
+            and (i.get("standing") or {}).get("outcome") == "would_heal"
+            # Its mode where the standing record carries it (since C3844); else the
+            # decisions are read in `run`.
+            and (i.get("standing") or {}).get("mode") != "auto"
+            and not any(r.get("key") == key for r in i.get("retries") or [])
+            for i in got["incidents"]):
+        return {"ran": False, "network": network, "trigger": "now_auto", "words": "none"}
+    return run(network, "now_auto", instance=at, by="Mercury", now=now)
 
 
 def _fix_state(outcome: str) -> str:
