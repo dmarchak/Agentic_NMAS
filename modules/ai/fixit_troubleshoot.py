@@ -86,6 +86,7 @@ default: then pass 1 is the plain pass, "reads not asked"). Each read is in the 
 
 import json
 import logging
+import time
 from enum import Enum
 from typing import Optional
 
@@ -137,9 +138,21 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: traceroute), and, when it is clean, reset one end, least disruptive first, by the ladder
 #: section's first untried rung (`modules/fixit/ladder.py`). v11 to v13 stay readable, never
 #: asked; the answers' schemas are theirs, unchanged.
-PROMPT_PLAN = (FEATURE, 16)
-PROMPT_PLAN_READS = (FEATURE, 14)
-PROMPT_AGAIN = (FEATURE, 15)
+#: v17 (the operator, 2026-11-16: "The tighter answer shortens only the rationale fields; the
+#: exact commands, citations and evidence stay whole. The prompt is a new numbered version"):
+#: v14 to v16 as ONE prompt and ONE schema for every pass (the first, a later one, the last and
+#: the plain one), so the system prefix and the schema are the same bytes call to call and the
+#: provider's cache one call writes is read by the next (`read_loop.LoopFeature.one_shape`: the
+#: pass is said in the data, `read_loop.PASS_PART`); its rationale fields bounded in length
+#: (the rationale at most 300 characters, each hypothesis's claim, step's why, read's why and
+#: hypothesis, gap's what, improvement's what and saves and why_not at most 160), every
+#: command, citation and evidence field whole. The bounds are ASKED in the prompt, never
+#: enforced: the schema has no maxLength (deliberate: an over-long answer must not fail the
+#: schema and lose the investigation). v14 to v16 stay readable, never asked.
+PROMPT_INVESTIGATE = (FEATURE, 17)
+PROMPT_PLAN = PROMPT_INVESTIGATE
+PROMPT_PLAN_READS = PROMPT_INVESTIGATE
+PROMPT_AGAIN = PROMPT_INVESTIGATE
 #: The investigation's bounds (C3797; the operator: "the incident's cost cap, plus a declared
 #: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): at most
 #: `ROUNDS` rounds of reads, `MAX_READS` reads in all (three a pass, the family's limit), and
@@ -410,6 +423,13 @@ class TroubleshootInvestigatedV16(TroubleshootInvestigated):
     """v13's last pass, asked by v16's prompt."""
 
 
+#: v17 (2026-11-16): every pass's one schema, v14's answer (with reads: a last or plain pass's
+#: reads are never run), asked by v17's prompt.
+@register(FEATURE, 17)
+class TroubleshootInvestigateV17(TroubleshootInvestigate):
+    """The investigation's one answer for every pass, asked by v17's prompt."""
+
+
 #: How a call that was sent and got no answer begins its line (the operator, 2026-11-15: a
 #: refused request was drawn as "the AI named no fix"): `fixit.section` reads it as a failure,
 #: never as an answer.
@@ -464,7 +484,8 @@ SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
              8: TroubleshootPlanReads, 9: TroubleshootPlanFlat, 10: TroubleshootPlanReadsFlat,
              11: TroubleshootInvestigate, 12: TroubleshootInvestigateAgain,
              13: TroubleshootInvestigated, 14: TroubleshootInvestigateV14,
-             15: TroubleshootInvestigateAgainV15, 16: TroubleshootInvestigatedV16}
+             15: TroubleshootInvestigateAgainV15, 16: TroubleshootInvestigatedV16,
+             17: TroubleshootInvestigateV17}
 
 
 class Refused(ValueError):
@@ -929,10 +950,13 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
            # Only the steps this incident's device can take (`payload.catalogue_part`).
            "catalogue": json.dumps(payload.catalogue_part(incident, problem_condition(found)),
                                    sort_keys=True, ensure_ascii=False, separators=(",", ":"))}
+    # The topology's format in every request (v17): fixed text, so the cached prefix is the same
+    # bytes whether this incident's topology is sent or not; the network's summary is the
+    # incident's own (`gateway.PER_REQUEST_CONTEXT`), after it.
+    from modules import network_model as NM
+    ctx["topology_format"] = NM.FORMAT
     if topo.get("sent"):
-        from modules import network_model as NM
         ctx["network"] = topo["summary"]
-        ctx["topology_format"] = NM.FORMAT
     said = {"sent": topo.get("sent"), "why": topo.get("why"), "devices": sorted(
         topo.get("reached") or ())}
     prep = {"pack": pack, "topo": topo, "sections": sections, "checked_sections": checked,
@@ -966,8 +990,9 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
 # topology is left out (the investigation reads only the incident's device, C3685), then the
 # pack's largest trimmable sections are cut to half their pieces, each cut said in the section.
 
-#: What pass 2 may add to pass 1 at most (`reads_reserve_chars`, measured at import); pass 2
-#: sends no read set (`loop_feature`'s ``first_only``).
+#: Three reads at their largest with the reads' format (`reads_reserve_chars`, measured at
+#: import); with v17's one shape every pass sends the read set and the format, so what a later
+#: pass adds to pass 1 is `READS_ADDED_CHARS`.
 def reads_reserve_chars() -> int:
     """What pass 2 may add to pass 1 at most, in the request's characters, MEASURED by building
     it (the review of the fit, 2026-11-14: a fixed 600 a read undercounted): `read_loop.
@@ -993,13 +1018,23 @@ def reads_reserve_chars() -> int:
 
 
 READS_RESERVE_CHARS = reads_reserve_chars()
-#: What a pass carrying reads holds once beside their part, whatever their number: the reads'
-#: format context and the part's wrapper, in the request's characters.
-READS_OVERHEAD_CHARS = len(json.dumps(RL.READS_FORMAT)) + len(json.dumps(
-    '\n<data name="mercury_reads">\n\n</data>\n<context name="reads_format">\n\n</context>'))
+#: How much longer one pass's words (`read_loop.PASS_WORDS`) may be than another's, in the
+#: request's characters: a later pass may carry the longest where pass 1 carried the shortest.
+PASS_SLACK_CHARS = (max(len(json.dumps(w)) for w in RL.PASS_WORDS.values())
+                    - min(len(json.dumps(w)) for w in RL.PASS_WORDS.values()))
+#: What a pass carrying reads holds once beside their part, whatever their number, in the
+#: request's characters: the part's wrapper and the pass's words' slack. With v17's one shape
+#: the reads' format is in every pass's context already (`shared_context`), pass 1's too.
+READS_OVERHEAD_CHARS = len(json.dumps('\n<data name="mercury_reads">\n\n</data>')) \
+    + PASS_SLACK_CHARS
+#: What a pass carrying reads adds to pass 1 at most (`_over`): the reserve less the reads'
+#: format and its wrapper, which pass 1 carries already, plus the pass's words' slack.
+READS_ADDED_CHARS = (READS_RESERVE_CHARS - len(json.dumps(RL.READS_FORMAT))
+                     - len(json.dumps('\n<context name="reads_format">\n\n</context>'))
+                     + PASS_SLACK_CHARS)
 #: The room for reads when a press's own cannot be measured (a request not built): the
 #: reserve's, three reads at their largest.
-READS_ROOM_CHARS = READS_RESERVE_CHARS - READS_OVERHEAD_CHARS
+READS_ROOM_CHARS = READS_ADDED_CHARS - READS_OVERHEAD_CHARS
 
 
 def _room_of(prep: dict) -> int:
@@ -1050,14 +1085,10 @@ TOPOLOGY_LEFT_OUT = ("not sent: with it the request would be over its bound; thi
                      "investigation reads only the incident's device")
 
 
-def request_chars(prep: dict) -> int:
-    """Pass 1's masked request body in characters, as the gateway builds it (`request_body`:
-    the press's own builder, no provider request), or 0 when it is refused before it is built
-    (a stored secret, no label key: the press is refused for that, never for its size)."""
-    from modules.ai import triggers
-
+def _first_parts(prep: dict) -> tuple:
+    """Pass 1's ``(prompt, schema, parts, context)`` for *prep*, as the press asks it."""
     # Pass 1's body never depends on the room for reads, so it is built without measuring it
-    # (`_room_of`): measuring is this function, and a fit asks it while the pack still moves.
+    # (`_room_of`): measuring is `request_chars`, and a fit asks it while the pack still moves.
     measuring = prep.get("_measuring_room")
     prep["_measuring_room"] = True
     try:
@@ -1067,22 +1098,65 @@ def request_chars(prep: dict) -> int:
             prep["_measuring_room"] = measuring
         else:
             prep.pop("_measuring_room", None)
-    prompt, schema, parts, ctx = RL.first_request(
-        feature, prep["data"], prep["ctx"], reads_context(), plain=False)
+    return RL.first_request(feature, prep["data"], prep["ctx"], reads_context(), plain=False)
+
+
+def _raw_chars(prep: dict) -> int:
+    """What of pass 1's body moves while a request is fitted, unmasked, in the body's
+    characters: its data turn and its context blocks as `gateway.build_request` delimits them,
+    each encoded as the body encodes it. The prompt, the schema and the pin do not move."""
+    _prompt, _schema, parts, ctx = _first_parts(prep)
+    return (len(json.dumps(gateway._delimited("data", parts), ensure_ascii=False))
+            + len(json.dumps(gateway._delimited("context", ctx), ensure_ascii=False)))
+
+
+def request_chars(prep: dict) -> int:
+    """Pass 1's masked request body in characters, or 0 when it is refused before it is built
+    (a stored secret, no label key: the press is refused for that, never for its size).
+
+    **Measured once, then local** (the operator, 2026-11-16: "the fit (5.8 s) ... make it local
+    and fast ... never a round trip per request"): the first ask builds the body as the gateway
+    does (`gateway.request_body`, the press's own builder, the mask and all; no provider
+    request) and keeps its size beside the unmasked size of what moves (`_raw_chars`); every
+    later ask, while the fit cuts and when the room for reads is measured, is that size moved
+    by the unmasked difference, plus a margin: what the mask shortened the whole request by
+    (it can shorten what a cut removes at most that much), so the estimate is never under the
+    masked body it stands for. Building and masking the body again for each cut is what it
+    replaces."""
+    from modules.ai import triggers
+
+    sized = prep.get("_sized")
+    if sized is not None:
+        masked, raw, margin = sized
+        return max(0, masked + (_raw_chars(prep) - raw) + margin)
+    prompt, schema, parts, ctx = _first_parts(prep)
     got = gateway.request_body(FEATURE, prompt, schema, parts, context=ctx or None,
                                kind=triggers.PERSON)
     if "refused" in got:
         return 0
-    return len(json.dumps(got["body"], ensure_ascii=False))
+    masked = len(json.dumps(got["body"], ensure_ascii=False))
+    try:
+        # The same body unmasked (the prompt's text as sent: it holds nothing masked).
+        body_raw = gateway.build_request(
+            {"text": got["body"]["system"][0]["text"]}, schema, parts, got["pin"],
+            context=ctx or None, profile=got["profile"], cache=True,
+            volatile=gateway.PER_REQUEST_CONTEXT.get(FEATURE, ()))
+    except Exception:                       # noqa: BLE001 (then built and masked every time)
+        return masked
+    prep["_sized"] = (masked, _raw_chars(prep),
+                      max(0, len(json.dumps(body_raw, ensure_ascii=False)) - masked))
+    return masked
 
 
 def _over(prep: dict, bound: int) -> bool:
-    """Whether pass 1, or pass 2 at its worst (pass 1 less the read set it does not carry, plus
-    `READS_RESERVE_CHARS`), is over *bound* by the fallback over-estimate. A later pass of the
+    """Whether pass 1, or a later pass at its worst (pass 1 plus `READS_ADDED_CHARS`), is over
+    *bound* by the fallback over-estimate. A later pass of the
     investigation keeps its read set: its reads are held to the room pass 1 leaves under the
     bound instead (`read_room`, C3797)."""
     chars = request_chars(prep)
-    worst = chars + max(0, READS_RESERVE_CHARS - len(read_set()))
+    # v17's one shape: every pass carries the read set and the reads' format (`shared_context`),
+    # so a later pass is pass 1 plus its reads' part (`READS_ADDED_CHARS`).
+    worst = chars + READS_ADDED_CHARS
     return bool(chars) and gateway.tokens_of_chars(max(chars, worst)) > bound
 
 
@@ -1113,8 +1187,9 @@ def fit(prep: dict, bound: int = None) -> dict:
         prep["topo"] = dict(prep["topo"], sent=False, why=TOPOLOGY_LEFT_OUT, ids=[],
                             reached={}, yaml="", names={})
         prep["data"]["network_topology"] = TOPOLOGY_LEFT_OUT
-        for key in ("network", "topology_format"):
-            prep["ctx"].pop(key, None)
+        # The network's summary goes; the topology's format stays, fixed text in the cached
+        # prefix (v17).
+        prep["ctx"].pop("network", None)
         prep["sections"] = explain.sent_sections(prep["pack"], prep["topo"])
         prep["said"].update(sent=False, why=TOPOLOGY_LEFT_OUT, devices=[])
         _repack(prep)
@@ -1585,13 +1660,13 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
 
     # The investigation (C3797): iterative within its bounds, the incident's cost cap asked
     # before each further pass (`prep["may_go_on"]`, the press's; none in a preview).
-    # Each pass's schema is its prompt version's (`SCHEMA_OF`), so a call names one version.
-    return RL.LoopFeature(task=FEATURE,
-                          first=(PROMPT_PLAN_READS, SCHEMA_OF[PROMPT_PLAN_READS[1]]),
-                          second=(PROMPT_PLAN, SCHEMA_OF[PROMPT_PLAN[1]]),
-                          plain=(PROMPT_PLAN, SCHEMA_OF[PROMPT_PLAN[1]]), check=check_,
-                          cites=cites_, acts_on=acts_on, first_only=("read_set",),
-                          again=(PROMPT_AGAIN, SCHEMA_OF[PROMPT_AGAIN[1]]), rounds=ROUNDS,
+    # One shape (v17, the operator, 2026-11-16): every pass is v17's prompt and schema, with the
+    # read set and the reads' format in every pass's context, so the cached prefix is the same
+    # bytes call to call; the pass is said in the data.
+    one = (PROMPT_INVESTIGATE, SCHEMA_OF[PROMPT_INVESTIGATE[1]])
+    return RL.LoopFeature(task=FEATURE, first=one, second=one, plain=one, again=one,
+                          check=check_, cites=cites_, acts_on=acts_on, one_shape=True,
+                          shared_context=shared_context(), rounds=ROUNDS,
                           max_reads=MAX_READS, wall_s=WALL_S, read_room=_room_of(prep),
                           may_go_on=prep.get("may_go_on"))
 
@@ -1653,7 +1728,9 @@ def retry_once(prep: dict, feature, got: dict, incident, *, ask, network: str, a
         return out
     records = got.get("reads") or []
     ran = [r for r in records if r.get("verdict") == "run"]
-    if ran:
+    if ran or feature.one_shape:
+        # v17's one shape: the last pass, its reads (none, perhaps) attached, the same cached
+        # prefix as every call of the investigation.
         prompt, schema, parts, ctx = RL.second_request(feature, prep["data"], prep["ctx"],
                                                        records)
     else:
@@ -1723,8 +1800,17 @@ def overlooked_words(keys) -> str:
 
 
 def reads_context() -> dict:
-    """The context only the reads pass carries: the read set (`read_set`)."""
+    """The read set's context (`read_set`). With v17's one shape every pass carries it
+    (`shared_context`), the plain and the last pass too."""
     return {"read_set": read_set()}
+
+
+def shared_context() -> dict:
+    """What every pass's context carries beside the request's own (v17, `loop_feature`'s
+    *shared_context*): the read set and the reads' format, the same bytes every call, so the
+    provider's cache written by one call is read by the next, of this investigation or of the
+    next one within the cache's five minutes."""
+    return dict(reads_context(), reads_format=RL.READS_FORMAT)
 
 
 # ── Per problem kind: the standard reads and the pack (the operator, 2026-11-16: "Target:
@@ -1863,18 +1949,19 @@ def read_ahead_for(found: dict, incident, requests) -> list:
     return out
 
 
-def read_ahead(network: str, incident, commands: list) -> str:
+def read_ahead(network: str, incident, commands: list, *, session=None) -> str:
     """*commands* on the incident's device through THE reads engine, as the preflight reads
     them (`AHEAD_ACTOR`): the run's id, or ``""`` when nothing was read (refused, said in the
     log: the preflight then reads live, as before). Bounded by the engine's own session
-    bounds."""
+    bounds. *session* is the investigation's one session (`router_reads.SessionPool`), when
+    it has one."""
     from modules.nsot import reads
 
     if not commands or not incident.device:
         return ""
     try:
         rec = reads.run(network, [incident.device], list(commands), AHEAD_ACTOR,
-                        purpose=AHEAD_PURPOSE)
+                        purpose=AHEAD_PURPOSE, **({"session": session} if session else {}))
     except Exception as exc:                                  # noqa: BLE001 (read live later)
         log.info("fixit troubleshoot: %s's plan reads were not read ahead: %s", incident.id, exc)
         return ""
@@ -2042,19 +2129,13 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     from modules.nsot import listref
     net_id = listref.network_id(network)
     plain = bool(RL.reads_off(FR.FAMILY, net_id))
-    TJ.step("reading the reads' scope (the device's committed intent and golden)")
-    scope = None if plain else _scope(network, incident, actor, collector, series)
     trig = trigger if background else triggers.person(actor, counts_for=counts_for)
-    # The problem kind's standard reads, before the first call (the operator, 2026-11-16): a
-    # classification's read of seconds ago is reused, never read again; and the plan's own
-    # precondition reads, read ahead while the first call is asked (`read_ahead_for`).
-    pre, reuse = ([], {}) if plain else pregather_for(network, found, incident)
-    ahead = read_ahead_for(found, incident, pre) if pre else []
-    lap("the reads' scope and the standard reads named")
+    kind_reads = not plain and bool(PREGATHER.get(problem_condition(found)))
     TJ.step("building the request (the evidence pack, the attempts, the catalogue)"
-            + (" and running the standard reads, at once" if pre else ""))
+            + ("" if plain else " and, at once, the reads' scope (the device's committed intent "
+               "and golden)" + (" and the standard reads" if kind_reads else "")))
     # The step a person reads on the status line (board R5's screen 3): plain words only.
-    if pre:
+    if kind_reads:
         TJ.say(f"Gathering what Mercury knows and reading what this problem needs from "
                f"{incident.device}…", done="Gathered what Mercury knows and read what this "
                                            f"problem needs from {incident.device}")
@@ -2062,86 +2143,140 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         TJ.say("Gathering what Mercury already knows about this incident…",
                done="Gathered what Mercury already knows about this incident")
     request_parts = {}
+    # The investigation's one device session per account (the operator, 2026-11-16: "sign in
+    # once"): its standard reads, the plan's reads read ahead and each later round's ride it;
+    # closed once the last of them has run (`finally` below).
+    pool = RR.SessionPool()
+    side = {}
+    behinds = []                                # the read-ahead threads not joined yet
 
     def build():                                                                 # pack
         return request(network, found, incident, note=note, now=now, resolved=resolved,
                        seen=seen, loki=loki, prometheus=prometheus, timings=request_parts)
 
-    # The request and the standard reads at once (the operator, 2026-11-16: "whatever runs one
-    # after the other runs concurrently"): the reads reach the device, the request reads
-    # Mercury's stores and its monitoring, so neither waits on the other.
-    got_at_once = _at_once([("request", build)] + ([("reads", lambda: RL.pregather_run(
-        FR.FAMILY, pre, reuse, network=net_id, scope=scope))] if pre else []))
-    lap("the request" + (" and the standard reads, at once" if pre else ""))
-    prep, secs = got_at_once["request"]
-    lap("the request (the pack, the attempts, Seen before, the fit)", seconds=secs)
-    for name, s in request_parts.items():
-        lap(f"the request: {name}", seconds=s)
-    from modules import fanout
-    if isinstance(prep, fanout.Failed):
-        raise prep.error
-    pregathered = None
-    if pre:
-        pregathered, secs = got_at_once["reads"]
-        lap(f"the standard reads ({len(pre)}, one device session)", seconds=secs)
-        if isinstance(pregathered, fanout.Failed):
-            log.warning("fixit troubleshoot: %s's standard reads failed: %s", incident.id,
-                        pregathered)
-            pregathered = []
-    memo = {}
+    def reads_side():
+        # The reads' scope, then the problem kind's standard reads on it (the operator,
+        # 2026-11-16: the scope ran 12.8 s serially before anything else; now beside the
+        # request): a classification's read of seconds ago is reused, never read again; and the
+        # plan's own precondition reads, named here, read ahead while the first call is asked.
+        t0 = time.monotonic()
+        scope_ = _scope(network, incident, actor, collector, series)
+        scope_["session_pool"] = pool
+        side["scope"] = scope_
+        pre_, reuse_ = pregather_for(network, found, incident)
+        side.update(pre=pre_, reuse=reuse_,
+                    ahead=read_ahead_for(found, incident, pre_) if pre_ else [],
+                    scope_s=round(time.monotonic() - t0, 1))
+        return (RL.pregather_run(FR.FAMILY, pre_, reuse_, network=net_id, scope=scope_)
+                if pre_ else None)
 
-    def may_go_on(_cost_usd):
-        # The incident's cost cap before each further pass of the investigation (C3797): this
-        # press's own calls are recorded as they are made, so the spend read includes them.
-        now_cs = P.cap_state(incident, worst_usd() / CALLS_WORST)
-        return "" if now_cs["state"] == "allowed" else now_cs["words"]
+    try:
+        # The request, and the reads' scope with the standard reads after it, at once (the
+        # operator, 2026-11-16: "whatever runs one after the other runs concurrently"): the
+        # reads reach the device, the request reads Mercury's stores and its monitoring, so
+        # neither waits on the other.
+        got_at_once = _at_once([("request", build)] + ([] if plain else [("reads", reads_side)]))
+        lap("the request and, at once, the reads' scope" + (" and the standard reads"
+                                                              if kind_reads else ""))
+        prep, secs = got_at_once["request"]
+        lap("the request (the pack, the attempts, Seen before, the fit)", seconds=secs)
+        for name, s in request_parts.items():
+            lap(f"the request: {name}", seconds=s)
+        from modules import fanout
+        if isinstance(prep, fanout.Failed):
+            raise prep.error
+        scope, pre, reuse, ahead, pregathered = None, [], {}, [], None
+        if not plain:
+            pregathered, secs = got_at_once["reads"]
+            if "scope" not in side:
+                raise pregathered.error                # as when the scope was read first
+            scope, pre, reuse = side["scope"], side.get("pre") or [], side.get("reuse") or {}
+            ahead = side.get("ahead") or []
+            lap("the reads' scope (beside the request)", seconds=side.get("scope_s") or 0.0)
+            if pre:
+                lap(f"the standard reads ({len(pre)}, one device session)",
+                    seconds=max(0.0, round(secs - (side.get("scope_s") or 0.0), 1)))
+            if isinstance(pregathered, fanout.Failed):
+                log.warning("fixit troubleshoot: %s's standard reads failed: %s", incident.id,
+                            pregathered)
+                pregathered = []
+            if not pre:
+                pregathered = None
+            # The pack's own History and Intent check of the device, read seconds ago, answer
+            # the model's own reads of them (`fixit_reads._own_read`): read once.
+            scope["held"] = {incident.device: {
+                s["name"]: s for s in (prep["pack"].get("sections") or [])
+                if s.get("name") in ("history", "intent") and s.get("state") in ("ok", "empty")}}
+        memo = {}
 
-    prep["may_go_on"] = may_go_on
-    feature = loop_feature(prep)
+        def may_go_on(_cost_usd):
+            # The incident's cost cap before each further pass of the investigation (C3797):
+            # this press's own calls are recorded as they are made, so the spend read includes
+            # them.
+            now_cs = P.cap_state(incident, worst_usd() / CALLS_WORST)
+            return "" if now_cs["state"] == "allowed" else now_cs["words"]
 
-    def ask(feature_, prompt, schema, parts, *, trigger, **kw):
-        # The gateway's own ask, the press's trigger passed on; what it masked of the note is
-        # said back to the person.
-        memo["calls"] = memo.get("calls", 0) + 1
-        TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
-        # Plain steps (the operator, 2026-11-16): the first call is the AI's first look, every
-        # later one works out a fix from what it found; the calls' numbers are Details' alone
-        # (`TJ.step`). A round of reads after it says how many it asked for (`say_round`).
-        if memo["calls"] == 1:
-            TJ.say("The AI's first look…", done="The AI's first look")
-        else:
-            TJ.say("The AI is working out a fix from what it found…",
-                   done="The AI worked out a fix from what it found")
-        lap(f"before call {memo['calls']}")
-        # The plan's precondition reads, read ahead while the first call is asked (the device
-        # is idle then); joined before any round of reads, so they never hold the device
-        # against the loop's own (one operation per device, refused by name).
-        behind = (_behind(lambda: read_ahead(network, incident, ahead))
-                  if memo["calls"] == 1 and ahead else None)
-        got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
-        lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its count and its send)")
-        if behind is not None:
-            run_id, secs_ = behind()
-            memo["ahead"] = run_id
-            lap(f"the plan's {len(ahead)} precondition read(s) read ahead, beside call 1",
-                seconds=secs_)
-            lap("waiting for them past call 1")
-        TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
-        if got.get("typed_masked") and "typed_masked" not in memo:
-            memo["typed_masked"] = got["typed_masked"]
-        return got
+        prep["may_go_on"] = may_go_on
+        feature = loop_feature(prep)
 
-    got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                  # ask, check
-                 data=prep["data"], actor=actor, trigger=trig,
-                 context=prep["ctx"], subject=prep["subject"], scope=scope,
-                 actable=prep["actable"], send=send, today=today,
-                 reads_context=reads_context(), pregather=pre, reuse=reuse,
-                 pregathered=pregathered)
-    lap("after the last call")
-    # A citation not in what was sent: asked once more, naming it, within the investigation's
-    # worst case and the incident's cap (the operator, 2026-11-15).
-    retry = retry_once(prep, feature, got, incident, ask=ask, network=net_id, actor=actor,
-                       trigger=trig, send=send, today=today)
+        def ask(feature_, prompt, schema, parts, *, trigger, **kw):
+            # The gateway's own ask, the press's trigger passed on; what it masked of the note
+            # is said back to the person.
+            memo["calls"] = memo.get("calls", 0) + 1
+            TJ.step(f"asking the model (call {memo['calls']}, prompt {prompt[0]}.v{prompt[1]})")
+            # Plain steps (the operator, 2026-11-16): the first call is the AI's first look,
+            # every later one works out a fix from what it found; the calls' numbers are
+            # Details' alone (`TJ.step`). A round of reads after it says how many it asked for
+            # (`say_round`).
+            if memo["calls"] == 1:
+                TJ.say("The AI's first look…", done="The AI's first look")
+            else:
+                TJ.say("The AI is working out a fix from what it found…",
+                       done="The AI worked out a fix from what it found")
+            lap(f"before call {memo['calls']}")
+            # The plan's precondition reads, read ahead while the first call is asked (the
+            # device is idle then) on the investigation's one session; joined before any round
+            # of reads, so they never hold the device against the loop's own (one operation
+            # per device, refused by name).
+            behind = (_behind(lambda: read_ahead(network, incident, ahead,
+                                                 session=pool.session("person")))
+                      if memo["calls"] == 1 and ahead else None)
+            # Kept until joined, so the `finally` below joins it when the call or the loop
+            # raises, before the sessions are closed.
+            behinds.append(behind)
+            got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
+            lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its send)")
+            if behind is not None:
+                behinds.remove(behind)
+                run_id, secs_ = behind()
+                memo["ahead"] = run_id
+                lap(f"the plan's {len(ahead)} precondition read(s) read ahead, beside call 1",
+                    seconds=secs_)
+                lap("waiting for them past call 1")
+            TJ.step(f"after call {memo['calls']}: running the reads it asked for, or answering")
+            if got.get("typed_masked") and "typed_masked" not in memo:
+                memo["typed_masked"] = got["typed_masked"]
+            return got
+
+        got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,              # ask, check
+                     data=prep["data"], actor=actor, trigger=trig,
+                     context=prep["ctx"], subject=prep["subject"], scope=scope,
+                     actable=prep["actable"], send=send, today=today,
+                     reads_context=reads_context(), pregather=pre, reuse=reuse,
+                     pregathered=pregathered)
+        lap("after the last call")
+        # A citation not in what was sent: asked once more, naming it, within the
+        # investigation's worst case and the incident's cap (the operator, 2026-11-15).
+        retry = retry_once(prep, feature, got, incident, ask=ask, network=net_id, actor=actor,
+                           trigger=trig, send=send, today=today)
+    finally:
+        # A read ahead still running (the call or the loop raised before it was joined) is
+        # joined first, bounded by the engine's own session bounds; then the investigation's
+        # sessions are closed, and the pool opens none after (the plan's preflight below reads
+        # on its own, reusing these reads' answers).
+        for join in [b for b in behinds if b is not None]:
+            join()
+        pool.close()
     marks = retry.get("marks", {}) if retry else marks_of(prep, got.get("answer"))
     said = reads_said(got)
     # A gap for a problem a step Mercury has, not yet tried here, fixes is flagged on the card

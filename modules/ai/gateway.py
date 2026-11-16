@@ -321,6 +321,27 @@ CACHED_PRESSES = ("fixit_troubleshoot",)
 #: prompt, the formats, the read set) is byte-identical across every request of the task and
 #: the whole system prefix across one investigation's calls.
 PER_REQUEST_CONTEXT = {"fixit_troubleshoot": ("catalogue", "network")}
+#: The tasks whose call asks the provider's count (`Counter`) only when the fallback
+#: over-estimate (`CHARS_PER_TOKEN`, over every recorded call) is over the task's bound (the
+#: operator, 2026-11-16: an investigation's call spent 3.9 s beside the model's 14.3 s on its
+#: count and its send; "never a network round trip per request"): an over-estimate within the
+#: bound proves the real prompt within it, so the round trip decides nothing. The row says the
+#: prompt was estimated and why, and the caps judge the call by that over-estimate (dearer than
+#: the count, never cheaper); the recorded usage replaces it once the call is answered.
+COUNTED_ONLY_OVER = ("fixit_troubleshoot",)
+#: The calibration holds for text that is mostly ASCII (the recorded calls'); a non-ASCII
+#: character may be a token by itself. So the count is skipped only when at most this share of
+#: the body's characters is non-ASCII (`_ascii_enough`). Derived, not measured: at a share s,
+#: the worst real input is (1 - s) / 1.956 + s tokens a character (the calibration's tightest
+#: for the rest, one a character for the non-ASCII), still under the estimate's 1 / 1.8 while
+#: s is under about 9%; 5% keeps half that margin.
+NON_ASCII_MOST = 0.05
+
+
+def _ascii_enough(body: dict) -> bool:
+    """Whether *body*'s text is ASCII but for at most `NON_ASCII_MOST` of its characters."""
+    text = json.dumps(body, ensure_ascii=False)
+    return sum(1 for c in text if ord(c) > 127) <= NON_ASCII_MOST * max(len(text), 1)
 
 
 def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: dict = None,
@@ -777,9 +798,13 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
     profile = built["profile"]
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
-    # passed; the fallback over-estimate when the count is not had, said. Both on the row.
+    # passed; the fallback over-estimate when the count is not had, said. Both on the row. A
+    # task in `COUNTED_ONLY_OVER` is counted only when the over-estimate is over its bound, or
+    # when its text is not mostly ASCII (`NON_ASCII_MOST`), where the estimate may be under.
+    skip = feature in COUNTED_ONLY_OVER and _ascii_enough(body)
     measured = Counter(model, key, count=count, feature=feature,
-                       prompt=row["prompt"]).measure(body, masked=True)
+                       prompt=row["prompt"]).measure(
+        body, masked=True, budget=pin["max_prompt_tokens"] if skip else None)
     if measured.get("held"):
         # The count met the provider's usage limit (C2096): refused for it, as a send's
         # refusal would be, never judged by the fallback's size.

@@ -177,12 +177,20 @@ def _own_read(op: str, host: str, scope: dict):
     from modules.nsot import listref
 
     network = (scope or {}).get("network") or ""
+    # The pack's own sections of this device, read seconds before (the operator, 2026-11-16:
+    # "the pack's intent and history from values already held, or read once"): its Intent check
+    # and its History answer the same read again, never read twice in one investigation.
+    held = ((scope or {}).get("held") or {}).get(host) or {}
+    if op == "history" and held.get("history"):
+        return held["history"]
     ref = listref.resolve(network)
     if op in ("intent", "golden"):
         intents, goldens = RR._committed(network, [host])
         if op == "golden":
             return {"device": host, "golden": goldens.get(host) or "",
                     "why": "" if goldens.get(host) else f"{host} has no committed golden"}
+        if held.get("intent"):
+            return {"device": host, "intent": intents.get(host) or {}, "check": held["intent"]}
         dev = next((d for d in load_saved_devices(ref.csv_path)
                     if d.get("hostname") == host), {"hostname": host})
         return {"device": host, "intent": intents.get(host) or {},
@@ -380,9 +388,11 @@ def scope_for(network: str, incident, *, actor: str, collector=None, series=None
     *collector* and *series* replace the two local reads (tests). Reads committed intent; one
     that cannot be read names no stream, so every local read is refused."""
     try:
+        # The committed stores read once (the operator, 2026-11-16: the scope read every
+        # device's intent twice), and given to the router read set's scope.
+        intents, goldens = RR._committed(network, [incident.device])
         scope = RR.scope_for(network, [incident.device], incident=incident.id,
-                             turned_on_by=actor)
-        intents, _goldens = RR._committed(network, [incident.device])
+                             turned_on_by=actor, intents=intents, goldens=goldens)
     except Exception as exc:                          # noqa: BLE001 (closed: no device named)
         log.error("fixit reads: the scope of %s could not be built: %s", incident.id, exc)
         scope, intents = {"network": network, "devices": {}, "addresses": [],

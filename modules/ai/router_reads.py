@@ -92,6 +92,7 @@ refuses a device without one by name before any session opens, signs in as it th
 import ipaddress
 import logging
 import re
+import threading
 
 from modules.ai import read_loop as RL
 
@@ -491,6 +492,112 @@ def _answer_of(record: dict, host: str) -> str:
     return "\n".join(out)
 
 
+class SessionPool:
+    """One investigation's device sessions (the operator, 2026-11-16: "the standard reads on the
+    run's one session (sign in once), as the command-plan runner's pooled session does"): every
+    read the investigation makes through THE reads engine (its standard reads, the plan's reads
+    read ahead, each later round's) rides one session per device and account, opened at the
+    first read and closed by `close` at the investigation's end; each read still takes the
+    device's hold (`reads.run`), so it is one operation's at a time. Its *session* is the
+    engine's ``session(dev, fn) -> fn(conn)``; a session a read spent (`config_read.spent`), or
+    one no longer alive, is closed and opened again, never read again (C272). Mercury's account
+    escalates (`enable`) as `connection.with_temp_connection` does; the read-only account never
+    does (H28: `connection.with_plain_connection`'s rule), so a read the engine signs in as it
+    rides a session opened plain. A session is keyed by the account's whole identity (its
+    login, its password and its enable secret, by digest in memory, never logged), never by its
+    name alone: two accounts of one name with different secrets are two sessions. The pool's
+    lock is held across each read (``fn(conn)``), so its reads are serial: one device per
+    investigation. Once closed it opens no session again."""
+
+    OWNER = "ai troubleshooting: the investigation's one session"
+
+    def __init__(self):
+        self._conns = {}
+        self._lock = threading.Lock()
+        self._closed = False
+
+    @staticmethod
+    def _identity(params: dict) -> str:
+        """A digest of the account a session signs in as: its login, password and secret."""
+        import hashlib
+
+        whole = "\x1f".join(str(params.get(k) or "") for k in ("username", "password", "secret"))
+        return hashlib.sha256(whole.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _plain(dev: dict, params: dict, by: str) -> bool:
+        from modules.connection import is_plain
+        from modules.nsot import reads
+
+        if is_plain(dev.get("device_type")) or reads.signs_in_as(by) == "read_only":
+            return True
+        # The engine's read-only account, whatever the setting says now (it is read again at
+        # each read): a read signed in as the account it would resolve for this device (its
+        # login AND its password, never the name alone) signs in plain.
+        try:
+            acct = reads.read_account_for(dev)
+        except Exception:                               # noqa: BLE001 (closed: plain)
+            return True
+        return (bool(acct.get("ok")) and acct.get("username") == params.get("username")
+                and acct.get("password") == params.get("password"))
+
+    def _drop(self, key) -> None:
+        conn = self._conns.pop(key, None)
+        if conn is not None:
+            try:
+                conn.disconnect()
+            except Exception as exc:                    # noqa: BLE001 (gone either way)
+                log.debug("router reads: a pooled session's disconnect failed: %s", exc)
+
+    def session(self, by: str = KIND):
+        """The engine's *session* for reads of kind *by*."""
+        def run_on(dev, fn):
+            from modules.config_read import spent
+            from modules.connection import open_ssh, stored_connection_params
+
+            params = stored_connection_params(dev)
+            plain = self._plain(dev, params, by)
+            key = (dev.get("ip"), dev.get("device_type"), plain, self._identity(params))
+            with self._lock:
+                if self._closed:
+                    raise RuntimeError("the investigation's sessions are closed: no read "
+                                       "opens one after its end")
+                conn = self._conns.get(key)
+                if conn is not None and (spent(conn) or not getattr(
+                        conn, "is_alive", lambda: True)()):
+                    self._drop(key)
+                    conn = None
+                if conn is None:
+                    conn = open_ssh(params, plain=plain, owner=self.OWNER)
+                    if not plain:
+                        try:
+                            conn.enable()
+                        except Exception:
+                            conn.disconnect()
+                            raise
+                    self._conns[key] = conn
+                try:
+                    return fn(conn)
+                except Exception:
+                    self._drop(key)
+                    raise
+        return run_on
+
+    def close(self) -> None:
+        """Every session closed (the investigation's end, in its ``finally``); none opens after."""
+        with self._lock:
+            self._closed = True
+            for key in list(self._conns):
+                self._drop(key)
+
+
+def _session_of(scope: dict, by: str) -> dict:
+    """``{"session": ...}`` for `reads.run` when *scope* carries the investigation's
+    `SessionPool` (``session_pool``), else ``{}`` (each run opens its own, as before)."""
+    pool = (scope or {}).get("session_pool")
+    return {"session": pool.session(by)} if isinstance(pool, SessionPool) else {}
+
+
 def run(op: str, args: dict, requests: list, scope: dict) -> RL.Answered:
     """The family's executor: *requests* (exactly what the check allowed) through THE reads
     engine as kind ``ai_analysis``, the device held while it is read (a held device skipped by
@@ -504,7 +611,8 @@ def run(op: str, args: dict, requests: list, scope: dict) -> RL.Answered:
     host = args["device"]
     record = reads.run(scope["network"], [host], list(requests),
                        scope.get("actor") or "the AI analysis", by=KIND,
-                       purpose=scope.get("purpose") or f"the AI's read: {op}")
+                       purpose=scope.get("purpose") or f"the AI's read: {op}",
+                       **_session_of(scope, KIND))
     signed = ((record.get("results") or {}).get(host) or {}).get("signed_in_as") or {}
     return RL.Answered(_answer_of(record, host), run=record.get("id") or "",
                        signed_in_as=dict(signed))
@@ -524,7 +632,8 @@ def run_many(items: list, scope: dict) -> list:
     record = reads.run(scope["network"], [host], commands,
                        scope.get("actor") or "the AI analysis", by=KIND,
                        purpose=scope.get("purpose") or "the AI's reads: "
-                       + ", ".join(dict.fromkeys(op for op, _a, _r in items)))
+                       + ", ".join(dict.fromkeys(op for op, _a, _r in items)),
+                       **_session_of(scope, KIND))
     got = (record.get("results") or {}).get(host) or {}
     by_command = {a.get("command"): a for a in got.get("answers") or []}
     signed = dict(got.get("signed_in_as") or {})
@@ -1046,18 +1155,41 @@ def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = ""
     *capabilities* (`vlan_databases`' shape) are read from the committed stores when not given,
     and *ping_traceroute* (the installation choice, `ping_traceroute_on`) from its setting.
     The reads are recorded as "the AI analysis of incident <id>, turned on by <admin>"."""
+    from modules import fanout
     from modules.neighbours import _v4, addresses, bgp_peers
+    from modules.nsot import reads
 
     hosts = [h for h in dict.fromkeys(hosts or ()) if h]
+    # Its sources read AT ONCE (the operator, 2026-11-16: the scope took 12.8 s, serial, before
+    # anything else): the committed stores, the read-only accounts, the VLAN databases and the
+    # two settings, none of which waits on another; each bounded by its own reader as before.
+    todo = {"accounts": lambda: read_accounts(network, hosts)}
     if intents is None or goldens is None:
-        got_i, got_g = _committed(network, hosts)
+        todo["committed"] = lambda: _committed(network, hosts)
+    if capabilities is None:
+        todo["capabilities"] = lambda: vlan_databases(network, hosts)
+    if reads_as is None:
+        todo["reads_as"] = reads.ai_reads_as
+    if ping_traceroute is None:
+        todo["ping_traceroute"] = ping_traceroute_on
+    names = list(todo)
+    got = dict(zip(names, fanout.read_each(lambda n: todo[n](), names,
+                                           name="router_reads.scope_for",
+                                           max_workers=len(names))))
+    for name, value in got.items():
+        if isinstance(value, fanout.Failed) and name in ("committed", "capabilities"):
+            raise value.error                         # as when they were read one by one
+    if "committed" in got:
+        got_i, got_g = got["committed"]
         intents = got_i if intents is None else intents
         goldens = got_g if goldens is None else goldens
     if dialects is None:
         dialects = {h: _dialect_of((intents.get(h) or {}).get("platform"), h) for h in hosts}
-    accounts = read_accounts(network, hosts)
+    accounts = got["accounts"]
+    if isinstance(accounts, fanout.Failed):
+        accounts = {h: (False, f"it could not be resolved ({accounts})") for h in hosts}
     if capabilities is None:
-        capabilities = vlan_databases(network, hosts)
+        capabilities = got["capabilities"]
     prefixes = set()
     for hv in intents.values():
         for iface in (hv or {}).get("interfaces") or []:
@@ -1081,15 +1213,18 @@ def scope_for(network: str, hosts, *, incident: str = "", turned_on_by: str = ""
             "read_account": accounts[host][0], "read_account_why": accounts[host][1]}
     actor = (f"the AI analysis of incident {incident}, turned on by "
              f"{turned_on_by or 'nobody named'}") if incident else "the AI analysis"
-    from modules.nsot import reads
+    if reads_as is None:
+        # Read with the rest (`got`); one that raised is the closed side, as the engine's is.
+        reads_as = got["reads_as"] if not isinstance(got["reads_as"], fanout.Failed) \
+            else "read_only"
+    if ping_traceroute is None:
+        ping_traceroute = got["ping_traceroute"] is True
 
     return {"network": network, "devices": devices,
             # Whom the reads sign in as (C3661), as the setting stands now; the reads engine reads
             # the setting again at the read, by the same function, and either fails closed.
-            "reads_as": (reads.ai_reads_as() if reads_as is None
-                         else ("mercury" if reads_as == "mercury" else "read_only")),
-            "ping_traceroute": (ping_traceroute_on() if ping_traceroute is None
-                                else ping_traceroute is True),
+            "reads_as": "mercury" if reads_as == "mercury" else "read_only",
+            "ping_traceroute": ping_traceroute is True,
             "addresses": sorted(str(a) for a in addresses(intents or {})),
             "prefixes": sorted(prefixes), "actor": actor}
 
@@ -1115,21 +1250,56 @@ def _dialect_of(platform, host: str) -> str:
         return ""
 
 
+#: The committed stores `_committed` read, per repository: ``{repo: {"head", "intents",
+#: "goldens": {host: text}}}``, the newest commit's only (the operator, 2026-11-16: "read it
+#: once, from held values where they exist": an investigation's scope read every device's intent
+#: twice, and its own intent and golden reads read them again). Keyed by the commit, so a commit
+#: (a capture, an intent change, a deploy's record) is a new read; a copy is returned each time.
+_COMMITTED = {}
+_COMMITTED_LOCK = threading.Lock()
+
+
+def _head(repo: str) -> str:
+    """The repository's HEAD commit, or ``""`` (none yet, or git could not say: then nothing is
+    held and every read is a read)."""
+    from modules.nsot.repo import git
+
+    try:
+        rc, out, _err = git(repo, "rev-parse", "--verify", "HEAD")
+    except Exception:                                   # noqa: BLE001 (read, never held)
+        return ""
+    return out.strip() if rc == 0 else ""
+
+
 def _committed(network: str, hosts: list) -> tuple:
-    """``(intents, goldens)`` for *hosts*, from the network's committed stores (C104)."""
+    """``(intents, goldens)`` for *hosts*, from the network's committed stores (C104), read once
+    per commit (`_COMMITTED`): a later call at the same HEAD is answered from what the first
+    read, copied, and a golden not read yet is read then."""
+    import copy
+
     from modules.neighbours import committed_intents
     from modules.nsot import listref, manifest
     from modules.nsot.repo import committed_golden_for
 
     repo = listref.resolve(network).repo_dir
-    intents, why = committed_intents(repo)
-    if why:
-        log.warning("router reads: %s's committed intent: %s", network, why)
-    goldens = {}
-    for host in hosts:
-        _ident, entry = manifest.find_by_name(repo, host)
-        goldens[host] = (committed_golden_for(repo, entry).get("text") or "") if entry else ""
-    return intents or {}, goldens
+    head = _head(repo)
+    with _COMMITTED_LOCK:
+        held = _COMMITTED.get(repo) if head else None
+        if held is None or held["head"] != head:
+            intents, why = committed_intents(repo)
+            if why:
+                log.warning("router reads: %s's committed intent: %s", network, why)
+            held = {"head": head, "intents": intents or {}, "goldens": {}}
+            # A partial read (a document that did not parse) is never held: read again next time.
+            if head and not why:
+                _COMMITTED[repo] = held
+        for host in hosts:
+            if host not in held["goldens"]:
+                _ident, entry = manifest.find_by_name(repo, host)
+                held["goldens"][host] = ((committed_golden_for(repo, entry).get("text") or "")
+                                         if entry else "")
+        return (copy.deepcopy(held["intents"]),
+                {h: held["goldens"][h] for h in hosts})
 
 
 # ── The whole command, matched ────────────────────────────────────────────────────────────────

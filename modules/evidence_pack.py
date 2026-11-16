@@ -88,6 +88,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -514,7 +515,54 @@ def intent_commit(repo_dir: str, host: str) -> dict:
     return commit
 
 
+#: The Intent check as read at a commit (`intent_section`): ``{(repo, head, host, platform):
+#: (monotonic time, section)}``, kept at most `INTENT_HELD_S` (the operator, 2026-11-16: an
+#: investigation's pack spent 4.2 s rendering it, and Ask again and a re-investigation rendered
+#: it again at the same commit). Everything it compares is committed at that HEAD (the golden,
+#: intent, the profile, the templates and their approvals) but the secrets intent hydrates; a
+#: secret's value moved without a commit is the one input the key does not see, so the check is
+#: held only this long (reasoned, not measured: a rotation commits its intent, so it moves HEAD).
+_INTENT_HELD = {}
+_INTENT_HELD_LOCK = threading.Lock()
+INTENT_HELD_S = 600.0
+#: The most commits held at once (each a section of one device, a few kilobytes).
+INTENT_HELD_MOST = 64
+
+
+def _repo_head(repo_dir: str) -> str:
+    from modules.nsot import repo as R
+
+    try:
+        rc, out, _err = R.git(repo_dir, "rev-parse", "--verify", "HEAD")
+    except Exception:                                 # noqa: BLE001 (then never held)
+        return ""
+    return out.strip() if rc == 0 else ""
+
+
 def intent_section(ref, dev: dict) -> dict:
+    """`intent_section_now`, held per commit (`_INTENT_HELD`): a check read at this HEAD less
+    than `INTENT_HELD_S` ago is that read (its own time, ``read_at``, kept), a copy; else it is
+    read now. A repository with no HEAD is read every time."""
+    import copy
+
+    host = dev.get("hostname") or ""
+    head = _repo_head(ref.repo_dir)
+    key = (ref.repo_dir, head, host, (dev.get("platform") or "").strip())
+    if head:
+        with _INTENT_HELD_LOCK:
+            got = _INTENT_HELD.get(key)
+            if got is not None and time.monotonic() - got[0] < INTENT_HELD_S:
+                return copy.deepcopy(got[1])
+    section = intent_section_now(ref, dev)
+    if head and section.get("state") == "ok":
+        with _INTENT_HELD_LOCK:
+            _INTENT_HELD[key] = (time.monotonic(), copy.deepcopy(section))
+            while len(_INTENT_HELD) > INTENT_HELD_MOST:
+                _INTENT_HELD.pop(min(_INTENT_HELD, key=lambda k: _INTENT_HELD[k][0]))
+    return section
+
+
+def intent_section_now(ref, dev: dict) -> dict:
     """The device's Intent check (15.11: the pack is in the allowed class, its "intent
     diffs"): the deploy plan's own comparison (`intent_match`) of the committed golden against
     effective intent, as match, differs (with its counts) or unknown (with why); when it
