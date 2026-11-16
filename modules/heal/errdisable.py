@@ -437,9 +437,14 @@ def log_lines(dev: dict, since: float, until: float) -> dict:
 
 # ── Re-classifying open incidents ───────────────────────────────────────────────────────────
 
+#: The trigger kinds a port problem is read for: an alert on a port, or the err-disable line
+#: itself (`triggers.ERRDISABLE_KIND`: decided from the device read as soon as it arrives).
+PORT_TRIGGERS = ("alert", "errdisable")
+
+
 def _alert_ports(inc: dict) -> list:
     return [t.get("interface") for t in inc.get("triggers") or []
-            if isinstance(t, dict) and t.get("kind") == "alert" and t.get("interface")]
+            if isinstance(t, dict) and t.get("kind") in PORT_TRIGGERS and t.get("interface")]
 
 
 def _due(inc: dict, now: float) -> bool:
@@ -449,7 +454,7 @@ def _due(inc: dict, now: float) -> bool:
 
     if inc.get("state") not in incidents.OPEN_STATES:
         return False
-    if not any(isinstance(t, dict) and t.get("kind") == "alert"
+    if not any(isinstance(t, dict) and t.get("kind") in PORT_TRIGGERS
                for t in inc.get("triggers") or []):
         return False
     c = of_record(inc)

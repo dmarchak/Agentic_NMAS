@@ -47,6 +47,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -322,6 +323,33 @@ def far_ends(intents: dict, device: str, interface: str) -> list:
 
 # ── The steps ───────────────────────────────────────────────────────────────────────────────
 
+#: An err-disable line's port and cause ("bpduguard error detected on Gi1/0, putting Gi1/0 in
+#: err-disable state", tests/fixtures/errdisable/s1_loki_lines.txt).
+ERRDISABLE_TEXT = re.compile(r"^(?P<cause>[\w-]+) error detected on (?P<iface>[A-Za-z][\w./:-]{0,47}),")
+#: An err-disable's trigger kind: an event, its incident decided from the device read at once.
+ERRDISABLE_KIND = "errdisable"
+
+
+def _errdisable_trigger(ctx, counts: dict, out: list, store: str, allowed, line: dict,
+                        m) -> None:
+    """An err-disable line as its incident's trigger (R3's per-kind timing, the operator,
+    2026-11-16): the port and cause the line names; classified from the device read."""
+    dev = line.get("dev") or ""
+    network, why = _one_network(ctx, dev, allowed)
+    if network is None:
+        counts["unplaced"].append(why)
+        return
+    if ctx.mode(network) == "off":
+        counts["off"] += 1
+        return
+    at = float(line.get("ts") or 0)
+    out.append((network, dev, {
+        "kind": ERRDISABLE_KIND, "key": "errdis:" + _key(dev, line.get("ts"), line.get("text")),
+        "epoch": at, "at": line.get("at") or _iso(at), "source": store,
+        "interface": m.group("iface"), "cause": m.group("cause"),
+        "words": f"{line.get('mn')} on {dev} at {line.get('at') or _iso(at)}: {line.get('text')}"}))
+
+
 def from_syslog(store: str, value: dict, now: float = None) -> dict:
     """The configuration-change step, on self-healing's own read of the devices' syslog
     (`SYSLOG_READER`, C3330): each configuration-change line newer than the store's cursor."""
@@ -338,6 +366,11 @@ def from_syslog(store: str, value: dict, now: float = None) -> dict:
     ctx, counts, out = _Context(now), _counts(), []
     allowed = _store_networks(store, SYSLOG_READER)
     for l in new:
+        port = ERRDISABLE_TEXT.search(str(l.get("text") or "")) if str(
+            l.get("mn") or "").endswith("-ERR_DISABLE") else None
+        if port:
+            _errdisable_trigger(ctx, counts, out, store, allowed, l, port)
+            continue
         if not AT.is_change(l.get("mn"), l.get("text")):
             continue
         dev = l.get("dev") or ""

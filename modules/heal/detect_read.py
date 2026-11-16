@@ -104,7 +104,9 @@ def line_filter() -> str:
     from modules.heal import flaps
 
     # The mnemonics are letters, digits, % and -: literal in RE2 as they are.
-    alts = [r"%(?:SYS|DMI)-\d-CONFIG_[IP]\b"] + list(flaps.MNEMONICS)
+    # An err-disable too: an event, decided from its device read as soon as its line arrives,
+    # not after Grafana's minute (R3, the operator, 2026-11-16).
+    alts = [r"%(?:SYS|DMI)-\d-CONFIG_[IP]\b", r"%PM-\d-ERR_DISABLE\b"] + list(flaps.MNEMONICS)
     return "|".join(alts)
 
 
