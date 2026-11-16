@@ -19,9 +19,26 @@ on the promoter's standing approval, never the AI's.
 plans (`heal.catalog.entries`, a `PlanStep` each), so it is a plan step by registration and an
 entry the AI may propose. Only an admin saves one.
 
-**Who** (`identity.right_refusal`, the one chokepoint): saving or promoting a script needs the
-self-healing right, saving an action the admin right; the AI proposes either and approves
-neither. The store is the installation's (`STORE`), locked and replaced atomically.
+**A saved fix is one object, both at once** (C3849, the operator, 2026-11-16: "one object, not
+two"): ``kind: fix``, its network's, optionally ``shared`` with every network: the plan (its
+own template copy), optionally a problem match with its fills (then it is offered on every
+matching incident, `fix_offers`, and, promoted to Auto, runs by itself there, `fire_matching`),
+and always a parameterised action: listed in the catalog for its network and, shared, for
+every network (`actions`), runnable by any engineer, proposable by the AI. One verified run
+saves one fix: a save of a run already saved answers the fix saved from it (`save_fix`).
+
+**Expand, then contract:** the entries saved before fixes were one object (``script`` and
+``action``) are kept as they were written and never rewritten in place; every read presents
+each entry as a fix (`as_fix`): an old script is its network's, not shared, matched, and kept
+out of the catalog as before (its run's twin action, when one was saved, is the catalog's); an
+old action is shared (actions were the installation's), with no match. New saves write the
+fix's shape only.
+
+**Who** (`identity.right_refusal`, the one chokepoint): running a fix, any engineer
+(``run_plan``); saving or promoting a fix with a match (matched or automatic), the
+self-healing right; saving a fix with no match (manual only), the admin right; the AI proposes
+and never approves or saves (`identity.ai_acting_refusal`). The store is the installation's
+(`STORE`), locked and replaced atomically.
 """
 
 import json
@@ -36,8 +53,13 @@ STORE = "saved_plans.json"
 #: The saved reusable actions as one family of the AI's tools (tests/ai_tool_homes.py): their
 #: keys are people's, so they are declared together.
 FAMILY = "saved action"
-KINDS = ("script", "action")
+#: The stored kinds: a fix (C3849, every new save), and the two read as fixes (`as_fix`).
+KINDS = ("script", "action", "fix")
+FIX = "fix"
 MODES = ("dry_run", "auto")
+#: How a fix runs (`how_of`): by a person only; offered on matching incidents; and, promoted,
+#: by itself on them as well.
+HOWS = ("manual", "matched", "automatic")
 #: How many fires a script's track record keeps, newest last.
 TRACK_KEPT = 50
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -130,15 +152,63 @@ def templates() -> dict:
     return dict(_CACHE["templates"])
 
 
-def actions() -> dict:
-    """The saved reusable actions, by key, each its entry."""
-    return {k: e for k, e in (read().get("plans") or {}).items() if e.get("kind") == "action"}
+def how_of(e: dict) -> str:
+    """How the fix *e* runs (`HOWS`): ``manual`` with no match; ``automatic`` with one,
+    promoted (Auto); else ``matched`` (Dry run: offered, recorded when it fires)."""
+    if not e.get("match"):
+        return "manual"
+    return "automatic" if e.get("mode") == "auto" else "matched"
+
+
+def as_fix(e: dict) -> dict:
+    """The stored entry *e* read as a fix (a copy; the store is never rewritten in place):
+    ``kind`` ``fix``, ``saved_as`` the kind it was written as, ``network``, ``shared``,
+    ``catalog`` (whether it is an action of the catalog), ``match``, ``fills``, ``words`` and
+    ``how`` (`how_of`). An old ``script`` is its network's, not shared, and stays out of the
+    catalog as before; an old ``action`` is shared (the installation's, as it was) with no
+    match, its network the one it was saved on."""
+    kind = e.get("kind") or ""
+    out = dict(e, saved_as=kind, kind=FIX, match=dict(e.get("match") or {}),
+               fills=dict(e.get("fills") or {}), track=list(e.get("track") or []),
+               words=str((e.get("template") or {}).get("words") or ""))
+    if kind == "script":
+        out.update(network=str(e.get("network") or ""), shared=False, catalog=False)
+    elif kind == "action":
+        out.update(network=str((e.get("from_run") or {}).get("network") or ""), shared=True,
+                   catalog=True, match={}, fills={}, mode="")
+    else:
+        out.update(network=str(e.get("network") or ""), shared=bool(e.get("shared")),
+                   catalog=True)
+    out["how"] = how_of(out)
+    return out
+
+
+def _is_matched(e: dict) -> bool:
+    """Whether the stored entry *e* is one that fires on a match: an old script, or a fix
+    saved with a match (`how_of`)."""
+    return e.get("kind") == "script" or (e.get("kind") == FIX and bool(e.get("match")))
+
+
+def fixes(network: str = None) -> dict:
+    """Every saved fix, by key, each read as a fix (`as_fix`); with *network*, those it may use:
+    its own and the shared ones."""
+    every = {k: as_fix(e) for k, e in (read().get("plans") or {}).items()
+             if isinstance(e, dict) and e.get("kind") in KINDS}
+    if network is None:
+        return every
+    return {k: f for k, f in every.items() if f["network"] == network or f["shared"]}
+
+
+def actions(network: str = None) -> dict:
+    """The saved fixes the catalog lists (each a parameterised action, `as_fix`'s
+    ``catalog``), by key: every one, or *network*'s own and the shared ones."""
+    return {k: f for k, f in fixes(network).items() if f["catalog"]}
 
 
 def scripts(network: str) -> dict:
-    """*network*'s self-heal scripts, by key."""
-    return {k: e for k, e in (read().get("plans") or {}).items()
-            if e.get("kind") == "script" and e.get("network") == network}
+    """*network*'s own fixes with a match (an old script or a fix saved with one), by key, each
+    read as a fix: those offered on its matching incidents and fired on them."""
+    return {k: f for k, f in fixes().items() if f["match"] and f["network"] == network}
 
 
 # ── The match: R4's fields only ─────────────────────────────────────────────────────────────
@@ -296,52 +366,117 @@ def _template_doc(rec: dict, key: str, name: str, words: str) -> dict:
     return doc
 
 
+def _saved_from_run(e: dict, network: str, run_id: str) -> bool:
+    """Whether the stored entry *e* was saved from *network*'s run *run_id* (`as_fix`'s
+    network: an old action's is the one its run was on)."""
+    return ((e.get("from_run") or {}).get("run") == run_id
+            and as_fix(e)["network"] == network)
+
+
 def _store(entry: dict) -> dict:
+    """*entry*, a new fix, stored under the store's lock, and read back as a fix (`as_fix`,
+    ``already`` False); or, when its run is saved already (in any kind), the fix saved from it
+    (`_again`): one verified run, one fix."""
+    from modules.nsot import command_plan as CP
+
+    network, run_id = entry["network"], (entry.get("from_run") or {}).get("run")
+
     def change(doc):
+        for old in doc["plans"].values():
+            if isinstance(old, dict) and _saved_from_run(old, network, run_id):
+                return _again(old, entry)
         if entry["key"] in doc["plans"]:
             raise Refused(f"a plan {entry['key']} is saved already")
-        from modules.nsot import command_plan as CP
         if entry["key"] in CP.builtin():
             raise Refused(f"{entry['key']} is the key of a plan that ships with Mercury")
         doc["plans"][entry["key"]] = entry
-        return entry
+        return dict(as_fix(entry), already=False, changed=False)
     return _update(change)
 
 
-def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dict,
-                actor: str, actor_verified: str, person: bool, dry_run: bool = False) -> dict:
-    """Save the verified run *run_id* as a self-heal script of *network*: its plan with its
-    parameters open, *match* (`match_refusal`) and *fills* (`fills_refusal`). Saved in Auto,
-    promoted by the person saving it: saving a verified fix is the approval (the operator,
-    2026-11-15); *dry_run* keeps it in Dry run until promoted. The network's self-healing mode
-    still governs whether it acts (`mode_now`). Needs the self-healing right. Raises
+def _again(old: dict, entry: dict) -> dict:
+    """A save of a run already saved as *old* (inside `_store`'s lock): *old* as a fix,
+    ``already``; but a manual fix of the fix's own shape that a save with a match (*entry*'s)
+    finds takes that match, its fills and its mode (``changed``; the self-healing right that
+    save asked). An old entry is never rewritten (expand, then contract)."""
+    from modules.nsot import command_plan as CP
+
+    if not (entry["match"] and old.get("kind") == FIX and not old.get("match")):
+        return dict(as_fix(old), already=True, changed=False)
+    # The fills are written onto OLD's template, so they are checked against it (the review,
+    # 2026-11-16: a built-in plan changed between the two saves could name other parameters,
+    # leaving an Automatic fix that every fire refuses and no incident offers).
+    why = fills_refusal(CP.parse(old["template"]), entry["fills"])
+    if why:
+        raise Refused(f"{old.get('key')} is saved already, and this save's fills do not fit "
+                      f"its plan: {why}")
+    old.update(match=entry["match"], fills=entry["fills"], mode=entry["mode"],
+               changed_by=entry["saved_by"], changed_at=_iso())
+    if entry["mode"] == "auto":
+        old.update(promoted_by=entry["promoted_by"], promoted_at=_iso(),
+                   digest=CP.parse(old["template"]).digest)
+    return dict(as_fix(old), already=False, changed=True)
+
+
+def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified: str,
+             person: bool, match: dict = None, fills: dict = None, words: str = "",
+             shared: bool = False, dry_run: bool = False) -> dict:
+    """Save the verified run *run_id* of *network* as one fix (C3849): its plan with its
+    parameters open, named *name* and said in *words*, its network's (*shared*: every
+    network's catalog lists it too), an action of the catalog from now (`actions`). With
+    *match* (`match_refusal`) and *fills* (`fills_refusal`) it is also offered on every
+    matching incident and saved in Auto, promoted by the person saving it: saving a verified
+    fix is the approval (the operator, 2026-11-15); *dry_run* keeps it in Dry run until
+    promoted, and the network's self-healing mode still governs whether it acts (`mode_now`).
+    Needs the self-healing right with a match, the admin right without. A run already saved
+    answers its fix (`_store`). The fix (`as_fix`), with ``already`` and ``changed``. Raises
     `Refused`, nothing saved."""
     from modules import identity
     from modules.nsot import command_plan as CP
 
-    why = identity.right_refusal("self_healing", actor=actor, actor_verified=actor_verified,
-                                 person=person)
+    match = dict(match or {})
+    why = identity.right_refusal("self_healing" if match else "admin", actor=actor,
+                                 actor_verified=actor_verified, person=person)
     if why:
         raise Refused(why)
-    why = match_refusal(match)
-    if why:
-        raise Refused(why)
+    if match:
+        why = match_refusal(match)
+        if why:
+            raise Refused(why)
     rec = _verified_run(network, run_id)
-    key = _key("script", name)
-    doc = _template_doc(rec, key, name, "")
-    why = fills_refusal(CP.parse(doc), fills)
-    if why:
-        raise Refused(why)
-    e = {"key": key, "kind": "script", "network": network, "name": name[:120],
-         "template": doc, "match": dict(match), "fills": dict(fills),
-         "mode": "dry_run", "saved_by": actor, "saved_at": _iso(),
-         "from_run": {"run": run_id, "plan": rec.get("key"), "at": rec.get("at"),
-                      "by": rec.get("actor")}, "track": []}
-    if not dry_run:
-        # As `promote` binds it: the person, when, and the plan's digest.
-        e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
-                 digest=CP.parse(doc).digest)
-    return _store(e)
+    key = _key(FIX, name)
+    doc = _template_doc(rec, key, name, words)
+    t = CP.parse(doc)
+    if match:
+        why = fills_refusal(t, fills)
+        if why:
+            raise Refused(why)
+    e = {"key": key, "kind": FIX, "network": network, "shared": bool(shared),
+         "name": name[:120], "template": doc, "match": match,
+         "fills": dict(fills) if match else {}, "saved_by": actor, "saved_at": _iso(),
+         "from_run": {"network": network, "run": run_id, "plan": rec.get("key"),
+                      "at": rec.get("at"), "by": rec.get("actor")}, "track": []}
+    if match:
+        e["mode"] = "dry_run"
+        if not dry_run:
+            # As `promote` binds it: the person, when, and the plan's digest.
+            e.update(mode="auto", promoted_by=actor, promoted_at=_iso(), digest=t.digest)
+    got = _store(e)
+    # Registered at once in this process: the catalog's entry and the plan step.
+    from modules import plan_engine
+    plan_engine.refresh_saved_kinds()
+    return got
+
+
+def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dict,
+                actor: str, actor_verified: str, person: bool, dry_run: bool = False,
+                shared: bool = False) -> dict:
+    """The card's Save (`routes/saved_plans_v2.save_script`): the verified run saved as one fix
+    with *match* and *fills* (`save_fix`), in Auto unless *dry_run*. Needs the self-healing
+    right. Raises `Refused`, nothing saved."""
+    return save_fix(network, run_id=run_id, name=name, match=match, fills=fills,
+                    dry_run=dry_run, shared=shared, actor=actor,
+                    actor_verified=actor_verified, person=person)
 
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
@@ -359,7 +494,7 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
 
     def change(doc):
         e = doc["plans"].get(key)
-        if not e or e.get("kind") != "script":
+        if not e or not _is_matched(e):
             raise Refused(f"{key} is no saved self-heal script")
         if network and e.get("network") != network:
             raise Refused(f"{key} is a self-heal script of {e.get('network')}, not of {network}")
@@ -367,32 +502,18 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
             raise Refused(f"{key} is in Auto already, promoted by {e.get('promoted_by')}")
         e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
                  digest=CP.parse(e["template"]).digest)
-        return e
+        return as_fix(e)
     return _update(change)
 
 
 def save_action(network: str, *, run_id: str, name: str, words: str, actor: str,
-                actor_verified: str, person: bool) -> dict:
-    """Save the verified run *run_id* as a reusable action: its plan, named *name* and said in
-    *words*, its parameters open, the catalog's from now (`heal.catalog.entries`). Needs the
+                actor_verified: str, person: bool, shared: bool = True) -> dict:
+    """The card's Save as a reusable action (`routes/saved_plans_v2.save_action`): the verified
+    run saved as one fix with no match (`save_fix`), named *name* and said in *words*, shared
+    with every network unless *shared* is False (an action was the installation's). Needs the
     admin right. Raises `Refused`."""
-    from modules import identity
-
-    why = identity.right_refusal("admin", actor=actor, actor_verified=actor_verified,
-                                 person=person)
-    if why:
-        raise Refused(why)
-    rec = _verified_run(network, run_id)
-    key = _key("action", name)
-    doc = _template_doc(rec, key, name, words)
-    entry = _store({"key": key, "kind": "action", "name": name[:120], "template": doc,
-                    "saved_by": actor, "saved_at": _iso(),
-                    "from_run": {"network": network, "run": run_id, "plan": rec.get("key"),
-                                 "at": rec.get("at"), "by": rec.get("actor")}})
-    # Registered at once in this process: the catalog's entry and the plan step.
-    from modules import plan_engine
-    plan_engine.refresh_saved_kinds()
-    return entry
+    return save_fix(network, run_id=run_id, name=name, words=words, shared=shared,
+                    actor=actor, actor_verified=actor_verified, person=person)
 
 
 # ── Firing: Dry run records, Auto runs, no AI call ──────────────────────────────────────────
@@ -411,7 +532,7 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
     if never:
         return never
     e = (read().get("plans") or {}).get(key) or {}
-    if e.get("kind") != "script" or e.get("mode") != "auto":
+    if not _is_matched(e) or e.get("mode") != "auto":
         return f"{key} is not a saved script in Auto"
     if e.get("network") != network:
         return (f"{key} is a self-heal script of {e.get('network') or 'no network'}, and this "
@@ -611,11 +732,17 @@ def script_preview(network: str, found: dict) -> dict:
     "program", "title", "problem"}``, *program* and *title* masked (the preview's ``drawn``),
     *problem* the classified problem as `fire` takes it; ``{}`` when none matches or its
     preview is refused. A read (G6's batch, C3819; the incident's offer, `script_offer`)."""
+    e, prob = script_for(network, found)
+    return _previewed(network, e, prob) if e else {}
+
+
+def _previewed(network: str, e: dict, prob) -> dict:
+    """The fix *e* filled from the classified problem *prob* (`fill`) and previewed by the
+    runner's own preview (`command_plan.preview`, asking no device): `script_preview`'s
+    answer, with ``mode`` and ``how``; ``{}`` when its map does not name a value or its
+    preview is refused. A read."""
     from modules.nsot import command_plan as CP
 
-    e, prob = script_for(network, found)
-    if not e:
-        return {}
     try:
         values = fill(e, prob)
     except Refused:
@@ -626,15 +753,43 @@ def script_preview(network: str, found: dict) -> dict:
     d = p.get("drawn") or {}
     return {"key": e["key"], "name": e.get("name") or e["key"], "hash": p["hash"],
             "values": p["values"], "program": list(d.get("program") or []),
-            "title": d.get("title") or "", "problem": prob.as_dict()}
+            "title": d.get("title") or "", "problem": prob.as_dict(),
+            "mode": e.get("mode") or "", "how": how_of(e)}
+
+
+#: What an incident's offer of one fix carries (`fix_offers`).
+OFFER_FIELDS = ("key", "name", "hash", "values", "mode", "how")
+
+
+def fix_offers(network: str, found: dict) -> list:
+    """Every fix of *network* whose match the incident *found*'s classified problem holds
+    (C3849, the operator, 2026-11-16: "any matching fix is offered as a button"), Automatic
+    ones first, then by key, each filled and previewed by the runner's own preview (no device;
+    `_previewed`): ``[{"key", "name", "hash", "values", "mode", "how"}]``; one whose preview is
+    refused is left out. Each is run once by the person who presses it
+    (`routes/fixit_v2.fix_with_script`); an Automatic one also runs by itself (`fire_matching`).
+    A read."""
+    from modules import problem as P
+
+    prob = P.classify(found)
+    if not prob.condition:
+        return []
+    hit = sorted((e for e in scripts(network).values() if matches(e.get("match") or {}, prob)),
+                 key=lambda e: (e.get("mode") != "auto", e.get("key") or ""))
+    out = []
+    for e in hit:
+        got = _previewed(network, e, prob)
+        if got:
+            out.append({k: got[k] for k in OFFER_FIELDS})
+    return out
 
 
 def script_offer(network: str, found: dict) -> dict:
-    """The incident's "Fix with saved script: <name>" (C3805): ``{"key", "name", "hash",
-    "values"}`` of its matching Automatic script, previewed by the runner's own preview (no
-    device), or ``{}`` when none matches or its preview is refused. A read."""
-    got = script_preview(network, found)
-    return {k: got[k] for k in ("key", "name", "hash", "values")} if got else {}
+    """The incident's first offered fix (`fix_offers`: an Automatic one first), its "Fix with
+    saved script: <name>" (C3805), or ``{}`` when none matches or every preview is refused. A
+    read."""
+    got = fix_offers(network, found)
+    return got[0] if got else {}
 
 
 def standing_fire(network: str, key: str, incident: str, mode: str = "auto") -> dict:
@@ -799,13 +954,14 @@ def fire_matching(network: str, found: dict, *, sources=None, mode: str = None,
 
 # ── A device's interface view: the saved actions an interface fills ────────────────────────
 
-def interface_actions() -> dict:
-    """The saved reusable actions whose parameters a device's interface fills alone: exactly a
-    device and an interface (``Bounce interface``), by key, each its entry. An action that
-    takes anything else (a choice) is offered where that is known (an incident), not here."""
+def interface_actions(network: str = None) -> dict:
+    """The saved fixes of the catalog (`actions`: *network*'s own and the shared ones, or every
+    one) whose parameters a device's interface fills alone: exactly a device and an interface
+    (``Bounce interface``), by key, each read as a fix. One that takes anything else (a choice)
+    is offered where that is known (an incident), not here."""
     every = templates()
     out = {}
-    for key, e in actions().items():
+    for key, e in actions(network).items():
         t = every.get(key)
         if t and sorted((n, s.get("type")) for n, s in t.parameters.items()) == [
                 ("device", "device"), ("interface", "interface")]:
@@ -822,7 +978,7 @@ def device_offer(network: str, device: str, *, actor: str, actor_verified: str,
     from modules import identity
     from modules.nsot import hostvars, listref
 
-    acts = interface_actions()
+    acts = interface_actions(network)
     out = {"actions": [{"key": k, "name": e.get("name") or k,
                         "words": (e.get("template") or {}).get("words") or ""}
                        for k, e in sorted(acts.items())],
@@ -893,7 +1049,7 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
            "optional": list(OPTIONAL_MATCH), "fills": {}, "preview": {}, "scripts": [],
            "rights": {"script": identity.right_refusal("self_healing", **who),
                       "action": identity.right_refusal("admin", **who)},
-           "unset": identity.rights_unset(), "actions": sorted(actions()),
+           "unset": identity.rights_unset(), "actions": sorted(actions(network)),
            "saved": {"script": None, "action": None}, "name": "", "dismissed": None}
     found = incident_page.resolve(network, incident_id)
     if found.get("found") != "page":
@@ -958,13 +1114,17 @@ def put_off(incident) -> dict:
 def saved_from(network: str, run_id: str) -> dict:
     """What is saved from *network*'s run *run_id* (item 7, the operator, 2026-11-15: every
     save shows its result in place, and its form collapses): ``{"script", "action"}``, each
-    ``{"key", "name", "mode"}`` of the newest entry its ``from_run`` names, or None. Read from
-    the store, so a redraw after the save's announcement draws the same result. A read."""
-    def newest(entries):
-        got = [e for e in entries if (e.get("from_run") or {}).get("run") == run_id]
-        got.sort(key=lambda e: str(e.get("saved_at") or ""))
-        return ({"key": got[-1]["key"], "name": got[-1].get("name") or got[-1]["key"],
-                 "mode": got[-1].get("mode") or ""} if got else None)
-    return {"script": newest(scripts(network).values()),
-            "action": newest(e for e in actions().values()
-                             if (e.get("from_run") or {}).get("network") == network)}
+    ``{"key", "name", "mode"}`` of the newest fix its ``from_run`` names, or None: *script*
+    one with a match, *action* one the catalog lists. One fix saved since C3849 is both, so
+    it answers both. Read from the store, so a redraw after the save's
+    announcement draws the same result. A read."""
+    got = sorted((f for f in fixes().values() if f["network"] == network
+                  and (f.get("from_run") or {}).get("run") == run_id),
+                 key=lambda f: str(f.get("saved_at") or ""))
+
+    def newest(role):
+        hit = [f for f in got if role(f)]
+        return ({"key": hit[-1]["key"], "name": hit[-1].get("name") or hit[-1]["key"],
+                 "mode": hit[-1].get("mode") or ""} if hit else None)
+    return {"script": newest(lambda f: bool(f["match"])),
+            "action": newest(lambda f: f["catalog"])}

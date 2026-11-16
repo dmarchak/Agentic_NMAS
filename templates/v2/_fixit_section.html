@@ -170,6 +170,10 @@
         {#- C3805: the matching Automatic saved script, run once as the person who presses, bound
             to the hash its preview drew; no AI. -#}
         {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=F.key, hash=F.hash), F.label, 'Fixing…', 'start', F.label, "Runs the saved script once as you: the device held, its checks read again, sent, verified and recorded; no AI", primary=True, kind='approve') }}
+        {#- C3849: every other matching saved fix, its own button. -#}
+        {%- for o in F.more or [] %}
+        {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=o.key, hash=o.hash), o.label, 'Fixing…', 'start', o.label, "Runs this saved fix once as you: the device held, its checks read again, sent, verified and recorded; no AI", kind='approve') }}
+        {%- endfor %}
       {%- elif F.kind == 'button' and F.read and F.href %}
         {#- C3797: the read the AI said would settle it, which its read set lacks: a person's
             read in Show commands, its row filled in; nothing runs until Run is pressed there. -#}

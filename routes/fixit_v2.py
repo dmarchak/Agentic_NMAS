@@ -150,7 +150,8 @@ def _proposal_named(inc, named: str):
 
 @bp.route("/<incident_id>/fixit/script", methods=["POST"])
 def fix_with_script(incident_id):
-    """"Fix with saved script: <name>" (C3805): the incident's matching Automatic script run once
+    """"Fix with saved script: <name>" (C3805): one of the fixes the incident offers (any whose
+    match its problem holds, `saved_plans.fix_offers`, C3849; ``key`` names which) run once
     as the verified person who pressed, bound to the hash the page drew (``key``, ``hash``), by
     the runner as a job (the device held, preconditions read again, sent, verified, rolled back
     on a failed verify, recorded); verified, the incident closes Fixed. No AI."""
@@ -172,9 +173,10 @@ def fix_with_script(incident_id):
     why = _not_a_person(who, "Fix with saved script")
     if why:
         return _section(network, found, 403, refused=why)
-    offer = S.script_offer(network, found)
     key, sent = (request.values.get("key") or "").strip(), (request.values.get("hash") or "")
-    if not offer or offer["key"] != key:
+    # Any fix the incident offers (C3849: every matching fix is a button), the one pressed.
+    offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), {})
+    if not offer:
         return _section(network, found, 409, refused=(
             f"Not run: {key or 'no script'} is no saved script matching this incident's "
             "problem now. Nothing ran"))
@@ -182,7 +184,10 @@ def fix_with_script(incident_id):
         return _section(network, found, 409, refused=(
             f"Not run: you pressed {offer['name']} at {sent or 'no hash'}, and its preview now "
             f"is {offer['hash']}: it moved since the page was drawn. Nothing ran"))
-    e = S.scripts(network)[key]
+    e = S.scripts(network).get(key)
+    if not e:
+        return _section(network, found, 409, refused=(
+            f"Not run: {offer['name']} is no longer saved. Nothing ran"))
 
     def work(_job):
         rec = CR.run(network, key, offer["values"], confirmed=offer["hash"],

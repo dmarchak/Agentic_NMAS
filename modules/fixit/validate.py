@@ -113,7 +113,7 @@ def check(incident, operation, params, *, resolved: float = None, now: float = N
     at = time.time() if now is None else float(now)
     network, passed = incident.network, []
     try:
-        op, held = catalog.checked(operation, params)
+        op, held = catalog.checked(operation, params, network=network)
     except catalog.Refused as exc:
         return _refused(exc.code, "schema", str(exc), passed)
     passed.append("schema")

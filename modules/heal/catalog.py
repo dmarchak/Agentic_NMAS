@@ -406,9 +406,18 @@ def refresh_saved() -> dict:
     return SAVED.current()
 
 
-def saved_actions() -> dict:
-    """The saved reusable actions, by key, as the store holds them now (`SAVED`)."""
-    return SAVED.current()
+def saved_actions(network: str = None) -> dict:
+    """The saved fixes the catalog lists, by key, as the store holds them now (`SAVED`): every
+    one (each registered once, for every network), or with *network* only that network's own
+    and the shared ones (`saved_plans.actions`; C3849: a fix belongs to its network, optionally
+    shared)."""
+    every = SAVED.current()
+    if network is None:
+        return every
+    from modules.nsot import saved_plans
+
+    mine = saved_plans.actions(network)
+    return {k: v for k, v in every.items() if k in mine}
 
 
 #: The built-in command plans a proposal may name, by key, in the catalog's form.
@@ -433,22 +442,22 @@ def capabilities() -> dict:
     return out
 
 
-def entries() -> dict:
+def entries(network: str = None) -> dict:
     """What a proposal may name: the catalog's operations, the built-in command plans and the
-    reusable actions people saved (`saved_actions`)."""
-    return {**CATALOG, **COMMAND_PLANS, **saved_actions()}
+    fixes people saved (`saved_actions`; with *network*, its own and the shared ones)."""
+    return {**CATALOG, **COMMAND_PLANS, **saved_actions(network)}
 
 
 def is_command_plan(key) -> bool:
     return isinstance(key, str) and (key in COMMAND_PLANS or key in saved_actions())
 
 
-def checked(key, params) -> tuple:
+def checked(key, params, network: str = None) -> tuple:
     """``(operation, parameters)`` for a named operation (or built-in command plan) and its
     parameters, each held to the schema, or raises `Refused`: *key* one of `entries`; *params*
     an object giving every parameter it takes, each of its shape, and nothing else. Reads
-    nothing."""
-    known = entries()
+    nothing. With *network*, `entries` is that network's (another's unshared fix is not)."""
+    known = entries(network)
     if not isinstance(key, str) or key not in known:
         raise Refused("not_in_catalog", (
             f"a proposal names an operation of the catalog ({listed(sorted(known))}), and "

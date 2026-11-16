@@ -732,13 +732,16 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     lacked = lacked_read(out["ai_answer"])
     # C3805: an Automatic saved script matching the problem fixes it with no AI; an AI answer
     # it overtakes is labelled outdated (the operator's status-line rule, 2026-11-15).
-    offer = {}
+    offers = []
     if not done and state != "passed":
         from modules.nsot import saved_plans
         try:
-            offer = saved_plans.script_offer(network, found)
+            # Every matching fix is offered (C3849), an Automatic one first: the first is the
+            # next action, the rest its own buttons beside it.
+            offers = saved_plans.fix_offers(network, found)
         except Exception as exc:                      # noqa: BLE001 (said; no offer drawn)
             log.error("fixit: %s's saved-script offer could not be read: %s", iid, exc)
+    offer = offers[0] if offers else {}
     out["script"] = offer
     if offer and out["ai_answer"]:
         out["ai_answer"]["outdated"] = f"outdated: a saved script now fixes this ({offer['name']})"
@@ -753,7 +756,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "button", "script": True,
                "label": (f"Fix now with saved script {offer['name']}" if held_now
                          else f"Fix with saved script: {offer['name']}"),
-               "key": offer["key"], "hash": offer["hash"]}
+               "key": offer["key"], "hash": offer["hash"],
+               "more": [{"key": o["key"], "hash": o["hash"],
+                         "label": f"Fix with saved script: {o['name']}"} for o in offers[1:]]}
     elif actions["approve"]["offered"] or proposed:
         nxt = {"kind": "approve", "label": "Approve the plan" if plan["approvable"] else
                "Modify or deny the plan", "href": actions["approve"]["href"]}

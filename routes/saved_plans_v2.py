@@ -9,8 +9,10 @@ incident's AI troubleshooting section includes and asks for in place.
   Approve. A read.
 - ``save_script``, ``save_action``, ``promote``, ``approve_shape`` (POST): each as the
   verified person, through the one chokepoint (`identity.right_refusal`): the self-healing
-  right for a script and its promotion, the admin right for an action and a shape. Each
-  answers with the card, its result or refusal drawn in place.
+  right for a fix with a match and its promotion, the admin right for a fix with none and a
+  shape. Each answers with the card, its result or refusal drawn in place. Both saves save
+  ONE fix (C3849, `saved_plans.save_fix`): Save with the match ticked, Save as a reusable
+  action without one (shared with every network); a run already saved answers its fix.
 
 Its declarations live in their tables (`route_gates.GATES`, `invalidation.DECLARED`,
 `operation_stages.STAGES`).
@@ -99,6 +101,14 @@ def _refused(network, incident, exc, code=409):
                  level="danger", words=f"Not saved: {exc}")
 
 
+def _already(network, incident, e):
+    """A save of a run already saved (C3849: one verified run, one fix): the card, saying the
+    fix saved from it, nothing new saved."""
+    return _draw(network, incident, level="ok", words=(
+        f"Already saved: {e['name']}, saved from this run by "
+        f"{e.get('saved_by') or 'a person not recorded'}; nothing new was saved"))
+
+
 @bp.route("/<incident>/save-script", methods=["POST"])
 def save_script(incident):
     """Save the incident's verified run as a self-heal script, in Dry run: its match the
@@ -118,6 +128,8 @@ def save_script(incident):
                           **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
+    if e.get("already"):
+        return _already(network, incident, e)
     # Its result is the card's own line for what is saved from the run ("Saved: <name>, Dry
     # run", `saved_plans.saved_from`), its form collapsed: the redraw its announcement asks
     # for draws the same line (item 7, the operator, 2026-11-15).
@@ -146,6 +158,8 @@ def save_action(incident):
                           words=(form.get("words") or "").strip(), **_who())
     except S.Refused as exc:
         return _refused(network, incident, exc)
+    if e.get("already"):
+        return _already(network, incident, e)
     # Its result is the card's line "Saved: <name>, in the catalog" (`saved_from`), as above.
     log.info("saved plans: %s saved as a reusable action", e["key"])
     return _draw(network, incident)
@@ -200,7 +214,7 @@ def _device_draw(network: str, device: str, code: int = 200, *, key: str = "",
     c = saved_plans.device_offer(network, device, **_who())
     c.update(list=network, device=device, said=said, preview=None, run=None, key=key,
              interface=interface)
-    if key and interface and key in saved_plans.interface_actions():
+    if key and interface and key in saved_plans.interface_actions(network):
         p = CP.preview(network, key, {"device": device, "interface": interface})
         c["preview"] = {"ok": p["ok"], "title": p.get("title") or "", "hash": p["hash"],
                         "refusals": list(p.get("refusals") or []),
@@ -238,7 +252,7 @@ def device_run(device):
     key, iface = (form.get("key") or "").strip(), (form.get("interface") or "").strip()
     confirmed = (form.get("hash") or "").strip()
     who = _who()
-    if key not in saved_plans.interface_actions():
+    if key not in saved_plans.interface_actions(network):
         return _device_draw(network, device, 409, level="danger",
                             words=f"Not run: {key or 'no action'} is no saved action on one "
                                   "interface")

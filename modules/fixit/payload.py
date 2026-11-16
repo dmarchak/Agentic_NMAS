@@ -79,7 +79,7 @@ def _fits(key: str, op, incident, condition: str, fixes: dict) -> bool:
     return True
 
 
-def catalogue_part(incident=None, condition: str = "") -> list:
+def catalogue_part(incident=None, condition: str = "", network: str = None) -> list:
     """The operations a proposal may name, each with its parameters' shapes in words, as the
     catalog declares them (`catalog.entries`: its operations and the built-in command plans,
     C3757), and the plan engine's intent change and deploy (`plan_engine.FIX_ADMITTED`, each its
@@ -92,7 +92,9 @@ def catalogue_part(incident=None, condition: str = "") -> list:
     and the intent steps and their parameters in a few words (`INTENT_WORDS`, `INTENT_TAKES`):
     the request's fixed size kept
     inside its bound (the gate's measurement, 2026-11-15: the whole catalogue was 3,648
-    characters of every request). Without one, everything, as before."""
+    characters of every request). Without one, everything, as before. The saved fixes are the
+    incident's network's own and the shared ones (C3849; with no incident, *network*'s, or
+    every one when it is None)."""
     from modules import plan_engine as PE
     from modules.heal import catalog
 
@@ -105,7 +107,8 @@ def catalogue_part(incident=None, condition: str = "") -> list:
     out = [{"operation": op.key, "words": op.words,
             "kind": "command_plan" if catalog.is_command_plan(key) else "operation",
             "params": [{"name": p.name, "takes": takes(p)} for p in op.params]}
-           for key, op in sorted(catalog.entries().items())
+           for key, op in sorted(catalog.entries(
+               getattr(incident, "network", None) if own else network).items())
            if not own or _fits(key, op, incident, condition, fixes)]
     out += [{"operation": key, "words": (INTENT_WORDS.get(key) if own else None)
              or PE.STEP_KINDS[key].words, "kind": "intent_step",
@@ -255,5 +258,6 @@ def pack(incident, resolved: float = None, *, now: float = None) -> dict:
     """Every part this module builds for *incident*: ``{"state", "parts", "error"}``,
     ``parts`` holding each ``tried:<n>`` and the ``catalogue``."""
     got = tried_parts(incident, resolved, now=now)
-    return {"state": got["state"], "parts": dict(got["parts"], catalogue=catalogue_part()),
+    return {"state": got["state"], "parts": dict(got["parts"], catalogue=catalogue_part(
+                network=getattr(incident, "network", None))),
             "error": got["error"]}
