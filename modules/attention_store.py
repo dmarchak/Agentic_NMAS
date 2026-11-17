@@ -227,6 +227,12 @@ def _kept_path(network: str) -> str:
                         re.sub(r"[^A-Za-z0-9_.-]", "_", network) + ".json")
 
 
+#: The longest between two writes of a network's held page for the next start, and when each
+#: network's was last written (monotonic, `_clock`).
+KEEP_S = 30.0
+_kept_at: dict = {}
+
+
 def _keep(network: str, page: dict) -> None:
     """The page just held, written whole for the next start. Logged, never raised."""
     import json
@@ -490,7 +496,15 @@ def refresh(network: str, names=None, *, publish: bool = True, compute: bool = T
             n.value, n.value_at = page, now
             n.timed = {k: t for k, t in timed.items() if t}
             n.assemble_at = _ack_ends(page)
-        if not COMPUTE_ON_READ:
+        # Kept for the next start at most every KEEP_S (the overnight speed pass, 2026-11-17:
+        # the masked write was 0.17 s of a 0.85 s heal-only recompute, measured on the host,
+        # paid every DEBOUNCE_S while a heal runs); a start restores a page that old at most,
+        # drawn "restored" with its own age.
+        with _lock:
+            due = now - _kept_at.get(network, float("-inf")) >= KEEP_S
+            if due:
+                _kept_at[network] = now
+        if not COMPUTE_ON_READ and due:
             _keep(network, page)
     if publish:
         _publish(network, page)
