@@ -834,10 +834,9 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     Round 2 of the speed pass (the operator, 2026-11-17): only Stop everywhere, Off (the mode
     not Auto) and a planned window a person set stop it here; the lab-stage gate, the policy
     moved since the decision, the kinds allowed Auto, a halt and "no person confirmed the
-    policy" stop nothing. *network* is kept for the callers."""
+    policy" stop nothing; *network* is read by guard 3 below."""
     from modules.heal import policy
 
-    del network
     mode = src.mode(now)
     if (mode.get("stopped") or {}).get("stopped"):
         return f"self-healing is stopped everywhere: {mode['stopped'].get('words')}"
@@ -2484,6 +2483,17 @@ def start(network: str, decision: dict, sources=None) -> str:
         try:
             return {"ok": True, "result": _guarded(network, decision, lambda: _apply_for(
                 network, decision, sources=sources))}
+        except Exception:
+            # A raise leaves no outcome, so its row read "restoring … starting" until the next
+            # heal pass reaped it (2026-11-17 04:17 UTC): reaped now, its mark released first,
+            # so the decision and its incident stand on "interrupted" with the error's words.
+            interrupted.release(network, decision["id"])
+            try:
+                interrupted.reap(network, by=setter)
+            except Exception as exc:                      # noqa: BLE001 (the next pass reaps)
+                log.error("heal: %s's raised act %s was not reaped: %s", network,
+                          decision.get("id"), exc)
+            raise
         finally:
             interrupted.release(network, decision["id"])
 

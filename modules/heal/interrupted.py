@@ -252,6 +252,7 @@ def reap(network: str, *, now: float = None, by: str = "heal to intent") -> dict
         for d in again["found"]:
             view = steplog.of_decision(network, d["id"])
             said = words(network, d, view)
+            halts = False                                 # round 2: no halt, kept in the record
             try:
                 decisions.applied(network, d["id"], OUTCOME, by=f"{by}: the job's end found",
                                   words=said, now=now)
