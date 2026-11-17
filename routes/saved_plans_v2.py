@@ -280,12 +280,21 @@ def device_run(device):
     # A fix's Run… on a chosen port (the operator, 2026-11-16) also names each choice its plan
     # takes (`saved_plans.port_actions`); the runner's preview holds each to its choices.
     port = saved_plans.port_actions(network).get(key)
-    if port is None:
+    # A built-in command plan's Run… on a chosen device (the operator, 2026-11-17: "same as
+    # saved fixes"): exactly the parameters its template declares, each held by the runner's
+    # preview to its type (an interface and a subscription to committed intent, a choice to
+    # its own values); a parameter it does not declare is refused there.
+    from modules import fix_page
+    from modules.nsot import command_plan as CP
+    plan = CP.builtin().get(key) if port is None else None
+    if port is None and (plan is None or fix_page.builtin_port(plan) is None):
         return _device_draw(network, device, 409, level="danger",
                             words=f"Not run: {key or 'no action'} is no saved action on one "
-                                  "interface")
-    values = {"device": device, "interface": iface,
-              **{n: (form.get(n) or "").strip() for n in port["choices"]}}
+                                  "interface, nor a built-in fix Run… can fill")
+    values = ({"device": device, **{n: (form.get(n) or "").strip() for n in plan.parameters
+                                    if n != "device"}} if plan is not None else
+              {"device": device, "interface": iface,
+               **{n: (form.get(n) or "").strip() for n in port["choices"]}})
     from modules import identity
 
     why = identity.right_refusal("run_plan", **who)
@@ -296,7 +305,9 @@ def device_run(device):
 
     def work(_job):
         rec = CR.run(network, key, values, run_id=run_id,
-                     confirmed=confirmed, reason=f"a saved action pressed on {device}",
+                     confirmed=confirmed,
+                     reason=(f"built-in fix {key} pressed on {device}" if plan is not None
+                             else f"a saved action pressed on {device}"),
                      **who)
         return {"run": rec.get("id"), "state": rec.get("state"),
                 "words": CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")

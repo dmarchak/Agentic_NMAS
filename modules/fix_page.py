@@ -7,7 +7,8 @@ operator 2026-11-16 with changes), the models `routes/fixes_v2.py` draws.
 - *Saved* fixes: `saved_plans.fixes(network)` (its own and the shared ones), each read as a fix
   (`saved_plans.as_fix`), how it runs from its own match and mode (`saved_plans.how_of`).
 - *Built-in* fixes, read-only: each command plan that ships with Mercury
-  (`command_plan.builtin`), which runs only inside a plan a person approves by its hash; each
+  (`command_plan.builtin`), which runs when a person presses its Run… (as a saved fix's, below)
+  or inside a plan a person approves by its hash; each
   self-healing fix kind (`heal_page._kinds`, the Self-healing tab's own rows), how it runs from
   the network's fix kinds and its tier as the heal decision judges them
   (`heal.decide._outcome`: Tier 1 in the fix kinds to heal runs by itself in Auto, else is a
@@ -33,6 +34,14 @@ committed intent and each choice the plan takes, run through the device's saved-
 read; the preview is the runner's own (`command_plan.preview`, asking no device), and the live
 preconditions read the device when it runs. A person's action: the same with self-healing on
 or off.
+
+A built-in command plan's Run… (the operator, 2026-11-17: "same as saved fixes") is the same
+card and the same two run paths: its open incidents are those whose problem is one its
+``fixes:`` names, each filling its parameters from the incident (`builtin_offer`, which
+`fixit_v2.fix_with_script` holds the press to); else a device and each parameter the template
+declares, chosen from committed intent (an interface, a telemetry subscription) or its own
+choices, run through `saved_plans_v2.device_run`. The preview is a person's plan's
+(``person_plan``): the person's Approve covers its provisional shapes.
 
 **Versions** (`saved_plans.versions`): each run in the Record names the version it ran
 (`saved_plans.version_at`); New fix… and Edit… are `fix_editor`'s.
@@ -248,10 +257,9 @@ def builtins(network: str, runs=None, capped=False) -> list:
     for t in CP.builtin().values():
         fixes = "; ".join(_cond_words({"condition": c}) for c in t.fixes) or \
             t.words.split(":")[0]
-        out.append(_builtin_row(t.key, t.words.split(":")[0].strip(), fixes, "manual", (
-            "Never by itself: the AI proposes it on a matching incident, and it runs once a "
-            "person approves that plan by its hash"), record_of(network, [t.key], runs=runs,
-                                                                capped=capped), "plan"))
+        out.append(_builtin_row(t.key, t.words.split(":")[0].strip(), fixes, "manual",
+                                PLAN_HOVER, record_of(network, [t.key], runs=runs,
+                                                      capped=capped), "plan"))
     for key, name, fixes, hover in TELEMETRY:
         keys = [key] + (["telemetry-collector-resubscribe"]
                         if key == "telemetry-resubscribe" else [])
@@ -296,12 +304,17 @@ def builtins(network: str, runs=None, capped=False) -> list:
 
 #: What a built-in row's status line says after its record, by what runs it (its hover says
 #: why, from the settings and the tier).
-BUILTIN_SAID = {"plan": "runs inside a plan a person approves by its hash",
+BUILTIN_SAID = {"plan": "a person runs it with Run…, or inside a plan approved by its hash",
                 "telemetry": "a person starts it; self-healing never does",
                 "automatic": HOW["automatic"][2],
                 "matched": "not in the fix kinds to heal: dry-run records only",
                 "manual": "self-healing proposes it; a person approves each",
                 "off": "not in the fix kinds to propose: an alert only"}
+#: How a built-in command plan runs, as its row's and page's hover say it.
+PLAN_HOVER = ("Never by itself: a person presses Run… on its page, or the AI proposes it on a "
+              "matching incident and it runs once a person approves that plan by its hash")
+#: What self-healing does about an incident a built-in command plan fixes (Run…'s incidents).
+PLAN_STATE = "self-healing never runs it by itself"
 
 
 def _builtin_row(key, name, fixes, how, hover, record, group) -> dict:
@@ -454,6 +467,10 @@ def _params(f, t, by_run: bool = True) -> list:
                 words += "; an access port"
             if spec.get("not_management"):
                 words += ", never the path Mercury manages the switch through"
+        elif spec["type"] == "subscription":
+            words = ("the incident's lost subscription, or one chosen at Run… from the device's "
+                     "committed intent" if by_run else
+                     "the subscription the approved plan names, held to committed intent")
         else:
             vals = _values(f, t, name)
             src = ""
@@ -544,8 +561,10 @@ def page(network: str, key: str) -> dict:
     f = got["fix"]
     # Run… here fills a matched fix from its incident, and one with no match only when a
     # device, an interface and choices are all it takes (`saved_plans.port_actions`).
-    by_run = got["kind"] == "saved" and (bool(f.get("match"))
-                                         or key in S.port_actions(network))
+    # A built-in command plan's Run… fills it from a matching incident or a chosen device and
+    # its declared parameters (`run_card`, the operator, 2026-11-17).
+    by_run = got["kind"] == "plan" or (got["kind"] == "saved" and (
+        bool(f.get("match")) or key in S.port_actions(network)))
     if t is not None:
         checks = [_check(f, t, i) for i in t.preconditions]
         verify = [_check(f, t, i) for i in t.verify]
@@ -558,14 +577,13 @@ def page(network: str, key: str) -> dict:
     if got["kind"] == "plan":
         out.update(name=t.words.split(":")[0].strip(),
                    fixes="; ".join(_cond_words({"condition": c}) for c in t.fixes)
-                   or t.words, how="manual",
-                   hover=("Never by itself: the AI proposes it on a matching incident, and it "
-                          "runs once a person approves that plan by its hash"),
+                   or t.words, how="manual", hover=PLAN_HOVER,
                    record=record_of(network, [key]),
                    origin=[{"dt": "Ships with", "words": "Mercury: built in, read-only here"}],
-                   why_not=("A built-in fix is read-only here: it runs inside a plan a person "
-                            "approves on its incident"))
-        out.update(words=HOW["manual"][0], badge=HOW["manual"][1], said=BUILTIN_SAID["plan"])
+                   why_not=("Its lines ship with Mercury and are not edited here; Run… runs "
+                            "it once, a person's press bound to its preview's hash"))
+        out.update(words=HOW["manual"][0], badge=HOW["manual"][1], said=BUILTIN_SAID["plan"],
+                   by_run=True, runnable=True)
         return out
     how = f["how"]
     words, badge, said = HOW[how]
@@ -705,7 +723,9 @@ def _preview(network: str, key: str, values: dict) -> dict:
     """The runner's own preview (asking no device), as the run card draws it."""
     from modules.nsot import command_plan as CP
 
-    p = CP.preview(network, key, values)
+    # Run… is always a person's press, and its run (`command_plan_run.run`, no authority) is a
+    # person's plan: the preview is held as the run holds it (the operator, 2026-11-17).
+    p = CP.preview(network, key, values, person_plan=True)
     d = p.get("drawn") or {}
     return {"ok": bool(p["ok"]), "refusals": list(p.get("refusals") or []),
             "title": d.get("title") or p.get("title") or "", "hash": p.get("hash") or "",
@@ -753,19 +773,23 @@ def _heal_words(network: str, f: dict, incident_id: str, heal: str) -> str:
             else "self-healing runs it by itself")
 
 
-def _matching(network: str, f: dict) -> list:
-    """The open incidents whose classified problem the fix *f*'s match holds now, not ended by
-    their page's own rule (`_ended`), newest first: ``[{"id", "problem", "record", "label",
-    "where", "affected", "opened_at", "state"}]``. From Mercury's records only."""
+def _matching(network: str, f: dict, matches=None, state: str = "") -> list:
+    """The open incidents whose classified problem the fix *f*'s match holds now (or any of
+    *matches*: a built-in command plan's, one per condition it ``fixes:``), not ended by their
+    page's own rule (`_ended`), newest first: ``[{"id", "problem", "record", "label", "where",
+    "affected", "opened_at", "state"}]``, *state* what self-healing does about each (a built-in
+    plan's own words, else the fix's track's). From Mercury's records only."""
     from modules.heal import incidents
     from modules.nsot import saved_plans as S
 
     recs = {str(r.get("id") or ""): r for r in incidents.read(network).get("incidents") or []
             if isinstance(r, dict)}
     heal = S.heal_mode(network)
+    every = list(matches) if matches is not None else [f["match"]]
     out = []
     for iid, prob in S._incidents_problems(network):   # noqa: SLF001 (its one read)
-        if not (S.matches(f["match"], prob) and prob.device) or _ended(network, iid):
+        if (not (any(S.matches(m, prob) for m in every) and prob.device)
+                or _ended(network, iid)):
             continue
         rec = recs.get(iid) or {}
         out.append({"id": iid, "problem": prob, "record": rec,
@@ -774,9 +798,98 @@ def _matching(network: str, f: dict) -> list:
                               f"{str(prob.condition).replace('_', '-')}"
                               f"{' by ' + prob.cause if prob.cause else ''}").strip(),
                     "affected": prob.affected or "", "opened_at": rec.get("opened_at") or "",
-                    "state": _heal_words(network, f, iid, heal)})
+                    "state": state or _heal_words(network, f, iid, heal)})
     out.sort(key=lambda r: str(r["opened_at"]), reverse=True)
     return out
+
+
+def _intent_subs(intent: dict) -> list:
+    """The telemetry subscription ids a device's committed intent declares, in its order."""
+    return [str(s.get("subscription")) for s in (intent or {}).get("telemetry") or []
+            if isinstance(s, dict) and s.get("subscription") not in (None, "")]
+
+
+def builtin_port(t) -> dict:
+    """How Run… on a chosen device fills built-in command plan *t*: ``{"iface", "choices",
+    "subs"}``, *iface* whether it takes an ``interface`` (chosen from committed intent),
+    *choices* each choice it declares with its own values, *subs* each subscription parameter
+    (chosen from the device's committed intent); ``None`` when a parameter is of a type Run…
+    cannot choose from what Mercury holds. Never typed free."""
+    iface, choices, subs = False, {}, []
+    for name, spec in t.parameters.items():
+        kind = spec.get("type")
+        if kind == "device" and name == "device":
+            continue
+        if kind == "interface" and name == "interface":
+            iface = True
+        elif kind == "choice":
+            choices[name] = list(spec.get("of") or [])
+        elif kind == "subscription" and not subs:
+            subs.append(name)
+        else:
+            return None
+    return {"iface": iface, "choices": choices, "subs": subs}
+
+
+def builtin_values(t, found: dict) -> tuple:
+    """``(values, why)``: built-in command plan *t*'s parameters filled from the incident
+    `incident_page.resolve` *found*, each by its declared type: the device the problem's; an
+    interface the err-disabled port its classification read; a subscription the first its lost
+    stream names (`diagnose_stream.target_from`; a recreate takes every subscription on that
+    one's receiver); a choice the incident's own value of that name when it is one of the
+    template's. *why* names a parameter the incident does not say. A read."""
+    from modules import problem as P
+    from modules.heal import diagnose_stream, errdisable
+
+    rec = found.get("incident") or {}
+    prob = P.classify(found)
+    raw = errdisable.of_record(rec)
+    values, missing = {}, []
+    for name, spec in t.parameters.items():
+        kind = spec.get("type")
+        if kind == "device":
+            v = prob.device
+        elif kind == "interface":
+            v = str(raw.get("port") or "")
+        elif kind == "subscription":
+            subs = (diagnose_stream.target_from(rec) or {}).get("subscriptions") or []
+            v = str(subs[0]) if subs else ""
+        else:
+            of = list(spec.get("of") or [])
+            v = next((str(x) for x in (raw.get(name), getattr(prob, name, None)) if x in of), "")
+        if not v:
+            missing.append(name)
+        values[name] = v
+    if missing:
+        return {}, (f"the incident does not say which {', '.join(missing)} "
+                    f"{t.key} takes: choose a device instead")
+    return values, ""
+
+
+def builtin_offer(network: str, found: dict, key: str) -> dict:
+    """Built-in command plan *key* offered on the incident *found* (`incident_page.resolve`),
+    as a saved fix's offer is (`saved_plans.fix_offers`): ``{"key", "name", "values", "hash",
+    "refusals"}``, its values filled from the incident (`builtin_values`) and previewed as a
+    person's plan (asking no device); ``{}`` when *key* is no built-in plan or the incident's
+    problem is none its ``fixes:`` names. The card draws it and `fixit_v2.fix_with_script`
+    holds the press to it. A read."""
+    from modules import problem as P
+    from modules.nsot import command_plan as CP
+
+    t = CP.builtin().get(key)
+    if t is None or found.get("found") != "page":
+        return {}
+    prob = P.classify(found)
+    if not prob.device or prob.condition not in t.fixes:
+        return {}
+    name = t.words.split(":")[0].strip()
+    values, why = builtin_values(t, found)
+    if why:
+        return {"key": key, "name": name, "values": {}, "hash": "", "refusals": [why]}
+    p = CP.preview(network, key, values, person_plan=True)
+    return {"key": key, "name": name, "values": values,
+            "hash": (p.get("hash") or "") if p["ok"] else "",
+            "refusals": list(p.get("refusals") or [])}
 
 
 def run_card(network: str, key: str, *, incident: str = "", device: str = "",
@@ -789,7 +902,10 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
     one chosen filling device, object and cause from its problem, run through the incident's
     own "Fix with:" path) or ``port`` ("Or choose a device and interface…": a device and a port
     from committed intent, and each choice the plan takes, run through the device's saved-action
-    path). *state* ``choose`` (a preview to approve), ``none`` (*why*), ``refused`` (the
+    path). A built-in command plan's is the same card (the operator, 2026-11-17): its incidents
+    by the conditions it ``fixes:`` (`builtin_offer`), else a device and each parameter it
+    declares (`builtin_port`), its device chosen from committed intent; *port_words* that
+    link's words. *state* ``choose`` (a preview to approve), ``none`` (*why*), ``refused`` (the
     preview's refusals) or ``not_offered``. *post* is the existing run path's ``{"endpoint",
     "args", "vals"}``. A person's action, the same with self-healing on or off. A read: no
     device is asked."""
@@ -803,18 +919,27 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
     c = {"state": "not_offered", "mode": "port", "key": key, "network": network, "name": key,
          "incidents": [], "devices": [], "ports": [], "choices": [], "device": "",
          "interface": "", "why": "", "note": "", "preview": None, "post": None, "right": right,
-         "port_ok": False, "none_open": False, "matched": False}
-    if got["kind"] != "saved" or got["template"] is None:
+         "port_ok": False, "none_open": False, "matched": False,
+         "port_words": "Or choose a device and interface…"}
+    if got["kind"] not in ("saved", "plan") or got["template"] is None:
         return dict(c, why="A built-in fix is read-only here: it runs inside a plan a person "
                            "approves on its incident")
-    f, t = got["fix"], got["template"]
-    c["name"] = f.get("name") or key
+    # A built-in command plan (the operator, 2026-11-17: "same as saved fixes"): its open
+    # incidents by the conditions it ``fixes:``, else a device and its declared parameters.
+    builtin = got["kind"] == "plan"
+    f, t = got["fix"] or {}, got["template"]
+    c["name"] = t.words.split(":")[0].strip() if builtin else (f.get("name") or key)
     if f.get("retired"):
         return dict(c, why=f"{c['name']} is deleted: Restore… under How it runs brings it back")
-    porting = S.port_actions(network).get(key)
-    c.update(port_ok=porting is not None, matched=bool(f.get("match")))
-    if f.get("match") and not port:
-        rows = _matching(network, f)
+    porting = builtin_port(t) if builtin else S.port_actions(network).get(key)
+    matches = ([{"condition": x} for x in t.fixes] if builtin else
+               [f["match"]] if f.get("match") else [])
+    iface = bool((porting or {}).get("iface", True))
+    c.update(port_ok=porting is not None, matched=bool(matches),
+             port_words=("Or choose a device and interface…" if iface else
+                         "Or choose a device…"))
+    if matches and not port:
+        rows = _matching(network, f, matches=matches, state=PLAN_STATE if builtin else "")
         if rows:
             chosen = next((r for r in rows if r["id"] == incident), rows[0])
             c["incidents"] = [dict({k: r[k] for k in ("id", "label", "affected", "opened_at",
@@ -824,7 +949,16 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
             c.update(mode="incident", device=prob.device, interface=prob.object or "",
                      where=chosen["where"])
             found = incident_page.resolve(network, iid)
-            offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), None)
+            if builtin:
+                # Filled from the incident (`builtin_offer`), the one the press is held to.
+                offer = builtin_offer(network, found, key)
+                if not offer.get("values"):
+                    return dict(c, state="refused", preview={"ok": False, "refusals": (
+                        offer.get("refusals") or [f"{c['name']} fixes none of this "
+                                                  "incident's problem now"])})
+            else:
+                offer = next((o for o in S.fix_offers(network, found) if o["key"] == key),
+                             None)
             if offer is None:
                 try:
                     values = S.fill(f, P.classify(found))
@@ -848,38 +982,56 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
             + (f"Run… on a chosen port fills a device, an interface and choices, and this fix "
                f"also takes {', '.join(others) or 'more'}: it runs as a step of a plan a person "
                "approves")))
+    # A subscription parameter (a built-in's) is chosen from the device's committed intent.
+    subs = list(porting.get("subs") or [])
     access_only = bool((t.parameters.get("interface") or {}).get("access_port"))
-    eligible = {n: _intent_ports(i, access_only) for n, i in sorted((intents or {}).items())}
-    names = [n for n, ports in eligible.items() if ports]
-    if not names:
-        return dict(c, state="none", why=(f"No device of {network} has "
-                                          f"{'an access port' if access_only else 'an interface'}"
-                                          f" in its committed intent"
-                                          f"{': ' + err if err else ''}"))
-    dev = device if device in names else names[0]
+    eligible = {n: (_intent_ports(i, access_only) if iface else [],
+                    _intent_subs(i) if subs else [])
+                for n, i in sorted((intents or {}).items())}
+    names = [n for n, (ports, held) in eligible.items()
+             if (ports or not iface) and (held or not subs)]
     word = "access port" if access_only else "interface"
-    c["devices"] = [{"name": n, "chosen": n == dev, "label": (
-        f"{n} ({len(eligible[n])} {word}{'s' if len(eligible[n]) != 1 else ''})")}
-        for n in names]
+    if not names:
+        needs = (["an access port" if access_only else "an interface"] if iface else []) + (
+            ["a telemetry subscription"] if subs else [])
+        return dict(c, state="none", why=(f"No device of {network} has "
+                                          + (f"{' and '.join(needs)} in its committed intent"
+                                             if needs else "committed intent")
+                                          + (f": {err}" if err else "")))
+    dev = device if device in names else names[0]
+
+    def label(n):
+        ports, held = eligible[n]
+        if iface:
+            return f"{n} ({len(ports)} {word}{'s' if len(ports) != 1 else ''})"
+        if subs:
+            return f"{n} ({len(held)} subscription{'s' if len(held) != 1 else ''})"
+        return n
+    c["devices"] = [{"name": n, "chosen": n == dev, "label": label(n)} for n in names]
     c["device"] = dev
-    ports = eligible[dev]
-    chosen = next((str(i["name"]) for i in ports
-                   if interface and ifnames.same_interface(str(i["name"]), interface)),
-                  str(ports[0]["name"]))
-    c["ports"] = [{"value": str(i["name"]), "chosen": str(i["name"]) == chosen,
-                   "label": f"{_short(str(i['name']))} ("
-                            + (f"{i['description']}, " if i.get("description") else "")
-                            + f"{i.get('switchport_mode') or 'no switchport'})"} for i in ports]
+    ports = eligible[dev][0]
+    chosen = ""
+    if iface:
+        chosen = next((str(i["name"]) for i in ports
+                       if interface and ifnames.same_interface(str(i["name"]), interface)),
+                      str(ports[0]["name"]))
+        c["ports"] = [{"value": str(i["name"]), "chosen": str(i["name"]) == chosen,
+                       "label": f"{_short(str(i['name']))} ("
+                                + (f"{i['description']}, " if i.get("description") else "")
+                                + f"{i.get('switchport_mode') or 'no switchport'})"}
+                      for i in ports]
+        c["note"] = (f"Every {word} in {dev}'s committed intent: "
+                     + ("you choose the port, " if matches else
+                        "this fix matches no problem, so Mercury cannot tell which port needs "
+                        "it; ")
+                     + "its checks read the port live when you run it")
     c["interface"] = chosen
-    c["note"] = (f"Every {word} in {dev}'s committed intent: "
-                 + ("you choose the port, " if f.get("match") else
-                    "this fix matches no problem, so Mercury cannot tell which port needs it; ")
-                 + "its checks read the port live when you run it")
-    c["where"] = f"{dev} {_short(chosen)}"
+    c["where"] = f"{dev} {_short(chosen)}" if chosen else dev
     # Each choice the plan takes (an err-disabled port's cause), chosen here: the match's own
-    # value through its fill's map when it names one, else the first.
+    # value through its fill's map when it names one, else the first; a subscription from the
+    # chosen device's committed intent.
     picked = {}
-    for name, of in porting["choices"].items():
+    for name, of in {**porting["choices"], **{n: eligible[dev][1] for n in subs}}.items():
         if not of:
             return dict(c, state="refused", preview={"ok": False, "refusals": [
                 f"{c['name']} takes {name} and offers no choice of it"]})
@@ -894,12 +1046,13 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
         words = (t.parameters.get(name) or {}).get("words") or name
         c["choices"].append({"name": name, "words": words,
                              "of": [{"value": v, "chosen": v == want} for v in of]})
-    pv = _preview(network, key, {"device": dev, "interface": chosen, **picked})
+    at = {"interface": chosen} if iface else {}
+    pv = _preview(network, key, {"device": dev, **at, **picked})
     return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
                 post={"endpoint": "saved_plans_v2.device_run",
                       "args": {"device": dev, "list": network},
-                      "vals": {"key": key, "interface": chosen, "hash": pv["hash"],
-                               "view": "fix", **picked}})
+                      "vals": {"key": key, **at, "hash": pv["hash"], "view": "fix",
+                               **picked}})
 
 
 def run_state(network: str, run_id: str) -> dict:

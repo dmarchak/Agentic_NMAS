@@ -295,6 +295,12 @@ place is named. Where this list and another document disagree, the charter gover
   engine's allowlist, as Mercury's account), and every change it proposes is a plan of
   Mercury's own catalog steps, run by Mercury after a person approves it by hash ("AI-assisted
   actions", below).
+- **Only a change to a device needs a person's approval** (the operator, 2026-11-17): a change
+  is anything that alters a device's state (configure, clear, debug, reload, copy, write).
+  Everything read-only runs when the AI asks, with no approval and no default-off: every show
+  command, ping, traceroute and any other read. Secrets in the output are masked before they
+  go to the AI, as masking, never as a gate. The device-state and configuration egress classes
+  are on, masked.
 - **The AI is an engineer, never an admin.** It changes no setting, cap or switch, approves
   nothing, and acts under its own engineer-role identity (C3596, C3597); a person approves
   every plan it proposes.

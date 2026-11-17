@@ -29,7 +29,7 @@
     </fieldset>
   </form>
   {%- if c.port_ok %}
-  <p class="small"><button type="button" class="bluf-link" data-op="fix-run-port" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, port='1') }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">Or choose a device and interface…</button></p>
+  <p class="small"><button type="button" class="bluf-link" data-op="fix-run-port" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, port='1') }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">{{ c.port_words or 'Or choose a device and interface…' }}</button></p>
   {%- endif %}
   {%- elif c.state in ('choose', 'none', 'refused') and c.devices %}
   {%- if c.none_open %}<p class="small">No open incident needs this fix right now.</p>{% endif %}

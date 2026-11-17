@@ -5,7 +5,8 @@ operator 2026-11-16 with changes), drawn from `modules/fix_page.py`.
 - ``GET /v2/fixes``: every fix the page's network has, saved and built-in, grouped, each group
   its first 20 rows and the rest counted; ``q``, ``mode`` and ``kind`` filter on the server.
 - ``GET /v2/fixes/<key>``: one fix's page: its BLUF with Run…, then Contents, Origin, Record
-  and How it runs, folded. A built-in's is read-only.
+  and How it runs, folded. A built-in's is read-only; a built-in command plan's has Run…, the
+  same card and run paths as a saved fix's (the operator, 2026-11-17).
 - ``GET /v2/fixes/<key>/run``: Run…'s card in place: a device and a port chosen from what
   Mercury holds (never a device read), the runner's own preview, and Run posting to the
   EXISTING run path (`fixit_v2.fix_with_script` on the matched incident, or

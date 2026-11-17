@@ -162,7 +162,10 @@ def fix_with_script(incident_id):
     match its problem holds, `saved_plans.fix_offers`, C3849; ``key`` names which) run once
     as the verified person who pressed, bound to the hash the page drew (``key``, ``hash``), by
     the runner as a job (the device held, preconditions read again, sent, verified, rolled back
-    on a failed verify, recorded); verified, the incident closes Fixed. No AI."""
+    on a failed verify, recorded); verified, the incident closes Fixed. No AI. A built-in
+    command plan pressed on a fix's page (``view=fix``, the operator, 2026-11-17) is the same
+    press: its offer filled from this incident (`fix_page.builtin_offer`), the same run and
+    close."""
     from urllib.parse import quote
 
     from modules.nsot import capture_job
@@ -195,6 +198,19 @@ def fix_with_script(incident_id):
         return answer(403, refused=why)
     # Any fix the incident offers (C3849: every matching fix is a button), the one pressed.
     offer = next((o for o in S.fix_offers(network, found) if o["key"] == key), {})
+    builtin = False
+    if not offer:
+        # A built-in command plan's Run… on this incident (the operator, 2026-11-17: "same as
+        # saved fixes"): filled from the incident and previewed as the card drew it
+        # (`fix_page.builtin_offer`), run by the same runner, closed by the same close.
+        from modules import fix_page
+        offer = fix_page.builtin_offer(network, found, key)
+        builtin = bool(offer)
+        if builtin and not offer["hash"]:
+            return answer(409, refused=(
+                f"Not run: {offer['name']}: " + "; ".join(offer["refusals"] or ["its preview "
+                                                                                "is refused"])
+                + ". Nothing ran"))
     if not offer:
         return answer(409, refused=(
             f"Not run: {key or 'no script'} is no saved script matching this incident's "
@@ -203,15 +219,16 @@ def fix_with_script(incident_id):
         return answer(409, refused=(
             f"Not run: you pressed {offer['name']} at {sent or 'no hash'}, and its preview now "
             f"is {offer['hash']}: it moved since the page was drawn. Nothing ran"))
-    e = S.scripts(network).get(key)
+    e = {"key": key, "name": offer["name"]} if builtin else S.scripts(network).get(key)
     if not e:
         return answer(409, refused=(
             f"Not run: {offer['name']} is no longer saved. Nothing ran"))
 
     def work(_job):
         rec = CR.run(network, key, offer["values"], confirmed=offer["hash"],
-                     incident=incident_id, reason=(f"saved script {offer['name']} pressed on "
-                                                   f"incident {incident_id}"), **who)
+                     incident=incident_id,
+                     reason=(f"{'built-in fix' if builtin else 'saved script'} "
+                             f"{offer['name']} pressed on incident {incident_id}"), **who)
         if S.run_verified(rec):     # a run that sent nothing closes nothing (C3)
             S.close_fixed(network, incident_id, {"id": rec.get("id"),
                                                  "device": offer["values"].get("device")},

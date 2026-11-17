@@ -1238,7 +1238,7 @@ def script_preview(network: str, found: dict) -> dict:
     return _previewed(network, e, prob) if e else {}
 
 
-def _previewed(network: str, e: dict, prob) -> dict:
+def _previewed(network: str, e: dict, prob, person: bool = False) -> dict:
     """The fix *e* filled from the classified problem *prob* (`fill`) and previewed by the
     runner's own preview (`command_plan.preview`, asking no device): `script_preview`'s
     answer, with ``mode`` and ``how``; ``{}`` when its map does not name a value or its
@@ -1249,7 +1249,9 @@ def _previewed(network: str, e: dict, prob) -> dict:
         values = fill(e, prob)
     except Refused:
         return {}
-    p = CP.preview(network, e["key"], values)
+    # *person*: a person's press offers it (`fix_offers`), so a provisional shape refuses
+    # nothing (the operator, 2026-11-17); an Automatic fire (`script_preview`) stays strict.
+    p = CP.preview(network, e["key"], values, person_plan=person)
     if not p["ok"]:
         return {}
     d = p.get("drawn") or {}
@@ -1280,7 +1282,7 @@ def fix_offers(network: str, found: dict) -> list:
                  key=lambda e: (e.get("mode") != "auto", e.get("key") or ""))
     out = []
     for e in hit:
-        got = _previewed(network, e, prob)
+        got = _previewed(network, e, prob, person=True)
         if got:
             out.append({k: got[k] for k in OFFER_FIELDS})
     return out
