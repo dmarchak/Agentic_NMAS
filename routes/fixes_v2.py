@@ -189,8 +189,8 @@ def edit_save(key):
     words = (f"Saved as version {n}; version {n - 1} and its runs are kept" + held
              if got["new_version"] else f"Saved in place: still version {n}" + held)
     if got.get("proposed"):
-        words += (f". Held provisional until an admin approves: "
-                  f"{', '.join(got['proposed'])}; it cannot run until then")
+        words += (f". New line shapes held provisional: "
+                  f"{', '.join(got['proposed'])}; a person's Approve of its run covers them")
     return page_again(level="ok", words=words)
 
 

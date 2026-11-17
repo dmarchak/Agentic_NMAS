@@ -53,7 +53,7 @@ no thread of its own.
 its outcome), finished by the decision that takes it (`finish`, whichever process decides),
 and the decision's own row in History, its claim step saying it was a retry and why. A
 switch-on's or a script's retry whose fixes failed is a failure R1 sees (`failures_of`,
-read by `fixit.auto.pending`); a daily retry's never starts the AI, nor does the act of a
+read by `fixit.auto.pending`), a daily retry's too (2026-11-17); the act of a
 heal its decision made (`fixit.auto.failures` leaves out an act whose decision a daily retry
 made; a switch-on's or a script's re-decided heal that fails counts once, as its act).
 """
@@ -472,14 +472,13 @@ def finish(network: str, incident_id: str, retry_id: str, d: dict, fires: list, 
 def failures_of(record: dict) -> list:
     """The failures of Mercury's fix the incident *record*'s retries are, for R1's one reader
     (`fixit.auto.pending`): each finished retry whose fixes all failed, keyed by the retry
-    (``retry:<id>``), its time the retry's end, EXCEPT a daily retry's (the operator,
-    2026-11-16: a daily retry never starts the AI; whether new evidence or a new capability
-    should is a follow-up). Its outcome is the trigger."""
+    (``retry:<id>``), its time the retry's end, a daily retry's included (the operator,
+    2026-11-17). Its outcome is the trigger."""
     from modules.fixit.auto import key_of
 
     out = []
     for r in (record or {}).get("retries") or []:
-        if r.get("state") != "done" or not r.get("failed") or r.get("trigger") == "daily":
+        if r.get("state") != "done" or not r.get("failed"):
             continue
         epoch = float(r.get("done_epoch") or r.get("epoch") or 0)
         out.append({"key": key_of("retry", r["id"]), "kind": "retry", "id": r["id"],

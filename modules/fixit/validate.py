@@ -159,7 +159,11 @@ def check(incident, operation, params, *, resolved: float = None, now: float = N
         return _refused("management", "guards", why.removesuffix(" Nothing was sent."), passed)
     seams = dict(planned or {})
     g = guards.g3_planned(network, device, at, explained=seams.get("explained"),
-                          holder=seams.get("holder"), window=seams.get("window"))
+                          # Another operation holding the device is a wait at run time
+                          # (K2), never a refusal of the proposal: judged with a holder that
+                          # finds no hold, as decide does (the operator, 2026-11-17).
+                          holder=seams.get("holder") or (lambda _n, _d: None),
+                          window=seams.get("window"))
     if g:
         return _refused("planned_work", "guards", (
             f"guard {g['guard']} ({g['name']}) holds {device}: {g['words']}"), passed)

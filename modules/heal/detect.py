@@ -54,10 +54,10 @@ log = logging.getLogger(__name__)
 #: How often the runner passes: a quarter of the lab's 120 s grace period, so a second read is
 #: made within 30 s of its due time.
 PASS_SECONDS = 30
-#: The reads one pass of one network makes; the rest wait for the next pass, said. Past
-#: `heal_max_devices_drifting` (3 by default) the decision escalates anyway (guard 6), so ten
-#: bound a storm's reads, not what is found.
-READS_PER_PASS = 10
+#: The reads one pass of one network makes; the rest wait for the next pass, said. Raised to
+#: the fan-out's own worker bound (`fanout.MAX_WORKERS`, the operator, 2026-11-17): it bounds
+#: a storm's reads, not what is found.
+READS_PER_PASS = 16
 #: The pass's steps, in order, for the manual's How it works page (H10).
 STEPS = (("mode", "Read the network's mode"),
          ("lock", "Hold the network, one pass at a time"),

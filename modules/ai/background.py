@@ -34,12 +34,9 @@ measured cost per call: the mean cost of the task's sent calls on its pinned mod
 30 cap days; with none measured, the task's per-call cap, its worst case, said as such). An
 unmeasured frequency is said as unknown, never guessed.
 
-**An approval lasts `APPROVAL_DAYS` days** (board AI3's decision 5, docs/STANDING_APPROVAL_LOG.md
-"Boards AI1 to AI5"): a switch is in force from its ``at`` until ``at`` plus 14 days, and after
-that it reads as off everywhere (`entry_of`, `enabled`, so the gateway's `admit` refuses its
-next call, naming the approval's end). Turning it on again is a new approval, after a new
-estimate. Changing its caps is not one, so it never extends an approval. The end is derived
-from ``at``, never stored beside it (one owner).
+**An approval never lapses** (the operator, 2026-11-17, replacing board AI3's decision 5's
+`APPROVAL_DAYS`): a switch is in force while it is on, until a person turns it off; there is
+no renewal row (`renewal_due` is never due).
 
 **Mercury never raises a cap**: only `turn_on` and `set_caps` write one, each a person's
 action. The routes that call these are Settings › Installation › AI's
@@ -218,11 +215,8 @@ def approval_ends(entry: dict):
 
 
 def in_force(entry) -> bool:
-    """Whether *entry* is on and its approval has not ended."""
-    if not isinstance(entry, dict) or entry.get("on") is not True:
-        return False
-    ends = approval_ends(entry)
-    return ends is not None and _now() < ends
+    """Whether *entry* is on: an approval never lapses (the operator, 2026-11-17)."""
+    return isinstance(entry, dict) and entry.get("on") is True
 
 
 def entry_of(network: str, feature: str):
@@ -237,11 +231,10 @@ def renewal_due(entry, now=None) -> bool:
     (an aware datetime, as the spend readers pass it, or an epoch; the clock when None), or has
     ended: the window in which Mercury asks an admin to turn it on again (decision 5, C1953).
     An entry whose ``at`` Mercury did not write has no approval to renew (it was never in
-    force) and is not due."""
-    if not isinstance(entry, dict) or entry.get("on") is not True:
-        return False
-    ends = approval_ends(entry)
-    return ends is not None and epoch_of(now) >= ends - RENEW_DAYS * 86400
+    force) and is not due. Never due since the operator, 2026-11-17: an approval never lapses,
+    so there is no renewal row."""
+    del entry, now
+    return False
 
 
 def epoch_of(now=None) -> float:
@@ -664,8 +657,8 @@ def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: st
             actor: str, verified: str, now=None, catch_up: dict = None,
             limits=None) -> dict:
     """Turn *feature* on for *network* (an admin's decision): the caps checked, the estimate
-    recomputed and compared with the *shown* digest (refused, naming both, when it moved),
-    then written with who, when and that estimate, and recorded. *catch_up* (``fixit_auto``'s
+    recomputed (*shown* and *limits* no longer compared, the operator, 2026-11-17), then
+    written with who, when and that estimate, and recorded. *catch_up* (``fixit_auto``'s
     list at Turn on…: ``{"ticked", "unticked", "usd_each", "usd_total"}``, the incident ids the
     person ticked and left unticked and the estimate shown) is recorded with it, the person's
     choice (the operator, 2026-11-15: "records what was chosen"). ``{"ok", "entry",
@@ -675,31 +668,16 @@ def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: st
     slug = _network(network)
     caps = _caps(day_cap_usd, month_cap_usd)
     est = estimate(slug, feature, now)
-    if est["digest"] != shown:
-        raise Refused(f"the estimate moved since it was shown (shown {shown[:12] or 'none'}, "
-                      f"now {est['digest'][:12]}): look at it again and accept it; nothing "
-                      "was changed")
+    # The estimate-moved and limits-moved refusals removed (the operator, 2026-11-17): the
+    # estimate now is the one recorded.
+    del shown, limits
     from modules.config import settings_lock
 
     at = _iso(_now())
     # Gate 2 (C3769): the network's own AI troubleshooting mode and acknowledged limits ride
-    # in the same entry and outlive a turn-on, as they outlive a turn-off (`KEPT`). *limits*
-    # (``(digest, digest_of)``: the acknowledged limits' digest the caller read, and how a
-    # record's limits are digested) is checked against the record as it is under the
-    # settings lock, in the same hold as the write: limits changed between the caller's read
-    # and this write refuse, naming both, with nothing changed (Gate 2's review).
+    # in the same entry and outlive a turn-on, as they outlive a turn-off (`KEPT`).
     with settings_lock():
         was = switches().get(slug, {}).get(feature)
-        if limits is not None:
-            want, digest_of = limits
-            ack = (was or {}).get("limits_ack") if isinstance(was, dict) else None
-            now_digest = digest_of(was or {})
-            if not isinstance(ack, dict) or ack.get("limits_digest") != want \
-                    or now_digest != want:
-                raise Refused(f"the limits changed since they were read (read {want[:12]}, now "
-                              f"{str(now_digest)[:12]}, acknowledged "
-                              f"{str((ack or {}).get('limits_digest') or 'none')[:12]}): "
-                              "nothing was changed")
         entry = {**kept_of(was), "on": True, "by": actor, "verified": verified, "at": at,
                  "estimate": est, "day_cap_usd": caps["day"], "month_cap_usd": caps["month"],
                  "caps_by": actor, "caps_at": at}

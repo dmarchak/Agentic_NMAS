@@ -37,9 +37,10 @@ log = logging.getLogger(__name__)
 AS_CATALOG = {"subs": "subscriptions", "sub": "subscription",
               # G7 (C3712): Recover an err-disabled interface's, by the same names.
               "interface": "interface", "cause": "cause"}
-#: Why a repeat is refused, the attempt it repeats named.
-REPEAT_WORDS = ("it already failed on this incident as attempt {attempt} ({words}), so it is "
-                "not offered again; it stays in Attempts and under Other actions")
+#: A repeat's risk, the attempt it repeats named: drawn on the step, which stays approvable
+#: (the operator, 2026-11-17: plan.py's repeat refusal removed).
+REPEAT_WORDS = ("risk: it already failed on this incident as attempt {attempt} ({words}); "
+                "approving runs it again")
 
 
 def as_catalog(operation: str, params: dict, device: str) -> dict:
@@ -99,25 +100,26 @@ def plan_params(incident, line: dict) -> dict:
 
 def _check_one(incident, operation: str, params: dict, *, resolved=None, now=None,
                sources=None, planned=None) -> dict:
-    """One step's preflight: ``{"ok", "hash", "drawn", "refused", "code", "repeat"}``."""
+    """One step's preflight: ``{"ok", "hash", "drawn", "refused", "code", "repeat", "warn"}``;
+    a repeat of a failed attempt is approvable, its risk in *warn*."""
     from modules.fixit import validate as V
 
     got = V.check(incident, operation, params, resolved=resolved, now=now, sources=sources,
                   planned=planned)
     if not got["ok"]:
         return {"ok": False, "hash": "", "drawn": {}, "refused": got["refused"],
-                "code": got["code"], "repeat": {}}
+                "code": got["code"], "repeat": {}, "warn": ""}
     rep = got.get("repeat") or {}
+    warn = ""
     if rep.get("kind") == "repeat":
         from modules.fixit.section import outcome_words
 
-        return {"ok": False, "hash": got["hash"], "drawn": got["preview"], "code": "repeat",
-                "refused": REPEAT_WORDS.format(
-                    attempt=rep.get("attempt"),
-                    words=outcome_words(rep.get("outcome") or "", rep.get("words") or "")
-                    or "it did not pass"), "repeat": rep}
+        warn = REPEAT_WORDS.format(
+            attempt=rep.get("attempt"),
+            words=outcome_words(rep.get("outcome") or "", rep.get("words") or "")
+            or "it did not pass")
     return {"ok": True, "hash": got["hash"], "drawn": got["preview"], "refused": "",
-            "code": "", "repeat": rep}
+            "code": "", "repeat": rep, "warn": warn}
 
 
 def _admitted_one(incident, operation: str, params: dict, candidate: dict) -> dict:
@@ -146,8 +148,9 @@ def admitted_repeat(network: str, p: dict, operation: str, compared: dict) -> tu
     """``(refusal, differs)``: the catalog's repeat rule (`incident.repeat_of`) for a step of a
     kind the fix admits beside the catalog, on the values its kind compares an attempt by
     (*compared*): an attempt of this incident that ran *operation* with the same values and
-    failed refuses it (`REPEAT_WORDS`, naming the attempt); one that ran it with other values
-    is named with each value that differs; ``("", "")`` when none ran it. A read."""
+    failed is named as a risk (`REPEAT_WORDS`, naming the attempt), never refused (the
+    operator, 2026-11-17); one that ran it with other values is named with each value that
+    differs; ``("", "")`` when none ran it. A read."""
     from modules.fixit import incident as F
     from modules.fixit.section import outcome_words
 
@@ -156,8 +159,8 @@ def admitted_repeat(network: str, p: dict, operation: str, compared: dict) -> tu
         return why, ""
     got = F.repeat_of(incident, operation, compared)
     if got["kind"] == "repeat":
-        return REPEAT_WORDS.format(attempt=got["attempt"], words=outcome_words(
-            got["outcome"], got["words"]) or "it did not pass"), ""
+        return "", REPEAT_WORDS.format(attempt=got["attempt"], words=outcome_words(
+            got["outcome"], got["words"]) or "it did not pass")
     if got["kind"] == "variation":
         return "", (f"attempt {got['attempt']} ran it and did not pass; this one differs in "
                     + "; ".join(f"{c['name']} (was {str(c['before'])[:60] or 'none'}, now "
@@ -356,20 +359,22 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
             got = _check_one(incident, s["operation"], s["params"], resolved=resolved, now=at,
                              sources=sources, planned=planned)
             # A built-in command plan's preconditions, read once by the job that made the
-            # proposal (`fix_proposal._command_plan_reads`, C3755): one that did not hold
-            # refuses the step, drawn from the record, never read again on a page draw.
+            # proposal (`fix_proposal._command_plan_reads`, C3755): one that did not hold is a
+            # warning on the step a person approves by hash (the operator, 2026-11-17), drawn
+            # from the record, never read again on a page draw.
             pre = ((line.get("shown") or {}).get("preconditions_read") or {}).get(str(n)) or {}
             if got["ok"] and pre and not pre.get("ok"):
-                got = dict(got, ok=False, hash="", code="preconditions",
-                           refused=f"its preconditions, read when it was proposed: "
-                                   f"{pre.get('refused') or 'they did not hold'}")
-        # A step the AI rests only on citations that are not in what it was sent is never
-        # approvable (the operator, 2026-11-15): drawn from the marks kept with the line
-        # (`fixit_troubleshoot.shown`), the citations named.
+                got = dict(got, warn="; ".join(x for x in (
+                    got.get("warn"), f"warning: its preconditions, read when it was proposed: "
+                                     f"{pre.get('refused') or 'they did not hold'}") if x))
+        # A step the AI rests only on citations that are not in what it was sent is marked,
+        # and stays approvable (the operator, 2026-11-17): drawn from the marks kept with the
+        # line (`fixit_troubleshoot.shown`), the citations named.
         mark = _unverified_mark(line, n)
         if got["ok"] and mark:
-            got = dict(got, ok=False, hash="", code="unverified",
-                       refused=f"it rests only on evidence Mercury could not find: {mark}")
+            got = dict(got, warn="; ".join(x for x in (
+                got.get("warn"), f"unverified: it rests only on evidence Mercury could not "
+                                 f"find: {mark}") if x))
         attempt = {AS_ATTEMPT_NAME.get(k, k): v for k, v in s["params"].items()
                    if k != "device"}
         rep = got.get("repeat") or {}
@@ -382,11 +387,14 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                       "params": params_words(attempt), "hash": got["hash"],
                       "preflight": {"ok": got["ok"], "refused": got["refused"],
                                     "code": got["code"]},
-                      # A step refused as a repeat: the parameter hash it was compared by and
-                      # the attempt it matched, for The record (never the section's words).
+                      # What a person approves it with in view (the operator, 2026-11-17):
+                      # a repeat's risk, a precondition that did not hold, an unverified mark.
+                      "warn": got.get("warn") or "",
+                      # A step that repeats a failed attempt: the parameter hash it was
+                      # compared by and the attempt it matched, for The record.
                       "repeat": ({"attempt": rep.get("attempt"),
                                   "params_hash": rep.get("params_hash") or ""}
-                                 if got["code"] == "repeat" else {}),
+                                 if rep.get("kind") == "repeat" else {}),
                       # What the step's own preview resolved (a deploy's program and capture),
                       # bound by the plan's hash as the engine's run binds it.
                       "resolved": dict(got.get("resolved") or {}),
@@ -416,11 +424,13 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
             # approvable; it closes nothing and says so.
             pass
         elif not s.get("session"):
-            s["refused"] = s.get("refused") or (
-                "the plan was proposed before Mercury read the session it closes; Ask again "
-                "for a plan that reads it")
-            refused = refused or (f"Step {d['n']} names no collector session to close: "
-                                  f"{s['refused']}")
+            # Words only (the operator, 2026-11-17): Approve reads the session (the plan
+            # engine's own read), so the plan stays approvable.
+            s["note"] = s.get("refused") or (
+                "the plan was proposed before Mercury read the session it closes; Approve "
+                "reads it")
+            d["warn"] = "; ".join(x for x in (d.get("warn"), f"names no collector session "
+                                              f"to close yet: {s['note']}") if x)
         sessions.append(s)
     plan_hash, refused_hash, bound = "", "", []
     # The plan's hash as Approve would have bound it, kept for The record when a step is

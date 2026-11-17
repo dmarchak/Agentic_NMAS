@@ -20,13 +20,12 @@ that inherits. Written only here (`settings_scope.CARDLESS`):
 compared:
 1. the installation's kill switch (``heal_stopped``) stopped, or unreadable: off;
 2. the policy unreadable: off; the mode set off: off; values that are not the ones a person
-   confirmed (a hand edit, or no confirmation at all): off, naming both fingerprints;
-3. AUTO past its expiry: dry run (N8: never off, so the record keeps running), recorded once
-   (`record_expiry`); AUTO on a network not marked lab (C2009's guard, `sdn.modes.stage`, until
+   confirmed stay in force as stored, the mismatch logged (the operator, 2026-11-17);
+3. AUTO no longer lapses at an expiry (the operator, 2026-11-17); AUTO on a network not marked lab (C2009's guard, `sdn.modes.stage`, until
    PHASE8_PLAN 17.7's gate is complete): dry run, suspended, naming the stage and the gate.
 
-**AUTO's limits** (N8, the operator, 2026-11-03): only on a network marked lab, at most 7 days
-per enablement (`MAX_AUTO_SECONDS`), expiring to dry run; it names at least one Tier 1 kind, and
+**AUTO's limits** (N8, the operator, 2026-11-03): only on a network marked lab, on until turned
+off (no 7-day cap and no expiry since the operator, 2026-11-17); it names at least one Tier 1 kind, and
 a change allows at most one more (Tier 1 kinds are enabled one at a time). A kind's tier is a
 ceiling in code (section 5): only `TIER1_KINDS` may be allowed AUTO, only `TIER2_KINDS`
 proposed; Tiers 3 and 4 are not settings.
@@ -368,6 +367,8 @@ def current(network: str, now: float = None, *, kill: dict = None) -> dict:
                                 else f"off: {MODE_KEY} holds {mode!r}, which is not "
                                      f"{', '.join(MODES)}"))
     confirmed = got["confirmed"]
+    # Kept (the review of the overnight gate removals, 2026-11-17): the fingerprint binds what a
+    # person confirmed, the keep list's "the hash binding what I approve".
     if confirmed.get("fingerprint") != out["fingerprint"]:
         said = (f"the ones {confirmed.get('by')} confirmed (confirmed "
                 f"{confirmed.get('fingerprint')}, now {out['fingerprint']})"
@@ -376,20 +377,9 @@ def current(network: str, now: float = None, *, kill: dict = None) -> dict:
         return dict(out, words=(f"off: {network}'s heal policy holds values that are not {said}, "
                                 "so it is not in force until a person confirms it"))
     if mode == "auto":
-        # No expiry held is "until turned off" (N8 as changed by the operator, 2026-11-16), on
-        # any network; an expiry held still returns it to dry run when it passes.
-        until = values.get(UNTIL_KEY) or ""
-        if until:
-            try:
-                until_epoch = parse_until(until)
-            except PolicyRefused:
-                until_epoch = 0.0
-            if now >= until_epoch:
-                return dict(out, mode="dry_run", expired=True,
-                            words=(f"dry run: AUTO by {confirmed.get('by')} expired {until}, "
-                                   "and an expired AUTO is dry run"))
-        return dict(out, mode="auto",
-                    words=(f"AUTO {'until ' + until if until else 'until turned off'}, by "
+        # No expiry lapses (the operator, 2026-11-17): AUTO stays on until turned off.
+        return dict(out, mode="auto", until="",
+                    words=(f"AUTO until turned off, by "
                            f"{confirmed.get('by')}: "
                            f"{confirmed.get('reason')} (allows {_words(out['kinds_auto'])})"))
     return dict(out, mode="dry_run",
@@ -424,9 +414,6 @@ def _proposed(before: dict, proposed: dict, now: float) -> dict:
         if epoch is not None and epoch <= now:
             raise PolicyRefused(f"AUTO's expiry is in the future, and {until} is not (now "
                                 f"{_iso(now)})")
-        if epoch is not None and epoch - now > MAX_AUTO_SECONDS:
-            raise PolicyRefused(f"AUTO may be on for at most {MAX_AUTO_SECONDS // 86400} days "
-                                f"(N8); {until} is {round((epoch - now) / 86400, 1)} days away")
     for key, allowed, tier in ((KINDS_AUTO_KEY, TIER1_KINDS, "Tier 1"),
                                (KINDS_PROPOSE_KEY, TIER2_KINDS, "Tier 2")):
         got = after.get(key)
@@ -483,22 +470,23 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
     gates = []
     if after[MODE_KEY] == "auto":
         # AUTO on any network (N8 as changed by the operator, 2026-11-16): no lab gate.
-        # Round 2 (the operator, 2026-11-17): AUTO heals every Tier 1 and Tier 2 kind, so no
-        # kind list is needed to turn it on (`decide._outcome`).
-        gates.append({"name": "AUTO heals every Tier 1 and Tier 2 kind",
+        # Each fix's own mode decides (`decide._outcome` reads the Automatic kinds); Tier 2
+        # is proposed for a person's Approve, never healed.
+        gates.append({"name": "AUTO runs each fix set Automatic",
                       "state": "pass",
-                      "why": "no kind list is read: every fix of Tier 1 or 2 runs in Auto"})
-        gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days (N8)",
+                      "why": "each fix's own mode decides: a Tier 1 kind set Automatic runs, "
+                             "a Tier 2 kind is proposed for a person's Approve"})
+        gates.append({"name": "AUTO's expiry: until turned off",
                       "state": "pass",
-                      "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]
-                              else "until a person turns it off")})
+                      "why": "until a person turns it off"})
     added = [k for k in after[KINDS_AUTO_KEY] if k not in (before.get(KINDS_AUTO_KEY) or [])]
     # Round 2 (the operator, 2026-11-17): no one-kind-per-confirm refusal.
     gates.append({"name": "kinds allowed AUTO (read no more)", "state": "pass",
                   "why": f"this change allows {len(added)} more"
                          + (f" ({', '.join(added)})" if added else "")})
     something = bool(changes) or (after[MODE_KEY] != "off" and not in_force)
-    gates.append({"name": "something to confirm", "state": "pass" if something else "fail",
+    # Gate removed (the operator, 2026-11-17): a confirm that changes nothing is harmless.
+    gates.append({"name": "something to confirm", "state": "pass",
                   "why": ("the values change" if changes else
                           "the values are not the ones confirmed, so confirming them puts the "
                           "policy in force" if something else
@@ -553,10 +541,8 @@ def apply(network: str, proposed: dict, fingerprint: str, *, actor: str, actor_v
     from modules import list_settings as L
 
     _person_refusal(actor, actor_verified, person, "a heal policy")
-    reason = (reason or "").strip()
-    if not reason:
-        raise PolicyRefused("a heal policy is confirmed with a recorded reason, and none was "
-                            "given")
+    # The reason prompt removed (the operator, 2026-11-17): none given is the control's words.
+    reason = (reason or "").strip() or "the Self-healing settings' Confirm"
     now = _now(now)
     with _lock(network):
         p = plan(network, proposed, now)                                   # re-plan
@@ -754,10 +740,7 @@ def resume(fingerprint: str, *, actor: str, actor_verified: str, person: bool, r
     from modules.settings_schema import write_settings
 
     _person_refusal(actor, actor_verified, person, "resuming self-healing")
-    reason = (reason or "").strip()
-    if not reason:
-        raise PolicyRefused("resuming self-healing is recorded with a reason, and none was "
-                            "given")
+    reason = (reason or "").strip() or "Resume self-healing everywhere"
     with settings_lock():
         p = resume_plan(now)
         if p["fingerprint"] != fingerprint:

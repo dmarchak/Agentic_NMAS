@@ -321,6 +321,8 @@ def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
                                               tier=tier, device=device, why=b["why"])
     kinds = sorted({u["kind"] for u in c["units"]})
     if tier == 2:
+        # Kept (the review, 2026-11-17): a Tier 2 kind's own mode on Fixes (Manual when in the
+        # fix kinds to propose, else Off) decides, as `propose._stops` judges it at apply.
         missing = [k for k in kinds if k not in kinds_propose and _tier(k) == 2]
         if missing:
             return "cant_fix", said.outcome_words("cant_fix", units=units, kind=kind,

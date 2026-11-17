@@ -39,13 +39,12 @@ for the incident's kind, read from its own record, each with its own key (`key_o
   step 7: "step 2 runs again with that failure in the evidence"): ``run:<plan run id>``;
 - a retry of the incident's fixes that failed again (`heal.retry.failures_of`, the operator,
   2026-11-16: self-healing switched on, or a new script saved that matches it):
-  ``retry:<retry id>``, one per retry; a daily retry's failure starts nothing (whether new
-  evidence or a new capability should start it is a follow-up).
+  ``retry:<retry id>``, one per retry, a daily retry's included (the operator, 2026-11-17).
 
 **In every mode of self-healing** (the operator, 2026-11-15, replacing 2026-11-14's "only while
 self-healing is in Auto": "the AI only proposes, and nothing runs without a person's approval,
-so it investigates in Dry run too"; `eligible`): the switch on and the failure recorded after
-it went on are the whole condition. `heal_auto` still reads the policy, for the words a page
+so it investigates in Dry run too"; `eligible`): the switch on is the whole condition (a
+failure recorded before it went on starts too, the operator, 2026-11-17). `heal_auto` still reads the policy, for the words a page
 says, never as a gate.
 
 **Once per failure, across processes**: the key is taken by ONE ``start`` line in the incident's
@@ -164,7 +163,7 @@ def heal_auto(network: str, now: float = None) -> dict:
 
 def eligible(failure: dict, sw: dict, heal: dict = None) -> str:
     """``""`` when *failure* starts an investigation by itself, else why not: the switch on
-    (*sw*, `switch`) and the failure recorded after it went on.
+    (*sw*, `switch`); any open failure not yet taken, whenever it was recorded.
 
     **In every mode of self-healing** (the operator, 2026-11-15, replacing 2026-11-14's "R1
     fires only while self-healing is in Auto"): "Drop 'R1 only while self-healing is in Auto':
@@ -173,8 +172,8 @@ def eligible(failure: dict, sw: dict, heal: dict = None) -> str:
     del heal
     if not sw.get("on"):
         return "automatic troubleshooting is off for this network"
-    if failure["epoch"] < sw["epoch"]:
-        return "it was recorded before automatic troubleshooting was turned on for this network"
+    # G52 removed (the operator, 2026-11-17): a failure recorded before the switch went on
+    # starts too, once (each failure's key is taken once).
     return ""
 
 
@@ -191,19 +190,16 @@ def failures(network: str, *, open_ids=None) -> dict:
     "outcome", "epoch", "at"}``; *open_ids*, when given, keeps only those incidents'. A step log
     that cannot be read gives none, said.
 
-    Not failures (the review, finding 4): an act whose decision a DAILY retry made (its
-    incident's ``retries``, `heal.retry.finish`'s fix ``decision``: "a daily retry's never starts
-    the AI"); and a ``refused`` act refused by a guard that waits (`heal.act.refusal_waits`,
-    R2). An ``interrupted`` row (`interrupted.reap`'s, `steplog.record_interrupted`) is the act
-    failure it is (finding 6)."""
-    from modules.heal import act, incidents, steplog
+    Not failures (the review, finding 4): a ``refused`` act refused by a guard that waits
+    (`heal.act.refusal_waits`, R2); an act a daily retry's decision made counts (the operator,
+    2026-11-17). An ``interrupted`` row (`interrupted.reap`'s, `steplog.record_interrupted`) is
+    the act failure it is (finding 6)."""
+    from modules.heal import act, steplog
 
     got = steplog.read(network)
     if got["state"] == "unreadable":
         return {"state": "unreadable", "failures": [], "error": got["error"]}
-    daily = {x.get("decision") for i in incidents.read(network).get("incidents") or []
-             for rt in i.get("retries") or [] if rt.get("trigger") == "daily"
-             for x in rt.get("fixes") or [] if x.get("fix") == "decision" and x.get("decision")}
+    # A daily retry's act counts as any other (the operator, 2026-11-17).
     seen, out = set(), []
     for r in got["rows"]:
         inc = r.get("incident") or ""
@@ -213,8 +209,6 @@ def failures(network: str, *, open_ids=None) -> dict:
         if row == "interrupted":
             outcome = "interrupted"
         guard = r.get("guard") if isinstance(r.get("guard"), dict) else {}
-        if row in ("act", "interrupted") and r.get("decision") in daily:
-            continue
         if row == "decision" and outcome in DECISION_FAILURES:
             kind, ident = "decision", inc
         elif (row == "decision" and outcome == "held"
@@ -355,7 +349,7 @@ def pending(network: str) -> dict:
             by.setdefault(iid, []).append(lost)
             by[iid].sort(key=lambda f: f["epoch"])
         # A retry whose fixes all failed (the operator, 2026-11-16: switched on, or a new
-        # script saved), each its own failure (``retry:<id>``); a daily retry's is none.
+        # script saved, or daily), each its own failure (``retry:<id>``).
         again = retry.failures_of(record)
         if again:
             by.setdefault(iid, []).extend(again)

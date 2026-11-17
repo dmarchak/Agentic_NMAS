@@ -519,8 +519,9 @@ def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
     sw = A.switch(network)
     if not sw["on"]:
         # Off (the default on every network): nothing is read further and nothing is taken;
-        # a failure while it is off is before any later turn-on's time, so it never starts by
-        # itself (turning it on catches up only on what the person ticks, `start_catch_up`).
+        # a failure recorded while it is off starts at the next pass after it is turned on
+        # (the overnight gate removals, 2026-11-17, `fixit.auto.eligible` no longer compares
+        # it with the switch's time), within the caps.
         return out
     # In every mode of self-healing (the operator, 2026-11-15: "the AI only proposes, and
     # nothing runs without a person's approval, so it investigates in Dry run too").
@@ -532,9 +533,8 @@ def run_fixit(network: str, *, now: float = None, starter=None) -> dict:
         return out
     out["failed"].extend(got["failed"])
     bound = follow_up_wait_s()
+    # No per-pass count (the operator, 2026-11-17): the caps hold the spend.
     for p in got["incidents"]:
-        if len(out["started"]) >= FIXIT_MOST_PER_PASS:
-            break
         iid, inc, fs = p["id"], p["incident"], p["failures"]
         try:
             have = A.taken(inc)

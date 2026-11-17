@@ -513,7 +513,9 @@ def _read_and_judge(items, run: CheckRun, laps=None) -> tuple:
 def preconditions(t, run: CheckRun, rec: dict):
     """The pre-apply check: each precondition read again, live (one read engine run over the
     run's session, holding the device), and judged; all must pass, and stage 4 must have read
-    the configuration before. Then, when the net-zero check can be scoped to the plan's
+    the configuration before (kept, the review of the overnight gate removals, 2026-11-17: a
+    precondition that fails when the run starts is the device changed after the person's
+    Approve, so sending would be a change nobody approved on those facts). Then, when the net-zero check can be scoped to the plan's
     interfaces (`net_zero_scope`), each interface's configuration read before the send.
     Returns the pipeline's hook, ``hook(ctx) -> why or ""``."""
     from modules.pipeline import lap

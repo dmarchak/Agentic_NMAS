@@ -178,7 +178,7 @@
       </tbody></table></div>
       <form class="heal-form" method="post" action="{{ url_for('heal_v2.resume', list_name=net) }}" hx-post="{{ url_for('heal_v2.resume', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">
         <input type="hidden" name="fingerprint" value="{{ rp.fingerprint }}">
-        <label class="heal-field">Reason<textarea name="reason" rows="2" required>{{ resuming.reason or '' }}</textarea></label>
+        <label class="heal-field">Reason<textarea name="reason" rows="2">{{ resuming.reason or '' }}</textarea></label>
         <p class="small muted">{{ resuming.statement }}</p>
         <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Resume self-healing everywhere</span><span class="op-busy">Resuming…</span></button>{{ how('settings', 'self-healing', compact=True, op='resuming self-healing') }}</span>
           <a class="btn" href="{{ url_for('settings_v2.network', list_name=net, tab='heal') }}" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-target="#heal-tab" hx-swap="outerHTML">Cancel</a></div>

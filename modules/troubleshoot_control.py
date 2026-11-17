@@ -25,9 +25,9 @@ safety"), so the switch does not show it again. **It binds the limits and the co
 never the frequency** (the operator's correction, 2026-11-15, C3770's option (a)): the
 frequency moves with every new failure, and is drawn beside it now, unbound. It holds until a
 limit changes or the measured cost per call passes `spend.OVER_ESTIMATE_AT` (1.5) times the
-acknowledged figure (`cost_drift`); turning Automatic on is refused then (`readiness`, naming
-what moved, its refusal linking to the limits card), and otherwise turns on with the estimate
-as measured now (`background.turn_on`, which records it).
+acknowledged figure (`cost_drift`), which since the operator, 2026-11-17 refuses nothing:
+turning Automatic on needs only all three limits set (`readiness`) and turns on with the
+estimate as measured now (`background.turn_on`, which records it).
 
 **Turning Automatic on starts on the open incidents with no fix** (`catch_up_line`, then
 `heal_notice.start_catch_up`): every open incident R1 would have started on had it been on when
@@ -207,9 +207,8 @@ def cost_drift(ack: dict, est: dict) -> str:
 
 
 def readiness(network: str, est: dict = None) -> str:
-    """``""`` when Automatic may be turned on for *network*, else why not: its limits and their
-    estimate are not acknowledged, a limit is not set, a limit changed since it was
-    acknowledged, or the estimate moved since (each naming both digests). A read."""
+    """``""`` when Automatic may be turned on for *network*, else why not: a limit is not set
+    (the acknowledgement and drift checks removed, the operator, 2026-11-17). A read."""
     got = limits(network, est=est)
     return got["ready"]
 
@@ -236,20 +235,13 @@ def limits(network: str, now=None, est: dict = None) -> dict:
     ack = _ack(rec)
     digest = limits_digest(inc["usd"], caps["day"], caps["month"]) \
         if inc["state"] == "ok" and caps["day"] and caps["month"] else ""
-    if ack is None:
-        ready = ("its spending limits and their estimate are not acknowledged yet for "
-                 f"{name}: set them, with the estimate beside them, in Settings › AI")
-    elif not digest:
+    # Only "all three limits set" holds (the operator, 2026-11-17): no acknowledgement, no
+    # limits-moved and no estimate-drift refusal.
+    if not digest:
         ready = (f"{name}'s spending limits are not all set (per incident "
                  f"{P.money(inc['usd']) if inc['usd'] else inc['error'] or 'none'}, per day "
                  f"{P.money(caps['day']) if caps['day'] else 'none'}, per month "
                  f"{P.money(caps['month']) if caps['month'] else 'none'})")
-    elif ack.get("limits_digest") != digest:
-        ready = (f"{name}'s spending limits changed since they were acknowledged "
-                 f"(acknowledged {str(ack.get('limits_digest') or 'none')[:12]}, now "
-                 f"{digest[:12]}): acknowledge them again in Settings › AI")
-    elif cost_drift(ack, est):
-        ready = cost_drift(ack, est)
     else:
         ready = ""
     return {"network": name, "slug": slug, "incident": inc,
@@ -273,17 +265,17 @@ def set_limits(network: str, *, incident_usd, day_usd, month_usd, shown: str, ac
                actor: str, verified: str, now=None) -> dict:
     """Set *network*'s three spending limits and acknowledge the estimate drawn beside them
     (`LIMITS_STEPS`), an admin's decision: refused, naming why, with nothing changed, for anyone
-    but a verified person, an estimate not acknowledged, a limit that is not a positive amount,
-    a day limit over the installation's day cap, or an estimate that moved since it was shown
-    (both digests named). With the switch on, its caps change at once (as Change caps did). The
+    but a verified person, a limit that is not a positive amount, or a day limit over the
+    installation's day cap (no acknowledgement and no estimate-moved refusal since the
+    operator, 2026-11-17). With the switch on, its caps change at once (as Change caps did). The
     approval it gives does not end (C3770's option a is the operator's): the switch's own
     approval does. ``{"ok", "entry", "recorded", ...}``."""
     from modules.ai import background
 
     _person(actor)
-    if not accepted:
-        raise Refused("the estimate was not acknowledged: tick “I have read the estimate” with "
-                      "the limits; nothing was changed")
+    # The "I have read the estimate" acknowledgement and the estimate-moved refusal removed
+    # (the operator, 2026-11-17): the limits are set as sent.
+    del accepted
     name = _name(network)
     slug = _slug(name)
     inc = _amount(incident_usd, "per-incident")
@@ -292,10 +284,6 @@ def set_limits(network: str, *, incident_usd, day_usd, month_usd, shown: str, ac
     except background.Refused as exc:
         raise Refused(str(exc)) from None
     est = background.estimate(slug, _feature(), now)
-    if est["digest"] != shown:
-        raise Refused(f"the estimate moved since it was shown (shown {str(shown)[:12] or 'none'}, "
-                      f"now {est['digest'][:12]}): look at it again and acknowledge it; nothing "
-                      "was changed")
     at = _iso(time.time())
     digest = limits_digest(inc, caps["day"], caps["month"])
     ack = {"by": actor, "verified": verified, "at": at, "estimate_digest": est["digest"],
@@ -437,10 +425,10 @@ def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: 
     one path). ``{"ok", "level", "nothing", "caught", "line", "words"}``; raises Refused naming
     why, with nothing changed (its *href* the limits card when the limits are why).
 
-    Automatic (`AUTOMATIC_STEPS`): refused until the limits and their estimate are acknowledged
-    and unchanged since (`readiness`), and when the open incidents it would start on moved since
-    the line was drawn (*shown*, `catch_up_line`'s digest); then the mode set to Manual where it
-    was Off, the switch turned on with the acknowledged estimate and limits (the list recorded
+    Automatic (`AUTOMATIC_STEPS`): refused until all three limits are set (`readiness`); the
+    open incidents it starts on are taken at the press (never refused because they moved
+    since drawn, the operator, 2026-11-17); then the mode set to Manual where it
+    was Off, the switch turned on with the estimate and limits (the list recorded
     with it), and every listed incident started within the caps (`heal_notice.start_catch_up`,
     inside the press's request). Manual and Off: the switch off when it was on (one press, no
     confirm: it spends nothing), and the network's own mode written where it differs.
@@ -474,11 +462,8 @@ def set_level(network: str, lvl: str, *, shown: str = "", actor: str, verified: 
         if line["state"] != "ok":
             raise Refused(f"Automatic was not turned on: the open incidents it would start on "
                           f"cannot be read ({line['error']}); nothing was changed")
-        if shown != line["digest"]:
-            raise Refused(f"Automatic was not turned on: the open incidents it starts on moved "
-                          f"since the line was drawn (drawn {str(shown)[:12] or 'none'}, now "
-                          f"{line['digest'][:12]}: {line['words'] or 'none to start on'}); read "
-                          "it again; nothing was changed")
+        # The list is taken at the press, never refused because it moved since drawn (the
+        # operator, 2026-11-17, as C3909 did for the heal switch).
         moved = cur["level"] in ("off", "unknown")
         if moved:
             _set_mode(name, slug, "manual", actor=actor, verified=verified)

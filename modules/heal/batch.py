@@ -72,7 +72,7 @@ DONE_KEYS = ("drift", "goldens", "remote", "baselines", "device_state", "rolled_
 #: The press's control and the words its row leads with.
 BUTTON = "Turn on self-healing and fix all"
 #: The job's steps, in order, for its card and the manual's How it works page.
-STEPS = (("auto", "Turn on self-healing in Auto for the network's default duration"),
+STEPS = (("auto", "Turn on self-healing in Auto, until someone turns it off"),
          ("approve", "Approve the previewed batch by its hash"),
          ("fix", "Fix every device at once (restores and saved scripts), each held, checked, "
                  "verified and rolled back on its own; a failure stops no other"),
@@ -474,8 +474,8 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
 
     *switch* (C3823): the Self-healing switch's press, bound to the switch's preview
     (`preview` with *switch*: restores and saved scripts, no AI, *ai_items* and *start_ai*
-    never used); refused, with self-healing not turned on, when the open problems moved since
-    the line was drawn (`switch_moved`); its job, its approval and each run named after the
+    never used); with no open problem, `control_strip.switch_on` turns self-healing on before
+    it asks here (C3909), so this refuses (`switch_moved`); its job, its approval and each run named after the
     switch-on (`switch_name`).
 
     *held* (C3866; the operator, 2026-11-16: "Every switch flips instantly; the work it starts
@@ -505,7 +505,7 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
     if not p["on"]:
         if switch:
             # Nothing open to fix at the press: `control_strip.switch_on` turns self-healing
-            # on plainly before it asks here (C3909).
+            # on plainly before it asks here (C3909; the review, 2026-11-17: one path).
             raise Refused(switch_moved(shown or "", p))
         raise Refused("no batch is held by guard 6 now; nothing was started")
     # C3909 (the operator, 2026-11-17: "Self-healing On + an approved fix ... -> it runs"):
@@ -514,18 +514,9 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
     # still re-checks its own hash at apply. The card's press stays bound to its hash.
     if not switch and (shown or "") != p["hash"]:
         raise Refused(moved(shown or "", p))
-    # Gate 2's review: Auto's turn-on is judged before anything starts or spends. A network
-    # not already in Auto is planned now (`policy.plan`, every gate the job's `turn_on_auto`
-    # will hold); one that is not confirmable refuses the press, naming the gates, with no AI
-    # started and no job.
-    from modules.heal import policy
+    # The pre-press confirmable check removed (the operator, 2026-11-17): the job's
+    # `turn_on_auto` plans and applies the policy itself.
     now = time.time()
-    if policy.current(network, now).get("mode") != "auto":
-        planned = policy.plan(network, {policy.MODE_KEY: "auto", policy.UNTIL_KEY: ""}, now)
-        if not planned["confirmable"]:
-            failed = [g["name"] for g in planned["gates"] if g["state"] == "fail"]
-            raise Refused("self-healing cannot be turned on in Auto for this network ("
-                          + "; ".join(failed) + "); nothing was started")
     ai = {}
     if p["ai"] and start_ai is None:
         raise Refused(f"{len(p['ai'])} incident(s) with no fix are for the AI, and no way to "

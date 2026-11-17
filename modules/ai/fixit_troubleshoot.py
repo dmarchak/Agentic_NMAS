@@ -158,14 +158,13 @@ PROMPT_PLAN_READS = PROMPT_INVESTIGATE
 PROMPT_AGAIN = PROMPT_INVESTIGATE
 #: The investigation's bounds (C3797; the operator: "the incident's cost cap, plus a declared
 #: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): `MAX_READS`
-#: reads in all (three a pass, the family's limit), and `WALL_S` seconds from the first pass's
-#: start before the last pass is asked (reasoned: a switch's press of 2026-11-15 19:10 UTC
-#: took about 20 s a pass and under 2 s a read, so four passes and nine reads are about 100 s;
-#: 2.5x that is 240 s). No rounds or calls bound (the operator, 2026-11-16: ``ROUNDS`` and
+#: reads in all, and `WALL_S` seconds from the first pass's start before the last pass is
+#: asked: both the loop's own ceilings, `read_loop.MAX_LOOP_READS` and `MAX_WALL_S` (the
+#: operator, 2026-11-17, replacing 9 reads and 240 s). No rounds or calls bound (the operator, 2026-11-16: ``ROUNDS`` and
 #: ``CALLS_WORST`` are gone): the loop stops when a pass adds no new evidence, and the spend
 #: is the caps' to stop, at each pass's start and live.
-MAX_READS = 9
-WALL_S = 240.0
+MAX_READS = 12
+WALL_S = 600.0
 #: The calls the estimate expects of one investigation (reasoned: a read round and its
 #: answer, then the last pass): an estimate input only.
 CALLS_EXPECTED = 3
@@ -1484,14 +1483,17 @@ def check(answer, pack: dict, sections: list, topo: dict, unverified=()) -> str:
     # Explain's normalising and Mercury's own citations of a device the answer names (the
     # heal analysis's check, `explain.normalised`, `explain.mercury_cites`).
     normal, _written = explain.normalised(answer, sent, ids)
+    if len(normal.hypotheses) > MAX_HYPOTHESES:
+        # Only the first three are kept and checked (the operator, 2026-11-17).
+        normal = normal.model_copy(update={"hypotheses": normal.hypotheses[:MAX_HYPOTHESES]})
     added = explain.mercury_cites(normal, sent, explain.sent_names(names, ids),
                                   pack.get("device") or "")
     why = explain_answer_check(normal, pack, ids, sections=sections, names=names,
                                added=[a["ref"] for a in added], unverified=unv)
     if why:
         return why
-    if len(answer.hypotheses) > MAX_HYPOTHESES:
-        return f"{len(answer.hypotheses)} hypotheses; at most {MAX_HYPOTHESES} are taken"
+    # More than `MAX_HYPOTHESES` is never refused (the operator, 2026-11-17): the first three
+    # are kept where the answer is drawn (`shown`).
     plan = list(getattr(answer, "plan", None) or [])
     imp = getattr(answer, "improvement", None)
     if answer.outcome.value == "refuse":
@@ -1512,16 +1514,8 @@ def check(answer, pack: dict, sections: list, topo: dict, unverified=()) -> str:
     parts = [("fix", answer.fix), ("gap", answer.gap)] + [
         (f"plan's step {n}", s) for n, s in enumerate(plan, 1)] + [
         (f"improvement's step {n}", s) for n, s in enumerate((imp.steps if imp else []), 1)]
-    for name, part in parts:
-        if part is None:
-            continue
-        if not part.evidence_refs:
-            if explain.UNCITED in unv:
-                continue                # kept, marked unverified (`unverified`, 2026-11-16)
-            return f"the {name} cites nothing that was sent"
-        ref = _unresolved([r for r in part.evidence_refs if r not in unv], sections)
-        if ref and ref not in set(ids or ()):
-            return f"the {name} cites {ref[:40]!r}, which is not in what was sent"
+    # A part citing nothing, or citing what was not sent, is kept and marked unverified in
+    # place (`unverified`), never a refusal of the whole answer (the operator, 2026-11-17).
     from modules.ai import fix_proposal
 
     if answer.fix is not None:
@@ -1695,8 +1689,9 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         # (the operator, 2026-11-15); the marks are kept beside the answer they belong to.
         marks = unverified(answer, sections, prep["topo"], prep["pack"])
         why = check(answer, prep["pack"], sections, prep["topo"], unverified=_flat(marks))
-        if not why:
-            why = tried_refusal(answer, prep)
+        # A step whose equivalent already failed, or a rung out of the ladder's order, is no
+        # refusal (the operator, 2026-11-17): its words are drawn on the answer (`shown`'s
+        # ``tried_flagged``) and a person decides.
         if not why:
             kept.append((answer, marks))
         return why
@@ -2415,6 +2410,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                          marks=marks, retry=retry)
     if overlooked:
         out["shown"]["gap_overlooked"] = overlooked_words(overlooked)
+    tried = tried_refusal(answer, prep)
+    if tried:
+        out["shown"]["tried_flagged"] = tried
     stopped_said = stopped_words(stopped, answer) if stopped else ""
     if stopped_said:
         # What the section draws as the answer's rationale is Mercury's words, never the
@@ -2423,7 +2421,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                             model_rationale=_cut(answer.rationale))
     marked = (f" Marked unverified: {len(marks)} part{'s' if len(marks) != 1 else ''} of the "
               "answer cite what was not sent or cite nothing; a step resting only on those is "
-              "not approvable." if marks else "")
+              "marked on the plan." if marks else "")
     if answer.outcome.value == "refuse":
         calls.record_use(final_call, "shown: the evidence cannot say", actor=actor,
                          detail=answer.why_not[:200], links=links)

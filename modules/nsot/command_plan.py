@@ -72,7 +72,7 @@ _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]{0,40})\}")
 #: device_run`, `fixit_v2.fix_with_script`).
 RESERVED_PARAMS = ("key", "hash", "view", "list")
 #: How many of each a template holds at most.
-MOST = {"preconditions": 8, "verify": 6, "commands": 20, "choices": 12}
+MOST = {"preconditions": 32, "verify": 24, "commands": 80, "choices": 48}
 
 #: Mercury's own checks a template's ``expect`` names: name -> (module, apply function,
 #: preview function or None). Data in code; a template names one of these, nothing else.
@@ -482,10 +482,8 @@ def validate(network: str, t: Template, values, *, sources=None) -> dict:
                                        "shape that is not an interface's name")
                 continue
             mode = str(iface.get("switchport_mode") or "")
-            if spec.get("access_port") and mode != "access":
-                out["refusals"].append(f"{canon} on {device} is {mode or 'no switchport'} in "
-                                       "committed intent, and this plan acts only on an access "
-                                       "port")
+            # ``access_port`` refuses nothing since the operator, 2026-11-17: the run's
+            # net-zero compare, verify and rollback judge the port.
             if spec.get("not_management"):
                 if golden is None:
                     golden, gerr = src.golden(device)
@@ -731,8 +729,10 @@ def preview(network: str, key, values, *, sources=None, store=None,
         # The operator, 2026-11-17: "A person's Approve on a shown plan is the only approval.
         # It covers any provisional shapes in that plan; no separate 'Approve the shape' for a
         # person's plan." A provisional shape refuses nothing in a plan a person approves (its
-        # exact lines shown); refused words, literal objects and unknown shapes still refuse,
-        # and an Automatic saved fix still needs the shape approved (`command_plan_run.run`).
+        # exact lines shown); refused words, literal objects and unknown shapes still refuse
+        # (kept, the review, 2026-11-17: the runner previews every run, an Automatic one too,
+        # with *person_plan*, so an unmeasured shape would reach a run nobody approved), and an
+        # Automatic saved fix still needs the shape approved (`command_plan_run.run`).
         held = {u["words"] for u in pol["unknown"] if u["state"] == "provisional"}
     out["refusals"] += [w for w in pol["refusals"] if w not in held]
     derived = got["derived"]
@@ -756,7 +756,11 @@ def preview(network: str, key, values, *, sources=None, store=None,
         why = R.refusal([r], 1, R.OPERATION)
         if why:
             out["refusals"].append(f"the plan's read `{r}` is refused by the read engine: {why}")
-    # A precondition Mercury can judge from its own records is judged now too.
+    # A precondition Mercury can judge from its own records is judged now too (kept a refusal,
+    # the review, 2026-11-17: no Run… card draws a warning, and an Automatic run previews with
+    # *person_plan* too; a person-approved plan's live preconditions warn at run time,
+    # `command_plan_run.preconditions`).
+    warnings = []
     for p in t.preconditions:
         spec = NAMED_CHECKS.get(p["expect"]) if p["expect"] else None
         if spec and spec[2]:
@@ -764,6 +768,7 @@ def preview(network: str, key, values, *, sources=None, store=None,
                                                         sources)
             if result == "fail":
                 out["refusals"].append(f"{p['name']}: {words}")
+    out["warnings"] = warnings
     auth = authorised(t, lines)
     out.update(title=substitute(t.title, derived), program=lines, authorised=auth)
     if out["refusals"]:
@@ -788,6 +793,7 @@ def drawn(t: Template, p: dict) -> dict:
                 else "", "expect": (redact_text(substitute(i["expect_line"], d))
                                     if i["expect_line"] else i["expect"]), **bound}
     return {"ok": p["ok"], "refusals": [redact_text(x) for x in p.get("refusals") or []],
+            "warnings": [redact_text(x) for x in p.get("warnings") or []],
             "hash": p.get("hash", ""), "title": redact_text(p.get("title") or ""),
             "template": t.key, "template_digest": t.digest, "dialect": p.get("dialect", ""),
             "program": [redact_text(x) for x in p.get("program") or []],

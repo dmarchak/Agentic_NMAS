@@ -355,7 +355,6 @@ def change_right(e: dict) -> str:
 
 def _retire_refusal(e, key: str, network: str, reason: str, who: dict) -> str:
     from modules import identity
-    from modules.nsot import authorisation
 
     if not isinstance(e, dict) or e.get("kind") not in KINDS:
         return f"{key} is no saved fix"
@@ -367,10 +366,8 @@ def _retire_refusal(e, key: str, network: str, reason: str, who: dict) -> str:
     why = identity.right_refusal(change_right(e), **who)
     if why:
         return why
-    words = " ".join(str(reason or "").split())
-    if len(words.split()) < authorisation.MIN_WORDS or len(words) < authorisation.MIN_CHARS:
-        return (f"a reason is at least {authorisation.MIN_WORDS} words and "
-                f"{authorisation.MIN_CHARS} characters, and {words or 'none'!r} is not")
+    # The reason prompt removed (the operator, 2026-11-17): `retire` defaults it.
+    del reason
     return ""
 
 
@@ -384,7 +381,8 @@ def retire(key: str, *, network: str, reason: str, actor: str, actor_verified: s
     of `fixes`, `scripts` and `actions`, so nothing offers, fires or proposes it; its record,
     origin and runs stay. Raises `Refused`, nothing written. The fix (`as_fix`)."""
     who = dict(actor=actor, actor_verified=actor_verified, person=person)
-    words = " ".join(str(reason or "").split())[:500]
+    words = (" ".join(str(reason or "").split())[:500]
+             or ("Restore this fix" if restore else "Delete this fix"))
 
     def change(doc):
         e = doc["plans"].get(key)
@@ -720,10 +718,8 @@ def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dic
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
             network: str = "") -> dict:
     """Promote the script *key* of *network* from Dry run (or Manual only) to Auto, binding its
-    plan's digest: needs the self-healing right, and a verified run of the version it runs now
-    (`verified_run`; the operator, 2026-11-16: a fix "can be set Automatic after its first
-    verified run", and one whose commands, checks or verify changed only once its new version
-    has one). Refused (`Refused`) for a key of another network, and for a script in Auto
+    plan's digest: needs the self-healing right (no verified run is required since the
+    operator, 2026-11-17). Refused (`Refused`) for a key of another network, and for a script in Auto
     already (its promoter is kept). The change is kept on its ``changes`` (History)."""
     from modules import identity
     from modules.nsot import command_plan as CP
@@ -743,18 +739,14 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
         if e.get("mode") == "auto":
             raise Refused(f"{key} is in Auto already, promoted by {e.get('promoted_by')}")
         n = versions(e)[-1]["version"]
-        # Read under the store's lock (C2): an edit that lands meanwhile, a new version or a
-        # match-only one (``held_manual``), is the entry judged here, never a copy read before.
-        ran = verified_run(e.get("network") or network, dict(e, key=key))
-        if not ran:
-            raise Refused(f"{e.get('name') or key} version {n} has no verified run yet: run it "
-                          "once with Run… (a person's press), and once it verifies it can be "
-                          "set Automatic")
+        # The verified-run requirement removed (the operator, 2026-11-17); the digest binding
+        # (what Automatic runs) is kept. A verified run, when one exists, is named.
+        ran = verified_run(e.get("network") or network, dict(e, key=key)) or {}
         e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
                  digest=CP.parse(e["template"]).digest)
         e.pop("held_manual", None)
-        _change(e, "automatic", actor, f"set Automatic on version {n}'s verified run "
-                                       f"{str(ran.get('id') or '')[-8:]}")
+        _change(e, "automatic", actor, f"set Automatic on version {n}"
+                + (f"'s verified run {str(ran.get('id') or '')[-8:]}" if ran else ""))
         return as_fix(e)
     return _update(change)
 
@@ -800,18 +792,17 @@ def _write_refusal(e_match: dict, who: dict, what: str) -> str:
 
 
 def _template_refusal(t, network: str = "") -> str:
-    """Why the parsed template *t* may not be a fix's: a line that would last (the operator's
-    correction 1: `command_policy.lasting_refusal`, in their words)."""
-    from modules.nsot import command_policy
-
-    return (command_policy.lasting_refusal(t.commands, network=network)
-            or command_policy.pair_refusal(t.commands, t.doc.get("preconditions"), network))
+    """Why the parsed template *t* may not be a fix's: nothing since the operator, 2026-11-17
+    (the net-zero-by-construction refusals removed: the run's net-zero compare, verify and
+    rollback judge what a fix leaves)."""
+    del t, network
+    return ""
 
 
 def _propose_shapes(network: str, t, by: str, name: str) -> list:
     """Each line shape of *t* no dialect has measured, held PROVISIONAL on *network* for an
-    admin's approval (`command_policy.propose`): the fix cannot run until it is approved
-    (the runner's policy check refuses it). The shapes proposed now."""
+    admin's approval (`command_policy.propose`); the fix runs meanwhile (the runner passes
+    ``person_plan``, under which a provisional shape is allowed). The shapes proposed now."""
     from modules.nsot import command_policy
 
     out = []
@@ -833,9 +824,8 @@ def new_fix(network: str, *, name: str, words: str, match: dict, fills: dict,
     *template* the command plan `fix_editor.build` made (its key set here, from *name*),
     *match* and *fills* as a saved fix's (`match_refusal`, `fills_refusal`), said in *words*.
     It starts Manual only (mode ``manual`` with a match: offered on a matching incident, never
-    fired) and can be set Automatic once a person's run of it verifies (`promote`). Refused,
-    nothing saved: the AI; a person without the right (`_write_refusal`); a line that would
-    last (`_template_refusal`). A line shape not measured is held provisional for an admin
+    fired) and can be set Automatic by a person (`promote`). Refused, nothing saved: the AI;
+    a person without the right (`_write_refusal`). A line shape not measured is held provisional for an admin
     (`_propose_shapes`). The fix (`as_fix`), ``proposed`` the shapes held now."""
     from modules.nsot import command_plan as CP
 
@@ -870,7 +860,7 @@ def new_fix(network: str, *, name: str, words: str, match: dict, fills: dict,
                        "why": "written on the Fixes page", "template": doc}]}
     if match:
         e["mode"] = MANUAL
-    _change(e, "written", actor, "Manual only until its first verified run")
+    _change(e, "written", actor, "Manual only until set Automatic")
     got = _store(e)
     proposed = _propose_shapes(network, t, actor, name)
     from modules import plan_engine
@@ -895,9 +885,8 @@ def edit_fix(key: str, *, network: str, version: int, name: str, words: str, mat
     and *match* with its *fills* saved in place, the same version; *template* (the editor's
     `fix_editor.build`), when it runs differently from the fix's own (`template_changed`), saved
     as a new version: the old kept with its digest (`versions`). An Automatic fix whose match,
-    fills, lines, checks or verify change (one rule for every edit, F4) returns to Manual only
-    until its next verified run (``held_manual``; `promote` sets
-    it Automatic again). *version* is the version the editor opened: a fix changed since is
+    fills, lines, checks or verify change keeps its mode, its digest re-bound to the new
+    template's (the operator, 2026-11-17). *version* is the version the editor opened: a fix changed since is
     refused, naming both. Needs the right changing it takes before and after (`change_right`;
     the AI none). Raises `Refused`, nothing written. The fix (`as_fix`) with ``new_version``
     and ``proposed`` (shapes held for an admin)."""
@@ -959,9 +948,8 @@ def edit_fix(key: str, *, network: str, version: int, name: str, words: str, mat
             said.append("its match changed" if match else "its match removed")
         elif new_fills != (e.get("fills") or {}):
             said.append("its fills changed")
-        # One rule for every edit (the operator, 2026-11-16, F4): an Automatic fix whose
-        # match, fills, lines, checks or verify change drops to Manual only until its next
-        # verified run of the version it runs then (`verified_run` reads runs after this).
+        # One rule for every edit (the operator, 2026-11-17, replacing F4): an Automatic fix
+        # whose match, fills, lines, checks or verify change stays Automatic, re-bound.
         was_auto = e.get("mode") == "auto"
         runs_differently = bump or match != (e.get("match") or {}) or \
             new_fills != (e.get("fills") or {})
@@ -979,11 +967,13 @@ def edit_fix(key: str, *, network: str, version: int, name: str, words: str, mat
                                             "template": new_doc}]
             e["template"] = new_doc
         if was_auto and runs_differently:
-            e.update(mode=MANUAL, held_manual={"from": "auto", "version": n, "at": at})
+            # Its mode kept (the operator, 2026-11-17): the digest Automatic runs moves to the
+            # new template's (K7's binding, re-bound at save), never dropped to Manual only.
+            e["digest"] = CP.parse(e["template"]).digest
         elif runs_differently and e.get("held_manual"):
             # Held already: the run it waits for is one after this edit too.
             e["held_manual"] = dict(e["held_manual"], version=n, at=at)
-        held = "; Manual only until its next verified run" if (was_auto and runs_differently) \
+        held = "; still Automatic, bound to this version" if (was_auto and runs_differently) \
             else ""
         if bump:
             _change(e, "new_version", actor, f"version {n} saved, version {n - 1} kept" + held)
@@ -1056,6 +1046,8 @@ def _stands(row: dict, incident: str, mode: str, retry: str = "") -> bool:
         return True
     if retry:
         return row.get("retry") == retry or (mode == "auto" and bool(row.get("ok")))
+    # Kept (the review, 2026-11-17): a run that sent stands, passed or not, so one trigger
+    # (a retry, then the AI's start on its failure) never sends the same failing script twice.
     return mode == "dry_run" or bool(row.get("sent"))
 
 

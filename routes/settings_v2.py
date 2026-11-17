@@ -583,9 +583,7 @@ def ai_on(network, feature):
                "control (Automatic, on this tab or the control strip), after the network's "
                "spending limits and their estimate are acknowledged; this list is for audit and "
                "turns nothing on; nothing was changed")
-    if not why and form.get("accept") != "on":
-        why = ("the estimate was not accepted: tick “I have read the estimate” to turn it on; "
-               "nothing was changed")
+    # The "I have read the estimate" acknowledgement removed (the operator, 2026-11-17).
     if why:
         return _ai_form(network, feature, 403 if "verified person" in why else 409,
                         form_refused=why, **kept)

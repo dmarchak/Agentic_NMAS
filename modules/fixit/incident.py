@@ -145,7 +145,7 @@ CHOICES = ("cancel", "handover", "save", "deny", "approve")
 START_TRIGGERS = ("auto", "person")
 START_STATES = ("started", "capped", "off", "failed", "closed")
 #: The most steps a plan's proposal line keeps (`plan_engine.MOST_STEPS`'s figure).
-MOST_STEPS = 10
+MOST_STEPS = 20
 #: The line kinds, exactly one per line.
 LINE_KINDS = ("proposal", "choice", "start")
 #: What the save choice can be: apply alone next time, propose next time, or do not save.

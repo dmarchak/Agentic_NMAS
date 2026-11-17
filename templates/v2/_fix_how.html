@@ -64,7 +64,7 @@
         {%- else %}
         <p>Deleting keeps {{ p.name }}'s record, origin and runs, on this page and in History; it is no longer offered, matched or run, and leaves the AI's catalog. Restore… here brings it back.</p>
         {%- endif %}
-        <label class="heal-field" for="fx-reason-{{ p.key }}">Why ({{ form.rule }}; kept in History)<textarea id="fx-reason-{{ p.key }}" name="reason" rows="2" maxlength="500" minlength="8" required autocomplete="off"></textarea></label>
+        <label class="heal-field" for="fx-reason-{{ p.key }}">Why ({{ form.rule }}; kept in History)<textarea id="fx-reason-{{ p.key }}" name="reason" rows="2" maxlength="500" autocomplete="off"></textarea></label>
         {%- if form.right %}<p class="small bluf-refused" data-refused="{{ form.action }}">{{ form.right }}</p>{% endif %}
         <span class="op-act"><button type="submit" class="btn btn-small{{ '' if restoring else ' btn-danger' }}" data-op="fix-{{ form.action }}" hx-disabled-elt="this"{% if form.right %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">{{ 'Restore this fix' if restoring else 'Delete this fix' }}</span><span class="op-busy">{{ 'Restoring…' if restoring else 'Deleting…' }}</span></button></span>
       </form>

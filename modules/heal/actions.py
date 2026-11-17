@@ -46,10 +46,9 @@ failing closed):
   Never too", by the device's own route toward Mercury's source address (`show ip route`, or
   `show ipv6 route` for an IPv6 manager) learned by BGP from that neighbour, a BGP route whose
   source cannot be told refused too; a soft clear withdraws nothing, so it passes unread;
-- **13d, once** (`g13d_once`): a port is bounced at most once an hour
-  (``heal_bounce_per_port_hour``), and a second need within ``heal_repeat_halts_hours`` is the
-  dampening proposal instead; a session is cleared once per incident, a second need being
-  can't fix (Tier 3) with its diagnosis;
+- **13d, once** (`g13d_once`): holds nothing since the operator, 2026-11-17 (it held a port
+  to one bounce an hour, ``heal_bounce_per_port_hour``, and a session to one clear per
+  incident);
 - **13e, a flap is measured, not felt** (`g13e_flap`): ``heal_flap_transitions`` UPDOWN
   transitions of one interface in ``heal_flap_minutes``, from the flap record self-healing's
   own syslog read's (`heal-detect`) after-store step keeps (`modules/heal/flaps.py`); the
@@ -432,37 +431,10 @@ def history_of(rows: list, outcome: str) -> list:
 
 def g13d_once(kind: str, rows: list, target: dict, now: float, *, per_hour: int,
               repeat_hours: int):
-    """*rows*: `history`'s. *target*: ``{"device", "interface", "peer", "incident"}``."""
-    dev = target.get("device") or ""
-    if kind in BOUNCES:
-        port = (target.get("interface") or "").lower()
-        prior = [r for r in rows if r["kind"] in BOUNCES and r["device"] == dev
-                 and r["interface"].lower() == port
-                 and r["epoch"] >= now - float(repeat_hours) * 3600]
-        ops = {"device": dev, "interface": target.get("interface"), "bounced": len(prior),
-               "heal_bounce_per_port_hour": int(per_hour),
-               "heal_repeat_halts_hours": int(repeat_hours)}
-        if prior:
-            last = max(prior, key=lambda r: r["epoch"])
-            return hit("13d", "instead", (f"{dev} {target.get('interface')} was bounced at "
-                                          f"{last['at'] or _iso(last['epoch'])}, within "
-                                          f"{int(repeat_hours)} h: a second need is the "
-                                          "dampening proposal, never a second bounce"),
-                       dict(ops, previous=last["id"]), instead="dampening_proposal")
-        if int(per_hour) < 1:
-            return hit("13d", "cant_fix", (f"the policy bounces no port (bounces per port an "
-                                           f"hour: {int(per_hour)})"), ops, tier=3)
-        return None
-    if kind == "session_clear":
-        peer = target.get("peer") or ""
-        prior = [r for r in rows if r["kind"] == "session_clear" and r["device"] == dev
-                 and r["peer"] == peer and r["incident"] == (target.get("incident") or "")]
-        if prior:
-            return hit("13d", "cant_fix", (f"{dev}'s session to {peer} was cleared once in this "
-                                           f"incident ({prior[-1]['at']}): a second need is "
-                                           "can't fix, with its diagnosis"),
-                       {"device": dev, "peer": peer, "incident": target.get("incident"),
-                        "previous": prior[-1]["id"]}, tier=3)
+    """*rows*: `history`'s. *target*: ``{"device", "interface", "peer", "incident"}``.
+    Holds nothing since the operator, 2026-11-17 (the once-an-hour bounce and the
+    once-per-incident clear removed): verify and rollback judge each one."""
+    del kind, rows, target, now, per_hour, repeat_hours
     return None
 
 

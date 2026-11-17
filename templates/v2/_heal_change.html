@@ -96,7 +96,7 @@
       {%- endif %}
     </fieldset>
     <label class="heal-field">Reason
-      <textarea name="reason" rows="2" required>{{ c.reason }}</textarea></label>
+      <textarea name="reason" rows="2">{{ c.reason }}</textarea></label>
     <div class="heal-preview" id="{{ c.mid }}-preview">
       {%- if on_open %}<p class="small muted">Reading what it changes…</p>
       {%- elif refused %}<p class="small muted">Choose again, or press Enter in a field, to preview what it changes.</p>

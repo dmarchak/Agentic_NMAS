@@ -9,7 +9,7 @@ is the gateway task that asks: its two passes' prompts and schemas, its own chec
 answer cites and what it acts on. `run(family, feature, ...)` then makes at most two calls:
 
 1. **Pass 1**, the feature's call with an optional ``reads`` field (`request_model`): at most
-   the family's limit (3, `MAX_READS`) entries, each ``{op, args, why, hypothesis}``. When no
+   the family's limit (`MAX_READS`) entries, each ``{op, args, why, hypothesis}``. When no
    operation's class is on for the network, and the feature names a plain pass (today's schema,
    no ``reads``), that is pass 1 instead, and the result says why reads were not asked.
 2. **The check** (`check`): each request is refused unless it is exactly one of the family's
@@ -111,8 +111,9 @@ from modules.ai.schemas import StrictModel
 
 log = logging.getLogger(__name__)
 
-#: The most reads one pass may ask for (19.5: "at most 3"); a family may hold fewer.
-MAX_READS = 3
+#: The most reads one pass may ask for: the loop's own ceiling, `MAX_LOOP_READS` (the operator,
+#: 2026-11-17, replacing 19.5's "at most 3"); a family may hold fewer.
+MAX_READS = 12
 #: The calls a finding is EXPECTED to make, for an estimate only (19.5: "`calls_per_finding`
 #: becomes 2"); never a stop (the operator, 2026-11-16: the spending limits are the only
 #: governor, and an iterative loop stops when a pass adds no new evidence). Each read's answer
@@ -128,7 +129,7 @@ READ_ID = re.compile(r"read:[1-9][0-9]{0,2}")
 #: A read request's keys, in the order a refusal names them.
 REQUEST_KEYS = ("op", "args", "why", "hypothesis")
 #: A request's why and hypothesis: at most this many characters each.
-TEXT_MAX = 200
+TEXT_MAX = 1000
 #: What a leaf of a structured answer the egress mask changed is sent as.
 WITHHELD_LEAF = "<withheld: a secret's shape>"
 #: The part pass 2's reads are attached as, and the context naming their format.

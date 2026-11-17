@@ -69,7 +69,7 @@ ANNOUNCE_KEYS = ("privileged", "dhcp", "intent", "remote", "pending", "credentia
                  "deploy_job", "device_state", "baselines", "drift", "rolled_back", "goldens")
 ANNOUNCER = "plan"
 #: The most steps a plan holds.
-MOST_STEPS = 10
+MOST_STEPS = 20
 #: The run's steps, as the manual names them (each plan step is ``step-<n>``, `step_labels`).
 STEPS = (("approve", "Preview the plan again and compare its hash with the one approved"),
          ("step", "Each step in order: its own preview again, its own apply, verify and "
@@ -1383,8 +1383,8 @@ def _repeat_check(network: str, p: dict, key: str, resolved: dict = None) -> tup
     """``(refusal, differs)`` for a step of an incident's fix: the catalog's repeat rule
     (`fixit.plan.admitted_repeat`, `fixit.incident.repeat_of`) on the values the step kind
     compares an attempt by (`StepKind.attempt_of`): an attempt that ran with the same values
-    and failed refuses it, naming the attempt; one that ran with other values names what
-    differs. ``("", "")`` outside an incident's fix."""
+    and failed is named as a risk on the step (the operator, 2026-11-17: never refused); one
+    that ran with other values names what differs. ``("", "")`` outside an incident's fix."""
     if not p.get("incident"):
         return "", ""
     from modules.fixit import plan as FP

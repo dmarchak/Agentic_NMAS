@@ -743,17 +743,15 @@ def automatic_form(network: str, key: str, who: dict) -> dict:
 def delete_form(network: str, key: str, who: dict) -> dict:
     """Delete…'s (or Restore…'s) form for a saved fix: ``{"action", "right", "rule"}``, *right*
     the viewer's refusal for the right changing it takes (`saved_plans.change_right`), *rule*
-    what a reason is (`authorisation`'s shape)."""
+    what a reason is (optional since the operator, 2026-11-17)."""
     from modules import identity
-    from modules.nsot import authorisation
     from modules.nsot import saved_plans as S
 
     f = S.fixes(network, deleted=True).get(key) or {}
     return {"action": "restore" if f.get("retired") else "delete",
             "right": (identity.ai_acting_refusal("delete or restore a saved fix")
                       or identity.right_refusal(S.change_right(f), **who)) if f else
-            "no saved fix", "rule": (f"at least {authorisation.MIN_WORDS} words and "
-                                     f"{authorisation.MIN_CHARS} characters")}
+            "no saved fix", "rule": "optional"}
 
 
 # ── Run… ─────────────────────────────────────────────────────────────────────────────────────
