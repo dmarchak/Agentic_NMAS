@@ -247,6 +247,19 @@ def fix_with_script(incident_id):
 
 @bp.route("/<incident_id>/fixit/approve", methods=["POST"])
 def approve(incident_id):
+    """`_approve`, its answer timed (the overnight speed pass, 2026-11-17: Approve's press took
+    9.1 s in the final take, its own reads 0.1 s warm on the host; the line says where)."""
+    import time as _time
+
+    t0 = _time.monotonic()
+    try:
+        return _approve(incident_id)
+    finally:
+        log.warning("fixit: the Approve press on %s answered in %.2f s", incident_id,
+                    _time.monotonic() - t0)
+
+
+def _approve(incident_id):
     """Approve: the waiting plan, preflighted again, approved by its hash as the verified person
     who pressed (``hash``), and started as the plan engine's ``incident-fix`` plan: each step in
     order through its own operation's preview, apply (re-checking its own hash), verify and
