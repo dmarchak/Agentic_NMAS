@@ -31,6 +31,7 @@ different question from "do we understand it".
 import logging
 import os
 import re
+import threading
 
 from modules.nsot import ifnames, normalize
 from modules.nsot.parsers.base import split_blocks
@@ -154,6 +155,46 @@ def _sections(config: str) -> dict:
     return out
 
 
+#: The templates' compiled code, kept in this process (the overnight speed pass, 2026-11-17:
+#: one device's render on the host spent 1.63 s of its 1.92 s compiling the same six templates
+#: again, measured by cProfile; four restores at once paid it twice each). Jinja's own bytecode
+#: cache contract: an entry is keyed by the template's name and file, and holds the source's
+#: checksum, so an edited template compiles afresh; the code holds no value (globals such as
+#: `secret`, filters and the undefined class are looked up when it runs). Every render here
+#: uses one set of environment options, so one compiled form serves them all.
+_COMPILED = None
+_COMPILED_LOCK = threading.Lock()
+
+
+def _compiled_templates():
+    """The process's one in-memory bytecode cache for `render` (created on first use)."""
+    global _COMPILED
+    if _COMPILED is None:
+        from jinja2 import BytecodeCache
+
+        class _Kept(BytecodeCache):
+            def __init__(self):
+                self._code = {}
+
+            def load_bytecode(self, bucket):
+                with _COMPILED_LOCK:
+                    code = self._code.get(bucket.key)
+                if code is not None:
+                    bucket.bytecode_from_string(code)
+
+            def dump_bytecode(self, bucket):
+                code = bucket.bytecode_to_string()
+                with _COMPILED_LOCK:
+                    if len(self._code) >= 256:
+                        self._code.clear()
+                    self._code[bucket.key] = code
+
+        with _COMPILED_LOCK:
+            if _COMPILED is None:
+                _COMPILED = _Kept()
+    return _COMPILED
+
+
 def render(host_vars: dict, platform: str, secret_lookup=None,
            template_root: str = TEMPLATE_ROOT, template_name: str = "base.j2") -> str:
     """Render host_vars through a platform template.
@@ -162,7 +203,7 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     in its repo instead of the built-in seeds; *template_name* selects a
     non-default template within the platform directory.
     """
-    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined, pass_context
     from jinja2.exceptions import UndefinedError
 
     secrets = dict(host_vars.get("secrets") or {})
@@ -179,9 +220,15 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     env = Environment(
         loader=FileSystemLoader([os.path.join(template_root, platform), template_root]),
         undefined=_named_undefined(StrictUndefined), trim_blocks=True, lstrip_blocks=False,
-        keep_trailing_newline=True,
+        keep_trailing_newline=True, bytecode_cache=_compiled_templates(),
     )
-    def _resolve_markers(text):
+    # `pass_context` (the review of the compiled-template cache, 2026-11-17): Jinja folds a
+    # filter applied to a literal at compile time unless it takes the context, and this filter
+    # holds this call's secrets, so a folded `'__secret__:x' | resolve_secrets` would carry the
+    # first caller's value in the kept code to every later render. Taking the context, it is
+    # always called when the template runs.
+    @pass_context
+    def _resolve_markers(_context, text):
         """Expand ``__secret__:ref`` markers inside an otherwise opaque string."""
         import re as _re
         # The reference's own characters only (C477): a marker inside a URL is followed by
