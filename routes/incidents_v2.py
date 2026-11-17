@@ -35,7 +35,10 @@ def page():
     from modules import control_strip, incidents_list
 
     ref = _page_ref()
-    batch = _batch_rows(ref.name)
+    # The operator, 2026-11-17: "Remove that card entirely: the incidents show as the normal
+    # list rows ('Mercury working' -> Fixed)". No batch card is drawn, and no incident is
+    # hidden in one (`_batch_rows` stays for Needs attention's card).
+    batch = []
     p = incidents_list.page(ref.name, request.args.get("tab") or "open",
                             request.args.get("q") or "", request.args.get("device") or "",
                             batched=[h["incident"] for r in batch

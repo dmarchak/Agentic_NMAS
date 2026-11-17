@@ -338,7 +338,10 @@ def pending(network: str) -> dict:
     from modules.fixit import incident as F
     from modules.fixit import section
 
-    opened = open_incidents(network)
+    # An incident whose fix is running now (claimed: its heal or a batch's restore under way)
+    # is no incident the AI would start on (the operator, 2026-11-17: the strip's "Also starts
+    # on N" counted the four restores running); it is read again once its fix has ended.
+    opened = {k: v for k, v in open_incidents(network).items() if v.get("state") != "claimed"}
     got = failures(network, open_ids=set(opened))
     if got["state"] != "ok":
         return {"state": got["state"], "error": got["error"], "incidents": [], "failed": []}
