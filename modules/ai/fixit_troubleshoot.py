@@ -152,7 +152,7 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: command, citation and evidence field whole. The bounds are ASKED in the prompt, never
 #: enforced: the schema has no maxLength (deliberate: an over-long answer must not fail the
 #: schema and lose the investigation). v14 to v16 stay readable, never asked.
-PROMPT_INVESTIGATE = (FEATURE, 17)
+PROMPT_INVESTIGATE = (FEATURE, 18)
 PROMPT_PLAN = PROMPT_INVESTIGATE
 PROMPT_PLAN_READS = PROMPT_INVESTIGATE
 PROMPT_AGAIN = PROMPT_INVESTIGATE
@@ -429,6 +429,14 @@ class TroubleshootInvestigateV17(TroubleshootInvestigate):
     """The investigation's one answer for every pass, asked by v17's prompt."""
 
 
+#: v18 (the operator, 2026-11-17: "when a fix exists, the AI always proposes it; any doubt
+#: (recurrence, re-trip risk) is stated as a risk on the plan, never a reason to withhold"):
+#: v17's prompt with that rule, and a gap only when no fix exists; v17's answer, unchanged.
+@register(FEATURE, 18)
+class TroubleshootInvestigateV18(TroubleshootInvestigate):
+    """The investigation's one answer for every pass, asked by v18's prompt."""
+
+
 #: How a call that was sent and got no answer begins its line (the operator, 2026-11-15: a
 #: refused request was drawn as "the AI named no fix"): `fixit.section` reads it as a failure,
 #: never as an answer.
@@ -484,7 +492,7 @@ SCHEMA_OF = {1: Troubleshoot, 2: TroubleshootReads, 3: TroubleshootSecond,
              11: TroubleshootInvestigate, 12: TroubleshootInvestigateAgain,
              13: TroubleshootInvestigated, 14: TroubleshootInvestigateV14,
              15: TroubleshootInvestigateAgainV15, 16: TroubleshootInvestigatedV16,
-             17: TroubleshootInvestigateV17}
+             17: TroubleshootInvestigateV17, 18: TroubleshootInvestigateV18}
 
 
 class Refused(ValueError):
