@@ -1173,25 +1173,15 @@ def auto_model(network: str, sw: dict = None) -> dict:
 
     sw = sw or A.switch(network)
     spec = background.FEATURES[A.FEATURE]
-    try:
-        if sw["on"]:
-            # On: what it was approved at is the switch's own (Settings › AI draws it with
-            # its spend against it); no estimate is made again on a page draw.
-            raise LookupError("on")
-        est = background.estimate(network, A.FEATURE)
-        estimate = {"label": est["label"], "calls_per_day": est["calls_per_day"],
-                    "usd_per_day": est["usd_per_day"], "usd_per_month": est["usd_per_month"],
-                    "frequency_basis": est["frequency"]["basis"],
-                    "cost_basis": est["cost"]["basis"], "suggested": est["suggested"],
-                    "digest": est["digest"], "error": ""}
-    except LookupError:
-        est = (sw.get("entry") or {}).get("estimate") or {}
-        estimate = {"label": "the estimate shown when it was turned on",
-                    "calls_per_day": est.get("calls_per_day"),
-                    "usd_per_day": est.get("usd_per_day"),
-                    "usd_per_month": est.get("usd_per_month"), "error": ""}
-    except Exception as exc:                          # noqa: BLE001 (said in place)
-        estimate = {"error": f"the estimate could not be made ({type(exc).__name__}: {exc})"}
+    # No estimate is made on a page draw, on or off (2026-11-17: it was 14.5 s of a 17 s
+    # incident page on the host, `background.measured_cost` re-reading the AI calls record each
+    # time it changed): on, the switch's own estimate; off, Settings › AI shows it at Turn on.
+    est = (sw.get("entry") or {}).get("estimate") or {} if sw["on"] else {}
+    estimate = {"label": ("the estimate shown when it was turned on" if sw["on"] else
+                          "its estimate, shown in Settings › AI when it is turned on"),
+                "calls_per_day": est.get("calls_per_day"),
+                "usd_per_day": est.get("usd_per_day"),
+                "usd_per_month": est.get("usd_per_month"), "error": ""}
     cap = P.cap_usd(network)
     ends = background.approval_ends(sw["entry"]) if sw.get("entry") else None
     return {"feature": A.FEATURE, "words": spec["words"], "trigger_words": spec["trigger_words"],
