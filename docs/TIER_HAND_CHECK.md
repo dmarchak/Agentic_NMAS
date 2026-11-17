@@ -4715,3 +4715,20 @@ the checkout during it; the worktree was the snapshot.
 keyring's name, columns two spaces or more apart: run 3's wider shape masked a YAML list line in
 the topology tests) and the gateway gained the three labels' words; X1 to X3 were applied again,
 with tests/test_ai_explain_topology.py added, baseline 1148 passed: all three killed.
+
+## 2026-11-17: the masking alternation kept by its exact table (the overnight speed pass), by hand
+
+What changed: `redact._compile` keeps each compiled alternation by `frozenset(values.items())`
+(every secret value and its label), at most 8 kept, the set cleared when full. Measured by
+cProfile on the host at 05:30 UTC: an incident page called `redact_text` 1,120 times and rebuilt
+the same pattern each time, 1.24 s of its 1.56 s build; with the cache applied in a profiling
+process on the host's data, 0.31 s.
+
+The check (a scratch script, its result here): 400 rounds of random tables (1 to 40 values of 8
+to 20 characters) and texts, every fifth round a value rotated and every seventh one added after
+the table's pattern was cached: `redact_text` with the cache against a fresh uncached build, **0
+differences**. The canary, the cache keyed by the table's size alone (a stale pattern for a
+rotated secret): **39 differences, died**. The aimed tests: test_provider_redaction,
+test_redact_egress, test_redact_ios_shapes, test_redact_typed, test_reveal_and_log_redaction,
+test_sealed_values_masked, test_masked_lines_not_compared, test_previews_mask_secrets and
+test_commit_message_masked, **1173 passed** in CI's interpreter.

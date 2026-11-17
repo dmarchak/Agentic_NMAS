@@ -571,14 +571,33 @@ def known_secret_values() -> dict:
     return _with_transient(out)
 
 
+#: Compiled alternations by the exact ``{value: label}`` mapping they were built from (the
+#: overnight speed pass, 2026-11-17: an incident page called `redact_text` 1,120 times and
+#: rebuilt the same pattern each time, 1.24 s of its 1.56 s build, measured by cProfile on the
+#: host). Keyed by every value and label, so a secret added, rotated or removed is a new key
+#: and compiles afresh; a few keys kept (the table, with or without transient values).
+_COMPILED: dict = {}
+_COMPILED_KEPT = 8
+_compiled_lock = threading.Lock()
+
+
 def _compile(values: dict):
     """One alternation, longest first, so a longer secret wins over a prefix."""
     if not values:
         return None, {}
+    key = frozenset(values.items())
+    with _compiled_lock:
+        got = _COMPILED.get(key)
+    if got is not None:
+        return got, values
     ordered = sorted(values, key=len, reverse=True)
     pattern = re.compile(
         f"(?<!{_TOKEN_CHAR})(" + "|".join(re.escape(v) for v in ordered)
         + f")(?!{_TOKEN_CHAR})")
+    with _compiled_lock:
+        if len(_COMPILED) >= _COMPILED_KEPT:
+            _COMPILED.clear()
+        _COMPILED[key] = pattern
     return pattern, values
 
 
