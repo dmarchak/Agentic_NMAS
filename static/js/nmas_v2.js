@@ -530,6 +530,56 @@
     }
   }
 
+  /* A sortable table (`table[data-sortable="<key>"]`, the Fixes list; the operator,
+     2026-11-17): a header's button sorts the drawn rows by its column (each cell's `data-v`,
+     its `th`'s `data-type` "num" or "text"); pressed again, the other way. The choice is kept
+     in this browser only (`nmas-sort:<key>`), a convenience: a store the browser refuses
+     forgets it and the table keeps the server's order. Applied again after every redraw. A
+     stable sort, so rows equal in the column keep the server's order. */
+  function sortTable(t, col, dir) {
+    var body = t.tBodies && t.tBodies[0];
+    var th = t.querySelectorAll('thead th[data-col]');
+    if (!body || !th[col]) return;
+    var num = th[col].getAttribute('data-type') === 'num';
+    var rows = Array.prototype.slice.call(body.rows);
+    rows.sort(function (a, b) {
+      var x = a.cells[col] ? a.cells[col].getAttribute('data-v') || '' : '';
+      var y = b.cells[col] ? b.cells[col].getAttribute('data-v') || '' : '';
+      var c = num ? (parseFloat(x) || 0) - (parseFloat(y) || 0) : (x < y ? -1 : x > y ? 1 : 0);
+      return dir === 'desc' ? -c : c;
+    });
+    for (var i = 0; i < rows.length; i++) body.appendChild(rows[i]);
+    for (var j = 0; j < th.length; j++) {
+      if (j === col) th[j].setAttribute('aria-sort', dir === 'desc' ? 'descending' : 'ascending');
+      else th[j].removeAttribute('aria-sort');
+    }
+  }
+  function sortClicked(e) {
+    var b = e.target && e.target.closest ? e.target.closest('th[data-col] > button.th-sort') : null;
+    var t = b ? b.closest('table[data-sortable]') : null;
+    if (!t) return;
+    var th = b.parentNode, col = parseInt(th.getAttribute('data-col'), 10);
+    // A new column starts as its header says (`data-first`: runs and last run most first).
+    var first = th.getAttribute('data-first') === 'desc' ? 'desc' : 'asc';
+    var now = th.getAttribute('aria-sort');
+    var dir = now === 'ascending' ? 'desc' : now === 'descending' ? 'asc' : first;
+    sortTable(t, col, dir);
+    try {
+      root.localStorage.setItem('nmas-sort:' + t.getAttribute('data-sortable'),
+                                JSON.stringify({col: col, dir: dir}));
+    } catch (x) { /* storage refused: nothing kept */ }
+  }
+  function applySorted(scope) {
+    var at = scope && scope.querySelectorAll ? scope : root.document;
+    var all = at.querySelectorAll('table[data-sortable]');
+    for (var i = 0; i < all.length; i++) {
+      var v = null;
+      try { v = JSON.parse(root.localStorage.getItem('nmas-sort:' + all[i].getAttribute('data-sortable')) || 'null'); }
+      catch (x) { v = null; }
+      if (v && typeof v.col === 'number' && (v.dir === 'asc' || v.dir === 'desc')) sortTable(all[i], v.col, v.dir);
+    }
+  }
+
   /* A LIVE REDRAW MERGES WHAT CHANGED INTO THE PAGE; IT NEVER REPLACES THE REGION (C2810, the
      operator, 2026-11-08: "Live refresh never interrupts the person. A refresh keeps scroll
      position, focus, open or closed disclosures, text in inputs, and marks (Right/Wrong). It
@@ -2676,11 +2726,13 @@
       drawStale();
       drawDeploys(root.document);
       applyRemembered(root.document);
+      applySorted(root.document);
       root.setInterval(function () { drawLive(); catchUpInFlight(); drawBadge(); releaseHeld(); drawStale(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); redrawPushedOver(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); applyRemembered(root.document); applySorted(root.document); redrawPushedOver(); });
     root.document.addEventListener('click', rememberToggle);
+    root.document.addEventListener('click', sortClicked);
     root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
     root.document.addEventListener('input', reasonTyped);   // before: it marks the checks drawDeployOf reads
     root.document.addEventListener('input', drawDeployOf);

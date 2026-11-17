@@ -2,10 +2,10 @@
 {%- from "v2/_macros.html" import icon, badge, clock, how -%}
 {#- Troubleshooting › Fixes (C3849 piece 2; board docs/boards/fixes-list.html, approved by the
     operator 2026-11-16 with conditions): every fix the network has, saved and built-in, one
-    summary line, then the groups, each row its name (the fix's own page), what it fixes, how
-    it runs and its record (`modules/fix_page.listing`). How a built-in runs comes from code and
-    the network's settings, never typed (condition 1). Large fleets: each group collapses and
-    draws its first 20 rows, the rest counted; Search or filter… narrows on the server. The
+    summary line, then one list, each row its name (the fix's own page), how it runs, its
+    source, what it fixes and its record (`modules/fix_page.listing`). How a built-in runs comes
+    from code and the network's settings, never typed (condition 1). The list draws its first
+    `LIST_SHOWN` rows, the rest counted; Search or filter… narrows on the server. The
     deleted saved fixes show only under the Deleted filter. One live region, drawn again when
     the saved plans or a run record change. Nothing here acts on a device. -#}
 {% block title %}Fixes · {{ brand.short }}{% endblock %}
@@ -34,28 +34,33 @@
 {%- if p.filtered %}
 <p class="small muted">Showing {{ p.shown }} that match. <a href="{{ url_for('fixes_v2.page', list=p.network) }}">Show every fix</a></p>
 {%- endif %}
-{%- for g in p.groups %}
-<details class="inc-group card" open data-keep="fixes-{{ g.key }}">
-  <summary class="inc-group-head">{{ badge(g.title, 'info' if g.key == 'saved' else 'muted') }} <span class="muted">{{ g.count }}</span>{% if g.key == 'builtin' %} <span class="muted small">· read-only; how each runs is Mercury's code and {{ p.network }}'s fix kinds</span>{% elif g.key == 'deleted' %} <span class="muted small">· kept with their record, origin and runs; Restore… on a fix's page brings it back</span>{% endif %}</summary>
-  {%- if g.rows %}
-  <ul class="inc-rows">
-  {%- for r in g.rows %}
-    <li class="inc-row" data-fix="{{ r.key }}">
-      <span class="inc-row-state">{{ badge(r.words, r.badge, title=r.hover) }}{% if r.shared %} {{ badge('Shared', 'muted', title='Saved on another network and shared with every network') }}{% endif %}</span>
-      <span class="inc-row-what">
-        <a class="inc-row-title" href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network) }}">{{ r.name }}</a>
-        <span class="simple-impact">Fixes: {{ r.fixes }}</span>
-        <span class="simple-status">{{ r.record.summary }} · {{ r.said }}</span>
-      </span>
-      <span class="inc-row-when muted">{% if r.record.last %}last {{ clock(r.record.last, 'date') }}{% endif %}</span>
-    </li>
+{#- One list (the operator, 2026-11-17: "One list instead of Saved / Built-in sections"):
+    Name · Mode · Source · Fixes · Runs · Last run, drawn in Mode order (Automatic first),
+    then Last run newest first (`fix_page._sorted`); a header pressed sorts by its column in
+    the page, kept in this browser only (`nmas_v2.js`, sortable tables); each cell's data-v
+    its sort value. -#}
+{%- if p.rows %}
+<div class="table-wrap card"><table class="table fix-table" data-sortable="fixes">
+<thead><tr>
+  {%- for col, label, kind, first in (('name', 'Name', 'text', 'asc'), ('mode', 'Mode', 'num', 'asc'), ('source', 'Source', 'text', 'asc'), ('fixes', 'Fixes', 'text', 'asc'), ('runs', 'Runs', 'num', 'desc'), ('last', 'Last run', 'text', 'desc')) %}
+  <th scope="col" data-col="{{ loop.index0 }}" data-type="{{ kind }}" data-first="{{ first }}"><button type="button" class="th-sort" title="Sort by {{ label | lower }}">{{ label }}</button></th>
   {%- endfor %}
-  </ul>
-  {%- if g.more %}<p class="small muted">And {{ g.more }} more: Search or filter… narrows them.</p>{% endif %}
-  {%- else %}
-  <p class="small muted">{{ 'None matches.' if p.filtered else 'None yet: a fix is saved from an incident’s card, after its fix verified, or written with New fix….' if g.key == 'saved' else 'None.' }}</p>
-  {%- endif %}
-</details>
+</tr></thead>
+<tbody>
+{%- for r in p.rows %}
+  <tr data-fix="{{ r.key }}">
+    <td data-v="{{ r.name | lower }}"><a href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network) }}">{{ r.name }}</a>{% if r.shared %} {{ badge('Shared', 'muted', title='Saved on another network and shared with every network') }}{% endif %}</td>
+    <td data-v="{{ p.mode_rank | length if r.deleted else p.mode_rank.get(r.how, p.mode_rank | length) }}">{{ badge(r.words, r.badge, title=r.hover) }}</td>
+    <td data-v="{{ p.source_words[r.source] | lower }}">{{ p.source_words[r.source] }}</td>
+    <td data-v="{{ r.fixes | lower }}" class="small">{{ r.fixes }}</td>
+    <td data-v="{{ r.record.runs }}" class="small" title="{{ r.record.summary }}">{% if r.group == 'kind' %}{{ r.record.runs }} healed{% if r.record.dry %} · {{ r.record.dry }} dry run{% endif %}{% else %}{{ r.record.runs }} · {{ r.record.verified }} verified{% endif %}</td>
+    <td data-v="{{ r.record.last or '' }}" class="small muted">{% if r.record.last %}{{ clock(r.record.last, 'date') }}{% else %}never{% endif %}</td>
+  </tr>
 {%- endfor %}
+</tbody></table></div>
+{%- if p.more %}<p class="small muted">And {{ p.more }} more: Search or filter… narrows them.</p>{% endif %}
+{%- else %}
+<p class="small muted">{{ 'None matches.' if p.filtered else 'None yet: a fix is saved from an incident’s card, after its fix verified, or written with New fix….' }}</p>
+{%- endif %}
 </div>
 {% endblock %}

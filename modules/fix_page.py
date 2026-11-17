@@ -70,6 +70,14 @@ HOW = {"automatic": ("Automatic", "ok", "runs by itself on a matching incident w
        "off": ("Off", "warn", "self-healing raises it and says it cannot fix it")}
 #: The modes a filter offers, by the badge's words.
 MODES = ("automatic", "matched", "manual", "off")
+#: The one list's default order (the operator, 2026-11-17): Mode, Automatic first, then Last
+#: run newest first; a deleted fix after every mode.
+MODE_RANK = {m: n for n, m in enumerate(MODES)}
+#: Rows the one list draws before it counts the rest: every fix is a fix kind or a saved plan,
+#: never one per device, so the whole catalogue is drawn and sorted in the page.
+LIST_SHOWN = 100
+#: Who a fix came from, as the Source column says it.
+SOURCE_WORDS = {"builtin": "Mercury built-in", "ai": "AI", "person": "Person"}
 #: The telemetry operations a person starts (`heal.resubscribe`): key, name, what it fixes, how.
 TELEMETRY = (
     ("telemetry-resubscribe", "Re-subscribe a telemetry stream",
@@ -322,7 +330,33 @@ def _builtin_row(key, name, fixes, how, hover, record, group) -> dict:
     said = BUILTIN_SAID[group if group in ("plan", "telemetry") else how]
     return {"key": key, "name": name, "fixes": fixes, "how": how, "badge": badge,
             "words": words, "said": said, "hover": hover, "record": record, "saved": False,
-            "group": group, "shared": False}
+            "group": group, "shared": False, "source": "builtin"}
+
+
+def _source_of(network: str, f: dict) -> str:
+    """``ai`` when *f* was saved from a run of an AI plan (its run's incident link names a
+    proposal whose source is ``ai``), else ``person`` (written, or saved by a person from a
+    run of Mercury's or a person's own fix). Two small reads; a record that cannot be read is
+    ``person``, the save's own actor."""
+    from modules.fixit import incident as F
+
+    if f.get("written"):
+        return "person"
+    # A shared fix's run and incident are its own network's (the review: read from the
+    # viewer's, a shared AI fix read Person).
+    network = (f.get("from_run") or {}).get("network") or f.get("network") or network
+    link = (_source_run(network, f) or {}).get(F.RUN_FIELD) or {}
+    iid = str(link.get("incident") or (f.get("from_run") or {}).get("incident") or "")
+    prop = str(link.get("proposal") or "")
+    if not (iid and prop and F.valid_id(iid)):
+        return "person"
+    try:
+        got = F.read(F.Incident(network, iid, "", "", 1.0))
+    except Exception as exc:                          # noqa: BLE001 (said as the person's)
+        log.info("fixes: %s's origin %s could not be read: %s", f.get("key"), iid, exc)
+        return "person"
+    line = next((x for x in got["lines"] if x.get("proposal") == prop), {})
+    return "ai" if line.get("source") == "ai" else "person"
 
 
 # ── The list ─────────────────────────────────────────────────────────────────────────────────
@@ -357,8 +391,18 @@ def _saved_rows(network: str, runs, capped, deleted: bool = False) -> list:
                     "how": how, "badge": badge, "words": words, "said": said, "hover": hover,
                     "record": rec, "saved": True, "group": "saved",
                     "shared": bool(f.get("shared")) and f.get("network") != network,
-                    "devices": sorted(devices)})
+                    "devices": sorted(devices), "source": _source_of(network, f),
+                    "deleted": deleted})
     return out
+
+
+def _sorted(rows: list) -> list:
+    """The one list's default order: Mode (Automatic first, a deleted fix last), then Last run
+    newest first, then the name."""
+    rows = sorted(rows, key=lambda r: r["name"].lower())
+    rows = sorted(rows, key=lambda r: r["record"].get("last") or "", reverse=True)
+    return sorted(rows, key=lambda r: len(MODES) if r.get("deleted")
+                  else MODE_RANK.get(r["how"], len(MODES)))
 
 
 def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
@@ -383,6 +427,7 @@ def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
             return False
         return True
     groups = []
+    rows_of = {"saved": saved, "builtin": built, "deleted": gone}
     for gkey, title, rows in (("saved", "Saved", saved), ("builtin", "Built-in", built),
                               ("deleted", "Deleted", gone)):
         if (kind and kind != gkey) or (gkey == "deleted" and kind != "deleted"):
@@ -390,11 +435,16 @@ def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
         hit = [r for r in rows if keep(r)]
         groups.append({"key": gkey, "title": title, "count": len(hit), "rows": hit[:SHOWN],
                        "more": max(0, len(hit) - SHOWN)})
+    # The one list (the operator, 2026-11-17: "One list instead of Saved / Built-in
+    # sections"): the groups' matching rows together, in the default order.
+    every = _sorted([r for g in groups for r in rows_of[g["key"]] if keep(r)])
     counts = {}
     for r in saved:
         counts[r["words"]] = counts.get(r["words"], 0) + 1
     return {"network": network, "total": len(saved) + len(built), "saved": len(saved),
-            "built": len(built), "deleted": len(gone), "saved_counts": counts, "groups": groups, "q": q or "",
+            "built": len(built), "deleted": len(gone), "saved_counts": counts, "groups": groups,
+            "rows": every[:LIST_SHOWN], "more": max(0, len(every) - LIST_SHOWN),
+            "mode_rank": MODE_RANK, "source_words": SOURCE_WORDS, "q": q or "",
             "mode": mode or "", "kind": kind or "",
             "filtered": bool(needle or mode or kind), "shown": sum(g["count"] for g in groups)}
 
