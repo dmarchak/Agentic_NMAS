@@ -1049,10 +1049,8 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
                 bounce={"interface": interface, "timer": TIMER_MINUTES, "dialect": dialect,
                         "window_s": window_seconds(), "settle_bound_s": SETTLE_BOUND_S,
                         "manager": manager, "reason": reason})
-    # Round 2 (the operator, 2026-11-17): a Tier 1 or Tier 2 fix runs in Auto; no kind list
-    # holds it (guard 13's kinds-allowed-Auto is gone).
-    allowed = True
-    if mode.get("mode") == "auto" and tier in (1, 2):
+    allowed = kind in (mode.get("kinds_auto") or [])
+    if mode.get("mode") == "auto" and allowed and tier == 1:
         return dict(base, outcome="heal",
                     words=(f"bounce now: {unit['words']} (Tier 1), allowed AUTO; program "
                            f"{base['program_hash']}"))

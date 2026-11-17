@@ -302,15 +302,14 @@ def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
     """Guard 13, the tier: ``(outcome, words)``, the words plain (`said.outcome_words`: what
     Mercury did or would do, the tier a label after them; the fix kind's key, the tier's
     number and the mode's key are the record's own fields, which "Details for the record"
-    draws: C2817, the survey's item 3, one function behind four surfaces' words). The operator,
-    2026-11-17 (round 2 of the speed pass): a Tier 1 or Tier 2 fix, the security kinds
-    included, is healed in Auto (would-heal in Dry run); no kind list and no propose holds it
-    for a person. Tier 3 and 4 stay can't-fix (there is no fix). *kinds_auto* and
-    *kinds_propose* are kept for the callers and read no more."""
+    draws: C2817, the survey's item 3, one function behind four surfaces' words). The security
+    kinds (C2839, `policy.SECURITY_KINDS`) are always proposed: a person decides, never a
+    setting."""
     from modules.heal import said
     from modules.heal.kinds import NEVER_WHY, masked_unit
+    from modules.heal.policy import SECURITY_KINDS
 
-    del kinds_auto, kinds_propose
+    kinds_propose = list(kinds_propose) + list(SECURITY_KINDS)
     tier, kind = c["tier"], c["kind"]
     units = [u if "section" in u else masked_unit(u) for u in c.get("units") or []]
     if tier >= 3:
@@ -320,12 +319,22 @@ def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
         b = c["blocked"]
         return "cant_fix", said.outcome_words("cant_fix", units=units, kind=b["kind"],
                                               tier=tier, device=device, why=b["why"])
-    if mode.get("mode") == "auto":
+    kinds = sorted({u["kind"] for u in c["units"]})
+    if tier == 2:
+        missing = [k for k in kinds if k not in kinds_propose and _tier(k) == 2]
+        if missing:
+            return "cant_fix", said.outcome_words("cant_fix", units=units, kind=kind,
+                                                  tier=tier, device=device,
+                                                  not_proposed=missing)
+        return "propose", said.outcome_words("propose", units=units, kind=kind, tier=tier,
+                                             device=device)
+    not_auto = [k for k in kinds if k not in kinds_auto]
+    if mode.get("mode") == "auto" and not not_auto:
         return "heal", said.outcome_words("heal", units=units, kind=kind, tier=tier,
                                           device=device)
     return "would_heal", said.outcome_words("would_heal", units=units, kind=kind, tier=tier,
-                                            device=device, not_auto=[],
-                                            dry_run=True)
+                                            device=device, not_auto=not_auto,
+                                            dry_run=mode.get("mode") != "auto")
 
 
 def _tier(kind: str) -> int:

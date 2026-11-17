@@ -422,12 +422,20 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
         "rollback": plan["rollback"],
         "sessions": [{"state": s.get("state"), "established": s.get("established")}
                      for s in (first, fresh)]})
-    # Round 2 (the operator, 2026-11-17): a Tier 1 or Tier 2 clear runs in Auto; no kind list
-    # and no proposal holds it for a person.
-    if mode.get("mode") == "auto":
+    if tier == 2:
+        if kind in (mode.get("kinds_propose") or []):
+            return dict(base, outcome="propose",
+                        words=(f"proposed for a person: {unit['words']} (Tier 2 on a network "
+                               f"not marked lab, N16); command {h}"))
+        return dict(base, outcome="cant_fix", words=(
+            f"a Tier 2 action ({kind}) the policy does not propose: nothing is sent, and a "
+            "person clears it"))
+    allowed = kind in (mode.get("kinds_auto") or [])
+    if mode.get("mode") == "auto" and allowed:
         return dict(base, outcome="heal",
-                    words=f"clear now: {unit['words']} (Tier {tier}); command {h}")
-    why = "the mode is dry run"
+                    words=f"clear now: {unit['words']} (Tier 1), allowed AUTO; command {h}")
+    why = ("the mode is dry run" if mode.get("mode") != "auto" else
+           f"{kind} is not allowed AUTO, so dry run for it")
     return dict(base, outcome="would_heal",
                 words=(f"would have cleared {device}'s BGP neighbour {peer} ({plan['command']},"
                        f" command {h}); {why}. Nothing was sent"))

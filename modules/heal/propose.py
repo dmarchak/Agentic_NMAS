@@ -212,6 +212,15 @@ def _stops(network: str, decision: dict, now: float, src) -> str:
     if mode.get("mode") not in ("dry_run", "auto"):
         return (f"self-healing is off for {network} now ({mode.get('words')}), and a proposal "
                 "is applied only while it is on")
+    # Each fix's own mode decides (the operator, 2026-11-17): a Tier 2 kind no longer in the
+    # network's fix kinds to propose sends nothing (the security kinds always proposed, C2839).
+    from modules.heal.policy import SECURITY_KINDS
+    proposed = set(mode.get("kinds_propose") or []) | set(SECURITY_KINDS)
+    off = sorted({u.get("kind") for u in decision.get("units") or []
+                  if u.get("tier") == 2} - proposed)
+    if off:
+        return (f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} no longer proposed by "
+                f"{network}'s policy (proposed now: {', '.join(sorted(proposed)) or 'none'})")
     # Judged with no holder (the review of round 2): a busy device is a wait, and a person's
     # planned restart and no-change windows are always reached.
     from modules.heal import guards

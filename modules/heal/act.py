@@ -844,6 +844,13 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     if mode.get("mode") != "auto":
         return (f"the mode is {policy.MODE_WORDS.get(mode.get('mode'), mode.get('mode'))} now "
                 f"({mode.get('words')}), and only AUTO sends a heal")
+    # Each fix's own mode decides (the operator, 2026-11-17: Fixes' Automatic, Dry run or
+    # Manual per fix): a kind no longer in the network's fix kinds to heal sends nothing.
+    allowed = set(mode.get("kinds_auto") or [])
+    off = sorted({u.get("kind") for u in decision.get("units") or []} - allowed)
+    if off:
+        return (f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} no longer allowed AUTO "
+                f"(allowed now: {', '.join(sorted(allowed)) or 'none'})")
     # The device held by another operation is `hold_device`'s wait, never a stop here: guard 3
     # is judged with no holder, so a person's planned restart and no-change windows are always
     # reached (the review of round 2: the holder's hit, often this act's own hold, returned

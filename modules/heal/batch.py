@@ -382,11 +382,14 @@ def _dry_run_fixable(d: dict, auto_kinds) -> bool:
     a security kind is always proposed, never healed), with its program and hash. Decided in
     Auto, it is a would-heal because a kind is not fixed in Auto: switching on changes nothing
     for it."""
-    # Round 2 (the operator, 2026-11-17): every Tier 1 and 2 kind, the security kinds
-    # included, heals in Auto (`decide._outcome`), so any would-heal with its program is a
-    # fix the switch-on runs. *auto_kinds* is kept for the callers and read no more.
-    del auto_kinds
-    return bool(d.get("program_hash"))
+    from modules.heal.policy import SECURITY_KINDS
+
+    if not auto_kinds or d.get("mode") == "auto" or not d.get("program_hash"):
+        return False
+    kinds = {u.get("kind") for u in d.get("units") or [] if isinstance(u, dict)} or \
+        {d.get("kind")}
+    return bool(kinds) and all(k and k in auto_kinds and k not in SECURITY_KINDS
+                               for k in kinds)
 
 
 def moved(seen: str, now: dict) -> str:
