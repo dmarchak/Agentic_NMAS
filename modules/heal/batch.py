@@ -477,10 +477,16 @@ def press(network: str, shown: str, *, actor: str, verified: str, ident, ai_item
         raise Refused(f"the batch cannot be read ({p['error']}); nothing was started")
     if not p["on"]:
         if switch:
+            # Nothing open to fix at the press: `control_strip.switch_on` turns self-healing
+            # on plainly before it asks here (C3909).
             raise Refused(switch_moved(shown or "", p))
         raise Refused("no batch is held by guard 6 now; nothing was started")
-    if (shown or "") != p["hash"]:
-        raise Refused(switch_moved(shown or "", p) if switch else moved(shown or "", p))
+    # C3909 (the operator, 2026-11-17: "Self-healing On + an approved fix ... -> it runs"):
+    # the switch takes the problems open at the press (the preview the caller hands in, made
+    # again when the drawn line moved), never refusing because the line moved; each item
+    # still re-checks its own hash at apply. The card's press stays bound to its hash.
+    if not switch and (shown or "") != p["hash"]:
+        raise Refused(moved(shown or "", p))
     # Gate 2's review: Auto's turn-on is judged before anything starts or spends. A network
     # not already in Auto is planned now (`policy.plan`, every gate the job's `turn_on_auto`
     # will hold); one that is not confirmable refuses the press, naming the gates, with no AI

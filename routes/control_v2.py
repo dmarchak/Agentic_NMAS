@@ -87,7 +87,8 @@ def heal(list_name):
     if on and shown:
         # C3823: turned on with the open problems its line drew, bound to that line's hash:
         # C3819's batch (restores and saved scripts, all at once; never the AI),
-        # which turns self-healing on itself; refused, nothing turned on, when they moved.
+        # which turns self-healing on itself; C3909: when they moved, the problems open at
+        # the press, never a refusal.
         # C3866 (the operator, 2026-11-16: "Every switch flips instantly; the work it starts
         # happens after, in the background"): the press is checked against the line as drawn,
         # turns Auto on and records the approval here, and answers with the switch On and
@@ -105,6 +106,9 @@ def heal(list_name):
             return _strip(list_name, 500, refused=(
                 f"The switch's press did not finish ({type(exc).__name__}: {exc}); the switch "
                 "below shows self-healing as it is now"))
+        if got.get("job") is None:
+            # C3909: nothing open to fix at the press; turned on as with no line.
+            return _strip(list_name, heal_set=got["words"])
         return _strip(list_name, starting=control_strip.starting_words(
             got["preview"]["fixable"]))
     # C3789: the strip, and so its toggle, is on Troubleshoot › Incidents alone

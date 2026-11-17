@@ -204,10 +204,22 @@ class Sources:
 
 # ── The program: one computation for the decision and the apply ────────────────────────────
 
+def restore_source(golden: dict, intended: dict) -> str:
+    """The text a restore's lines come from (C3909; the operator, 2026-11-17: "The restore
+    targets intent ... when golden and intent disagree, render from intent"): the golden's
+    where it is at its intent (as before), else committed intent rendered for the device
+    (`Sources.intended`, the render the intersection rule already compares with). The one
+    choice, the decision's and the act's, so their programs and hashes agree."""
+    if golden.get("state") == "at_intent" and golden.get("text"):
+        return golden["text"]
+    return intended.get("text") or ""
+
+
 def program(golden: str, running: str, units: list, removal_ids: list, *, mgmt_ip: str,
             platform: str) -> dict:
-    """The heal's exact program and its hash: the golden's own lines for each missing or
-    changed unit, merged (`deploy.merge_commands` through the deploy's `_program`), then the
+    """The heal's exact program and its hash: *golden* is the text the lines come from
+    (`restore_source`: the golden at its intent, else committed intent rendered), its own
+    lines for each missing or changed unit, merged (`deploy.merge_commands` through the deploy's `_program`), then the
     measured removals the units name (`removal.with_removals`). ``{"commands", "hash",
     "removal_commands", "refused", "fragment", "keys", "ids"}``: *fragment* is what the merge
     merges from (the apply's capture source, H4), *keys* each removal's line as an
@@ -491,8 +503,18 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     g, golden = _g4(network, device, src, dev)
     if g:
         return stop(g)
-    passed("approved", (f"the golden {(golden.get('commit') or '')[:10] or '(no commit)'} is the "
-                        f"approved state: {golden.get('words') or golden.get('state')}"), "guards")
+    if not golden.get("text"):
+        # C3909: no golden to judge the departure against is a failure R1 starts on, never
+        # a hold.
+        return dict(base, outcome="cant_fix",
+                    words=f"no golden of {device} can be read: {golden.get('words') or 'none'}")
+    commit = (golden.get("commit") or "")[:10] or "(no commit)"
+    passed("approved", (f"the golden {commit} is the approved state: "
+                        f"{golden.get('words') or golden.get('state')}"
+                        if golden.get("state") == "at_intent" else
+                        f"the golden {commit} departs from intent "
+                        f"({golden.get('words') or golden.get('state')}): the restore's lines "
+                        "come from committed intent"), "guards")
     try:
         rows = decisions.decisions(network)
         last_halt = decisions.last_halt_epoch(network)
@@ -613,7 +635,18 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         from modules.pipeline import dangerous_commands
         from modules.redact import redact_text
 
-        prog = program(golden["text"], text, c["units"], c["removal_ids"],
+        if golden.get("state") != "at_intent":
+            # The review of C3909 (HIGH): a whole stanza restored from intent would carry
+            # intent-only lines no kind judged (an ACL, a secret, a QoS policy) under Tier 1.
+            # Until that restore classifies every line it sends (C3910), a golden departing
+            # from intent is no fix of Mercury's own: R1's failure, the AI investigates; never
+            # a hold, never a send of unjudged lines.
+            return dict(base, tier=3, outcome="cant_fix",
+                        words=(f"{device}'s golden departs from its committed intent, and a "
+                               "restore to intent that adds lines the golden never held is "
+                               "not built yet: no fix of Mercury's own, so the AI "
+                               "investigates"))
+        prog = program(restore_source(golden, intended), text, c["units"], c["removal_ids"],
                        mgmt_ip=dev.get("ip", ""), platform=platform)
         base.update(program=[redact_text(x) for x in prog["commands"]],
                     program_hash=prog["hash"], removal_ids=c["removal_ids"],
@@ -650,8 +683,10 @@ def _g4(network: str, device: str, src, dev):
     """Guard 4, the approved state, as the decision judges it (its one home: `_decide_one` and
     `guard_holds`): ``(hit, golden)``, *hit* None when it does not hold. C2606, C2608: an
     observe-only device or a host has no approved state Mercury may heal to (held, naming the
-    key and where NetBox set it; *golden* None then); else the device's golden must be at
-    intent (`guards.g4_golden`)."""
+    key and where NetBox set it; *golden* None then). C3909 (the operator, 2026-11-17: "remove
+    the hold, but don't restore a golden that departs from intent"): a golden that departs
+    from intent holds nothing; the restore's lines come from committed intent then
+    (`restore_source`)."""
     from modules.heal import guards
     from modules.inventory.management import refusal_for
 
@@ -663,8 +698,7 @@ def _g4(network: str, device: str, src, dev):
                            if isinstance(dev, dict) else "",
                            "role": (dev or {}).get("role", "")
                            if isinstance(dev, dict) else ""}), None
-    golden = src.golden(device, dev)
-    return guards.g4_golden(golden), golden
+    return None, src.golden(device, dev)
 
 
 def guard_holds(network: str, incident: dict, guard, *, now: float = None, sources=None):
@@ -681,6 +715,7 @@ def guard_holds(network: str, incident: dict, guard, *, now: float = None, sourc
     now = time.time() if now is None else float(now)
     device = (incident or {}).get("device") or ""
     if guard == 4:
+        # C3909: only a device Mercury changes nothing on still holds (`_g4`).
         src = sources or Sources(network)
         return _g4(network, device, src, src.device(device))[0]
     if guard == 6:
@@ -838,7 +873,7 @@ def script_hold(network: str, incident: dict, *, now: float = None, sources=None
         return guards.hit(4, "held", f"heal off for this device: {why}", {})
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
     # The operator, 2026-11-16: no time-based hold (guards 5, 7, 9 and 10 no longer hold), as
-    # in `_decide_one`; guard 6 stays, a person's decision.
+    # in `_decide_one`; C3909: guard 6 holds nothing either (`_g6` is None).
     if batch:
         return None
     g = _g6(incident, incidents.read(network)["incidents"], now, grace_s,
@@ -852,12 +887,13 @@ def _g6(incident: dict, all_incidents: list, now: float, grace_s: float, most):
     counts config departures only (``cause`` ``change``), so it holds only them; an event
     problem (an err-disabled port, port security, a lost stream: any incident whose ``cause``
     is not ``change``, or a record that carries none) is never held by it. The one scope, both
-    callers' (`_decide_one`, `script_hold`)."""
-    from modules.heal import guards
+    callers' (`_decide_one`, `script_hold`).
 
-    if (incident or {}).get("cause") != "change":
-        return None
-    return guards.g6_many(all_incidents, now, grace_s, most, at=_opened(incident))
+    C3909 (the operator, 2026-11-17: "remove guard 4 and guard 6 holds entirely (mass change,
+    etc.)"): guard 6 holds nothing now, for either caller; the batch's hold card it fed is
+    unreachable until its removal after the recording."""
+    del incident, all_incidents, now, grace_s, most
+    return None
 
 
 def _opened(incident: dict):

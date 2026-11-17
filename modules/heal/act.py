@@ -826,7 +826,10 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     """Why nothing may be sent now, or ``""``: section 6's stops judged again at apply.
     *held*: judged again once this act holds the device, so the hold guard 3 would find is
     this act's own and is not counted (the 18:42 Denver run of 2026-11-17: every restore
-    refused itself, "r2 is held by deploy of ..."); planned windows still hold."""
+    refused itself, "r2 is held by deploy of ..."); planned windows still hold. C3909 (the
+    operator, 2026-11-17: one operation per device is "a wait, never a refusal or hold"): the
+    call before the hold passes *held* too, since `hold_device` waits for another holder;
+    planned-restart and no-change windows are judged at both."""
     from modules.heal import decisions, policy
     from modules.sdn import modes as sdn_modes
 
@@ -1093,10 +1096,13 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         step(name, "refused", words, **({"waits": True} if waits else {}))
         return finish("refused", f"{words}. Nothing was sent")
 
-    why = _stops(src, network, decision, now)
+    # C3909: another operation holding the device is waited for below (`hold_device`), never
+    # refused here.
+    why = _stops(src, network, decision, now, held=True)
     if why:
         return refuse("stops", why, waits=True)
-    step("stops", "ok", "AUTO on a network marked lab, the policy decided under, nothing held")
+    step("stops", "ok", "AUTO on a network marked lab, the policy decided under, no planned "
+                        "work")
 
     dev = src.device(device)
     # Held from this read to the end of the tail (item 4): the read is the deploy's stage-4
@@ -1123,12 +1129,15 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
 
     golden = src.golden(device, dev)
     held["golden_before"] = golden.get("commit") or ""
-    if golden.get("state") != "at_intent" or not golden.get("text"):
-        return refuse("plan", f"{device}'s golden is not at its intent now ("
+    if not golden.get("text"):
+        # C3909: a golden that departs from intent is no refusal (its lines come from intent,
+        # `decide.restore_source`); none at all is a failure R1 starts on.
+        return refuse("plan", f"no golden of {device} can be read now ("
                               f"{golden.get('words') or golden.get('state')})")
     platform = src.platform(device, dev)
     intended = src.intended(device, platform)
     if not intended.get("text"):
+        # Not a wait: a failure R1 starts on (`fixit.auto.ACT_FAILURES`, C3909).
         return refuse("plan", f"committed intent cannot be rendered: {intended.get('why')}")
     inc = _incident(network, decision["incident"])
     # C2839: classed at apply as it was decided, the network's answer read again (a no since
@@ -1136,8 +1145,14 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
                        mgmt_ip=dev.get("ip", ""), related=bool(inc.get("related")),
                        revert=decide.revert_scope(src.mode(now), inc))
-    prog = decide.program(golden["text"], text, c["units"], c["removal_ids"],
-                          mgmt_ip=dev.get("ip", ""), platform=platform)
+    if golden.get("state") != "at_intent":
+        # Not a wait: the golden departed from intent since the decision (the review of C3909:
+        # a restore from intent is not built until it classifies every line it sends, C3910),
+        # a failure R1 starts on, nothing sent.
+        return refuse("plan", f"{device}'s golden departs from its committed intent now "
+                              f"({golden.get('words') or golden.get('state')})")
+    prog = decide.program(decide.restore_source(golden, intended), text, c["units"],
+                          c["removal_ids"], mgmt_ip=dev.get("ip", ""), platform=platform)
     from modules.drift_check import departure, drift_diff
 
     dep = departure(drift_diff(golden["text"], text, device))

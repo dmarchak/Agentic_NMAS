@@ -261,7 +261,9 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
     batch (`heal.batch.press` with ``switch``), bound to *shown*, the line's hash, and no AI
     (nothing to start it is handed in). C3866: the line as this process drew it (`held`),
     pressed at its hash, is the batch approved, with no second preview; otherwise the saved
-    scripts' matches are read again and the preview made again, as before. Raises
+    scripts' matches are read again and the preview made again, as before, and the press takes
+    that (C3909: the problems open at the press, never refused because the line moved; with
+    none, self-healing turned on plainly, ``job`` None and ``words`` said). Raises
     `heal.batch.Refused`, nothing turned on and nothing started (`heal.batch.TurnedOn`: Auto
     on, nothing sent)."""
     from modules.heal import batch
@@ -271,6 +273,16 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
         # Not the line held: the preview made now (and held, `switch_preview`), so a refusal
         # names it and the strip's redraw and a second press use the current line.
         drawn = switch_preview(network)
+    if drawn.get("state") == "ok" and not drawn.get("on"):
+        # C3909: the problems the line drew are gone at the press: self-healing is turned on
+        # as the switch with no line turns it on, never refused because the line moved.
+        from modules.heal import policy
+        hold("switch", network, None)
+        try:
+            got = set_heal(network, True, actor=actor, verified=verified, person=True)
+        except policy.PolicyRefused as exc:
+            raise batch.Refused(str(exc)) from None
+        return {"job": None, "ai": {}, "preview": drawn, "words": got["words"]}
     got = batch.press(network, shown, actor=actor, verified=verified, ident=ident,
                       switch=True, held=drawn)
     # What it listed is the batch's now: a later press is checked against a line drawn again.

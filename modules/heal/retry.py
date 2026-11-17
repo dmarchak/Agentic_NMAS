@@ -9,7 +9,7 @@ its cause still standing) whose newest decision is
 - a can't-fix (``cant_fix``): Mercury's code has no fix for it, and a saved script's run that
   failed on it leaves it standing there too (scripts fire only on a can't-fix,
   `decide.SCRIPT_OUTCOMES`); or
-- held by a guard a person resolves (`fixit.auto.HELD_FOR_A_PERSON`, held with no time) whose
+- held by a guard that held for a person before C3909 (`WERE_HELD`, held with no time) whose
   guard no longer holds (`decide.guard_holds`: guard 4 and guard 6 as the decision judges them;
   the others hold nothing since 2026-11-16). One still holding is recorded as not tried, under
   the trigger's key, so it is not asked again for that trigger.
@@ -68,6 +68,11 @@ log = logging.getLogger(__name__)
 TRIGGERS = ("switched_on", "script_saved", "daily", "now_auto")
 #: A daily retry waits this long after the incident's last retry (or its standing decision).
 DAY_S = 86400.0
+#: C3909 (the operator, 2026-11-17): the guards that held an incident for a person before
+#: guards 4 and 6 stopped holding (`fixit.auto.HELD_FOR_A_PERSON` is empty now). An incident
+#: still standing on one is decided again once `decide.guard_holds` finds it no longer holds
+#: (guard 6 never; guard 4 only for a device Mercury changes nothing on).
+WERE_HELD = (4, 6)
 #: How many retries an incident keeps, newest last.
 KEPT = 20
 #: The decision's states after which Mercury's fix failed: no code fix, or a person's hold (a
@@ -160,7 +165,6 @@ def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tupl
     its guard still holding: *hold* the guard's hit), or ``("", None)`` when *inc* is not an
     incident whose fixes failed or a dry-run would-heal (*dry*, `_dry_run_decisions`; the
     module's docstring)."""
-    from modules.fixit.auto import HELD_FOR_A_PERSON
     from modules.heal import decide
 
     if inc.get("state") != "standing":
@@ -186,7 +190,7 @@ def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tupl
         return "decide", None
     if s.get("outcome") == "would_heal":
         return ("decide", None) if s.get("decision") in dry else ("", None)
-    if s.get("outcome") == "held" and _guard_of(s) in HELD_FOR_A_PERSON:
+    if s.get("outcome") == "held" and _guard_of(s) in WERE_HELD:
         try:
             g = decide.guard_holds(network, inc, _guard_of(s), now=now)
         except Exception as exc:                      # noqa: BLE001 (an unread guard holds)
@@ -342,7 +346,6 @@ def daily(network: str, now: float = None) -> dict:
     hold has not
     been tried for `DAY_S` (from its recorded retry or decision); otherwise one read of the
     incidents store and nothing else."""
-    from modules.fixit.auto import HELD_FOR_A_PERSON
     from modules.heal import incidents
 
     now = time.time() if now is None else float(now)
@@ -352,7 +355,7 @@ def daily(network: str, now: float = None) -> dict:
             and ((i.get("standing") or {}).get("outcome") == "cant_fix"
                  or (i.get("standing") or {}).get("act")
                  or ((i.get("standing") or {}).get("outcome") == "held"
-                     and _guard_of(i.get("standing")) in HELD_FOR_A_PERSON))
+                     and _guard_of(i.get("standing")) in WERE_HELD))
             for i in got["incidents"]):
         return {"ran": False, "network": network, "trigger": "daily", "words": "none due"}
     return run(network, "daily", instance=time.strftime("%Y-%m-%d", time.gmtime(now)),

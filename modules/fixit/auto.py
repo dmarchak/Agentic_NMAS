@@ -14,9 +14,9 @@ for the incident's kind, read from its own record, each with its own key (`key_o
   ``decision:<incident>``, ONE per incident however often a standing incident is judged again
   (C2813: a re-judged standing incident is the same failure, never a new one that spends
   again);
-- the heal's decision is held by a guard a PERSON resolves (`HELD_FOR_A_PERSON`: guards 4 and
-  6, held with no time to check again, `heal.guards`; e.g. guard 4, the device's golden
-  departs from its intent): no fix Mercury can run alone (the operator, 2026-11-15: "count held
+- the heal's decision is held by a guard a PERSON resolves (`HELD_FOR_A_PERSON`: none since
+  C3909, 2026-11-17; before it guards 4 and 6, held with no time to check again): no fix
+  Mercury can run alone (the operator, 2026-11-15: "count held
   incidents (e.g. [a lab router]'s guard-4 hold) as 'no fix Mercury can run alone' ... The AI
   may only diagnose and propose within its catalog; where the fix needs a person's approval (a
   template
@@ -86,10 +86,13 @@ FEATURE = "fixit_auto"
 #: The decision outcomes after which no code fix of Mercury's exists for the problem (can't
 #: fix, `heal.decisions.OUTCOMES`). A ``held`` decision is one only by `HELD_FOR_A_PERSON`.
 DECISION_FAILURES = ("cant_fix",)
-#: The guards whose hold is a person's decision (the operator, 2026-11-16: only guards 4 and 6;
-#: `heal.guards`): a decision held by one is no fix Mercury can run alone. Only guard 3,
-#: planned work, holds WITH a time to check again: it waits as designed and is never a failure.
-HELD_FOR_A_PERSON = (4, 6)
+#: The guards whose hold R1 counts as no fix Mercury can run alone. Since C3909 (the operator,
+#: 2026-11-17: "Self-healing On + an approved fix ... -> it runs. No person holds") guard 4
+#: holds only a device Mercury must never change (observe-only, or Mercury's own host,
+#: `refusal_for`), which the AI may still investigate; a golden departing from intent is a
+#: can't-fix R1 starts on (C3910); guard 6 holds nothing. Guard 3, planned work, holds WITH a
+#: time to check again: it waits as designed and is never a failure.
+HELD_FOR_A_PERSON = (4,)
 #: The act outcomes that are no verified fix (`heal.act.OUTCOMES`; only ``healed`` is one).
 #: ``partial`` is one since C3870 (the operator, 2026-11-16: "Only 'healed' closes an
 #: incident"): Mercury's fix ran and could not be confirmed, and its incident stays open. A
