@@ -822,8 +822,11 @@ def _incident(network: str, incident_id: str) -> dict:
     return next((i for i in got.get("incidents") or [] if i.get("id") == incident_id), {})
 
 
-def _stops(src, network: str, decision: dict, now: float) -> str:
-    """Why nothing may be sent now, or ``""``: section 6's stops judged again at apply."""
+def _stops(src, network: str, decision: dict, now: float, held: bool = False) -> str:
+    """Why nothing may be sent now, or ``""``: section 6's stops judged again at apply.
+    *held*: judged again once this act holds the device, so the hold guard 3 would find is
+    this act's own and is not counted (the 18:42 Denver run of 2026-11-17: every restore
+    refused itself, "r2 is held by deploy of ..."); planned windows still hold."""
     from modules.heal import decisions, policy
     from modules.sdn import modes as sdn_modes
 
@@ -853,7 +856,11 @@ def _stops(src, network: str, decision: dict, now: float) -> str:
         return f"whether {network} is halted cannot be read ({exc}), and a halt unread holds"
     if halt.get("id"):
         return f"{network}'s policy is halted by guard {halt.get('guard')}: {halt.get('words')}"
-    g = src.planned(decision["device"], now)
+    if held:
+        from modules.heal import guards
+        g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
+    else:
+        g = src.planned(decision["device"], now)
     if g:
         return f"guard 3, planned work: {g['words']}"
     if not pol.get("by"):
@@ -1104,7 +1111,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     # The stops judged again once held (the review, finding 1): the wait for the hold may have
     # lasted up to HOLD_WAIT_S, and a Stop everywhere, a mode change or a planned-restart
     # window declared meanwhile refuses here, nothing sent.
-    why = _stops(src, network, decision, getattr(src, "clock", time.time)())
+    why = _stops(src, network, decision, getattr(src, "clock", time.time)(), held=True)
     if why:
         return refuse("stops", f"{why} (judged again once {device} was held)", waits=True)
     begin("read", f"reading {device} again")
