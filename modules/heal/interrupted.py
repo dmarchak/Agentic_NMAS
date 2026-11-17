@@ -252,15 +252,11 @@ def reap(network: str, *, now: float = None, by: str = "heal to intent") -> dict
         for d in again["found"]:
             view = steplog.of_decision(network, d["id"])
             said = words(network, d, view)
-            halts = bool(view.get("started")) or view.get("state") == "unreadable"
             try:
                 decisions.applied(network, d["id"], OUTCOME, by=f"{by}: the job's end found",
                                   words=said, now=now)
-                if halts:
-                    decisions.halt(network, guard=14, name="a heal interrupted after it may "
-                                                           "have sent",
-                                   words=said, operands={"decision": d["id"],
-                                                         "device": d.get("device")}, now=now)
+                # No halt (the operator, 2026-11-17, round 2): an interrupted heal is a
+                # failure R1 sees.
                 # Interrupted is no fix: its incident stands on it, said (C3870).
                 act.outcome_on_incident(network, d, OUTCOME, said)
             except Exception as exc:

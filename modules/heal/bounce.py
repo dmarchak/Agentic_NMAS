@@ -935,8 +935,10 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
     try:
         rows = src.decisions()
     except Exception as exc:
-        return stop(guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a "
-                                             "rate that cannot be counted holds", {}))
+        # Round 2 (2026-11-17): a wait, decided again in a minute, never a halt.
+        return stop(guards.hit(10, "held", f"the heal record cannot be read ({exc}); the "
+                                           "decision waits for it and is made again in a "
+                                           "minute", {}, now + 60))
     # The operator, 2026-11-16: no rate per device or network holds a fix (guards 9 and 10);
     # the step stays, its record read for 13d below.
     passed("rates", "no rate holds it (the per-device and per-network rates are retired)",
@@ -1047,8 +1049,10 @@ def decide(network: str, incident_id: str, pick: dict, *, now: float, sources) -
                 bounce={"interface": interface, "timer": TIMER_MINUTES, "dialect": dialect,
                         "window_s": window_seconds(), "settle_bound_s": SETTLE_BOUND_S,
                         "manager": manager, "reason": reason})
-    allowed = kind in (mode.get("kinds_auto") or [])
-    if mode.get("mode") == "auto" and allowed and tier == 1:
+    # Round 2 (the operator, 2026-11-17): a Tier 1 or Tier 2 fix runs in Auto; no kind list
+    # holds it (guard 13's kinds-allowed-Auto is gone).
+    allowed = True
+    if mode.get("mode") == "auto" and tier in (1, 2):
         return dict(base, outcome="heal",
                     words=(f"bounce now: {unit['words']} (Tier 1), allowed AUTO; program "
                            f"{base['program_hash']}"))
@@ -1434,13 +1438,8 @@ def _record(network: str, decision: dict, out: dict, *, by: str, now: float,
     try:
         decisions.applied(network, decision["id"], out["outcome"], by=by, words=out["words"],
                           now=now)
-        if out["outcome"] in HALTS:
-            decisions.halt(network, guard=14, name="a rolled-back heal",
-                           words=(f"the bounce of {decision.get('device')} "
-                                  f"({decision['id']}) was {out['outcome']}: {out['words']}"),
-                           operands={"decision": decision["id"],
-                                     "device": decision.get("device"),
-                                     "outcome": out["outcome"]}, now=now)
+        # No halt (the operator, 2026-11-17, round 2): a rolled-back bounce is a failure R1
+        # sees.
     except Exception as exc:
         log.error("heal: %s's bounce %s outcome not recorded: %s", network,
                   decision.get("id"), exc)

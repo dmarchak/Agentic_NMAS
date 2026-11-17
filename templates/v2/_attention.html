@@ -101,8 +101,8 @@
     {%- for x in a.expected or [] %} · {% if x.device %}<a href="{{ url_for('device_v2.device', name=x.device) }}">{{ x.words }}</a>{% else %}{{ x.words }}{% endif %}{% endfor -%}
   </p>
   {%- if rows %}
-  {#- G6: guard 6's batch, its card drawn open above the sections (`_heal_batch.html`). -#}
-  {%- for r in rows if r.batch %}{% include "v2/_heal_batch.html" %}{% endfor %}
+  {#- Round 2 (the operator, 2026-11-17): no "Held for a person" batch card; a batch row is
+      drawn nowhere (the switch-on runs every fix). -#}
   <div class="att-list">
     {%- for level in ('danger', 'warning', 'unknown') %}
     {%- set group = rows|selectattr('level', 'equalto', level)|rejectattr('batch')|list %}

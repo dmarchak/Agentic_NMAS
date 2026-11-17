@@ -15,6 +15,7 @@ and the intent core (`routes/templatize.py`).
 import hashlib
 import logging
 import os
+import threading
 
 from flask import request
 
@@ -72,6 +73,78 @@ def _captured_record(repo: str, hostname: str) -> dict:
     return _golden_record(legacy["device_ip"])
 
 
+#: `build_artifact`'s answers, reused for the same inputs (the speed pass, round 2: a heal's
+#: apply rendered again, 3.3 to 4.5 s, the artifact its plan had rendered a second before).
+#: Keyed by a digest of EVERY input the render reads (`_render_digest`): the capture, the
+#: platform, the template's name and approval, the hydrated intent, the bootstrap facts, the
+#: rolled-back note, and each file of the template tree with its content. Every input is still
+#: gathered again at apply (git, inventory, profile, secrets), so a changed input is a new
+#: digest and renders again; the apply's recompute and hash check run on the artifact as
+#: before. In memory only, bounded by age and count; the digest is a hash, and the artifact
+#: is the frozen `RenderArtifact` the render returns.
+_RENDERED_S = 300
+_RENDERED_MAX = 32
+_rendered: dict = {}
+_rendered_lock = threading.Lock()
+
+
+def _tree_digest(root: str, h) -> None:
+    """Each file under *root*, by its relative path and content, into *h* (the template
+    library: an include or a pack read from it is a render input too)."""
+    if not root or not os.path.isdir(root):
+        h.update(b"\0no-tree\0" + str(root or "").encode())
+        return
+    for base, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d != ".git")
+        for name in sorted(files):
+            path = os.path.join(base, name)
+            h.update(os.path.relpath(path, root).encode("utf-8", "replace") + b"\0")
+            with open(path, "rb") as fh:
+                h.update(hashlib.sha256(fh.read()).digest())
+
+
+def _render_digest(hostname: str, captured: str, platform: str, kw: dict) -> str:
+    """A digest of everything `build_artifact` reads for one device (`_rendered`)."""
+    import json
+
+    h = hashlib.sha256()
+    h.update(json.dumps([hostname, platform, captured,
+                         {k: v for k, v in sorted(kw.items()) if k != "template_root"}],
+                        sort_keys=True, default=repr).encode("utf-8", "replace"))
+    root = kw.get("template_root") or ""
+    h.update(b"\0root\0" + str(root).encode())
+    from modules.nsot import roundtrip
+    _tree_digest(root or roundtrip.TEMPLATE_ROOT, h)
+    return h.hexdigest()
+
+
+def _build_once(hostname: str, captured: str, platform: str, **kw):
+    """`build_artifact`, or the artifact it built for the same inputs within `_RENDERED_S`."""
+    import time as _time
+
+    from modules.nsot.render_artifact import build_artifact
+
+    try:
+        key = _render_digest(hostname, captured, platform, kw)
+    except Exception as exc:                       # noqa: BLE001 (no digest: render, said)
+        log.info("deploy: %s's render inputs could not be digested (%s); rendering", hostname,
+                 exc)
+        return build_artifact(hostname, captured, platform, **kw)
+    now = _time.time()
+    with _rendered_lock:
+        held = _rendered.get(key)
+        if held and now - held[0] < _RENDERED_S:
+            return held[1]
+    artifact = build_artifact(hostname, captured, platform, **kw)
+    with _rendered_lock:
+        for k in [k for k, v in _rendered.items() if now - v[0] >= _RENDERED_S]:
+            _rendered.pop(k, None)
+        while len(_rendered) >= _RENDERED_MAX:
+            _rendered.pop(min(_rendered, key=lambda k: _rendered[k][0]), None)
+        _rendered[key] = (now, artifact)
+    return artifact
+
+
 def _artifact_for(list_name: str, hostname: str):
     """Build the render artifact for one device.
 
@@ -89,7 +162,6 @@ def _artifact_for(list_name: str, hostname: str):
     named; editing one device's intent cannot revoke the template.
     """
     from modules.nsot import approval, hostvars, templates_repo
-    from modules.nsot.render_artifact import build_artifact
 
     repo = _repo_for(list_name)
     record = _captured_record(repo, hostname)
@@ -147,7 +219,7 @@ def _artifact_for(list_name: str, hostname: str):
                   host_vars=intent, bootstrap=bootstrap,
                   bootstrap_reason=hostvars.BOOTSTRAP_ONLY_REASON if seed_only else "",
                   template_root=source["root"])
-    artifact = build_artifact(hostname, captured, platform, **common)
+    artifact = _build_once(hostname, captured, platform, **common)
 
     # A standing rolled-back note blocks only while the program a fresh plan
     # would send is the one that failed. Computing it needs a rendered
@@ -158,8 +230,8 @@ def _artifact_for(list_name: str, hostname: str):
         note = hostvars.rolled_back_note(
             repo, hostname, _current_program(artifact, captured))
         if note is not None:
-            artifact = build_artifact(hostname, captured, platform,
-                                      rolled_back=note, **common)
+            artifact = _build_once(hostname, captured, platform,
+                                   rolled_back=note, **common)
     return (artifact, captured, device), ""
 
 
@@ -497,7 +569,7 @@ def _capture_source(capture: dict, scope: str) -> dict:
 
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                  remove: dict = None, scope: str = "", declare: dict = None,
-                 capture: dict = None, laps: list = None) -> list:
+                 capture: dict = None, laps: list = None, purpose: str = "") -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
     holds back. THE plan, for the device page's Deploy… and the v2 batch preview (P.9
     d2) alike. Reads captured configs only; contacts no device.
@@ -510,7 +582,15 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
 
     *laps* (a heal's timing record, `pipeline.lap`): each piece of the plan's work appended as
     it ends, ``plan: <piece>``; timing only, nothing reads it to decide (the speed pass,
-    2026-11-16: 39 s between a heal's authorise and its apply that no lap named)."""
+    2026-11-16: 39 s between a heal's authorise and its apply that no lap named).
+
+    *purpose* ``"heal"`` (the heal's act, `modules.heal.act`), with a *capture* source: the
+    entry leaves out the two parts only a person's preview draws, ``unrendered`` (the
+    profile's sections the template renders none of, `_unrendered`) and ``attribution`` (which
+    pushed lines this intent edit explains, `_attribute_additions`); both are words of
+    `preview_confirm` and the deploy screen, and neither reaches the program, its hash, a gate
+    or deployable. Nothing a heal sends or checks reads them (the speed pass, round 2: up to
+    10.2 s and 4.1 s of a heal's plan)."""
     from modules.pipeline import lap as _lap
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
@@ -559,7 +639,9 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                  "capture_hash": _capture_hash(captured)}
         # A profile section this device's template cannot render (C565): named, never
         # "nothing to send" in its place. Carried only when there is one, as `recreates` is.
-        unrendered = _unrendered(list_name, hostname, artifact, _device)
+        # A heal's plan draws no preview (*purpose*): the words are left out, never the plan.
+        for_heal = purpose == "heal" and source is not None
+        unrendered = [] if for_heal else _unrendered(list_name, hostname, artifact, _device)
         if unrendered:
             entry["unrendered"] = unrendered
         selected = remove.get(hostname) or []
@@ -681,7 +763,10 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             # Every pushed line, attributed — before anyone confirms. A
             # profile-scoped plan's lines are the profile's by construction,
             # and its groups say so (`profile_scope`).
-            if not scope:
+            if not scope and for_heal:
+                # Drawn by a person's preview alone (*purpose*); a heal shows none.
+                _lap(laps, "plan: attribution (not made: a heal's plan draws no preview)")
+            elif not scope:
                 entry["attribution"] = _attribute_additions(
                     _repo_for(list_name), hostname, artifact, captured,
                     diff["to_add"])

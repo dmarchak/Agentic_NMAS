@@ -141,14 +141,43 @@ def lead_words(n: int, m: int, restores: int = None, scripts: int = 0, ai=()) ->
     return head + (f"; the AI starts on {named}." if named else ".")
 
 
-def switch_words(restores: int, scripts: int, verb: str = "Also fixes") -> str:
+def switch_words(restores: int, scripts: int, verb: str = "Also fixes",
+                 decided: int = 0) -> str:
     """The strip's one line beside the Self-healing switch (C3823): "Also fixes the 7 open
     problems (5 restores, 2 saved scripts)", each part only when it is not zero; *verb* the
-    press's answer's ("fixing")."""
-    n = int(restores) + int(scripts)
+    press's answer's ("fixing"). *decided* (round 2, the operator, 2026-11-17): the open
+    incidents with no decided fix yet (watching, or standing on a hold or a proposal that holds
+    nothing now), read and decided in Auto the moment it is On."""
+    n = int(restores) + int(scripts) + int(decided)
     parts = ([f"{restores} restore{'' if restores == 1 else 's'}"] if restores else []) + \
-        ([f"{scripts} saved script{'' if scripts == 1 else 's'}"] if scripts else [])
+        ([f"{scripts} saved script{'' if scripts == 1 else 's'}"] if scripts else []) + \
+        ([f"{decided} read and fixed now"] if decided else [])
     return f"{verb} the {n} open problem{'' if n == 1 else 's'} ({', '.join(parts)})"
+
+
+#: The standing outcomes that hold nothing since round 2 (the operator, 2026-11-17): an
+#: incident standing on one is decided again in Auto at the switch-on (`retry._in_population`).
+DECIDED_AGAIN = ("propose", "held", "halted", "would_heal")
+
+
+def _decided_at_switch(doc: dict, listed: set) -> list:
+    """The open incidents the switch-on decides in Auto with no listed fix (round 2, the
+    operator, 2026-11-17: "Every incident with an approved fix must run the moment
+    self-healing is On, watching or not"): watching, ready or claimed, or standing on an
+    outcome that holds nothing now (`DECIDED_AGAIN`); *listed* (restores and scripts) left
+    out. Their ids."""
+    out = []
+    for i in doc.get("incidents") or []:
+        if not isinstance(i, dict) or i.get("id") in listed:
+            continue
+        s = i.get("standing") or {}
+        g = s.get("guard")
+        if s.get("outcome") == "held" and (g.get("guard") if isinstance(g, dict) else g) == 4:
+            continue                                  # observe-only or a host: kept
+        if i.get("state") in ("watching", "ready", "claimed") or (
+                i.get("state") == "standing" and s.get("outcome") in DECIDED_AGAIN):
+            out.append(i.get("id"))
+    return out
 
 
 def switch_name(shown: str, epoch: float) -> str:
@@ -255,7 +284,6 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
     doc = incidents.read(network) if incidents_doc is None else incidents_doc
     standing = {i.get("id"): i for i in doc.get("incidents") or []
                 if i.get("state") == "standing"}
-    held = 0
     auto_kinds = None
     for host, d in sorted(_newest(rows).items()):
         g = d.get("guard") or {}
@@ -279,19 +307,10 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
                                      "words": d.get("outcome_words") or d.get("words") or "",
                                      "from": "would_heal"})
             continue
-        if d.get("outcome") != "held" or g.get("guard") != 6:
-            continue
-        held += 1
-        b = d.get("beyond") or {}
-        if b.get("outcome") == "heal" and b.get("program_hash"):
-            out["items"].append({"device": host, "incident": d["incident"],
-                                 "decision": d["id"], "program": list(b.get("program") or []),
-                                 "program_hash": b["program_hash"],
-                                 "units": int(b.get("units") or 0), "kind": b.get("kind") or "",
-                                 "words": b.get("words") or "", "from": "guard6"})
-        else:
-            out["others"].append({"device": host, "incident": d["incident"],
-                                  "why": b.get("words") or "its fix could not be previewed"})
+        # Round 2 (the operator, 2026-11-17): no hold batch. An incident still standing on an
+        # older guard-6 hold is decided again in Auto at the switch-on (`retry`), never a
+        # "Held for a person" card; *g* is read no more.
+        del g
     if not out["items"] and not out["others"] and not switch:
         return out
     base = dict(out)
@@ -317,16 +336,24 @@ def preview(network: str, rows: list = None, *, ai_items: list = None,
                | {s["device"] for s in out["scripts"]} | {a["device"] for a in out["ai"]})
     fixable = len(out["items"]) + len(out["scripts"])
     if switch:
+        # Round 2 (the operator, 2026-11-17): the watching incidents and those standing on a
+        # hold that holds nothing now are counted in the line too: the switch-on decides them
+        # in Auto (`retry.run`'s switched_on wakes and re-decides them). Not in the hash: each
+        # is decided on its own read, never on a preview.
+        decided = _decided_at_switch(doc, restored | scripted)
         # C3823: nothing to fix, no line, and the switch turns on as before; a list that could
         # not be read is said (``error``), never drawn as none.
         if not fixable:
-            return dict(base, error=out["error"])
-        out["also"] = switch_words(len(out["items"]), len(out["scripts"]))
+            return dict(base, error=out["error"], decided=decided,
+                        also=switch_words(0, 0, decided=len(decided)) if decided else "")
+        out["decided"] = decided
+        out["also"] = switch_words(len(out["items"]), len(out["scripts"]),
+                                   decided=len(decided))
     out.update(on=True, n=len(devices), fixable=fixable, fix=fix_word(fixable),
                hash=batch_hash(out["items"], out["ai"], out["scripts"]),
                lead=lead_words(len(devices), fixable, len(out["items"]),
                                len(out["scripts"]), [a["device"] for a in out["ai"]]),
-               hold=(hold_words(held) if held else dry_run_words(len(out["items"]))))
+               hold=dry_run_words(len(out["items"])))
     return out
 
 
@@ -355,14 +382,11 @@ def _dry_run_fixable(d: dict, auto_kinds) -> bool:
     a security kind is always proposed, never healed), with its program and hash. Decided in
     Auto, it is a would-heal because a kind is not fixed in Auto: switching on changes nothing
     for it."""
-    from modules.heal.policy import SECURITY_KINDS
-
-    if not auto_kinds or d.get("mode") == "auto" or not d.get("program_hash"):
-        return False
-    kinds = {u.get("kind") for u in d.get("units") or [] if isinstance(u, dict)} or \
-        {d.get("kind")}
-    return bool(kinds) and all(k and k in auto_kinds and k not in SECURITY_KINDS
-                               for k in kinds)
+    # Round 2 (the operator, 2026-11-17): every Tier 1 and 2 kind, the security kinds
+    # included, heals in Auto (`decide._outcome`), so any would-heal with its program is a
+    # fix the switch-on runs. *auto_kinds* is kept for the callers and read no more.
+    del auto_kinds
+    return bool(d.get("program_hash"))
 
 
 def moved(seen: str, now: dict) -> str:
@@ -893,13 +917,11 @@ def _as_previewed(network: str, inc: dict, item: dict, approval: dict, now: floa
     14 hit, a store that cannot be read): `_one` then decides it again in full, reading the
     device, as before."""
     from modules import fault_drills
-    from modules.heal import decide, decisions, findings, guards, policy
+    from modules.heal import decide, decisions, policy
 
     try:
         d = decisions.find(network, item["decision"])
         mode = policy.current(network, now)
-        rows = decisions.decisions(network)
-        last_halt = decisions.last_halt_epoch(network)
     except Exception as exc:                          # noqa: BLE001 (decided again, logged)
         log.warning("heal batch: %s's previewed decision could not be read (%s); it is "
                     "decided again", item.get("incident"), exc)
@@ -919,26 +941,14 @@ def _as_previewed(network: str, inc: dict, item: dict, approval: dict, now: floa
             or mode.get("mode") != "auto"):
         return None
     device = d["device"]
-    # Guards 11, 12 and 14 now, as `decide._decide_one` asks them (no device read): any hit is
-    # the full re-decide's to say.
-    v = guards.value
-    sized = [{"op": u.get("op"), "stanza": bool(u.get("stanza")),
-              "chain": [] if u.get("stanza") else [u.get("section") or ""],
-              "lines": [u.get("section") or ""]} for u in units]
+    # Guard 4 alone (an observe-only device or a host, `decide.guard_holds`, its one home: no
+    # device read); guards 11, 12 and 14 hold nothing since round 2 (the operator,
+    # 2026-11-17).
     try:
-        key = findings.problem_key(inc)
-        fight = (findings.fight_on(network, device, key[1] if key else "", mode=mode, now=now)
-                 if v(mode, "heal_fight_stop") else {})
-        # Guard 4 first: the golden still the approved state (`decide.guard_holds`, its one
-        # home: the golden and intent read, no device).
-        hit = (decide.guard_holds(network, inc, 4, now=now)
-               or guards.g11_fight(fight, bool(v(mode, "heal_fight_stop")))
-               or guards.g12_size(sized, v(mode, "heal_max_removed_units"),
-                                  v(mode, "heal_max_units"))
-               or guards.g14_rolled_back(rows, device, last_halt))
+        hit = decide.guard_holds(network, inc, 4, now=now)
     except Exception as exc:                          # noqa: BLE001 (decided again, logged)
-        log.warning("heal batch: %s's guards 11, 12 and 14 could not be judged (%s); it is "
-                    "decided again", item.get("incident"), exc)
+        log.warning("heal batch: %s's guard 4 could not be judged (%s); it is decided again",
+                    item.get("incident"), exc)
         return None
     if hit:
         return None

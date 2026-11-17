@@ -1293,9 +1293,10 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     if why:
         _step(rec, "approve", "refused", why)
         return _finish(network, rec, "refused", why)
-    # A person's approved plan runs its provisional shapes (the operator, 2026-11-17); an
-    # Automatic saved fix's run (*authority*) still needs each shape approved.
-    p = CP.preview(network, key, values, sources=src.model, person_plan=authority is None)
+    # A person's approved plan runs its provisional shapes (the operator, 2026-11-17), and so
+    # does an Automatic saved fix's run (*authority*; round 2 of the speed pass, 2026-11-17:
+    # an approved fix runs, never held for a shape's approval).
+    p = CP.preview(network, key, values, sources=src.model, person_plan=True)
     rec.update(params=dict(p["values"]), program=list(p["program"]), title=p["title"])
     if not p["ok"]:
         why = "; ".join(p["refusals"]) + ". Nothing was sent"
@@ -1312,6 +1313,35 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     from modules.pipeline import lap
     lap(rec["laps"], "approve")
     dev = p["device_row"]
+    if authority is not None:
+        # An Automatic fix waits for another operation's hold on its device (the operator,
+        # 2026-11-17, round 2: one operation per device is a wait, never a refusal), asking
+        # Stop everywhere and Off at each poll, as the heal's act does (`act.hold_device`).
+        from modules.heal.act import HOLD_POLL_S, stopped_now
+        # Bounded under the fire's own wait for this job (`saved_plans._run_as_job`, 900 s; the
+        # review of round 2): past it the fire would record a run that may still send, and a
+        # later trigger could fire a second; so the wait ends first, nothing sent, said.
+        waited_since = time.monotonic()
+        while True:
+            if time.monotonic() - waited_since > 840:
+                why = (f"{device} stayed held by another operation for 840 s while the run "
+                       "waited (under the fire's 900 s). Nothing was sent")
+                _step(rec, "hold", "refused", why)
+                return _finish(network, rec, "refused", why, t)
+            try:
+                busy = device_ops.holder(network, device)
+            except Exception as exc:                  # noqa: BLE001 (the hold below says it)
+                log.info("command plan: who holds %s could not be read: %s", device, exc)
+                busy = None
+            if not busy:
+                break
+            stopped = stopped_now(network)
+            if stopped:
+                why = (f"{stopped} while the run waited for {device}, held by "
+                       f"{busy.get('operation') or 'another operation'}. Nothing was sent")
+                _step(rec, "hold", "refused", why)
+                return _finish(network, rec, "refused", why, t)
+            time.sleep(HOLD_POLL_S)
     check_run = CheckRun(network, device, dev, p["derived"], incident, src)
     ctx = None
     try:

@@ -61,9 +61,7 @@
 </form>
 </details>
 {%- endif %}
-{#- Board R5 (the operator's change 1): guard 6's batch card, as on Needs attention, its held
-    problems inside it (each "since HH:MM" here), never as rows below. -#}
-{%- if p.tab == 'open' %}{% set batch_since = True %}{% for r in batch_rows or [] %}{% include "v2/_heal_batch.html" %}{% endfor %}{% endif %}
+{#- Round 2 (the operator, 2026-11-17): no "Held for a person" batch card here either. -#}
 {%- for g in p.groups %}
 <details class="inc-group card" data-group="{{ g.key }}" data-keep="inc-group-{{ g.key }}"{% if g.open %} open{% endif %}>
   <summary class="inc-group-head">{{ badge(g.words, g.kind) }} <span class="muted">{{ g.n }}</span></summary>

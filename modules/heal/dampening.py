@@ -605,14 +605,8 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
         try:
             # C3871: stamped when the outcome is recorded, never the approval's start.
             at = time.time()
+            # No halt (the operator, 2026-11-17, round 2): a failure R1 sees.
             decisions.applied(network, decision["id"], outcome, by=by, words=words, now=at)
-            if outcome == "failed":
-                decisions.halt(network, guard=14, name="a heal sent and not verified",
-                               words=(f"the approved dampening of {device} {interface} "
-                                      f"({decision['id']}) failed after sending and was not "
-                                      f"rolled back: {words}"),
-                               operands={"decision": decision["id"], "device": device},
-                               now=at)
         except Exception as exc:
             log.error("heal: %s's dampening outcome on %s was not recorded: %s", network,
                       device, exc)

@@ -173,23 +173,21 @@ def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tupl
     if s.get("act"):
         # C3870: an act's outcome but healed, or a healed act's tail that failed
         # (`incidents.stand`'s ``act``, `incidents.reopen`), decided again as a can't-fix is,
-        # once per trigger by this retry's keys; never while the network is halted (a failed,
-        # rolled-back or interrupted act halts it, guard 14), where a decision would be
-        # ``halted`` and close it with no proof: recorded as not tried, under the key.
-        from modules.heal import decisions
-        try:
-            halt = decisions.halted(network)
-        except Exception as exc:                      # noqa: BLE001 (an unread halt holds)
-            return "skip", {"guard": 14, "name": "",
-                            "words": f"whether {network} is halted could not be read ({exc})"}
-        if halt.get("id"):
-            return "skip", {"guard": halt.get("guard"), "name": "",
-                            "words": f"{network} is halted: {halt.get('words') or ''}"}
+        # once per trigger by this retry's keys. No halt holds it (the operator, 2026-11-17,
+        # round 2: nothing halts a network).
         return "decide", None
-    if s.get("outcome") == "cant_fix":
+    if s.get("outcome") in ("cant_fix", "propose", "halted"):
+        # Round 2 (the operator, 2026-11-17): a Tier 2 proposal and a halt hold nothing now,
+        # so an incident standing on one is decided again and healed in Auto.
+        return "decide", None
+    if s.get("outcome") == "held" and _guard_of(s) not in WERE_HELD:
+        # Held by a guard that holds nothing now (11, 12, 14, the batch's): decided again.
         return "decide", None
     if s.get("outcome") == "would_heal":
-        return ("decide", None) if s.get("decision") in dry else ("", None)
+        # Round 2 (2026-11-17): a would-heal decided in Auto (a kind not allowed Auto then)
+        # heals now too, since no kind list holds it.
+        del dry
+        return "decide", None
     if s.get("outcome") == "held" and _guard_of(s) in WERE_HELD:
         try:
             g = decide.guard_holds(network, inc, _guard_of(s), now=now)
@@ -234,6 +232,26 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
             return dict(out, words=f"nothing retried: {script} is no Automatic script of "
                                    f"{network}")
     words = trigger_words(trigger, entry.get("name") or script, how)
+    if trigger in ("switched_on", "now_auto"):
+        # Round 2 (the operator, 2026-11-17: "Every incident with an approved fix must run the
+        # moment self-healing is On, watching or not"): a watching incident waiting out an
+        # older deferral is read and decided on the detect loop's next pass, never left to
+        # its timer. A person's planned window still holds it there (guard 3, decided again).
+        woken = []
+
+        def wake(doc):
+            for inc in doc["incidents"]:
+                if (inc.get("state") == "watching" and inc.get("id") not in set(skip or ())
+                        and float(inc.get("defer_until") or 0) > now):
+                    inc["defer_until"] = None
+                    inc["updated_at"] = _iso(now)
+                    woken.append(inc["id"])
+            return woken
+        try:
+            incidents._mutate(network, wake)
+        except Exception as exc:                      # noqa: BLE001 (said; the pass reads them)
+            log.error("heal: %s's watching incidents were not woken: %s", network, exc)
+        out["woken"] = woken
     got = incidents.read(network)
     if got["state"] == "unreadable":
         return dict(out, words=got["error"])

@@ -727,6 +727,26 @@ def explained_by(device: str, list_name: str, now: float, *, margin: float = SET
     return None
 
 
+#: The windows a person declared (the operator, 2026-11-17, round 2 of the speed pass): through
+#: ``POST /restarts/planned`` (``api``) or the Reload's own window (``reload``). Only these hold
+#: a heal (`heal.guards.g3_planned`); a window a deploy, a heal or a probe declared itself
+#: (``deploy``, ``heal-bounce``, ``heal-clear``, ...) still explains signals and keeps alerts
+#: quiet, and holds no heal.
+PERSON_VIAS = ("api", "reload")
+
+
+def person_declared(p: dict) -> bool:
+    """Whether window *p* is one a person declared (`PERSON_VIAS`)."""
+    return str((p or {}).get("via") or "") in PERSON_VIAS
+
+
+def explained_by_person(device: str, list_name: str, now: float, **kw):
+    """`explained_by` over the windows a person declared only (`person_declared`): what holds
+    a heal (guard 3)."""
+    rows = [p for p in planned_rows() if person_declared(p)]
+    return explained_by(device, list_name, now, planned=rows, **kw)
+
+
 def far_ends_of(p: dict) -> list:
     """Window *p*'s far ends (`record_planned`'s *far_ends*), ``[{"device", "interface"}]``;
     a window recorded before the field has none (expand, then contract)."""

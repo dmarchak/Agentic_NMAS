@@ -302,14 +302,15 @@ def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
     """Guard 13, the tier: ``(outcome, words)``, the words plain (`said.outcome_words`: what
     Mercury did or would do, the tier a label after them; the fix kind's key, the tier's
     number and the mode's key are the record's own fields, which "Details for the record"
-    draws: C2817, the survey's item 3, one function behind four surfaces' words). The security
-    kinds (C2839, `policy.SECURITY_KINDS`) are always proposed: a person decides, never a
-    setting."""
+    draws: C2817, the survey's item 3, one function behind four surfaces' words). The operator,
+    2026-11-17 (round 2 of the speed pass): a Tier 1 or Tier 2 fix, the security kinds
+    included, is healed in Auto (would-heal in Dry run); no kind list and no propose holds it
+    for a person. Tier 3 and 4 stay can't-fix (there is no fix). *kinds_auto* and
+    *kinds_propose* are kept for the callers and read no more."""
     from modules.heal import said
     from modules.heal.kinds import NEVER_WHY, masked_unit
-    from modules.heal.policy import SECURITY_KINDS
 
-    kinds_propose = list(kinds_propose) + list(SECURITY_KINDS)
+    del kinds_auto, kinds_propose
     tier, kind = c["tier"], c["kind"]
     units = [u if "section" in u else masked_unit(u) for u in c.get("units") or []]
     if tier >= 3:
@@ -319,22 +320,12 @@ def _outcome(mode: dict, c: dict, kinds_auto: list, kinds_propose: list,
         b = c["blocked"]
         return "cant_fix", said.outcome_words("cant_fix", units=units, kind=b["kind"],
                                               tier=tier, device=device, why=b["why"])
-    kinds = sorted({u["kind"] for u in c["units"]})
-    if tier == 2:
-        missing = [k for k in kinds if k not in kinds_propose and _tier(k) == 2]
-        if missing:
-            return "cant_fix", said.outcome_words("cant_fix", units=units, kind=kind,
-                                                  tier=tier, device=device,
-                                                  not_proposed=missing)
-        return "propose", said.outcome_words("propose", units=units, kind=kind, tier=tier,
-                                             device=device)
-    not_auto = [k for k in kinds if k not in kinds_auto]
-    if mode.get("mode") == "auto" and not not_auto:
+    if mode.get("mode") == "auto":
         return "heal", said.outcome_words("heal", units=units, kind=kind, tier=tier,
                                           device=device)
     return "would_heal", said.outcome_words("would_heal", units=units, kind=kind, tier=tier,
-                                            device=device, not_auto=not_auto,
-                                            dry_run=mode.get("mode") != "auto")
+                                            device=device, not_auto=[],
+                                            dry_run=True)
 
 
 def _tier(kind: str) -> int:
@@ -493,8 +484,10 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         halt = decisions.halted(network)
     except Exception as exc:
         halt = {"unreadable": str(exc)}
+    # Another operation holding the device is the act's wait (`act.hold_device`), never a
+    # hold of the decision (the operator, 2026-11-17, round 2).
     for g in (guards.g1_kill_switch(mode), guards.g2_mode(mode, halt),
-              guards.g3_planned(network, device, now)):
+              guards.g3_planned(network, device, now, holder=lambda _n, _d: None)):
         if g:
             return stop(g)
     passed("stops", f"no kill switch, {MODE_WORDS.get(mode.get('mode'), mode.get('mode'))}, no "
@@ -515,15 +508,18 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                         f"the golden {commit} departs from intent "
                         f"({golden.get('words') or golden.get('state')}): the restore's lines "
                         "come from committed intent"), "guards")
+    # The operator, 2026-11-17 (round 2): guard 10 (the decisions store unread) is a wait,
+    # never a halt; guards 11 (the fight stop), 12 (the program's size) and 14 (a rolled-back
+    # heal) hold nothing: verify and rollback are the safety, and a rolled-back heal is a
+    # failure R1 sees.
     try:
-        rows = decisions.decisions(network)
-        last_halt = decisions.last_halt_epoch(network)
+        decisions.decisions(network)
     except Exception as exc:
-        return stop(guards.hit(10, "halted", f"the heal record cannot be read ({exc}), and a "
-                                             "rate that cannot be counted holds", {}))
+        return dict(base, outcome="deferred", until=now + 60,
+                    words=(f"Checked again later: the heal record cannot be read ({exc}); "
+                           "the decision waits for it and is made again in a minute"))
     grace_s = float(value(mode, "heal_grace_seconds") or 900)
     got = incidents.read(network)
-    settled_dep = ((incident.get("settled") or {}).get("operands") or {}).get("departure", "")
     # The operator, 2026-11-16: "Remove all time-based holds from self-healing ... Keep guard 4
     # and guard 6 as 'a person decides'". Guards 5 (the topology hold), 7 (a person working),
     # 8's wait and the rates 9 to 11 hold or defer nothing now: each run's own preconditions
@@ -533,14 +529,11 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     # A port problem its classification's device read confirmed (`detect._settle_port`) is
     # judged on that read, as one settled at its golden is: its symptom, not a departure.
     at_golden = base["settled"] in ("at_golden", "confirmed")
-    from modules.heal import findings
-    key = findings.problem_key(incident)
-    fight = (findings.fight_on(network, device, key[1] if key else "", mode=mode, now=now)
-             if value(mode, "heal_fight_stop") else {})
+    # Guard 11 (the fight stop) holds nothing (the operator, 2026-11-17): the fight finding
+    # (`heal.findings`) still says a fix something keeps undoing.
     for g in (_g6(incident, got["incidents"], now, grace_s,
                   value(mode, "heal_max_devices_drifting")),
-              guards.g8_grace(incident),
-              guards.g11_fight(fight, bool(value(mode, "heal_fight_stop")))):
+              guards.g8_grace(incident)):
         if _resolves(batch, g, incident):
             continue
         if g:
@@ -560,8 +553,7 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                        f"{batch['named']}; " if batch.get("named") else
                        f"many devices at once resolved, and the grace dropped, by "
                        f"{batch.get('by_shown') or 'a person'}'s approval of the batch; ")
-    passed("guards", batch_words + "not many devices at once, and no fight stopped by the "
-                                   "network's setting", "read")
+    passed("guards", batch_words + "nothing holds it", "read")
     if at_golden:
         base["phase"] = "decide"
         symptom = _symptom(incident)
@@ -599,13 +591,9 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                           "checked again")
     now_dep = departure(drift_diff(golden["text"], text, device))
     base["departure"] = now_dep
-    if settled_dep and now_dep != settled_dep:
-        return dict(base, outcome="deferred", until=now,
-                    words=(f"{device} changed since its grace period settled (departure "
-                           f"{settled_dep}, now {now_dep or 'none: at its golden'}): its grace "
-                           "period starts again"))
-    passed("read", f"{device} read again: it holds the change the grace period settled on",
-           "classify")
+    # No grace (the operator, 2026-11-17): the decision is made on this read, never deferred
+    # because the device moved since a grace settled.
+    passed("read", f"{device} read: the decision is made on what it holds now", "classify")
     platform = src.platform(device, dev)
     intended = src.intended(device, platform)
     if not intended.get("text"):
@@ -623,13 +611,6 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                            f"({c['left_out']['intent_only']} line(s) only intent holds: an "
                            f"intent edit not deployed; {c['left_out']['golden_behind']} the "
                            "golden lacks while intent holds them)"))
-    g = guards.g12_size(c["units"], value(mode, "heal_max_removed_units"),
-                        value(mode, "heal_max_units"))
-    if g:
-        return stop(g)
-    g = guards.g14_rolled_back(rows, device, last_halt)
-    if g:
-        return stop(g)
     if c["tier"] < 3 and not c.get("blocked"):
         from modules.nsot import expected_effects
         from modules.pipeline import dangerous_commands
@@ -728,12 +709,10 @@ def guard_holds(network: str, incident: dict, guard, *, now: float = None, sourc
 
 def _act(network: str, incident: dict, d: dict, now: float) -> None:
     """What the decision does to its incident, after it is recorded."""
-    from modules.heal import decisions, incidents
+    from modules.heal import incidents
 
-    if d["outcome"] == "halted" and d.get("mode") == "auto" and (d.get("guard") or {}).get(
-            "guard") in (10, 11, 14):
-        decisions.halt(network, guard=d["guard"]["guard"], name=d["guard"]["name"],
-                       words=d["guard"]["words"], operands=d["guard"]["operands"], now=now)
+    # No decision halts the network (the operator, 2026-11-17: guards 10, 11 and 14 halt
+    # nothing); Stop everywhere and Off are the stops.
     if d["outcome"] in ("heal", "propose"):
         return                                   # claimed: H4's or H5's
     if d["outcome"] in ("deferred", "held") and d.get("until"):
@@ -864,8 +843,10 @@ def script_hold(network: str, incident: dict, *, now: float = None, sources=None
         halt = decisions.halted(network)
     except Exception as exc:
         halt = {"unreadable": str(exc)}
+    # Another operation holding the device is a wait (the runner's, `command_plan_run.run`),
+    # never a hold here (the operator, 2026-11-17, round 2).
     for g in (guards.g1_kill_switch(mode), guards.g2_mode(mode, halt),
-              guards.g3_planned(network, device, now)):
+              guards.g3_planned(network, device, now, holder=lambda _n, _d: None)):
         if g:
             return g
     why = refusal_for(network, device, what="a saved script")

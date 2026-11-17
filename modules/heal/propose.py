@@ -203,30 +203,19 @@ def proposal_hash(network: str, decision: dict, reset_command: str) -> str:
 def _stops(network: str, decision: dict, now: float, src) -> str:
     """Why the proposal may not be applied now, or ``""``: the kill switch, self-healing off,
     a kind the policy no longer proposes, a halt, planned work."""
-    from modules.heal import decisions
-
+    # Round 2 (the operator, 2026-11-17): a kind the policy no longer proposes and a halt stop
+    # nothing; the kill switch, Off and a planned window a person set still do. Another
+    # operation holding the device is the act's wait, never a stop here.
     mode = src.mode(now)
     if (mode.get("stopped") or {}).get("stopped"):
         return f"self-healing is stopped everywhere: {mode['stopped'].get('words')}"
     if mode.get("mode") not in ("dry_run", "auto"):
         return (f"self-healing is off for {network} now ({mode.get('words')}), and a proposal "
                 "is applied only while it is on")
-    from modules.heal.policy import SECURITY_KINDS
-
-    # C2839: the security kinds are always proposed, never a setting a policy drops.
-    proposed = set(mode.get("kinds_propose") or []) | set(SECURITY_KINDS)
-    kinds = sorted({u.get("kind") for u in decision.get("units") or [] if u.get("tier") == 2})
-    off = [k for k in kinds if k not in proposed]
-    if off:
-        return (f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} no longer proposed by "
-                f"{network}'s policy (proposed now: {', '.join(sorted(proposed)) or 'none'})")
-    try:
-        halt = decisions.halted(network)
-    except Exception as exc:
-        return f"whether {network} is halted cannot be read ({exc}), and a halt unread holds"
-    if halt.get("id"):
-        return f"{network}'s self-healing is halted by guard {halt.get('guard')}: {halt.get('words')}"
-    g = src.planned(decision["device"], now)
+    # Judged with no holder (the review of round 2): a busy device is a wait, and a person's
+    # planned restart and no-change windows are always reached.
+    from modules.heal import guards
+    g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
     if g:
         return f"guard 3, planned work: {g['words']}"
     return ""
@@ -559,13 +548,8 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
         try:
             # C3871: stamped when the outcome is recorded, never the approval's start.
             at = time.time()
+            # No halt (the operator, 2026-11-17, round 2): a failure R1 sees.
             decisions.applied(network, decision["id"], outcome, by=by, words=words, now=at)
-            if outcome == "failed":
-                decisions.halt(network, guard=14, name="a heal sent and not verified",
-                               words=f"the approved heal of {device} ({decision['id']}) failed "
-                                     f"after sending and was not rolled back: {words}",
-                               operands={"decision": decision["id"], "device": device},
-                               now=at)
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
         # Its verify kept on the close, as a heal's act keeps it (`act.verified_of`): the proof
@@ -601,7 +585,8 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
     why = _stops(network, decision, now, src)
     if why:
         return refuse("stops", why)
-    step("stops", "ok", "self-healing on, no halt, no planned work, the kind still proposed")
+    step("stops", "ok", "self-healing on, not stopped everywhere, no planned work a person "
+                        "declared")
 
     dev = src.device(device)
     text, error = src.read(dev)

@@ -300,18 +300,12 @@ def grace_words(inc, why: str, now: float = None) -> str:
     2026-11-16): "Waiting for lab (vty0, from <address>): put back automatically at <instant>
     unless kept", the person said as a person (`attribution.person_said`, C3863), the instant
     drawn by the page's clock; "" otherwise, and "" once that instant has passed (C3862: a grace
-    is never drawn past its instant)."""
-    from modules import incident_page as IP
-    from modules.heal.attribution import person_said
+    is never drawn past its instant).
 
-    g = (inc or {}).get("grace") or {}
-    if why != "watching" or not g.get("until"):
-        return ""
-    until = IP._epoch(g["until"])
-    if until is None or until <= (time.time() if now is None else float(now)):
-        return ""
-    return (f"Waiting for {person_said(g) or 'the person who changed it'}: put back "
-            f"automatically at {g['until']} unless kept")
+    Round 2 of the speed pass (the operator, 2026-11-17): there is no grace, so nothing is
+    drawn, a grace kept on an older record included."""
+    del inc, why, now
+    return ""
 
 
 def status_words(state: str, waits: str) -> str:

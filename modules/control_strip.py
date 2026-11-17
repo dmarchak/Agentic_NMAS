@@ -357,7 +357,9 @@ def view(network: str, now: float = None, drawn: bool = False, **answer) -> dict
     if heal["known"] and not heal["on"]:
         try:
             sp = (held("switch", network) if drawn else None) or switch_preview(network)
-            if sp.get("on"):
+            # Round 2 (2026-11-17): a line with only incidents decided at the switch-on
+            # (``also`` with no hash) is drawn too; its press turns self-healing on plainly.
+            if sp.get("on") or sp.get("also"):
                 heal.update(also=sp.get("also") or "", hash=sp.get("hash") or "")
             if sp.get("error") or sp.get("state") != "ok":
                 heal["also_error"] = sp.get("error") or sp.get("state") or ""

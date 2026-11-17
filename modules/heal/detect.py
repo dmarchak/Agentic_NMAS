@@ -380,9 +380,10 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
             out["cleared"].append({"incident": inc["id"], "device": inc["device"],
                                    "decision": d["id"]})
         return budget
-    once = ("put back now by a person's press" if pressed == "put_back" else "" if person
-            else "the change names no person" if _from_outside(inc)
-            else "an event, not a configuration change")
+    # Round 2 of the speed pass (the operator, 2026-11-17): no grace for anyone. A drifted read
+    # settles the incident at once, on its first read; no second read, no person's grace.
+    once = ("put back now by a person's press" if pressed == "put_back"
+            else "no grace: self-healing fixes on the first read")
     j = grace.judge(reads, changes, grace_s, now, once=once)
     if j["state"] in grace.WAITING_STATES and ((j["due_at"] or now) <= now or pressed):
         if budget <= 0:
@@ -395,8 +396,7 @@ def _one(network, inc, out, budget, grace_s, now, by, check, clock) -> int:
             incidents.record_read(network, inc["id"], inc["device"], r)
             reads.append(r)
         j = grace.judge(reads, changes, grace_s, now, once=once)
-    if person and j["state"] == "waiting" and not pressed:
-        _grace_started(network, inc, person, j, reads, now)
+    # No grace is started or told (`_grace_started` is called by nothing now, round 2).
     for m in inc.get("attached") or []:
         if m.get("reads") or budget <= 0:
             continue

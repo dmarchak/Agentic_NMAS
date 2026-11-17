@@ -829,45 +829,29 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     refused itself, "r2 is held by deploy of ..."); planned windows still hold. C3909 (the
     operator, 2026-11-17: one operation per device is "a wait, never a refusal or hold"): the
     call before the hold passes *held* too, since `hold_device` waits for another holder;
-    planned-restart and no-change windows are judged at both."""
-    from modules.heal import decisions, policy
-    from modules.sdn import modes as sdn_modes
+    planned-restart and no-change windows are judged at both.
 
+    Round 2 of the speed pass (the operator, 2026-11-17): only Stop everywhere, Off (the mode
+    not Auto) and a planned window a person set stop it here; the lab-stage gate, the policy
+    moved since the decision, the kinds allowed Auto, a halt and "no person confirmed the
+    policy" stop nothing. *network* is kept for the callers."""
+    from modules.heal import policy
+
+    del network
     mode = src.mode(now)
-    pol = decision.get("policy") or {}
     if (mode.get("stopped") or {}).get("stopped"):
         return f"self-healing is stopped everywhere: {mode['stopped'].get('words')}"
     if mode.get("mode") != "auto":
         return (f"the mode is {policy.MODE_WORDS.get(mode.get('mode'), mode.get('mode'))} now "
                 f"({mode.get('words')}), and only AUTO sends a heal")
-    stage = (mode.get("stage") or {}).get("stage")
-    if stage != sdn_modes.AUTO_STAGE:
-        return (f"{network} is marked {stage or 'nothing'}, not {sdn_modes.AUTO_STAGE}, and AUTO "
-                "heals only on a network marked lab (C2009's guard)")
-    if mode.get("fingerprint") != pol.get("fingerprint"):
-        return (f"the policy moved since the decision (decided under {pol.get('fingerprint')}, "
-                f"now {mode.get('fingerprint')})")
-    allowed = set(mode.get("kinds_auto") or [])
-    kinds = sorted({u.get("kind") for u in decision.get("units") or []})
-    off = [k for k in kinds if k not in allowed]
-    if off:
-        return (f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} no longer allowed AUTO "
-                f"(allowed now: {', '.join(sorted(allowed)) or 'none'})")
-    try:
-        halt = decisions.halted(network)
-    except Exception as exc:
-        return f"whether {network} is halted cannot be read ({exc}), and a halt unread holds"
-    if halt.get("id"):
-        return f"{network}'s policy is halted by guard {halt.get('guard')}: {halt.get('words')}"
-    if held:
-        from modules.heal import guards
-        g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
-    else:
-        g = src.planned(decision["device"], now)
+    # The device held by another operation is `hold_device`'s wait, never a stop here: guard 3
+    # is judged with no holder, so a person's planned restart and no-change windows are always
+    # reached (the review of round 2: the holder's hit, often this act's own hold, returned
+    # first and hid the no-change window).
+    from modules.heal import guards
+    g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
     if g:
         return f"guard 3, planned work: {g['words']}"
-    if not pol.get("by"):
-        return "no person is recorded as having confirmed the policy, so nobody is accountable"
     return ""
 
 
@@ -928,6 +912,22 @@ def _guarded(network: str, decision: dict, work):
         raise
 
 
+def stopped_now(network: str) -> str:
+    """``""``, or why the act stops waiting for its device: Stop everywhere, or the mode not
+    Auto now (`policy.current`). A policy that cannot be read stops the wait, said."""
+    from modules.heal import policy
+
+    try:
+        mode = policy.current(network)
+    except Exception as exc:                          # noqa: BLE001 (said; nothing is sent)
+        return f"self-healing's policy could not be read ({type(exc).__name__}: {exc})"
+    if (mode.get("stopped") or {}).get("stopped"):
+        return f"self-healing is stopped everywhere: {mode['stopped'].get('words')}"
+    if mode.get("mode") != "auto":
+        return f"self-healing is no longer in Auto ({mode.get('words') or mode.get('mode')})"
+    return ""
+
+
 def hold_device(network: str, device: str, ip: str, actor: str, detail: str, *, begin=None,
                 clock=time.time, sleep=time.sleep) -> str:
     """Hold *device* for the act from its read to the end of its tail (one read for the act and
@@ -939,6 +939,9 @@ def hold_device(network: str, device: str, ip: str, actor: str, detail: str, *, 
     from modules.nsot import device_ops
     from modules.nsot.receipts import operation
 
+    # Round 2 of the speed pass (the operator, 2026-11-17): no bound refuses the wait. It waits
+    # until the device is free, asking Stop everywhere and Off at each poll (`stopped_now`);
+    # HOLD_WAIT_S is the bound the wait is drawn with, never a refusal.
     t0, said = clock(), False
     while True:
         try:
@@ -948,9 +951,10 @@ def hold_device(network: str, device: str, ip: str, actor: str, detail: str, *, 
             return str(exc)
         except device_ops.DeviceBusy as exc:
             waited = clock() - t0
-            if waited >= HOLD_WAIT_S:
-                return (f"{device} was still held by another operation after the act waited "
-                        f"{round(waited)} s of its {HOLD_WAIT_S} s bound ({exc})")
+            stopped = stopped_now(network)
+            if stopped:
+                return (f"{stopped} while the act waited {round(waited)} s for {device}, held "
+                        f"by another operation ({exc}); nothing was sent")
             if not said and begin is not None:
                 begin("read", f"waiting for {device}, held by another operation ({exc})",
                       wait_s=HOLD_WAIT_S, bound=True)
@@ -1022,13 +1026,8 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         # act's own for its guards and elapsed times).
         at = time.time()
         try:
+            # No halt (the operator, 2026-11-17, round 2): a failed heal is a failure R1 sees.
             decisions.applied(network, decision["id"], outcome, by=via, words=words, now=at)
-            if outcome == "failed":
-                decisions.halt(network, guard=14, name="a heal sent and not verified",
-                               words=f"the heal of {device} ({decision['id']}) failed after "
-                                     f"sending and was not rolled back: {words}",
-                               operands={"decision": decision["id"], "device": device},
-                               now=at)
         except Exception as exc:
             log.error("heal: %s's outcome on %s was not recorded: %s", network, device, exc)
         if outcome == "healed" and (tail or {}).get("state") == "flagged":
@@ -1113,8 +1112,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     why = _stops(src, network, decision, now, held=True)
     if why:
         return refuse("stops", why, waits=True)
-    step("stops", "ok", "AUTO on a network marked lab, the policy decided under, no planned "
-                        "work")
+    step("stops", "ok", "AUTO, not stopped everywhere, no planned work a person declared")
 
     dev = src.device(device)
     # Held from this read to the end of the tail (item 4): the read is the deploy's stage-4
@@ -1205,7 +1203,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     capture = {device: {"text": kinds._stored(text), "intended": prog["fragment"]}}
     plan_kw = {"authorise": {device: authorise}, "remove": {device: list(c["removal_ids"])},
                "capture": capture}
-    entry = src.plan(device, laps=act_laps, **plan_kw)
+    entry = src.plan(device, laps=act_laps, purpose="heal", **plan_kw)
     held["entry"] = entry
     if entry.get("refused") or entry.get("error"):
         return refuse("plan", f"the deploy's plan refused it: "

@@ -3520,8 +3520,16 @@ def _kept_session(ctx, dev: dict, ip: str) -> str:
 
     if getattr(ctx, "keep_session", False) and ip in (ctx.connections_pool or {}):
         try:
-            prompt = (get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-                      .find_prompt() or "").strip()
+            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+            # The pool's liveness check (netmiko's `is_alive`) writes one NUL byte, which IOS
+            # echoes as the two characters ``^@``; `find_prompt` sent its return 0.25 s later
+            # and could read only that echo (the speed pass, round 2: every heal's post-snapshot
+            # signed in again, "its prompt read '^@'"). The echo is removed and, where it was
+            # all that was read, the prompt is read once more (its buffer now drained); the
+            # test below of what a usable prompt is stays as it was.
+            prompt = (conn.find_prompt() or "").replace("^@", "").strip()
+            if not prompt:
+                prompt = (conn.find_prompt() or "").replace("^@", "").strip()
             # A prompt left in a configuration sub-mode (``r2(config-if)#``) is no session to
             # read on (the review, finding 5): a new one.
             # Any sub-mode, not only ``(config…)``: ``(dhcp-config)#``, ``(cfg-crypto-trans)#``,
