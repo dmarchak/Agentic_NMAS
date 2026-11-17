@@ -278,7 +278,7 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
         # names it and the strip's redraw and a second press use the current line.
         drawn = switch_preview(network)
     # The speed pass (2026-11-16, item b): where the press's seconds go, one line. Timing only.
-    log.info("control strip: the switch's preview on %s %s in %.2f s", network,
+    log.warning("control strip: the switch's preview on %s %s in %.2f s", network,
              "made again (the drawn line not held in this process)" if remade else "held",
              _time.monotonic() - t0)
     if drawn.get("state") == "ok" and not drawn.get("on"):
@@ -291,10 +291,15 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
         except policy.PolicyRefused as exc:
             raise batch.Refused(str(exc)) from None
         return {"job": None, "ai": {}, "preview": drawn, "words": got["words"]}
+    t1 = _time.monotonic()
     got = batch.press(network, shown, actor=actor, verified=verified, ident=ident,
                       switch=True, held=drawn)
     # What it listed is the batch's now: a later press is checked against a line drawn again.
     hold("switch", network, None)
+    # The overnight speed pass (2026-11-17, C3907): the press's decision timed, at the level
+    # the service keeps.
+    log.warning("control strip: the switch's batch decided on %s in %.2f s", network,
+                _time.monotonic() - t1)
     return got
 
 

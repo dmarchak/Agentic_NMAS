@@ -75,9 +75,22 @@ def strip():
 def heal(list_name):
     """The Self-healing toggle: one press, no dialog; refused, naming why, with nothing changed,
     for anyone who may not change self-healing settings."""
+    import time as _time
+
     from modules import control_strip
     from modules.heal import batch, policy
 
+    t0 = _time.monotonic()
+    try:
+        return _heal(list_name, control_strip, batch, policy)
+    finally:
+        # The overnight speed pass (2026-11-17, C3907): the press answered, timed.
+        log.warning("control strip: the Self-healing press on %s answered in %.2f s",
+                    list_name, _time.monotonic() - t0)
+
+
+def _heal(list_name, control_strip, batch, policy):
+    """`heal`'s press, timed by it."""
     who = _who()
     why = batch.may_press(who["ident"])
     if why:

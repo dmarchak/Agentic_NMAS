@@ -687,6 +687,19 @@ def ai_ts_level(network):
     until the network's limits and their estimate are acknowledged and unchanged since, and
     when the open incidents it starts on moved since the line drawn beside it (``shown``); on,
     it starts on each of them within the caps."""
+    import time as _time
+
+    t0 = _time.monotonic()
+    try:
+        return _ai_ts_level(network)
+    finally:
+        # The overnight speed pass (2026-11-17, C3907): the AI switch's press answered, timed.
+        log.warning("settings: the AI troubleshooting press on %s answered in %.2f s", network,
+                    _time.monotonic() - t0)
+
+
+def _ai_ts_level(network):
+    """`ai_ts_level`'s press, timed by it."""
     from modules import identity
     from modules import troubleshoot_control as troubleshoot
 
