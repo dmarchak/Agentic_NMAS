@@ -634,11 +634,17 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     way, its max_tokens what the remaining can pay (at most the model's maximum); a retry that
     stops at max_tokens set by a cap is ``budget_ran_out``, naming the cap. *stop_if*
     (``stop_if() -> bool``) closes a stream whose caller's job was stopped."""
+    # Laps (the speed pass, 2026-11-17; measurement only): the gates, the request's build and
+    # the provider's count (``prepare_s``, of which ``count_s``), then the send (``send_s``).
+    import time as _time
+    t_prep = _time.monotonic()
     prep = _prepared(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
                      context=context, thinking=thinking, subject=subject, count=count,
                      row_extra={"network": network} if network else None)
     if "refused" in prep:
         return prep["refused"]
+    t_send = _time.monotonic()
+    laps = {"prepare_s": round(t_send - t_prep, 1), "count_s": prep.get("count_s", 0.0)}
     row, body, model, key, told = (prep["row"], prep["body"], prep["model"], prep["key"],
                                    prep["told"])
     max_tokens, est, refuse = prep["max_tokens"], prep["est"], prep["refuse"]
@@ -698,6 +704,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         got = dict(got, error="budget_ran_out",
                    detail=f"budget ran out mid-answer ({got.get('sized_cap')}); "
                           f"{got.get('detail')}")
+    laps["send_s"] = round(_time.monotonic() - t_send, 1)
+    got = dict(got, laps=laps)
     return dict(got, **told) if told else got
 
 
@@ -899,8 +907,11 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
     # when the caps would refuse it on the estimate (`recount`, `_capped_send`).
     skip = feature in COUNTED_ONLY_OVER and _ascii_enough(body)
     counter_ = Counter(model, key, count=count, feature=feature, prompt=row["prompt"])
+    import time as _time
+    t_count = _time.monotonic()
     measured = counter_.measure(body, masked=True,
                                 budget=profiles.prompt_room(feature) if skip else None)
+    count_s = round(_time.monotonic() - t_count, 1)
     if measured.get("held"):
         # The count met the provider's usage limit (C2096): refused for it, as a send's
         # refusal would be, never judged by the fallback's size.
@@ -943,7 +954,7 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
                        f"most {bound:,}; nothing was sent")
     return {"row": row, "body": body, "model": model, "max_tokens": max_tokens, "key": key,
             "told": told, "est": est, "refuse": refuse, "recount": recount,
-            "typical": typical}
+            "typical": typical, "count_s": count_s}
 
 
 #: Added to the adapter's worst case for a press's wait: the caps' read and the record's write

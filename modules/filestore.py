@@ -52,6 +52,20 @@ class PathLock:
     _registry: dict = {}
     _registry_mu = threading.Lock()
     _held = threading.local()           # {path: [depth, rlock, fd]} per thread
+    _waits = threading.local()          # the waits this thread watches (`watch_waits`)
+
+    @classmethod
+    def watch_waits(cls) -> list:
+        """Start recording this thread's lock waits: each first acquire that waited 50 ms or
+        more appended as ``(file name, seconds)`` to the list returned, until `unwatch_waits`.
+        Timing only (the speed pass, 2026-11-16: a page's stage times and the lock waits it
+        meets): nothing reads it to decide."""
+        cls._waits.list = []
+        return cls._waits.list
+
+    @classmethod
+    def unwatch_waits(cls) -> None:
+        cls._waits.list = None
 
     def __init__(self, path):
         self._path = path
@@ -81,6 +95,7 @@ class PathLock:
         else:
             with PathLock._registry_mu:
                 rlock = PathLock._registry.setdefault(path, threading.RLock())
+            t0 = time.monotonic()
             rlock.acquire()
             fd = None
             try:
@@ -97,6 +112,10 @@ class PathLock:
                 rlock.release()
                 raise
             table[path] = [1, rlock, fd]
+            waited = time.monotonic() - t0
+            watched = getattr(PathLock._waits, "list", None)
+            if watched is not None and waited >= 0.05:
+                watched.append((os.path.basename(path), round(waited, 2)))
         stack = getattr(self._entered, "stack", None)
         if stack is None:
             stack = self._entered.stack = []

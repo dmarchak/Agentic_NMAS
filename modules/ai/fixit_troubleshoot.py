@@ -2286,6 +2286,16 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                               spend_cap=own_cap, stop_if=lambda: TJ.was_stopped(job), **kw)
             memo["spent"] += float(got.get("cost_usd") or 0.0)
             lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its send)")
+            # Its parts, as the gateway timed them (the speed pass, 2026-11-17): the gates and
+            # request build, the provider's count among them, and the model call itself.
+            gl = got.get("laps") or {}
+            if gl:
+                lap(f"call {memo['calls']}: of which the provider count", seconds=gl.get(
+                    "count_s") or 0.0)
+                lap(f"call {memo['calls']}: of which the gates and request build less the count",
+                    seconds=max(0.0, (gl.get("prepare_s") or 0.0) - (gl.get("count_s") or 0.0)))
+                lap(f"call {memo['calls']}: of which the model call (stream, parse)",
+                    seconds=gl.get("send_s") or 0.0)
             if behind is not None:
                 behinds.remove(behind)
                 run_id, secs_ = behind()
@@ -2305,7 +2315,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                      context=prep["ctx"], subject=prep["subject"], scope=scope,
                      actable=prep["actable"], send=send, today=today,
                      reads_context=reads_context(), pregather=pre, reuse=reuse,
-                     pregathered=pregathered)
+                     pregathered=pregathered, lap=lap)
         # What the loop did to fit a pass (`read_loop.counted_room`, `retry_too_long`), said
         # with the fit's own steps.
         prep["said"]["fit"].extend(got.get("fitted") or [])
@@ -2447,6 +2457,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # its ``preconditions_read``'s ``reuse``).
             took=dict(lap.took))
         lap("the plan's door (its preconditions read, the alternative's too, the record)")
+        # Every lap in one line, once, at the end (the speed pass, 2026-11-17).
+        log.warning("fixit troubleshoot: %s: laps: %s", incident.id,
+                    "; ".join(f"{k} {v} s" for k, v in lap.took.items()))
         out["checked"] = door
         out["proposal"] = door.get("line") or {}
         if door["ok"]:

@@ -497,7 +497,7 @@ def _capture_source(capture: dict, scope: str) -> dict:
 
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                  remove: dict = None, scope: str = "", declare: dict = None,
-                 capture: dict = None) -> list:
+                 capture: dict = None, laps: list = None) -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
     holds back. THE plan, for the device page's Deploy… and the v2 batch preview (P.9
     d2) alike. Reads captured configs only; contacts no device.
@@ -506,7 +506,12 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
     heal's OWN read, not its stored capture (a drifted device has moved since its capture by
     definition, C78), and its program merges the golden's lines for the units healed, not the
     whole rendered intent, which is still prepared, so every refusal it carries still applies,
-    and is still what the merge-only check holds the program to at apply."""
+    and is still what the merge-only check holds the program to at apply.
+
+    *laps* (a heal's timing record, `pipeline.lap`): each piece of the plan's work appended as
+    it ends, ``plan: <piece>``; timing only, nothing reads it to decide (the speed pass,
+    2026-11-16: 39 s between a heal's authorise and its apply that no lap named)."""
+    from modules.pipeline import lap as _lap
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
                                      dangerous_in, merge_diff,
@@ -529,6 +534,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
     except Exception as exc:                         # noqa: BLE001 - said; the holds still refuse
         log.warning("plan_devices: %s's inventory rows could not be read: %s", list_name, exc)
         marks = {}
+    _lap(laps, "plan: inventory rows")
     for hostname in hostnames:
         refused = _management.refusal(marks.get(hostname), what="a deploy") \
             if hostname in marks else ""
@@ -538,6 +544,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                             "removal_warnings": [], "management_refused": True})
             continue
         built, error = _artifact_for(list_name, hostname)
+        _lap(laps, "plan: render artifact (golden, inventory, template)")
         if built is None:
             devices.append({"device": hostname, "deployable": False,
                             "blocking_reasons": [error], "to_add": [],
@@ -556,9 +563,11 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
         if unrendered:
             entry["unrendered"] = unrendered
         selected = remove.get(hostname) or []
+        _lap(laps, "plan: summary and unrendered sections")
 
         try:
             prepared = prepare_device(artifact)
+            _lap(laps, "plan: prepare device")
             diff = merge_diff(prepared["config"], captured)
             entry["to_add"] = diff["to_add"]
             entry["removal_warnings"] = diff["removal_warnings"]
@@ -570,6 +579,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             # Lines left on the device that a shared setting key hides from the
             # residue (C201): named, never offered for removal.
             entry["shares_key"] = diff["shares_key"]
+            _lap(laps, "plan: merge diff and residue")
             # Scoped to the profile, the program is built from the scoped
             # intended config: the profile's missing lines and nothing else.
             intended = prepared["config"] if source is None else source["intended"]
@@ -584,22 +594,26 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                             entry.get("platform", ""))
             commands = full["commands"]
             entry["commands"] = commands
+            _lap(laps, "plan: program")
             # What the program is meant to do (C506 phase 2): shown at the confirm, and what
             # verify then expects. Committed intent read once per plan, never per device.
             if intents_once is None:
                 intents_once = _committed_intents_of(list_name)
+                _lap(laps, "plan: committed intents read")
             # And what the person declares on them (C506 phase 3), each with its reason: in the
             # hash below and the record. One that names nothing this plan offers refuses it.
             entry["expected_effects"], declared, declare_problems = _effects_and_declared(
                 list_name, hostname, commands, (declare or {}).get(hostname),
                 intents=intents_once)
             entry["declared"] = declared
+            _lap(laps, "plan: expected effects")
             # What verify will check, each check naming its object (C506 phase 4, the board's
             # "What verify checks"), from the same effects, windows and captured config.
             from modules.nsot import expected_effects as _fx
             entry["expected_effects"]["checks"] = _fx.verify_checks(
                 entry["expected_effects"], commands=commands, list_name=list_name,
                 captured=captured)
+            _lap(laps, "plan: verify checks")
             if declare_problems:
                 entry["deployable"] = False
                 entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [
@@ -613,6 +627,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             entry["removable"] = removable(
                 prepared["config"], captured, mgmt_ip=(_device or {}).get("ip", ""),
                 dialect=entry.get("platform", ""))
+            _lap(laps, "plan: removable lines")
             if scope == profile_apply.SCOPE:
                 # The device's lines of the same measured kind as the
                 # profile's: superseded, offered for removal, never removed
@@ -652,8 +667,10 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             # The history of each line needing a reason, removals included: a
             # removal rolled back before shows when and why beside its box (the
             # operator: unblocked, but the person sees what happened last time).
+            _lap(laps, "plan: dangerous lines and command hash")
             entry["prior_authorised"] = _prior_authorised(
                 list_name, hostname, _auth.flagged(commands, full["keys"]))
+            _lap(laps, "plan: prior authorisations")
             if entry["dangerous"] or authorised or full["keys"]:
                 try:
                     assert_authorised(commands, authorised, full["keys"])
@@ -668,6 +685,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                 entry["attribution"] = _attribute_additions(
                     _repo_for(list_name), hostname, artifact, captured,
                     diff["to_add"])
+                _lap(laps, "plan: attribution")
             else:
                 # A scoped plan attributes nothing (its lines are the
                 # profile's), and still names BOTH commits it renders from:
@@ -694,6 +712,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
 
         from modules.nsot.device_ops import busy_text
         entry["busy"] = busy_text(list_name, hostname)       # C99
+        _lap(laps, "plan: busy read")
         devices.append(entry)
     return devices
 
@@ -718,7 +737,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 actor: str, actor_kind: str, on_device=None,
                 declare: dict = None, pair: dict = None, stop_at_first: bool = False,
                 capture: dict = None, after_verify=None, heal: dict = None,
-                hold_detail: str = "", tail=None) -> dict:
+                hold_detail: str = "", tail=None, laps: list = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     failed devices). THE apply, for the device page's Deploy… and the v2 batch
@@ -750,7 +769,12 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     the full read and the golden capture run as its tail (`pipeline.run_tail`), *tail* (when
     callable, ``tail(step, state, words)``) hearing each step, before the batch's golden
     commit. A capture source's ``read`` (the heal's read at apply, made holding the device) is
-    stage 4's configuration before: one read (`PipelineContext.pre_read`)."""
+    stage 4's configuration before: one read (`PipelineContext.pre_read`).
+
+    *laps* (the heal's timing record, with *tail*): each piece before the pipeline appended as
+    it ends, ``apply: <piece>``, and the pipeline's own laps then go on the same list; timing
+    only, nothing reads it to decide."""
+    from modules.pipeline import lap as _lap
     from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
@@ -771,6 +795,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     programs = {}
     for hostname in confirmations:
         built, error = _artifact_for(list_name, hostname)
+        _lap(laps, "apply: render artifact again (golden, inventory, template)")
         if built is None:
             # Register C24: this was `log.warning(); continue`, so a confirmed
             # device that could not be built vanished from the report, and the
@@ -820,6 +845,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                                         + "; ".join(problems))
                 now = command_fingerprint(recomputed, device_auth, full["ids"], declared)
                 programs[hostname] = list(recomputed)
+                _lap(laps, "apply: program recomputed and its hash")
             except (NotAuthorised, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": str(exc)})
@@ -923,8 +949,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         refused = []
     artifacts = [a for a in artifacts if a.device in held]
     refused += busy
+    _lap(laps, "apply: devices held")
     try:
         batch = plan_batch(artifacts, confirmations, fresh_captures)
+        _lap(laps, "apply: batch planned")
         if pair and batch["skipped"]:
             # An end whose capture moved since the preview (or not deployable) is skipped by the
             # plan, which a batch carries on past: a pair does not.
@@ -940,6 +968,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         kept = bool(pair) or after_verify is not None
         record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
                                             actor=actor, actor_kind=actor_kind, scope=scope)
+        _lap(laps, "apply: pending receipts written")
         contexts, ran = {}, []
         if pair:
             # The pair's link checks, from the programs and the committed intent they render,
@@ -964,7 +993,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             result = _deploy_one(entry, list_name, device_rows, authorise, **extra,
                                  **({"keep": contexts} if kept else {}),
                                  **({"transient": transient} if transient else {}),
-                                 **({"tail": True} if tail is not None else {}))
+                                 **({"tail": True} if tail is not None else {}),
+                                 **({"laps": laps} if laps is not None else {}))
             if heal and name in heal:
                 result["heal"] = dict(heal[name])
             # A pair's receipt rows are written once the pair has settled (each end may yet be
@@ -1397,7 +1427,8 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
                 scope: str = "", declare: dict = None, keep: dict = None,
-                transient: dict = None, capture: dict = None, tail: bool = False) -> dict:
+                transient: dict = None, capture: dict = None, tail: bool = False,
+                laps: list = None) -> dict:
     """Run the pipeline for a single device. The only path that connects. *keep* (the paired
     deploy, `modules.nsot.paired_deploy`): the run's context is kept there by hostname, its save
     to startup held (`PipelineContext.hold_save`) until the link verifies, so a device whose own
@@ -1421,6 +1452,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     except Exception as exc:                    # noqa: BLE001
         return {"device": hostname, "outcome": FAILED, "stage": "prepare",
                 "reason": str(exc)}
+    from modules.pipeline import lap as _lap
+    _lap(laps, "apply: prepared for deploy (secrets resolved, mask check)")
 
     # The merge diff in sendable form — NOT the whole rendered config. Pushing
     # the full render made assert_merge_only() vacuous (to_push was the
@@ -1489,6 +1522,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     except Exception as exc:                    # noqa: BLE001
         return {"device": hostname, "outcome": FAILED, "stage": "merge-only",
                 "reason": str(exc)}
+    _lap(laps, "apply: program built again and held merge-only")
 
     ctx = PipelineContext(
         config_type="template",
@@ -1554,8 +1588,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # the computation the plan drew them with; a declaration this program no longer offers
     # stops the device here too, since this path runs whether or not a hash was compared.
     intents = _committed_intents_of(list_name)
+    _lap(laps, "apply: committed intents read again")
     effects, declared, declare_problems = _effects_and_declared(
         list_name, hostname, commands, (declare or {}).get(hostname), intents=intents)
+    _lap(laps, "apply: expected effects again")
     if declare_problems:
         return {"device": hostname, "outcome": FAILED, "stage": "declared",
                 "reason": "a declared effect no longer fits the program: "
@@ -1587,7 +1623,13 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # Where each second goes (round 2, item 4: about 30 s of r2's 64 s were not accounted
         # for): each stage's and each read's lap, kept in the heal's record.
         import time as _time
-        ctx.laps = [("start", _time.time())]
+        if laps is not None:
+            # The heal's own record (`apply_batch`'s *laps*): from its authorise on, so the
+            # pipeline's laps follow the plan's and the apply's on one list.
+            laps.append(("apply: the pipeline's context built", _time.time()))
+            ctx.laps = laps
+        else:
+            ctx.laps = [("start", _time.time())]
 
     try:
         result = PipelineRunner(ctx).run()

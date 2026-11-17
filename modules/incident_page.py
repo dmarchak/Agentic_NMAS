@@ -1324,6 +1324,26 @@ def _held_attention(network: str) -> dict:
 
 
 def page(network: str, incident_id: str, attention: dict = None) -> dict:
+    """`_page`, timed: one log line per request with each stage's seconds and any lock wait
+    it met (`filestore.PathLock.watch_waits`; the speed pass, 2026-11-16, C3914). Timing only:
+    nothing reads it to decide."""
+    from modules import filestore, pipeline
+
+    laps = [("start", time.time())]
+    waits = filestore.PathLock.watch_waits()
+    try:
+        return _page(network, incident_id, attention, laps)
+    finally:
+        filestore.PathLock.unwatch_waits()
+        pipeline.lap(laps, "rest")
+        t0 = laps[0][1]
+        log.info("incident page %s on %s: %.2f s; %s; lock waits: %s", incident_id, network,
+                 laps[-1][1] - t0,
+                 ", ".join(f"{n} {b - a:.2f}" for (_, a), (n, b) in zip(laps, laps[1:])),
+                 ", ".join(f"{n} {s:.2f}" for n, s in waits) or "none")
+
+
+def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     """What the incident's page draws (`templates/v2/incident.html`), for one id of *network*.
     ``{"kind", "id", "network", ...}``: *kind* is ``page`` (drawn in full), ``folded`` (its
     address redirects to ``into``), ``other_kind``, ``unknown`` or ``unreadable`` (said on the
@@ -1336,8 +1356,10 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     from modules import display_names
     from modules.fixit import section
     from modules.heal import incidents, run_card, said, steplog
+    from modules.pipeline import lap
 
     found = resolve(network, incident_id)
+    lap(laps, "resolve")
     base = {"kind": found["found"], "id": found["id"], "network": network,
             "unreadable": list(found["unreadable"]), "kept": incidents.CLOSED_KEPT}
     if found["found"] == "folded":
@@ -1351,6 +1373,7 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     # Resolved: nothing is left for Mercury or a person to do. An incident whose heal ended
     # without a passed verify is closed in its own store and still needs a person.
     rule = state_of(found["incident"], entry, decisions)
+    lap(laps, "timeline and state")
     # C3876: closed in the store is resolved here too, as the Incidents list's tabs count it
     # (a past close with no proof is "Closed, not confirmed", never Fixed, never Open).
     resolved = rule in RESOLVED or inc.get("state") == "closed"
@@ -1363,18 +1386,21 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
                           resolved=(closed or time.time()) if resolved else None,
                           ended=(rule if rule in RESOLVED else UNCONFIRMED_WORDS.lower())
                           if resolved else "")
+    lap(laps, "AI troubleshooting section")
     # C3862: a heal act running on it is Mercury working (`fix_running`), as the section says
     # it; asked here too for a section drawn without its record (no device identity known).
     heal = {} if resolved or fixit.get("working") else fix_running(network, found)
     st = working_status(status(found["incident"], entry, decisions, fixit["state"]),
                         fixit.get("working") or heal.get("words"), resolved)
     state = st["state"]
+    lap(laps, "heal running and status")
     # The incident's own Needs attention item, as that list holds it: its action is the
     # page's one primary button while a person is needed, and its lost-stream lines are
     # What's wrong's (C3488). A page that needs nobody draws no action.
     item = item_of(_held_attention(network) if attention is None else
                    attention() if callable(attention) else attention,
                    found["id"], decisions, network, device)
+    lap(laps, "Needs attention item")
     # Nothing that already failed on this incident is offered as its next action (the
     # operator's R2, 2026-11-14): a Re-subscribe its item offers, once an attempt here failed,
     # is in Attempts and Other actions only.
@@ -1425,6 +1451,7 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     diagnosis = (A.heal_diagnosis(network, dict(entry, incident=found["id"], device=device,
                                                 diagnosis=attached))
                  if attached or A.is_cant_fix(outcome) else None)
+    lap(laps, "heal card and diagnosis")
     pol = entry.get("policy") or newest.get("policy") or {}
     # The configuration line is What's wrong's, never the title's (C3453): its cause's facts
     # say it where a cause is kept; a decision kept without one says it here.

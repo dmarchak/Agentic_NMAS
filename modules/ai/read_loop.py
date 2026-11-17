@@ -1348,7 +1348,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
         scope: dict = None, actable=(), send=None, today: str = None,
         reads_context: dict = None, pregather=(), reuse: dict = None,
-        pregathered: list = None) -> dict:
+        pregathered: list = None, lap: Callable = None) -> dict:
     """The loop for one finding (the module's docstring has the steps): at most two calls of
     *feature*'s task through *ask* (the gateway's `ask`, given by the feature), each with
     *trigger*, *actor*, *subject* and *network*; *data* the call's own parts, *context* its
@@ -1395,6 +1395,8 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
                                         "partial") if k in got}
 
     started = time.monotonic()              # an iterative loop's wall-time bound counts from here
+    # *lap* (``lap(step)``, the caller's timer; the speed pass, 2026-11-17): measurement only.
+    lap = lap or (lambda step: None)
     off = _all_off(family, network)
     plain = bool(off) and feature.plain is not None
     prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
@@ -1406,6 +1408,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     asked_parts = (again_request(feature, data, ctx, pre) if pre
                    else (prompt, schema, parts, ctx))
     prompt, schema, parts, ctx1 = asked_parts
+    lap("pass 1: the prompt built, the standard reads fitted and logged")
     got = ask(feature.task, prompt, schema, parts, context=ctx1 or None, **common)
     if feature.refit_first is not None:
         # Pass 1 over the context window (A's fix, C3890): its own evidence cut by the
@@ -1443,6 +1446,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     answer = got["output"]
     why = (second_check(feature, answer, pre, actable) if pre else
            feature.check(answer, read_ids=()) or _acts_check(feature, answer, actable))
+    lap("pass 1: Mercury's check of its answer")
     if pre:
         out.update(reads=list(pre), prompt=f"{prompt[0]}.v{prompt[1]}")
     if why:
@@ -1491,7 +1495,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         return _investigate(family, feature, out, wanted, started=started, ask=ask,
                             common=common, data=data, ctx=ctx, network=network, scope=scope,
                             actable=actable, subject=subject, trigger=trigger, asked=asked,
-                            records=pre, room=room)
+                            records=pre, room=room, lap=lap)
     records = run_reads(family, check(family, wanted, network=network, scope=scope), scope)
     out["reads"] = records
     summary = _summary(records)
@@ -1718,7 +1722,8 @@ def _stopped(out: dict, rounds: int, why: str) -> dict:
 
 def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: list, *,
                  started: float, ask, common: dict, data: dict, ctx: dict, network: str,
-                 scope, actable, subject, trigger, asked, records=(), room=None) -> dict:
+                 scope, actable, subject, trigger, asked, records=(), room=None,
+                 lap=None) -> dict:
     """An iterative loop's reads (C3797; the operator, 2026-11-15: "the AI requests reads from
     its read families, Mercury runs them through the read engine ... and the AI continues until
     it's confident or hits the bounds"): each round's requests judged and the allowed ones run
@@ -1743,6 +1748,7 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
     room_ = feature.read_room if room is None else room
     # The wall-time bound as a deadline (`modules/waits.py`, ``read_loop.py::_investigate``).
     deadline = started + float(feature.wall_s)
+    lap = lap or (lambda step: None)              # measurement only (the speed pass)
     while True:
         rounds += 1
         room = max(0, feature.max_reads - len(records))
@@ -1757,6 +1763,7 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
                                            "reads in all"})
                    for k, w in enumerate(over)]
         ran = run_reads(family, judged, scope)
+        lap(f"round {rounds}: {len(judged)} read(s) judged and run")
         records += ran
         # Every read sent fits the room the context window leaves for them: the newest cut to
         # fit, said, before the round is logged (so the log holds what is sent).
@@ -1789,6 +1796,8 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
         last = bool(bound)
         prompt, schema, parts, ctx2 = (second_request(feature, data, ctx, records) if last
                                        else again_request(feature, data, ctx, records))
+        lap(f"round {rounds}: fitted, logged, pass {out['pass'] + 1}'s prompt built"
+            + (f" (final: {bound})"[:60] if last else ""))
         got = ask(feature.task, prompt, schema, parts, context=ctx2, **common)
         out["second"] = asked(got)
         out["pass"] += 1
@@ -1831,6 +1840,7 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
                                          f"{str(got.get('detail') or '')[:160]})")
         answer = got["output"]
         why = second_check(feature, answer, records, actable)
+        lap(f"pass {out['pass']}: Mercury's check of its answer")
         if why:
             out["second"]["why"] = why
             out["state"] = "first_pass"

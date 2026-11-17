@@ -266,13 +266,21 @@ def switch_on(network: str, shown: str, *, actor: str, verified: str, ident) -> 
     none, self-healing turned on plainly, ``job`` None and ``words`` said). Raises
     `heal.batch.Refused`, nothing turned on and nothing started (`heal.batch.TurnedOn`: Auto
     on, nothing sent)."""
+    import time as _time
+
     from modules.heal import batch
 
+    t0 = _time.monotonic()
     drawn = held("switch", network)
-    if drawn is None or drawn.get("hash") != (shown or ""):
+    remade = drawn is None or drawn.get("hash") != (shown or "")
+    if remade:
         # Not the line held: the preview made now (and held, `switch_preview`), so a refusal
         # names it and the strip's redraw and a second press use the current line.
         drawn = switch_preview(network)
+    # The speed pass (2026-11-16, item b): where the press's seconds go, one line. Timing only.
+    log.info("control strip: the switch's preview on %s %s in %.2f s", network,
+             "made again (the drawn line not held in this process)" if remade else "held",
+             _time.monotonic() - t0)
     if drawn.get("state") == "ok" and not drawn.get("on"):
         # C3909: the problems the line drew are gone at the press: self-healing is turned on
         # as the switch with no line turns it on, never refused because the line moved.

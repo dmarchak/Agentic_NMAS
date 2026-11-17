@@ -1010,6 +1010,11 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     #: The outcome recorded at Fixed, before the tail (`declare`): ``{"outcome", "words",
     #: "n"}``, *n* the steps the first act row kept.
     declared = {}
+    #: The act's timing record from its authorise step to the push and on (`pipeline.lap`;
+    #: the speed pass, 2026-11-16: 39 s between authorise and apply that no lap named): the
+    #: plan's pieces, the act's own checks, the apply's pieces, then the pipeline's own laps,
+    #: one list, kept as the record's ``laps``. Timing only: nothing reads it to decide.
+    act_laps = []
 
     def record_outcome(outcome, words, tail=None):
         step("record", outcome, f"{OUTCOME_WORDS[outcome]}: {words}")
@@ -1056,6 +1061,12 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         except Exception as exc:
             log.error("heal: %s's act on %s (at Fixed) is not in the step log: %s", network,
                       device, exc)
+        # The speed pass (2026-11-16, item c): the record step's own announcement fires before
+        # the outcome reaches the stores (`record_outcome`: its step, then the decision and the
+        # incident's close), so a page re-fetched on it read the incident still open until the
+        # tail's next step. Told again now that Fixed is stored: an announcement only.
+        from modules import op_progress
+        op_progress.moved()
 
     def finish(outcome, words, *, sent=False, report=None, flags=None):
         if declared:
@@ -1072,7 +1083,8 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
                   "words": redact_text(words), "steps": steps, "sent": sent, "report": report}
         result["records"] = _records(network, decision, result, src, held, now)
         marks = next((x.get("laps") for x in (report or {}).get("results") or []
-                      if x.get("device") == device and x.get("laps")), None)
+                      if x.get("device") == device and x.get("laps")), None) or (
+            act_laps if len(act_laps) > 1 else None)
         if marks:
             # Where each second of THE apply went (round 2, item 4), from its run's laps.
             from modules.nsot.command_plan_run import _laps
@@ -1188,11 +1200,12 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     held["authorise"] = authorise
     step("authorise", "ok", (f"{len(authorise)} removal(s), each with the policy's words as its "
                              "stated reason" if authorise else "nothing that needs a reason"))
+    pipeline.lap(act_laps, "authorise")
 
     capture = {device: {"text": kinds._stored(text), "intended": prog["fragment"]}}
     plan_kw = {"authorise": {device: authorise}, "remove": {device: list(c["removal_ids"])},
                "capture": capture}
-    entry = src.plan(device, **plan_kw)
+    entry = src.plan(device, laps=act_laps, **plan_kw)
     held["entry"] = entry
     if entry.get("refused") or entry.get("error"):
         return refuse("plan", f"the deploy's plan refused it: "
@@ -1213,6 +1226,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
                                f"{', '.join(lost.get('cut') or []) or lost.get('why')}), and a "
                                "change to that path needs a repair route independent of it"))
 
+    pipeline.lap(act_laps, "act: the plan's checks")
     applied_at = {"t": now}
     # R3 (the operator, 2026-11-14): a heal whose every line is cosmetic (`readback_only`: a
     # description, an alias, a banner, ...) verifies by its read-back; no line of it can clear
@@ -1354,8 +1368,10 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         return refuse("apply", (f"the program could not be written to the step log before it "
                                 f"is sent ({type(exc).__name__}: {exc}), and a heal sends "
                                 "nothing it has not recorded"))
+    pipeline.lap(act_laps, "act: program written to the step log")
     step("apply", "running", f"as the policy set by {setter_shown}, holding {device}",
          **by_field)
+    pipeline.lap(act_laps, "act: apply step announced")
     # The act's read is the deploy's read before (item 4: one read), the device held since.
     capture[device]["read"] = text
     with identity.carried_policy(setter, pol.get("fingerprint") or ""):
@@ -1363,7 +1379,7 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
             device, confirmations={device: entry.get("capture_hash")},
             command_hashes={device: entry.get("command_hash")}, actor=setter,
             actor_kind=actor_kind, stop_at_first=True, after_verify=after_verify,
-            heal={device: facts}, hold_detail=via, tail=on_tail, **plan_kw)
+            heal={device: facts}, hold_detail=via, tail=on_tail, laps=act_laps, **plan_kw)
     r = next((x for x in report.get("results") or [] if x.get("device") == device), {})
 
     def release():

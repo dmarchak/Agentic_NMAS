@@ -75,5 +75,34 @@ def step(incident_id):
         steps = (progress.investigation(ref.name, incident_id)
                  or progress.run(ref.name, incident_id, device)
                  or progress.recorded(ref.name, found, device, running=True))
+    said = ""
+    if F.valid_id(incident_id) and not steps:
+        # C3913: the investigation just ended, its section not redrawn yet: the next state's
+        # words in place of an empty part (the card was its title alone), from the record.
+        said = _settled_words(ref.name, found)
     return _strict(render_template("v2/_inc_step.html", iid=incident_id, network=ref.name,
-                                   steps=steps, said=""), 200)
+                                   steps=steps, said=said), 200)
+
+
+def _settled_words(network: str, found: dict) -> str:
+    """The words of an AI investigation's answer kept in the last `investigation_bound_s`
+    (the newest line of the incident's record, newer than its newest start): "Plan ready:
+    approve it below" for a plan, else its own first sentence; ``""`` otherwise. A read."""
+    import time
+    from modules.fixit import incident as F
+    from modules.fixit import section as S
+
+    try:
+        inc = S.incident_of(network, found).get("incident")
+        lines = F.read(inc)["lines"] if inc is not None else []
+    except Exception:                                 # noqa: BLE001 (drawn without it)
+        return ""
+    newest = lines[-1] if lines else {}
+    if "proposal" not in newest or newest.get("source") != "ai" or \
+            time.time() - float(newest.get("epoch") or 0) > S.investigation_bound_s():
+        return ""
+    if newest.get("steps"):
+        # Never "ready to approve": a plan its preflight refused is drawn below as not
+        # approvable (the review of round 1), so the words claim only that it is there.
+        return "The AI's plan is below"
+    return S._first_sentence(newest.get("words") or "", S.FINDING_CHARS)

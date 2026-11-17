@@ -498,6 +498,27 @@ def _matches(row: dict, q: str, device: str) -> bool:
 
 def page(network: str, tab: str = "open", q: str = "", device: str = "",
          batched=()) -> dict:
+    """`_page`, timed: one log line per request with each stage's seconds and any lock wait
+    it met (`filestore.PathLock.watch_waits`; the speed pass, 2026-11-16, C3914). Timing only:
+    nothing reads it to decide."""
+    import time as _time
+
+    from modules import filestore, pipeline
+
+    laps = [("start", _time.time())]
+    waits = filestore.PathLock.watch_waits()
+    try:
+        return _page(network, tab, q, device, batched, laps)
+    finally:
+        filestore.PathLock.unwatch_waits()
+        pipeline.lap(laps, "groups and model")
+        log.info("incidents page %s on %s: %.2f s; %s; lock waits: %s", tab, network,
+                 laps[-1][1] - laps[0][1],
+                 ", ".join(f"{n} {b - a:.2f}" for (_, a), (n, b) in zip(laps, laps[1:])),
+                 ", ".join(f"{n} {s:.2f}" for n, s in waits) or "none")
+
+
+def _page(network: str, tab: str, q: str, device: str, batched, laps: list) -> dict:
     """What `templates/v2/incidents.html` draws: ``{"network", "tab", "tabs", "q", "device",
     "devices", "summary", "groups", "shown", "matched", "folded", "unreadable", "kept",
     "read_at"}``. *tabs* is each tab's count; *summary* the tab's counts by group, in words;
@@ -513,6 +534,8 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "",
     q = " ".join(str(q or "").split())[:QUERY_CHARS]
     device = str(device or "").strip()[:128]
     got = held(network)
+    from modules.pipeline import lap
+    lap(laps, "held rows")
     on_tab = [r for r in got["rows"] if r["resolved"] == (tab == "closed")]
     if tab == "open":
         _acknowledged(on_tab)

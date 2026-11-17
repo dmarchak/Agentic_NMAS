@@ -1031,20 +1031,34 @@ def want_confirm(network: str, incident_id: str, why: str, now: float = None, *,
     clear read again never reads the device again each pass)."""
     now = time.time() if now is None else float(now)
 
-    def change(doc):
-        inc = _find(doc, incident_id)
+    def declines(inc):
         rec = inc.get("confirm_wanted") or {}
         if inc.get("state") != "standing" or not (inc.get("standing") or {}).get("act"):
-            return False
+            return True
         same = rec.get("decision") in (None, "", (inc.get("standing") or {}).get("decision"))
-        if same and (rec.get("state") in ("wanted", "reading")
-                     or now - float(rec.get("epoch") or 0) < float(again_s)):
+        return bool(same and (rec.get("state") in ("wanted", "reading")
+                              or now - float(rec.get("epoch") or 0) < float(again_s)))
+
+    def change(doc):
+        inc = _find(doc, incident_id)
+        if declines(inc):
             return False
         inc["confirm_wanted"] = {"state": "wanted", "why": (why or "")[:300], "at": _iso(now),
                                  "epoch": now,
                                  "decision": (inc.get("standing") or {}).get("decision") or ""}
         return True
 
+    # C3885: read first, with no lock and no write: a pass that would decline (already asked
+    # for, being read, within its hour, no standing act) returns at once and leaves the store
+    # unwritten. Only one that would ask takes the lock, and asks the same question again
+    # inside it (`change`), so a writer between the two reads is never overwritten. A store
+    # that is not readable here, or an incident not found, goes the locked way as before (its
+    # own refusal or `StoreUnreadable`).
+    got = read(network)
+    if got["state"] == "ok":
+        inc = next((i for i in got["incidents"] if i.get("id") == incident_id), None)
+        if inc is not None and declines(inc):
+            return False
     return _mutate(network, change)
 
 
