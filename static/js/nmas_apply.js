@@ -144,7 +144,7 @@
       else said.push(fit.slots[c] + ' under ' + FIT_LABELS[c] + ' (' + usd(r) + ' ' +
                      ROOM_TAIL[c] + ')');
     }
-    return 'Room, each start at most ' + usd(worst) + ': ' + said.join(', ') + '.';
+    return 'Room, each start at least ' + usd(worst) + ': ' + said.join(', ') + '.';
   }
 
   /* PURE. A cap as typed ("$0.50", "1,000") less what was spent: NaN when it is not a positive
@@ -582,7 +582,7 @@
             var f = form && form.querySelector('input[name=' + name + ']');
             return f ? f.value : '';
           };
-          var worst = parseFloat(el.getAttribute('data-worst'));
+          var worst = parseFloat(el.getAttribute('data-least'));
           var rooms = [['day', num(el.getAttribute('data-day-room'))],
                        ['feature_day', typedRoom(typed('day_cap_usd'),
                                                  num(el.getAttribute('data-feature-day-spent')))],

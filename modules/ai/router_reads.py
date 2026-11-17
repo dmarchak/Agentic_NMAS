@@ -36,8 +36,9 @@ token by token; a word the shape does not name is refused, naming it. Output mod
 `readonly_commands.SAFE_MODIFIERS`' five, in full (one list for a person's reads and the
 model's, C2423); `| redirect`, `| tee`, `| append` and every other modifier are refused, as
 are newlines, control characters, ``?`` and any URL (`readonly_commands.refusal`). The loop's
-own requests carry no modifier: an operation renders its fixed command, and the answer is cut at
-`read_loop.AI_READ_CAP`. `match` is the same check for a command that arrives as text (the
+own requests carry no modifier: an operation renders its fixed command, and the answer is sent
+whole (cut only to keep a request inside the model's context window, `read_loop._within_room`).
+`match` is the same check for a command that arrives as text (the
 diagnosis runbooks' pipe-rule test, and the planted table of 19.5); it judges the command it
 parsed through `read_loop.check`, one path.
 

@@ -24,6 +24,31 @@ Never logs or returns the key, the request or the response body (the gateway rec
 masked request and the masked answer). The wire shape is Anthropic's reference, read
 2026-10-25: `POST /v1/messages`, headers `x-api-key` and `anthropic-version: 2023-06-01`.
 
+**Every send is streamed** (the operator, 2026-11-16: a call's ``max_tokens`` is sized to what
+the spend caps leave, up to the model's 128,000): the body is sent with ``"stream": true`` over
+`requests` (still no SDK) and its server-sent events read as they come (`_read_stream`:
+``message_start`` with the input and cache usage, ``content_block_start``/``_delta``/``_stop``,
+``message_delta`` with the stop reason and the output usage so far, ``message_stop``, ``ping``,
+and ``error``), assembled into the same `Reply` body a whole answer had. Its bounds and its
+failures:
+
+- **an idle bound per chunk** (`STREAM_IDLE_S`, the read bound `requests` applies to every
+  read of the socket) in place of the 60 s whole-answer bound; no whole-answer bound;
+- a 429 or 529 status before the stream starts, and an ``overloaded_error`` or
+  ``rate_limit_error`` event before any output arrived, are retried as before (`MAX_RETRIES`);
+- **a disconnect or an idle bound reached mid-stream** raises `StreamFailed` (``partial``
+  once ``message_start`` arrived), and **an ``error`` event after output began** raises
+  `StreamError`: neither is retried here, nothing partial is parsed as an answer, and each
+  carries the usage the stream reported (``message_start``'s input and cache tokens, the last
+  ``message_delta``'s output tokens) so the gateway records what it may have cost (the
+  gateway's own retry of a `StreamError`, once, only while the caps' remaining covers it,
+  `gateway.ask`);
+- **the live count**: after each event the gateway's *progress* hook is given the output so far
+  (the provider's ``message_delta`` count where it sent one, else the deltas' characters at
+  `LIVE_CHARS_PER_TOKEN`, an over-estimate) and may answer why to stop: the connection is then
+  closed at once (closing it is what stops the provider generating and billing) and
+  `StreamAborted` raised (``budget_ran_out``), never parsed.
+
 **The token count** (C1898, the operator's decision of 2026-10-28): `count_tokens(body,
 api_key)` asks `POST /v1/messages/count_tokens` how many input tokens the masked request is,
 before it is sent. Anthropic's pages, read 2026-10-28 (platform.claude.com/docs/en/
@@ -47,10 +72,16 @@ log = logging.getLogger(__name__)
 
 URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
-#: Connect and read bounds, seconds. A Haiku answer of about 400 tokens takes a few seconds
-#: (PHASE8_PLAN 15.9's budgets: 5 s); 60 s read is room for the longest feature's
-#: max_tokens. Not yet measured on the host: re-derived from the first live calls' latency.
-TIMEOUT = (5.0, 60.0)
+#: The most seconds between two reads of a streamed answer (the operator, 2026-11-16: a
+#: per-chunk idle bound in place of the 60 s whole-answer read bound). NOT MEASURED as a gap:
+#: no stream has been recorded yet. Reasoned: every recorded call was answered whole within the
+#: old 60 s read bound (none recorded as its timeout), so no wait inside any of them, the time
+#: to the first token included, was longer than 60 s; 60 s keeps that. Re-derived as about
+#: 2.5x the largest gap once streamed calls record theirs (``stream.longest_gap_s``).
+STREAM_IDLE_S = 60.0
+#: Connect and per-read bounds, seconds: the read bound is the stream's idle bound
+#: (`STREAM_IDLE_S`), so `gateway.send_bound_s` derives from it as before.
+TIMEOUT = (5.0, STREAM_IDLE_S)
 MAX_RETRIES = 2
 MAX_WAIT_S = 20.0
 #: The token count's endpoint and the fields its body takes (the pages read 2026-10-28, the
@@ -95,6 +126,37 @@ class BadRequest(AdapterError):
 
 class ProviderDown(AdapterError):
     kind = "provider_down"
+
+
+class StreamFailed(AdapterError):
+    """A streamed answer that broke off: the connection dropped, or no event came within
+    `STREAM_IDLE_S`. *usage* is what the stream reported before it broke (``{}`` when nothing
+    did); *partial* whether ``message_start`` arrived (the provider took the request, so it may
+    bill it); *output_began* whether any content arrived. Never retried; nothing of it is
+    parsed as an answer."""
+    kind = "stream_failed"
+
+    def __init__(self, message: str, *, usage: dict = None, partial: bool = False,
+                 output_began: bool = False, stream: dict = None, **kw):
+        super().__init__(message, **kw)
+        self.usage = dict(usage or {})
+        self.partial = bool(partial)
+        self.output_began = bool(output_began)
+        self.stream = dict(stream or {})
+
+
+class StreamError(StreamFailed):
+    """An ``error`` event after output began (an ``overloaded_error``, an ``api_error``):
+    recorded as partial, never retried here (a retry bills twice: `gateway.ask` may ask once
+    more, as a new call, only while the caps' remaining covers it)."""
+    kind = "stream_error"
+
+
+class StreamAborted(StreamFailed):
+    """A stream Mercury closed itself: its running cost was about to pass a spending limit (the
+    operator, 2026-11-16: "the cap is enforced live ... Billing stops at the abort"). The
+    message is the gateway's reason, naming the cap; never retried, never parsed."""
+    kind = "budget_ran_out"
 
 
 class WorkspaceLimit(AdapterError):
@@ -168,6 +230,9 @@ class Reply:
     headers: dict = field(default_factory=dict)
     attempts: int = 1
     latency_s: float = 0.0
+    #: What a streamed answer's stream measured (`_read_stream`): its events, its longest gap
+    #: between two events and whether output began; ``{}`` for an answer read whole.
+    stream: dict = field(default_factory=dict)
 
 
 def ratelimit_headers(headers) -> dict:
@@ -198,20 +263,191 @@ def _error_words(resp) -> str:
     return redact_egress(text, values={})[:300] or f"HTTP {resp.status_code}"
 
 
+#: The stream's error events that are a 429 or a 529 in another form, retried as those are
+#: when no output has arrived yet (`send`).
+RETRIED_EVENTS = {"rate_limit_error": (RateLimited, 429), "overloaded_error": (Overloaded, 529)}
+
+
+class _EarlyError(Exception):
+    """An ``error`` event of `RETRIED_EVENTS` before any output: the send's retry loop takes it
+    as the status it stands for."""
+
+    def __init__(self, kind: str, words: str):
+        super().__init__(words)
+        self.kind = kind
+        self.words = words
+
+
+def _events(resp):
+    """The server-sent events of *resp*, each its ``data`` parsed as JSON (``{"type", ...}``),
+    in order; a ``data`` that is not JSON is skipped, logged by its event name (never its
+    text). Raises what reading the socket raises (`requests.RequestException`)."""
+    import json as _json
+
+    name, data = "", []
+    for raw in resp.iter_lines(chunk_size=None):
+        line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+        if not line:
+            if data:
+                try:
+                    yield _json.loads("\n".join(data))
+                except ValueError:
+                    log.warning("anthropic: a stream's %s event was not JSON; skipped",
+                                name or "unnamed")
+            name, data = "", []
+            continue
+        if line.startswith(":"):
+            continue
+        field_, _, value = line.partition(":")
+        value = value[1:] if value.startswith(" ") else value
+        if field_ == "event":
+            name = value
+        elif field_ == "data":
+            data.append(value)
+    if data:
+        try:
+            yield _json.loads("\n".join(data))
+        except ValueError:
+            log.warning("anthropic: a stream's last %s event was not JSON; skipped",
+                        name or "unnamed")
+
+
+#: Characters a token the live count of a stream's output assumes before the provider's own
+#: usage arrives (`live_output_tokens`): the gateway's fallback estimate's 1.8
+#: (`gateway.CHARS_PER_TOKEN`, calibrated to be OVER every recorded call's real tokens), so
+#: the running cost is never under what the provider bills.
+LIVE_CHARS_PER_TOKEN = 1.8
+
+
+def live_output_tokens(chars: int, deltas: int, reported: int) -> int:
+    """A stream's output so far in tokens, for its running cost: the provider's own
+    ``output_tokens`` where a ``message_delta`` reported it, else the deltas' characters at
+    `LIVE_CHARS_PER_TOKEN` (at least one token a delta), whichever is larger, so it is never
+    under."""
+    return max(int(reported or 0), int(chars / LIVE_CHARS_PER_TOKEN) + 1 if chars else 0,
+               int(deltas or 0))
+
+
+def _read_stream(resp, *, clock, progress=None) -> tuple:
+    """``(body, stream)``: a streamed answer assembled as the whole answer's body
+    (``content``, ``stop_reason``, ``usage``, ``model``, ``id``), and what the stream measured
+    (``{"events", "longest_gap_s", "output_began", "output_estimated"}``). Raises
+    `_EarlyError` for a retried error event before any output, `StreamError` for any other
+    error event, `StreamFailed` for a stream that broke off or ended without
+    ``message_stop``, and `StreamAborted` when *progress* stops it.
+
+    *progress*, when given, is called after each event with the live count ``{"usage",
+    "output_tokens", "how"}`` (*output_tokens* by `live_output_tokens`, *how* ``reported``
+    once a ``message_delta`` gave the provider's own count, else ``estimated``); a non-empty
+    string back is why to stop: the connection is closed at once (closing it is what stops the
+    provider generating, and billing), and `StreamAborted` raised with that reason."""
+    msg, blocks, usage = {}, {}, {}
+    began, started, stopped = False, False, False
+    events, longest, last = 0, 0.0, clock()
+    live = {"chars": 0, "deltas": 0, "reported": 0}
+
+    def counted():
+        return live_output_tokens(live["chars"], live["deltas"], live["reported"])
+
+    def failed(cls, words):
+        return cls(words, usage=usage, partial=started, output_began=began,
+                   stream={"events": events, "longest_gap_s": round(longest, 3),
+                           "output_began": began, "output_estimated": counted(),
+                           "output_reported": live["reported"] or None})
+
+    try:
+        for ev in _events(resp):
+            now = clock()
+            longest, last = max(longest, now - last), now
+            events += 1
+            kind = ev.get("type") if isinstance(ev, dict) else ""
+            if kind == "message_start":
+                started = True
+                msg = dict(ev.get("message") or {})
+                usage.update(msg.get("usage") or {})
+            elif kind == "content_block_start":
+                blocks[int(ev.get("index") or 0)] = dict(ev.get("content_block") or {})
+            elif kind == "content_block_delta":
+                began = True
+                block = blocks.setdefault(int(ev.get("index") or 0), {"type": "text"})
+                delta = ev.get("delta") or {}
+                live["deltas"] += 1
+                for key in ("text", "thinking", "signature", "partial_json"):
+                    if key in delta:
+                        block[key] = str(block.get(key) or "") + str(delta[key])
+                        live["chars"] += len(str(delta[key]))
+            elif kind == "message_delta":
+                msg.update({k: v for k, v in (ev.get("delta") or {}).items()})
+                usage.update(ev.get("usage") or {})
+                live["reported"] = int((ev.get("usage") or {}).get("output_tokens")
+                                       or live["reported"])
+            elif kind == "message_stop":
+                stopped = True
+            elif kind == "error":
+                err = ev.get("error") or {}
+                etype = str(err.get("type") or "error")
+                from modules.redact import redact_egress
+                words = redact_egress(f"{etype}: {err.get('message') or ''}",
+                                      values={})[:300]
+                if not began and etype in RETRIED_EVENTS:
+                    raise _EarlyError(etype, words)
+                raise failed(StreamError, f"the stream's error event after "
+                                          f"{'output began' if began else 'it started'}: "
+                                          f"{words}")
+            # Never once the answer is whole: a message_delta carrying its stop reason, or
+            # message_stop, ends the answer, so a complete answer is never thrown away by a
+            # late check (the review, 2026-11-16).
+            if progress is not None and not stopped and not msg.get("stop_reason"):
+                why = progress({"usage": dict(usage), "output_tokens": counted(),
+                                "how": "reported" if live["reported"] else "estimated"})
+                if why:
+                    close = getattr(resp, "close", None)
+                    if callable(close):
+                        close()
+                    raise failed(StreamAborted, str(why))
+            if stopped:
+                break
+    except (requests.RequestException, OSError) as exc:
+        if not msg.get("stop_reason"):
+            idle = isinstance(exc, requests.RequestException) and "timed out" in str(exc).lower()
+            raise failed(StreamFailed, (f"no event within {STREAM_IDLE_S:.0f} s" if idle else
+                                        "the connection broke") + f" mid-stream "
+                                       f"({type(exc).__name__}) after {events} event(s)") from exc
+        # The answer was whole (its message_delta carried the stop reason and its usage) and
+        # only message_stop was lost: kept as complete, the missing stop recorded (the review,
+        # 2026-11-16: a whole answer is never lost).
+        missing = type(exc).__name__
+    else:
+        missing = "" if stopped or msg.get("stop_reason") else None
+    if missing is None:
+        raise failed(StreamFailed, f"the stream ended without message_stop after {events} "
+                                   "event(s)")
+    body = {k: v for k, v in msg.items() if k not in ("content", "usage")}
+    body["content"] = [blocks[i] for i in sorted(blocks)]
+    body["usage"] = usage
+    return body, {"events": events, "longest_gap_s": round(longest, 3), "output_began": began,
+                  "output_estimated": counted(),
+                  **({"message_stop_missing": missing or "the stream ended"}
+                     if not stopped else {})}
+
+
 def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time.monotonic,
-         timeout=TIMEOUT) -> Reply:
-    """POST *body* to the Messages API with *api_key*; a `Reply`, or an `AdapterError`."""
+         timeout=TIMEOUT, progress=None) -> Reply:
+    """POST *body* to the Messages API with *api_key*, streamed (the module's docstring); a
+    `Reply` whose body is the assembled answer, or an `AdapterError`. *progress* is called
+    after each event of the stream (`_read_stream`)."""
     if not api_key:
         raise KeyRefused("no API key is set")
     http = session or requests
     headers = {"x-api-key": api_key, "anthropic-version": API_VERSION,
                "content-type": "application/json"}
+    streamed = dict(body, stream=True)
     started = clock()
     attempt = 0
     while True:
         attempt += 1
         try:
-            resp = http.post(URL, json=body, headers=headers, timeout=timeout)
+            resp = http.post(URL, json=streamed, headers=headers, timeout=timeout, stream=True)
         except requests.Timeout as exc:
             raise ProviderDown(f"no answer within {timeout[1]:.0f} s ({type(exc).__name__})",
                                attempts=attempt)
@@ -220,23 +456,36 @@ def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time
                                attempts=attempt)
         kept = ratelimit_headers(resp.headers)
         status = resp.status_code
+        early = None
         if status == 200:
             try:
-                parsed = resp.json()
-            except ValueError:
-                raise ProviderDown("HTTP 200 with a body that is not JSON", status=status,
-                                   attempts=attempt, headers=kept)
-            return Reply(status=status, body=parsed, headers=kept, attempts=attempt,
-                         latency_s=clock() - started)
-        words = _error_words(resp)
-        limited = _limit_error(resp, status, words, attempt, kept)
-        if limited is not None:
-            raise limited
+                parsed, stream = _read_stream(resp, clock=clock, progress=progress)
+            except _EarlyError as exc:
+                early = exc
+            except StreamFailed as exc:
+                exc.attempts, exc.headers = attempt, kept
+                raise
+            else:
+                return Reply(status=status, body=parsed, headers=kept, attempts=attempt,
+                             latency_s=clock() - started, stream=stream)
+            finally:
+                close = getattr(resp, "close", None)
+                if callable(close):
+                    close()
+        if early is not None:
+            cls, status = RETRIED_EVENTS[early.kind]
+            words, wait = early.words, float(2 ** (attempt - 1))
+        else:
+            words = _error_words(resp)
+            limited = _limit_error(resp, status, words, attempt, kept)
+            if limited is not None:
+                raise limited
         if status in (429, 529):
-            cls = RateLimited if status == 429 else Overloaded
-            wait = _retry_after(resp.headers)
-            if wait is None:
-                wait = float(2 ** (attempt - 1))
+            if early is None:
+                cls = RateLimited if status == 429 else Overloaded
+                wait = _retry_after(resp.headers)
+                if wait is None:
+                    wait = float(2 ** (attempt - 1))
             if attempt > MAX_RETRIES:
                 raise cls(f"HTTP {status} after {attempt} attempts: {words}", status=status,
                           attempts=attempt, headers=kept)

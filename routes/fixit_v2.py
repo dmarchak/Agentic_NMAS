@@ -391,7 +391,8 @@ def _ask(incident_id: str, what: str, *, note: str, allowed: str):
         return refused
     # The cap asked again at the press, naming what moved since the panel was drawn (the
     # figures the press carries, ``drawn_spent`` and ``drawn_cap``, compared and never sent).
-    cs = P.cap_state(inc, AIT.worst_usd())                                         # cap
+    # The least one call costs (`start_usd`): each call's own sizing is the gateway's.
+    cs = P.cap_state(inc, AIT.start_usd())                                         # cap
     if cs["state"] != "allowed":
         moved = section._moved_words(request.form.get("drawn_spent") or "",
                                      request.form.get("drawn_cap") or "", cs)

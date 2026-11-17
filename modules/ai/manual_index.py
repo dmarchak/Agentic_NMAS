@@ -16,8 +16,8 @@ its section's link. `ranked` scores them by BM25 (`K1`, `B`) over each passage's
 heading's words `HEADING_WEIGHT` more; the question's words, each plural's ``s`` dropped
 (`stem`), with the manual's words for what people call otherwise (`ALIASES`, a maintained list:
 host key, re-key; password, secret reference; reboot, reload); and the page of the screen the
-person asks from `SCREEN_BOOST` more. `select` sends the best, at most `LIMIT` within
-`BUDGET_CHARS`, and never pads: below `COVERED_SCORE`, or when the best meets less than `COVER`
+person asks from `SCREEN_BOOST` more. `select` sends every passage relevance keeps (no count
+or size bound since 2026-11-16), and never pads: below `COVERED_SCORE`, or when the best meets less than `COVER`
 of the question's words, it is ``[]``, a manual gap the caller answers "the manual doesn't cover
 this" and records; a passage under `PAD_SHARE` of the best is left out. `evaluate` measures
 retrieval alone, recall@k over recorded cases naming their expected sections, so a wrong answer
@@ -37,13 +37,11 @@ HEADING_WEIGHT = 3.0
 SCREEN_BOOST = 2.0
 #: BM25's term saturation and length normalisation, the method's usual values (not tuned).
 K1, B = 1.2, 0.75
-#: Passages returned at most, and the characters they may hold in all: within the operator's 3
-#: to 5k tokens (2026-11-02) at either rate on record, about 3,000 tokens at 4 characters a
-#: token and about 4,600 at the 2.585 C1798 states (no call has measured the manual's own; the
-#: first run's provider count does); a long section is split into passages of at most
-#: PASSAGE_CHARS so 5 to 8 fit.
-LIMIT = 8
-BUDGET_CHARS = 12000
+#: No count or size bound on the passages sent (the operator, 2026-11-16: evidence is chosen by
+#: relevance and never cut for size below the context window; ``LIMIT`` and ``BUDGET_CHARS``
+#: are gone): `select` sends every passage the gap rules keep (`PAD_SHARE`: no padding). A long
+#: section is split into passages of at most PASSAGE_CHARS, a retrieval unit (a passage is
+#: scored and cited by itself), never a cut of what is sent.
 PASSAGE_CHARS = 1800
 #: The gap rules (`select`), calibrated on the recorded retrieval cases
 #: (tests/fixtures/manual_retrieval/cases.json, `evaluate`): the share of the question's
@@ -245,24 +243,25 @@ def ranked(question: str, screen: str = "") -> dict:
             "cover": round(cover, 3)}
 
 
-def select(question: str, screen: str = "", limit: int = LIMIT,
-           budget: int = BUDGET_CHARS) -> list:
-    """The passages that answer *question*, at most *limit* and *budget* characters in all, each
-    ``{"slug", "page", "anchor", "heading", "text", "link", "part", "parts", "score"}``, the
-    best first. ``[]`` is a manual gap, said and recorded by the caller (`record_gap`), never
-    padded: when no passage scores, when the best one meets less than `COVER` of the question's
-    own words (it asks what the manual never speaks of), or when the best scores under
-    `COVERED_SCORE`; and a passage under `PAD_SHARE` of the best is weaker padding, left
-    out. *screen* as `ranked`."""
+def select(question: str, screen: str = "", limit: int = None,
+           budget: int = None) -> list:
+    """The passages that answer *question*, by relevance alone (no count or size bound: the
+    operator, 2026-11-16), each ``{"slug", "page", "anchor", "heading", "text", "link",
+    "part", "parts", "score"}``, the best first. ``[]`` is a manual gap, said and recorded by
+    the caller (`record_gap`), never padded: when no passage scores, when the best one meets
+    less than `COVER` of the question's own words (it asks what the manual never speaks of),
+    or when the best scores under `COVERED_SCORE`; and a passage under `PAD_SHARE` of the best
+    is weaker padding, left out. *screen* as `ranked`. *limit* and *budget*, when a caller
+    names them (an evaluation's top k), still bound the list; none does by default."""
     got = ranked(question, screen)
     top = got["passages"][0]["score"] if got["passages"] else 0.0
     if not got["passages"] or got["cover"] < COVER or top < COVERED_SCORE:
         return []
     out, used = [], 0
     for p in got["passages"]:
-        if len(out) >= limit or p["score"] < top * PAD_SHARE:
+        if (limit is not None and len(out) >= limit) or p["score"] < top * PAD_SHARE:
             break
-        if used + len(p["text"]) > budget:
+        if budget is not None and used + len(p["text"]) > budget:
             continue
         out.append(p)
         used += len(p["text"])

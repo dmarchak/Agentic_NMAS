@@ -47,7 +47,7 @@
 {%- set u_again = (ACT.ask_again or {}).href or url_for('fixit_v2.ask_again', incident_id=x.id, list=x.network) -%}
 {%- set u_start = (ACT.start or {}).href or url_for('fixit_v2.start', incident_id=x.id, list=x.network) -%}
 {%- set hand_mid = 'fixit-hand-' ~ x.id -%}
-{%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}, {% endif %}at most {{ A.worst }} (one investigation: at most {{ A.calls }} calls{% if not A.measured %}, not measured yet{% endif %})</span>{%- endmacro -%}
+{%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}{% else %}not measured yet{% endif %} (one investigation: each call held to the spending limits, stopped at one)</span>{%- endmacro -%}
 {#- A press that posts, from the button itself (busy on itself until its answer: `op-idle`,
     `op-busy`), the hidden fields beside it and *know*'s optional box included. -#}
 {%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure', include='') -%}
@@ -170,12 +170,12 @@
       {%- if F.kind == 'approve' and NP %}
       {%- elif F.kind == 'start' %}
         {%- if start_offered %}
-        {{ press(u_start, 'Start AI troubleshooting', 'Starting…', 'start', 'Start AI troubleshooting', "One investigation: at most two AI calls, at most " ~ (A.worst or 'its cap') ~ "; the plan it returns runs only when you approve it by its hash", primary=True, aiv=ct, include='#fixit-know-' ~ x.id) }}
+        {{ press(u_start, 'Start AI troubleshooting', 'Starting…', 'start', 'Start AI troubleshooting', "One investigation: its AI calls held to the spending limits, stopped at one; the plan it returns runs only when you approve it by its hash", primary=True, aiv=ct, include='#fixit-know-' ~ x.id) }}
         {%- endif %}
       {%- elif F.kind == 'hand_over' %}
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='btn btn-small btn-primary') }}
       {%- elif is_again %}
-        {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=True, aiv=ct) }}
+        {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: its AI calls held to the spending limits, stopped at one", primary=True, aiv=ct) }}
       {%- elif F.kind == 'button' and F.script %}
         {#- C3805: the matching Automatic saved script, run once as the person who presses, bound
             to the hash its preview drew; no AI. -#}
@@ -194,7 +194,7 @@
       {%- elif F.kind == 'button' %}<p class="bluf-fix-words">{{ F.label | times }}</p>
       {%- endif %}
       {%- if again.offered and not is_again and F.kind not in ('start', 'approve') %}
-        {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: at most two AI calls, at most " ~ (A.worst or 'its cap'), primary=(F.kind == 'none' and not F.label), aiv=ct) }}
+        {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: its AI calls held to the spending limits, stopped at one", primary=(F.kind == 'none' and not F.label), aiv=ct) }}
       {%- endif %}
       {%- if acting and F.kind != 'hand_over' and (ACT.hand_over or {}).get('offered', True) %}
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='bluf-link') }}
@@ -227,8 +227,8 @@
   {%- if page_head is defined %}{{ page_head }}{% endif %}
   {%- if page_notes is defined %}{{ page_notes }}{% endif %}
   {%- if B.since %}<p class="small muted inc-since">Began {{ clock(B.since) }}.</p>{% endif %}
-  {%- if start_offered %}{{ know_box(ct) }}{% if A.worst %}<p class="small muted bluf-cost">The AI: {{ ai_cost(A) }}.</p>{% endif %}{% endif %}
-  {%- if S == 'investigating' and A.estimate %}<p class="small muted bluf-cost">This investigation: about {{ A.estimate }}, at most {{ A.worst }}.</p>{% endif %}
+  {%- if start_offered %}{{ know_box(ct) }}{% if A.least %}<p class="small muted bluf-cost">The AI: {{ ai_cost(A) }}.</p>{% endif %}{% endif %}
+  {%- if S == 'investigating' and A.estimate %}<p class="small muted bluf-cost">This investigation: about {{ A.estimate }}, held to the spending limits.</p>{% endif %}
 {#- The evidence's ONE home (C3729; R2: "collapsed under the card"), under the bottom line: the
     signals the problem was classified from (R4), and what the record keeps besides: the
     triggers kept of those seen, the detect pass's reads of the device, the devices attached.
@@ -411,7 +411,7 @@
   {%- if S != 'none' and T %}
   <details class="fixit-more" data-keep="fixit-costs-{{ x.id }}" data-more="costs">
     <summary>Costs</summary>
-    <p class="small fixit-totals"><strong>This incident:</strong> {% if T.spent %}AI {{ T.spent }}{% else %}AI spend not known ({{ T.spent_error }}){% endif %} of {% if T.cap %}its cap of {{ T.cap }}{% else %}no readable cap ({{ T.cap_error }}){% endif %} · <strong>today:</strong> {% if T.today %}{{ T.today }}{% else %}not known ({{ T.today_error }}){% endif %} of {{ T.day_cap or 'no day cap' }}{% if A.worst %} · <strong>one AI investigation:</strong> {{ ai_cost(A) }}{% if R.after %}, this incident's spend after it at most {{ R.after }}{% endif %}{% endif %}</p>
+    <p class="small fixit-totals"><strong>This incident:</strong> {% if T.spent %}AI {{ T.spent }}{% else %}AI spend not known ({{ T.spent_error }}){% endif %} of {% if T.cap %}its cap of {{ T.cap }}{% else %}no readable cap ({{ T.cap_error }}){% endif %} · <strong>today:</strong> {% if T.today %}{{ T.today }}{% else %}not known ({{ T.today_error }}){% endif %} of {{ T.day_cap or 'no day cap' }}{% if A.least %} · <strong>one AI investigation:</strong> {{ ai_cost(A) }}{% if R.least_after %}, this incident's spend after its first call at least {{ R.least_after }}{% endif %}{% endif %}</p>
     {%- if x.mode and x.mode.refused %}<p class="small muted">{{ x.mode.refused }}.</p>{% endif %}
     {#- Automatic troubleshooting on this network (`x.auto`, the background feature R1's
         choice is: off by default, turned on or off only in Settings › AI by a verified
@@ -576,7 +576,7 @@
         naming what moved (`fixit_v2._ask`), as Start's are. -#}
     <input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}">
     <label class="heal-field" for="fixit-modify-text-{{ x.id }}">What should change? (masked before it is sent, and kept with the plan)<textarea id="fixit-modify-text-{{ x.id }}" name="text" rows="3" maxlength="2000" autocomplete="off" required{{ ai.input_attrs(ct) }}></textarea></label>
-    <p class="small muted">The AI returns a revised plan with a new hash. Nothing runs: Approve, Modify… and Deny… come back with it.{% if A.worst %} The AI: {{ ai_cost(A) }}.{% endif %}</p>
+    <p class="small muted">The AI returns a revised plan with a new hash. Nothing runs: Approve, Modify… and Deny… come back with it.{% if A.least %} The AI: {{ ai_cost(A) }}.{% endif %}</p>
     <span class="modal-actions"><span class="op-act">{{ ai.mark(ct) }} <button type="submit" class="btn btn-small btn-primary" data-op="fixit-troubleshoot" hx-disabled-elt="this" title="Asks the AI for a revised plan with your words; nothing runs"{{ ai.attrs(ct, 'configure') }}><span class="op-idle">Revise the plan</span><span class="op-busy">Revising…</span></button>{{ how('fixit-troubleshoot', 'modify', compact=True, op='Modify') }}</span> <button type="button" class="btn btn-small" data-modal-close>Cancel</button></span>
     {{ ai.reason(ct) }}
   </form>

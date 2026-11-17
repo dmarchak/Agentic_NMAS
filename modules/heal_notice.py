@@ -424,7 +424,9 @@ def _fixit_state(inc, trigger: dict, now: float, reserved_usd: float = 0.0, *,
     why = background.admit(trigger) if bg else ""
     if why:
         return "off", "", why
-    worst = AIT.worst_usd()
+    # The least one call of the investigation costs (`fixit_troubleshoot.start_usd`; the
+    # operator, 2026-11-16: no worst case, the gateway sizes each call against the caps).
+    worst = AIT.start_usd()
     cs = P.cap_state(inc, worst)
     if cs["state"] != "allowed":
         return "capped", "incident", cs["words"].replace("Retry isn't available", "Not started",
@@ -463,8 +465,8 @@ def _fixit_state(inc, trigger: dict, now: float, reserved_usd: float = 0.0, *,
                    if flying["calls"] else "")
                 + (f" plus ${held:.2f} held by the investigations started with it" if held
                    else "")
-                + f" plus this investigation's worst case ${worst:.2f} would pass the day cap "
-                f"of ${cap:.2f}")
+                + f" plus the least one of its calls costs, ${worst:.2f}, would pass the day "
+                f"cap of ${cap:.2f}")
     return "started", "", ""
 
 
@@ -755,7 +757,7 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
     if not ticked:
         return out
     trigger = triggers.person(actor)
-    worst = AIT.worst_usd()
+    worst = AIT.start_usd()
     from modules import filestore
     from modules.ai import calls, reservations
 

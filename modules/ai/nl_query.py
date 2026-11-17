@@ -526,7 +526,8 @@ def context_levels(list_name: str, store: str) -> list:
 
 def select_context(prompt: tuple, schema, data: dict, base_ctx: dict, levels: list,
                    budget: int, offered: list = None, counter=None) -> dict:
-    """The richest of *levels* whose request fits *budget* (the task's `max_prompt_tokens`),
+    """The richest of *levels* whose request fits *budget* (the room the model's context window
+    leaves a prompt, `profiles.prompt_room`),
     ``dict(level, ctx, data, estimate, budget)``; the leanest when none fits, so the gateway's
     own refusal names both numbers. Each request's tokens are *counter*'s (`gateway.counter`:
     the provider's count where the call could be sent, C1898), else the gateway's fallback
@@ -1096,7 +1097,8 @@ def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=No
         from modules.ai import profiles
         sel = select_context(prompt, schema, data, {"builder": vocabulary()},
                              context_levels(list_name, "metrics"),
-                             profiles.TASKS[FEATURE]["max_prompt_tokens"],
+                             # The context window's room (the operator, 2026-11-16).
+                             profiles.prompt_room(FEATURE),
                              offered=offered if prompt[1] >= 10 else None,
                              counter=gateway.counter(FEATURE, prompt, actor=actor,
                                                      trigger=trigger))

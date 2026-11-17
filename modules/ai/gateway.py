@@ -32,28 +32,46 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    label key is installed refuses it too (`label_key`, C3458), naming the key.
 5. **The prompt's length** (C1898): the provider's count of the masked request (`Counter`,
    `anthropic_adapter.count_tokens`), or, when the count is not had, the fallback
-   over-estimate from its size (`CHARS_PER_TOKEN`, calibrated against the recorded calls),
-   the row saying which (``prompt_count``); under the task's bound, which is always under its
-   model's long tier (Haiku 5.5 over 100,000 tokens pays every rate 5x); over it the call is
-   refused (`prompt_too_long`), both numbers and how the prompt was measured named.
-6. **The caps**, judged by the worst case (that count as cache writes, plus all of
-   `max_tokens`, at the pinned model's prices): the task's per-call cap (its pinned model's
-   worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus what
-   calls in flight have reserved plus this call against the installation's day cap, unless
-   an admin chose no cap (`day_cap` None, said in every cap refusal). A refusal names every
-   operand. A background call's feature's own day and month caps on its network after it
-   (rule 4, `background.over_cap`: `feature_cap`, naming which). **Reserved atomically**
-   (C2039, `reservations`): the spend read, the caps judged and the worst case reserved under
-   one lock across threads and processes, so calls at once can never pass a cap together;
-   the reservation settled once the call's row, with its actual cost, is recorded.
+   over-estimate from its size (`CHARS_PER_TOKEN`, calibrated against the recorded calls: an
+   estimate before the provider's count, never a gate below the window), the row saying
+   which (``prompt_count``). **The only size bound is the model's context window** (the
+   operator, 2026-11-16; `profiles.context_window`): a prompt that, with the task's typical
+   answer (`background.typical_output`), does not fit inside it is refused
+   (`prompt_too_long`), both numbers and how the prompt was measured named, and the most the
+   prompt may be (``prompt_bound``) on the result, so a caller's fit cuts only to stay inside
+   it. Mercury's own per-task prompt bounds are gone (a pin's ``max_prompt_tokens`` is kept
+   in its file and enforced by nothing).
+6. **The spending limits, the only governor**, read under one lock across threads and
+   processes (C2039, `reservations`) with what other calls hold now: the installation's day
+   cap (always, unless an admin chose no cap: `day_cap` None, said), a background call's (or
+   a counted person's call's) feature day and month caps on its network
+   (`background.remaining`), and the caller's own cap (`ask`'s *spend_cap*: an incident's
+   investigation's per-incident cap). Each one's remaining is cap − spent − held; the
+   tightest decides. **A call's hold** is its counted prompt's cost plus its task's typical
+   output (the median, `background.typical_output`): **it is refused** only when a remaining
+   cannot cover that, the refusal naming the cap, its amount and what remains. **Its
+   max_tokens is the model's maximum** (`profiles.max_output`, inside the context window),
+   and **the caps are enforced live** (the operator's change of 2026-11-16, after a failed
+   restore and s5 starting together were refused on phantom cost): while it streams, its
+   running cost (prompt plus output so far) is checked against every applicable cap under the
+   same lock, counting every other call's hold or live spend (`LIVE_STEP_TOKENS`,
+   `reservations.live_check`), and the stream is closed (billing stops) the moment the tokens
+   before its next check could pass one: ``budget_ran_out``, "budget ran out mid-answer",
+   never parsed. **The prompt is priced conservatively**: every prompt token at the
+   cache-write rate (the dearer of input and cache write; the gateway does not know at send
+   time which prefix the provider still holds), at the rates of the prompt's length (Haiku's
+   long tier over 100,000 tokens). The reservation is settled by the call's recorded row.
 
 **One press, one provider request** (C1854): from the caps on, a call runs through
 `presses.once`: a press whose key was already seen, or whose request is already in flight (the
 same feature, network, subject, prompt, model, access scope and masked body), gets that call's
 result (`from_row`) and sends nothing, the join its own row (verdict ``joined``, cost 0).
 
-Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
-and each provider failure are each their own kind, never a parser's crash (13.5).
+Then the adapter sends it, streamed; a refusal, a `max_tokens` stop (never parsed: "budget ran
+out mid-answer", naming the cap or the model's maximum that set max_tokens), an answer that is
+not the schema, a stream broken off or ended by an error event (recorded ``partial``, its cost
+from the usage the stream reported, or said unknown and counted at its reservation), and each
+provider failure are each their own kind, never a parser's crash (13.5).
 
 **An evaluation round's calls as one batch** (`ask_batch`; the operator's decision of
 2026-10-29, PHASE8_PLAN 15.12): an evaluation trigger only, each request through the same gates
@@ -89,8 +107,9 @@ CALIBRATION = {"calls": 10395, "fewest_chars_per_token": 1.9563,
                "read": "2026-10-28"}
 
 #: The default the schema seeds (modules/settings_schema.py): a day's spend for the
-#: installation. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that. A
-#: call's cap is its task's (`profiles.cap_per_call`).
+#: installation. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that. No
+#: call has a cap of its own (the operator, 2026-11-16): `profiles.cap_per_call` is a task's
+#: measured typical cost.
 DEFAULT_CAP_PER_DAY = 1.50
 
 
@@ -296,9 +315,11 @@ def day_cap():
 
 
 def caps(feature: str) -> dict:
-    """The task's per-call cap (derived from its pin) and the installation's day cap
+    """The task's measured typical cost per call (``per_call``, `profiles.cap_per_call`: no
+    longer a cap, labelled `profiles.PER_CALL_LABEL`) and the installation's day cap
     (`day_cap`: None is no cap)."""
-    return {"per_call": profiles.cap_per_call(feature), "per_day": day_cap()}
+    return {"per_call": profiles.cap_per_call(feature), "per_day": day_cap(),
+            "per_call_label": profiles.PER_CALL_LABEL}
 
 
 def _api_key() -> str:
@@ -322,12 +343,14 @@ CACHED_PRESSES = ("fixit_troubleshoot",)
 #: the whole system prefix across one investigation's calls.
 PER_REQUEST_CONTEXT = {"fixit_troubleshoot": ("catalogue", "network")}
 #: The tasks whose call asks the provider's count (`Counter`) only when the fallback
-#: over-estimate (`CHARS_PER_TOKEN`, over every recorded call) is over the task's bound (the
-#: operator, 2026-11-16: an investigation's call spent 3.9 s beside the model's 14.3 s on its
-#: count and its send; "never a network round trip per request"): an over-estimate within the
-#: bound proves the real prompt within it, so the round trip decides nothing. The row says the
-#: prompt was estimated and why, and the caps judge the call by that over-estimate (dearer than
-#: the count, never cheaper); the recorded usage replaces it once the call is answered.
+#: over-estimate (`CHARS_PER_TOKEN`, over every recorded call) is over the room the context
+#: window leaves for the largest answer (`profiles.prompt_room`; the operator, 2026-11-16: an
+#: investigation's call spent 3.9 s beside the model's 14.3 s on its count and its send;
+#: "never a network round trip per request"): an over-estimate within it proves the real
+#: prompt within the window, so the round trip decides nothing. The row says the prompt was
+#: estimated and why, and the caps price the call by that over-estimate (dearer than the
+#: count, never cheaper; its max_tokens sized after it); the recorded usage replaces it once
+#: the call is answered.
 COUNTED_ONLY_OVER = ("fixit_troubleshoot",)
 #: The calibration holds for text that is mostly ASCII (the recorded calls'); a non-ASCII
 #: character may be a token by itself. So the count is skipped only when at most this share of
@@ -579,7 +602,9 @@ def _text_of(reply_body: dict) -> str:
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         trigger: dict = None, context: dict = None, send=None, today: str = None,
-        thinking: str = None, subject: dict = None, network: str = "", count=None) -> dict:
+        thinking: str = None, subject: dict = None, network: str = "", count=None,
+        spend_cap: dict = None, stop_if=None, _retried: str = "",
+        _size: str = "bound") -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
@@ -594,7 +619,21 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     the requester's access scope, what makes two presses one request (C1854), and recorded on
     the row as ``network`` when named, sent or refused (C2942: History › Export lists a
     person's call under its network). *count* replaces the adapter's token count (tests), as
-    *send* its send."""
+    *send* its send.
+
+    *spend_cap* is the caller's own spending limit beside the installation's and the
+    feature's (the operator, 2026-11-16: an incident's investigation's per-incident cap):
+    ``{"name", "said", "usd", "spent", "scope", "kind"}``, *spent* a function answering
+    ``{"state": "ok", "usd"}`` (what the caller's scope has spent, read inside the
+    reservations' lock), *scope* the key its calls in flight are held under; judged at the
+    start and live as the others are (`_capped_send`). A stream that ended on an error event
+    after its output began (``stream_error``) is asked once more as a new call, through every
+    gate and cap again (so only while the remaining still covers it), both calls recorded:
+    the result is the second's, its ``cost_usd`` both calls', ``also_calls`` the first's id.
+    A thinking call stopped at its measured bound (``max_tokens``) is asked once more the same
+    way, its max_tokens what the remaining can pay (at most the model's maximum); a retry that
+    stops at max_tokens set by a cap is ``budget_ran_out``, naming the cap. *stop_if*
+    (``stop_if() -> bool``) closes a stream whose caller's job was stopped."""
     prep = _prepared(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
                      context=context, thinking=thinking, subject=subject, count=count,
                      row_extra={"network": network} if network else None)
@@ -609,7 +648,9 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     # call's result, rebuilt from its row (modules/ai/presses.py).
     def spend():
         return _capped_send(feature, row, body, model, max_tokens, schema_model, key,
-                            send=send, today=today, refuse=refuse, tokens=est)
+                            send=send, today=today, refuse=refuse, tokens=est,
+                            typical=prep["typical"], recount=prep["recount"],
+                            spend_cap=spend_cap, size_mode=_size, stop_if=stop_if)
 
     # The request's identity beside its body (presses.IDENTITY): everything that changes the
     # answer or who may see it, named here where each is known.
@@ -621,7 +662,60 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                        rebuild=lambda kept, why: _joined(row, kept, schema_model, why,
                                                          about["scope"]),
                        wait_s=press_wait_s())
+    error_mid = (got.get("error") == anthropic_adapter.StreamError.kind
+                 and got.get("output_began"))
+    # A thinking call stopped at its measured bound (the operator, 2026-11-16): asked once more
+    # with max_tokens what the remaining can pay after other calls' holds.
+    at_bound = (got.get("error") == "max_tokens" and got.get("sized_kind") == "measured_bound"
+                and not got.get("sized_retry"))
+    if (error_mid or at_bound) and not _retried:
+        # Never retried silently, never twice: a new call, its own row, judged by every cap
+        # again, the first call's cost counted in the caller's own cap (`_spent_plus`).
+        log.info("ai: %s's call %s %s; asked once more", feature, got.get("call_id"),
+                 "ended on an error event mid-answer" if error_mid else
+                 "stopped at its measured bound")
+        again = ask(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
+                    context=context, send=send, today=today, thinking=thinking,
+                    subject=subject, network=network, count=count,
+                    spend_cap=_spent_plus(spend_cap, got.get("cost_usd")), stop_if=stop_if,
+                    _retried=got.get("call_id") or "-",
+                    _size="bound" if error_mid else "remaining")
+        if at_bound and again.get("error") in ("over_cap", "feature_cap"):
+            # The remaining could not pay a retry at all: the first answer was cut by the
+            # budget, said so, naming the cap.
+            again = dict(again, error="budget_ran_out",
+                         detail=f"budget ran out mid-answer: the answer stopped at its measured "
+                                f"bound and its retry could not start ({again.get('detail')})")
+        got = dict(again, cost_usd=float(again.get("cost_usd") or 0.0)
+                   + float(got.get("cost_usd") or 0.0),
+                   also_calls=[got.get("call_id") or ""] + list(again.get("also_calls") or []),
+                   retried_after=got.get("detail") or "")
+    if got.get("error") == "max_tokens" and got.get("sized_kind") == "cap":
+        # Sized by a cap and stopped there (a first call or its retry): no budget is left to
+        # ask again with, so the budget ran out, named with its cap, amount and remaining
+        # (the operator's words, 2026-11-16). Sized by the model's maximum, it stays
+        # max_tokens, its detail naming "the model's maximum output (128K)".
+        got = dict(got, error="budget_ran_out",
+                   detail=f"budget ran out mid-answer ({got.get('sized_cap')}); "
+                          f"{got.get('detail')}")
     return dict(got, **told) if told else got
+
+
+def _spent_plus(spend_cap, usd):
+    """*spend_cap* with *usd* (a first call's recorded cost, not yet on the caller's own
+    record) added to what it says was spent, so a retry's cap checks count it (the review,
+    2026-11-16); None stays None."""
+    if not spend_cap or not usd:
+        return spend_cap
+    base = spend_cap["spent"]
+
+    def spent():
+        got = base()
+        if got.get("state") != "ok":
+            return got
+        return dict(got, usd=float(got.get("usd") or 0.0) + float(usd))
+
+    return dict(spend_cap, spent=spent)
 
 
 def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
@@ -762,7 +856,7 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
         out = calls.record(dict(row, verdict=kind, detail=detail, **extra))
         log.info("ai: %s refused for %s: %s", feature, kind, detail)
         return {"ok": False, "error": kind, "detail": detail, "call_id": call_id,
-                "recorded": out.get("recorded", False), **told}
+                "recorded": out.get("recorded", False), **told, **count_of(row)}
 
     def refused(kind, detail, **extra):
         return {"refused": refuse(kind, detail, **extra)}
@@ -799,31 +893,57 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
     # passed; the fallback over-estimate when the count is not had, said. Both on the row. A
-    # task in `COUNTED_ONLY_OVER` is counted only when the over-estimate is over its bound, or
-    # when its text is not mostly ASCII (`NON_ASCII_MOST`), where the estimate may be under.
+    # task in `COUNTED_ONLY_OVER` is counted only when the over-estimate is over the room the
+    # window leaves for the largest answer (`profiles.prompt_room`), or when its text is not
+    # mostly ASCII (`NON_ASCII_MOST`), where the estimate may be under; and again, counted,
+    # when the caps would refuse it on the estimate (`recount`, `_capped_send`).
     skip = feature in COUNTED_ONLY_OVER and _ascii_enough(body)
-    measured = Counter(model, key, count=count, feature=feature,
-                       prompt=row["prompt"]).measure(
-        body, masked=True, budget=pin["max_prompt_tokens"] if skip else None)
+    counter_ = Counter(model, key, count=count, feature=feature, prompt=row["prompt"])
+    measured = counter_.measure(body, masked=True,
+                                budget=profiles.prompt_room(feature) if skip else None)
     if measured.get("held"):
         # The count met the provider's usage limit (C2096): refused for it, as a send's
         # refusal would be, never judged by the fallback's size.
         return refused(provider_limit.KIND, measured["held"],
                        **_limit_fields(measured["hold"]))
-    est = measured["tokens"]
-    row["prompt_tokens"] = est
-    row["prompt_count"] = {k: v for k, v in measured.items() if k != "tokens"}
+
+    def keep(got):
+        row["prompt_tokens"] = got["tokens"]
+        # The request's characters beside its tokens (C3890): what a caller's own fit
+        # measures, so a counted request gives that run's characters a token.
+        row["prompt_count"] = dict({k: v for k, v in got.items() if k != "tokens"},
+                                   chars=len(json.dumps(body, ensure_ascii=False)))
+        return got["tokens"]
+
+    est = keep(measured)
+
+    def recount():
+        """The provider's count of a prompt the caps were judging by the fallback
+        over-estimate (skipped as within the window): the counted tokens, kept on the row, or
+        None when it was counted already or the count is not had."""
+        if not skip or row["prompt_count"].get("how") == "counted":
+            return None
+        again = counter_.measure(body, masked=True)
+        return keep(again) if again.get("how") == "counted" else None
+
     how = ("counted by the provider" if measured["how"] == "counted" else
            f"by the fallback estimate, {CHARS_PER_TOKEN} characters a token "
            f"({measured['why']})")
-    if est > pin["max_prompt_tokens"]:
-        long_at = profile.get("long_prompt_tokens")
-        return refused("prompt_too_long", f"this prompt is {est} tokens ({how}), over the "
-                       f"task's bound of {pin['max_prompt_tokens']}"
-                       + (f" ({model} charges every rate at its long tier over {long_at})"
-                          if long_at else "") + "; nothing was sent")
+    # The only size bound (the operator, 2026-11-16): the model's context window, the prompt
+    # with the task's typical answer inside it.
+    window = profiles.context_window(model)
+    typical = background.typical_output(feature)
+    bound = max(0, window - int(typical["tokens"]))
+    row["prompt_bound"] = bound
+    if est > bound:
+        return refused("prompt_too_long", f"this prompt is {est:,} tokens ({how}); with the "
+                       f"task's typical answer of {int(typical['tokens']):,} tokens "
+                       f"({typical['basis']}) it is over {model}'s context window of "
+                       f"{window:,} tokens ({profiles.LIMITS_SOURCE}): the prompt may be at "
+                       f"most {bound:,}; nothing was sent")
     return {"row": row, "body": body, "model": model, "max_tokens": max_tokens, "key": key,
-            "told": told, "est": est, "refuse": refuse}
+            "told": told, "est": est, "refuse": refuse, "recount": recount,
+            "typical": typical}
 
 
 #: Added to the adapter's worst case for a press's wait: the caps' read and the record's write
@@ -832,10 +952,12 @@ PRESS_MARGIN_S = 15.0
 
 
 def send_bound_s() -> float:
-    """One call's longest time in the adapter: each attempt's connect and read bounds, every
-    retry and the longest wait between them, 65 s x 3 + 20 s x 2 = 235 s (from
-    anthropic_adapter.TIMEOUT, MAX_RETRIES and MAX_WAIT_S). Derived from the adapter's bounds,
-    not measured: no live call has been measured near them."""
+    """One call's longest time in the adapter WITHOUT a sign of life: each attempt's connect
+    and idle bounds, every retry and the longest wait between them, 65 s x 3 + 20 s x 2 =
+    235 s (from anthropic_adapter.TIMEOUT, its read bound the stream's idle bound, MAX_RETRIES
+    and MAX_WAIT_S). A streamed answer has no whole bound (the operator, 2026-11-16): its
+    reservation is kept alive by its live checks (`LIVE_EVERY_S`), so this bounds only a call
+    whose process died. Derived from the adapter's bounds, not measured."""
     a = anthropic_adapter
     return (a.TIMEOUT[0] + a.TIMEOUT[1]) * (a.MAX_RETRIES + 1) + a.MAX_WAIT_S * a.MAX_RETRIES
 
@@ -883,24 +1005,50 @@ def _joined(row: dict, kept: dict, schema_model, why: str, scope: str) -> dict:
     return dict(from_row(kept, schema_model), recorded=out.get("recorded", False))
 
 
+#: The live cap check's cadence (the operator, 2026-11-16: "the cap is enforced live"): a
+#: streaming call checks its running cost against every applicable cap, under the
+#: reservations' lock, on its first event, then each time its output grows by its STEP, and
+#: at least every `LIVE_EVERY_S` (which also keeps its reservation alive, far inside
+#: `reservation_ttl_s`'s 587 s). The step is `LIVE_STEP_TOKENS` far from a cap and half of
+#: what the tightest cap's remaining can still pay for near one, so checks come closer as the
+#: remaining shrinks and the cap is never passed between two of them. Far from a cap that is
+#: one locked write of a small file a thousand tokens (about every 15 s at the 60-80 tokens a
+#: second Sonnet streams, reasoned, not measured on this host), cheap beside the model's own
+#: time.
+LIVE_STEP_TOKENS = 1000
+LIVE_EVERY_S = 15.0
+#: The slack past a check one event may carry (a delta's tokens arrive in one event, so the
+#: count can overshoot the step by at most one event's): REASONED, not measured, a text or
+#: thinking delta carries a few tokens; 200 is generous. A call whose tightest remaining,
+#: after its running cost, is under this aborts. The headroom each check leaves for the tokens
+#: before the next is therefore (step + slack) tokens at the output rate.
+LIVE_SLACK_TOKENS = 200
+
+
 def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, send, today,
-                 refuse, tokens=None) -> dict:
-    """The part of `ask` that spends: the caps judged by the worst case (*tokens*, the
-    prompt's count or estimate, as cache writes, and all of `max_tokens`), reserved against
-    them atomically across threads and processes (C2039, `reservations`), the send, and the
-    answer checked and recorded (the module's docstring, items 6 on); the reservation settled
-    once the row is recorded, whatever the outcome."""
+                 refuse, tokens=None, typical=None, recount=None, spend_cap=None,
+                 size_mode: str = "bound", stop_if=None) -> dict:
+    """The part of `ask` that spends (the module's docstring, item 6; the operator,
+    2026-11-16): the call's **hold** (its counted prompt priced as cache writes, plus its
+    task's typical output, `background.typical_output`) judged against every applicable cap's
+    remaining, counting every other call's hold or live spend, and reserved, under the
+    reservations' one lock across threads and processes (C2039); **max_tokens the model's
+    maximum** (inside the context window); the send, streamed, its **running cost checked live**
+    against the same caps (`LIVE_STEP_TOKENS`, `reservations.live_check`) and the stream closed the
+    moment the next tokens could pass one ("budget ran out mid-answer", never parsed); the
+    answer checked and recorded; the reservation settled once the row is recorded, whatever
+    the outcome. *spend_cap* is the caller's own cap (`ask`). A call with thinking on is sized
+    by its measured bound instead (`output_bound`, its hold its whole max_tokens; *size_mode*
+    "remaining" on its one retry, `ask`). *stop_if* (``stop_if() -> bool``) closes the stream
+    when the caller's job was stopped."""
+    import time as _time
+
     from modules.ai import reservations
 
     cap = caps(feature)
     # No day cap (an admin's choice) is said in every cap refusal, so nobody reads one as the
     # day cap's.
     uncapped = "" if cap["per_day"] is not None else f"; {NO_DAY_CAP_WORDS}"
-    worst = worst_case_usd(model, body, tokens)
-    if worst > cap["per_call"]:
-        return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
-                      f"{feature} task's per-call cap ${cap['per_call']:.4f}{uncapped}",
-                      worst_usd=worst)
     # The cap's day: its midnight the stated boundary's (calls.today; UTC by default), from a
     # clock asked for UTC by name (never a local time read by default).
     day = today or calls.today()
@@ -912,49 +1060,245 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     counted, counted_net = triggers.counted_feature(trig)
     capped_as = (trig if is_background else
                  {"feature": counted, "network": counted_net} if counted else None)
+    typical = typical or background.typical_output(feature)
+    typ = int(typical["tokens"])
+    scope = str((spend_cap or {}).get("scope") or "")
+    size = {"tokens": int(tokens if tokens is not None else prompt_tokens(body))}
 
-    def judge(held):
-        """Inside the reservations' lock: the spend read, then every cap against the spend,
-        what is in flight and this call (None allows it)."""
+    def priced():
+        """``(prompt_usd, output_rate, rates)``: the prompt priced conservatively, every token
+        at the cache-write rate of its length's tier, and one output token's price."""
+        rates = profiles.prices_for(model, size["tokens"])
+        return (size["tokens"] * rates["cache_write"] / 1_000_000,
+                rates["output"] / 1_000_000, rates)
+
+    def left(held):
+        """Every applicable cap's remaining against *held* (the other calls' holds or live
+        spend), ``[{"kind", "cap_kind", "name", "cap", "spent", "held", "calls",
+        "remaining"}]``, or a refusal ``{"kind", "why", ...}`` when one cannot be read."""
+        out = []
         spent = calls.spent_usd(day)
         if spent["state"] == "unreadable":
             return {"kind": "over_cap", "why": "the record of AI calls cannot be read, so "
                     f"today's spend is unknown ({spent['error']}){uncapped}; nothing was sent"}
-        flying = reservations.in_flight(held)
-        if cap["per_day"] is not None and spent["usd"] + flying["usd"] + worst > cap["per_day"]:
-            return {"kind": "over_cap", "worst_usd": worst, "why": (
-                f"today's spend ${spent['usd']:.4f} plus ${flying['usd']:.4f} reserved by "
-                f"{flying['calls']} call(s) in flight plus this call's worst case "
-                f"${worst:.4f} is over the day cap ${cap['per_day']:.4f}")}
+        if cap["per_day"] is not None:
+            flying = reservations.in_flight(held)
+            out.append({"kind": "over_cap", "cap_kind": "installation day",
+                        "name": "the installation's day cap", "cap": float(cap["per_day"]),
+                        "spent": float(spent["usd"]), "held": flying["usd"],
+                        "calls": flying["calls"],
+                        "remaining": float(cap["per_day"]) - spent["usd"] - flying["usd"]})
         if capped_as:
-            over = background.over_cap(capped_as, worst, day, reserved=reservations.in_flight(
+            got = background.remaining(capped_as, day, reservations.in_flight(
                 held, feature=capped_as["feature"], network=capped_as["network"]))
-            if over:
-                return {"kind": over["kind"], "why": over["why"], "cap_kind": over["cap"],
-                        "worst_usd": worst}
-        return None
+            if "kind" in got:
+                return {"kind": got["kind"], "why": got["why"], "cap_kind": got["cap"]}
+            for which in ("day", "month"):
+                r = got[which]
+                out.append({"kind": "feature_cap", "cap_kind": which,
+                            "name": f"{r['name']}'s {which} cap on {r['network']}",
+                            "cap": r["cap"], "spent": r["spent"], "held": r["held"],
+                            "calls": r["calls"], "remaining": r["cap"] - r["spent"] - r["held"]})
+        if spend_cap:
+            own = spend_cap["spent"]()
+            if own.get("state") != "ok":
+                return {"kind": "over_cap", "cap_kind": spend_cap.get("kind") or "own",
+                        "why": f"{spend_cap['name']}: its spend is not known "
+                               f"({own.get('error')}); nothing was sent"}
+            flying = reservations.in_flight(held, scope=scope)
+            out.append({"kind": "over_cap", "cap_kind": spend_cap.get("kind") or "own",
+                        "name": spend_cap.get("said") or spend_cap["name"],
+                        "cap": float(spend_cap["usd"]), "spent": float(own["usd"]),
+                        "held": flying["usd"], "calls": flying["calls"],
+                        "remaining": float(spend_cap["usd"]) - float(own["usd"])
+                        - flying["usd"]})
+        return sorted(out, key=lambda c: c["remaining"])
+
+    # A call with thinking on (the operator, 2026-11-16: thinking streams no countable text and
+    # its count arrives only at the end, so the live cap cannot see it): its max_tokens is the
+    # smallest of the model's maximum, what the context window leaves, its task's measured
+    # bound (`background.output_bound`; on a retry, `size_mode` "remaining", none) and what the
+    # tightest remaining cap can pay after other calls' holds; its hold is its counted prompt
+    # plus that max_tokens at the output rate. A visible-output call keeps the live abort.
+    thinking = row.get("thinking") != "off"
+    window = profiles.context_window(model)
+    most = profiles.max_output(model)
+    bound = (background.output_bound(feature) if thinking and size_mode != "remaining"
+             else None)
+    sized = {}
+
+    def judge(held):
+        """Inside the reservations' lock: refused only when the tightest remaining cannot
+        cover this call's counted prompt plus its typical output; a thinking call's max_tokens
+        sized here, under the same lock (`sized`)."""
+        caps_left = left(held)
+        if isinstance(caps_left, dict):
+            return caps_left
+        prompt_usd, rate, _ = priced()
+        need = prompt_usd + typ * rate
+        for c in caps_left:
+            if need > c["remaining"]:
+                return {"kind": c["kind"], "cap_kind": c["cap_kind"], "hold_usd": need, "why": (
+                    f"{c['name']} ${c['cap']:.4f}: spent ${c['spent']:.4f} plus "
+                    f"${c['held']:.4f} held by {c['calls']} call(s) in flight leaves "
+                    f"${max(0.0, c['remaining']):.4f}, under this call's counted prompt "
+                    f"(${prompt_usd:.4f}, {size['tokens']:,} tokens, each priced as a cache "
+                    f"write) plus its typical answer ({typ:,} tokens, ${typ * rate:.4f}; "
+                    f"{typical['basis']}), ${need:.4f}{uncapped}; nothing was sent")}
+        if not thinking:
+            return None
+        top = max(1, min(most, window - size["tokens"]))
+        kind, by, tight = "model", (f"the model's maximum output ({most // 1000}K)"
+                                    if top == most else
+                                    f"what {model}'s context window leaves"), None
+        if bound and int(bound["tokens"]) < top:
+            top = int(bound["tokens"])
+            kind = "fixed_bound" if bound.get("fixed") else "measured_bound"
+            by = f"its {'fixed' if bound.get('fixed') else 'measured'} bound ({bound['basis']})"
+        cap_words = ""
+        if caps_left and kind != "fixed_bound":
+            # A fixed bound is never shrunk by a cap: its start rule already holds it.
+            c = caps_left[0]
+            afford = int((c["remaining"] - prompt_usd) / rate)
+            if afford < top:
+                top, kind, tight = max(1, afford), "cap", c
+                cap_words = (f"{c['name']}, ${c['cap']:.4f}, "
+                             f"${max(0.0, c['remaining']):.4f} remaining after other calls' "
+                             "holds")
+                by = f"what {cap_words} can pay"
+        sized.clear()
+        sized.update(max_tokens=top, kind=kind, by=by, cap=tight, cap_words=cap_words)
+        return {"usd": prompt_usd + top * rate}
 
     ttl = reservation_ttl_s()
     # A background call's reservation names its background feature and network (what its own
     # caps count, `reservations.in_flight`); a person's call that counts for a feature (C3751,
     # a turn-on catch-up) names that feature and network, counted; a person's or an
-    # evaluation's otherwise, its task.
+    # evaluation's otherwise, its task. A caller's own cap's calls carry its scope.
     counts = bool(counted) and not is_background
-    held = reservations.reserve(row["id"], worst, judge=judge, ttl_s=ttl,
-                                feature=counted if counted else feature,
-                                network=counted_net if counted else "",
-                                background=is_background, day=day, counts=counts)
+
+    def hold_now():
+        prompt_usd, rate, _ = priced()
+        return prompt_usd + typ * rate
+
+    def reserve():
+        return reservations.reserve(row["id"], hold_now(), judge=judge, ttl_s=ttl,
+                                    feature=counted if counted else feature,
+                                    network=counted_net if counted else "",
+                                    background=is_background, day=day, counts=counts,
+                                    scope=scope)
+
+    held = reserve()
+    if not held["ok"] and recount is not None:
+        # Judged by the fallback over-estimate (the count skipped as within the window): the
+        # provider's count asked, and the hold judged again by it, once.
+        n = recount()
+        if n is not None:
+            size["tokens"] = int(n)
+            held = reserve()
     if not held["ok"]:
         said = dict(held["refusal"])
         return refuse(said.pop("kind"), said.pop("why"), **said)
+    prompt_usd, rate, _rates = priced()
+    if thinking:
+        max_tokens, max_kind, max_by = sized["max_tokens"], sized["kind"], sized["by"]
+        hold_usd = prompt_usd + max_tokens * rate
+    else:
+        # A visible-output call: max_tokens the model's maximum, inside what the context
+        # window leaves; the cap is enforced live (`progress`).
+        max_tokens = max(1, min(most, window - size["tokens"]))
+        max_kind = "model"
+        max_by = (f"the model's maximum output ({most // 1000}K)" if max_tokens == most
+                  else f"what {model}'s context window ({window:,}) leaves after the prompt")
+        hold_usd = hold_now()
+    body["max_tokens"] = max_tokens
+    row["sized"] = {"max_tokens": max_tokens, "by": max_by, "kind": max_kind,
+                    "cap_words": sized.get("cap_words") or "" if thinking else "",
+                    "thinking": thinking, "retry": size_mode == "remaining",
+                    "hold_usd": round(hold_usd, 6),
+                    "prompt_tokens": size["tokens"], "prompt_usd": round(prompt_usd, 6),
+                    "typical_output": typ, "typical_basis": typical["basis"],
+                    **({"bound_basis": bound["basis"]} if bound else {}),
+                    "pricing": "every prompt token at the cache-write rate of its tier "
+                               "until the stream reports its input, cache-read and "
+                               "cache-write tokens, then as reported"}
+    # The live check (`LIVE_STEP_TOKENS`): what the stream's running cost is held at, and
+    # why it was stopped.
+    state = {"next": 0, "at": None, "usd": hold_usd, "stopped": None, "abort_kind": ""}
+
+    def prompt_cost(lv):
+        """The prompt's cost as the stream reported it (``message_start``'s input, cache-read
+        and cache-write tokens), or the conservative price before it arrives."""
+        usage = lv.get("usage") or {}
+        inp = int(usage.get("input_tokens") or 0)
+        cw = int(usage.get("cache_creation_input_tokens") or 0)
+        cr = int(usage.get("cache_read_input_tokens") or 0)
+        if inp + cw + cr:
+            return profiles.cost_usd(model, inp, 0, cache_write_tokens=cw,
+                                     cache_read_tokens=cr)
+        return prompt_usd
+
+    def progress(lv):
+        """The adapter's after-each-event hook: ``""`` to go on, else why to stop."""
+        now_ = _time.monotonic()
+        out_n = int(lv.get("output_tokens") or 0)
+        if state["at"] is not None and out_n < state["next"] \
+                and now_ - state["at"] < LIVE_EVERY_S:
+            return ""
+        state["at"] = now_
+        if stop_if is not None and stop_if():
+            # Its job was stopped past its bound (the review, 2026-11-16): the stream is closed
+            # at once, recorded partial.
+            state["abort_kind"] = "job_stopped"
+            return "its job was stopped past its bound, so the stream was closed"
+        paid = prompt_cost(lv)
+        running = paid + out_n * rate
+        # The hold re-priced from what the stream reported (a cached pass holds what it costs).
+        hold = paid + (max_tokens if thinking else typ) * rate
+        slack = min(LIVE_SLACK_TOKENS, max(1, typ))
+
+        def judge_live(others):
+            if thinking:
+                # Held at its whole max_tokens from the start: nothing to abort live. Checked at
+                # the same cadence as a visible call (every `LIVE_STEP_TOKENS` or
+                # `LIVE_EVERY_S`, the job-stop check with it), never on every event.
+                state["next"] = out_n + LIVE_STEP_TOKENS
+                state["usd"] = max(hold, running)
+                return {"usd": running, "hold": hold}
+            caps_left = left(others)
+            if isinstance(caps_left, dict):
+                return {"stop": caps_left["why"]}
+            step = LIVE_STEP_TOKENS
+            for c in caps_left:
+                room = c["remaining"] - running
+                if room < slack * rate:
+                    state["stopped"] = dict(c, running_usd=running, output_tokens=out_n,
+                                            how=lv.get("how") or "estimated")
+                    return {"stop": (
+                        f"budget ran out mid-answer ({c['name']}, ${c['cap']:.4f}, "
+                        f"${max(0.0, c['remaining']):.4f} remained after ${c['spent']:.4f} "
+                        f"spent and ${c['held']:.4f} held by {c['calls']} other call(s)): "
+                        f"its running cost ${running:.4f} at about {out_n:,} output tokens "
+                        f"({lv.get('how') or 'estimated'}) left under {slack:,} tokens' room, "
+                        "so the stream was closed")}
+                step = min(step, max(1, int(room / rate / 2) - slack))
+            state["next"] = out_n + step
+            state["usd"] = max(hold, running + (step + slack) * rate)
+            return {"usd": running + (step + slack) * rate, "hold": hold}
+
+        return reservations.live_check(row["id"], judge=judge_live, ttl_s=ttl)
+
     recorded = False
     # The verdict and cost of the row the record was asked to take (C2047): a refused row's
     # reservation is kept as unrecorded, holding that cost, never left to expire.
-    counted = ("exception", worst)
+    counted = ("exception", state["usd"])
     try:
         sent_at = provider_limit.clock()
         try:
-            reply = (send or anthropic_adapter.send)(body, key)
+            reply = (anthropic_adapter.send(body, key, progress=progress) if send is None
+                     else send(body, key))
+        except anthropic_adapter.StreamFailed as exc:
+            out = _broken(row, exc, model, prompt_usd, rate, state)
         except anthropic_adapter.WorkspaceLimit as exc:
             # The workspace's usage limit (C2084): held, so every later call is refused here
             # without asking the provider, and said in the words every screen uses.
@@ -976,12 +1320,15 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         return out
     except BaseException as exc:
         # Not one of the adapter's kinds, nor an answer the gateway reads: whether the provider
-        # billed it is unknown, so its worst case is what the record counts (`counted` as set
-        # before the send).
-        got = calls.record(dict(row, verdict="exception", cost_usd=worst, worst_usd=worst,
+        # billed it is unknown, so what the call was last held at (its hold, or its running
+        # cost and headroom at its last live check) is what the record counts.
+        most = float(state["usd"])
+        counted = ("exception", most)
+        got = calls.record(dict(row, verdict="exception", cost_usd=most, worst_usd=most,
+                                cost_known=False,
                                 detail=f"the call raised {type(exc).__name__} after it was "
                                        "reserved; whether the provider billed it is unknown, "
-                                       f"so its worst case ${worst:.4f} is counted"))
+                                       f"so what it was last held at, ${most:.4f}, is counted"))
         recorded = bool(got.get("recorded"))
         raise
     finally:
@@ -993,6 +1340,60 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         else:
             reservations.hold_unrecorded(row["id"], [reservations.late_row(
                 row, verdict=counted[0], cost_usd=counted[1])], ttl)
+
+
+def _broken(row, exc, model, prompt_usd, rate, state) -> dict:
+    """A streamed call that ended without a whole answer (`anthropic_adapter.StreamFailed`:
+    broken off, an error event, or closed by its live cap check, ``budget_ran_out``): recorded
+    ``partial`` with its reason and never parsed. Its cost is the usage the stream reported
+    (``message_start``'s input and cache tokens, the last ``message_delta``'s output tokens);
+    where the provider's output count never arrived, the deltas counted
+    (`anthropic_adapter.live_output_tokens`), and where no input usage arrived, the counted
+    prompt priced as cache writes, ``cost_estimated`` then true: never zero for a stream the
+    provider started. A stream that broke before ``message_start`` (nothing taken) is a
+    refusal as before, its cost unknown and counted at the call's hold."""
+    # Its job stopped (`_capped_send`'s *stop_if*) is its own kind, never a cap's.
+    kind = state.get("abort_kind") or exc.kind
+    usage = dict(exc.usage or {})
+    stream = dict(exc.stream or {})
+    tokens = {k: int(usage.get(k) or 0) for k in ("input_tokens", "output_tokens",
+                                                   "cache_read_input_tokens",
+                                                   "cache_creation_input_tokens")}
+    reported = stream.get("output_reported")
+    out_n = int(reported if reported is not None else (stream.get("output_estimated") or 0))
+    prompt_n = (tokens["input_tokens"] + tokens["cache_creation_input_tokens"]
+                + tokens["cache_read_input_tokens"])
+    estimated = reported is None or not prompt_n
+    if prompt_n:
+        cost = profiles.cost_usd(model, tokens["input_tokens"], out_n,
+                                 cache_write_tokens=tokens["cache_creation_input_tokens"],
+                                 cache_read_tokens=tokens["cache_read_input_tokens"])
+    else:
+        cost = prompt_usd + out_n * rate
+    if not exc.partial:
+        # The provider never started the answer: whether it billed anything is unknown, so the
+        # call's hold is what counts, said.
+        cost, estimated = float(state["usd"]), True
+    tokens["output_tokens"] = out_n
+    stopped = state.get("stopped")
+    lead = ("budget ran out mid-answer: " if kind == "budget_ran_out"
+            and not str(exc).startswith("budget ran out") else "")
+    why = (lead + f"{exc} (partial: {'the cost is an estimate, ' if estimated else ''}"
+           f"${cost:.4f} recorded; nothing of the answer was parsed)")
+    extra = {"partial": True, "partial_reason": kind, "cost_usd": round(cost, 6),
+             "cost_estimated": estimated, "tokens": tokens, "stream": stream,
+             "attempts": exc.attempts, "ratelimit": exc.headers}
+    if stopped:
+        extra["cap_kind"] = stopped.get("cap_kind")
+        extra["stopped_at"] = {k: stopped.get(k) for k in ("name", "cap", "remaining",
+                                                            "running_usd", "output_tokens",
+                                                            "how")}
+    got = calls.record(dict(row, verdict=kind, detail=why, **extra))
+    log.info("ai: %s ended partial (%s): %s", row.get("feature"), kind, why)
+    return {"ok": False, "error": kind, "detail": why, "call_id": row["id"],
+            "cost_usd": round(cost, 6), "partial": True, "output_began": exc.output_began,
+            "recorded": got.get("recorded", False), **count_of(row),
+            **({"cap_kind": extra["cap_kind"]} if stopped else {})}
 
 
 def cache_writes(usage: dict) -> dict:
@@ -1041,14 +1442,25 @@ def _received(row, reply, model, max_tokens, schema_model, batch: bool = False) 
                 latency_s=round(reply.latency_s, 3),
                 attempts=reply.attempts, ratelimit=reply.headers,
                 stop_reason=reply.body.get("stop_reason", ""),
-                response=redact.redact_egress(text))
+                response=redact.redact_egress(text),
+                **({"stream": dict(reply.stream)} if getattr(reply, "stream", None) else {}))
     stop = reply.body.get("stop_reason")
     if stop == "refusal":
         details = reply.body.get("stop_details") or {}
         return _answered(sent, "refusal", "the model declined "
                          f"(category {details.get('category') or 'none given'})")
     if stop == "max_tokens":
-        return _answered(sent, "max_tokens", f"the answer ran past max_tokens ({max_tokens})")
+        # Never parsed as an answer (the operator, 2026-11-16). A streamed call's max_tokens
+        # is the model's maximum output (or what the context window leaves), never a cap: the
+        # caps stop a stream live, as budget_ran_out.
+        sized = row.get("sized") or {}
+        by = sized.get("by") or "the task's pin"
+        out = _answered(sent, "max_tokens", f"the answer was cut at max_tokens "
+                        f"({max_tokens:,}, set by {by}); nothing of it was parsed")
+        # A thinking call stopped at its measured bound is asked once more, sized to what the
+        # remaining can pay (`ask`); one stopped by a cap on its retry is the budget's.
+        return dict(out, sized_kind=sized.get("kind") or "", sized_retry=bool(sized.get("retry")),
+                    sized_by=by, sized_cap=sized.get("cap_words") or "")
     try:
         output = schema_model.model_validate_json(text)
     except ValidationError as exc:
@@ -1059,7 +1471,18 @@ def _received(row, reply, model, max_tokens, schema_model, batch: bool = False) 
                          f"{first['msg']}")
     out = calls.record(dict(sent, verdict="ok", output=output.model_dump(mode="json")))
     return {"ok": True, "output": output, "call_id": row["id"], "cost_usd": cost,
-            "recorded": out.get("recorded", False)}
+            "recorded": out.get("recorded", False), **count_of(row)}
+
+
+def count_of(row: dict) -> dict:
+    """What a call's result says of its prompt's size once it is measured (C3890): its
+    ``prompt_tokens`` and ``prompt_count`` (``how`` counted or estimated, and ``chars``, the
+    masked request's characters as `Counter` measures them), and ``prompt_bound``, the most
+    the prompt may be inside the model's context window (`_prepared`), copied from its row;
+    ``{}`` before the count. A caller that fits its own requests reads a counted one's
+    characters a token from it, and what it was over (`read_loop.overshoot_chars`)."""
+    return {k: (dict(row[k]) if isinstance(row[k], dict) else row[k])
+            for k in ("prompt_tokens", "prompt_count", "prompt_bound") if k in row}
 
 
 def _answered(row, kind, detail):
@@ -1268,14 +1691,11 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
         if "refused" in prep:
             results[cid] = dict(prep["refused"], custom_id=cid)
             continue
+        # No per-call cap (the operator, 2026-11-16: the spending limits are the only
+        # governor): the batch's whole worst case is judged against the evaluation's stop and
+        # the day cap below. A batched request keeps its pin's max_tokens (an evaluation's
+        # answers are read whole, never streamed).
         worst = batch_worst_case_usd(prep["model"], prep["body"], prep["est"])
-        per_call = profiles.cap_per_call(r["feature"])
-        if worst > per_call:
-            results[cid] = dict(prep["refuse"]("over_cap", (
-                f"this batched request's worst case ${worst:.4f} is over the {r['feature']} "
-                f"task's per-call cap ${per_call:.4f}; nothing was sent"), worst_usd=worst),
-                custom_id=cid)
-            continue
         ready.append(dict(prep, custom_id=cid, worst=worst, schema_model=r["schema"],
                           feature=r["feature"]))
     if not ready:

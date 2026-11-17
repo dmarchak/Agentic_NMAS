@@ -244,11 +244,13 @@ def _today() -> str:
 
 
 def mark_title(task: str) -> str:
-    """The mark's hover: the task, its pinned model and its per-call cap."""
+    """The mark's hover: the task, its pinned model and its measured typical cost per call (no
+    call has a cap of its own: the operator, 2026-11-16)."""
     pin = profiles.task(task)
     model = profiles.profile(pin["model"])
     return (f"AI: {pin['words']}. Pinned model: {model['words']} ({pin['model']}). "
-            f"At most {_money.usd(profiles.cap_per_call(task), exact=True)} a call.")
+            f"About {_money.usd(profiles.cap_per_call(task), exact=True)} a call "
+            f"({profiles.PER_CALL_LABEL}); the spending limits stop it.")
 
 
 def readiness(task: str, today: str = None, spent=None) -> dict:

@@ -7,12 +7,16 @@ Haiku 5.5 is priced by prompt length: a prompt over 100,000 tokens (all its inpu
 and writes included) pays every rate at its long tier, 5x. The card draws this table, and says
 so when it is older than `PRICES_STALE_DAYS`.
 
-**Tasks** pin their model, and the bounds their caps derive from: the most a prompt may hold
-(`max_prompt_tokens`, always under a model's long tier) and the most an answer may
-(`max_tokens`). A task's per-call cap is its pinned model's worst case at those bounds; there is
-no model switch at run time. Each task's pin is a file, `pins/<task>.json`, with its request
-settings (thinking, temperature) beside its bounds: tuning one is an edit to that file, read by
-the gateway's unchanged code. Changing a task's model re-runs the task's recorded cases (their
+**Tasks** pin their model; there is no model switch at run time. Each task's pin is a file,
+`pins/<task>.json`, with its request settings (thinking, temperature). **No size bound of
+Mercury's own** (the operator, 2026-11-16: "remove every AI token/size limit Mercury sets
+itself. The spending limits ... are the only governor"): a prompt is bounded only by its model's
+real context window (`context_window`; the fit cuts only to stay inside it, `prompt_room`), and
+an answer's ``max_tokens`` is sized per call by the gateway to what the remaining spend can pay
+for, at most the model's maximum (`max_output`). A pin's ``max_prompt_tokens`` is kept in the
+file (the pin's keys are exact, `PIN_KEYS`) and enforced by nothing; its ``max_tokens`` is the
+stand-in for a task's typical answer until its calls are measured
+(`background.typical_output`). Changing a task's model re-runs the task's recorded cases (their
 recorded model must be the pinned one: tests/test_ai_gateway.py). The rule: a task runs on the
 cheapest model that meets its floor.
 """
@@ -27,7 +31,16 @@ PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
 PRICES_AS_OF = "2026-10-27"
 PRICES_STALE_DAYS = 90
 
-#: Per million tokens, from PRICES_SOURCE on PRICES_AS_OF (its "Model pricing" table).
+#: Where each model's context window and most output tokens are stated (the operator,
+#: 2026-11-16): every model's ``context_window`` and ``max_output_tokens`` below.
+LIMITS_SOURCE = "the Claude API reference, cached 2026-11-03"
+#: The three models' shared figures, from `LIMITS_SOURCE`: a 1,000,000-token context window and
+#: at most 128,000 output tokens a call.
+_WINDOW = {"context_window": 1_000_000, "max_output_tokens": 128_000,
+           "limits_source": LIMITS_SOURCE}
+
+#: Per million tokens, from PRICES_SOURCE on PRICES_AS_OF (its "Model pricing" table); each
+#: model's context window and most output tokens from LIMITS_SOURCE (`_WINDOW`).
 MODELS = {
     "claude-haiku-5-5": {
         "provider": ANTHROPIC, "words": "Claude Haiku 5.5",
@@ -43,6 +56,7 @@ MODELS = {
         "long_prompt_tokens": 100_000,
         "long_price": {"input": 0.50, "cache_write": 0.625, "cache_read": 0.05,
                        "output": 2.50},
+        **_WINDOW,
     },
     "claude-sonnet-5-5": {
         "provider": ANTHROPIC, "words": "Claude Sonnet 5.5",
@@ -54,6 +68,7 @@ MODELS = {
         "temperatures": [1],
         # Cache hits at 0.05x the input rate (the page's note 2; C1679).
         "price": {"input": 2.00, "cache_write": 2.50, "cache_read": 0.10, "output": 10.00},
+        **_WINDOW,
     },
     # A measurement ceiling (the operator, 2026-10-27: Opus against Sonnet on Explain), never a
     # product default unless nothing smaller meets the bar (PHASE8_PLAN 15.12). Its prices read
@@ -69,6 +84,7 @@ MODELS = {
         "temperatures": [1],
         # Cache hits at 0.05x the input rate (the page's note 2).
         "price": {"input": 4.00, "cache_write": 5.00, "cache_read": 0.20, "output": 20.00},
+        **_WINDOW,
     },
 }
 
@@ -126,6 +142,35 @@ def task(name: str) -> dict:
         return TASKS[name]
     except KeyError:
         raise KeyError(f"no task {name!r}; known: {', '.join(sorted(TASKS))}") from None
+
+
+def context_window(model: str) -> int:
+    """*model*'s context window in tokens (`LIMITS_SOURCE`): the prompt plus a call's
+    ``max_tokens`` must fit inside it."""
+    return int(profile(model)["context_window"])
+
+
+def max_output(model: str) -> int:
+    """The most output tokens one call of *model* may ask for (`LIMITS_SOURCE`)."""
+    return int(profile(model)["max_output_tokens"])
+
+
+def prompt_room(name: str) -> int:
+    """The most a task's prompt may hold for a caller's fit, in tokens: its model's context
+    window less the model's most output tokens, so a prompt fitted to it always leaves room for
+    the largest answer the caps could pay for (872,000 for every model today). The only size
+    bound a fit cuts to (the operator, 2026-11-16); the gateway's own check is the window
+    itself (`gateway._prepared`)."""
+    model = task(name)["model"]
+    return context_window(model) - max_output(model)
+
+
+def unmeasured_cost(name: str) -> float:
+    """A task's stand-in cost of one call while none is measured: its pin's old bounds priced as
+    the gateway prices a prompt (every prompt token a cache write) plus the pin's ``max_tokens``
+    of answer. Said as not measured wherever it is drawn (`background.measured_cost`)."""
+    t = task(name)
+    return cost_usd(t["model"], 0, t["max_tokens"], cache_write_tokens=t["max_prompt_tokens"])
 
 
 def prices_for(model: str, prompt_tokens: int) -> dict:
@@ -194,11 +239,20 @@ def batch_cost_usd(model: str, input_tokens: int, output_tokens: int, *,
             + output_tokens * rates["output"]) / 1_000_000
 
 
+#: What `cap_per_call`'s figure is, in a person's words (the operator, 2026-11-16: "'Cap per
+#: call' in Settings becomes the measured typical cost per task, labelled as such").
+PER_CALL_LABEL = "typical cost per call (measured)"
+
+
 def cap_per_call(name: str) -> float:
-    """A task's per-call cap: its pinned model's worst case at its bounds (every prompt token
-    a cache write, the dearest input, and all of max_tokens)."""
-    t = task(name)
-    return cost_usd(t["model"], 0, t["max_tokens"], cache_write_tokens=t["max_prompt_tokens"])
+    """A task's **measured typical cost per call** (no longer a cap: the spending limits are the
+    only governor, and each call's ``max_tokens`` is sized by the gateway to what they leave):
+    the mean cost of its sent calls over the cost window (`background.measured_cost`), or, with
+    none measured, its stand-in (`unmeasured_cost`), said there as not measured. The name is
+    kept for its callers; `PER_CALL_LABEL` is how a screen labels it."""
+    from modules.ai import background
+
+    return float(background.measured_cost(name)["usd_per_call"])
 
 
 def cases_off_pin(root: str) -> list:
@@ -235,17 +289,25 @@ def prices_age_days(today: str = None) -> int:
 
 
 def table(today: str = None) -> dict:
-    """What the AI card draws, read-only: each task → its model → the rates its cap uses →
-    the cap; the prices' page, date and whether they are stale."""
+    """What the AI card draws, read-only: each task → its model → its rates → its measured
+    typical cost per call (`cap_per_call`, labelled `PER_CALL_LABEL`, with its basis), and the
+    model's context window and most output tokens; the prices' page, date and whether they are
+    stale."""
+    from modules.ai import background
+
     rows = []
     for name in sorted(TASKS):
         t = TASKS[name]
         p = profile(t["model"])
+        cost = background.measured_cost(name)
         rows.append({"task": name, "words": t["words"], "model": t["model"],
                      "model_words": p["words"], "price": p["price"],
                      "long_prompt_tokens": p.get("long_prompt_tokens"),
-                     "max_prompt_tokens": t["max_prompt_tokens"], "max_tokens": t["max_tokens"],
-                     "cap_usd": cap_per_call(name)})
+                     "context_window": p["context_window"],
+                     "max_output_tokens": p["max_output_tokens"],
+                     "cap_usd": float(cost["usd_per_call"]), "cap_label": PER_CALL_LABEL,
+                     "cap_measured": bool(cost["measured"]), "cap_basis": cost["basis"]})
     age = prices_age_days(today)
     return {"rows": rows, "as_of": PRICES_AS_OF, "source": PRICES_SOURCE, "age_days": age,
-            "stale": age > PRICES_STALE_DAYS, "stale_days": PRICES_STALE_DAYS}
+            "stale": age > PRICES_STALE_DAYS, "stale_days": PRICES_STALE_DAYS,
+            "limits_source": LIMITS_SOURCE}

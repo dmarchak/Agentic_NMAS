@@ -1093,7 +1093,8 @@ def _topology_yaml(topo: dict, why: bool, source: bool, omitted: list) -> str:
 def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None,
              feature: str = FEATURE) -> dict:
     """v6 under the context budget rule (PHASE8_PLAN 10.6; the operator, 2026-10-26), the
-    task's `max_prompt_tokens` its budget: the network context's parts dropped in
+    room the model's context window leaves a prompt (`profiles.prompt_room`) its budget: the
+    network context's parts dropped in
     `nl_query.CONTEXT_DROPS`' order (the device index, the summary's links and counts, each
     layer's why, the whole summary), then the pack's in `PACK_DROPS`' order, one piece at a
     time, then each layer's source last; each layer's status and age always kept. ``{"data",
@@ -1103,8 +1104,10 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None,
     from modules import network_model as NM
     from modules.ai import fact_sheet, nl_query, prompts, profiles
 
+    # The only size bound is the model's context window (the operator, 2026-11-16): the room
+    # it leaves a prompt (`profiles.prompt_room`), never the pin's old per-task bound.
     loaded, pin = prompts.load(*prompt), profiles.TASKS[feature]
-    budget = pin["max_prompt_tokens"]
+    budget = profiles.prompt_room(feature)
     base_sections = sent_sections(pack, topo)
     # The fact sheet is computed from the pack as sent before anything is dropped for size, so
     # it is the same at every level.
@@ -1174,8 +1177,9 @@ def trimmed(pack: dict, prompt: tuple, schema, data: dict, ctx: dict, sections: 
     "pack_dropped", "estimate", "budget"}``, *pack_dropped* each trimmed section's count."""
     from modules.ai import fact_sheet, prompts, profiles
 
+    # The context window's room for a prompt (`profiles.prompt_room`; the operator, 2026-11-16).
     loaded, pin = prompts.load(*prompt), profiles.TASKS[feature]
-    budget = pin["max_prompt_tokens"]
+    budget = profiles.prompt_room(feature)
     order = _pack_drop_order(pack, sections)
 
     def build(n: int) -> dict:

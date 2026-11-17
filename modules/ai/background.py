@@ -58,7 +58,8 @@ log = logging.getLogger(__name__)
 
 #: The setting holding every network's switches.
 SETTING = "ai_background"
-#: The measured cost per call is the mean over this many cap days of sent calls.
+#: The measured cost per call is the mean over this many cap days of sent calls, and a task's
+#: typical output the median over the same window (`typical_output`).
 COST_WINDOW_DAYS = 30
 #: A month in the estimate's words: 30 days.
 MONTH_DAYS = 30
@@ -118,7 +119,8 @@ FEATURES: dict = {
                           "incident's kind"),
         "findings": ("fixit_failure",),
         # The calls one investigation is expected to make (`fixit_troubleshoot.CALLS_EXPECTED`:
-        # iterative since C3797, at most `CALLS_WORST`).
+        # iterative since C3797): an estimate input only, never a stop (the operator,
+        # 2026-11-16: an investigation stops when a pass adds no new evidence, or at a cap).
         "calls_per_finding": 3,
         "frequency": "modules.fixit.auto:failure_frequency",
     },
@@ -315,6 +317,30 @@ def over_cap(trigger: dict, worst: float, day: str, reserved: dict = None):
     unreadable record, or a cap out of shape, refuses. A reservation counts against both caps
     whatever day it was made on: it lives minutes, and the call it holds lands on the record
     when it ends, which may be the next day."""
+    got = remaining(trigger, day, reserved)
+    if "kind" in got:
+        return got
+    for which in ("day", "month"):
+        r = got[which]
+        if worst > r["remaining"]:
+            period = "today" if which == "day" else "this month"
+            return {"kind": "feature_cap", "cap": which,
+                    "why": (f"{r['name']}'s spend on {r['network']} {period} "
+                            f"${r['spent']:.4f} plus ${r['held']:.4f} reserved by its "
+                            f"{r['calls']} call(s) in flight plus this call's ${worst:.4f} is "
+                            f"over its {which} cap ${r['cap']:.4f}; it stops until the {which} "
+                            "ends or an admin raises the cap; nothing was sent")}
+    return None
+
+
+def remaining(trigger: dict, day: str, reserved: dict = None) -> dict:
+    """What the feature's day and month caps on its network leave (the operator, 2026-11-16:
+    each call's max_tokens is what the remaining spend can pay for): ``{"day": {...}, "month":
+    {...}}``, each ``{"name", "network", "cap", "spent", "held", "calls", "remaining"}``
+    (*remaining* = cap − spent − what its calls in flight hold, *reserved*, never under 0); or
+    `over_cap`'s refusal ``{"kind", "why", "cap"}`` when the feature is off, a cap is out of
+    shape or the record cannot be read. Read inside the reservations' lock by the gateway, so
+    two calls never size themselves against the same remaining."""
     from modules.ai import spend
 
     held = reserved or {"usd": 0.0, "calls": 0}
@@ -334,17 +360,12 @@ def over_cap(trigger: dict, worst: float, day: str, reserved: dict = None):
         return {"kind": "feature_cap", "cap": "day",
                 "why": (f"the record of AI calls cannot be read, so {name}'s spend on {net} is "
                         f"unknown ({got['error']}); nothing was sent")}
+    out = {}
     for which, spent in (("day", got["day_usd"]), ("month", got["month_usd"])):
-        if spent + held["usd"] + worst > caps[which]:
-            period = "today" if which == "day" else "this month"
-            return {"kind": "feature_cap", "cap": which,
-                    "why": (f"{name}'s spend on {net} {period} ${spent:.4f} plus "
-                            f"${held['usd']:.4f} reserved by its {held['calls']} call(s) in "
-                            f"flight plus this call's worst case ${worst:.4f} is over its "
-                            f"{which} cap "
-                            f"${caps[which]:.4f}; it stops until the {which} ends or an admin "
-                            "raises the cap; nothing was sent")}
-    return None
+        out[which] = {"name": name, "network": net, "cap": caps[which], "spent": float(spent),
+                      "held": float(held["usd"]), "calls": int(held["calls"]),
+                      "remaining": max(0.0, caps[which] - float(spent) - float(held["usd"]))}
+    return out
 
 
 # ── The estimate (rule 2) ─────────────────────────────────────────────────────────────────────
@@ -386,13 +407,19 @@ def measured_cost(task: str, now=None) -> dict:
     pin = profiles.task(task)
     today = calls.today(now)
     ver = calls.version()
-    key = (task, pin["model"], today, profiles.cap_per_call(task), ver)
+    return _held_measure(("cost", task, pin["model"], today, profiles.unmeasured_cost(task)),
+                         ver, lambda: _measured_cost(task, pin, today))
+
+
+def _held_measure(key: tuple, ver, compute) -> dict:
+    """*compute*'s answer held under *key* until the record changes (*ver*, `calls.version`)
+    or the day turns (C3788); read every time for a record with no version."""
     if ver is not None:
         with _measured_lock:
             held = _measured.get(key)
         if held is not None:
             return dict(held)
-    got = _measured_cost(task, pin, today)
+    got = compute()
     if ver is not None:
         with _measured_lock:
             _measured.clear() if len(_measured) > 64 else None
@@ -400,24 +427,121 @@ def measured_cost(task: str, now=None) -> dict:
     return got
 
 
-def _measured_cost(task: str, pin: dict, today: str) -> dict:
-    from modules.ai import calls, profiles, spend
+def _window_sent(task: str, pin: dict, today: str) -> tuple:
+    """``(sent, got)``: *task*'s sent calls on its pinned model over the last
+    `COST_WINDOW_DAYS` cap days (a row with tokens: the provider answered and billed), and the
+    record's read (``state``, ``error``)."""
+    from modules.ai import calls, spend
 
     got = calls.rows_since(calls.day_start(spend.day_minus(today, COST_WINDOW_DAYS)))
     sent = [r for r in got.get("rows") or [] if r.get("feature") == task
             and r.get("model") == pin["model"] and r.get("tokens")]
+    return sent, got
+
+
+def _measured_cost(task: str, pin: dict, today: str) -> dict:
+    from modules.ai import profiles
+
+    sent, got = _window_sent(task, pin, today)
     if sent:
         usd = sum(float(r.get("cost_usd") or 0) for r in sent) / len(sent)
         return {"usd_per_call": usd, "calls": len(sent), "measured": True,
                 "basis": (f"the mean of {len(sent)} sent {task} call(s) on {pin['model']} in "
                           f"the last {COST_WINDOW_DAYS} days")}
-    worst = profiles.cap_per_call(task)
+    stand_in = profiles.unmeasured_cost(task)
     unread = (f" (the record could not be read: {got['error']})"
               if got.get("state") == "unreadable" else "")
-    return {"usd_per_call": worst, "calls": 0, "measured": False,
-            "basis": (f"no {task} call on {pin['model']} was measured in the last "
-                      f"{COST_WINDOW_DAYS} days{unread}: its per-call cap, the most one call "
-                      "can cost, is used, so this is an upper bound")}
+    return {"usd_per_call": stand_in, "calls": 0, "measured": False,
+            "basis": (f"not measured yet: no {task} call on {pin['model']} in the last "
+                      f"{COST_WINDOW_DAYS} days{unread}; its pin's {pin['max_prompt_tokens']:,} "
+                      f"prompt tokens and {pin['max_tokens']:,} answer tokens stand in")}
+
+
+def typical_output(task: str, now=None) -> dict:
+    """``{"tokens", "measured", "calls", "basis"}``: *task*'s typical answer, the **median**
+    output tokens of its sent calls on its pinned model over the last `COST_WINDOW_DAYS` cap
+    days (the operator, 2026-11-16: a start is refused only when the remaining spend cannot
+    cover the counted prompt plus this); with none measured, the pin's ``max_tokens`` stands
+    in, said "not measured yet". Held as `measured_cost` is (C3788)."""
+    from modules.ai import calls, profiles
+
+    pin = profiles.task(task)
+    today = calls.today(now)
+
+    def compute():
+        sent, got = _window_sent(task, pin, today)
+        outs = sorted(int((r.get("tokens") or {}).get("output_tokens") or 0) for r in sent
+                      if not r.get("partial"))
+        if outs:
+            mid = len(outs) // 2
+            median = outs[mid] if len(outs) % 2 else (outs[mid - 1] + outs[mid]) // 2
+            return {"tokens": max(1, int(median)), "measured": True, "calls": len(outs),
+                    "basis": (f"the median output of {len(outs)} sent {task} call(s) on "
+                              f"{pin['model']} in the last {COST_WINDOW_DAYS} days")}
+        unread = (f" (the record could not be read: {got['error']})"
+                  if got.get("state") == "unreadable" else "")
+        return {"tokens": int(pin["max_tokens"]), "measured": False, "calls": 0,
+                "basis": (f"not measured yet: no {task} call on {pin['model']} in the last "
+                          f"{COST_WINDOW_DAYS} days{unread}; the pin's max_tokens "
+                          f"({int(pin['max_tokens']):,}) stands in")}
+
+    return _held_measure(("output", task, pin["model"], today, int(pin["max_tokens"])),
+                         calls.version(), compute)
+
+
+#: A thinking call's measured bound is this many times its task's largest measured output
+#: (CLAUDE.md: a bound is about 2.5x a measured value; the operator, 2026-11-16).
+OUTPUT_BOUND_FACTOR = 2.5
+#: The stops of an answer that ended complete, the only ones a bound is measured from: the
+#: model ended its turn (``end_turn``; a structured answer's natural stop) or met a stop
+#: sequence (``stop_sequence``; no task sends one today). Never ``max_tokens`` (a cut answer
+#: would ratchet the bound to its own size), and never a partial, aborted, ``job_stopped`` or
+#: ``budget_ran_out`` row (the review, 2026-11-16).
+COMPLETE_STOPS = ("end_turn", "stop_sequence")
+#: Tasks whose pin's max_tokens is a declared FIXED bound, never measured and never retried:
+#: a stop at it is their expected result, never "budget ran out" (the operator, 2026-11-16:
+#: "Fixed 64, no retry"). Each is a check that needs no answer: the AI card's schema compile
+#: check (the provider compiles before it writes, so 64 tokens show it compiled) and Test
+#: connection.
+FIXED_BOUND_TASKS = ("compile_check", "connection_check")
+
+
+def output_bound(task: str, now=None) -> dict:
+    """``{"tokens", "measured", "fixed", "calls", "largest", "basis"}``: a thinking call's
+    measured bound on max_tokens (the operator, 2026-11-16: thinking streams no countable text,
+    so the live cap cannot see it): `OUTPUT_BOUND_FACTOR` times the **largest** output of
+    *task*'s answers that ended complete (`COMPLETE_STOPS`) on its pinned model over the last
+    `COST_WINDOW_DAYS` days, thinking included as billed; with none measured, the pin's old
+    ``max_tokens`` stands in, said "not measured yet". A task of `FIXED_BOUND_TASKS` is its
+    pin's max_tokens, ``fixed`` (never measured, never retried)."""
+    from modules.ai import calls, profiles
+
+    pin = profiles.task(task)
+    if task in FIXED_BOUND_TASKS:
+        return {"tokens": int(pin["max_tokens"]), "measured": False, "fixed": True, "calls": 0,
+                "largest": 0, "basis": (f"a fixed bound of {int(pin['max_tokens']):,} tokens "
+                                        "(the operator, 2026-11-16: \"Fixed 64, no retry\")")}
+    today = calls.today(now)
+
+    def compute():
+        sent, got = _window_sent(task, pin, today)
+        outs = [int((r.get("tokens") or {}).get("output_tokens") or 0) for r in sent
+                if not r.get("partial") and r.get("stop_reason") in COMPLETE_STOPS]
+        if outs and max(outs) > 0:
+            top = max(outs)
+            return {"tokens": int(math.ceil(top * OUTPUT_BOUND_FACTOR)), "measured": True,
+                    "calls": len(outs), "largest": top,
+                    "basis": (f"{OUTPUT_BOUND_FACTOR}x the largest output ({top:,} tokens, "
+                              f"thinking included) of {len(outs)} sent {task} call(s) on "
+                              f"{pin['model']} in the last {COST_WINDOW_DAYS} days")}
+        unread = (f" (the record could not be read: {got['error']})"
+                  if got.get("state") == "unreadable" else "")
+        return {"tokens": int(pin["max_tokens"]), "measured": False, "calls": 0, "largest": 0,
+                "basis": (f"not measured yet{unread}: the pin's max_tokens "
+                          f"({int(pin['max_tokens']):,}) stands in")}
+
+    return _held_measure(("bound", task, pin["model"], today, int(pin["max_tokens"])),
+                         calls.version(), compute)
 
 
 def _digest(est: dict) -> str:

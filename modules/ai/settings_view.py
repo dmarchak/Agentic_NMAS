@@ -213,7 +213,8 @@ def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
     """Turn on…'s list for automatic AI troubleshooting (the operator, 2026-11-15: "Turning it
     on shows the list first ("starts on these N open incidents, about $X"), each tickable"):
     ``{"state", "error", "incidents", "failed", "usd_each", "usd_total", "measured", "basis",
-    "incident_cap", "day_cap", "worst", "room", "fit_words", "room_words"}`` (the last four how
+    "incident_cap", "day_cap", "least", "room", "fit_words", "room_words"}`` (*least* the least
+    one call costs, `fixit_troubleshoot.start_usd`; the last four how
     many fit under each cap, C3745, with the feature's caps as *day_typed* and *month_typed*),
     each incident ``{"id", "device", "title", "why", "why_kind",
     "at", "usd", "cap_words", "href"}``, ticked by default. The list is R1's own
@@ -229,7 +230,9 @@ def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
 
     got = A.catch_up(network, bound_s=follow_up_wait_s())
     est = AIT.estimate()
-    worst = AIT.worst_usd()
+    # Each start held to the least one call costs (`start_usd`): no worst case any more (the
+    # operator, 2026-11-16); the gateway judges each call's counted prompt and typical output.
+    worst = AIT.start_usd()
     items = []
     for i in got["items"]:
         cs = P.cap_state(i["incident"], worst)
@@ -253,7 +256,7 @@ def catch_up_view(network: str, day_typed=None, month_typed=None) -> dict:
             "day_cap": P.money(day) if day is not None else "",
             # How many fit under each cap (C3745), redrawn by the browser as the ticks and the
             # typed caps change (nmas_apply.js `catchUpFit`, the same arithmetic).
-            "worst": worst, "room": room,
+            "least": worst, "room": room,
             "fit_words": fit_words(fit, len(items)), "room_words": room_words(fit, rooms, worst)}
 
 
@@ -371,7 +374,7 @@ def room_words(fit: dict, rooms, worst: float) -> str:
         else:
             said.append(f"{fit['slots'][cap]} under {FIT_LABELS[cap]} ({usd(room)} "
                         f"{ROOM_TAIL[cap]})")
-    return f"Room, each start at most {usd(worst)}: " + ", ".join(said) + "."
+    return f"Room, each start at least {usd(worst)}: " + ", ".join(said) + "."
 
 
 def caps_value(text):

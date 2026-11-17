@@ -97,13 +97,8 @@ STATES = ("none", "ready", "running", "passed", "stopped", "proposed", "cancelle
           "handed_over", "resolved", "investigating", "denied", "capped")
 #: The states in which Retry with more information is offered (the cap permitting).
 RETRY_IN = ("passed", "stopped", "proposed", "cancelled", "handed_over")
-#: The pin a retry's worst case is drawn from: AI troubleshooting's own (S5; the board's
-#: figure, two calls at $0.125, "at most $0.25"), so the cap holds Mercury's re-plan as it
-#: holds the AI's.
-WORST_PIN = "fixit_troubleshoot"
-#: The most calls one AI attempt makes: the investigation's rounds and its last pass
-#: (`fixit_troubleshoot.CALLS_WORST`, C3797; tests/test_fixit_section_v2.py holds them equal).
-CALLS_PER_ATTEMPT = 4
+#: A retry's figure is the least one AI call costs (`fixit_troubleshoot.start_usd`); ``WORST_PIN`` and
+#: ``CALLS_PER_ATTEMPT`` are gone with the worst case (the operator, 2026-11-16).
 #: Who a proposal came from, as an attempt's line says it.
 SOURCE_WORDS = {"mercury": "Mercury's diagnosis", "ai": "the AI", "person": "a person"}
 #: How many attempts the section lists before it counts the rest (each one line).
@@ -185,11 +180,12 @@ def incident_of(network: str, found: dict) -> dict:
 # ── The figures ─────────────────────────────────────────────────────────────────────────────
 
 def worst_usd() -> float:
-    """A retry's worst case in US dollars: `CALLS_PER_ATTEMPT` calls at `WORST_PIN`'s per-call
-    cap (`profiles.cap_per_call`, from its pinned model's prices at its bounds)."""
-    from modules.ai import profiles
+    """Kept ONLY for tests/test_fixit_section_v2.py until the full pass updates it (skip mode,
+    2026-11-16): `fixit_troubleshoot.start_usd`'s value. Nothing in the product calls it; the
+    section's own figure is `start_usd`, drawn as ``least`` (there is no worst case any more)."""
+    from modules.ai import fixit_troubleshoot as AIT
 
-    return round(profiles.cap_per_call(WORST_PIN) * CALLS_PER_ATTEMPT, 6)
+    return AIT.start_usd()
 
 
 def today() -> dict:
@@ -513,14 +509,18 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     else:
         state = "ready"
     out["state"] = state
-    worst = worst_usd()
-    cs = P.cap_state(inc, worst)
+    from modules.ai import fixit_troubleshoot as AIT
+
+    # The least one AI call costs (`start_usd`; no worst case since 2026-11-16), and this
+    # incident's spend after that least call: named for what they hold.
+    least = AIT.start_usd()
+    cs = P.cap_state(inc, least)
     out["retry"] = {
         "offered": state in RETRY_IN and cs["state"] == "allowed",
         "in_state": state in RETRY_IN,
         "refused": cs["words"] if cs["state"] != "allowed" else "",
-        "worst": P.money(worst),
-        "after": P.money(cs["total"]) if cs["total"] is not None else "",
+        "least": P.money(least),
+        "least_after": P.money(cs["total"]) if cs["total"] is not None else "",
         "drawn_spent": "" if cs["spent"] is None else f"{cs['spent']:.6f}",
         "drawn_cap": "" if cs["cap"] is None else f"{cs['cap']:.6f}",
         "sent": _what_is_sent(drawn, rec["lines"])}
@@ -1531,10 +1531,10 @@ def ai_offer(state: str, cs: dict, network: str = None) -> dict:
     return {"offered": state in AI_IN and not off and cs["state"] == "allowed",
             "in_state": state in AI_IN, "refused": off or (
                 cs["words"] if cs["state"] != "allowed" else ""),
-            "estimate": P.money(est["usd"]), "worst": P.money(est["worst"]),
-            "measured": est["measured"], "basis": est["basis"],
-            # The most calls one investigation makes (C3797: its rounds and its last pass).
-            "calls": AIT.CALLS_WORST}
+            # No worst case and no calls bound (the operator, 2026-11-16): "least" is the least
+            # one call costs; the spending limits stop the spend.
+            "estimate": P.money(est["usd"]), "least": P.money(est["least"]),
+            "measured": est["measured"], "basis": est["basis"]}
 
 
 def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",

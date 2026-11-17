@@ -29,10 +29,9 @@ Each request's arguments are parsed by their shape and compared with what the sn
 (a switch it holds, a port that switch lists, a host its host table lists), else refused, naming
 both operands.
 
-**Capped:** at most two calls (the loop's passes) and three reads; each call by its pin
-(pins/sdn_analyse_tools.json: its prompt and answer bounds, the per-call cap the gateway asks);
-and the loop's whole spend by `TOTAL_TOKEN_CAP`, the gateway's over-estimate of both passes'
-prompts plus each one's whole answer bound, asked before pass 2 is sent (`_total_capped`).
+**Bounded:** at most two calls (the loop's passes) and three reads; each call's spend by the
+spending limits alone, judged by the gateway at its start and live while it streams (the
+operator, 2026-11-16: the loop's own token cap, ``TOTAL_TOKEN_CAP``, is gone).
 
 **Checked like B1:** the final answer is B1's findings schema, held by B1's own `check` to the
 snapshot's evidence ids and the ids of the reads that ran (``read:<n>``, citable; a trace's
@@ -75,12 +74,6 @@ PASSES_OF = {1: (("sdn_analyse_tools", 1), ("sdn_analyse_tools", 2)),
 #: The pair in use: the one built on B1's prompt in use (`analyst.PROMPT`), so the two
 #: techniques are adopted together and the comparison stays the reads' alone.
 PROMPT_FIRST, PROMPT_SECOND = PASSES_OF[AN.PROMPT[1]]
-#: The loop's whole spend at most, in tokens: both passes' prompts by the gateway's fallback
-#: over-estimate and each pass's whole answer bound (its pin's max_tokens). Provisional, not
-#: measured: the lab's five switches are about 25,000 tokens a pass (pins/sdn_analyse.json);
-#: two passes of them with three 4 KiB reads are about 64,000. Two calls at the pin's bounds
-#: (2 x 52,096) are over it, so this binds first on a large snapshot.
-TOTAL_TOKEN_CAP = 80000
 #: A trace's branches sent at most (a flood is one branch per port it leaves by); the rest
 #: counted.
 TRACE_BRANCHES_SENT = 6
@@ -88,6 +81,10 @@ TRACE_BRANCHES_SENT = 6
 LOAD_HIGH = 80.0
 #: The answers' allowance for the page's "about $X" (`estimate`): B1's.
 OUTPUT_TOKENS_ESTIMATE = AN.OUTPUT_TOKENS_ESTIMATE
+#: One read's answer for the page's "about $X" (`estimate`) alone, in characters: the old
+#: 4 KiB cut's size, kept as an estimate input (reads are sent whole since 2026-11-16; not
+#: measured on sealed reads yet).
+READ_ESTIMATE_CHARS = 4096
 STEPS = (
     ("snapshot", "the kept snapshot the region names, its seal checked: the same one B1's "
                  "Analyse this network reads; refused, and nothing sent, if it changed"),
@@ -552,37 +549,6 @@ def hosts_text(snap: dict) -> str:
     return "\n".join(lines or ["none listed"]) + "\n"
 
 
-def _chars(prompt: tuple, parts: dict, context: dict) -> int:
-    from modules.ai import prompts
-
-    return (len(prompts.load(*prompt)["text"]) + len(json.dumps(parts or {}))
-            + len(json.dumps(context or {})) + 1500)
-
-
-def _total_capped(cap: int = None):
-    """The gateway's ask, held to `TOTAL_TOKEN_CAP` (or *cap*) across the loop's passes: each
-    pass counted by the gateway's over-estimate of its prompt and its whole answer bound; pass
-    2 is refused before it is sent when it would take the loop past the cap (a cap kind, so the
-    loop says "second pass not run" and keeps pass 1's answer)."""
-    from modules.ai import gateway, profiles
-
-    limit = TOTAL_TOKEN_CAP if cap is None else int(cap)
-    spent = {"tokens": 0, "calls": 0}
-
-    def ask(feature, prompt, schema, parts, *, trigger=None, **kw):
-        pass_tokens = (gateway.tokens_of_chars(_chars(prompt, parts, kw.get("context")))
-                       + int(profiles.task(feature)["max_tokens"]))
-        if spent["calls"] and spent["tokens"] + pass_tokens > limit:
-            return {"ok": False, "error": "over_cap", "call_id": "", "cost_usd": 0.0,
-                    "detail": (f"the loop's first pass took up to {spent['tokens']} tokens and "
-                               f"this one up to {pass_tokens}, over its total cap of {limit} "
-                               "(TOTAL_TOKEN_CAP); nothing of it was sent")}
-        spent["calls"] += 1
-        spent["tokens"] += pass_tokens
-        return gateway.ask(feature, prompt, schema, parts, trigger=trigger, **kw)
-    return ask
-
-
 def _reads_shown(records: list, said: dict) -> list:
     out = []
     for r in records or []:
@@ -628,7 +594,11 @@ def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=No
                     detail=("the snapshot's flows and port rates, and every read of it, are "
                             f"the topology class, and {gate['why']}; nothing was sent"))
     scope = {"snapshot": snap, "said": {}}
-    got = RL.run(SEALED, loop, ask=_total_capped(cap), network=network,
+    from modules.ai import gateway
+
+    # *cap* is accepted and unused: the loop's own token cap is gone (the operator,
+    # 2026-11-16); the gateway's spending limits govern each pass.
+    got = RL.run(SEALED, loop, ask=gateway.ask, network=network,
                  data={"snapshot": AN.facts(snap), "hosts": hosts_text(snap)}, actor=actor,
                  trigger=trigger, subject={"kind": "sdn_snapshot", "id": snap_id, "devices": []},
                  scope=scope, send=send, today=today)
@@ -686,13 +656,14 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
 def estimate(snap: dict) -> dict:
     """``{"tokens", "usd", "calls"}``: the loop's two calls at most, by the gateway's fallback
     over-estimate: pass 1 B1's facts, the hosts and the prompt; pass 2 the same and three
-    reads at their 4 KiB cut; each with `OUTPUT_TOKENS_ESTIMATE` of answer."""
+    reads at `READ_ESTIMATE_CHARS` each (an estimate input, never a cut: a read is sent
+    whole); each with `OUTPUT_TOKENS_ESTIMATE` of answer."""
     from modules.ai import gateway, profiles, prompts
 
     model = profiles.task(FEATURE)["model"]
     first = gateway.tokens_of_chars(len(AN.facts(snap)) + len(hosts_text(snap))
                                     + len(prompts.load(*PROMPT_FIRST)["text"]) + 1500)
-    second = first + gateway.tokens_of_chars(SEALED.limit * RL.AI_READ_CAP
+    second = first + gateway.tokens_of_chars(SEALED.limit * READ_ESTIMATE_CHARS
                                              + len(RL.READS_FORMAT))
     usd = (profiles.cost_usd(model, first, OUTPUT_TOKENS_ESTIMATE)
            + profiles.cost_usd(model, second, OUTPUT_TOKENS_ESTIMATE))

@@ -12,11 +12,14 @@ or for anyone else; no timer, job, page load or failure's handler calls it
 (tests/test_ai_entry_points.py), but one: since the operator's R1 (2026-11-14) the background
 feature ``fixit_auto`` (`background.FEATURES`, off by default per network) asks the same
 investigation once per failure of Mercury's fix, as its job under its own trigger
-(`background_trigger`; `heal_notice.fixit_investigation`). **One press, one investigation**: at most two calls
-(`read_loop.CALLS_PER_FINDING`: pass 1 and, when a read ran, pass 2), its reads included, under
-the per-incident cap (`fixit.policy.cap_state`: spent plus the investigation's worst case,
-`worst_usd`) and the gateway's own caps (the day cap and the per-call cap, asked before each
-pass). The estimate is drawn before the press (`estimate`). The mode is the installation's: this
+(`background_trigger`; `heal_notice.fixit_investigation`). **One press, one investigation**: its
+passes go on until one adds no new evidence (`read_loop.no_new_evidence`; the operator,
+2026-11-16: no rounds or calls bound), its reads included, under the spending limits alone,
+each judged by the gateway at every pass's start and live while it streams: the per-incident
+cap (`incident_cap`, passed as the gateway's *spend_cap*), the feature's day and month caps
+for a background investigation, and the installation's day cap. A start is refused before
+anything is built only when the incident's cap cannot pay even the least one call costs
+(`start_usd`). The estimate is drawn before the press (`estimate`). The mode is the installation's: this
 build offers Manual (default) and Off (`fixit.policy.mode`); Off refuses the press with nothing
 sent.
 
@@ -154,18 +157,17 @@ PROMPT_PLAN = PROMPT_INVESTIGATE
 PROMPT_PLAN_READS = PROMPT_INVESTIGATE
 PROMPT_AGAIN = PROMPT_INVESTIGATE
 #: The investigation's bounds (C3797; the operator: "the incident's cost cap, plus a declared
-#: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): at most
-#: `ROUNDS` rounds of reads, `MAX_READS` reads in all (three a pass, the family's limit), and
-#: `WALL_S` seconds from the first pass's start before the last pass is asked (reasoned: a switch's
-#: press of 2026-11-15 19:10 UTC took about 20 s a pass and under 2 s a read, so four passes
-#: and nine reads are about 100 s; 2.5x that is 240 s); and the incident's cost cap before each
-#: further pass (`P.cap_state`, one call's worst case).
-ROUNDS = 3
+#: maximum of reads and wall time (in the wait registry), not a fixed 2 passes"): `MAX_READS`
+#: reads in all (three a pass, the family's limit), and `WALL_S` seconds from the first pass's
+#: start before the last pass is asked (reasoned: a switch's press of 2026-11-15 19:10 UTC
+#: took about 20 s a pass and under 2 s a read, so four passes and nine reads are about 100 s;
+#: 2.5x that is 240 s). No rounds or calls bound (the operator, 2026-11-16: ``ROUNDS`` and
+#: ``CALLS_WORST`` are gone): the loop stops when a pass adds no new evidence, and the spend
+#: is the caps' to stop, at each pass's start and live.
 MAX_READS = 9
 WALL_S = 240.0
-#: The most calls one investigation makes: its rounds and its last pass; and the calls the
-#: estimate expects of one (reasoned: a read round and its answer, then the last pass).
-CALLS_WORST = ROUNDS + 1
+#: The calls the estimate expects of one investigation (reasoned: a read round and its
+#: answer, then the last pass): an estimate input only.
 CALLS_EXPECTED = 3
 PROMPT_SECOND = PROMPT_PLAN
 #: The pack's own sections, in the pack format's order (the heal analysis's, whose pack this is).
@@ -174,15 +176,12 @@ PACK_SECTIONS = ("incident", "device", "history", "intent", "neighbours", "obser
 #: This incident's own sections, beside the pack's.
 ATTEMPTS = "attempts"
 #: Each failed attempt's own steps (`run_steps_section`), and the state read after the newest
-#: failed run (`after_run_section`; the operator, 2026-11-16). The after-run parts' caps: at
-#: most `AFTER_SESSIONS` collector sessions a subscription, and `AFTER_SYSLOG_LINES` syslog
-#: lines (the first and last halves, the rest counted) of at most `AFTER_LINE_CHARS` each;
-#: about 3,500 characters of the pack at most beside the collector's journal (1,900).
+#: failed run (`after_run_section`; the operator, 2026-11-16). The after-run parts are sent
+#: whole: every collector session and every syslog line since the run (the operator,
+#: 2026-11-16: ``AFTER_SESSIONS``, ``AFTER_SYSLOG_LINES`` and ``AFTER_LINE_CHARS`` are gone;
+#: evidence is cut only to stay inside the context window).
 RUN_STEPS = "run_steps"
 AFTER_RUN = "after_run"
-AFTER_SESSIONS = 4
-AFTER_SYSLOG_LINES = 12
-AFTER_LINE_CHARS = 200
 SEEN = "seen_before"
 NOTE = "note"
 READS_SECTION = "mercury_reads"
@@ -498,27 +497,70 @@ class Refused(ValueError):
 
 # ── The figures, drawn before the press ─────────────────────────────────────────────────────
 
-def worst_usd() -> float:
-    """One investigation's worst case in US dollars: `CALLS_WORST` calls (its rounds and its
-    last pass, C3797) at the pin's per-call cap (`profiles.cap_per_call`)."""
-    from modules.ai import profiles
+def start_usd() -> float:
+    """The least any call of an investigation can cost, in US dollars: the task's typical
+    output (`background.typical_output`, the measured median, or the pin's stand-in) at its
+    model's output rate, before any prompt. What a start, a retry or a catch-up is held to
+    before its request is built (`fixit.policy.cap_state`): a remaining under it cannot pay
+    the counted prompt plus the typical output of any call, so refusing there is never
+    stricter than the gateway's own rule (the operator, 2026-11-16: "A start is refused only
+    if the remaining budget can't cover the counted prompt plus the task's measured typical
+    output"); the gateway judges the real figure at each call. Replaces ``worst_usd``."""
+    from modules.ai import background, profiles
 
-    return round(profiles.cap_per_call(FEATURE) * CALLS_WORST, 6)
+    pin = profiles.task(FEATURE)
+    rate = profiles.prices_for(pin["model"], 0)["output"]
+    return round(int(background.typical_output(FEATURE)["tokens"]) * rate / 1_000_000, 6)
+
+
+def worst_usd() -> float:
+    """Kept ONLY for the tests that still call it (tests/test_fixit_catch_up.py,
+    test_fixit_start_spend.py, test_fixit_troubleshoot.py, test_fixit_unverified.py) until the
+    full pass updates them (skip mode, 2026-11-16): `start_usd`'s value. Nothing in the product
+    calls it; there is no worst case any more."""
+    return start_usd()
 
 
 def estimate() -> dict:
-    """``{"usd", "worst", "measured", "basis"}``: what one investigation is expected to cost,
+    """``{"usd", "least", "measured", "basis"}``: what one investigation is expected to cost,
     the task's measured mean cost per sent call (`background.measured_cost`, its last 30 days)
     times the calls one is expected to make (`CALLS_EXPECTED`), or, with none measured, its
-    worst case said as such; and the worst case. A read of the record of AI calls; no call is
+    stand-in said as such; and the least one call costs (`start_usd`). No worst case: there is
+    no bound on calls, only the spending limits. A read of the record of AI calls; no call is
     made."""
     from modules.ai import background
 
     got = background.measured_cost(FEATURE)
-    worst = worst_usd()
     usd = round(float(got["usd_per_call"]) * CALLS_EXPECTED, 6)
-    return {"usd": min(usd, worst), "worst": worst, "measured": bool(got["measured"]),
+    return {"usd": usd, "least": start_usd(), "measured": bool(got["measured"]),
             "basis": got["basis"]}
+
+
+def incident_cap(incident, spent_here) -> dict:
+    """The incident's own spending limit as the gateway's *spend_cap* (`gateway.ask`): its cap
+    (`fixit.policy.cap_usd`, the network's or the installation's, said with where it is
+    changed), and what it has spent read inside the reservations' lock each time: the calls
+    its proposals name (`fixit.incident.cost_so_far`) plus *spent_here()*, this
+    investigation's calls so far (recorded, not yet on a proposal); its calls in flight are
+    held under ``incident:<id>``. None when the cap cannot be read (the start's check refuses
+    that first)."""
+    from modules.fixit import incident as F
+    from modules.fixit import policy as P
+
+    network = getattr(incident, "network", None)
+    cap = P.cap_usd(network)
+    if cap["state"] != "ok":
+        return None
+
+    def spent():
+        got = F.cost_so_far(incident)
+        if got["state"] == "unreadable":
+            return {"state": "unreadable", "error": got["error"]}
+        return {"state": "ok", "usd": float(got["usd"] or 0.0) + float(spent_here() or 0.0)}
+
+    return {"name": "this incident's AI cap", "kind": "incident",
+            "said": f"this incident's AI cap ({P.cap_said(network or 'the network', cap)})",
+            "usd": float(cap["usd"]), "spent": spent, "scope": f"incident:{incident.id}"}
 
 
 # ── What is sent ────────────────────────────────────────────────────────────────────────────
@@ -594,15 +636,14 @@ def after_run_section(network: str, incident, newest: dict, *, now: float = None
 
     - ``after_run:collector``: for each subscription, the collector's sessions from the
       device's addresses with their counters (bytes received and sent, the last receive and
-      send, `diagnose_stream.read_collector` through `fixit_reads._collector`); at most
-      `AFTER_SESSIONS` sessions a subscription;
+      send, `diagnose_stream.read_collector` through `fixit_reads._collector`), every session;
     - ``after_run:series``: each subscription's series now (`diagnose_stream.series_of`);
     - ``after_run:collector_log``: the collector's own journal since the run started, its unit
       measured from the listener's owner (`diagnose_stream.collector_unit`, never typed), at
       most `diagnose_stream.JOURNAL_LINES` lines of `diagnose_stream.JOURNAL_LINE_CHARS`;
     - ``after_run:syslog``: the device's syslog lines since the run started, through the
-      pack's own Loki read (`evidence_pack.logs_section`, its window from the run's start), at
-      most `AFTER_SYSLOG_LINES` lines of `AFTER_LINE_CHARS`.
+      pack's own Loki read (`evidence_pack.logs_section`, its window from the run's start),
+      every line whole.
 
     ``None`` when the newest attempt passed or none ran. A telemetry part is read only for an
     incident naming subscriptions. Everything is masked (`redact_payload`). *loki* and
@@ -628,7 +669,6 @@ def after_run_section(network: str, incident, newest: dict, *, now: float = None
         for sub in incident.subscriptions:
             try:
                 got = FR._collector(fx, sub)
-                got["sessions"] = got["sessions"][:AFTER_SESSIONS]
                 coll.append(dict(got, subscription=sub, state="read"))
             except (RuntimeError, KeyError, ValueError, OSError) as exc:
                 coll.append({"subscription": sub, "state": "unread", "why": str(exc)[:200]})
@@ -655,8 +695,7 @@ def after_run_section(network: str, incident, newest: dict, *, now: float = None
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         logs = {"state": "unreadable", "why": f"not read ({type(exc).__name__})", "pieces": []}
     lines = [p for p in logs.get("pieces") or [] if p.get("after_onset")]
-    kept = (lines if len(lines) <= AFTER_SYSLOG_LINES else
-            lines[:AFTER_SYSLOG_LINES // 2] + lines[-(AFTER_SYSLOG_LINES // 2):])
+    kept = lines
     pieces.append({"ref": f"{AFTER_RUN}:syslog", "device": incident.device,
                    "what": f"{incident.device}'s syslog lines since the run started ({at}), "
                            "from the network's Loki",
@@ -673,8 +712,8 @@ def after_run_section(network: str, incident, newest: dict, *, now: float = None
 
 
 def _line_cut(text) -> str:
-    text = " ".join(str(text or "").split())
-    return text if len(text) <= AFTER_LINE_CHARS else text[:AFTER_LINE_CHARS - 1] + "…"
+    """A syslog line's whitespace collapsed; never cut (the operator, 2026-11-16)."""
+    return " ".join(str(text or "").split())
 
 
 def _collector_log_piece(units: dict, since: float, at: str, fx_reads: dict, DS) -> dict:
@@ -990,34 +1029,11 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
 # topology is left out (the investigation reads only the incident's device, C3685), then the
 # pack's largest trimmable sections are cut to half their pieces, each cut said in the section.
 
-#: Three reads at their largest with the reads' format (`reads_reserve_chars`, measured at
-#: import); with v17's one shape every pass sends the read set and the format, so what a later
-#: pass adds to pass 1 is `READS_ADDED_CHARS`.
-def reads_reserve_chars() -> int:
-    """What pass 2 may add to pass 1 at most, in the request's characters, MEASURED by building
-    it (the review of the fit, 2026-11-14: a fixed 600 a read undercounted): `read_loop.
-    MAX_READS` records as `read_loop.as_sent` sends them, each at its largest (its why and its
-    hypothesis at `read_loop.TEXT_MAX`, its words at the command shape's most, an answer of
-    `read_loop.AI_READ_CAP` characters written as show output escapes worst in practice: a
-    line break every 40 characters and a quoted word on each line), the part encoded as pass 2
-    sends it and then once more as the request's body escapes it, and the reads' format
-    context, likewise, beside its wrapper. A text of quotes alone would escape further; show
-    output does not."""
-    line = 'state "up" ' + "x" * 24 + "\n"                     # 40 characters a line
-    answer = (line * (RL.AI_READ_CAP // len(line) + 1))[:RL.AI_READ_CAP]
-    words = "w" * RR.COMMAND_WORDS.most
-    records = [{"id": f"read:{n}", "op": "show", "args": {"device": "d" * 63, "words": words},
-                "why": "y" * RL.TEXT_MAX, "hypothesis": "h" * RL.TEXT_MAX, "verdict": "run",
-                "answer": answer, "bytes": 10 ** 6, "cut": True, "withheld": 999}
-               for n in range(1, RL.MAX_READS + 1)]
-    part = json.dumps(RL.as_sent(records), sort_keys=True, ensure_ascii=False,
-                      separators=(",", ":"))
-    wrapper = '\n<data name="mercury_reads">\n\n</data>\n<context name="reads_format">\n\n</context>'
-    return (len(json.dumps(part, ensure_ascii=False)) + len(json.dumps(RL.READS_FORMAT))
-            + len(json.dumps(wrapper)))
-
-
-READS_RESERVE_CHARS = reads_reserve_chars()
+#: Since the operator's 2026-11-16 decision (no size bound of Mercury's own; a read's answer is
+#: sent whole) there is no reserve for later passes' reads (``reads_reserve_chars``,
+#: ``READS_ADDED_CHARS`` and ``READS_ROOM_CHARS`` are gone): pass 1 is fitted to the room the
+#: context window leaves (`fit`, `profiles.prompt_room`), and later passes' reads share what it
+#: leaves after pass 1 (`read_room`; once counted, `read_loop.counted_room`).
 #: How much longer one pass's words (`read_loop.PASS_WORDS`) may be than another's, in the
 #: request's characters: a later pass may carry the longest where pass 1 carried the shortest.
 PASS_SLACK_CHARS = (max(len(json.dumps(w)) for w in RL.PASS_WORDS.values())
@@ -1027,26 +1043,17 @@ PASS_SLACK_CHARS = (max(len(json.dumps(w)) for w in RL.PASS_WORDS.values())
 #: the reads' format is in every pass's context already (`shared_context`), pass 1's too.
 READS_OVERHEAD_CHARS = len(json.dumps('\n<data name="mercury_reads">\n\n</data>')) \
     + PASS_SLACK_CHARS
-#: What a pass carrying reads adds to pass 1 at most (`_over`): the reserve less the reads'
-#: format and its wrapper, which pass 1 carries already, plus the pass's words' slack.
-READS_ADDED_CHARS = (READS_RESERVE_CHARS - len(json.dumps(RL.READS_FORMAT))
-                     - len(json.dumps('\n<context name="reads_format">\n\n</context>'))
-                     + PASS_SLACK_CHARS)
-#: The room for reads when a press's own cannot be measured (a request not built): the
-#: reserve's, three reads at their largest.
-READS_ROOM_CHARS = READS_ADDED_CHARS - READS_OVERHEAD_CHARS
-
-
-def _room_of(prep: dict) -> int:
+def _room_of(prep: dict):
     """*prep*'s room for reads (`read_room`), measured once, when the press or the preview builds
     its feature after the fit, and kept on it: measuring builds pass 1's request
     (`request_chars`), which builds this feature again, so while a request is being sized (and
-    for a request with no pack built) the reserve's room is given, never measured (a press of
-    2026-11-15 20:41 UTC recursed here for minutes before its first call)."""
+    for a request with no pack built) no room is declared (None: nothing cut; the gateway's
+    count against the context window decides), never measured (a press of 2026-11-15 20:41 UTC
+    recursed here for minutes before its first call)."""
     if "read_room" in prep:
         return prep["read_room"]
     if "sections" not in prep or prep.get("_measuring_room"):
-        return READS_ROOM_CHARS
+        return None
     prep["_measuring_room"] = True
     try:
         prep["read_room"] = read_room(prep)
@@ -1055,24 +1062,28 @@ def _room_of(prep: dict) -> int:
     return prep["read_room"]
 
 
-def read_room(prep: dict) -> int:
+def read_room(prep: dict):
     """The room every pass of this investigation may fill with reads (C3797), in the request's
-    characters as `read_loop._sent_chars` counts them: what the task's prompt bound leaves
-    after pass 1 as built (it carries the read set, as every pass that may ask again does),
-    less the reads' format and wrapper; at least the room pass 2 had before (`_over` fits pass 1
-    so it is), and `READS_ROOM_CHARS` when pass 1 cannot be built. Its reads share it: past it
-    the newest answers are cut, said, and the last pass is asked (`read_loop._within_room`)."""
+    characters as `read_loop._sent_chars` counts them: what the context window leaves for a
+    prompt (`profiles.prompt_room`, less the count's margin, `read_loop.margin_tokens`) after
+    pass 1 as built, by the fallback estimate (`gateway.CHARS_PER_TOKEN`: fewer characters a
+    token than any recorded call, so the room is never over the real one; the provider's count
+    replaces it once pass 1 is counted, `read_loop.counted_room`), less the reads' wrapper.
+    None when pass 1 cannot be built (no room declared). 0 or less is no room: a later read is
+    then cut to nothing and the loop stops without paying for a pass (A's fix: no sentinel
+    room of 1). Its reads share it: past it the newest answers are cut, said
+    (`read_loop._within_room`)."""
     from modules.ai import profiles
 
     try:
         chars = request_chars(prep)
-    except Exception:                               # noqa: BLE001 (the reserve's room instead)
+    except Exception:                               # noqa: BLE001 (no room declared instead)
         chars = 0
     if not chars:
-        return READS_ROOM_CHARS
-    bound = int(profiles.TASKS[FEATURE]["max_prompt_tokens"])
-    allowed = int((bound - 1) * gateway.CHARS_PER_TOKEN)
-    return max(0, allowed - chars - READS_OVERHEAD_CHARS)
+        return None
+    bound = int(profiles.prompt_room(FEATURE))
+    allowed = int((bound - RL.margin_tokens(bound) - 1) * gateway.CHARS_PER_TOKEN)
+    return allowed - chars - READS_OVERHEAD_CHARS
 #: The pack's sections a fit may cut, in no order (the largest is cut first): never the
 #: incident, the device, what Mercury tried, the diagnosis, the attempts or Seen before.
 TRIMMABLE = ("logs", "neighbours", "history", "observer", "health")
@@ -1148,16 +1159,27 @@ def request_chars(prep: dict) -> int:
     return masked
 
 
+def refit_first(prep: dict, cut_chars: int):
+    """The loop's pass-1 refit hook (`read_loop.LoopFeature.refit_first`, A's fix, C3890): for
+    a pass 1 the gateway refused over the context window, *cut_chars* more of its characters
+    cut by the fit's own steps (`fit`), and ``(data, context, words)`` for the loop to ask it
+    again with; None when nothing more could be cut. Nothing was sent, so nothing was spent."""
+    start = request_chars(prep)
+    fit(prep, cut_chars=cut_chars)
+    if request_chars(prep) >= start:
+        return None
+    prep.pop("read_room", None)                    # pass 1 moved: its room is measured again
+    return prep["data"], prep["ctx"], f"evidence trimmed by {start - request_chars(prep):,} " \
+                                      "characters to fit the context window"
+
+
 def _over(prep: dict, bound: int) -> bool:
-    """Whether pass 1, or a later pass at its worst (pass 1 plus `READS_ADDED_CHARS`), is over
-    *bound* by the fallback over-estimate. A later pass of the
-    investigation keeps its read set: its reads are held to the room pass 1 leaves under the
-    bound instead (`read_room`, C3797)."""
+    """Whether pass 1 is over *bound* (the room the context window leaves for a prompt,
+    `profiles.prompt_room`) by the fallback over-estimate. A later pass's reads are held to
+    the room pass 1 leaves inside it (`read_room`, C3797); no reserve for them is kept (a read
+    is sent whole)."""
     chars = request_chars(prep)
-    # v17's one shape: every pass carries the read set and the reads' format (`shared_context`),
-    # so a later pass is pass 1 plus its reads' part (`READS_ADDED_CHARS`).
-    worst = chars + READS_ADDED_CHARS
-    return bool(chars) and gateway.tokens_of_chars(max(chars, worst)) > bound
+    return bool(chars) and gateway.tokens_of_chars(chars) > bound
 
 
 def _repack(prep: dict) -> None:
@@ -1169,19 +1191,38 @@ def _repack(prep: dict) -> None:
     prep["checked_sections"] = list(prep["sections"]) + prep["own"] + [prep["note_part"]]
 
 
-def fit(prep: dict, bound: int = None) -> dict:
-    """*prep* fitted to the task's bound (`profiles.TASKS`' ``max_prompt_tokens``) by the
-    fallback over-estimate, both passes (pass 2 at its worst, `_over`): unchanged when
-    it fits; else the topology left out (said in its part, and nothing of it citable), then the
-    largest trimmable section halved, again, each cut said in the section (``cut``), until it
-    fits or nothing is left to cut. What was done is ``said["fit"]``, in order; the request is
-    asked either way (the provider's count decides, `gateway.ask`)."""
+def fit(prep: dict, bound: int = None, *, cut_chars: int = 0) -> dict:
+    """*prep* fitted to the only size bound, the room the model's context window leaves for a
+    prompt (`profiles.prompt_room`; the operator, 2026-11-16: per-task prompt limits are gone),
+    less the fit's safety margin (`read_loop.margin_tokens`, C3890), by the fallback
+    over-estimate (`_over`): unchanged when it fits; else the topology left out
+    (said in its part, and nothing of it citable), then the largest trimmable section halved,
+    again, each cut said in the section (``cut``), until it fits or nothing is left to cut.
+    What was done is ``said["fit"]``, in order; the request is asked either way (the provider's
+    count decides, `gateway.ask`).
+
+    *cut_chars* (a pass 1 refused over the context window, `refit_first`): cut that many more
+    of pass 1's characters (`request_chars`) by the same steps, in the same order, after the
+    fit's own, its steps added to ``said["fit"]``; a section is halved at most `MOST_HALVINGS`
+    times in all."""
     from modules.ai import explain, profiles
 
-    bound = int(bound or (profiles.TASKS.get(FEATURE) or {}).get("max_prompt_tokens") or 0)
-    steps = []
-    prep["said"]["fit"] = steps
-    if not bound or not _over(prep, bound):
+    bound = int(bound or profiles.prompt_room(FEATURE))
+    bound -= RL.margin_tokens(bound)
+    halved = prep.setdefault("_halved", {})
+    if cut_chars:
+        steps = prep["said"].setdefault("fit", [])
+        target = request_chars(prep) - int(cut_chars)
+
+        def over():
+            return request_chars(prep) > target
+    else:
+        steps = []
+        prep["said"]["fit"] = steps
+
+        def over():
+            return _over(prep, bound)
+    if not bound or not over():
         return prep
     if prep["topo"].get("sent"):
         prep["topo"] = dict(prep["topo"], sent=False, why=TOPOLOGY_LEFT_OUT, ids=[],
@@ -1194,14 +1235,14 @@ def fit(prep: dict, bound: int = None) -> dict:
         prep["said"].update(sent=False, why=TOPOLOGY_LEFT_OUT, devices=[])
         _repack(prep)
         steps.append("the topology left out")
-    halved = {}
-    while _over(prep, bound):
+    while over():
         cuttable = [(len(json.dumps(s)), i) for i, s in enumerate(prep["sections"])
                     if s.get("name") in TRIMMABLE and len(s.get("pieces") or []) > 1
                     and halved.get(s.get("name"), 0) < MOST_HALVINGS]
         if not cuttable:
             steps.append("still over the bound by the fallback estimate: the provider's count "
-                         "decides")
+                         "decides" if not cut_chars else
+                         "nothing more of pass 1's evidence to cut")
             break
         _size, i = max(cuttable)
         s = prep["sections"][i]
@@ -1658,17 +1699,17 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         # whole answer for it.
         return [r for r in cites(answer) if not str(r).startswith("read:")]
 
-    # The investigation (C3797): iterative within its bounds, the incident's cost cap asked
-    # before each further pass (`prep["may_go_on"]`, the press's; none in a preview).
+    # The investigation (C3797): iterative until a pass adds no new evidence, each pass's spend
+    # judged by the gateway (the incident's cap its *spend_cap*, `incident_cap`).
     # One shape (v17, the operator, 2026-11-16): every pass is v17's prompt and schema, with the
     # read set and the reads' format in every pass's context, so the cached prefix is the same
     # bytes call to call; the pass is said in the data.
     one = (PROMPT_INVESTIGATE, SCHEMA_OF[PROMPT_INVESTIGATE[1]])
     return RL.LoopFeature(task=FEATURE, first=one, second=one, plain=one, again=one,
                           check=check_, cites=cites_, acts_on=acts_on, one_shape=True,
-                          shared_context=shared_context(), rounds=ROUNDS,
+                          shared_context=shared_context(), iterative=True,
                           max_reads=MAX_READS, wall_s=WALL_S, read_room=_room_of(prep),
-                          may_go_on=prep.get("may_go_on"))
+                          refit_first=lambda chars: refit_first(prep, chars))
 
 
 def tried_refusal(answer, prep: dict) -> str:
@@ -1699,33 +1740,23 @@ def marks_of(prep: dict, answer) -> dict:
 def retry_once(prep: dict, feature, got: dict, incident, *, ask, network: str, actor: str,
                trigger: dict, send=None, today: str = None) -> dict:
     """When the loop's answer (*got*'s, `read_loop.run`'s) cites what was not sent: ask once
-    more, the final pass's request with `RETRY_PART` naming each such citation, if one more
-    call keeps the investigation within its worst case drawn before the press (`worst_usd`)
-    and the incident within its cap (`fixit.policy.cap_state`); the second answer, checked as
+    more, the final pass's request with `RETRY_PART` naming each such citation, while the
+    spending limits can pay its counted prompt plus its typical output (the gateway judges it,
+    the incident's cap among them, through *ask*'s *spend_cap*; the operator, 2026-11-16: no
+    worst case drawn before the press any more); the second answer, checked as
     the loop checks pass 2, replaces the first, marked again if it still cites what was not
     sent; a second answer not had or refused leaves the first, marked. *got*'s ``answer``,
     ``call_ids`` and ``cost_usd`` are updated in place. ``{}`` when nothing was marked, else
     ``{"asked", "accepted", "marks", "words", "call_id"}``, *marks* those of the answer kept."""
-    from modules.ai import profiles
-    from modules.fixit import policy as P
-
     answer = got.get("answer")
     marks = marks_of(prep, answer) if answer is not None else {}
     if got.get("state") not in ("answered", "first_pass") or not marks:
         return {}
+    if (got.get("second") or {}).get("error") in ("budget_ran_out", "max_tokens"):
+        # The investigation stopped because the budget ran out mid-answer: never asked again.
+        return {"asked": False, "accepted": False, "marks": marks, "call_id": "",
+                "words": "not asked again: the budget ran out mid-answer"}
     out = {"asked": False, "accepted": False, "marks": marks, "words": "", "call_id": ""}
-    spent = round(float(got.get("cost_usd") or 0.0), 6)
-    one = profiles.cap_per_call(FEATURE)
-    worst = worst_usd()
-    if spent + one > worst:
-        out["words"] = (f"not asked again: this investigation has cost {P.money(spent)}, and one "
-                        f"more call costs at most {P.money(one)}, which would pass the "
-                        f"{P.money(worst)} drawn for it before the press")
-        return out
-    cs = P.cap_state(incident, round(spent + one, 6))
-    if cs["state"] != "allowed":
-        out["words"] = "not asked again: " + cs["words"].replace("Retry isn't available: ", "", 1)
-        return out
     records = got.get("reads") or []
     ran = [r for r in records if r.get("verdict") == "run"]
     if ran or feature.one_shape:
@@ -1739,9 +1770,15 @@ def retry_once(prep: dict, feature, got: dict, incident, *, ask, network: str, a
     parts[RETRY_PART] = retry_words(marks)
     r = ask(FEATURE, prompt, schema, parts, trigger=trigger, context=ctx or None,
             actor=actor, subject=prep["subject"], network=network, send=send, today=today)
-    out.update(asked=True, call_id=r.get("call_id") or "")
-    got["call_ids"] = list(got.get("call_ids") or []) + [out["call_id"]]
+    out.update(asked=RL.left_host(r), call_id=r.get("call_id") or "")
+    got["call_ids"] = (list(got.get("call_ids") or []) + list(r.get("also_calls") or [])
+                       + [out["call_id"]])
     got["cost_usd"] = float(got.get("cost_usd") or 0.0) + float(r.get("cost_usd") or 0.0)
+    if not r.get("ok") and not RL.left_host(r):
+        # Refused before anything was sent (a spending limit could not pay it): said as such.
+        out["words"] = (f"not asked again: {r.get('error')}: "
+                        f"{(r.get('detail') or '')[:240]}")
+        return out
     if not r.get("ok"):
         out["words"] = (f"asked once more, naming what it marked ({_marks_said(marks)}), and "
                         f"not answered ({r.get('error')}: {(r.get('detail') or '')[:160]}); "
@@ -2117,7 +2154,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     off = P.ai_refusal(network)                                                  # mode
     if off:
         raise Refused(f"Not asked: {off}. Nothing was sent")
-    cs = P.cap_state(incident, worst_usd())                                      # cap
+    # The start is refused here only when the incident's cap cannot pay even the least one call
+    # costs (`start_usd`); each call's own counted prompt plus typical output is the gateway's
+    # to judge, the incident's cap among the limits (`incident_cap`).
+    cs = P.cap_state(incident, start_usd())                                      # cap
     if cs["state"] != "allowed":
         raise Refused(cs["words"].replace("Retry isn't available", "Not asked", 1)
                       + ". Nothing was sent")
@@ -2207,16 +2247,10 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             scope["held"] = {incident.device: {
                 s["name"]: s for s in (prep["pack"].get("sections") or [])
                 if s.get("name") in ("history", "intent") and s.get("state") in ("ok", "empty")}}
-        memo = {}
-
-        def may_go_on(_cost_usd):
-            # The incident's cost cap before each further pass of the investigation (C3797):
-            # this press's own calls are recorded as they are made, so the spend read includes
-            # them.
-            now_cs = P.cap_state(incident, worst_usd() / CALLS_WORST)
-            return "" if now_cs["state"] == "allowed" else now_cs["words"]
-
-        prep["may_go_on"] = may_go_on
+        memo = {"spent": 0.0}
+        # The incident's own cap, judged by the gateway at every call's start and live while it
+        # streams, with this investigation's calls so far counted (they are on no proposal yet).
+        own_cap = incident_cap(incident, lambda: memo["spent"])
         feature = loop_feature(prep)
 
         def ask(feature_, prompt, schema, parts, *, trigger, **kw):
@@ -2228,7 +2262,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # every later one works out a fix from what it found; the calls' numbers are
             # Details' alone (`TJ.step`). A round of reads after it says how many it asked for
             # (`say_round`).
-            if memo["calls"] == 1:
+            if memo["calls"] == 1 or memo.pop("first_again", False):
                 TJ.say("The AI's first look…", done="The AI's first look")
             else:
                 TJ.say("The AI is working out a fix from what it found…",
@@ -2244,7 +2278,13 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # Kept until joined, so the `finally` below joins it when the call or the loop
             # raises, before the sessions are closed.
             behinds.append(behind)
-            got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger, **kw)
+            # A stream outliving its job (`troubleshoot_job.bound_s`) is closed as soon as the
+            # job is stopped (the review, 2026-11-16), read on the job's own thread.
+            from modules import op_progress
+            job = op_progress.current()
+            got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger,
+                              spend_cap=own_cap, stop_if=lambda: TJ.was_stopped(job), **kw)
+            memo["spent"] += float(got.get("cost_usd") or 0.0)
             lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its send)")
             if behind is not None:
                 behinds.remove(behind)
@@ -2258,12 +2298,17 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
                 memo["typed_masked"] = got["typed_masked"]
             return got
 
-        got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,              # ask, check
+        # Pass 1 over the context window is refitted inside the loop by the one retry rule
+        # (`read_loop.retry_too_long`, the feature's `refit_first`), never here (A's fix).
+        got = RL.run(FR.FAMILY, feature, ask=ask, network=net_id,                # ask, check
                      data=prep["data"], actor=actor, trigger=trig,
                      context=prep["ctx"], subject=prep["subject"], scope=scope,
                      actable=prep["actable"], send=send, today=today,
                      reads_context=reads_context(), pregather=pre, reuse=reuse,
                      pregathered=pregathered)
+        # What the loop did to fit a pass (`read_loop.counted_room`, `retry_too_long`), said
+        # with the fit's own steps.
+        prep["said"]["fit"].extend(got.get("fitted") or [])
         lap("after the last call")
         # A citation not in what was sent: asked once more, naming it, within the
         # investigation's worst case and the incident's cap (the operator, 2026-11-15).
@@ -2516,7 +2561,9 @@ def _preview_body(prompt: tuple, schema, parts: dict, ctx: dict) -> dict:
         kind, detail = got["refused"]
         return dict(out, refused={"kind": kind, "detail": detail}, body=None)
     est = gateway.prompt_tokens(got["body"])
-    bound = int((profiles.TASKS.get(FEATURE) or {}).get("max_prompt_tokens") or 0)
+    # The only bound: the room the model's context window leaves for a prompt (the operator,
+    # 2026-11-16); the key keeps its name for the preview's readers.
+    bound = int(profiles.prompt_room(FEATURE))
     return dict(out, schema=got["row"]["schema"], body=got["body"],
                 prompt_tokens_estimated=est, max_prompt_tokens=bound,
                 over_the_bound_by_the_estimate=bool(bound and est > bound))
@@ -2577,7 +2624,7 @@ def preview(network: str, found: dict, incident, *, actor: str = "", note: str =
     if ran:
         # The press's next pass after its reads: the investigation's again pass (C3797), which
         # may ask for more, as `read_loop._investigate` builds it.
-        build = RL.again_request if feature.rounds else RL.second_request
+        build = RL.again_request if feature.iterative else RL.second_request
         prompt2, schema2, parts2, ctx2 = build(feature, prep["data"], ctx, records)
         second = _preview_body(prompt2, schema2, parts2, ctx2)
     state = "on" if not now_off else "off"

@@ -12,6 +12,11 @@ could pass a cap. Now, before a call is sent:
    is reserved in flight PLUS this call's worst case, and
 3. writing this call's reservation, when every cap allows it.
 
+**Live spend** (the operator, 2026-11-16): a call is reserved at its hold (its counted prompt
+plus its task's typical output); while its answer streams, its live checks (`live_check`, under the
+same lock) raise its held amount to its running cost plus the headroom to its next check, so
+every other call's start and live check counts what it is really spending.
+
 **Settled** (`settle`: removed) when the call's row, with its actual cost, is in the record,
 whatever the outcome (the gateway's ``finally``). The row is written first and the reservation
 removed after, so a judge in between counts the call twice (its cost and its reservation),
@@ -150,28 +155,39 @@ def _record_late(entry: dict):
     return dict(entry, rows=left, usd=sum(float(r.get("cost_usd") or 0.0) for r in left))
 
 
-def in_flight(held: dict, *, feature: str = None, network: str = None) -> dict:
+def in_flight(held: dict, *, feature: str = None, network: str = None,
+              scope: str = None) -> dict:
     """``{"usd", "calls"}``: what *held* reserves, all of it, or a background feature's on a
     network (*feature* and *network* given: only the reservations of both that count toward
     the feature: a background call's, a person's call that counts for it (``counts``, C3751),
-    and a catch-up's planned start (C3752))."""
-    rows = [h for h in held.values()
-            if feature is None or ((h.get("background") or h.get("counts"))
-                                   and h.get("feature") == feature
-                                   and h.get("network") == network)]
+    and a catch-up's planned start (C3752)), or a caller's own cap's (*scope* given: only the
+    reservations made under that scope, an incident's investigation's, `gateway.ask`'s
+    *spend_cap*)."""
+    if scope is not None:
+        rows = [h for h in held.values() if h.get("scope") == scope]
+    else:
+        rows = [h for h in held.values()
+                if feature is None or ((h.get("background") or h.get("counts"))
+                                       and h.get("feature") == feature
+                                       and h.get("network") == network)]
     return {"usd": sum(float(h["usd"]) for h in rows), "calls": len(rows)}
 
 
 def reserve(call_id: str, usd: float, *, judge, ttl_s: float, feature: str = "",
             network: str = "", background: bool = False, day: str = "",
-            now=None, counts: bool = False) -> dict:
-    """Hold *usd* (the call's worst case) for *call_id* when *judge* allows it.
+            now=None, counts: bool = False, scope: str = "") -> dict:
+    """Hold *usd* (the call's hold: its counted prompt plus its task's typical output) for
+    *call_id* when *judge* allows it.
 
     Under the store's cross-process lock: the open reservations read (an expired one dropped),
-    ``judge(held)`` asked (it reads the spend inside the lock and answers None to allow, or the
-    gateway's refusal ``{"kind", "why", ...}``), and this call's reservation written, expiring
-    *ttl_s* after now. ``{"ok": True}``, or ``{"ok": False, "refusal": {...}}``; an unreadable
-    store is a refusal (``over_cap``, said), never read as nothing reserved."""
+    ``judge(held)`` asked (it reads the spend inside the lock and answers None to allow at
+    *usd*, ``{"usd", ...}`` to allow at the amount it sized under this same lock, returned as
+    ``sized``, or the gateway's refusal ``{"kind", "why", ...}``), and this call's reservation
+    written, expiring
+    *ttl_s* after now (its stream's live checks, `live_check`, move its amount to its running cost
+    and keep it alive). ``{"ok": True}``, or ``{"ok": False, "refusal": {...}}``; an
+    unreadable store is a refusal (``over_cap``, said), never read as nothing reserved.
+    *scope* names a caller's own cap the reservation counts toward (`in_flight`'s *scope*)."""
     from modules import filestore
 
     path = _path()
@@ -203,6 +219,12 @@ def reserve(call_id: str, usd: float, *, judge, ttl_s: float, feature: str = "",
                 else:
                     live[k] = now_entry
             said = judge(live)
+            sized = {}
+            if said and "kind" not in said and "usd" in said:
+                # An allowance the judge sized under this lock (a thinking call's max_tokens,
+                # `gateway._capped_send`): held at its amount.
+                sized, said = dict(said), None
+                usd = float(sized["usd"])
             if said:
                 if changed:
                     _write(path, live)
@@ -210,10 +232,11 @@ def reserve(call_id: str, usd: float, *, judge, ttl_s: float, feature: str = "",
             live[call_id] = {"usd": float(usd), "feature": feature, "network": network,
                              "background": bool(background), "day": day, "month": day[:7],
                              **({"counts": True} if counts else {}),
+                             **({"scope": scope} if scope else {}),
                              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t)),
                              "expires_at": t + ttl_s, "pid": os.getpid()}
             _write(path, live)
-            return {"ok": True}
+            return {"ok": True, "sized": sized}
     except OSError as exc:
         return {"ok": False, "refusal": {"kind": "over_cap", "why": (
             f"the AI caps' reservations ({NAME}) could not be written "
@@ -240,6 +263,49 @@ def settle(call_id: str, ttl_s: float, now=None) -> bool:
         log.error("ai reservations: %s's reservation could not be settled (%s); it is held "
                   "until it expires", call_id, exc)
         return False
+
+
+def live_check(call_id: str, *, judge, ttl_s: float, now=None) -> str:
+    """A streaming call's live check (the operator, 2026-11-16: "the cap is enforced live"):
+    under the store's lock, ``judge(others)`` asked with every OTHER open reservation (each
+    holding its call's hold or its own live spend); it answers ``{"stop": why}`` (the stream
+    must stop; the entry is left as it was) or ``{"usd": amount}``: this call's running cost
+    plus its headroom to its next check, which becomes its held amount (never below the hold
+    it started with, ``hold``), its expiry *ttl_s* from now, so every other call's check, and
+    every reserve, counts it. ``""`` to go on, else why to stop. A store that cannot be read or
+    written stops the stream (fail closed, said); a reservation not there (settled) goes on
+    unchanged."""
+    from modules import filestore
+
+    path = _path()
+    try:
+        with filestore.PathLock(path):
+            t = time.time() if now is None else now
+            held = _read(path, t, ttl_s)
+            entry = held.get(call_id)
+            if entry is None:
+                return ""
+            others = {k: v for k, v in _live(held, t).items() if k != call_id}
+            said = judge(others) or {}
+            if said.get("stop"):
+                return str(said["stop"])
+            usd = float(said.get("usd") or 0.0)
+            entry.setdefault("hold", float(entry["usd"]))
+            if said.get("hold") is not None:
+                # The hold re-priced from the stream's reported input, cache-read and cache-write
+                # tokens (a cached pass holds what it costs, never the cache-write price).
+                entry["hold"] = float(said["hold"])
+            entry["usd"] = max(float(entry["hold"]), float(usd))
+            entry["live_usd"] = float(usd)
+            entry["expires_at"] = t + ttl_s
+            _write(path, held)
+        return ""
+    except (Unreadable, OSError) as exc:
+        log.error("ai reservations: %s's live spend could not be checked (%s); its stream is "
+                  "stopped", call_id, exc)
+        return (f"the AI caps' reservations ({NAME}) could not be read or written "
+                f"({type(exc).__name__}), so this call's running cost could not be held "
+                "against the caps")
 
 
 def hold_unrecorded(call_id: str, rows: list, ttl_s: float, now=None) -> bool:

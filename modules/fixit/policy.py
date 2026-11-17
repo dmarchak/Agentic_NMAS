@@ -262,8 +262,8 @@ def cap_state(incident, worst_usd) -> dict:
     out.update(spent=spent, total=total)
     if total > round(cap["usd"], PRECISION):
         out["words"] = (f"Retry isn't available: this incident's AI spend would pass its cap. "
-                        f"Spent {money(spent)} in this incident; the next attempt costs at most "
-                        f"{money(worst)}, which would make {money(total)} against the cap of "
+                        f"Spent {money(spent)} in this incident; the next attempt's least call "
+                        f"costs {money(worst)}, which would make {money(total)} against the cap of "
                         f"{said}. Mercury never raises the cap")
         return out
     out["state"] = "allowed"
