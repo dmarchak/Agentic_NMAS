@@ -1293,7 +1293,9 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     if why:
         _step(rec, "approve", "refused", why)
         return _finish(network, rec, "refused", why)
-    p = CP.preview(network, key, values, sources=src.model)
+    # A person's approved plan runs its provisional shapes (the operator, 2026-11-17); an
+    # Automatic saved fix's run (*authority*) still needs each shape approved.
+    p = CP.preview(network, key, values, sources=src.model, person_plan=authority is None)
     rec.update(params=dict(p["values"]), program=list(p["program"]), title=p["title"])
     if not p["ok"]:
         why = "; ".join(p["refusals"]) + ". Nothing was sent"

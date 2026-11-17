@@ -1774,15 +1774,18 @@ def _investigate(family: ReadFamily, feature: LoopFeature, out: dict, wanted: li
                                          "nothing of its last reads was sent")
         # No paid pass without new evidence (A's fix; the operator, 2026-11-16).
         nothing = no_new_evidence(wanted, [], ran)
-        if nothing:
+        if nothing and _names_a_fix(out.get("answer")):
             out["words"] = f"AI analysis: {summary}; not asked again: {nothing}"
-            if _names_a_fix(out.get("answer")):
-                return out                       # its last answer stands as the final one
-            out["state"] = "first_pass"
-            return _stopped(out, rounds, f"it was not asked again: {nothing}")
+            return out                           # its last answer stands as the final one
         bound = ("its reads" if len(records) >= feature.max_reads else
                  "its room for reads in the context window" if full else
                  "its time" if time.monotonic() >= deadline else "")
+        if nothing:
+            # The operator, 2026-11-17: "The AI always ends with a plan (or a plain 'I can't
+            # fix this, here's why'). Refused reads or 'no new evidence' never stop it before
+            # its answer: it proposes from what it has." So the final pass is asked, which
+            # cannot ask for reads, never a stop with no answer.
+            bound = bound or f"no new evidence ({nothing})"
         last = bool(bound)
         prompt, schema, parts, ctx2 = (second_request(feature, data, ctx, records) if last
                                        else again_request(feature, data, ctx, records))

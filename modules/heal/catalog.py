@@ -358,7 +358,8 @@ class PlanStep:
         """The plan's own preview (`command_plan.preview`), as a catalog plan answers."""
         from modules.nsot import command_plan
 
-        return command_plan.preview(network, self.key, params, sources=sources)
+        return command_plan.preview(network, self.key, params, sources=sources,
+                                    person_plan=True)
 
     @staticmethod
     def drawn(p: dict) -> dict:
@@ -371,7 +372,7 @@ def _plan_preflight(key: str):
                   incident: str = "", reuse=None) -> dict:
         from modules.nsot import command_plan, command_plan_run
 
-        p = command_plan.preview(network, key, params, sources=sources)
+        p = command_plan.preview(network, key, params, sources=sources, person_plan=True)
         refused = "; ".join(p["refusals"])
         got = []
         if p["ok"] and reads:

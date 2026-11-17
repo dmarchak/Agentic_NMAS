@@ -701,7 +701,8 @@ def plan_hash(network: str, t: Template, values: dict, lines: list, auth: list) 
     return _digest(bound_fields(network, t, values, lines, auth))
 
 
-def preview(network: str, key, values, *, sources=None, store=None) -> dict:
+def preview(network: str, key, values, *, sources=None, store=None,
+            person_plan: bool = False) -> dict:
     """The plan *key* with *values*, previewed (the module docstring): ``{"ok", "refusals",
     "key", "title", "values", "derived", "dialect", "program", "authorised", "hash", "drawn",
     "unknown_shapes"}``. Writes nothing; asks no device."""
@@ -725,7 +726,15 @@ def preview(network: str, key, values, *, sources=None, store=None) -> dict:
     pol = command_policy.check(got["dialect"], t.commands, tuple(command_names(t.parameters)),
                                network=network, store=store)
     out["unknown_shapes"] = pol["unknown"]
-    out["refusals"] += pol["refusals"]
+    held = set()
+    if person_plan:
+        # The operator, 2026-11-17: "A person's Approve on a shown plan is the only approval.
+        # It covers any provisional shapes in that plan; no separate 'Approve the shape' for a
+        # person's plan." A provisional shape refuses nothing in a plan a person approves (its
+        # exact lines shown); refused words, literal objects and unknown shapes still refuse,
+        # and an Automatic saved fix still needs the shape approved (`command_plan_run.run`).
+        held = {u["words"] for u in pol["unknown"] if u["state"] == "provisional"}
+    out["refusals"] += [w for w in pol["refusals"] if w not in held]
     derived = got["derived"]
     lines = program(t, derived)
     # Each line intent supplies (a subscription's, the ``<name>_each_lines`` expansion) is held
