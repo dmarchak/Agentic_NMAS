@@ -130,6 +130,26 @@ def test_a_red_smoke_with_a_swapped_venv_puts_the_venv_and_the_units_back(world,
                for w in row["reverted"]["checkout_units"]), row["reverted"]
 
 
+def test_a_fast_lane_release_not_ready_says_its_smoke_and_revert_did_not_run(world, capsys):
+    """The correctness review's G7-D9 (2026-11-18): a fast-lane release whose readiness failed
+    returned before the smoke block, so neither the smoke check nor its revert ran, and the
+    verdict said only "Needs attention offers the rollback", though the fast lane promises a
+    smoke and a revert. Whether such a release is smoked and reverted is the operator's (their
+    2026-11-05 rule: a release not ready is never rolled back automatically); until then the
+    verdict says neither ran, and names the command that puts it back."""
+    world.advance({"app.py": "v = 2\n"})
+    smoked = []
+    code, _restarted, _calls = _run(
+        world, {}, extra=("--fast-lane", TESTS),
+        smoke=lambda repo, target: smoked.append(target) or (True, "SMOKE OK"),
+        readiness=lambda n, now: {"ready": False, "warming": False,
+                                  "not_ready": [{"step": "reader", "error": "a test's own"}]})
+    err = capsys.readouterr().err
+    assert code != 0 and not smoked, err
+    assert "The fast lane's smoke check and its revert did not run" in err, err
+    assert f"nmas-deploy --revert puts back {world.base[:10]}" in err, err
+
+
 def test_revert_puts_back_the_previous_deployed_commit_with_no_verdict(world, capsys):
     target = world.advance({"app.py": "v = 2\n"})
     assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0

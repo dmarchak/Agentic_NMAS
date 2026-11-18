@@ -1973,11 +1973,21 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
     row.update(pid_after=state.get("MainPID"), systemd_start=state.get("start"),
                running_pid=body.get("pid"), running_commit=body.get("commit"),
                app_started_at=body.get("started_at"))
+
+    def unsmoked(why):
+        # The fast lane promises a smoke check and its revert; a return before them says they
+        # did not run, and the one command that puts the release back (the correctness
+        # review's G7-D9, 2026-11-18). Whether such a release is reverted at once is the
+        # operator's (their 2026-11-05 rule: a release not ready is never rolled back here).
+        return (f" The fast lane's smoke check and its revert did not run ({why}): "
+                f"nmas-deploy --revert puts back {head[:10]}." if fast and head != target
+                else "")
     if not ok:
         moved = (f" The venv link names {venv['to']}; scripts/host-steps/venv-rollback.sh points "
                  f"it back at {venv['from']}." if venv["state"] == "swap" else "")
         return finish(UNHEALTHY, _mixed_headline(health or _health, target)
-                      + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}")
+                      + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}"
+                      + unsmoked("the release is not confirmed running"))
     # Can it serve (C2514)? Asked once it is confirmed running, and only READ: a release that
     # is not ready is reported FAILED and left running; the rollback is a person's, offered by
     # Needs attention, never taken here (the operator, 2026-11-05).
@@ -2001,14 +2011,16 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                  "not every unit that runs the checkout was: "
                                  + "; ".join(w for w in units_words if "NOT" in w)
                                  + (f"; and it is NOT READY: {ready_now['words']}"
-                                    if not_ready else ""))
+                                    if not_ready else "")
+                                 + unsmoked("a unit that runs the checkout is not confirmed"))
     if not_ready:
         back = (f"the previous release, {head[:10]}" if head != target
                 else "the release before it")
         return finish(NOT_READY,
                       f"FAILED, NOT READY: {what}, restarted and running {target[:10]} as pid "
                       f"{state.get('MainPID')}, but {ready_now['words']}. It was NOT rolled "
-                      f"back: Needs attention offers the rollback to {back}. {message}")
+                      f"back: Needs attention offers the rollback to {back}."
+                      + unsmoked("the release is not ready") + f" {message}")
     pruned = ""
     if venv["state"] == "swap":
         # Keep the current venv and the previous one (the operator, 2026-10-09).
