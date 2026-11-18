@@ -183,7 +183,11 @@ class TestWhatIsSent:
     @pytest.mark.parametrize("reads_on", [False, True], ids=["plain pass v7", "reads pass v8"])
     def test_each_prompt_fits_its_pins_bound(self, ai, monkeypatch, reads_on):
         """The body each pass sends, by the gateway's fallback over-estimate, within the pin's
-        bound (the recorded cases hold no pack yet, so the press's own request is measured)."""
+        bound (the recorded cases hold no pack yet, so the press's own request is measured).
+        Premise corrected (7b0bb884, the operator, 2026-11-16: "remove every AI token/size
+        limit Mercury sets itself"): a pin's ``max_prompt_tokens`` (27,000) is kept in its file
+        and enforced by nothing; the one bound a prompt is held to is its model's context
+        window less the model's most output (`profiles.prompt_room`, the gateway's check)."""
         from modules.ai import gateway, profiles
         from modules.ai import read_loop as RL
         if reads_on:
@@ -193,7 +197,7 @@ class TestWhatIsSent:
             {"reads": []} if reads_on else {}))
         press(ai, iid)
         (body,) = ai.sent
-        bound = profiles.TASKS[FT.FEATURE]["max_prompt_tokens"]
+        bound = profiles.prompt_room(FT.FEATURE)
         want = FT.PROMPT_PLAN_READS if reads_on else FT.PROMPT_PLAN
         assert prompts_text(want) in json.dumps(body["system"]), "the pass's own prompt"
         assert gateway.prompt_tokens(body) <= bound, (gateway.prompt_tokens(body), bound)
