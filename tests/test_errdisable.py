@@ -820,3 +820,17 @@ class TestOnePortsFixClosesOnlyItsPort:
         got, inc = self.close(iid)
         assert inc["state"] == "closed" and got, (got, inc.get("state"))
         assert inc["fixed"]["run"] == "run-00000001", inc.get("fixed")
+
+    def test_a_verified_fix_closes_a_watching_incident_fixed(self, store):
+        """Self-healing Off leaves an incident watching (1e49b3a9); a person's saved fix pressed
+        on its card and verified closes it Fixed with the run as its fix, as a plan's verified
+        run closes a watching one (`detect.close_verified`, ``also_watching``): the review of
+        the device-write fixes, "1e49b3a9 and d1ee447f together"."""
+        from modules.heal import incidents
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        assert next(i for i in incidents.read(NET)["incidents"]
+                    if i["id"] == iid)["state"] == "watching"
+        got, inc = self.close(iid)
+        assert inc["state"] == "closed" and got, (got, inc.get("state"))
+        assert inc["fixed"]["run"] == "run-00000001", inc.get("fixed")

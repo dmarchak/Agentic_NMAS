@@ -1347,7 +1347,9 @@ def release(key: str, row_id: str, words: str) -> dict:
 def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> dict:
     """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device",
     "interface"?}``) through the one close path (`decide.end_standing`, the close keeping
-    ``fixed``); ``{}`` when it is not standing (the detect pass ends it then), or when the run
+    ``fixed``); a watching incident too (self-healing Off leaves one watching, 1e49b3a9), as a
+    plan's verified run closes one (`detect.close_verified`); ``{}`` when it is neither
+    standing nor watching (the detect pass ends it then), or when the run
     fixed one port and the incident holds more than that port's events
     (`errdisable.beyond_port`): it stands on them, and the detect pass ends it once they are
     gone (the correctness review's G3 M3, 2026-11-18)."""
@@ -1368,7 +1370,7 @@ def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> 
     return decide.end_standing(
         network, incident_id,
         (f"fixed: saved script {e.get('name')}'s run {rid[-8:]} verified on "
-         f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by,
+         f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by, also_watching=True,
         read_words=f"the script's run {rid} read the device back and verified",
         # The correctness review's G4-D5: the moment its verify passed (``epoch``) and the fix
         # that made it (``operation``), as every verified fix's proof carries them, so the
