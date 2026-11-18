@@ -689,6 +689,28 @@ def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch): 
     assert any("cut to" in step for step in prep["said"]["fit"])
 
 
+def test_the_fits_local_estimate_is_never_under_the_masked_body_it_stands_for(
+        ai, reads, monkeypatch):  # noqa: F811
+    """231da1d6 (the operator, 2026-11-16: "make the fit local and fast"): the fit measures pass
+    1 once, built and masked as the gateway builds it, then moves that size by the unmasked
+    difference of each cut plus the mask's margin (`request_chars`), never building again. On
+    r4's sized pack under the planted room, after the fit's cuts, the local estimate is never
+    under the exact masked body built afresh, and over it by at most that margin. The debt
+    pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for 231da1d6)."""
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import profiles
+    _class(monkeypatch, True)
+    _r4_sized(monkeypatch)
+    iid = stopped(ai)
+    monkeypatch.setattr(profiles, "prompt_room", lambda name: ROOM_PLANTED)
+    prep = T.request(NET, *_found(ai, iid))
+    assert any("cut to" in step for step in prep["said"]["fit"]), "floor: the fit cut"
+    local = T.request_chars(prep)
+    _masked, _raw, margin = prep["_sized"]
+    exact = T.request_chars(dict(prep, _sized=None))
+    assert exact <= local <= exact + margin, (exact, local, margin)
+
+
 def test_a_pack_that_fits_is_sent_whole(ai, reads, monkeypatch):  # noqa: F811
     """The lab's own pack, with a small topology sent: nothing is left out or cut, and the fit
     says so by saying nothing."""
