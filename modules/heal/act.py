@@ -833,9 +833,10 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     planned-restart and no-change windows are judged at both.
 
     Round 2 of the speed pass (the operator, 2026-11-17): only Stop everywhere, Off (the mode
-    not Auto) and a planned window a person set stop it here; the lab-stage gate, the policy
-    moved since the decision, the kinds allowed Auto, a halt and "no person confirmed the
-    policy" stop nothing; *network* is read by guard 3 below."""
+    not Auto) and a planned window a person set stop it here; the lab-stage gate and a halt
+    stop nothing; *network* is read by guard 3 below. The operator's ruling 4 (2026-11-18,
+    C4043) brings back the policy moved since the decision and "no person confirmed the
+    policy": either sends nothing."""
     from modules.heal import policy
 
     mode = src.mode(now)
@@ -844,6 +845,12 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     if mode.get("mode") != "auto":
         return (f"the mode is {policy.MODE_WORDS.get(mode.get('mode'), mode.get('mode'))} now "
                 f"({mode.get('words')}), and only AUTO sends a heal")
+    # The policy's fingerprint judged again at act time (the operator's ruling 4, 2026-11-18,
+    # C4043: "the act-time 'policy moved' check").
+    decided_under = (decision.get("policy") or {}).get("fingerprint")
+    if mode.get("fingerprint") != decided_under:
+        return (f"the policy moved since the decision (decided under {decided_under}, now "
+                f"{mode.get('fingerprint')})")
     # Each fix's own mode decides (the operator, 2026-11-17: Fixes' Automatic, Dry run or
     # Manual per fix): a kind no longer in the network's fix kinds to heal sends nothing.
     allowed = set(mode.get("kinds_auto") or [])
@@ -859,6 +866,12 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
     if g:
         return f"guard 3, planned work: {g['words']}"
+    # An accountable person on the policy (the operator's ruling 4, 2026-11-18, C4043).
+    pol = decision.get("policy") or {}
+    if not pol.get("by"):
+        return (f"no person is recorded as having confirmed the policy the heal was decided "
+                f"under ({pol.get('fingerprint') or 'no fingerprint'}, confirmed by: nobody "
+                "recorded), so nobody is accountable")
     return ""
 
 

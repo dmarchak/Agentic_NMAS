@@ -367,14 +367,17 @@ class TestFiring:
         assert why == f"{e['key']} is a self-heal script of {NET}, and this run is on Other"
 
     def test_a_promoter_who_no_longer_holds_the_right_stands_for_nothing(self, store):
-        """The check this test was named for is gone (70e89a47, the operator, 2026-11-17,
-        round 2: "the promoter-still-holds-the-right check" removed, so an approved fix runs
-        the moment self-healing is On): a promotion stands once made, whoever holds the right
-        later; promoting again still asks the right, and the AI still stands for nothing."""
+        """A saved fix's Automatic fire is authorised only while its promoter still holds the
+        self-healing right (the operator's ruling 4, 2026-11-18, C4043: "Bring back: the
+        promoter's current right", which 70e89a47 had removed): a promoter whose right was
+        revoked stands for nothing, the refusal naming the promoter and the right; promoting
+        again still asks the right, and the AI still stands for nothing."""
         e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
-        store["rights"]["self_healing"] = [OTHER]
         assert S.authority_refusal(e["key"], {"script": e["key"]}, NET) == ""
+        store["rights"]["self_healing"] = [OTHER]
+        why = S.authority_refusal(e["key"], {"script": e["key"]}, NET)
+        assert "no longer holds self-healing rights" in why and PERSON in why, why
         assert S.scripts(NET)[e["key"]]["promoted_by"] == PERSON
         with pytest.raises(S.Refused) as exc:
             script(store, name="BPDU guard recovery again")

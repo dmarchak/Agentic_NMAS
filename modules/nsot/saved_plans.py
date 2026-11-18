@@ -1040,8 +1040,13 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
                 f"run is on {network or 'no network'}")
     if CP.parse(e["template"]).digest != e.get("digest"):
         return f"{key}'s plan is not the one promoted"
-    # The promoter-still-holds-the-right check is gone (the operator, 2026-11-17, round 2): an
-    # approved fix runs the moment self-healing is On.
+    # The promoter's current right (the operator's ruling 4, 2026-11-18, C4043): a promotion
+    # authorises a fire only while its promoter still holds the self-healing right.
+    who = e.get("promoted_by") or ""
+    if not identity.holds("self_healing", who):
+        return (f"{who or 'nobody recorded'}, who promoted {key}, no longer holds self-healing "
+                "rights (the self_healing right, read now, does not name them), so the "
+                "promotion authorises nothing; a person who holds it promotes it again")
     return ""
 
 
@@ -1177,9 +1182,9 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
         values = fill(e, problem)
     except Refused as exc:
         return dict(out, **_settle(key, row["id"], words=f"refused: {exc}"))
-    # The run's own preview runs provisional shapes (`command_plan_run.run`): this one matches
-    # it, so its hash is the run's (round 2, 2026-11-17).
-    p = CP.preview(network, key, values, sources=sources, person_plan=True)
+    # Strict, as the run's own preview is for an Automatic fire (`command_plan_run.run`): a
+    # shape still PROVISIONAL refuses (the operator's ruling 4, 2026-11-18, C4043).
+    p = CP.preview(network, key, values, sources=sources)
     out.update(ok=bool(p["ok"]), hash=p["hash"], values=p["values"],
                words=("would run" if p["ok"] else "would be refused: "
                       + "; ".join(p["refusals"])))
@@ -1264,11 +1269,10 @@ def _previewed(network: str, e: dict, prob, person: bool = False) -> dict:
         values = fill(e, prob)
     except Refused:
         return {}
-    # A provisional shape refuses nothing, a person's offer (`fix_offers`) or an Automatic fire
-    # (`script_preview`) alike (the operator, 2026-11-17, round 2). *person* is kept for its
-    # callers.
-    del person
-    p = CP.preview(network, e["key"], values, person_plan=True)
+    # *person*: a person's press offers it (`fix_offers`), so a provisional shape refuses
+    # nothing (the operator, 2026-11-17); an Automatic fire (`script_preview`) stays strict
+    # (the operator's ruling 4, 2026-11-18, C4043).
+    p = CP.preview(network, e["key"], values, person_plan=person)
     if not p["ok"]:
         return {}
     d = p.get("drawn") or {}

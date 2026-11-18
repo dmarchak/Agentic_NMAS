@@ -31,6 +31,7 @@ import dataclasses
 import inspect
 import json
 import os
+import types
 
 import pytest
 
@@ -687,6 +688,35 @@ class TestAPersonsPlan:
         rec = go(lab, values=provisional, key=PROVISIONAL, confirmed=p["hash"])
         approve = next(s for s in rec["steps"] if s["step"] == "approve")
         assert approve["result"] == "ok", rec["why"]
+        assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
+
+    def test_an_automatic_fix_with_a_provisional_shape_sends_nothing(self, lab, provisional,
+                                                                     monkeypatch):
+        """An Automatic fire runs only the plan shape that was approved (the operator's ruling
+        4, 2026-11-18, C4043: "Bring back: ... the approved shape for Automatic fires", which
+        70e89a47 had removed): a saved fix's run on its promoter's standing approval
+        (*authority*) previews strictly, so a shape held PROVISIONAL refuses, naming it, and
+        nothing is sent; once an admin approves the shape the same run sends. Its fire's and
+        offer's previews (`saved_plans.fire`, `script_preview`) say the same."""
+        from modules.nsot import saved_plans as S
+        monkeypatch.setattr(S, "authority_refusal", lambda key, authority, network="": "")
+        # The fire's other stops pass (Auto, nothing held): only the shape is judged here.
+        monkeypatch.setattr("modules.heal.decide.script_hold", lambda *a, **kw: None)
+        monkeypatch.setattr("modules.heal.act.stopped_now", lambda network: "")
+        p = CP.preview(NET, PROVISIONAL, provisional, sources=Model(), person_plan=True)
+        rec = go(lab, values=provisional, key=PROVISIONAL, confirmed=p["hash"],
+                 authority={"script": PROVISIONAL})
+        assert rec["outcome"] == "refused" and not lab["sw"].batches, rec["why"]
+        assert "PROVISIONAL" in rec["why"] and "Nothing was sent" in rec["why"], rec["why"]
+        e = {"key": PROVISIONAL, "network": NET}
+        monkeypatch.setattr(S, "fill", lambda entry, prob: dict(provisional))
+        prob = types.SimpleNamespace(as_dict=dict)
+        assert S._previewed(NET, e, prob) == {}
+        assert S._previewed(NET, e, prob, person=True)["hash"] == p["hash"]
+        assert POL.approve(NET, "cisco_ios", SHAPE, actor=ACTOR, actor_verified="access",
+                           person=True, admin=True)["ok"]
+        rec = go(lab, values=provisional, key=PROVISIONAL, confirmed=p["hash"],
+                 authority={"script": PROVISIONAL})
         assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
 
 

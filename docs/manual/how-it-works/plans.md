@@ -80,7 +80,9 @@ A command plan that ran and passed its own verify can be saved, its parameters l
   **Dry run**: when an incident's problem matches, Mercury fills the parameters, previews the
   plan without asking the device, and records what it would have run on the script's own
   record. A person with self-healing rights promotes it; from then on, when it matches, it
-  runs through the same runner, on that person's standing approval, before the AI is asked,
+  runs through the same runner, on that person's standing approval while they still hold
+  self-healing rights (a promoter whose right was revoked authorises nothing, and the run
+  is refused naming them), before the AI is asked,
   and an incident it heals says "Healed by saved script <name>: no AI used".
 - **As a reusable action**, for every network: a named entry ("Bounce interface") that the
   catalog lists beside the plans Mercury ships, so it can be a step of a fix and the AI may
