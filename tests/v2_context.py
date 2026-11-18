@@ -1118,43 +1118,6 @@ def batch_fixture(now: float = None):
     return decisions, doc, ai
 
 
-def _attention_batch(client, _lab, _mp):
-    """G6: Needs attention with guard 6's batch card (`_heal_batch.html`), its preview drawn
-    before the press: two devices fixed with their programs, one held with why, one incident
-    for the AI, and a can't-fix row of that incident folded under the card."""
-    import time as _time
-
-    import pytest
-
-    from modules import attention
-    from modules.heal import batch
-
-    decisions, doc, ai = batch_fixture()
-    p = batch.preview("Lab", decisions, ai_items=ai, incidents_doc=doc)
-    assert p["on"] and p["fixable"] == 2, p
-    mp = pytest.MonkeyPatch()
-    try:
-        mp.setattr(batch, "preview", lambda *_a, **_k: p)
-        rows = attention._heal_held_rows("Lab", decisions)
-        cant = attention.row(source="heal", kind="cant_fix", key="hd-5", level="danger",
-                             event="hd-50000000005",
-                             what="Mercury cannot fix s5 by itself", cause="no fix",
-                             action={"label": "Start AI troubleshooting"}, devices=["s5"])
-        cant["incident_page"] = {"id": ai[0]["id"], "list": "Lab"}
-        rows = attention._fold_into_batch(rows + [cant])
-        assert rows and rows[0].get("batch") and rows[0]["batch_folded"], rows
-        mp.setattr(attention, "SOURCES", [lambda: attention.source_result(
-            "heal", "Self-healing", read_at=_time.time(), took_ms=0, rows=rows,
-            checked="list Lab: 1 hold a person resolves")])
-        r = client.get("/v2/attention?list=Lab")
-        assert r.status_code == 200, r.status_code
-        body = r.get_data(as_text=True)
-        assert "Turn on self-healing and fix all" in body and "Mercury can fix 2." in body, \
-            "the batch card is not drawn"
-    finally:
-        mp.undo()
-
-
 def _attention_alike(client, _lab, _mp):
     """Needs attention with alike rows (the GUI review's item 10, C3457): three failing jobs
     are one row, Open the list on its line, each job inside it as itself."""
@@ -1257,7 +1220,7 @@ def _intent_words(client, lab, _mp):
         mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
         mp.setattr("modules.ai.controls._key_set", lambda: True)
         mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
-        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+        mp.setattr(anthropic_adapter, "send", lambda body, key, **kw: anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
                               "stop_reason": "end_turn",
                               "usage": {"input_tokens": 1500, "output_tokens": 120}},
@@ -1585,7 +1548,7 @@ def _change_record(client, _lab, _mp):
         mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
         mp.setattr("modules.ai.controls._key_set", lambda: True)
         mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
-        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+        mp.setattr(anthropic_adapter, "send", lambda body, key, **kw: anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
                               "stop_reason": "end_turn",
                               "usage": {"input_tokens": 1500, "output_tokens": 120}},
@@ -1977,7 +1940,7 @@ def _alert_evidence(client, _lab, _mp):
         # The answers kept with their packs (C1853), in this walk's own folder.
         from modules.ai import explain_answers
         mp.setattr(explain_answers, "_path", lambda: os.path.join(folder, "explain_answers.jsonl"))
-        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+        mp.setattr(anthropic_adapter, "send", lambda body, key, **kw: anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
                               "stop_reason": "end_turn",
                               "usage": {"input_tokens": 4000, "output_tokens": 200}},
@@ -3167,9 +3130,12 @@ def _ai_feedback(client, _lab, _mp):
 def _assistant(client, _lab, mp):
     """The toolbar assistant's answer (card P7, stage 1): a question the manual does not cover,
     which is answered with no call (no passage chosen) and recorded as a gap, its record in the
-    walk's own folder."""
+    walk's own folder. The Assistant is behind its installation setting, off by default
+    (a61bb071, the operator, 2026-11-16): on for this walk, as a person turns it on."""
     import html
+    from modules import installation_settings
     from modules.ai import assistant
+    mp.setattr(installation_settings, "assistant_on", lambda: True)
     gaps = []
     mp.setattr(assistant, "record_gap", lambda *a, **k: gaps.append((a, k)) or {})
     r = client.post("/v2/assistant/ask", data={"question": "What is the capital of France?",
@@ -3228,8 +3194,12 @@ def _plans(client, _lab, mp):
                plan_steps=[{"n": 1, "words": "one", "state": "done", "words_said": "ok"},
                            {"n": 2, "words": "two", "state": "not_run", "words_said": ""}])
     r = client.get("/v2/plans/preview", query_string={"run": "run-1"})
-    # Its steps on THE stepper: step 1 done, step 2 not reached (the run stopped before it).
-    assert 'run-step run-step-not_reached" data-step="step-2"' in r.get_data(as_text=True)
+    # Its steps on THE stepper: step 1 done, step 2 not reached (the run stopped before it),
+    # drawn plain as the incident card's stepper draws a run (93120b2f, the operator,
+    # 2026-11-15: a plan's run on its incident's card, numbered).
+    body = r.get_data(as_text=True)
+    assert 'inc-stepper-step inc-stepper-done" data-step="s1"' in body
+    assert 'inc-stepper-step inc-stepper-not_reached" data-step="s2"' in body
     got = {"ok": True, "state": "answered", "error": "", "detail": "", "answer": "Yes.",
            "cites": [], "passages": [], "call_id": "ai-0123456789abcdef", "gap": False,
            "typed_masked": "", "plan": {"plan": "dhcp-reservation", "title": "Reserve it",
@@ -4340,12 +4310,13 @@ def _heal_and_notify(client, _lab, _mp):
                      {"part": "kinds", "modal": "heal-kind-qos_policy", "heal_kinds_auto": "",
                       "heal_kinds_propose": ["", "process_reset"]}):
             assert client.post(base + "/preview", data=data, headers=hx).status_code == 200
-        # Auto's modal, its picker sent empty with no quick choice: refused (Lab is not marked
-        # lab, and no time was chosen), the UTC beside the picker drawn again saying so.
+        # Auto's modal, its picker sent empty with no quick choice: was refused (Lab not marked
+        # lab, no time chosen); now AUTO until turned off, on any network (cd0aa4cc, the
+        # operator's change to N8, 2026-11-16), drawn.
         assert client.post(base + "/preview", data={"part": "mode", "heal_mode": "auto",
                                                     "modal": "heal-mode-auto",
                                                     "heal_mode_until_local": ""},
-                           headers=hx).status_code == 409
+                           headers=hx).status_code == 200
         # A refused confirm: the tab drawn with the toggle's modal opened again.
         assert client.post(base, data={"part": "kinds", "modal": "heal-kind-qos_policy",
                                        "heal_kinds_auto": "",
@@ -4976,8 +4947,10 @@ def _sdn_switches(client, _lab, _mp):
             "list": "Lab", "hash": "0" * 64, "plan": ["arista-sw1=" + "a" * 64]}).status_code == 409
         # History's row for the verified configuration: its source and its changes drawn. Two
         # kinds chosen, so the rows are these alone and the page's states are otherwise the
-        # walk's (it filters by no single kind, and no row of its store carries a mark).
-        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy")\
+        # walk's (it filters by no single kind, and no row of its store carries a mark). All
+        # time (``since=``): the planted rows are dated 2026-11-10 and the page's default
+        # window is the last 7 days of the wall clock, so from 2026-11-17 they fell out of it.
+        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy&since=")\
             .get_data(as_text=True)
         assert "OpenFlow configuration on arista-sw1" in history and "Built from" in history
         assert client.get(f"{base}/slot?card=template").status_code == 200
@@ -5148,7 +5121,7 @@ def _sdn_policies(client, _lab, _mp):
         mp.setattr("modules.ai.controls._key_set", lambda: True)
         mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
         planted = {"answer": None}
-        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+        mp.setattr(anthropic_adapter, "send", lambda body, key, **kw: anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text",
                                            "text": json.dumps(planted["answer"])}],
                               "stop_reason": "end_turn",
@@ -5404,8 +5377,12 @@ def _fixit_section(client, _lab, _mp):
         gap = client.get(page).get_data(as_text=True)
         # R2: the gap is said by the one card's status line, and drawn whole under What the AI
         # found (`x.ai_answer`, the answer that proposed no plan). Premise corrected (Part A's
-        # review, 2026-11-14): the status names the kind of answer, never repeats its words.
-        assert "no Mercury operation does it yet" in gap, gap[:400]
+        # review, 2026-11-14): the status names the kind of answer, never repeats its words;
+        # and since 00c70e0f (the operator, 2026-11-16: the status line is one sentence) it
+        # reads "No saved fix, and the AI found no safe plan", the gap's line under What the AI
+        # found.
+        assert "No saved fix, and the AI found no safe plan" in gap, gap[:400]
+        assert "which no Mercury operation does yet" in gap, gap[:400]
         assert "close the collector&#39;s session from r3" in gap or \
             "close the collector's session from r3" in gap, gap[:400]
         # The R2 contract's holds and a plan's AI answer (its hypotheses, each with what it
@@ -5555,7 +5532,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _intent_layers_from, _intent_layers_page, _deploy_layer_lines, _fleet_plan,
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_heal_analysis,
-                   _attention_withheld, _attention_alike, _attention_departure, _attention_batch,
+                   _attention_withheld, _attention_alike, _attention_departure,
                    _attention_quiet_period, _attention_scheduled_ack,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
