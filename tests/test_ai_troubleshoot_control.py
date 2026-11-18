@@ -131,15 +131,21 @@ class TestWhatTheAcknowledgementBinds:
     option (a))."""
 
     def test_a_new_failure_moves_the_frequency_and_leaves_it_standing(self, world, counted):
+        import time
+
         from modules.heal import steplog
-        from tests.test_fixit_catch_up import DETECTED
         got = planted()
         acknowledge(world)
         before = B.estimate(B._network(NET), A.FEATURE)
         # One failure more: an act of its own decision that rolled back (the step log's writer).
+        # Premise corrected (a calendar's, not a decision's): the frequency counts the failures
+        # of the last 7 days by the clock (`fixit.auto.failure_frequency`), and the planted
+        # world's DETECTED (2026-11-09 17:46 UTC) left that window on 2026-11-16, so a failure
+        # at DETECTED + 41 moved nothing ("0 failure(s)" before and after, measured
+        # 2026-11-18). The new failure is now's, inside the window whatever the date.
         steplog.append(NET, {"row": "act", "decision": "hd-00000000ac7e", "incident": got["dry"],
                              "device": "r6", "outcome": "rolled_back", "kind": "missing_line"},
-                       DETECTED + 41)
+                       time.time() - 60)
         after = B.estimate(B._network(NET), A.FEATURE)
         assert after["frequency"] != before["frequency"] and after["digest"] != before["digest"]
         assert T.readiness(NET) == ""
