@@ -52,9 +52,12 @@ def _fix(iid: str) -> dict:
 
 
 def _fix_line(html: str) -> str:
-    """The BLUF's How to fix it line, outside its modals."""
+    """The BLUF's How to fix it line, outside its modals. Premise corrected (board R5,
+    becced07: the card's next action is its `<div data-bluf="fix">`, the press's answer under
+    it and the card's Details after, where it was a `<dd>`): the line ends where the answer's
+    space begins, so Details (its feedback form among it) is not read as the line."""
     line = bluf_of(section_of(html)).split('data-bluf="fix"', 1)[1]
-    return outside_modals(line.split("</dd>", 1)[0])
+    return outside_modals(line.split('<div class="bluf-answer"', 1)[0])
 
 
 def _controls(line: str) -> list:
