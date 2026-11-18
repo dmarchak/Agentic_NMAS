@@ -115,14 +115,17 @@ class TestTheDecisionsSteps:
         assert "steps" not in d and "phase" not in d, "the decision's own store keeps none"
 
     def test_a_guard_ends_the_steps_where_it_applied(self, lab):
-        DS.halt("Default", guard=14, name="a rolled-back heal", words="planted", operands={},
-                now=T0 - 5)
+        """A guard that applies ends the decision's steps at its own step. A halt applied here
+        before 70e89a47 (round 2: a halt holds nothing now); Stop everywhere (guard 1) is a
+        stop that still applies, at the same step."""
+        from modules.heal import policy
         auto("Default", now=T0 - 60)
+        policy.stop(actor="op@example.com", why="a drill")
         settle(GOLDEN + ROUTE4, claim=False)
         DC.run("Default", now=T0, sources=Fake(GOLDEN + ROUTE4))
         (e,) = SL.incidents("Default")["entries"]
         assert [s["step"] for s in e["steps"]] == ["claim", "stops", "record"], e["steps"]
-        assert e["steps"][1]["result"] == "halted"
+        assert e["steps"][1]["result"] == "off"
 
     def test_a_step_log_that_cannot_be_written_does_not_stop_the_decision(self, lab,
                                                                           monkeypatch):
@@ -569,6 +572,10 @@ class TestInterrupted:
         assert not os.path.exists(INT.path("Default", d["id"])), "a clean end leaves nothing"
 
     def test_a_process_that_ended_mid_apply_is_recorded_and_halts(self, lab):
+        """Recorded interrupted, its program said to be possibly sent. Since 70e89a47 (round 2:
+        the interrupted halt write removed) it halts nothing, and since C3870 (7d54cf24: "only
+        healed closes an incident") its incident stays open, standing on the interrupted act,
+        for R1 and the retry policy."""
         d = _taken()
         SL.record_started("Default", d, [{"step": "apply", "result": "running",
                                           "words": "applying"}], d["program"],
@@ -578,12 +585,12 @@ class TestInterrupted:
         assert found["mark"] == "left"
         out = INT.reap("Default", now=T0 + 9)
         (r,) = out["reaped"]
-        assert r["halted"] and "ended while it ran" in r["words"]
+        assert not r["halted"] and "ended while it ran" in r["words"]
         assert "may have been sent" in r["words"] and "apply" in r["words"]
         assert DS.find("Default", d["id"])["applied"]["outcome"] == "interrupted"
-        assert DS.halted("Default")["guard"] == 14
+        assert DS.halted("Default") == {}
         (inc,) = I.read("Default")["incidents"]
-        assert inc["state"] == "closed", "the device may take a new incident"
+        assert inc["state"] != "closed", "it stands open on the interrupted act (C3870)"
         (e,) = SL.incidents("Default")["entries"]
         assert e["state"] == "interrupted" and e["outcome"] == "interrupted"
         assert INT.reap("Default", now=T0 + 10)["reaped"] == [], "recorded once"
@@ -631,6 +638,9 @@ class TestInterrupted:
         assert listing() == before
 
     def test_a_job_that_raises_is_found_by_the_next_pass(self, lab, monkeypatch):
+        """A job that raises is reaped by the job itself at once, its mark released first
+        (3e80ed4c: a raise left its row "starting" until the next pass), so the next pass finds
+        nothing left to reap and the decision already carries the error's words."""
         from modules.nsot import capture_job
 
         monkeypatch.setattr(capture_job, "_announce", lambda job_id, ok: None)
@@ -644,9 +654,10 @@ class TestInterrupted:
         assert capture_job.wait(started["job"], 10)
         assert capture_job.get(started["job"])["state"] == "failed"
         assert INT.mark_state("Default", started["decision"])[0] == "none", "released"
+        applied = DS.find("Default", started["decision"])["applied"]
+        assert applied["outcome"] == "interrupted" and "the job died" in applied["words"]
         again = A.run("Default", now=T0 + 2)
-        assert again["interrupted"] == [started["decision"]]
-        assert "the job died" in DS.find("Default", started["decision"])["applied"]["words"]
+        assert again["interrupted"] == [], "reaped by its own job, never twice"
 
     def test_act_one_holds_and_releases_the_mark(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -684,7 +695,9 @@ class TestTheNeedsAttentionRow:
         (r,) = self.rows(monkeypatch)
         assert r["level"] == "danger" and r["event"] == d["id"] and r["acknowledge"]
         assert r["devices"] == ["edge-b"] and "edge-b" in r["action"]["href"]
-        assert "acknowledge" in r["action"]["label"] and "halted" in r["cause"]
+        # No halt to name since 70e89a47 (round 2); its incident stays open on it (C3870).
+        assert "acknowledge" in r["action"]["label"] and "halted" not in r["cause"]
+        assert "was interrupted" in r["cause"] and "stays open" in r["cause"], r["cause"]
         assert ("heal", "interrupted") in ACKNOWLEDGED_HERE
         assert "acknowledge" in CLEARS[("heal", "interrupted")][0]
         DS.record("Default", {"outcome": "nothing", "device": "edge-b"}, T0 + 15)

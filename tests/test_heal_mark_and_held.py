@@ -264,20 +264,20 @@ class TestHeld:
 # ── An interrupted heal's halt (C2441) ───────────────────────────────────────────────────────
 
 def test_an_interrupted_heal_that_halted_names_lift_the_halt_and_its_item_carries_it(lab):
+    """An interrupted heal that had started its program used to halt the network and name Lift
+    the halt; since 70e89a47 (the operator, 2026-11-17, round 2: "guard 14 and every halt
+    write (..., interrupted)" removed) it halts nothing: its row's one action is to read and
+    acknowledge, no Lift the halt, and no halted row."""
     d = _taken()
     SL.record_started("Default", d, [{"step": "apply", "result": "running",
                                       "words": "applying"}], d["program"],
                       d["program_hash"], by="test", now=T0 + 2)
     _left(d)
     INT.reap("Default", now=T0 + 9)
-    halt = DS.halted("Default")
-    assert halt["guard"] == 14
+    assert DS.halted("Default") == {}
     (r,) = _rows("interrupted")
-    assert r["action"]["label"].endswith(
-        "then acknowledge with what you found. Then lift the halt with a reason on its own "
-        "item, “Self-healing halted on Default” (Lift the halt…)")
-    (h,) = [x for x in _rows("halted") if x["id"] == f"heal:{halt['id']}"]
-    assert h["action"]["open"] == "heal_halt" and h["action"]["halt"] == halt["id"]
+    assert r["action"]["label"].endswith("then acknowledge with what you found")
+    assert "Lift the halt" not in json.dumps(r) and _rows("halted") == []
 
 
 def test_an_interrupted_heal_that_did_not_halt_names_no_lift(lab):

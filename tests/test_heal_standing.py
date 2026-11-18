@@ -148,8 +148,10 @@ class TestTheWalks:
         (entry,) = SL.incidents("Default")["entries"]
         assert entry["incident"] == inc["id"], "one row per incident on History"
 
+    # A golden departing from intent: guard 4's hold on W3's first run; a Tier 3 can't-fix
+    # since C3909 (the operator, 2026-11-17), standing all the same.
     @pytest.mark.parametrize("state,outcome", [("at_intent", "would_heal"),
-                                               ("departs", "held")])
+                                               ("departs", "cant_fix")])
     @pytest.mark.parametrize("by", ["label", "ipv4", "ipv6"])
     def test_w3_r4s_ip_sla_alert_after_its_decision_joins_r4s_incident(self, fold, state,
                                                                       outcome, by):
@@ -172,10 +174,14 @@ class TestTheWalks:
 
         # W7: r6's guard 12 can't-fix at 20:03:11 UTC; r7's telemetry streams lost at 20:04:50
         # (99 s), r7's path to the collector running through r6.
+        # Guard 12 is retired (70e89a47, round 2: a program's size refuses nothing), so r6's
+        # two removal units alone are a would-heal now; W7's standing can't-fix is planted by a
+        # can't-fix that stands (C3909: its golden departs from intent, Tier 3).
         change("core-b", T0)
-        d = decide("core-b", TWO, T0 + 150)
-        assert d["outcome"] == "cant_fix" and "would remove 2 units" in DS.find(
+        d = decide("core-b", TWO, T0 + 150, state="departs")
+        assert d["outcome"] == "cant_fix" and "departs from its committed intent" in DS.find(
             "Default", d["decision"])["words"], d
+        assert the("core-b")["state"] == "standing"
         alerted("leaf-c", T0 + 249, by=by, rule="Telemetry stream lost")
         assert [m["device"] for m in the("core-b")["attached"]] == ["leaf-c"]
         assert open_devices() == ["core-b", "leaf-c"]
@@ -237,7 +243,9 @@ class TestJudgedAgain:
         inc = settle(GOLDEN, how="at_golden")
         d = DC.decide_one("Default", inc, now=T0, sources=Fake(GOLDEN))
         assert d["outcome"] == "nothing" and d["guard"] is None, d
-        assert "no rate counted" in d["steps"][-1]["words"], d["steps"]
+        # The rates are retired (C3879, 106c117d): no rate is counted for any incident, and the
+        # guards' step says nothing holds it.
+        assert d["steps"][-1]["words"] == "nothing holds it", d["steps"]
 
     def test_another_departure_judges_it_again_and_the_same_one_stands_again(self, fold):
         change("core-b", T0)
@@ -247,8 +255,8 @@ class TestJudgedAgain:
         assert the("core-b")["state"] == "watching"
         change("core-b", T0 + 400)                          # a person's change, nothing moved
         same = dep(R8, "core-b")
-        pass_at(T0 + 410, read_as("drifted", same))
-        out = pass_at(T0 + 531, read_as("drifted", same))
+        # No grace (70e89a47, round 2): its first read after the change stands it again.
+        out = pass_at(T0 + 410, read_as("drifted", same))
         assert [s["decision"] for s in out["stood"]] == [first["decision"]], out
         inc = the("core-b")
         assert inc["state"] == "standing" and inc["standing"]["decision"] == first["decision"]
@@ -299,7 +307,9 @@ class TestEnded:
         assert the("core-b")["state"] == "standing"
 
     def test_guard_4s_hold_is_not_ended_by_a_read_at_its_golden(self, fold):
-        assert self.standing(state="departs")["outcome"] == "held"
+        # A golden departing from intent: guard 4's hold before C3909, a Tier 3 can't-fix since
+        # (the operator, 2026-11-17); its cause is still the golden, which no read ends.
+        assert self.standing(state="departs")["outcome"] == "cant_fix"
         T.after_drift_record("Default", {"triggered_by": "scheduled", "drifted_devices": [],
                                          "clean_devices": [{"hostname": "core-b",
                                                             "read_at": T0 + 3600}]},
@@ -350,22 +360,21 @@ class TestW5:
         from modules import heal_notice
 
         # W5: the revert's OSPF reset logged at 19:47:18 UTC; decided ~90 s later, the
-        # adjacency read up again. Nothing is a can't-fix, nothing is told.
+        # adjacency read up again. Nothing is a can't-fix, nothing is told. The flap window's
+        # check-again is gone (106c117d, the operator, 2026-11-16: "an incident whose device
+        # read finds no problem closes at once on that read, never on a quiet timer"): read
+        # gone, it is nothing to heal at once.
         drop = T0 - 90
         settle(GOLDEN, how="at_golden", triggers=[adj(drop)], claim=False)
         src = Fake(GOLDEN)
         src.symptom_now = lambda device, triggers: "gone"
         (d,) = DC.run("Default", now=T0, sources=src)["decided"]
-        assert d["outcome"] == "deferred", d
-        assert heal_notice.due("Default", now=T0 + 1) == [], "no could-not-fix message"
-        assert [e["outcome"] for e in SL.incidents("Default")["entries"]] == ["deferred"]
-        later = drop + 601
-        pass_at(later, read_as("clean"))
-        (d,) = DC.run("Default", now=later, sources=src)["decided"]
         got = DS.find("Default", d["decision"])
         assert got["outcome"] == "nothing", got
+        assert heal_notice.due("Default", now=T0 + 1) == [], "no could-not-fix message"
+        assert [e["outcome"] for e in SL.incidents("Default")["entries"]] == ["nothing"]
         # C2813's wording (the operator): "at HH:MM" for a time Mercury measured.
-        assert f"cleared by itself at {time.strftime('%H:%M', time.gmtime(later))} UTC, " \
+        assert f"cleared by itself at {time.strftime('%H:%M', time.gmtime(T0))} UTC, " \
                "nothing to do" in got["words"], got["words"]
         assert "itself by" not in got["words"], "never 'by' for a time Mercury read"
         assert I.read("Default")["incidents"][0]["state"] == "closed"
@@ -444,8 +453,11 @@ class TestW5:
         assert [e["event"] for e in events] == ["cant_fix"], case
 
     def test_the_detect_pass_ends_a_standing_cant_fix_whose_symptom_cleared(self, lab):
+        """A symptom read present or stale ends nothing; read gone, the standing can't-fix ends
+        on that read, the flap window's quiet time no longer waited (106c117d, the operator,
+        2026-11-16: "never on a quiet timer")."""
         inc = self.standing_cant_fix(T0 - 900)
-        for t, state in ((T0 - 900 + 599, "gone"), (T0 + 60, "present"), (T0 + 61, "stale")):
+        for t, state in ((T0 + 60, "present"), (T0 + 61, "stale")):
             assert pass_at(t, read_as("clean"), symptom=lambda d, tr, s=state: s)["cleared"] \
                 == [], (t, state)
         got = pass_at(T0 + 62, read_as("clean"), symptom=lambda d, tr: "gone")
