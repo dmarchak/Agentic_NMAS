@@ -45,7 +45,8 @@ Two tabs, each with its count:
   - **Fixed by Mercury** (no person took part: the network's policy, in Auto, applied it),
     **Fixed by a person** (a person approved the fix) and **Fixed, who is not recorded**;
   - **Cleared** (it closed with no repair recorded) and **Declined** (a person declined the fix
-    that was proposed);
+    that was proposed, and what it would have fixed has since gone: until then it is on Open,
+    needing a person);
   - **Closed, not confirmed**: it was closed, before only a healed heal closed an incident, on
     a heal that did not heal, and nothing has confirmed the fix since. It is never drawn as
     Fixed nor as Open; Mercury confirms it once by reading the device, and never reopens it
@@ -75,7 +76,7 @@ table; and its status:
   reasonless line. A held incident says what holds it and when the next automatic heal is
   allowed. Otherwise what it waits for, and when it began;
 - on **Closed**, who fixed it, its time to repair, and when it ended (a fixed incident when its
-  fix was verified, a declined one when the fix was declined, a cleared one when it closed). A
+  fix was verified, a declined or cleared one when it closed). A
   close on a verified run says who fixed it as its group does, and how long the problem lasted
   and how long the fix took ("lasted 6 min; the fix took 41 s");
 - where the AI investigated it, **AI investigating since** its start while it runs, and its

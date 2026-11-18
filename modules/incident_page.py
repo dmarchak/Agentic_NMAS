@@ -765,12 +765,14 @@ def closed_at(incident, ran: list) -> str:
 
 def ended_at(state: str, tl: dict, closed: str) -> str:
     """When a RESOLVED incident ended: a fixed one when its fix was verified (its Verified
-    cell's time), a cancelled one when the fix was declined, a cleared one when it closed;
-    "" otherwise (an open incident, or one a person still needs, has not ended)."""
+    cell's time), a cancelled one when it closed (ruling 18: a decline leaves it standing
+    until its cause is read gone; one closed at its decline before that has its decline's
+    time as its close), a cleared one when it closed; "" otherwise (an open incident, or one
+    a person still needs, has not ended)."""
     if state == "fixed":
         return tl["verified"]["at"] if tl["verified"]["state"] == "at" else ""
     if state == "cancelled":
-        return tl["decided"]["at"]
+        return closed or tl["decided"]["at"]
     if state == "cleared":
         return closed
     return ""

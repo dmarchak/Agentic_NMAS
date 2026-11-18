@@ -833,8 +833,12 @@ def withdraw(network: str, decision: dict, read: dict, *, how: str, now: float =
 def decline(network: str, decision_id: str, *, reason: str, actor: str, actor_verified: str,
             person: bool, now: float = None) -> dict:
     """Decline one proposal as a verified person with a reason: taken, recorded ``declined``,
-    its incident closed, its step log's ``act`` row written; nothing is sent. ``{"ok",
-    "network", "decision", "device", "outcome", "words", "records"}``."""
+    its step log's ``act`` row written; nothing is sent. Its incident stands on the decline
+    (ruling 18, the operator, 2026-11-18: "Decline does not close an incident whose cause still
+    stands"): a person's to resolve, never decided again by the retry (`retry._in_population`
+    names no ``declined``), and ended when its cause is read gone (the drift check at its golden,
+    `triggers.clean_ended`; its symptom gone, the detect pass). ``{"ok", "network", "decision",
+    "device", "outcome", "words", "records"}``."""
     from modules.heal import decisions, incidents, interrupted, steplog
 
     now = time.time() if now is None else float(now)
@@ -853,11 +857,11 @@ def decline(network: str, decision_id: str, *, reason: str, actor: str, actor_ve
         words = f"declined by {actor}: {reason}"
         decisions.applied(network, decision_id, DECLINED, by=actor, words=words, now=now)
         try:
-            incidents.close(network, d.get("incident"),
-                            f"{DECLINED}: {words} (decision {decision_id})", now)
+            incidents.stand(network, d.get("incident"), dict(d, outcome=DECLINED, words=words),
+                            now=now)
         except Exception as exc:
-            log.error("heal: %s's incident %s was not closed: %s", network, d.get("incident"),
-                      exc)
+            log.error("heal: %s's incident %s does not stand on its decline: %s", network,
+                      d.get("incident"), exc)
         result = {"decision": decision_id, "device": d["device"], "outcome": DECLINED,
                   "words": words, "sent": False,
                   "steps": [{"step": "take", "result": "ok",
