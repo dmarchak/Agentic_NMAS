@@ -1348,7 +1348,11 @@ def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> 
         (f"fixed: saved script {e.get('name')}'s run {rid[-8:]} verified on "
          f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by,
         read_words=f"the script's run {rid} read the device back and verified",
-        fixed={"run": rid, "device": run.get("device") or "", "at": _iso(),
+        # The correctness review's G4-D5: the moment its verify passed (``epoch``) and the fix
+        # that made it (``operation``), as every verified fix's proof carries them, so the
+        # findings count it (`heal.findings._fixes`: a later fix, a fight).
+        fixed={"run": rid, "device": run.get("device") or "", "at": _iso(), "epoch": now,
+               "operation": f"saved script {e.get('name') or e.get('key') or '?'}",
                "script": e.get("key") or "", "name": e.get("name") or ""})
 
 
