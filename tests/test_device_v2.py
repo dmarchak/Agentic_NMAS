@@ -279,7 +279,7 @@ class TestThePage:
         r, html = _get(lab, "/v2/device/r3")
         assert r.status_code == 200
         text = _text(html)
-        assert "r3" in text and "Answering" in text and "10.255.1.13" in text
+        assert "r3" in text and "Reachable" in text and "10.255.1.13" in text
         assert 'hx-get="/v2/device/r3/overview?list=Lab"' in html and 'hx-get="/v2/device/r3/monitoring?list=Lab"' in html
         assert text.count("Not in the spike") == 0          # a title, not text
         # Overview, Intent, History, Logs, NetBox and Neighbours (step 4,
@@ -307,22 +307,23 @@ class TestThePage:
 
     def test_a_held_device_s_status_is_its_operation_linked_to_its_card(self, lab):
         # Board PS (C2274): r3 held by a reload at its wait reads as the reload, amber, never
-        # "Answering", and opens r3's page, which reopens the reload's card.
+        # "Reachable" (C3838's words, c4948c2c), and opens r3's page, which reopens the reload's
+        # card. Its person by display name (C3838).
         from modules.nsot import device_ops as D
         with D.hold("Lab", "r3", "reload", "ops@example.com"):
             for step in ("read", "window", "reload"):
                 D.note(step)
             _, html = _get(lab, "/v2/device/r3/status")
         assert '<a class="status-op" href="/v2/device/r3?list=Lab">' in html, html
-        assert "Reloading · by ops@example.com · step 4 of 6 (wait)" in html
-        assert "badge-warn" in html and "Answering" not in html
+        assert "Reloading · by ops · step 4 of 6 (wait)" in html
+        assert "badge-warn" in html and "Reachable" not in html
         # The control: released, it answers again.
         _, html = _get(lab, "/v2/device/r3/status")
-        assert "Answering" in html and "status-op" not in html
+        assert "Reachable" in html and "status-op" not in html
 
     def test_a_device_the_reader_has_no_row_for_is_not_probed_yet(self, lab):
         _, html = _get(lab, "/v2/device/r9/status")
-        assert "Not probed yet" in html and "Answering" not in html
+        assert "Not probed yet" in html and "Reachable" not in html
 
 
 # --------------------------------------------------------------- Overview
