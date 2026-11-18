@@ -109,7 +109,9 @@ class TestAcknowledgingAFailedRun:
         import re
 
         from modules.acknowledgements import read
-        (r,) = [x for x in _attention()["rows"] if x["id"] == ROW]
+        # A scheduled developer job's row is about Mercury itself: drawn apart, under "Mercury
+        # itself" (7968c7d4, the operator, 2026-11-16), acknowledged there as before.
+        (r,) = [x for x in _attention()["mercury"] if x["id"] == ROW]
         assert r["acknowledge"] is True and r["event"] == RUN_68 and r["kind"] == "failed"
         assert r["clears"]["ways"] == ["resolves", "acknowledge"]
         assert "until the workflow's next scheduled run by its cron" in r["clears"]["when"]
@@ -137,7 +139,7 @@ class TestAcknowledgingAFailedRun:
         assert got.get_json()["words"] == (f"Recorded: {said}. If that run has not succeeded "
                                            "by then, the row comes back by itself.")
         a = _attention()
-        assert ROW not in [x["id"] for x in a["rows"]]
+        assert ROW not in [x["id"] for x in a["rows"] + a["mercury"]]
         (k,) = [x for x in a["acknowledged"] if x["id"] == ROW]
         assert k["said"] == said
         # The count re-reads at that moment, when the row comes back by itself.
@@ -153,7 +155,7 @@ class TestAcknowledgingAFailedRun:
         ACK.record(ROW, RUN_68, why=WHY, by=PERSON, verified="access",
                    kind="scheduled_jobs/failed", what="w", expires=ACK.NEXT_SCHEDULED_RUN,
                    until_at=time.time() - 60)
-        (r,) = [x for x in _attention()["rows"] if x["id"] == ROW]
+        (r,) = [x for x in _attention()["mercury"] if x["id"] == ROW]
         assert f"Acknowledged by {SHOWN} until the next scheduled run (" in r["cause"]
         assert r["cause"].endswith(f"): {WHY}; that time has passed and the row's condition "
                                    "stands, so it is shown again")
@@ -172,7 +174,7 @@ class TestAcknowledgingAFailedRun:
         before = reader_job.read_cached
         monkeypatch.setattr(reader_job, "read_cached",
                             lambda name: fresh if name == SJ.NAME else before(name))
-        (r,) = [x for x in _attention()["rows"] if x["id"] == ROW]
+        (r,) = [x for x in _attention()["mercury"] if x["id"] == ROW]
         assert r["event"] == "41999999999" and "Acknowledged by" not in r["cause"]
 
     def test_a_cron_that_cannot_be_read_acknowledges_nothing(self, failed, monkeypatch):
