@@ -92,10 +92,11 @@ held. Its steps:
    on what it holds now.
 6. `classify`: each unit that departs is classed by kind, each kind has its tier, and the
    program (the exact lines it would send) and its hash are computed. A golden that departs
-   from its committed intent is a Tier 3 can't-fix: a restore to intent that would add lines the
-   golden never held is not built yet, so it is no fix of Mercury's own, and the AI
-   investigates where that is on. A fix that would cut Mercury's own path to the device is Tier
-   4.
+   from its committed intent (or whose intent state cannot be told) is a Tier 3 can't-fix,
+   whether the departure leaves a unit to restore or none: a restore to intent that would add
+   lines the golden never held is not built yet, so it is no fix of Mercury's own, and the AI
+   investigates where that is on. Nothing is sent. A fix that would cut Mercury's own path to
+   the device is Tier 4.
 7. `decide`: in **Dry run**, what it would have done is recorded and nothing is sent; in
    **Auto**, a Tier 1 kind the policy allows is healed; a Tier 2 kind is proposed to a person;
    a Tier 3 or 4 kind is can't fix.
@@ -141,11 +142,14 @@ can't-fix leads with **Open <device> (likely cause)**, labelled as a hypothesis.
 the one the symptom's own records name, or the only such device in the network. Mercury names
 none when several unnamed devices changed. **Acknowledge…** records the cause, if you know it.
 
-An incident whose read found the device at its golden has nothing to heal, so a person's
-revert ends "nothing to heal". A symptom read gone when it is decided is nothing to heal at
-once, "every symptom the incident named has cleared by itself", and raises no can't-fix: an
-incident whose device read finds no problem closes on that read, never on a quiet timer. The
-words say whether the golden matches its intent or departs from it, as the decision read it.
+An incident whose read found the device at its golden, that golden matching its intent, has
+nothing to heal, so a person's revert ends "nothing to heal". A symptom read gone when it is
+decided is nothing to heal at once, "every symptom the incident named has cleared by itself",
+and raises no can't-fix: an incident whose device read finds no problem closes on that read,
+never on a quiet timer. A device at a golden that departs from its intent is still off its
+intent, so it is never nothing to heal: with no symptom, or every symptom read gone, it is the
+Tier 3 can't-fix of [Decide](#decide) step 6, "<device> is at its golden, which departs from
+its intent (…)", and its incident stays open, needing a person.
 
 ## Standing on its decision {#standing}
 
@@ -168,7 +172,7 @@ one incident however long it takes a person to deal with it:
 - **Anything else that changes the device** (a configuration change from outside Mercury, a
   person's revert, the drift check finding a different departure) sends it back to be judged
   again on its next read. A revert that puts the device back at its golden ends "nothing
-  to heal". A symptom the reverted change caused is that change's, so it is not judged again as
+  to heal" where that golden matches its intent. A symptom the reverted change caused is that change's, so it is not judged again as
   a can't-fix of its own.
 - **It ends** when the device is read back at its golden or its intent: a later decision of
   nothing to heal; a drift check that read the device at its golden after the decision (the

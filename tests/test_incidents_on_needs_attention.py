@@ -111,6 +111,31 @@ class TestEveryIncidentThatNeedsAPersonIsOnNeedsAttention:
         assert missing([iid]) == [], ("an incident that needs a person is only on Incidents, "
                                       "not on Needs attention")
 
+    def test_an_incident_at_a_golden_that_departs_from_intent(self, client):  # noqa: F811
+        """C3910 (the operator's ruling 0, 2026-11-18: "Keep the interim (c)", a departing
+        golden is a Tier 3 can't-fix the AI investigates): an incident settled at its golden,
+        that golden departing from committed intent and no symptom, was decided "nothing to
+        heal" and closed. Decided by the heal's own decision job now, it is a can't-fix that
+        stands open, and its page, the Incidents list's Open tab and Needs attention all show
+        it needing a person (C4084's rule: only a healed outcome closes an incident)."""
+        from modules import incidents_list as L
+        from tests import test_incident_page as T
+        from tests.test_heal_policy import T0
+
+        T.settle(T.GOLDEN, triggers=[T.CFG], how="at_golden", claim=False)
+        from modules.heal import decisions
+
+        (ran,) = T.DC.run(NET, now=T0, sources=T.Fake(T.GOLDEN, state="departs"))["decided"]
+        iid = ran["incident"]
+        d = decisions.find(NET, ran["decision"])
+        assert (d["outcome"], d["tier"]) == ("cant_fix", 3), d
+        assert needing([iid]) == [iid]
+        open_rows = {r["id"]: g["key"] for g in L.page(NET, "open")["groups"]
+                     for r in g["rows"]}
+        assert open_rows.get(iid) == "needs_person", open_rows
+        assert missing([iid]) == [], ("an incident that needs a person is only on Incidents, "
+                                      "not on Needs attention")
+
     @pytest.mark.parametrize("name", sorted(S.PLANTS))
     def test_the_incident_state_tests_planted_incidents(self, client, measured, name):  # noqa: F811
         plant, state = S.PLANTS[name]
