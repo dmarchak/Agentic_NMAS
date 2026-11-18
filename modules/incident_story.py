@@ -155,6 +155,10 @@ def summary(model: dict, lines: list) -> dict:
                  "words": str(e.get("words") or "")}
                 for e in (bluf.get("evidence") or [])[:EVIDENCE_SHOWN] if isinstance(e, dict)]
     todo = model.get("todo") or {}
+    if cause and not hyps and cause.strip().lower() in str(todo.get("words") or "").lower():
+        # Each fact once (the redesign brief §5): a can't-fix's reason is what to do, never
+        # also its cause; with no hypothesis the cause is not named yet.
+        cause = ""
     if model.get("resolved"):
         ttr = (model.get("ttr") or {}).get("words") or ""
         nxt = "Nothing to do" + (f": resolved in {ttr}" if ttr else "")
