@@ -864,11 +864,18 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                                         and ln.get("operation") for ln in rec["lines"]))
     out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
                                  proposed and plan.get("approvable"))
+    # A troubleshoot that failed (its job's error, a bound passed, a request the provider
+    # refused) is the incident's best current knowledge, said with its action: never replaced
+    # by why a person is needed, which would say the AI can investigate, or found no safe plan,
+    # of an AI that was asked and failed (the operator, 2026-11-15: "a call that was sent and
+    # got no answer is a failure, never an answer that named no fix").
+    failed_now = "Couldn't troubleshoot:" in out["status"]
     if not done and _held_of(found):
         # A guard holds it: said, with when the next automatic heal is allowed (the operator,
         # 2026-11-16), never "reading it, before it decides".
         out["status"] = _held_of(found)
-    elif not done and out["why_person"] and state not in ("investigating", "running"):
+    elif not done and out["why_person"] and state not in ("investigating", "running") \
+            and not failed_now:
         # Why a person is needed, at a glance, beside its one action (the operator, 2026-11-16).
         out["status"] = out["why_person"]
     # Who said the status line, drawn once as a small label beside it (the operator's wording
