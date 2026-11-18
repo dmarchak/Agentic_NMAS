@@ -879,7 +879,8 @@ SAYS = {
                      "the violating MAC named",
             "limit": "A violator still attached but quiet while the port is down adds no "
                      "line and no count, so this check cannot prove it has gone: it fails only "
-                     "on a violation after the err-disable or a count that rose. What proves "
+                     "on a violation after the err-disable or a count that rose, and "
+                     "otherwise is deferred, never passed. What proves "
                      "it is verify's re-trip check after the bounce: a violator still "
                      "attached trips the port again."}},
     "check_no_recovery": {
@@ -995,13 +996,19 @@ def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, got: dict)
         return "unreadable", (f"whether a violation came since {short}'s err-disable cannot be "
                               f"told: {why}" + ("" if ps else f", and {cmd} could not be read"))
     said = [f"no new violation on {short} since its err-disable"
-            + (f" at {_iso(err_epoch)}" if err_epoch else "")]
+            + (f" at {_iso(err_epoch)}" if err_epoch else "")
+            + ("" if errs else f" (no err-disable line for {short} in its lines)")]
     if count is not None:
         said.append(f"violation count {count}"
                     + (", as at the err-disable" if base is not None else ""))
     if mac:
         said.append(f"the violating MAC {mac_colon(mac)}")
-    return "pass", "; ".join(said)
+    # A port that is down passes no frame, so no violation line and no count rise can come
+    # while it is err-disabled: none since is an absence nothing showed could be found (the
+    # correctness review's G1 MEDIUM-1 and G3 M2, 2026-11-18), never a pass, as BPDU guard's.
+    return "deferred", (f"whether {who} is still connected cannot be told while {short} is "
+                        "down (" + "; ".join(said) + "); judged after the bounce by verify's "
+                        "no new err-disable")
 
 
 def _ahead_no_recovery(_read: str, _run) -> dict:
