@@ -281,12 +281,15 @@ class TestTheHeal:
     def test_the_golden_step_says_the_documentation_was_updated_and_tested(self, lab):
         """Lab 10 (3): the step a person reads names what was updated (the golden, by its
         commit) and how it was tested (the config check before the commit, the configuration
-        repository's CI on its push, and the device read again)."""
+        repository's CI on its push, and the device read again). Since the tail (e400a31f,
+        decision (b): the golden's commit and the read again are their own steps under Fixed),
+        the commit step says the config check passed and the golden step the read again."""
         got, _src, _d = act(GOLDEN + ROUTE4)
         (g,) = [s for s in got["steps"] if s["step"] == "golden"]
-        assert g["result"] == "ok"
-        assert g["words"].startswith("documentation updated and tested: golden ")
-        assert "config check passed" in g["words"] and "read again matches it" in g["words"]
+        (c,) = [s for s in got["steps"] if s["step"] == "commit"]
+        assert (g["result"], c["result"]) == ("ok", "ok")
+        assert g["words"].startswith("At its golden: documentation updated and tested, golden ")
+        assert "config check passed" in c["words"] and "read again matches it" in g["words"]
 
     def test_a_decision_is_taken_once(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -462,17 +465,37 @@ class TestTheOutcome:
             "outcome": "refused", "commands": [], "reason": "s3 is held by a deploy"})
         assert got["outcome"] == "refused" and "held by a deploy" in got["words"]
 
+    # Fixed rests on verify (e400a31f, the operator's decisions (a) and (b), 2026-11-16): the
+    # save, the golden's commit and the read again are the tail under Fixed; a tail failure
+    # flags the incident and reopens it (C3870), never changes the outcome from healed.
+
     def test_not_at_its_golden_when_read_again_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, recheck="drifted")
-        assert got["outcome"] == "partial" and "not at it (drifted" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"].startswith("edge-b fixed, but the device read again is not at its "
+                                       "golden"), tail["flag"]
+        assert [(s["step"], s["result"]) for s in tail["steps"]][-1] == ("golden", "failed")
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
     def test_no_golden_commit_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, commit="")
-        assert got["outcome"] == "partial" and "golden was not committed" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"] == "edge-b fixed, but its golden was not committed: no commit"
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
     def test_not_saved_to_startup_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, saved={"ok": False, "error": "write failed"})
-        assert got["outcome"] == "partial" and "NOT saved to startup" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"] == "edge-b fixed, but its save to startup failed: write failed"
+        (saved,) = [s for s in tail["steps"] if s["step"] == "saved"]
+        assert saved["result"] == "failed" and "NOT saved to startup" in saved["words"]
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
 
 # ── Verify: intent, then the symptom ────────────────────────────────────────────────────────

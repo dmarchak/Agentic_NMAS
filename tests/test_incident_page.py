@@ -415,14 +415,17 @@ class TestAFailedVerifyNeverReadsFixed:
 
     @pytest.mark.parametrize("fake, outcome", [
         ({"post": GOLDEN + ROUTE4}, "rolled_back"),
-        ({"recheck": "drifted"}, "partial"),
+        # Partial: a symptom unreadable after the change (e400a31f: the read again off its
+        # golden is a tail flag under Fixed now, never partial).
+        ({"symptom": {"state": "unreadable", "words": "the symptom could not be read again"}},
+         "partial"),
         ({"symptom": {"state": "present", "words": "the OSPF adjacency edge-b – core-a is "
                                                    "still down"}}, "symptom_remains"),
         ({"result": {"outcome": "failed", "stage": "verify", "commands": ["x"],
                      "reason": "verify did not pass"}}, "failed")])
     def test_no_page_of_a_failed_verify_claims_it_fixed(self, client, fake, outcome):
         """The scan, over real records: each way a heal sends and does not pass its verify."""
-        triggers = [CFG, ADJ] if outcome == "symptom_remains" else None
+        triggers = [CFG, ADJ] if outcome in ("symptom_remains", "partial") else None
         iid, got = heal(triggers=triggers, **fake)
         assert got["outcome"] == outcome and got["sent"], got["words"]
         body = page(client, iid)

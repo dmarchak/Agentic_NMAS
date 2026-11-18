@@ -55,7 +55,11 @@ def cleared():
 
 def failing(outcome):
     """A heal sent and not passing its verify, by the act's fake for *outcome*."""
-    fake = {"rolled_back": {"post": GOLDEN + ROUTE4}, "partial": {"recheck": "drifted"},
+    # Partial is a symptom that cannot be read after the change (e400a31f: a tail failure such
+    # as the read again off its golden is a flag under Fixed, never partial).
+    fake = {"rolled_back": {"post": GOLDEN + ROUTE4},
+            "partial": {"symptom": {"state": "unreadable",
+                                    "words": "the symptom could not be read again"}},
             "symptom_remains": {"symptom": {"state": "present", "words": (
                 "the OSPF adjacency edge-b – core-a is still down")}},
             "failed": {"result": {"outcome": "failed", "stage": "verify", "commands": ["x"],
@@ -63,7 +67,8 @@ def failing(outcome):
             "refused": {"read_error": "timed out"}}[outcome]
 
     def plant():
-        iid, got = T.heal(triggers=[T.CFG, ADJ] if outcome == "symptom_remains" else None,
+        iid, got = T.heal(triggers=[T.CFG, ADJ] if outcome in ("symptom_remains", "partial")
+                          else None,
                           **fake)
         assert got["outcome"] == outcome, got["words"]
         return iid
@@ -276,10 +281,12 @@ class TestTheTitle:
 
 def failures(iid) -> list:
     """Each failed step's own words, as the act recorded them (read raw), in the order the
-    act recorded them: the failure's sentences."""
+    act recorded them: the failure's sentences. A symptom read ``unreadable`` is one: it is
+    what makes a heal partial since e400a31f (the read again off its golden is a tail flag)."""
     _inc, rows, _lines = raw(iid)
     return [s["words"] for r in rows if r.get("row") == "act" for s in r.get("steps") or []
-            if s.get("result") in ("failed", "present", "refused") and s.get("step") != "record"
+            if s.get("result") in ("failed", "present", "refused", "unreadable")
+            and s.get("step") != "record"
             and len(s.get("words") or "") >= RS.TOLD_CHARS]
 
 
