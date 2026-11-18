@@ -477,41 +477,46 @@ def stale_paths(stale) -> list:
 
 def refresh_scope(stale, reach, test_sources: dict, changed_tests=(), changed_modules=(),
                   unusable: str = "") -> dict:
-    """The test files a stale map's refresh runs (C1640): `{"files": [file] or None (the whole
-    suite), "why": str}`. With the map's module index (`load_reach`'s `module_files`, each
-    module's test files ANY phase reached at the map's commit), the files that:
+    """The test files a stale map's refresh runs (C1640, C2353): `{"files": [file], "why":
+    str}`, scoped to the stale functions' own modules (the operator, 2026-11-18, C2353: "make
+    the mutation refresh fit, e.g. scope each refresh to one module's tests"). The files that:
 
-    - reached a stale function's module then (a caller's test included, C842, and one reaching
-      it only in a fixture's setup: run #41's whole-suite refresh chose such a file, which the
-      run-phase map lacks);
+    - reached a stale function's module at the map's commit, by the map's module index
+      (`load_reach`'s `module_files`, ANY phase: a caller's test included, C842, and one
+      reaching it only in a fixture's setup), when the map has a usable index;
     - import that module (`tests_for`, by parsing);
-    - changed since the map's commit (their tests are newer than it);
-    - reached then a program module changed since (a changed caller may now route its tests
-      into the stale module).
+    - changed since the map's commit (their tests are newer than it: a new caller's test).
+
+    No longer: every file that reached a program module changed since (*changed_modules*,
+    kept in the signature and the words), nor the whole suite when the map is unusable or holds
+    no index. On 2026-11-18 a map 137 modules old made that union 1,113 test files, and the
+    whole suite overran the refresh's bound in all fourteen of the campaign's runs (#93 to
+    #106), so they measured nothing.
 
     What it assumes stays true: a test that reaches the module tonight is one of those, so a
-    test reaching it only through a non-Python change (a template, a data file) and through no
-    module the map's commit and tonight share a change in would be left out. The failure is
-    visible, never hidden: a test left out of the refresh is left out of mutmut's selection,
-    so a mutant only it kills SURVIVES (a false survivor, red), never the reverse. Without the
-    index (a drill-down from before it, or none usable), the whole suite, as before."""
-    if unusable:
-        return {"files": None, "why": f"the whole suite: no usable coverage map ({unusable})"}
-    index = (reach or {}).get("module_files")
-    if index is None:
-        return {"files": None, "why": "the whole suite: the coverage map holds no module index "
-                                      "(a drill-down from before it)"}
+    test reaching it only through a caller changed since the map (and not itself changed), or
+    through a non-Python change, is left out. The failure is visible, never hidden: a test left
+    out of the refresh is left out of mutmut's selection, so a mutant only it kills SURVIVES (a
+    false survivor, red, which its own test then kills), never the reverse."""
     paths = stale_paths(stale)
+    index = None if unusable else (reach or {}).get("module_files")
     files = set()
-    for m in paths + [m for m in changed_modules if m not in paths]:
-        files.update(index.get(m) or [])
+    for m in paths:
+        files.update((index or {}).get(m) or [])
     files.update(tests_for(paths, test_sources))
     files.update(t for t in changed_tests if t in test_sources)
     files = sorted(f for f in files if f in test_sources)
+    if unusable:
+        how = f"no usable coverage map ({unusable}): their importers and the files changed"
+    elif index is None:
+        how = ("the coverage map holds no module index (a drill-down from before it): their "
+               "importers and the files changed")
+    else:
+        how = "the map's index, their importers and the files changed"
     return {"files": files,
             "why": f"the {len(files)} test file(s) of {len(test_sources)} that reach "
-                   f"{len(paths)} module(s), import them, changed since the map, or reach "
-                   f"one of the {len(changed_modules)} module(s) changed since"}
+                   f"{len(paths)} module(s): {how} since the map; the tests of the "
+                   f"{len(changed_modules)} module(s) changed since are not followed"}
 
 
 def _context_test(context: str) -> str:
