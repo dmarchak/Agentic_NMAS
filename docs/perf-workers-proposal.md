@@ -74,8 +74,8 @@ and an incident page that builds in 0.24 s in its own process takes 4.17 s in th
 
 ### 2.1 The shape
 
-Two worker processes from one template unit, `nmas-worker@heal.service` and
-`nmas-worker@ai.service` (rendered by `scripts/nmas-render-units`, as every unit is), each
+Two worker processes from one template unit, `nmas-worker@.service`, its two instances named
+heal and ai (rendered by `scripts/nmas-render-units`, as every unit is), each
 importing the same checkout and running the same code a job runs today. The web process keeps
 pages, routes, Socket.IO, the reader jobs and Needs attention's store. A press still answers at
 once (C3866's rule); only where its job's thread lives moves.
