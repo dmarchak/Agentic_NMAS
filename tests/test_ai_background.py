@@ -247,6 +247,11 @@ def test_the_features_day_cap_stops_it_naming_both_operands(bg):
     assert ("fake_loop's day cap on lab $0.5000: spent $0.5000 plus $0.0000 held by 0 call(s) "
             "in flight leaves $0.0000, under this call's counted prompt") in detail
     assert "plus its typical answer" in detail and detail.endswith("; nothing was sent")
+    # How it clears and where it is changed (restored by the correctness review's test audit,
+    # half 1 row 11, 2026-11-18: e4e09698 dropped it with no decision; C3873 asks for "where
+    # it is changed").
+    assert ("it stops until the day ends or an admin raises the cap in Settings › AI; "
+            "nothing was sent") in detail, detail
     row = calls.read()["rows"][0]
     assert row["verdict"] == "feature_cap" and row["cap_kind"] == "day"
 
@@ -437,7 +442,10 @@ def test_the_features_caps_count_on_the_calls_own_day_and_record_its_worst_case(
     # answer, in place of a worst case), the figure the detail compares.
     row = calls.read()["rows"][0]
     assert isinstance(row.get("hold_usd"), float) and row["hold_usd"] > 0
-    assert f"${row['hold_usd']:.4f}; nothing was sent" in got["detail"]
+    # How the cap clears, then nothing was sent (the correctness review's test audit, half 1
+    # row 11: the words e4e09698 dropped, restored).
+    assert (f"${row['hold_usd']:.4f}; it stops until the day ends or an admin raises the cap "
+            "in Settings › AI; nothing was sent") in got["detail"], got["detail"]
 
 
 def test_a_background_call_naming_no_network_names_none_and_is_refused(bg):
@@ -534,4 +542,7 @@ def test_the_month_caps_refusal_names_this_month(bg):
     # The month's cap named as the month's, with its spend this month (7b0bb884's words).
     assert ("fake_loop's month cap on lab $1.0000: spent $1.0000 plus $0.0000 held by 0 "
             "call(s) in flight leaves $0.0000") in got.get("detail", ""), got
+    # Restored (the test audit, half 1 row 11): how it clears and where it is changed.
+    assert ("it stops until the month ends or an admin raises the cap in Settings › AI"
+            in got["detail"]), got["detail"]
     assert calls.read()["rows"][0]["cap_kind"] == "month"

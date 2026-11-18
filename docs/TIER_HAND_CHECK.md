@@ -4878,3 +4878,26 @@ second count that can never add a call twice. **11 of 12 died, 1 equivalent**, t
 The aimed tests: 54 test files reading the incident's spend, the cap or the investigation
 (`fixit.incident`, `cap_state`, `cost_so_far`, `calls_of`, `fixit_troubleshoot`, `heal_notice`):
 **1653 passed, 15 failed, 7 skipped**, the 15 failing the same on the parent b2aac483.
+
+## 2026-11-18: a cap's refusal says how it clears and where it is changed (the audit's half 1 row 11), by hand
+
+**The change.** In the gateway's spending-limit judge (`gateway.ask`'s `judge`), each cap the
+refusal names carries how it clears: the installation's day cap and a background feature's day
+or month cap say "it stops until the day (month) ends or an admin raises the cap in
+Settings › AI" before "nothing was sent". Only the refusal's words change: which call is
+refused, its hold and what is sent are as before.
+
+**The method.** As above: each mutant in a throwaway worktree (`scripts/nmas-control`), then
+tests/test_ai_background.py, test_ai_gateway_ask.py and test_ai_reservations.py, confined.
+
+| # | Mutant | Result |
+|---|---|---|
+| 0 | the canary: the clears clause never joined (`+ ""`) | **died**: 7 failed |
+| 1 | the installation's words cut to "it stops" | **died**: 4 failed |
+| 2 | a feature's month cap said as the day's | **died**: 1 failed (the month's test) |
+| 3 | "nothing was sent" dropped | **died**: 6 failed |
+
+**4 of 4 died**, the canary first. The aimed tests (test_ai_background, test_ai_gateway_ask,
+test_ai_reservations, test_ai_gateway, test_ai_day_cap, test_ai_provider_limit,
+test_fixit_troubleshoot, test_ai_presses, test_settings_ai_v2, test_attention_badge): **404
+passed, 6 skipped**.
