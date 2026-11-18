@@ -11,8 +11,9 @@
 # rolled back; the rollback puts back every removed subscription from the pre-change snapshot
 # (pipeline `transient_removal_units`, `removal.restore_program`), then compares the whole
 # configuration again and says NOT RESTORED with each line still differing. Its shapes are
-# PROVISIONAL (modules/nsot/command_policy.py) until an admin approves them, after
-# scripts/nmas-telemetry-reset-probe measures them on r2; nothing runs before. Whether the
+# NOT measured (scripts/nmas-telemetry-reset-probe measures them on r2): until each is proposed
+# (held PROVISIONAL, modules/nsot/command_policy.py) the plan's preview refuses it; once
+# proposed, a person's Approve of the plan, its lines shown, sends them (32ad9360). Whether the
 # device takes the removals and re-adds in one batch, and how long the streams take to return,
 # are UNMEASURED: the probe measures both.
 kind: command_plan
@@ -23,8 +24,8 @@ words: >-
   device sends to that receiver removed whole and added back exactly as intent renders it, in one
   batch, after the collector's stale session is closed, for a lost stream whose receiver re-add
   already failed in the incident. Only those subscriptions' streams pause (unmeasured);
-  routing, forwarding and the device's other subscriptions are untouched. Its lines wait on an
-  admin's approval before it can run
+  routing, forwarding and the device's other subscriptions are untouched. Its lines are
+  unmeasured shapes: once proposed, a person's Approve of this plan, its lines shown, sends them
 net_zero: true
 parameters:
   device:

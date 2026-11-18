@@ -487,18 +487,28 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
     gates = []
     if after[MODE_KEY] == "auto":
         # AUTO on any network (N8 as changed by the operator, 2026-11-16): no lab gate.
-        # Round 2 (the operator, 2026-11-17): AUTO heals every Tier 1 and Tier 2 kind, so no
-        # kind list is needed to turn it on (`decide._outcome`).
-        gates.append({"name": "AUTO heals every Tier 1 and Tier 2 kind",
+        # Round 2 (the operator, 2026-11-17): no kind list is needed to turn it on. What Auto
+        # heals is the kind lists' (226477ad, `decide._outcome`): a Tier 1 kind allowed Auto
+        # heals by itself, one not listed stays a dry run, a Tier 2 fix is proposed; the words
+        # say so (the correctness review's G2 M1), and the gate refuses nothing.
+        allowed = list(after[KINDS_AUTO_KEY] or [])
+        if len(allowed) == 1:
+            heals = f"1 kind heals by itself ({allowed[0]})"
+        elif allowed:
+            heals = f"{len(allowed)} kinds heal by themselves ({', '.join(allowed)})"
+        else:
+            heals = "no kind is allowed Auto, so nothing heals by itself"
+        gates.append({"name": "AUTO heals the kinds allowed Auto",
                       "state": "pass",
-                      "why": "no kind list is read: every fix of Tier 1 or 2 runs in Auto"})
+                      "why": heals + "; a Tier 1 kind not listed stays a dry run, and a Tier 2 "
+                                     "fix is proposed for a person"})
         gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days (N8)",
                       "state": "pass",
                       "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]
                               else "until a person turns it off")})
     added = [k for k in after[KINDS_AUTO_KEY] if k not in (before.get(KINDS_AUTO_KEY) or [])]
     # Round 2 (the operator, 2026-11-17): no one-kind-per-confirm refusal.
-    gates.append({"name": "kinds allowed AUTO (read no more)", "state": "pass",
+    gates.append({"name": "kinds allowed AUTO", "state": "pass",
                   "why": f"this change allows {len(added)} more"
                          + (f" ({', '.join(added)})" if added else "")})
     something = bool(changes) or (after[MODE_KEY] != "off" and not in_force)

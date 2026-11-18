@@ -336,7 +336,16 @@ def run(op: str, args: dict, requests: list, scope: dict):
     reads engine, `router_reads.run`), a local one through Mercury's own read of it, handed
     exactly the request the check allowed."""
     if op in OWN_OPS:
-        return _own_read(op, args["device"], scope)
+        got = _own_read(op, args["device"], scope)
+        if op == "golden" or not isinstance(got, dict):
+            # The golden is the device's configuration as committed, sent as the
+            # configuration class's (masked for secrets as it leaves), never rewritten.
+            return got
+        # Mercury's own records as the pack sends them, every person a stable label (C3424;
+        # the correctness review's G5 MEDIUM-3: the held History named host logins as
+        # recorded).
+        from modules import evidence_pack as EP
+        return EP.people_labelled([got])[0]
     if op not in LOCAL_OPS:
         return RR.run(op, args, requests, scope)
     fx = (scope or {}).get("fixit") or {}

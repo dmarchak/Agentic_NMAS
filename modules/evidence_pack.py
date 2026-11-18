@@ -1705,19 +1705,21 @@ def people_in(sections) -> list:
     return sorted(found)
 
 
-def people_labelled(sections) -> list:
+def people_labelled(sections, among=()) -> list:
     """*sections* as every AI request carries them (C3424, the operator, 2026-11-13: "every
     person is a stable label in every pack"), as copies, the stored pack untouched (it is a
     record, hashed, and its pages draw each person by display name): each person field
     (`PERSON_FIELDS`) its person's stable label (`display_names.as_sent`), and every other text
     with no person named in it (`display_names.unnamed`: each address labelled, and the display
     names of the people the pack names and the display-name store holds replaced by their
-    labels as words), what a piece is known by (`CITED_KEYS`) left as it is. The same person is
-    the same label in every section, every pack and every call. Applied once more to a pack
-    already labelled, it changes nothing."""
+    labels as words), what a piece is known by (`CITED_KEYS`) left as it is. *among*, the
+    sections sent beside them (an investigation's pack, beside its own parts), adds the people
+    they name. The same person is the same label in every section, every pack and every call.
+    Applied once more to a pack already labelled, it changes nothing."""
     from modules import display_names
 
-    actors = sorted(set(people_in(sections)) | set(display_names.known()))
+    actors = sorted(set(people_in(sections)) | set(people_in(among))
+                    | set(display_names.known()))
 
     def walk(node, key=""):
         if isinstance(node, str):

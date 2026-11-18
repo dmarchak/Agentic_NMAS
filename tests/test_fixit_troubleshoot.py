@@ -354,6 +354,35 @@ class TestRefusedAtThePress:
         assert (got["worst"], got["total"], got["spent"]) == (least, least, 0.0)
         assert 'name="drawn_cap" value="1.000000"' in sec
 
+    def test_a_stopped_investigations_calls_count_toward_the_incident_cap(self, ai,
+                                                                           monkeypatch):
+        """What an investigation spent is this incident's though it kept no proposal (the
+        correctness review's G5 MEDIUM-1; 7b0bb884: the per-incident cap governs every call):
+        an investigation its watchdog stopped after its call keeps no line naming the call,
+        and the incident's spend, the start's cap check and the gateway's live cap all still
+        count it, each once, so the next press cannot spend the whole cap again."""
+        from modules.ai import fixit_troubleshoot as AIT
+        from modules.fixit import policy as P
+        from modules.settings_schema import write_settings
+        iid = stopped(ai)
+        monkeypatch.setattr("modules.troubleshoot_job.was_stopped", lambda job: bool(ai.sent))
+        press(ai, iid)
+        assert len(ai.sent) == 1, "the investigation made its call"
+        assert not [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln], \
+            "a stopped investigation keeps no proposal"
+        rows = [r for r in calls.read()["rows"] if r.get("feature") == AIT.FEATURE]
+        cost = sum(float(r.get("cost_usd") or 0) for r in rows)
+        assert cost > 0
+        assert F.cost_so_far(incident(iid))["usd"] == pytest.approx(cost)
+        # The gateway's live cap: the record's calls, and this investigation's own so far each
+        # counted once (the same call held by both counts once).
+        cap = AIT.incident_cap(incident(iid), lambda: {r["id"]: r["cost_usd"] for r in rows})
+        assert cap["spent"]()["usd"] == pytest.approx(cost), "counted once"
+        least = AIT.start_usd()
+        assert write_settings({"ai_cap_usd_per_incident": round(cost + least / 2, 6)})["ok"]
+        got = P.cap_state(incident(iid), least)
+        assert got["state"] == "refused" and got["spent"] == pytest.approx(cost), got
+
     def test_the_mode_off_sends_nothing(self, ai):
         from modules.settings_schema import write_settings
         iid = stopped(ai)
@@ -487,3 +516,48 @@ class TestThePack:
         from modules.ai import fixit_troubleshoot as AIT
         s = AIT.seen_section(NET, "r2", {})
         assert s["state"] == "absent" and not s["pieces"] and s["why"]
+
+    def test_the_own_parts_carry_no_display_name(self, ai, monkeypatch, tmp_path):
+        """The investigation's own parts (attempts, run_steps, after_run, seen_before, the
+        ladder) leave labelled for people as the pack's sections do (the correctness review's
+        G5 MEDIUM-3; invariant 6, "no emails or person names in AI payloads"): a failed run's
+        step words naming, by display name, a person who is not an attempt's actor leave as
+        that person's label, never the name; and one naming, by their default name, a person
+        only the pack's History records (the display-name store holds no name for them)
+        leaves as theirs too."""
+        from modules import display_names
+        from modules import evidence_pack as EP
+        from modules.nsot import privileged
+
+        person, name = "dana.ops@example.com", "Dana Ops"
+        other, other_name = "lee.lab@example.org", "lee.lab"
+        monkeypatch.setattr(display_names, "_path",
+                            lambda: str(tmp_path / "display_names.json"))
+        display_names.set_name(person, name, by=person, actor_verified="access")
+        real_get, real_build = privileged.get, EP.build_incident
+
+        def get(list_name, run_id, data_dir=""):
+            rec = real_get(list_name, run_id, data_dir=data_dir)
+            if isinstance(rec, dict):
+                rec = dict(rec, steps=list(rec.get("steps") or []) + [
+                    {"step": "verify", "result": "fail",
+                     "words": f"{name} closed the collector's session, as {other_name} "
+                              "asked"}])
+            return rec
+
+        def build(*a, **kw):
+            pack = real_build(*a, **kw)
+            pack["sections"] = list(pack.get("sections") or []) + [
+                {"ref": "history", "name": "history", "state": "ok", "pieces": [
+                    {"ref": "history:99", "kind": "intent", "who": other}]}]
+            return pack
+        monkeypatch.setattr(privileged, "get", get)
+        monkeypatch.setattr(EP, "build_incident", build)
+        iid = stopped(ai)
+        press(ai, iid)
+        (body,) = ai.sent
+        text = json.dumps(body, ensure_ascii=False)
+        assert '"name":"run_steps"' in data_of(body), "the run's steps are sent"
+        assert name not in text, "a display name in a run's step words left the host"
+        assert other_name not in text, "a name only the pack names left the host"
+        assert display_names.label(person) in text and display_names.label(other) in text

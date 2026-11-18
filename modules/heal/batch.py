@@ -147,12 +147,18 @@ def switch_words(restores: int, scripts: int, verb: str = "Also fixes",
     problems (5 restores, 2 saved scripts)", each part only when it is not zero; *verb* the
     press's answer's ("fixing"). *decided* (round 2, the operator, 2026-11-17): the open
     incidents with no decided fix yet (watching, or standing on a hold or a proposal that holds
-    nothing now), read and decided in Auto the moment it is On."""
-    n = int(restores) + int(scripts) + int(decided)
+    nothing now), read and decided in Auto the moment it is On: said apart, never counted as
+    fixed, since Auto fixes one by itself only if its kind is allowed Auto (226477ad; the
+    correctness review's G2 M2)."""
+    n, decided = int(restores) + int(scripts), int(decided)
     parts = ([f"{restores} restore{'' if restores == 1 else 's'}"] if restores else []) + \
-        ([f"{scripts} saved script{'' if scripts == 1 else 's'}"] if scripts else []) + \
-        ([f"{decided} read and fixed now"] if decided else [])
-    return f"{verb} the {n} open problem{'' if n == 1 else 's'} ({', '.join(parts)})"
+        ([f"{scripts} saved script{'' if scripts == 1 else 's'}"] if scripts else [])
+    again = "each fixed by itself only if its kind is allowed Auto"
+    if not n:
+        return (f"Decides {decided} open problem{'' if decided == 1 else 's'} again in Auto, "
+                f"{again}")
+    return (f"{verb} the {n} open problem{'' if n == 1 else 's'} ({', '.join(parts)})"
+            + (f"; {decided} more decided again in Auto, {again}" if decided else ""))
 
 
 #: The standing outcomes that hold nothing since round 2 (the operator, 2026-11-17): an
