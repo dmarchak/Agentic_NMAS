@@ -34,6 +34,10 @@ from modules.fixit import incident as F
 from tests.test_fixit_section_v2 import NET, incident, page  # noqa: F401
 from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
 from tests.test_fixit_troubleshoot import ai, answer, fix, press, sec_of, stopped  # noqa: F401
+# Premise corrected (17215a95's ladder: a re-subscribe of 101 after attempt 1's failed
+# re-subscribe is refused as tried, so the answer is "couldn't be checked" and keeps nothing):
+# each answer's fix and plan step is the collector's close, which no attempt makes tried.
+from tests.test_fixit_troubleshoot import CLOSE
 from tests.test_heal_resubscribe import lab  # noqa: F401
 from tests.test_sdn_connections import networks  # noqa: F401
 
@@ -85,7 +89,7 @@ def why_block(sec: str) -> str:
 class TestMarked:
     def test_a_claim_citing_what_was_not_sent_is_marked_and_the_rest_shown(self, ai):
         iid = stopped(ai)
-        ai.answer = partial(fix())
+        ai.answer = partial(fix(operation=CLOSE))
         r, html = press(ai, iid)
         assert r.status_code == 200, html
         sec = sec_of(html)
@@ -105,8 +109,9 @@ class TestMarked:
 
     def test_a_retry_citing_only_what_was_sent_replaces_the_first_answer(self, ai, monkeypatch):
         iid = stopped(ai)
-        good = answer(fix(), rationale="Corrected: r2's old session is still held.")
-        answers(ai, monkeypatch, partial(fix()), good)
+        good = answer(fix(operation=CLOSE),
+                      rationale="Corrected: r2's old session is still held.")
+        answers(ai, monkeypatch, partial(fix(operation=CLOSE)), good)
         press(ai, iid)
         line = ai_line(iid)
         assert line["shown"]["rationale"] == "Corrected: r2's old session is still held."
@@ -121,7 +126,7 @@ class TestApprovable:
         from modules.fixit import plan as FP
         iid = stopped(ai)
         ai.answer = dict(partial(), plan=[{
-            "operation": "telemetry-resubscribe",
+            "operation": CLOSE,
             "params": {"device": "r2", "subscriptions": ["101"], "subscription": None,
                        "interface": None, "cause": None, "changes": None, "remove": None},
             "why": "it rests on a history line not sent.", "evidence_refs": [BAD]}],
@@ -141,7 +146,7 @@ class TestApprovable:
         from modules.fixit import plan as FP
         iid = stopped(ai)
         ai.answer = dict(partial(), plan=[{
-            "operation": "telemetry-resubscribe",
+            "operation": CLOSE,
             "params": {"device": "r2", "subscriptions": ["101"], "subscription": None,
                        "interface": None, "cause": None, "changes": None, "remove": None},
             "why": "attempt 1 and a line not sent.", "evidence_refs": ["attempt:1", BAD]}],
@@ -223,7 +228,7 @@ class TestTheCard:
                               "evidence_refs": ["attempt:1"]}),
          "What the fix needs, which no Mercury operation does yet"),
         (lambda: partial(), "The collector still holds r2's old session."),
-        (lambda: partial(fix()), "The step it proposes"),
+        (lambda: partial(fix(operation=CLOSE)), "The step it proposes"),
     ], ids=["a gap", "no fix", "a partial answer with a fix"])
     def test_the_findings_hypotheses_and_next_steps_are_drawn_with_the_rating(self, ai, ans,
                                                                             said):

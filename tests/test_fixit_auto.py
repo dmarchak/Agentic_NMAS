@@ -326,7 +326,9 @@ class TestTheInvestigation:
         attempt(ai.client, subs=("101",))
         got, started = run()
         (_net, _iid, key, job) = started[0]
-        ai.answer = answer(fix())
+        # Premise corrected (17215a95's ladder: a re-subscribe of 101, which attempt 1 tried, is
+        # refused as tried): the answer re-subscribes 102 alone, which no attempt tried.
+        ai.answer = answer(fix(subscriptions=("102",)))
         told = []
         out = heal_notice.fixit_investigation(NET, iid, key, job,
                                               deliver=lambda n, e: told.append(e) or {"ok": 1})
