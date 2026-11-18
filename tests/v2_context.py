@@ -3200,6 +3200,35 @@ def _plans(client, _lab, mp):
     body = r.get_data(as_text=True)
     assert 'inc-stepper-step inc-stepper-done" data-step="s1"' in body
     assert 'inc-stepper-step inc-stepper-not_reached" data-step="s2"' in body
+    # What each step does (the operator, 2026-11-16: "the exact actions"): step 1 the lines
+    # its own run sent (its run record, by its receipt, in the runner's record shape), step 2,
+    # which sent nothing, its parameters.
+    import os as _os
+
+    import pytest
+
+    from modules import config
+    from modules.nsot import privileged, reads
+    own = pytest.MonkeyPatch()
+    own.setattr("modules.config.list_data_path", config.get_list_data_dir)
+    sent = {"id": reads.new_id(), "list": "Lab", "device": "r3", "key": "intent-description",
+            "kind": "command_plan", "state": "done", "outcome": "done", "actor": "a.person",
+            "at": "2026-11-14T08:00:00Z",
+            "program": ["interface GigabitEthernet2", " description to r4"]}
+    try:
+        privileged.record("Lab", sent)
+        rec.update(plan_steps=[
+            dict(rec["plan_steps"][0], params={"device": "r3", "interface": "GigabitEthernet2"},
+                 receipt={"run": sent["id"]}),
+            dict(rec["plan_steps"][1], params={"device": "r4", "description": "to r3"})])
+        body = client.get("/v2/plans/preview", query_string={"run": "run-1"}) \
+            .get_data(as_text=True)
+        assert "What each step does" in body and " description to r4" in body, body[:400]
+    finally:
+        own.undo()
+        path = _os.path.join(config.get_list_data_dir("Lab"), "privileged", f"{sent['id']}.json")
+        if _os.path.exists(path):
+            _os.remove(path)
     got = {"ok": True, "state": "answered", "error": "", "detail": "", "answer": "Yes.",
            "cites": [], "passages": [], "call_id": "ai-0123456789abcdef", "gap": False,
            "typed_masked": "", "plan": {"plan": "dhcp-reservation", "title": "Reserve it",
