@@ -290,6 +290,24 @@ class TestTheDeployRefusesBeforeThePush:
             {"bgp": 2, "ospf": 6, "ospfv3": 4}
 
 
+class TestVerifysRouteCountIsReadOnce:
+    """Verify's route count (`_read_route_total`, `_await_route_retention`'s probe) goes
+    through the one reader, so its read is never re-sent and a stitched reply is refused,
+    never counted (C272); no unit test ran it, since the verify tests replace it (C3972)."""
+
+    def test_the_count_is_networks_plus_subnets_from_one_read(self):
+        s = Device()
+        # r3's capture's Total row is `Total 4 26 ...`: 4 networks and 26 subnets (C66).
+        assert pipeline._read_route_total(s) == 30
+        assert s.sent == ["show ip route summary"]
+
+    def test_a_stitched_route_summary_is_refused_not_counted(self):
+        s = Device(answers={"show ip route summary": stitched("r3", "show ip route summary")})
+        with pytest.raises(config_read.UnreliableRead, match="echoed command"):
+            pipeline._read_route_total(s)
+        assert s.sent == ["show ip route summary"]
+
+
 class TestPostPushReadsUseANewSession:
     def test_the_pushs_session_is_closed_before_the_post_snapshot(self, monkeypatch):
         from modules.pipeline import PipelineContext

@@ -1245,3 +1245,139 @@ class TestVerifyFailsWhatItUsedToPass:
         rd._deploy_one({"artifact": Deploy(), "fresh": "hostname x\n"}, "Lab",
                        {"r1": {"ip": "203.0.113.11", "hostname": "r1"}})
         assert not seen["params"].get("skip_route_check"), seen["params"]
+
+
+class TestStageOnesNetBoxContextIsKeptForTheRunsDevice:
+    """Stage 1's NetBox context is reused for the run's device while it is younger than
+    `NETBOX_CONTEXT_S`, keyed by the inventory row's list, name, address and NetBox id, so a
+    renamed, re-addressed or re-created device misses; only an answer that built is kept; a
+    heal's or a command plan's run never waits on NetBox but warms it beside the run (item 5
+    and round 2's item 4, the operator, 2026-11-16 and 2026-11-17; e400a31f, 70e89a47). No unit
+    test reached these four functions (C3972: pipeline.py's unit-uncovered functions rose from
+    3 to 5)."""
+
+    DEV = {"ip": "192.0.2.11", "hostname": "r1", "_netbox_id": 7}
+
+    @pytest.fixture(autouse=True)
+    def _empty_cache(self):
+        _P._netbox_cache.clear()
+        yield
+        _P._netbox_cache.clear()
+
+    @staticmethod
+    def _netbox(monkeypatch, answers=None):
+        """NetBox's context builder, `modules.nsot.build_render_context`, answering from
+        *answers* by call number (1-based; an exception is raised), else a built context
+        naming the device and carrying the params it was asked with."""
+        asked = []
+
+        def build(name, params=None):
+            asked.append((name, dict(params or {})))
+            got = (answers or {}).get(len(asked))
+            if isinstance(got, Exception):
+                raise got
+            return got or {"ok": True, "error": "", "context": {
+                "device": {"name": name}, "interfaces": [{"name": "Gi1"}],
+                "site": {"slug": "lab"}, "params": dict(params or {})}}
+        monkeypatch.setattr("modules.nsot.build_render_context", build)
+        return asked
+
+    @staticmethod
+    def _join_warmers():
+        for t in [t for t in threading.enumerate() if t.name == "netbox-warm"]:
+            t.join(timeout=10)
+            assert not t.is_alive(), "the NetBox warm-up did not finish in 10 s"
+
+    def test_an_answer_is_reused_within_its_bound_carrying_the_asking_runs_params(
+            self, monkeypatch):
+        asked = self._netbox(monkeypatch)
+        now = [1000.0]
+        first = _P.netbox_context("Lab", self.DEV, {"vlan": 10}, clock=lambda: now[0])
+        now[0] += _P.NETBOX_CONTEXT_S - 1
+        again = _P.netbox_context("Lab", self.DEV, {"vlan": 20}, clock=lambda: now[0])
+        assert asked == [("r1", {"vlan": 10})], "NetBox was asked once"
+        assert "cached_s" not in first and again["cached_s"] == _P.NETBOX_CONTEXT_S - 1
+        assert again["context"]["device"] == {"name": "r1"}
+        assert again["context"]["params"] == {"vlan": 20}, "each answer carries its own run's"
+        assert first["context"]["params"] == {"vlan": 10}, "the kept answer is not changed"
+
+    def test_past_its_bound_netbox_is_asked_again(self, monkeypatch):
+        asked = self._netbox(monkeypatch)
+        now = [1000.0]
+        _P.netbox_context("Lab", self.DEV, clock=lambda: now[0])
+        now[0] += _P.NETBOX_CONTEXT_S
+        again = _P.netbox_context("Lab", self.DEV, clock=lambda: now[0])
+        assert len(asked) == 2 and "cached_s" not in again
+
+    def test_a_changed_device_or_another_list_misses(self, monkeypatch):
+        asked = self._netbox(monkeypatch)
+        clock = lambda: 1000.0
+        _P.netbox_context("Lab", self.DEV, clock=clock)
+        changed = [dict(self.DEV, hostname="r9"), dict(self.DEV, ip="192.0.2.12"),
+                   dict(self.DEV, _netbox_id=8)]
+        for dev in changed:
+            assert "cached_s" not in _P.netbox_context("Lab", dev, clock=clock), dev
+        assert "cached_s" not in _P.netbox_context("Other", self.DEV, clock=clock)
+        assert len(asked) == 5, asked
+        keys = {_P._netbox_key("Lab", d) for d in [self.DEV, *changed]}
+        assert len(keys) == 4 and _P._netbox_key("Other", self.DEV) not in keys
+        assert _P._netbox_key("Lab", self.DEV) == ("Lab", "r1", "192.0.2.11", "7")
+
+    def test_a_failed_answer_is_never_kept(self, monkeypatch):
+        failed = {"ok": False, "error": "NetBox answered 503", "context": {}}
+        asked = self._netbox(monkeypatch, answers={1: failed})
+        clock = lambda: 1000.0
+        assert _P.netbox_context("Lab", self.DEV, clock=clock) == failed
+        assert _P.netbox_cached("Lab", self.DEV, clock=clock) is None
+        assert _P.netbox_context("Lab", self.DEV, clock=clock)["ok"] is True
+        assert len(asked) == 2, "the failure was asked again, not reused"
+
+    def test_the_cached_answer_is_read_without_asking_netbox(self, monkeypatch):
+        asked = self._netbox(monkeypatch)
+        now = [1000.0]
+        assert _P.netbox_cached("Lab", self.DEV, clock=lambda: now[0]) is None
+        built = _P.netbox_context("Lab", self.DEV, clock=lambda: now[0])
+        now[0] += 30
+        assert _P.netbox_cached("Lab", self.DEV, clock=lambda: now[0]) == built
+        now[0] += _P.NETBOX_CONTEXT_S
+        assert _P.netbox_cached("Lab", self.DEV, clock=lambda: now[0]) is None
+        assert len(asked) == 1, "netbox_cached asked nothing"
+
+    def test_a_warm_up_fills_the_cache_in_its_own_thread(self, monkeypatch):
+        asked = self._netbox(monkeypatch)
+        _P.warm_netbox_context("Lab", self.DEV, {"vlan": 10})
+        self._join_warmers()
+        assert asked == [("r1", {"vlan": 10})]
+        assert _P.netbox_cached("Lab", self.DEV)["context"]["device"] == {"name": "r1"}
+
+    def test_a_warm_up_that_fails_never_raises_and_says_so(self, monkeypatch, caplog):
+        self._netbox(monkeypatch, answers={1: ConnectionError("NetBox unreachable")})
+        with caplog.at_level("INFO", logger="modules.pipeline"):
+            _P.warm_netbox_context("Lab", self.DEV)
+            self._join_warmers()
+        assert _P.netbox_cached("Lab", self.DEV) is None
+        assert any("was not warmed" in r.getMessage() and "NetBox unreachable" in r.getMessage()
+                   for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+    def test_a_transient_run_warms_netbox_beside_it_and_the_next_takes_the_kept_answer(
+            self, monkeypatch):
+        monkeypatch.setattr("modules.netbox_client.get_netbox_config",
+                            lambda: {"url": "http://192.0.2.1", "token": "unused"})
+        asked = self._netbox(monkeypatch)
+
+        def run():
+            ctx = _ctx(device_ips=[self.DEV["ip"]], selected_devices=[dict(self.DEV)],
+                       list_name="Lab", transient=True)
+            _P._stage_netbox_query(ctx)
+            return ctx
+
+        first = run()
+        assert first.intended_config == {"available": False, "reason": (
+            "being read beside the run, which decides nothing on it")}
+        self._join_warmers()
+        assert len(asked) == 1
+        second = run()
+        got = second.intended_config["devices"][self.DEV["ip"]]
+        assert second.intended_config["available"] is True
+        assert got["device"] == {"name": "r1"} and got["error"] is None
+        assert len(asked) == 1, "the second run took the kept answer"
