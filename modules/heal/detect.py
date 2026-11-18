@@ -147,9 +147,10 @@ def run(network: str, *, now: float = None, check=None, clock=time.time,
     mode = policy.current(network, now)
     out.update(mode=mode["mode"], words=mode["words"])
     if mode["mode"] == "off":
-        out["closed"] = incidents.close_watching(
-            network, f"self-healing is off for {network} ({mode['words']}): nothing new "
-                     "starts", now)
+        # The correctness review's G4-D1 (C3880; the operator, 2026-11-16: "Self-healing Off
+        # must not close standing incidents"): Off, Stop everywhere, an unreadable policy and
+        # an unconfirmed one all read off here, and none is a fix. Nothing new starts, nothing
+        # is read, and every open incident stays open, waiting for self-healing.
         return out
     try:
         policy.record_expiry(network, now)

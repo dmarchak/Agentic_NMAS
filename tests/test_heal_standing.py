@@ -316,12 +316,15 @@ class TestEnded:
                              now=T0 + 3601)
         assert the("core-b")["state"] == "standing", "its cause is a golden departing intent"
 
-    def test_turned_off_closes_it(self, fold):
-        self.standing()
+    def test_turned_off_leaves_it_standing(self, fold):
+        # The correctness review's G4-D1 (C3880; the operator, 2026-11-16: "Self-healing Off
+        # must not close standing incidents"): Off is no fix, so its cause still stands.
+        d = self.standing()
         confirm("Default", now=T0 + 200, heal_mode="off")
         got = pass_at(T0 + 210, read_as("clean"))
-        assert got["closed"] == [I.read("Default")["incidents"][0]["id"]]
-        assert I.read("Default")["incidents"][0]["state"] == "closed"
+        assert got["closed"] == []
+        inc = I.read("Default")["incidents"][0]
+        assert inc["state"] == "standing" and inc["standing"]["decision"] == d["decision"]
 
 
 class TestTheDriftRun:

@@ -733,6 +733,18 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
         # symptom folds into it, a later trigger of the same departure joins it.
         incidents.stand(network, incident["id"], d, settled=incident.get("settled"), now=now)
         return
+    if d["outcome"] == "off":
+        # The correctness review's G4-D1 (C3880): Off or Stop everywhere (guards 1 and 2,
+        # which an unreadable or unconfirmed policy reads as too) is no fix, so it closes
+        # nothing. One taken from its standing (the switch-on batch's restore, an act's
+        # standing sent back by the retry) goes back on it; a ready one goes back to watching,
+        # saying it waits for self-healing, and is read again once self-healing is on.
+        if incident.get("standing") or (incident.get("stood") or {}).get("act"):
+            incidents.stand(network, incident["id"], None, now=now)
+        else:
+            incidents.defer(network, incident["id"], now,
+                            f"waits for self-healing: {d['words']}"[:300], now)
+        return
     if (incident.get("stood") or {}).get("act"):
         # The review's findings 2 and 5: an incident a heal could not confirm ends only with
         # proof. A re-decision that would close it (halted, nothing to heal) puts it back on
