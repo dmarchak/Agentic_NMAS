@@ -221,10 +221,10 @@ class TestTheConfirm:
         assert _wait(job)["state"] == "done"
         card = _text(client.get(f"/v2/onboard/oob/card?list_name={LIST}&run={run}&job={job}"
                                 "&hostname=edge1"))
-        assert "onboarded, answering: ready to Verify" in card
+        assert "onboarded, reachable: ready to Verify" in card
         assert "0c:00:08:75:80:01" in card and "Open edge1's page to Verify" in card
         page = _text(client.get(f"/v2/onboard/oob/run?list={LIST}&device=edge1"))
-        assert 'id="oob-card"' in page and "onboarded, answering: ready to Verify" in page
+        assert 'id="oob-card"' in page and "onboarded, reachable: ready to Verify" in page
 
 
 class TestTheRunPage:

@@ -735,11 +735,14 @@ def start(spawn=None) -> bool:
 
 
 def clear() -> None:
-    """Everything held, dropped (a test's start)."""
+    """Everything held, dropped (a test's start), the kept pages' copies read from disk and
+    their write times too, as a start begins with none (`kept` reads the file again)."""
     with _lock:
         _nets.clear()
         _watchers.clear()
         _runs.clear()
+        _kept.clear()
+        _kept_at.clear()
 
 
 # ── pushing ────────────────────────────────────────────────────────────────────────────────

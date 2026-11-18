@@ -169,7 +169,10 @@ class TestARowThatClearsByTime:
                          ("heal", "clear"),
                          # A dampening proposal, its port stable 24 h; an approved one not
                          # ended dampened, 7 days after it (H22).
-                         ("heal", "dampening")}
+                         ("heal", "dampening"),
+                         # The recurrence and fight findings (106c117d, e9902af0): once the
+                         # oldest of the occurrences they count leaves the window.
+                         ("heal", "recurrence"), ("heal", "fight")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):
@@ -179,6 +182,34 @@ class TestARowThatClearsByTime:
                         and "clears_at" in kw:
                     found.add((kw["source"].value, kw["kind"].value))
         assert timed <= found, timed - found
+
+    def test_a_recurrence_and_a_fight_say_the_moment_they_clear(self, monkeypatch):
+        """The findings (106c117d, e9902af0) clear by time: a recurrence once the oldest of the
+        last ``heal_recurrence_count`` incidents it counts leaves ``heal_recurrence_hours``, a
+        fight once the oldest of its last ``heal_fight_count`` undone fixes does. Each row says
+        that moment (the defaults: 3 within 24 h)."""
+        from modules import acknowledgements as ACK
+        from modules.heal import findings
+        from modules.heal import incidents as INC
+
+        now = 1_790_000_000.0
+        incs = [{"id": f"hi-{n}", "device": "edge1",
+                 "triggers": [{"epoch": now - 3600 * (5 - n)}]} for n in range(4)]
+        key = ("edge1", "Gi0/1", "err_disabled", "bpdu_guard")
+        monkeypatch.setattr(INC, "read", lambda lst: {"state": "ok", "incidents": incs})
+        monkeypatch.setattr(ACK, "read", lambda: {"state": "ok", "rows": []})
+        monkeypatch.setattr(findings, "recurrences", lambda *a, **k: [
+            {"key": key, "incidents": list(incs), "since": now - 5 * 3600}])
+        ats = [now - 4000, now - 3000, now - 2000, now - 1000]
+        monkeypatch.setattr(findings, "fights", lambda *a, **k: [
+            {"device": "edge1", "object": "Gi0/1", "operation": "errdisable-recover",
+             "what": "Gi0/1", "times": 4, "fixes": incs, "back": incs, "first": ats[0],
+             "ats": ats}])
+        rows = {r["kind"]: r for r in attention._heal_finding_rows("Lab", [], now, [], mode={})}
+        day = 24 * 3600
+        assert rows["recurrence"]["clears_at"] == attention._iso(
+            findings.started(incs[1]) + day), rows["recurrence"]
+        assert rows["fight"]["clears_at"] == attention._iso(ats[1] + day), rows["fight"]
 
 
 class TestTheDoubtMark:

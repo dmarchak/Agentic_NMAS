@@ -331,11 +331,13 @@ ASSISTANT_OFF_WORDS = "The Assistant is off (Settings › Installation › AI, t
 
 def assistant_on() -> bool:
     """Whether the toolbar's Assistant is on: only a stored True is on, so a hand edit or a
-    setting that cannot be read leaves it off (nothing drawn, its routes refusing)."""
+    setting that cannot be read leaves it off (nothing drawn, its routes refusing). The key is
+    read by its literal (`ASSISTANT_KEY`'s), so the read-for-a-list scan judges it host-wide
+    (tests/test_network_settings_read_for_a_list.py)."""
     from modules.settings_schema import get_setting
 
     try:
-        return get_setting(ASSISTANT_KEY, False) is True
+        return get_setting("ai_assistant_on", False) is True
     except Exception as exc:                            # noqa: BLE001 (a page still draws)
         log.warning("the Assistant's setting could not be read (%s): read as off",
                     type(exc).__name__)

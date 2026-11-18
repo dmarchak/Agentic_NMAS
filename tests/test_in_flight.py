@@ -294,7 +294,8 @@ class TestTheChip:
         assert 'class="ip-chip ip-run"' in html and "In progress: 1 running" in html
         assert html.count('class="ip-row"') == 1, "one operation, one row (C217)"
         assert "<strong>r2</strong> · Rotate credential" in html
-        assert "Read the account" in html and "step 1 of 6" in html
+        # Its step in plain words, never "step i of n" (C3838, c4948c2c).
+        assert "Read the account" in html and "step 1 of" not in html
         assert 'href="/v2/device/r2?list=Lab"' in html and "Open its card" in html
         d = chip["client"].get("/operations/in_flight?list_name=Lab").get_json()
         assert [r["device"] for r in d["running"]] == ["r2"], "today's panel: one row too"

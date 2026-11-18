@@ -305,7 +305,7 @@ def _pending_facts(ref, p) -> dict:
     out["waits"] = pending_wait(p.get("address_source", ""))
     waits = (out["ztp"] or {}).get("summary") or out["waits"]
     if out["answer"]["state"] == "answering":
-        waits = "answering: ready to Verify"
+        waits = "reachable: ready to Verify"
     out["run"] = run_stepper.at_step(p.get("name", ""), f"{p.get('name', '')} onboarding progress",
                                      onboard.LIFECYCLE, onboard.LIFECYCLE_NOW, note=waits)
     out["run"]["rows"][0]["device"] = False      # not in the inventory yet: its page is this one

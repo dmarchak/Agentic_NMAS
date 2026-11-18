@@ -149,7 +149,7 @@ class TestThePlan:
         p = save_op.plan("Lab", ["r2", "r3", "r4", "s9", "nope"])
         groups = {d["host"]: (d["group"], d["why"]) for d in p["devices"]}
         assert groups["r2"] == ("save", "") and groups["r3"] == ("save", "")
-        assert groups["r4"] == ("not_answering", "not answering at the last reachability read")
+        assert groups["r4"] == ("not_answering", "not reachable at the last reachability read")
         assert groups["s9"][0] == "refused" and "no device_type" in groups["s9"][1]
         assert groups["nope"] == ("refused", "nope is not in Lab's inventory")
         assert p["counts"] == {"save": 2, "not_answering": 1, "held": 0, "refused": 2}
@@ -216,7 +216,7 @@ class TestThePage:
         assert "Save 4 devices: to startup, and as golden" in html
         assert "Before it runs" in html
         summary = html[html.index('class="save-sum"'):html.index("</div>\n", html.index('class="save-sum"'))]
-        for words in ("2</strong>to save", "1</strong>not answering: left out",
+        for words in ("2</strong>to save", "1</strong>not reachable: left out",
                       "1</strong>cannot be saved from here: left out"):
             assert words in summary.replace("\n", ""), (words, summary)
         said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))

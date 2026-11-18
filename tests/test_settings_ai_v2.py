@@ -159,7 +159,10 @@ def test_turn_on_draws_the_estimate_labelled_with_the_digest_the_form_sends(ai):
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
     assert "ESTIMATE" in text and "an estimate, not a measurement" in text.lower()
     assert "Calls a day 4.0" in text and "4.0 detections a day, planted" in text
-    assert "not measured:" in text and "per-call cap" in text, "the cost said as an upper bound"
+    # 7b0bb884 (the operator, 2026-11-17: Mercury sets no per-call cap of its own): with no call
+    # measured, the task pin's prompt and answer tokens stand in, said as not measured.
+    assert "not measured:" in text and "answer tokens stand in" in text, \
+        "the cost said as a stand-in, not a measurement"
     assert f"Estimate {est['digest'][:8]}" in text and "the provider bills" in text
     assert 'name="day_cap_usd"' in html and 'name="month_cap_usd"' in html
     assert 'name="accept"' in html and "Turn on with this estimate" in text

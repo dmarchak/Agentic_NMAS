@@ -505,7 +505,10 @@ class TestOneRowPerIncident:
         title = line.index('class="att-what"')
         assert title < line.index('class="att-impact') < line.index('class="att-ai'), line
         assert f'title="{impact}">{impact}</span>' in line.replace("&#39;", "'")
-        assert "AI: Mercury's fix failed once." in line.replace("&#39;", "'")
+        # The status's source as its label (00c70e0f, C3840: "the status line is one sentence
+        # with its source as a label"), never "AI:" run into the words.
+        assert re.search(r'<span class="badge badge-info">AI</span> Mercury\'s fix failed once\.',
+                         line.replace("&#39;", "'")), line
         # Under the row (the other port's own "Interface down" row stands apart, at Critical).
         parent = html.split('data-attention-row="heal:x"')[1]
         for member in ("grafana:Critical syslog received", "grafana:Interface down"):

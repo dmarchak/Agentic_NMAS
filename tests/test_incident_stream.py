@@ -214,7 +214,10 @@ class TestOneStateAndItsAction:
         button = the_primary(todo_of(body))
         assert (button[0], T.text_of(button[2]).split(" Starting…")[0]) == (
             "button", "Start AI troubleshooting")
-        assert re.search(r'<p class="fixit-status" data-status>[^<]+', section(body, "inc-ai"))
+        # The AI's status is the BLUF's status line since R5 (becced07, the operator's board
+        # R5: one card, its status one sentence; 00c70e0f, its source a label).
+        assert re.search(r'<div class="simple-status fixit-status[^"]*" data-bluf="status" '
+                         r'data-status[^>]*>[^<]+', section(body, "inc-bluf"))
 
     def test_with_the_section_naming_nothing_the_row_s_re_subscribe_is_the_action(
             self, stream, monkeypatch):
@@ -319,7 +322,8 @@ class TestOneStateAndItsAction:
         todo = todo_of(body)
         assert 'data-fix="approve"' in todo
         assert 'id="resub-r2"' not in todo, "no second card of the same operation"
-        assert 'class="fixit-plan"' in section(body, "inc-ai")
+        # R5 (becced07): "the plan as its own card with its exact lines".
+        assert 'class="fixit-plan"' in section(body, "inc-plan")
 
     def test_a_fix_running_or_passed_needs_nobody_now(self, stream, monkeypatch):
         """A page that needs nobody draws no primary button: the state function's answer for
@@ -334,7 +338,9 @@ class TestOneStateAndItsAction:
         assert carried(body)[:4] == ["open"] * 4
         todo = todo_of(body)
         assert primaries(todo) == []
-        assert "Nothing to press: no person is needed." in T.text_of(todo)
+        # R5 (becced07) dropped the "Nothing to press" line: the BLUF's state says it.
+        words = T.text_of(todo)
+        assert "No person needed" in words and "Needs a person" not in words, words
 
 
 # ── What the row kept under Details, on the page (C3488) ───────────────────────────────────
@@ -412,7 +418,9 @@ return JSON.stringify({
   fixit: (todo.querySelector('.inc-card [name=fixit]') || {}).value || '',
   states: Array.from(document.querySelectorAll('#incident-live [data-inc-state]')).map(
     function (e) { return e.getAttribute('data-inc-state'); }),
-  badge: document.querySelector('.inc-line [data-state]').innerText.trim(),
+  // R5 (becced07): the line is in the card's one Details, closed by default, so its words
+  // are read as held (textContent), not as painted.
+  badge: document.querySelector('.inc-line [data-state]').textContent.trim(),
   sideways: document.documentElement.scrollWidth - document.documentElement.clientWidth
 });
 """

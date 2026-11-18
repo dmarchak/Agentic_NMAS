@@ -300,8 +300,10 @@ class TestTheLanding:
 #: Incidents and Self-healing (board T, approved provisionally by the operator 2026-11-13;
 #: its suggested Problems, Drills and Reports have no page and are not drawn). "—" is the rule
 #: above Help and Settings at the bottom.
+# Troubleshooting › Fixes beside Incidents (a61bb071, C3849; board fixes-list, approved by the
+# operator 2026-11-16).
 SIDEBAR = ("Needs attention", "Devices", "History",
-           "TROUBLESHOOTING", "Incidents", "Self-healing",
+           "TROUBLESHOOTING", "Incidents", "Fixes", "Self-healing",
            "OBSERVE", "Monitoring", "Topology", "SDN", "Show commands", "Logs",
            "SOURCE OF TRUTH", "Intent", "Templates", "NetBox", "DHCP", "Credentials",
            "—", "Help", "Settings")

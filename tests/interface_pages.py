@@ -261,6 +261,18 @@ def _sdn_connection(network: str, mp) -> None:
                lambda net: dhcp_steer.view(dhcp_steer.card(net)))
 
 
+def _assistant_on(mp) -> None:
+    """The Assistant turned on, as an installation that turned it on in Settings › AI does
+    (a61bb071, the operator 2026-11-16: "hide it via a setting ... default off for now"): the
+    toolbar's Assistant button and its panel are drawn only while it is on
+    (`installation_settings.assistant_on`, base.html), so the walk draws them as such an
+    installation sees them and the Assistant's routes are in the population. The walk's own
+    patch of the one read, never a write to the settings file."""
+    from modules import installation_settings
+
+    mp.setattr(installation_settings, "assistant_on", lambda: True)
+
+
 def _loop_run(network: str, mp, folder: str) -> None:
     """One run of the SDN loop in *network*'s log, as `start` and a pass write it, so SDN ›
     Responses draws its log panel with the run picker and Download log (C1971). The log is
@@ -299,6 +311,7 @@ def pages() -> dict:
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
                 seed(lab, mp, tmp)
                 _sdn_connection("Lab", mp)
+                _assistant_on(mp)
                 v2 = _walk(lab["client"])
                 todays = _todays(A, mp, lab["client"])
     finally:

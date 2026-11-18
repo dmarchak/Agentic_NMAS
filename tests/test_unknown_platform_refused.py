@@ -216,6 +216,41 @@ class TestNoDialectLiteralIsAFallback:
         assert seen == EXCUSED, f"an excused site is gone: remove it from EXCUSED: {EXCUSED - seen}"
 
 
+class TestTheStreamReceiverReadHasNoDefault:
+    """The telemetry stream checks' receiver read (`heal.stream_checks._receiver`, 17215a95)
+    read a device whose platform Mercury does not know as IOS-XE (``or "cisco_iosxe"``): it is
+    unread, naming why, and asks the device nothing (C452)."""
+
+    class _Run:
+        def __init__(self, dev):
+            self.device, self.dev, self.asked = "edge1", dev, []
+            run = self
+
+            class _Sources:
+                def read(self, device, cmds):
+                    run.asked.append((device, list(cmds)))
+                    return {}
+            self.sources = _Sources()
+
+    def test_an_unknown_platform_is_unread_and_asks_nothing(self):
+        from modules.heal import stream_checks as SC
+
+        run = self._Run({"hostname": "edge1", "device_type": "linux"})
+        got = SC._receiver(run, "101")                 # noqa: SLF001 (the check's own read)
+        assert got["state"] == "unread" and got["rows"] is None, got
+        assert "does not know its platform" in got["why"] and "edge1" in got["why"], got
+        assert run.asked == [], "an unknown platform is never read as another"
+
+    def test_a_known_platform_reads_its_own_dialect(self):
+        """The control: an IOS-XE device is asked its receiver in IOS-XE's words."""
+        from modules.heal import resubscribe as R
+        from modules.heal import stream_checks as SC
+
+        run = self._Run({"hostname": "edge1", "platform": "cisco_iosxe"})
+        SC._receiver(run, "101")                       # noqa: SLF001
+        assert run.asked == [("edge1", [R.receiver_command("cisco_iosxe", "101")])], run.asked
+
+
 class TestOnboardingTakesItsDriverFromThePlan:
     """C453: onboarding reached and recorded every device with the C8000v's driver when none
     was given. Now the plan's dialect gives it, through the one mapping, or it is refused."""

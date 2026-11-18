@@ -1134,7 +1134,7 @@ def _best_status(status: str, offer: dict, done: bool, found: dict, starts: list
 
 def _approved(state: str, rec: dict, stop: dict) -> dict:
     """An approved plan's run as the status line says it (item 5, the operator, 2026-11-15:
-    "AI plan approved by dustnm, passed at 14:29"): ``{"what", "by", "at", "how"}`` for a
+    "AI plan approved by <user>, passed at 14:29"): ``{"what", "by", "at", "how"}`` for a
     ``running`` or ``passed`` section, *how* ``running since`` or ``passed at`` and *at* an ISO
     UTC instant (the screen draws it in the viewer's zone); ``{}`` otherwise. From the newest
     attempt (`out["stop"]`: who confirmed it, its start and its end), else, before its first

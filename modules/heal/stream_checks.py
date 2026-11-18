@@ -105,12 +105,17 @@ def _units(run) -> tuple:
 def _receiver(run, sub: str) -> dict:
     """One subscription's receiver as `resubscribe.Sources.receiver` answers it, ``{"state",
     "rows", "why"}``, read through the run's sources (the read engine, on the run's session)
-    by `resubscribe.receiver_command`."""
+    by `resubscribe.receiver_command`. A device whose platform Mercury does not know is
+    unread, saying so (`platform.unknown_words`), never read as IOS-XE (C452)."""
     from modules.heal import diagnose_parse as P
     from modules.heal import resubscribe as R
-    from modules.nsot.platform import platform_for_device
+    from modules.nsot.platform import platform_for_device, unknown_words
 
-    cmd = R.receiver_command(platform_for_device(run.dev or {}) or "cisco_iosxe", sub)
+    dialect = platform_for_device(run.dev or {})
+    if not dialect:
+        return {"state": "unread", "rows": None,
+                "why": unknown_words(dict(run.dev or {}, hostname=run.device))}
+    cmd = R.receiver_command(dialect, sub)
     answer = (run.sources.read(run.device, [cmd]) or {}).get(cmd)
     if answer is None:
         return {"state": "unread", "rows": None, "why": f"`{cmd}` could not be read"}

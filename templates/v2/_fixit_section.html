@@ -524,7 +524,7 @@
   {{ part_block(st, part, ns.k) }}
   {%- endfor %}
   {%- elif long %}{% set ns.k = ns.k + 1 %}
-  <details class="simple-step" data-plan-step="{{ st.n }}"><summary>Step {{ ns.k }}: {{ st.words | times }}</summary>
+  <details class="simple-step" data-plan-step="{{ st.n }}" data-keep="plan-step-{{ x.id }}-{{ st.n }}"><summary>Step {{ ns.k }}: {{ st.words | times }}</summary>
     {{ sent_block(st) }}
   </details>
   {%- else %}{% set ns.k = ns.k + 1 %}
