@@ -37,6 +37,11 @@ KEY = "errdisable-recover"
 PORT = "GigabitEthernet1/0"
 VALUES = {"device": "s1", "interface": "Gi1/0", "cause": "bpduguard"}
 INTERFACES_READ = "show interfaces | include (line protocol|Internet address)"
+#: s1's captured `show spanning-tree interface` rows (tests/fixtures/diagnose, its Gi0/3).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "diagnose",
+                       "s1__show_spanning_tree_interface_GigabitEthernet0_3.txt"),
+          encoding="utf-8") as _fh:
+    STP_ROWS = _fh.read()
 
 
 # ── A fake switch for the whole pipeline: s1's captures and its committed golden ────────────
@@ -45,10 +50,16 @@ class Switch:
     """s1 with Gi1/0 err-disabled by BPDU guard (*state*), its running configuration its
     committed golden (*running*). ``shutdown`` shuts the port; ``no shutdown`` brings it up,
     or err-disables it again when its cause is still there (*again*). *admin_down*: the port
-    is shut in its running configuration before the plan."""
+    is shut in its running configuration before the plan. *recovery*: its answer to `show
+    errdisable recovery`. Premise corrected (ec92d62b, the operator, 2026-11-16: errdisable-recover
+    reads the switch's own recovery table): s1's captured table by default (bpduguard
+    Disabled: the switch does not recover it itself), where an empty answer stood for "no
+    recovery"; an empty table refuses now, naming it."""
 
-    def __init__(self, state="err-disabled", again=False, cause="bpduguard", recovery="",
+    def __init__(self, state="err-disabled", again=False, cause="bpduguard", recovery=None,
                  running=None, admin_down=False, macs=None, sticky=""):
+        if recovery is None:
+            recovery = T.text("s1_errdisable_recovery.txt")
         self.state, self.again, self.cause, self.recovery = state, again, cause, recovery
         self.base = T.s1_golden() if running is None else running
         self.admin_down, self.macs = admin_down, macs
@@ -89,6 +100,11 @@ class Switch:
             return self.interfaces()
         if command.startswith("show mac address-table") or command == T.E.PSEC_READ:
             return self.macs if self.macs is not None else T.text("s5_mac_table_gi03.txt")
+        if command == f"show spanning-tree interface {PORT}":
+            # Premise corrected (ec92d62b: the recovery's verify reads the port's spanning tree):
+            # a port up forwards in its VLANs, s1's captured rows (Gi0/3's, the same table on
+            # vIOS-L2 for any port); a port down holds none.
+            return STP_ROWS if self.state == "connected" else ""
         return ""
 
     def apply(self, lines):
@@ -434,7 +450,12 @@ class TestTheRun:
         assert lab["events"][0]["event"] == "held"
 
     def test_the_switchs_running_recovery_is_never_raced(self, lab):
-        lab["sw"] = Switch(recovery="errdisable recovery cause bpduguard\n")
+        # Premise corrected (ec92d62b: the switch's own recovery table is read, never its
+        # configuration's line): s1's captured table with bpduguard's timer Enabled (one edit).
+        enabled = T.text("s1_errdisable_recovery.txt").replace(
+            "bpduguard                    Disabled", "bpduguard                    Enabled", 1)
+        assert "bpduguard                    Enabled" in enabled
+        lab["sw"] = Switch(recovery=enabled)
         rec = go(lab)
         assert rec["outcome"] == "refused" and lab["sw"].batches == []
         assert "does not race it" in rec["why"]
