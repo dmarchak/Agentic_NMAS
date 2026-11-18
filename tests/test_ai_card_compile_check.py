@@ -75,15 +75,17 @@ def test_the_card_s_test_passes_when_each_schema_compiles(networks, monkeypatch)
     card, sent = _press_test(networks, monkeypatch,
                              lambda b: (200, _echo(b) if _is_ping(b) else None))
     assert "Test passed" in card and "every AI request's schema compiles" in card, card
-    # The investigation's three passes since C3797 (v11, v12, v13).
-    assert "fixit_troubleshoot.v11: the provider compiles it" in card
-    # Each schema sent on the feature's own model, the ping on the cheap one.
-    assert [b["model"] for b in sent[1:]] == [profiles.TASKS[FT.FEATURE]["model"]] * 3
+    # The investigation's passes, one shape since v17 (231da1d6): one schema, the press's, sent
+    # once (the prompt in use, v18 since C3918).
+    version = FT.PROMPT_PLAN[1]
+    assert FT.PROMPT_PLAN_READS == FT.PROMPT_AGAIN == FT.PROMPT_PLAN == (FT.FEATURE, version)
+    assert f"fixit_troubleshoot.v{version}: the provider compiles it" in card
+    # The schema sent on the feature's own model, the ping on the cheap one.
+    assert [b["model"] for b in sent[1:]] == [profiles.TASKS[FT.FEATURE]["model"]]
     assert sent[0]["model"] == profiles.TASKS["connection_check"]["model"]
-    # The ping, then each schema as the answer's: exactly the schemas the press sends.
+    # The ping, then the schema as the answer's: exactly the schema the press sends.
     assert [b["output_config"]["format"]["schema"] for b in sent[1:]] == [
-        sent_schema(FT.TroubleshootInvestigate), sent_schema(FT.TroubleshootInvestigateAgain),
-        sent_schema(FT.TroubleshootInvestigated)]
+        sent_schema(FT.SCHEMA_OF[version])]
 
 
 def test_the_card_s_test_fails_naming_the_schema_the_provider_refuses(networks,  # noqa: F811
@@ -91,12 +93,13 @@ def test_the_card_s_test_fails_naming_the_schema_the_provider_refuses(networks, 
     def reply(body):
         if _is_ping(body):
             return 200, _echo(body)
-        # The last pass's schema refused (v13 since C3797), the others compiled.
+        # The investigation's one schema (one shape since v17, 231da1d6) refused; a schema of
+        # any other shape compiles.
         refused = body["output_config"]["format"]["schema"] == sent_schema(
-            FT.TroubleshootInvestigated)
+            FT.SCHEMA_OF[FT.PROMPT_PLAN[1]])
         return (400, REFUSED) if refused else (200, None)
-    card, _sent = _press_test(networks, monkeypatch, reply)
+    card, sent = _press_test(networks, monkeypatch, reply)
     assert "Test passed" not in card, card
-    assert "fixit_troubleshoot.v13: the provider refused it" in card, card
+    assert f"fixit_troubleshoot.v{FT.PROMPT_PLAN[1]}: the provider refused it" in card, card
     assert "The compiled grammar is too large" in card
-    assert "fixit_troubleshoot.v11: the provider compiles it" in card
+    assert len(sent) == 2, "the ping and the one schema"
