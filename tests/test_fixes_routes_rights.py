@@ -1,0 +1,98 @@
+"""A saved fix's page answers each of its writes through a request as the store's chokepoint
+decides it (da740aa1 and a61bb071, C3849; the operator, 2026-11-16): Set Automatic… and Delete…
+take the right the fix takes (self-healing for a fix with a match), a person without it is
+refused 403 with nothing changed, and a refusal the fix's state makes (no verified run of its
+version, a reason too short) is a 409 naming it.
+
+Through tests/test_saved_plans_v2.py's `card` (the real app, a verified person's assertion stood
+in, the store the test's own); the retry pass a Set Automatic starts is counted, never run.
+Paid for docs/FAST_LANE_DEBT.md's rows for da740aa1 and a61bb071 (the routes' own refusals), the
+debt pass, 2026-11-18.
+
+Each test holds one purpose:
+- Set Automatic: refused 403 without the self-healing right, refused 409 with no verified run of
+  the version, and set with both, the retry pass asked once;
+- Delete: refused 403 without the right and 409 for a short reason, nothing changed; deleted with
+  both, and Restore brings it back.
+"""
+import re
+
+import pytest
+
+from modules.nsot import saved_plans as S
+from tests.test_saved_plans import MATCH, NET, OTHER, PERSON, WHO, store  # noqa: F401
+from tests.test_saved_plans_v2 import card  # noqa: F401 (the fixture)
+
+FILLS = {"device": "device", "interface": "object",
+         "cause": {"BPDU guard": "bpduguard", "port security": "psecure-violation"}}
+HX = {"HX-Request": "true"}
+
+
+@pytest.fixture
+def retried(monkeypatch):
+    seen = []
+    monkeypatch.setattr("modules.heal.retry.run_soon", lambda *a, **kw: seen.append((a, kw)))
+    return seen
+
+
+def saved(card, dry_run=True):  # noqa: F811
+    """A verified run saved as a fix by its own writer: its key."""
+    return S.save_script(NET, run_id=card["run"](), name="BPDU guard recovery", match=MATCH,
+                         fills=FILLS, dry_run=dry_run, **WHO)["key"]
+
+
+def post(card, key, what, **data):  # noqa: F811
+    r = card["client"].post(f"/v2/fixes/{key}/{what}?list={NET}", data=data, headers=HX)
+    return r.status_code, re.sub(r"\s+", " ", r.get_data(as_text=True))
+
+
+def stored(key):
+    return S.read()["plans"][key]
+
+
+class TestSetAutomatic:
+    def test_without_the_self_healing_right_it_is_refused_and_nothing_changes(
+            self, card, retried):  # noqa: F811
+        key = saved(card)
+        card["rights"]["self_healing"] = [OTHER]
+        code, html = post(card, key, "automatic")
+        assert code == 403 and "Not set Automatic:" in html, (code, html[:300])
+        assert stored(key)["mode"] != "auto" and retried == []
+
+    def test_with_no_verified_run_of_its_version_it_is_refused_naming_it(
+            self, card, retried, monkeypatch):  # noqa: F811
+        key = saved(card)
+        monkeypatch.setattr(S, "verified_run", lambda network, e: {})
+        code, html = post(card, key, "automatic")
+        assert code == 409 and "version 1 has no verified run yet" in html, (code, html[:300])
+        assert stored(key)["mode"] != "auto" and retried == []
+
+    def test_with_both_it_is_set_and_the_retry_pass_is_asked_once(self, card, retried):  # noqa: F811
+        key = saved(card)
+        code, html = post(card, key, "automatic")
+        assert code == 200 and "Set Automatic: BPDU guard recovery runs by itself" in html, (
+            code, html[:300])
+        assert (stored(key)["mode"], stored(key)["promoted_by"]) == ("auto", PERSON)
+        assert len(retried) == 1 and retried[0][1]["script"] == key
+
+
+class TestDelete:
+    def test_without_the_right_or_with_a_short_reason_nothing_changes(self, card):  # noqa: F811
+        key = saved(card, dry_run=False)
+        card["rights"]["self_healing"] = [OTHER]
+        code, html = post(card, key, "delete", reason="taken back by its author")
+        assert code == 403 and "Not deleted:" in html, (code, html[:300])
+        card["rights"]["self_healing"] = [PERSON]
+        code, html = post(card, key, "delete", reason="gone")
+        assert code == 409 and "a reason is at least" in html, (code, html[:300])
+        assert "retired" not in stored(key)
+
+    def test_deleted_with_both_and_restore_brings_it_back(self, card):  # noqa: F811
+        key = saved(card, dry_run=False)
+        code, html = post(card, key, "delete", reason="taken back by its author")
+        assert code == 200 and "Deleted BPDU guard recovery: no longer offered" in html, (
+            code, html[:300])
+        assert stored(key)["retired"]["by"] == PERSON
+        code, html = post(card, key, "restore", reason="brought back after review")
+        assert code == 200 and "Restored BPDU guard recovery" in html, (code, html[:300])
+        assert "retired" not in stored(key)
