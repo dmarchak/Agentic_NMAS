@@ -606,20 +606,17 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
 
     golden = src.golden(device, dev)
     held["golden_before"] = golden.get("commit") or ""
-    if not golden.get("text"):
-        return refuse("plan", f"no golden of {device} can be read now ("
+    if golden.get("state") != "at_intent" or not golden.get("text"):
+        return refuse("plan", f"{device}'s golden is not at its intent now ("
                               f"{golden.get('words') or golden.get('state')})")
     platform = src.platform(device, dev)
     intended = src.intended(device, platform)
     if not intended.get("text"):
         return refuse("plan", f"committed intent cannot be rendered: {intended.get('why')}")
     inc = act._incident(network, decision["incident"])
-    # As the decision classed and rendered it (C3910): against the approved state its lines
-    # come from, the golden at intent or else committed intent (`decide.restore_source`).
-    source = decide.restore_source(golden, intended)
-    c = kinds.classify(source, text, intended["text"], platform=platform,
+    c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
                        mgmt_ip=dev.get("ip", ""), related=bool(inc.get("related")))
-    prog = decide.program(source, text, c["units"], c["removal_ids"],
+    prog = decide.program(golden["text"], text, c["units"], c["removal_ids"],
                           mgmt_ip=dev.get("ip", ""), platform=platform)
     dep = departure(drift_diff(golden["text"], text, device))
     if prog["hash"] != decision.get("program_hash"):

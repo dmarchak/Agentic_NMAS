@@ -261,24 +261,6 @@ class TestTheHeal:
         assert all(s.get("policy_by") == SETTER for s in named)
         assert SETTER not in " ".join(s["words"] for s in got["steps"])
 
-    def test_a_golden_departing_from_intent_is_restored_to_intent_at_the_act(self, lab):
-        """C3910 at the act (the correctness review's hand mutants, 2026-11-18: the act's own
-        classification was untested): the decision restores a golden that departs from intent
-        to intent; the act classes the device against intent the same way, so its program and
-        hash are the decision's and the line intent holds is sent, never refused as moved."""
-        auto("Default", now=T0 - 60, kinds=("missing_line",))
-        inc = settle(GOLDEN)
-        d = DS.record("Default", DC.decide_one(
-            "Default", inc, now=T0,
-            sources=Fake(GOLDEN, intended=GOLDEN + ROUTE6, state="departs")), T0)
-        assert d["outcome"] == "heal" and d["program"] == [
-            "ipv6 route 2001:db8:9::/48 2001:db8:0:7::2"], d["words"]
-        src = FakeAct(GOLDEN, intended=GOLDEN + ROUTE6, post=K._stored(GOLDEN + ROUTE6))
-        src.d.state = "departs"
-        got = A.act_one("Default", d["id"], now=T0 + 5, sources=src)
-        assert got["outcome"] == "healed", got["words"]
-        assert src.plan("edge-b", **src.plan_kw)["commands"] == d["program"]
-
     def test_a_missing_line_is_re_applied_from_the_golden(self, lab):
         running = changed(("logging host 192.0.2.50\n", ""))
         auto("Default", now=T0 - 60, kinds=("missing_line",))

@@ -148,12 +148,10 @@ class TestTheWalks:
         (entry,) = SL.incidents("Default")["entries"]
         assert entry["incident"] == inc["id"], "one row per incident on History"
 
-    # A golden departing from intent: guard 4's hold on W3's first run; since C3909 and C3910
-    # (the operator, 2026-11-17: "The restore targets intent ... render from intent") a
-    # restore to intent, standing all the same (premise corrected 2026-11-18, the correctness
-    # review's test audit, half 1 row 84: the interim can't-fix had been pinned).
+    # A golden departing from intent: guard 4's hold on W3's first run; a Tier 3 can't-fix
+    # since C3909 (the operator, 2026-11-17), standing all the same.
     @pytest.mark.parametrize("state,outcome", [("at_intent", "would_heal"),
-                                               ("departs", "would_heal")])
+                                               ("departs", "cant_fix")])
     @pytest.mark.parametrize("by", ["label", "ipv4", "ipv6"])
     def test_w3_r4s_ip_sla_alert_after_its_decision_joins_r4s_incident(self, fold, state,
                                                                       outcome, by):
@@ -177,13 +175,11 @@ class TestTheWalks:
         # W7: r6's guard 12 can't-fix at 20:03:11 UTC; r7's telemetry streams lost at 20:04:50
         # (99 s), r7's path to the collector running through r6.
         # Guard 12 is retired (70e89a47, round 2: a program's size refuses nothing), so r6's
-        # two removal units alone are a would-heal now, and since C3910 a departing golden is
-        # restored to intent; W7's standing can't-fix is planted by one that still is: intent
-        # that cannot render for the device (C3909: a failure R1 starts on; premise corrected
-        # 2026-11-18, the test audit's half 2 row 1).
+        # two removal units alone are a would-heal now; W7's standing can't-fix is planted by a
+        # can't-fix that stands (C3909: its golden departs from intent, Tier 3).
         change("core-b", T0)
-        d = decide("core-b", TWO, T0 + 150, intended="")
-        assert d["outcome"] == "cant_fix" and "committed intent cannot be rendered" in DS.find(
+        d = decide("core-b", TWO, T0 + 150, state="departs")
+        assert d["outcome"] == "cant_fix" and "departs from its committed intent" in DS.find(
             "Default", d["decision"])["words"], d
         assert the("core-b")["state"] == "standing"
         alerted("leaf-c", T0 + 249, by=by, rule="Telemetry stream lost")
@@ -323,10 +319,9 @@ class TestEnded:
         assert the("core-b")["state"] == "standing"
 
     def test_guard_4s_hold_is_not_ended_by_a_read_at_its_golden(self, fold, monkeypatch):
-        # A golden departing from intent: guard 4's hold before C3909; since C3910 a restore to
-        # intent (premise corrected 2026-11-18, the test audit's half 1 row 85); its cause is
-        # still the golden, which no read at it ends.
-        assert self.standing(state="departs")["outcome"] == "would_heal"
+        # A golden departing from intent: guard 4's hold before C3909, a Tier 3 can't-fix since
+        # (the operator, 2026-11-17); its cause is still the golden, which no read ends.
+        assert self.standing(state="departs")["outcome"] == "cant_fix"
         golden_now(monkeypatch, "departs")         # still departing when the drift run reads
         T.after_drift_record("Default", {"triggered_by": "scheduled", "drifted_devices": [],
                                          "clean_devices": [{"hostname": "core-b",

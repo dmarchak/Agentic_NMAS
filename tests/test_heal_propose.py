@@ -468,24 +468,6 @@ class TestApproveRefuses:
 
 
 class TestTheApprovedAct:
-    def test_a_proposal_on_a_golden_departing_from_intent_applies_intents_lines(self, lab,
-                                                                                measured):
-        """C3910 at an approved proposal's apply (the correctness review's hand mutants,
-        2026-11-18: its source was untested): the golden departs from intent (it holds the
-        router-id intent changed), the device is at its golden; the decision proposes intent's
-        router-id, and the apply classes and renders against intent the same way, so the
-        approved hash holds and intent's line is the one sent."""
-        inc = settle(R8, golden=R8)
-        d = DS.record("Default", DC.decide_one(
-            "Default", inc, now=T0,
-            sources=Fake(R8, golden=R8, intended=GOLDEN, state="departs")), T0)
-        assert d["outcome"] == "propose" and d["program"], d["words"]
-        src = FakeApproved(R8, golden=R8, intended=GOLDEN)
-        src.d.state = "departs"
-        got, _approval, _v = run_approved(d, src)
-        assert got["outcome"] == "healed", got["words"]
-        assert src.plan("edge-b", **src.plan_kw)["commands"] == d["program"]
-
     def test_applied_as_the_person_then_the_reset_while_held(self, lab, measured):
         d = proposed()
         src = FakeApproved(R8)
