@@ -690,6 +690,66 @@ class TestAPersonsPlan:
         assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
 
 
+# ── Run… on built-in fixes (fc937efe) ───────────────────────────────────────────────────────
+
+def _classified():
+    """s1's incident, classified by the recovery's own step from its evidence (an
+    err-disable by BPDU guard on Gi1/0): ``incident_page.resolve``'s answer for it."""
+    from modules import incident_page
+    iid = T.opened("Critical syslog received")["incident"]
+    T.opened("Interface down", PORT, at=T.AT + 20)
+    T.E.reclassify_step(NET, sources=T.Src(), now=T.AT + 600)
+    return incident_page.resolve(NET, iid)
+
+
+class TestTheBuiltInOffer:
+    """fc937efe (the operator, 2026-11-17: Run… on built-in fixes, "the same as saved fixes"):
+    a built-in plan offered on its incident takes exactly its declared parameters, filled from
+    the incident, previewed as a person's plan, its hash the one the press is held to; a
+    parameter the incident does not say is named, nothing offered to run; on a chosen device
+    only the types Run… can choose from what Mercury holds."""
+
+    def test_its_values_are_the_incidents_own_and_only_its_declared_ones(self, lab):
+        from modules import fix_page
+        t = CP.builtin()[KEY]
+        values, why = fix_page.builtin_values(t, _classified())
+        assert why == "" and set(values) == set(t.parameters), (values, why)
+        assert values["device"] == "s1" and values["cause"] == "bpduguard", values
+        assert values["interface"] == PORT, values
+
+    def test_the_offer_is_a_persons_preview_its_hash_the_press_is_held_to(self, lab):
+        from modules import fix_page
+        found = _classified()
+        offer = fix_page.builtin_offer(NET, found, KEY)
+        assert offer["key"] == KEY and offer["hash"], offer
+        values, _why = fix_page.builtin_values(CP.builtin()[KEY], found)
+        p = CP.preview(NET, KEY, values, person_plan=True)
+        assert offer["hash"] == p["hash"] and offer["values"] == values
+
+    def test_a_parameter_the_incident_does_not_say_is_named(self, lab):
+        from modules import fix_page
+        found = _classified()
+        rec = dict(found["incident"])
+        rec[T.E.FIELD] = dict(T.E.of_record(rec), port="")
+        got, why = fix_page.builtin_values(CP.builtin()[KEY], dict(found, incident=rec))
+        assert got == {} and "does not say which interface" in why, why
+
+    def test_no_plan_or_no_incident_page_is_no_offer(self, lab):
+        from modules import fix_page
+        found = _classified()
+        assert fix_page.builtin_offer(NET, found, "no-such-plan") == {}
+        assert fix_page.builtin_offer(NET, dict(found, found="none"), KEY) == {}
+
+    def test_a_chosen_device_takes_only_what_mercury_can_choose(self):
+        from modules import fix_page
+        got = fix_page.builtin_port(CP.builtin()[KEY])
+        assert got == {"iface": True, "choices": {"cause": ["bpduguard", "psecure-violation"]},
+                       "subs": []}, got
+        free = dataclasses.replace(CP.builtin()[KEY], parameters=dict(
+            CP.builtin()[KEY].parameters, note={"type": "text"}))
+        assert fix_page.builtin_port(free) is None
+
+
 # ── The scoped net-zero and the pooled session (7b300f39, C3847) ───────────────────────────
 
 class SectionSwitch(Switch):
