@@ -66,14 +66,25 @@ PERSON_CALLERS = {("routes.fixit_v2", "_ask"), ("routes.fixit_v2", "ask_again"),
 #: troubleshooting's one control set to Automatic (`settings_v2.ai_ts_level`, through
 #: `troubleshoot_control.set_level`), and G6's Turn on self-healing and fix all on the control
 #: strip (`control_v2.fix_all`, through `control_strip.fix_all`), bound to the batch's hash.
+#: Premise corrected: the same press, two refactors since. f123edeb (the overnight speed pass,
+#: 2026-11-17) made `settings_v2.ai_ts_level` a timer around `_ai_ts_level`; 8f1d8006 (the
+#: operator, 2026-11-16: "Every switch flips instantly; the work it starts happens after, in the
+#: background", C3866) runs `set_level`'s catch-up as its own job, in the request's context, the
+#: person carried (`troubleshoot_control.start_catch_up_after`).
 TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_ts_level"),
+                    ("routes.settings_v2", "_ai_ts_level"),
                     ("modules.troubleshoot_control", "set_level"),
+                    ("modules.troubleshoot_control", "start_catch_up_after"),
                     ("routes.control_v2", "fix_all"), ("modules.control_strip", "fix_all"),
                     ("modules.heal_notice", "start_catch_up"),
                     ("modules.heal_notice", "catch_up_investigation")}
-#: The definitions that name the catch-up's start: the two presses' own paths.
+#: The definitions that name the catch-up's start: the two presses' own paths (Automatic's
+#: in the request, or through its job, `start_catch_up_after`, since 8f1d8006), and, since
+#: 7d54cf24 (the operator, 2026-11-16: "One start path, not two"), the incident page's press,
+#: R1's start in its press mode (`fixit_v2._ask`).
 CATCH_UP_CALLERS = {("modules.troubleshoot_control", "set_level"),
-                    ("modules.control_strip", "fix_all")}
+                    ("modules.troubleshoot_control", "start_catch_up_after"),
+                    ("modules.control_strip", "fix_all"), ("routes.fixit_v2", "_ask")}
 
 
 def reaching(planted: str = "", without=()) -> set:
