@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measure, on one lab device, one rung of the lost stream's ladder (the operator, 2026-11-16:
 "Make both rungs' shapes (removing and re-adding a subscription from intent; the netconf-yang
-toggle) provisional, and measure both on r2 first as Mercury probes, before the rehearsal:
-telemetry pause duration, net-zero result, and whether r2's stream returns by itself. Tell me
+toggle) provisional, and measure both on [a router] first as Mercury probes, before the rehearsal:
+telemetry pause duration, net-zero result, and whether [its] stream returns by itself. Tell me
 before each probe; I approve the shapes as admin when measured").
 
 **What it sends:** the rung's built-in command plan's program exactly as Mercury renders it
@@ -17,7 +17,7 @@ this run alone, a stand-in store passed to the preview and never written. A shap
 holds in any other state (an admin's refusal) stays as the store says, and the preview refuses.
 
 **Refused before anything is sent** (each naming what it compared): a device the lab declares
-never-probe (``lab/never-probe.json``, s3) and a run whose watch overlaps the nightly backup
+never-probe (``lab/never-probe.json``) and a run whose watch overlaps the nightly backup
 window, both by `nmas-revert-probe`'s own readings; a preview Mercury refuses; and, holding the
 device, THE PLAN'S OWN PRECONDITIONS judged by the same named checks the runner uses
 (`command_plan_run._judge`): the device IOS-XE, the subscriptions on the device exactly
@@ -51,8 +51,8 @@ It holds the device from the preconditions to the read-back, never saves, and ne
 reload. Self-healing may act on the lost-stream alert the pause can raise: the operator sets the
 network's heal mode before the run.
 
-    nmas-telemetry-reset-probe --list Default --device r2 --subscription 101 --rung recreate
-    nmas-telemetry-reset-probe --list Default --device r2 --subscription 101 --rung recreate \\
+    nmas-telemetry-reset-probe --list Default --device edge1 --subscription 101 --rung recreate
+    nmas-telemetry-reset-probe --list Default --device edge1 --subscription 101 --rung recreate \\
         --apply --confirm <hash> --actor you@example.com --out /dev/shm/telemetry-reset-probe
 
 Exit 0 the run finished (its verdict in the record), 1 refused before anything was sent, 2 NOT

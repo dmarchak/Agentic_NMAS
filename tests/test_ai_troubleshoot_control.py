@@ -178,18 +178,41 @@ class TestTheTurnOnIsBoundToTheLimitsRead:
         """Gate 2's review: `set_level` reads the limits, then `background.turn_on` writes the
         switch; a limit changed between (here, while the line is read) is refused at the write,
         under the settings lock, naming both, with nothing turned on."""
+        from modules import control_strip as CS
+
         planted()
         acknowledge(world)
         shown = shown_line(strip(world))
-        real = T.catch_up_line
+        # Premise corrected (measured 2026-11-18: since C3866, "every switch flips instantly",
+        # `set_level` binds the line the strip drew and holds (`control_strip.held("ai_line")`)
+        # at the pressed digest and reads `catch_up_line` again only when none is held, so the
+        # strip drawn above leaves no second read for the old seam): the limits change while
+        # the line is taken, between `set_level`'s read of the limits and its write, either way.
+        moved = []
+
+        def change_the_limits():
+            if not moved:
+                B.update_record(NET, A.FEATURE, {"day_cap_usd": 1.10},
+                                kind="ai_background_caps", actor="admin@example.com",
+                                verified="access")
+                moved.append(1)
+
+        real, real_held = T.catch_up_line, CS.held
 
         def moving(network, now=None):
             got = real(network, now=now)
-            B.update_record(NET, A.FEATURE, {"day_cap_usd": 1.10}, kind="ai_background_caps",
-                            actor="admin@example.com", verified="access")
+            change_the_limits()
+            return got
+
+        def held(what, *a, **k):
+            got = real_held(what, *a, **k)
+            if what == "ai_line":
+                change_the_limits()
             return got
         monkeypatch.setattr(T, "catch_up_line", moving)
+        monkeypatch.setattr(CS, "held", held)
         r, html = press(world, shown=shown)
+        assert moved, "the limits were changed between the read and the write"
         assert r.status_code == 409 and "the limits changed since they were read" in html, html
         assert not A.switch(NET)["on"] and counted == []
 

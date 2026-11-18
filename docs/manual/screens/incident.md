@@ -57,19 +57,23 @@ yet says so, never the alert's rule). The alerts and log lines are its evidence,
 title. It never quotes a configuration line, a log's code or an id: the line itself is under
 [What's wrong](#whats-wrong). Once the incident is resolved the title says
 how it ended: "and Mercury put it back", "put back by" the person who approved the fix, or "and
-it cleared". The same title is the last step of the breadcrumb above it (after **Incidents**
+it cleared"; a close on a verified run of an AI plan or a saved fix adds nothing to the title,
+since the card says who fixed it. The same title is the last step of the breadcrumb above it (after **Incidents**
 and **Open** or **Closed**), cut with "…" where the row is narrow (hover over it for the
 whole), and it is each row's title on [Incidents](incidents) and leads the incident's line on Needs
 attention and on History, and the email that tells the team. Under it:
 
-- **The state**, one of five, said once for the whole page ([One state](#one-state)).
-  **Open**: Mercury is watching it or working on it, or a fix a person approved is running or
-  has passed its verify. **Needs a person**: it stands on a decision only a person can act on,
-  a proposed fix waits, a fix was applied and its verify failed, a fix a person ran stopped
-  without fixing it, or its telemetry stream is lost (that fix changes the device's
-  configuration, so a person approves it). **Fixed**: a fix was applied and its verify passed.
-  **Cleared**: it closed with no fix recorded. **Cancelled**: a person declined the fix
-  proposed.
+- **The state**, said once for the whole page ([One state](#one-state)). **Open**: Mercury is
+  watching it, or a fix a person approved is running or has passed its verify. **Mercury
+  working**: a heal, a saved fix or the AI's investigation runs on it now, whatever it said
+  before (a dry run's would-heal, a hold), so nobody is needed. **Needs a person**: it stands
+  on a decision only a person can act on, a proposed fix waits, a fix was applied and its
+  verify failed, a fix a person ran stopped without fixing it, or its telemetry stream is lost
+  (that fix changes the device's configuration, so a person approves it). **Fixed**: a fix was
+  applied and its verify passed. **Cleared**: it closed with no fix recorded. **Cancelled**: a
+  person declined the fix proposed. **Closed, not confirmed**: its record closed it on a heal
+  that did not heal, before only a healed heal closed an incident, and nothing has confirmed
+  the fix since ([Confirm first](heal#confirm)); never Open, never Fixed.
 - **Drill**, beside the state, when the incident opened inside a declared fault drill
   ([Declare a fault drill](fault-drill)): hover over it for the drill's id (`fd-…`), who
   declared it and the fault it expected. A drill is never drawn as a real incident; its
@@ -101,6 +105,7 @@ Three lines, at the top of the page, before anything else:
 
 | Where the incident stands | The next action |
 |---|---|
+| A saved fix's match holds for the incident's problem (an Automatic one first) | **Fix with saved script: <fix>**, run once as you (below), with **What this fix does**, its page on [Fixes](fixes); each other matching fix is its own button beside it. While a guard holds the incident it reads **Fix now with saved script <fix>** |
 | The AI proposes a plan | **Approve**, **Modify…** and **Deny…** (below) |
 | Mercury's fix failed, and the AI was not started by itself (its background feature was off for the network then, or the fix failed before it was turned on) | **Start AI troubleshooting**: one investigation, its cost beside it |
 | You denied the AI's plan | **Ask the AI again**: a new investigation, told what you denied and why |
@@ -108,12 +113,19 @@ Three lines, at the top of the page, before anything else:
 | The AI proposed no plan and named no read it lacked | **Ask the AI again** while it is offered, else **Hand over…**: never nothing |
 | A cap would be passed, or nothing else is left | **Hand over…** |
 | The incident's own Needs attention item offers an action | that action ([What to do](#what-to-do)) |
-| Mercury or an approved plan is working, or nobody is needed | nothing to press, said |
+| Mercury or an approved plan is working, a fix's run passed its verify, or nobody is needed | nothing to press, said |
 
 **Nothing that already failed in this incident is offered as its next action.** A fix tried
 here that did not fix it is listed under Fixing it's **Attempts**, with its record, and under
 **Other actions**, never as the button. **Hand over…** is beside every next action while the
 incident is open, as a link: it opens its modal over the page ([Hand over](fixit-troubleshoot#hand-over)).
+
+**Fix with saved script: <fix>** runs that saved fix once, as the verified person who pressed,
+bound to the hash its preview drew from the incident's own values, with no AI: the runner holds
+the device, reads its checks again, sends, verifies (rolling back a failed verify) and records,
+as a job under **In progress**. A verified run closes the incident Fixed, unless the run fixed
+one port and the incident holds more than that port's events ([Self-healing](heal#detect),
+step 8). A press refused says why in place, naming what it compared.
 
 **Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since it
 was drawn is refused, naming what moved. Everything that hash binds is drawn before you press:
@@ -137,10 +149,48 @@ the answer is drawn under the buttons, in place.
 ## Fixing it {#ai-troubleshooting}
 
 What to do and AI troubleshooting are this one card, under the bottom line. It starts with one
-status line, for example "Mercury's fix failed twice. The AI is investigating (started at
-13:41), about $0.25.", the start drawn in your time zone, then the AI's plan when there is one: what the AI found, and each step with
-its preflight ("preflight passed", or "refused at its preflight:" and why). The plan's hash and
-each step's are in [The record](#the-record). Below, collapsed:
+status line: the incident's best current knowledge, never merely its latest event, in one
+sentence. A fix available comes first ("A saved script can fix this: <fix>.", "The AI's plan is
+ready."); then the AI's latest finding, in an engineer's words with an **AI** label beside it
+(never "The AI found:" inside it), Mercury's note in the same sentence where its catalogue has
+a step the AI did not try ("…; Mercury notes errdisable-recover (Recover an err-disabled
+interface) exists and is not yet tried here."); and a failed attempt only when nothing else
+is known. A press that never reached the AI (refused before any call) is never the line. While
+it needs a person, the line is why, beside its one action (the same reasons the
+[Incidents](incidents#row) row gives). While Mercury works on it, the line says what it is
+doing now with a spinner, its live step moving as the run records it, while the header says
+**Mercury working**: a heal's ("Self-healing: restoring <device> · Apply"), a saved fix's
+("Self-healing: fixing with saved script <fix> · verifying") or the AI's ("The AI is
+investigating" and the step it is on); a plan still drawn from before is greyed and cannot be
+pressed until the new answer comes.
+An AI plan whose step Mercury refuses reads "<the AI's finding>; Mercury refuses its fix as
+it stands: <why>." A recovery whose port tripped again says so in the run's own words ("The
+device with MAC <mac> is still connected to <device> <port>. Port left err-disabled; nothing
+more sent."). An AI answer a matching saved fix now overtakes is labelled "outdated: a saved
+script now fixes this (<fix>)" and collapsed. Once closed by a verified run, the line says who
+fixed it: "Fixed by AI: AI plan approved by <person> at <time>." or "Fixed by Mercury: saved
+script: <fix>, learned from an AI fix on <device>, approved by <person> when saved."
+
+Then the AI's plan when there is one: what the AI found, and each step with its preflight
+("preflight passed", or "refused at its preflight:" and why). Beside **Approve**, and beside a
+finding with no plan, **What the AI saw and said (N calls)**, closed: each of the answer's
+calls in order, your message first, each call's Sent and Received read from its History record
+when you open it (masked, as History draws it). While an approved plan runs, its steps are
+said "step n of N" ("Sending: step 1 of 2, on <device>"; a one-step plan unnumbered), and its
+Verifying stage lists its own checks with their seconds. The plan's hash and each step's are
+in [The record](#the-record).
+
+**Fixed shows its proof.** Once the incident is Fixed, the card leads with "How it was fixed:"
+and who fixed it, linked to the run (and to the saved fix's page, for a saved fix), then one
+closed line, "Verified: connected, no re-trip, config unchanged · show proof". Opened: each
+verify check with its words and seconds, the configuration compared before and after where
+the fix is net zero, and each read the fix made, with its time from the run's start and its
+answer, masked, as the read engine kept it (cut at 4,000 characters, the rest on the read's own
+record). For a heal, the proof is its own verify (at intent, symptom gone), and its steps after
+Fixed (save to startup, commit the golden, read it again) are listed under it with their state,
+live while they run; one that failed is flagged, and the incident reopens
+([Self-healing](heal#outcomes)). The proof reads only what the fix already kept; it asks no
+device. Below, collapsed:
 
 - **Attempts**: each fix tried in this incident, one line each: when, the operation, who
   proposed and approved it, its outcome, its AI cost and **Open the run**.
@@ -201,6 +251,8 @@ out from the incident's own records and from what was tried in Fixing it:
 | The state | When | Fixing it says |
 |---|---|---|
 | Fixed, Cleared, Cancelled | the incident is resolved | Nothing, and why |
+| Closed, not confirmed | its record closed it on a heal that did not heal, with no proof kept | Nothing to press: Mercury confirms it once by reading the device |
+| Mercury working | a heal, a saved fix or the AI's investigation runs on it now, over any earlier state | What it is doing now, its live step |
 | Open | Mercury is still reading the device, or its fix is running | Nothing yet |
 | Open | a fix a person approved is running, or passed its verify | Nothing yet, or Nothing now: the incident closes when its symptom clears |
 | Needs a person | every other case: a decision only a person can act on, a proposed fix, a failed verify, a fix that stopped without fixing it, a lost telemetry stream | It needs a person, why, and the one action above |

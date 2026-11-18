@@ -64,33 +64,59 @@ equals the one before. Only a verified person approves it.
    approved it is refused, naming both hashes, and nothing is sent.
 2. **Hold the device** (`hold`) for the whole run: one operation per device. Every line
    Mercury's session sends while it holds the device is Mercury's own on the device's history.
-3. **Read before** (`read_before`): the running configuration, read before anything is sent.
-   If it cannot be read, nothing is sent: whether the plan left the device as it was could not
-   be checked.
-4. **Check the preconditions** (`preconditions`), each read again through the read engine,
-   holding the device: the port is listed in `show interfaces status err-disabled` with the
-   cause; the running configuration's `errdisable recovery` lines hold none for the cause; the
-   cause has cleared (for BPDU guard, no BPDU guard line for the port in the switch's lines
-   since the err-disable; for port security, the violating MAC from the incident on neither
-   `show port-security address` nor `show mac address-table interface <port>`). Any that does
-   not hold, or cannot be read, stops the run with nothing sent. Not cleared: "Port stays
-   down: the device that tripped it (MAC aa:bb:…) is still connected", and the engineer is
-   notified.
-5. **Send** (`send`): `interface <port>`, `shutdown`, `no shutdown` in config mode, never saved.
-6. **Verify** (`verify`). The deploy's own verify first: the port coming up is the plan's
+3. **Read before** (`read_before`): the configuration before anything is sent, holding the
+   device: the port's own section where the plan touches only it, else the whole running
+   configuration. If it cannot be read, nothing is sent: whether the plan left the device as it
+   was could not be checked.
+4. **Check the preconditions** (`preconditions`), read once, together, holding the device:
+   every device read the checks need goes in one run of the read engine on the run's own
+   session, and the port's lines are read from Loki beside it, waited for at most 25 seconds.
+   Each check then judges its own answer alone; a read the engine refused leaves every check
+   unanswered, never answered one by one. Any check that fails or cannot be read stops the run
+   with nothing sent, and a cause not cleared notifies the engineer; when the run goes on, the
+   step names each check deferred ("not told before the send, judged by verify"). The checks:
+   - **The port is err-disabled by the cause now**: listed in `show interfaces status
+     err-disabled` with the cause.
+   - **The switch does not recover the cause itself**: `show errdisable recovery`'s timer
+     table lists the cause **Disabled**. **Enabled** refuses (the switch recovers the port by
+     its own timer, and Mercury does not race it); a cause the table does not list, or an
+     answer that is not the table, is unreadable, naming the cause and what the answer held. A
+     fix saved before this read existed reads the table too, in place of its own older read.
+   - **The cause has cleared**. A port that is down passes no frame, so this check can fail
+     before the send but never pass. For BPDU guard, a BPDU guard line for the port after its
+     err-disable fails it ("Port stays down: BPDUs are still arriving on it"). For port
+     security, a new violation line for the port after the err-disable, or a violation count
+     in `show port-security interface <port>` above the one read when the err-disable was
+     confirmed, fails it ("Port stays down: the device with MAC aa:bb:… is still connected");
+     the MAC is the violation line's, else the port's last source address. Otherwise it is
+     **deferred**: not told before the send, and judged after it by verify's re-trip check.
+     Neither the lines nor the count readable is unreadable.
+5. **Send** (`send`): `interface <port>`, `shutdown`, `no shutdown` in config mode, never
+   saved. The send is recorded as its own step when it ends.
+6. **Verify** (`verify`), recorded as its own step with its own seconds, so the run's card
+   says how long verify took. The deploy's own verify first: the port coming up is the plan's
    intended effect, and any other interface going down is not. Then the plan's reads: `show
    interfaces status` every 3 seconds until the port reads connected, for up to 30 seconds,
-   then the err-disabled view once more after 10 seconds (a port err-disabled again means its
-   cause is still there). Then **net zero**: the running configuration is read again, holding
-   the device, and must equal the one read before, line for line (leaving out the lines the
-   device rewrites by itself: the last-change and NVRAM comments, `ntp clock-period`). Any
-   difference fails the run, each line named.
+   then **"Then re-checks for 10 s: does it trip again?"**, the err-disabled view once more
+   after 10 seconds. Err-disabled again by its own cause is the run's own outcome, **tripped
+   again**, never a verify failure: "The device with MAC <mac> is still connected to <device>
+   <port>. Port left err-disabled; nothing more sent." (for BPDU guard, "The device sending
+   BPDUs …"). Nothing is rolled back, since the port is already safely down; the finding is
+   recorded, drawn on the incident's card and told to the engineer. Err-disabled again by
+   another cause fails. Then **net zero**, holding the device: the port's configuration is read
+   again and must equal its own read before, line for line (where it cannot be read, the whole
+   running configuration is compared with the one read before), leaving out the lines the
+   device rewrites by itself (the last-change and NVRAM comments, `ntp clock-period`). Any
+   difference fails the run, each line named. Since the run is net zero, no whole running
+   configuration is read after it for anything else, and nothing is saved or committed as a
+   golden.
 7. **Roll back** (`rollback`) when it did not verify: the deploy's own rollback, from the
    configuration read before, read back afterwards and saying what it achieved.
 8. **Record** (`record`): a receipt on the device's History ("Ran reviewed commands"), the run's
    record with each step, each precondition and verify read and the net-zero result, and a
    message to the teams told about self-healing naming the offending MAC (when port security
-   logged one), the port, the time of the err-disable and the cause.
+   logged one), the port, the time of the err-disable and the cause. A recovery that held, on
+   a port whose host intent names, says "Fixed: <host> is back online."
 
 ## What it does not do {#not}
 

@@ -264,7 +264,9 @@ add on such a device too.
 
 ## What it costs, and what is recorded {#cost}
 
-Each call is priced at the pinned model's rates and refused before it is sent if its worst
-case would cross the task's per-call cap or the day's cap. Every call is a row in **History**:
+Each call is priced at the pinned model's rates and refused before it is sent only if what is
+left of the day's cap cannot cover its hold (its counted prompt and its task's typical answer);
+while it streams it is stopped before it would pass the cap ([The day
+cap](installation-settings#ai-cap)). Every call is a row in **History**:
 who asked, the device, the masked request and the answer (opened in place with **Show the
 prompt and the answer**), its verdict, its tokens and its cost, and what became of the draft.

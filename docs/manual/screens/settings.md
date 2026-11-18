@@ -82,7 +82,7 @@ What every network shares, standalone ones included: these are the installation'
 - **Diagnostics**: is Mercury itself healthy, and what is it doing. **Redaction**: whether every log handler masks secrets, measured now (not healthy, it is also a Needs attention row). **Drift checks**: one schedule for every network, and each network's on or off, last and next run, with **Check now**. **In flight**: every network's running operations and what finished in the last half hour. **The app's log**: its last lines, filtered, read when asked (see [The installation's settings](installation-settings)).
 - **Console servers**: see [below](#console-servers).
 - **AI**: each network's AI troubleshooting, Off, Manual or Automatic, with its spending limits and the estimate acknowledged beside them (see [Settings › AI](settings-ai#ai-troubleshooting)); and each network's other background AI features, turned on only here after their estimate, with their caps and Turn off (see [Settings › AI](settings-ai#background-features)).
-- **AI (hosted)** (AI; Connections keeps one line linking to it): the key, the cap per day (yours to set, with no ceiling of the tool's own; a large increase shows what it means before it saves, and **No cap** needs `no cap` typed and a reason to confirm, the reason kept and drawn on History, with a standing Needs attention row while it is set: see [The day cap](installation-settings#ai-cap)), whether hosted AI is allowed (**Allow** with a reason, **Turn off**), today's spend, and each task's pinned model, prices and cap per call. Its **Test** is one small, recorded call; it carries the **AI** mark, every control that needs AI does, and is drawn disabled with the reason while hosted AI cannot answer, while **Save**, **Replace…** and **Allow** stay usable (see [The AI mark](installation-settings#ai-mark)).
+- **AI (hosted)** (AI; Connections keeps one line linking to it): the key, the cap per day (yours to set, with no ceiling of the tool's own; a large increase shows what it means before it saves, and **No cap** needs `no cap` typed and a reason to confirm, the reason kept and drawn on History, with a standing Needs attention row while it is set: see [The day cap](installation-settings#ai-cap)), whether hosted AI is allowed (**Allow** with a reason, **Turn off**), today's spend, and each task's pinned model, prices and typical cost per call (measured; no cap). Its **Test** is one small, recorded call; it carries the **AI** mark, every control that needs AI does, and is drawn disabled with the reason while hosted AI cannot answer, while **Save**, **Replace…** and **Allow** stay usable (see [The AI mark](installation-settings#ai-mark)).
 - **Server** (Connections): the address and port Mercury listens on. They are read when Mercury starts, so a Save says the change waits for the next restart.
 - Every **Save**, **Replace** and **Turn off** is recorded in the installation's settings record with who, when and the names of what changed, never the values (see [The installation's settings](installation-settings)).
 
@@ -190,10 +190,14 @@ a device to its committed intent; nothing on this tab contacts a device.
 
 - **Self-healing on <network>**: the mode now (**Off**, **Dry run**: every step but the apply,
   each record saying what it would have done, or **Auto**: the Tier 1 kinds allowed below heal
-  without a person until the expiry, then dry run), with why in words ("dry run: AUTO … expired",
-  "off: self-healing is stopped everywhere"); who set it, when and their reason; the network's
-  stage (Auto is allowed only on a network marked lab, until the AUTO production-readiness
-  gate); production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
+  without a person until the expiry, then dry run, or, with no expiry, until someone turns it
+  off), with why in words ("dry run: AUTO … expired", "off: self-healing is stopped
+  everywhere"); who set it, when and their reason; the network's stage (the tab still says Auto
+  is allowed only on a network marked lab, until the AUTO production-readiness gate, and its
+  Mode dropdown keeps to that, while the policy itself, since 2026-11-16, allows Auto on any
+  network: the control strip's Self-healing switch on [Incidents](incidents) turns it on until
+  turned off, on any network; [The Self-healing toggle](heal-batch#self-healing-toggle));
+  production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
   count); and the policy's fingerprint. Values a person did not confirm are not in force, and
   the chip says **not in force: off**. While Auto is in force, every page's top bar says so too
   ([the Self-healing chip](getting-started#self-healing-auto)), and selecting it opens this
@@ -209,7 +213,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   Dry run are previewed as they open. For Auto, **Auto until** is a quick choice, **1 h**,
   **2 h**, **4 h**, **8 h**, **24 h** or **7 days** from the preview, or **a time** in the
   date-time picker, in your own time zone (the one every time on the screens is drawn in,
-  named beside the picker), with its UTC drawn beside it; at most 7 days away. A quick choice's
+  named beside the picker), with its UTC drawn beside it; at most 7 days away. With neither a
+  quick choice nor a time, Auto has no expiry and lasts until a person turns it off, as the
+  control strip's switch sets it; the preview names which ("until <time>, then dry run", or
+  "until a person turns it off"). A quick choice's
   time is drawn into the picker when it is previewed, and that time is the one confirmed,
   however long after you press. Each choice is previewed in the window, writing nothing:
   **What this changes** (the mode, the kinds that heal without a person, the kinds proposed,

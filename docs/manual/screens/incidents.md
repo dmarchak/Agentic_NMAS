@@ -12,8 +12,8 @@ incident that needs a person is on it, its item linking to that incident's page.
 where an incident lives, open or closed; Needs attention is where a person looks first.
 
 The page opens with the control strip, for this network, the one place its switches are:
-**Self-healing** (on is Auto until a time, for the network's default duration; off is Dry run)
-and **AI troubleshooting: Automatic** (on, the AI investigates by itself when Mercury's fix
+**Self-healing** (on is Auto until someone turns it off, on any network; off is Dry run) and
+**Automatic AI troubleshooting** (on, the AI investigates by itself when Mercury's fix
 fails; off, back to Manual), each with its gear to its full setting, both showing the state now
 and usable only by a person who may change those settings. With open incidents Automatic would
 start on, one line beside its switch says so ("Also starts on N open incidents, about $X"); it
@@ -50,31 +50,56 @@ Two tabs, each with its count:
     a fix was applied and its verify failed, a fix a person ran stopped without fixing it, or
     its telemetry stream is lost (that fix changes the device's configuration, so a person
     approves it);
-  - **Mercury working**: Mercury is fixing it now, or a fix a person approved is running or has
-    passed its verify and waits for the symptom to clear;
-  - **Watching**: Mercury is still reading the device, and decides once its reads agree, after
-    the grace period.
-- **Closed**: how each one ended. **Fixed by Mercury** (no person took part: the network's
-  policy, in Auto, applied it), **Fixed by a person** (a person approved the fix), **Fixed, who
-  is not recorded**, **Cleared** (it closed with no repair recorded) and **Declined** (a person
-  declined the fix that was proposed).
+  - **Mercury working**: Mercury is working on it now, whatever the incident said before (a
+    dry run's would-heal, a hold, Watching): a heal runs on it (its own, or one of a
+    self-healing batch's restores), a saved fix runs on it, the AI is investigating it, or a
+    fix a person approved is running or has passed its verify and waits for the symptom to
+    clear;
+  - **Watching**: Mercury is still reading the device, before it decides.
+- **Closed**: how each one ended, who fixed it first:
+  - **Fixed by AI**: an AI plan a person approved ran and was verified ("AI plan approved by
+    <person> at <time>");
+  - **Fixed by Mercury: saved script**: a saved fix's run verified it ("<fix>, learned from an
+    AI fix on <device>, approved by <person> when saved");
+  - **Fixed by Mercury** (no person took part: the network's policy, in Auto, applied it),
+    **Fixed by a person** (a person approved the fix) and **Fixed, who is not recorded**;
+  - **Cleared** (it closed with no repair recorded) and **Declined** (a person declined the fix
+    that was proposed);
+  - **Closed, not confirmed**: it was closed, before only a healed heal closed an incident, on
+    a heal that did not heal, and nothing has confirmed the fix since. It is never drawn as
+    Fixed nor as Open; Mercury confirms it once by reading the device, and never reopens it
+    ([Confirm first](heal#confirm)).
 
-The state is the one the incident's own page says, worked out by the same code, so the list
-and the page never disagree. The time beside the tabs says when the list was read; the list
-redraws itself whenever self-healing records a step.
+The tabs follow the incidents' own record: an incident it holds open is on Open, one it holds
+closed is on Closed. Its state is the one the incident's own page says, worked out by the same
+code, so the list and the page never disagree. The time beside the tabs says when the list was
+read; the list redraws itself whenever self-healing records a step.
 
 ## A row {#row}
 
-Each row is one line: the incident's state (and **Drill** for a declared fault drill, its id on
-hover: a drill never reads as real), its title, the same plain-words title as the heading of
-its page, its device, and:
+Each row is a card of three lines: the incident's state (and **Drill** for a declared fault
+drill, its id on hover: a drill never reads as real) and its title, the same plain-words title
+as the heading of its page, its device on the title's hover; its impact, from Mercury's own
+table; and its status:
 
-- on **Open**, what it waits for ("a fix waits for a person's approval") and when it began;
+- on **Open**, while Mercury works on it, what it is doing now, with a spinner: the step a run
+  is on, counting the seconds since it began ("Self-healing: restoring edge2 · Apply",
+  "Self-healing: fixing with saved script <fix> · verifying"), or the AI's investigation. A
+  heal that is only starting reads "· starting". While it needs a person, why, in one short
+  reason, the same its page gives beside its one action: "A saved script can fix this:
+  <fix>", "The AI's plan is ready: needs your approval", the AI's latest finding (labelled
+  **AI**), "No saved fix for <cause> yet: the AI can investigate" or "No saved fix, and the AI
+  found no safe plan"; with none of those, "Waiting for a person: " and the decision's own
+  reason ("would put back “<line>” on <interface> (self-healing was in dry run)"), never a
+  reasonless line. A held incident says what holds it and when the next automatic heal is
+  allowed. Otherwise what it waits for, and when it began;
 - on **Closed**, who fixed it, its time to repair, and when it ended (a fixed incident when its
-  fix was verified, a declined one when the fix was declined, a cleared one when it closed);
+  fix was verified, a declined one when the fix was declined, a cleared one when it closed). A
+  close on a verified run says who fixed it as its group does, and how long the problem lasted
+  and how long the fix took ("lasted 6 min; the fix took 41 s");
 - where the AI investigated it, **AI investigating since** its start while it runs, and its
-  one-line outcome once it ended (what it proposes, or why it stopped), updated as the
-  investigation starts and ends, with no reload.
+  one-line outcome once it ended (what it proposes, or why it stopped), its **AI** label beside
+  it, updated as the investigation starts and ends, with no reload.
 
 Times are in your own time zone, with UTC on hover. Select the title to open the incident's
 page, which has the whole story: its timeline, what Mercury did, and what to do.

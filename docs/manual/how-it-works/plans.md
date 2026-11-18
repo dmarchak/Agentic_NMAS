@@ -108,11 +108,28 @@ with **Dry run** as a choice. **Not now** puts the offer off for this incident, 
 and the card then says so in one line with **Save this fix…**, which shows the offer again.
 Every saved fix is listed on [Fixes](fixes).
 
-**When a script fires.** After each self-healing decision, and again before the AI is asked
-on an incident, every saved script of the network whose match the incident's problem holds
-fires once for that incident, under self-healing's mode: while self-healing is off, nothing;
-in Dry run, it records what it would run; in Auto, a promoted script runs, and one in Dry run
-records. It never calls the AI.
+**When a script fires.** After each self-healing decision that Mercury's own code cannot fix
+(a can't-fix), and again before the AI starts by itself on an incident, every saved script of
+the network whose match the incident's problem holds fires once for that incident, under
+self-healing's mode: while self-healing is off, nothing; in Dry run, it records what it would
+run; in Auto, an Automatic script runs, as a job of its own under **In progress** by
+"Self-healing, saved script <fix> (approved by <person> at save)", and one in Dry run records.
+Once one Automatic script has sent anything, the rest only record: one incident, one change. A
+Manual only fix is never fired, only offered. A person's press (Start AI troubleshooting, Ask
+the AI again, Modify…) fires none. A script never calls the AI. While it runs, its incident is
+**Mercury working** with the run's step, and its verified run closes the incident Fixed
+([Self-healing](heal#detect), step 8).
+
+**What is already open when a fix is saved.** Saving a fix, or setting one Automatic, tries
+again once each open incident that fix matches and that Mercury could not fix: standing on a
+can't-fix, on a hold that no longer holds, or on a heal that did not heal. Each is sent back
+for a fresh decision, every guard judged again on a fresh read, and the decision fires its
+matching scripts, so in Auto the saved fix runs on it with no AI and no press. Switching
+self-healing on does the same for every open incident, and every 24 hours while one stays
+open. Each such retry is keyed by what started it (the save's own time, the switch-on's, the
+day), recorded on the incident, and never made twice; nothing is retried while self-healing is
+not in Auto. On the incident's own page, a matching fix is also offered to a person as **Fix
+with saved script: <fix>** ([An incident's page](incident#bluf)).
 
 **On a device's page.** A reusable action whose parameters one interface fills (a device and
 an interface, as Bounce interface takes) is offered on the device's **Overview**, under

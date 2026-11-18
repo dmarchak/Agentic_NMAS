@@ -48,7 +48,7 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    ("Saving to startup…" → "Saved"), the whole configuration read and the golden committed from
    it ("Committing the golden…" → "Golden committed"), and the device read again, its own read
    (`Sources.read_at_golden`, never the network's drift check), against that golden. A tail
-   failure or mismatch flags the incident (`tail_of`: "r2 fixed, but its save to startup
+   failure or mismatch flags the incident (`tail_of`: "edge1 fixed, but its save to startup
    failed: ..."), never leaves it silently Fixed and never changes its outcome. A heal whose
    symptom is waited on runs the tail before that wait (the device is never held through it
    nor left unsaved), and still only flags;
@@ -148,7 +148,7 @@ DECIDING_STEPS = ("intent", "symptom")
 #: The longest the act waits for its device while another operation holds it, then refuses
 #: with nothing sent (item 1: "Waiting on a lock is a declared wait, never an outcome";
 #: `waits.WAITS`). Reasoned: the longest operation measured holding a device in a heal pass is
-#: r2's restore, 134 s from the switch-on (2026-11-16, C3865); 2.5 times that, rounded up.
+#: a router's restore, 134 s from the switch-on (2026-11-16, C3865); 2.5 times that, rounded up.
 HOLD_WAIT_S = 335
 #: How often the hold is tried again while it waits.
 HOLD_POLL_S = 2
@@ -264,7 +264,7 @@ class Sources:
         only its own device"): *device* read again, its own one checked read (`read`), judged
         against its committed golden by drift's own comparison (`drift_check.drift_diff`),
         under no network lock and writing nothing (the network's drift check, whose one-run
-        lock refused r6's, C3864, is never asked). ``{"state": "clean"|"drifted"|"unknown",
+        lock refused a router's, C3864, is never asked). ``{"state": "clean"|"drifted"|"unknown",
         "changed_lines", "error"}``; a read or a golden that cannot be had is ``unknown``,
         neither a pass nor a fail."""
         from modules import goldens
@@ -827,7 +827,7 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     """Why nothing may be sent now, or ``""``: section 6's stops judged again at apply.
     *held*: judged again once this act holds the device, so the hold guard 3 would find is
     this act's own and is not counted (the 18:42 Denver run of 2026-11-17: every restore
-    refused itself, "r2 is held by deploy of ..."); planned windows still hold. C3909 (the
+    refused itself, "edge1 is held by deploy of ..."); planned windows still hold. C3909 (the
     operator, 2026-11-17: one operation per device is "a wait, never a refusal or hold"): the
     call before the hold passes *held* too, since `hold_device` waits for another holder;
     planned-restart and no-change windows are judged at both.
@@ -1935,7 +1935,7 @@ def request_confirm(network: str, incident_id: str, why: str) -> bool:
 
 
 def confirm_closed(network: str, *, sources=None) -> list:
-    """C3876 (the operator, 2026-11-16: "no reopen of past incidents; r6 stays closed"): each
+    """C3876 (the operator, 2026-11-16: "no reopen of past incidents; [it] stays closed"): each
     incident already closed on a heal act's outcome that is not healed, with no proof
     (`_closed_unproven`), confirmed ONCE by the same read as `confirm_before_ai`
     (`_confirm_device`: its device held and read at its golden, at its intent, and its symptom
@@ -2127,7 +2127,7 @@ def tail_of(device: str, outcome: str, steps: list, flags: list, *,
     "running"|"ok"|"flagged", "flag", "steps": [{"step", "result", "words", "at"}]}``, its
     steps those of `TAIL_STEPS`. *flags* (each "its save to startup failed: <why>", "its golden
     was not committed: <why>", "the device read again is not at its golden: <what>") make it
-    ``flagged``, its *flag* the incident's words: "r2 fixed, but its save to startup failed:
+    ``flagged``, its *flag* the incident's words: "edge1 fixed, but its save to startup failed:
     ...". Never changes the outcome."""
     kept = [{k: s.get(k) for k in ("step", "result", "words", "at")}
             for s in steps or [] if isinstance(s, dict) and s.get("step") in TAIL_STEPS]
@@ -2193,7 +2193,7 @@ def _last_tail_step(network: str, device: str, since: float) -> str:
 
 
 def tail_stale(device: str, tail: dict, now: float, last: str = "") -> str:
-    """Why a tail recorded ``running`` did not finish, or ``""`` (not past its bound): "r2's
+    """Why a tail recorded ``running`` did not finish, or ``""`` (not past its bound): "edge1's
     save and golden did not finish (<its last step>)"."""
     began = float((tail or {}).get("began") or 0)
     if (tail or {}).get("state") != "running" or not began or now - began < tail_bound():
@@ -2455,7 +2455,7 @@ def _judge(device, r, report, src, via, step, finish, symptom, begin=None, more=
                       report=report)
     if begin is not None:
         begin("golden", f"reading {device} again against its new golden")
-    # Its own read (item 1): never the network's drift check, whose lock refused r6's (C3864).
+    # Its own read (item 1): never the network's drift check, whose lock refused one (C3864).
     again = _read_again(src, device, None, via)
     if again.get("state") != "clean":
         step("golden", "failed", f"read again: {again.get('state')} {again.get('error') or ''}")
@@ -2592,7 +2592,7 @@ def start_decided(network: str, d: dict, *, now: float = None, starter=None,
     (`start`): ``{"started": {"decision", "job"}}``, ``{"refused": words}`` or ``{"failed":
     words}``. `run`'s step for each decision, and the decision's own the moment it is
     recorded (item 4, the operator, 2026-11-16: "the act starts at once once decided"; C3865:
-    r2's act began 13 s after its decision, the pass deciding the other incidents and firing
+    a router's act began 13 s after its decision, the pass deciding the other incidents and firing
     their scripts first), so a later `run` finds it taken. A batch's decision is never started
     here (its batch job takes it)."""
     from modules.heal import decisions, interrupted

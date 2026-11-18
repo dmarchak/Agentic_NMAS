@@ -209,6 +209,26 @@ class TestTheList:
         run(NOW)
         assert calls == [NET, NET]
 
+    def test_an_incident_whose_fix_is_running_is_left_out_until_it_ends(self, world):
+        """d2093c59 (the operator, 2026-11-17: the strip's "Also starts on N" counted the
+        four restores running): an incident claimed (its heal or a batch's restore under way)
+        is no incident R1 would start on; once its fix has ended it is listed again."""
+        from modules.heal import incidents
+        got = planted()
+
+        def state_of(iid, state):
+            def put(doc):
+                next(i for i in doc["incidents"] if i["id"] == iid)["state"] = state
+            incidents._mutate(NET, put)
+        listed = {i["id"] for i in A.pending(NET)["incidents"]}
+        assert got["failed"] in listed and got["cant_fix"] in listed, listed
+        state_of(got["failed"], "claimed")
+        listed = {i["id"] for i in A.pending(NET)["incidents"]}
+        assert got["failed"] not in listed and got["cant_fix"] in listed, listed
+        assert got["failed"] not in {i["id"] for i in A.catch_up(NET, now=NOW)["items"]}
+        state_of(got["failed"], "standing")
+        assert got["failed"] in {i["id"] for i in A.pending(NET)["incidents"]}
+
     def test_the_guards_a_person_resolves_are_those_held_with_no_time_to_check_again(self):
         from modules.heal import guards as G
         g4 = G.g4_golden({"state": "departs", "words": "departs", "lines": []})
