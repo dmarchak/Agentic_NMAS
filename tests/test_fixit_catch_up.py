@@ -215,8 +215,11 @@ class TestTheList:
         assert g4["outcome"] == "held" and g4["until"] is None and 4 in A.HELD_FOR_A_PERSON
         inc = {"device": "r5", "triggers": [{"kind": "config_change", "epoch": NOW - 10,
                                              "person": {"words": "op"}}]}
-        g7 = G.g7_person(inc, NOW, changes=1, minutes=30)
-        assert g7["outcome"] == "held" and g7["until"] and 7 not in A.HELD_FOR_A_PERSON
+        # Premise corrected (70e89a47, C3879, the operator, 2026-11-17: "every hold off the
+        # heal path"): guard 7, the person working on the device, holds nothing now, where it
+        # held with a time to check again; either way it is no hold a person resolves.
+        assert G.g7_person(inc, NOW, changes=1, minutes=30) is None
+        assert 7 not in A.HELD_FOR_A_PERSON
 
 
 class TestTheForm:
