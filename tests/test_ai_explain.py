@@ -549,14 +549,14 @@ def test_a_v9_answer_without_its_band_or_why_first_is_refused(world, change):
 V6_PROMPT = ("explain", 6)
 
 
-def room(monkeypatch, tokens):
-    """The room Explain's prompt has, planted at *tokens*: since 7b0bb884 (the operator,
-    2026-11-16) its fit's budget is the room the model's context window leaves a prompt
-    (`profiles.prompt_room`, 872,000 tokens), never the pin's old max_prompt_tokens, so the
-    room is what a test lowers."""
+def room(monkeypatch, tokens, task=explain.FEATURE):
+    """The room *task*'s prompt has (Explain's by default), planted at *tokens*: since 7b0bb884
+    (the operator, 2026-11-16) a fit's budget is the room the model's context window leaves a
+    prompt (`profiles.prompt_room`, 872,000 tokens), never the pin's old max_prompt_tokens, so
+    the room is what a test lowers."""
     real = profiles.prompt_room
     monkeypatch.setattr(profiles, "prompt_room",
-                        lambda name: tokens if name == explain.FEATURE else real(name))
+                        lambda name: tokens if name == task else real(name))
 
 
 def test_v6_is_a_candidate_built_from_v4_and_says_what_it_adds():
