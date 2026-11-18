@@ -339,6 +339,15 @@ class TestTheErrDisabledPort:
             ran.append(tuple(requests))
             return RL.Answered("\n".join(answers[r] for r in requests), run="run-s1")
         monkeypatch.setattr(RR, "run", device)
+        # Premise corrected (4a8bb0df, 231da1d6: one device's reads in a round share one
+        # session, the family's `run_many`, bound to `router_reads.run_many` when the family is
+        # defined): the read engine's stand-in answers that path too, each read as `run` does,
+        # where s1's two reads went past it to the engine.
+        import dataclasses
+
+        from modules.ai import fixit_reads as FR
+        monkeypatch.setattr(FR, "FAMILY", dataclasses.replace(FR.FAMILY, run_many=lambda items,
+                            scope: [device(op, a, reqs, scope) for op, a, reqs in items]))
         passes = []
 
         def make(body):
@@ -356,7 +365,11 @@ class TestTheErrDisabledPort:
             step = dict(RECOVER, evidence_refs=["read:1", "read:2"])
             return dict(a, plan=[step], reads=[])
         got, _found = self.investigate(s1, monkeypatch, make)
-        assert passes == [False, True], "a first pass, then one that saw the reads"
+        # Premise corrected (5653c025, the operator, 2026-11-16: "runs the standard reads at
+        # once"; "the pre-gathered reads must answer it in ONE call"): an err-disabled port's
+        # standard reads (`fixit_troubleshoot.PREGATHER`) run beside pass 1's build, so the one
+        # pass sees both and proposes, where a first pass asked for them and a second saw them.
+        assert passes == [True], "one pass, which saw the reads"
         assert ran == [("show interfaces status err-disabled",), ("show errdisable recovery",)]
         assert got["state"] == "proposed", got["words"]
         (step,) = got["proposal"]["steps"]
@@ -370,7 +383,9 @@ class TestTheErrDisabledPort:
             __import__("modules.fixit.section", fromlist=["x"]).incident_of(
                 NET, __import__("modules.incident_page", fromlist=["x"]).resolve(
                     NET, s1.iid))["incident"])["lines"] if "proposal" in ln]
-        assert line["prompt"] == "fixit_troubleshoot.v12", "the answer is the later pass's"
+        # Every pass is one prompt since v17's one shape (231da1d6; C3918's v18), where the
+        # later pass's was v12.
+        assert line["prompt"] == "fixit_troubleshoot.v18", "the answer is the one pass's"
 
     def test_with_no_read_to_settle_it_it_names_the_read_it_lacked(self, s1, monkeypatch):
         """C3797: it declines a plan only when its reads cannot settle the question, naming the
