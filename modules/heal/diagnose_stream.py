@@ -699,8 +699,10 @@ def collector_of(stream: dict, sources, read=None, ss=None) -> dict:
 def device_collector(hv: dict, read=None) -> list:
     """Every subscription *hv* (a device's committed intent) declares, each with its collector
     side (`collector_of`): ``[{"subscription", "receiver", ...collector_of}]``, in intent's
-    order. What a device's Monitoring tab draws (C3720). Reads this host's own tables only, and
-    runs `ss` ONCE for every receiver's port (`run_ss_ports`)."""
+    order, without `collector_of`'s ``collector`` (the address and port it read, the receiver
+    intent names: the tab draws ``receiver``). What a device's Monitoring tab draws (C3720).
+    Reads this host's own tables only, and runs `ss` ONCE for every receiver's port
+    (`run_ss_ports`)."""
     out = []
     sources = _addresses(hv or {})
     subs = [(s, receiver_of(s.get("settings") or [])) for s in (hv or {}).get("telemetry") or []
@@ -713,6 +715,7 @@ def device_collector(hv: dict, read=None) -> list:
             return _answer
     for s, rec in subs:
         got = collector_of(rec, sources, read=read, ss=ss)
+        got.pop("collector", None)
         out.append(dict(got, subscription=str(s.get("subscription")),
                         receiver=("" if rec.get("why") else
                                   f"{rec['address']} port {rec['port']}")))

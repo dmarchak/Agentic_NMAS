@@ -110,6 +110,23 @@ class TestMarked:
             line["shown"]["retry"]["words"]
         assert len(line["calls"]) == 2, "both calls are the incident's spend"
 
+    def test_a_claim_citing_nothing_is_marked_and_the_rest_kept(self, ai):  # noqa: F811
+        """93120b2f (the operator, 2026-11-16: a router's pass 2 was discarded whole for
+        "hypothesis 2 cites nothing in the pack"): a hypothesis citing nothing is kept, marked
+        `explain.UNCITED` in words, the rest shown, and the one retry names it. The debt pass,
+        2026-11-18 (docs/FAST_LANE_DEBT.md's row for 93120b2f)."""
+        iid = stopped(ai)
+        ai.answer = answer(fix(operation=CLOSE), hypotheses=[
+            hyp("The collector still holds r2's old session.", "attempt:1"),
+            hyp("The subscription was removed before the attempt.")])
+        r, html = press(ai, iid)
+        assert r.status_code == 200, html
+        assert "couldn't be checked" not in sec_of(html), "the answer is kept"
+        first, second = ai_line(iid)["shown"]["hypotheses"]
+        assert first["unverified_words"] == ""
+        assert second["unverified_words"] == "unverified (cites nothing in the evidence)"
+        assert len(ai.sent) == 2 and "hypothesis 2 cites nothing" in json.dumps(ai.sent[1])
+
     def test_a_retry_citing_only_what_was_sent_replaces_the_first_answer(self, ai, monkeypatch):
         iid = stopped(ai)
         good = answer(fix(operation=CLOSE),

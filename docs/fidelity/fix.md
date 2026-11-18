@@ -18,11 +18,17 @@ and 390 (How it runs opened, Set Automatic… and Delete… open) beside
 built-in errdisable-recover's page). The shots' world holds no committed intent, so Run…'s card
 says why it cannot offer a port; its layout is what is compared.
 Templates compared: templates/v2/fix.html, templates/v2/_fix_how.html, templates/v2/_fix_run.html, templates/v2/_fix_contents.html, templates/v2/_fix_form.html
-Templates sha256: `6287387518bd3753b23e7d1bbf84632402c46be2c765abc08812093dbfab9445`
+Templates sha256: `3854a50b173d38410725a4952003eb9d9bb18c178bcdfb494ffc6292a6a8d592`
 
-**Not yet checked by tests/test_board_fidelity.py:** `fix.html` is on tests/signed_off_screens.py's
-list but not in that file's `RECORDS`; the line `"fix.html": "fix.md",` there makes the check hold
-this record (a test change, left to the test pass).
+Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
+`_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with
+`url_for` from the endpoint and arguments the template named before. The info mark's hover
+names the whole hash (`pv.hash`) where it named its short form, and the button's own hover still
+names the short form. Nothing drawn moves: no element, no words on the page, and no region's
+verdict below changes. This was compared by the template's diff, not from new shots. Templates
+sha256 before: `6287387518bd3753b23e7d1bbf84632402c46be2c765abc08812093dbfab9445`.
+
+Checked by tests/test_board_fidelity.py since 8e954585 (`"fix.html": "fix.md"` in `RECORDS`).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

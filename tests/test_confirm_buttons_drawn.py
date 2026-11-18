@@ -2546,6 +2546,11 @@ class TestSavedPlansCards(_Cards):
                    r"Save as a reusable action", "data: the viewer is no admin"),
         "promote": ("_saved_plans_saves.html", "Promote {{ s.name }}",
                     r"Promote BPDU guard recovery", "data: no saved script matches"),
+        # Board R5's screen 5b: once this incident's fix is saved in Dry run (Customize's
+        # choice), the card's one line opens Promote in place.
+        "promote_saved": ("_saved_plans_saves.html", "Promote {{ SV.script.name }}",
+                          r"Promote BPDU guard recovery",
+                          "data: the viewer lacks self-healing rights"),
         "shape": ("_saved_plans_saves.html", "Approve the shape", r"Approve the shape",
                   "data: no shape waits on an admin"),
         "run": ("_saved_actions_device.html", "Run {{ p.title }}",
@@ -2624,6 +2629,143 @@ class TestSavedPlansCards(_Cards):
 
     def blocked_shape(self, request, monkeypatch):
         return self.blocked_promote(request, monkeypatch)
+
+    def _saved_dry_run(self, request):
+        """The card after its own Save, in Dry run (Customize's choice: a plain Save is
+        Automatic, with no Promote, 6b91dc45), pressed as the card's form sends it."""
+        c = request.getfixturevalue("card")
+        r = c["client"].post(f"/v2/saved-plans/{self._spv.INC}/save-script?list=Lab",
+                             data={"name": "BPDU guard recovery", "keep_cause": "1",
+                                   "dry_run": "1"}, headers={"HX-Request": "true"})
+        assert r.status_code == 200, "floor: the save in Dry run is kept"
+        return c
+
+    def drawn_promote_saved(self, request):
+        self._saved_dry_run(request)
+        html = self._get(request)[1]
+        assert 'data-saved="script"' in html, "floor: the saved line is drawn"
+        # The saved line's own Promote, not the scripts list's (`promote`'s case), whose button
+        # draws the same words on the same card.
+        line = re.search(r'<div class="menu simple-promote".*?</div>', html, re.S)
+        assert line, "floor: the saved line's Promote… is drawn"
+        return line.group(0)
+
+    def blocked_promote_saved(self, request, monkeypatch):
+        c = self._saved_dry_run(request)
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._get(request)[1]
+        assert 'data-saved="script"' in html and 'data-refused="script"' in html, \
+            "floor: the saved line is drawn, the refusal beside Promote"
+        return html
+
+
+class TestFixPageCards(_Cards):
+    """A saved fix's own page (C3849 pieces 3 and 4, routes/fixes_v2.py), on
+    tests/test_saved_plans_v2.py's incident: its verified recovery on s1 saved in Dry run as
+    the incident card saves it (`saved_plans.save_script`), s1's committed intent the host's
+    own (tests/fixtures/committed/s1.yml), the runner's preview stood in at its seam as that
+    module's `device` fixture stands it in. Its How it runs draws Set Automatic (its version's
+    verified run, the save's own) and Delete…; Run… on a chosen port draws Run on <port>;
+    Edit… draws Save. Blocked: a viewer without the right each takes sees each disabled."""
+    from tests import test_saved_plans as _sp, test_saved_plans_v2 as _spv
+    store, card = hosted(_sp.store), hosted(_spv.card)
+    KEY = "fix-bpdu-guard-recovery"
+
+    CASES = {
+        "automatic": ("_fix_how.html", "Set Automatic", r"Set Automatic",
+                      "data: the viewer lacks self-healing rights"),
+        "delete": ("_fix_how.html",
+                   "{{ 'Restore this fix' if restoring else 'Delete this fix' }}",
+                   r"Delete this fix", "data: the viewer lacks self-healing rights"),
+        "run": ("_fix_run.html", "Run on {{ where }}", r"Run on s1 Gi1/0",
+                "data: the AI's identity is acting"),
+        "save": ("_fix_form.html", "{{ c.save }}", r"Save",
+                 "data: the viewer lacks self-healing rights"),
+    }
+
+    def _fix(self, request, monkeypatch):
+        import yaml
+
+        from modules.nsot import command_plan as CP
+        from modules.nsot import saved_plans as S
+        c = request.getfixturevalue("card")
+        with open(os.path.join(ROOT, "tests", "fixtures", "committed", "s1.yml"),
+                  encoding="utf-8") as fh:
+            s1 = yaml.safe_load(fh)
+        monkeypatch.setattr("modules.neighbours.committed_intents_of",
+                            lambda name: ({"s1": s1}, ""))
+        monkeypatch.setattr(CP, "preview", lambda network, key, values, **kw: {
+            "ok": True, "hash": "h-recover", "title": f"Recover s1 {values.get('interface')}",
+            "refusals": [], "drawn": {"program": [f"interface {values.get('interface')}",
+                                                  " shutdown", " no shutdown"],
+                                      "preconditions": [], "verify": [
+                                          {"name": "The port reads connected"}]}})
+        S.save_script("Lab", run_id=c["run"](), name="BPDU guard recovery",
+                      match=self._sp.MATCH, fills=self._sp.FILLS, dry_run=True, **self._sp.WHO)
+        return c
+
+    def _page(self, c):
+        return _text(c["client"].get(f"/v2/fixes/{self.KEY}?list=Lab"))
+
+    def drawn_automatic(self, request):
+        c = self._fix(request, request.getfixturevalue("monkeypatch"))
+        html = self._page(c)
+        assert "Version 1 verified on run" in html, "floor: its version's verified run"
+        return html
+
+    def blocked_automatic(self, request, monkeypatch):
+        c = self._fix(request, monkeypatch)
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._page(c)
+        assert 'data-refused="automatic"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def drawn_delete(self, request):
+        return self.drawn_automatic(request)
+
+    def blocked_delete(self, request, monkeypatch):
+        c = self._fix(request, monkeypatch)
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._page(c)
+        assert 'data-refused="delete"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def _run(self, c):
+        return _text(c["client"].get(f"/v2/fixes/{self.KEY}/run?list=Lab&port=1",
+                                      headers={"HX-Request": "true"}))
+
+    def drawn_run(self, request):
+        c = self._fix(request, request.getfixturevalue("monkeypatch"))
+        html = self._run(c)
+        assert 'data-run-state="choose"' in html, "floor: the runner's preview is drawn"
+        return html
+
+    def blocked_run(self, request, monkeypatch):
+        # Running a plan is every verified person's (`identity.LISTED_RIGHTS` cannot narrow
+        # it); the AI's identity acting is refused it, as the device's saved action's Run is.
+        from modules import identity
+        c = self._fix(request, monkeypatch)
+        with identity.as_ai("assistant"):
+            html = self._run(c)
+        assert 'data-refused="run"' in html, "floor: the refusal is drawn beside it"
+        return html
+
+    def _edit(self, c):
+        return _text(c["client"].get(f"/v2/fixes/{self.KEY}/edit?list=Lab",
+                                      headers={"HX-Request": "true"}))
+
+    def drawn_save(self, request):
+        c = self._fix(request, request.getfixturevalue("monkeypatch"))
+        html = self._edit(c)
+        assert 'id="fix-form-edit"' in html, "floor: the edit form is drawn"
+        return html
+
+    def blocked_save(self, request, monkeypatch):
+        c = self._fix(request, monkeypatch)
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._edit(c)
+        assert 'data-refused="save"' in html, "floor: the refusal is drawn beside it"
+        return html
 
 
 class TestFixitPlanCards(_Cards):
@@ -2749,9 +2891,12 @@ class TestThePopulation:
         action, Promote <script> and Approve the shape, 2026-11-15; 99 until a saved action's
         Run <title> on a device's Overview, 2026-11-15; 100 until G6's Turn on self-healing and
         fix all on guard 6's batch card, 2026-11-15; 101 until that control's route was removed,
-        the operator's decision 9, 2026-11-18, C3959)."""
+        the operator's decision 9, 2026-11-18, C3959; 100 until a fix's page's four, Set
+        Automatic, Delete this fix, Run on <port> and Edit's Save, drawn from their previews by
+        the fast-lane catch-up, 2026-11-18; 104 until R5's saved line's Promote <script>, the
+        same day)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 100, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 105, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """
