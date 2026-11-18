@@ -133,6 +133,14 @@ class TestEveryKindSaysHowItClears:
                                      ("heal", "incident"),
                                      # One hold a person resolves, by its decision (H9).
                                      ("heal", "held"),
+                                     # A fixed device whose tail (save, golden, read again)
+                                     # failed, by its incident (e400a31f, the operator,
+                                     # 2026-11-16).
+                                     ("heal", "tail_flag"),
+                                     # The findings that replaced the time-based limits, each
+                                     # back only when its count is reached again (106c117d,
+                                     # e9902af0, the operator, 2026-11-16).
+                                     ("heal", "recurrence"), ("heal", "fight"),
                                      # One held or failed port bounce, by its decision (H20).
                                      ("heal", "bounce"),
                                      # One held or failed BGP session clear, by its
