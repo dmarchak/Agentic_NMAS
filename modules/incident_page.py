@@ -331,7 +331,7 @@ def fix_running(network: str, found: dict, now: float = None) -> dict:
       once its outcome is recorded, in any process) for a taken decision with no outcome;
     - its step log entry is applying (`acts`' ``running``);
     - a self-healing batch claimed it (`heal.batch.claimed_by_batch`: from the batch's start
-      until it recorded the device's outcome).
+      until it recorded the device's outcome) and a batch job of the network runs now.
     Its step: the act's own (its ``heal_run`` job in this process, `op_progress.run_of`, the
     run named by the decision), else the step log's newest recorded one while applying, else
     `STARTING`. A read: one mark probed per taken decision with no outcome, nothing written."""
@@ -362,7 +362,13 @@ def fix_running(network: str, found: dict, now: float = None) -> dict:
             except OSError as exc:
                 log.warning("incident page: %s's heal mark cannot be read (%s)", d["id"],
                             type(exc).__name__)
-    batch = open_ and HB.claimed_by_batch(inc, now)
+    # A claim is a running heal only while a batch of the network runs: one whose process died
+    # mid-run (a restart, an OOM) leaves its claims, and nothing else takes them off before
+    # `batch.UNTAKEN_S` (the correctness review's G6 M5, 2026-11-18). Its job is this server's
+    # (`capture_job`, the registry the batch's strip reads), as a batch runs in the app's.
+    batch = open_ and HB.claimed_by_batch(inc, now) and any(
+        j["kind"] == HB.KIND and j["state"] == "running" and j["list"] == network
+        for j in capture_job.card_jobs(now))
     if not (held or applying or batch):
         return {}
     ids = {d.get("id") for d in decisions if d.get("id")}
