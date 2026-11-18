@@ -105,8 +105,6 @@ STATE_WORDS = {"open": "Open", "needs_person": "Needs a person", "fixed": "Fixed
                "cleared": "Cleared", "cancelled": "Cancelled"}
 #: The states in which nothing is left for Mercury or a person to do.
 RESOLVED = ("fixed", "cleared", "cancelled")
-#: C3876: the words of an incident the store closed whose fix nothing confirmed (`status`).
-UNCONFIRMED_WORDS = "Closed, not confirmed"
 #: The fix-it section's states (`fixit.section.STATES`) in which a person's choice is waited
 #: for, each with why the page then needs a person (`status`); and those in which a fix a
 #: person approved is under way or passed, so nobody is needed now.
@@ -668,15 +666,14 @@ def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
         log.error("incident page: why %s waits could not be said: %s",
                   (incident or {}).get("id"), exc)
         reason = ""
-    words = STATE_WORDS[state]
-    if (incident or {}).get("state") == "closed" and state not in RESOLVED:
-        # C3876: the store closed it and nothing confirmed its fix (a past close with no
-        # proof): the header says what it is, never "Open" nor "Fixed" (the Incidents list's
-        # "Closed, not confirmed").
-        words = UNCONFIRMED_WORDS
-    return {"state": state, "words": words, "needs": state == "needs_person",
+    # C4084 (the operator, 2026-11-18: "an incident closes only on a healed outcome. 'Closed
+    # but not confirmed' stays open and needs a person"): one its store closed that this rule
+    # does not read resolved (a past close with no proof, C3876) is said as what this rule
+    # says, Needs a person, never "Closed, not confirmed"; *closed_unconfirmed* keeps the fact.
+    return {"state": state, "words": STATE_WORDS[state], "needs": state == "needs_person",
             "why": why, "reason": reason,
-            "closed_unconfirmed": words == UNCONFIRMED_WORDS}
+            "closed_unconfirmed": ((incident or {}).get("state") == "closed"
+                                   and state not in RESOLVED)}
 
 
 # ── The timeline ───────────────────────────────────────────────────────────────────────────
@@ -1385,9 +1382,10 @@ def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     # without a passed verify is closed in its own store and still needs a person.
     rule = state_of(found["incident"], entry, decisions)
     lap(laps, "timeline and state")
-    # C3876: closed in the store is resolved here too, as the Incidents list's tabs count it
-    # (a past close with no proof is "Closed, not confirmed", never Fixed, never Open).
-    resolved = rule in RESOLVED or inc.get("state") == "closed"
+    # C4084 (the operator, 2026-11-18): resolved by this rule alone. One its store closed that
+    # the rule does not read resolved (a past close with no proof, C3876) stays open and needs
+    # a person, here, on the Incidents list and on Needs attention alike.
+    resolved = rule in RESOLVED
     # The AI troubleshooting section (board recurring-fixes v2; `modules/fixit/section.py`),
     # drawn with no AI call: a read of the incident's troubleshooting record, the operations'
     # run records, the record of AI calls and the settings. Resolved, it is read-only. Read
@@ -1395,8 +1393,7 @@ def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     closed = _epoch(tl["closed"]) if tl["closed"] else None
     fixit = section.drawn(network, found,
                           resolved=(closed or time.time()) if resolved else None,
-                          ended=(rule if rule in RESOLVED else UNCONFIRMED_WORDS.lower())
-                          if resolved else "")
+                          ended=rule if resolved else "")
     lap(laps, "AI troubleshooting section")
     # C3862: a heal act running on it is Mercury working (`fix_running`), as the section says
     # it; asked here too for a section drawn without its record (no device identity known).
@@ -1475,7 +1472,7 @@ def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     model = dict(
         base, title=title(found["incident"], entry, decisions, state, tl["who"]),
         state=state, state_words=st["words"],
-        state_kind="warn" if st.get("closed_unconfirmed") else {
+        state_kind={
             "open": "info", "fixed": "ok",
             "needs_person": "danger" if sev["kind"] == "danger" else "warn"}.get(state, "muted"),
         # Resolved as the Incidents list counts it (its state, `incidents_list`): an incident the

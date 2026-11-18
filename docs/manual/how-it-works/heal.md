@@ -323,9 +323,10 @@ heal's `confirm` step, and the AI starts with it in its evidence beside the fail
 Every other close that would end an incident standing on such a heal (a drift run reading the
 device at its golden, its symptom read gone, a decision of nothing to heal) asks for the same
 confirmation read instead, at most once an hour for the same heal, and the incident closes only
-on its proof. An incident closed on such an outcome before this was built (no proof kept) reads
-**Closed, not confirmed** on [Incidents](incidents) and on its page, never Fixed nor Open; it is
-confirmed by the same read once, and never reopened.
+on its proof. An incident closed on such an outcome before this was built (no proof kept) is not
+read as closed: an incident closes only on a healed outcome, so it is on [Incidents](incidents)'
+Open tab under **Needs a person**, its page says Needs a person, and it has its row on Needs
+attention, never Fixed; the same read confirms it once, and with its proof it reads Fixed.
 
 ### A problem that keeps coming back {#findings}
 
