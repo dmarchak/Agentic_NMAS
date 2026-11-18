@@ -567,6 +567,51 @@ class TestNetZero:
         assert "NOT RESTORED" in rec["why"] and sticky.strip() in rec["why"]
 
 
+class PartialSwitch(Switch):
+    """The fake switch whose first config batch stops part-way: its first *landed* lines take
+    effect, then the session drops (the push never reaches verify)."""
+
+    def __init__(self, landed=2, sticky_on_shut="", **kw):
+        super().__init__(**kw)
+        self.landed, self.failed_once = landed, False
+        #: A line the port keeps once it is shut (one no rollback of the pushed lines
+        #: removes), to tell the compare after the rollback ran.
+        self.sticky_on_shut = sticky_on_shut
+
+    def apply(self, lines):
+        if self.failed_once:
+            return super().apply(lines)
+        self.failed_once = True
+        super().apply(lines[:self.landed])
+        if self.sticky_on_shut:
+            self.base = self.base.replace(f"interface {PORT}\n",
+                                          f"interface {PORT}\n{self.sticky_on_shut}\n", 1)
+        raise OSError("Socket is closed")
+
+
+class TestTheCompareAfterEveryRollback:
+    """17215a95 (the review of 2026-11-16): after EVERY rollback, whether or not the run's own
+    net-zero check ran (a push that stopped part-way never reaches verify), the configuration
+    is read again and compared with the one before, in the whole where the run's check never
+    ran; a line still differing fails the run, NOT RESTORED, never "rolled back"."""
+
+    def test_a_partial_push_is_compared_after_its_rollback(self, lab):
+        lab["sw"] = PartialSwitch()
+        rec = go(lab)
+        nz = rec.get("net_zero") or {}
+        assert nz.get("after_rollback") == [] and nz.get("after_rollback_scope") == "full", nz
+        assert lab["sw"].admin_down is False, "the rollback undid the shutdown that landed"
+        assert rec["outcome"] == "rolled_back", rec["why"]
+
+    def test_a_line_left_after_a_partial_pushs_rollback_is_not_restored(self, lab):
+        left = " description left by the stopped push"
+        lab["sw"] = PartialSwitch(sticky_on_shut=left)
+        rec = go(lab)
+        assert rec["outcome"] == "failed", rec["why"]
+        assert rec["net_zero"]["after_rollback"] == ["+ " + left], rec["net_zero"]
+        assert "NOT RESTORED" in rec["why"] and left.strip() in rec["why"]
+
+
 # ── The scoped net-zero and the pooled session (7b300f39, C3847) ───────────────────────────
 
 class SectionSwitch(Switch):
