@@ -65,13 +65,17 @@ def test_a_200_is_a_reply_with_its_rate_limit_headers():
     s = _Session(_Resp(200, OK_BODY, {"anthropic-ratelimit-requests-remaining": "49",
                                       "content-type": "application/json"}))
     reply = A.send({"model": "m"}, KEY, session=s, sleep=pytest.fail)
-    assert reply.status == 200 and reply.body == OK_BODY and reply.attempts == 1
+    # The body is the answer assembled from its stream (7b0bb884: every send streamed), so it
+    # carries the stream's message_delta keys as the provider sends them (stop_sequence null).
+    assert reply.status == 200 and reply.attempts == 1
+    assert reply.body == dict(OK_BODY, stop_sequence=None)
     assert reply.headers == {"anthropic-ratelimit-requests-remaining": "49"}
     sent = s.sent[0]
     assert sent["url"] == "https://api.anthropic.com/v1/messages"
     assert sent["headers"]["x-api-key"] == KEY
     assert sent["headers"]["anthropic-version"] == "2023-06-01"
     assert sent["timeout"] == A.TIMEOUT
+    assert sent["stream"] is True and sent["json"] == {"model": "m", "stream": True}
 
 
 @pytest.mark.parametrize("status,cls", [(429, A.RateLimited), (529, A.Overloaded)])
@@ -106,7 +110,9 @@ def test_a_wait_over_the_bound_is_raised_not_slept():
     (_Resp(403, {"error": {"type": "permission_error", "message": "no"}}), A.KeyRefused),
     (_Resp(400, {"error": {"type": "invalid_request_error", "message": "bad"}}), A.BadRequest),
     (_Resp(500, {"error": {"type": "api_error", "message": "oops"}}), A.ProviderDown),
-    (_Resp(200, None, text="<html>"), A.ProviderDown),
+    # A 200 that is no stream (an HTML page from a proxy) is a broken stream (7b0bb884: every
+    # send is streamed, `_read_stream`), never parsed and never retried.
+    (_Resp(200, None, text="<html>"), A.StreamFailed),
     (requests.Timeout("t"), A.ProviderDown),
     (requests.ConnectionError("c"), A.ProviderDown),
 ])
