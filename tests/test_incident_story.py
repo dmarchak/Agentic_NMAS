@@ -99,6 +99,20 @@ def test_a_failed_verify_is_never_healed():
     assert nodes[-1]["state"] == "failed" and nodes[-1]["words"] == "not healed"
 
 
+def test_a_failed_verify_never_draws_verifying_done():
+    """C4030: a rolled-back heal drew Applying red, Verifying green with its time and Healed
+    red: a verify that failed is never done (CLAUDE.md, never green over a failure)."""
+    header = HEADER[:2] + [{"name": "Fixed", "state": "none", "at": "", "words": "not fixed"},
+                           {"name": "Verified", "state": "failed", "at": "2026-11-17T18:02:13Z"}]
+    by = {n["name"]: n for n in S.lifecycle(_model(resolved=False, header=header), LINES)}
+    assert by["Verifying"]["state"] == "failed"
+    assert by["Verifying"]["at"] == "2026-11-17T18:01:56Z"
+    assert (by["Applying"]["state"], by["Healed"]["state"]) == ("failed", "failed")
+    # A verify that held stays done.
+    held = {n["name"]: n for n in S.lifecycle(_model(), LINES)}
+    assert held["Verifying"]["state"] == "done"
+
+
 def test_the_summary_names_the_ais_first_hypothesis_and_four_evidence_lines():
     got = S.summary(_model(), LINES)
     assert got["cause"].startswith("Unauthorised MAC aabb.cc00.8099 on VLAN 10")

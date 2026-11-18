@@ -15,7 +15,7 @@ fixed it needs no AI) or ``failed``:
 - Fix proposed: its newest proposal line (its operation, its source);
 - Approved: its approve choice (who, when);
 - Applying: the fix's run (the card's run's first step, else the header's Fixed cell);
-- Verifying: the run's verify step;
+- Verifying: the run's verify step; ``failed`` where it ran and the verify failed;
 - Healed: the header's Verified cell; ``failed`` where the verify failed or the run did.
 The first stage not done on an open incident is ``now``.
 
@@ -143,6 +143,10 @@ def lifecycle(model: dict, lines: list) -> list:
             state = "skip"
             words = words or "not needed: self-healing's own fix"
         elif name == "Healed" and failed:
+            state = "failed"
+        elif name == "Verifying" and at and verified.get("state") == "failed":
+            # A verify that ran and failed is never done (C4030: it drew green between
+            # Applying's and Healed's red).
             state = "failed"
         elif name == "Applying" and (fixed.get("state") == "failed" or (
                 failed and fixed.get("state") == "none")):
