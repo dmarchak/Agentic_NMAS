@@ -4770,3 +4770,27 @@ test_netbox_mask_context, test_commit_message_masked, test_reveal_and_log_redact
 test_command_plan, the drift, roundtrip and intent-normalise tests, test_device_v2, the
 no-GET/no-POST secret tests, test_ai_never and the golden tests: **1897 passed, 1 skipped** in
 CI's interpreter.
+
+## 2026-11-18: a provider 200 that is no event stream said as such, its status kept (the audit's half 1 row 4), by hand
+
+**The change.** In the provider egress, `anthropic_adapter._read_stream` raises `StreamFailed`
+"HTTP 200 with a body that is not an event stream: no event in it" when a 200 carries no event
+at all (a proxy's HTML page), and `send` keeps the response's status on any `StreamFailed`. Only
+the words and the status of a failure change: nothing sent to the provider, and nothing parsed
+as an answer, moves. Found by the fast-lane correctness review's test audit (eefb5f42 dropped
+the status and the words with no decision).
+
+**The method.** As above: each mutant written into the adapter's copy in a throwaway worktree
+(`scripts/nmas-control`), then tests/test_anthropic_adapter.py in CI's interpreter, confined.
+
+| # | Mutant | Result |
+|---|---|---|
+| 0 | the canary: the new branch never taken (`if False:`) | **died**: test_a_200_that_is_not_json_is_the_provider_down_with_its_fields |
+| 1 | `not events` -> `events` | **died**: the same test |
+| 2 | the status not kept (`exc.status = status` dropped) | **died**: the same test |
+| 3 | the words cut to "HTTP 200: no event in it" | **died**: the same test |
+
+**4 of 4 died**, the canary first. The aimed tests (every test file naming the adapter or
+`StreamFailed`, 56 files): **1753 passed, 77 skipped**, 3 failed, each the branch's own and red
+on the parent (test_fixit_incident's two one-way-in scans, C3984; test_fixit_preview's reserve
+test, C3958).
