@@ -19,6 +19,32 @@ from tests.test_ai_nl_query import NOW, _choices, _words, site, web, world  # no
 BOUND = profiles.TASKS["nl_query"]["max_tokens"]
 
 
+def cut_words(task: str) -> str:
+    """A max_tokens stop at the model's maximum, in words (7b0bb884: never parsed)."""
+    most = profiles.max_output(profiles.TASKS[task]["model"])
+    return (f"the answer was cut at max_tokens ({most:,}, set by the model's maximum output "
+            f"({most // 1000}K)); nothing of it was parsed")
+
+
+CUT = cut_words("nl_query")
+
+
+def cut_twice(got: dict, task: str) -> None:
+    """A thinking call stopped at max_tokens (7b0bb884, the operator 2026-11-16: thinking calls
+    are sized by a "Measured bound, plus ... retry once"): the first call, sized by its task's
+    bound (the pin's max_tokens while none is measured), is asked once more as a new call sized
+    to what the remaining can pay, at most the model's maximum; both stopped at max_tokens,
+    both recorded, nothing of either parsed; the result is the retry's, naming the first."""
+    retry, first = calls.read()["rows"]                  # newest first
+    pin = profiles.TASKS[task]["max_tokens"]
+    assert (first["verdict"], retry["verdict"]) == ("max_tokens", "max_tokens")
+    assert "output" not in first and "output" not in retry
+    assert first["sized"]["max_tokens"] == pin and first["sized"]["kind"] == "measured_bound"
+    assert retry["sized"]["retry"] is True
+    assert retry["sized"]["max_tokens"] == profiles.max_output(profiles.TASKS[task]["model"])
+    assert got["also_calls"] == [first["id"]] and got["call_id"] == retry["id"]
+
+
 def _cut(w, text):
     """*w*'s send, answering *text* whole but stopped at max_tokens."""
     def send(body, key, **_kw):
@@ -41,10 +67,9 @@ def test_a_metrics_answer_stopped_at_max_tokens_fills_nothing(world, text):
                                send=_cut(world, text),
                                client=world.prom, now=NOW, today="2026-10-25")
     assert got["ok"] is False and got["error"] == "max_tokens"
-    assert got["detail"] == f"the answer ran past max_tokens ({BOUND})"
+    assert got["detail"] == CUT
     assert "values" not in got and "view" not in got and "choices" not in got
-    (row,) = calls.read()["rows"]
-    assert row["verdict"] == "max_tokens" and "output" not in row
+    cut_twice(got, "nl_query")
 
 
 def test_the_builder_is_redrawn_as_the_form_carried_it_with_the_reason(site, monkeypatch):
@@ -53,7 +78,7 @@ def test_the_builder_is_redrawn_as_the_form_carried_it_with_the_reason(site, mon
     r, html = _words(site, "input errors per interface", m="ifHCInOctets",
                      op=["rate:5m", "bits"])
     assert r.status_code == 200 and "HX-Push-Url" not in r.headers
-    assert f"Not filled: the answer ran past max_tokens ({BOUND})." in html
+    assert f"Not filled: {CUT}." in html
     assert "rate(ifHCInOctets" in html, "the builder was not drawn as the form carried it"
     assert "topk(5, rate(ifInErrors" not in html, "the cut answer was applied"
     assert not any(p == "api/v1/query_range" for p, _ in site.asked)

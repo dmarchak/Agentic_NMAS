@@ -834,16 +834,17 @@ def test_an_explanation_stopped_at_max_tokens_shows_nothing(world):
         got = explain.explain(world.pack["id"], actor="operator@example.com",
                               trigger=triggers.person("operator@example.com"),
                               send=_cut(world, json.dumps(_answer(world.pack))), today="2026-10-25")
-    bound = profiles.TASKS["explain"]["max_tokens"]
+    from tests.test_ai_truncated_answers import cut_twice, cut_words
+    words = cut_words("explain")  # 7b0bb884: the model's maximum, never parsed
     assert got["ok"] is False and "answer" not in got
     assert got["error"] == "max_tokens"
-    assert got["detail"] == f"the answer ran past max_tokens ({bound})"
-    (row,) = calls.read()["rows"]
-    assert row["verdict"] == "max_tokens" and "output" not in row
+    assert got["detail"] == words
+    cut_twice(got, "explain")
     from flask import render_template
     from modules import csp
     from app import app
     with app.test_request_context():
         html = render_template("v2/_explain.html", x=got, csp=csp)
-    assert f"Not explained: the answer ran past max_tokens ({bound})." in html
+    from html import unescape
+    assert f"Not explained: {words}." in unescape(html)
     assert "hypothes" not in html.lower(), "a cut explanation was drawn"
