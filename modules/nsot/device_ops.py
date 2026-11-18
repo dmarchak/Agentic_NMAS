@@ -85,6 +85,13 @@ OPERATION_WORDS = {
     # A controller host's apps staged and applied (modules/apps/channel.held_write, P6).
     "controller app deploy": "given its controller apps (staged, then the controller "
                              "restarted)",
+    # The telemetry operations' holds (modules/heal/resubscribe.py: `OPERATION`,
+    # `READD_OPERATION`, `COLLECTOR_OPERATION`), which the planned state draws since a61bb071:
+    # named in words in a refusal too, never by the hold's key.
+    "telemetry re-subscribe": "re-subscribed for its telemetry",
+    "telemetry receiver re-add": "given its telemetry receiver back",
+    "telemetry collector close and re-subscribe": "re-subscribed for its telemetry (the "
+                                                  "collector's stale session closed first)",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words
