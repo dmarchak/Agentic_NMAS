@@ -30,7 +30,7 @@ nothing to measure).
    last 30 days). Sent: nothing. Recorded: nothing. **Calls a day** is the trigger's measured
    frequency times the calls one finding makes; **unknown** when the trigger has never fired
    on this network, never guessed. **Cost per call** is measured when calls were sent, else
-   the task's per-call cap, the most one call can cost, said as not measured. **Dollars** a
+   a stand-in from the task's pinned bounds, said as not measured. **Dollars** a
    day and a month (30 days) follow, or are unknown, and then the caps you type are the bound.
    Prices come from Mercury's dated table; the provider bills.
 2. `check`: you are a verified person, you ticked "I have read the estimate", and the caps are
@@ -94,6 +94,7 @@ with nothing changed. Raising a cap is how a feature stopped by its cap runs aga
 month ends; **Mercury never raises a cap by itself**. A feature that reaches a cap stops until
 the day or month ends, and Needs attention raises a row (at 50% and 80% too, and when the
 feature runs at 150% or more of the estimate it was approved at). Each of its
-calls is judged by its spend so far, plus the worst case its calls still in flight on this
-network have reserved, plus this call's worst case, so several calls at once never pass its
-caps together (see [The day cap](installation-settings#ai-cap)).
+calls is judged by its spend so far, plus what its calls still in flight on this network hold,
+plus this call's hold (its counted prompt and its task's typical answer), and checked again
+while it streams, so several calls at once never pass its caps together (see [The day
+cap](installation-settings#ai-cap)).

@@ -192,8 +192,9 @@ within itself. The panel shows:
 Every figure is Mercury's own, from the record of AI calls, priced from the dated price table
 in Mercury's code: **the provider bills what is actually spent**, and the provider's own
 spending limit is the backstop. A call still in flight is not counted until it is recorded,
-seconds later; while it runs, its worst case is held against the caps so calls at once never
-pass them together. The chip reads again on each recorded call and on each settings change,
+seconds later; while it runs, its hold (its counted prompt and its task's typical answer), or
+its spend so far once it streams, is held against the caps so calls at once never pass them
+together. The chip reads again on each recorded call and on each settings change,
 over the live connection, and the panel reads again on each recorded call while it is open;
 neither asks on a timer. An evaluation run from a host script records its calls in another
 process, so they appear at your next page load or the next call recorded here.

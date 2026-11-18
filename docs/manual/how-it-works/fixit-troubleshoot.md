@@ -144,9 +144,11 @@ operator, 2026-11-14: Modify… and Deny… replace them).
 
 **Start AI troubleshooting** and **Ask the AI again** each run one investigation; with the
 background feature on, the failure itself starts it ([Starting by itself](#automatic)). Its
-cost is drawn before you press: at most two calls at the AI's per-call cap (at most $0.25
-today), and about what it has cost before once it has been measured; the incident's spend so
-far against its cap, and today's against the day cap, under the card's **Costs**. The button
+cost is drawn before you press: about what one investigation costs (the measured cost per call
+times the three calls one is expected to make, or its stand-in said as such) and the least one
+call can cost. There is no worst case: no bound on its calls but the spending limits. The
+incident's spend so far against its cap, and today's against the day cap, are under the card's
+**Costs**. The button
 carries the AI mark; when hosted AI cannot answer now (it is off, no key is set, the day cap is
 reached, or the provider's usage limit holds), it is drawn disabled with why.
 
@@ -158,9 +160,10 @@ It runs these steps, one investigation:
    failure; no timer, job or page load starts one.
 2. `mode`: AI troubleshooting's mode (Settings › Installation › AI, AI troubleshooting) is
    Manual. Off refuses the press, with nothing sent.
-3. `cap`: the per-incident cap is asked again ([the cap](#the-cap)): spent so far plus this
-   investigation's worst case. Past it, the press is refused, naming both figures and what moved
-   since the panel was drawn, and nothing is sent.
+3. `cap`: the per-incident cap is asked again ([the cap](#the-cap)), with the network's day and
+   month limits and the day cap: a start is refused only when what is left of one cannot pay
+   even the least one call costs, naming the cap, its figures and what moved since the panel was
+   drawn, and nothing is sent. Each call is then judged on its own by the gateway.
 4. `pack`: what the AI is sent is built in code: the incident's evidence pack (what started it,
    the device, its History and Intent check, its neighbours, health, its log lines, what
    self-healing tried and Mercury's diagnosis, configuration only by kind), the incident's
@@ -169,14 +172,18 @@ It runs these steps, one investigation:
    when something in it was masked. Every person in any of it is a stable label
    ("person-3f9a1c"), never a name or an address, and any address left anywhere in the
    request is replaced by its label before it leaves.
-5. `ask`: one call through the AI gateway, under the day cap and the per-call cap, and under
-   the task's prompt bound: before it asks, Mercury fits the request to that bound, both calls
-   (the second with room for three reads at their cap), by its own over-estimate of a prompt's
-   size; when it is over, the topology is left out first, then the pack's largest sections
-   (logs, neighbours, history, observer, health) are cut to half their pieces, each cut said in
-   the section, and the preview says what was done. With the
-   network's device state class on (its Network tab, What AI may send), the AI may ask Mercury for up to three
-   read-only reads, and a second call carries them; it cannot ask again. A read is either of
+5. `ask`: the investigation's calls, each through the AI gateway and held to every spending
+   limit as it is sent and while it streams ([The day cap](installation-settings#ai-cap)).
+   {{product}} sets no size limit of its own: the evidence goes whole, each read's answer
+   included, and the request is cut only to fit the model's context window, the topology left
+   out first, then the pack's largest sections (logs, neighbours, history, observer, health) cut
+   to half their pieces, each cut said in the section. With the network's device state class on
+   (its Network tab, What AI may send), each pass may ask Mercury for up to three read-only
+   reads, and the next call carries their answers. The investigation goes on, pass after pass,
+   while a pass adds new evidence, and ends when one adds none (it asked for no read, every read
+   it asked for was already answered here, or every new read was refused or empty): there is no
+   paid call without new evidence, and no bound on passes or calls but the limits and the
+   investigation's own time bound. A read is either of
    the incident's device, asked as an engineer types it in Show commands (show, ping or
    traceroute and the rest of the command: a show of one of the AI's command families, an
    engineer's troubleshooting reads, each in one of its forms, held whole by Mercury's
@@ -206,8 +213,7 @@ It runs these steps, one investigation:
    pack label this incident's pack lacks, a read that did not run) never discards the answer:
    each hypothesis, step or gap resting on it is kept and marked "unverified (cites X, not in
    the evidence)", and the rest is shown. Mercury then asks the AI **once more**, naming each
-   such reference, when one more call keeps the investigation within the worst case drawn
-   before the press and the incident within its cap; a second answer that cites only what was
+   such reference, when the spending limits can pay for that call; a second answer that cites only what was
    sent replaces the first, and one that still does not is shown marked. A step resting only on
    unverified references is never approvable: its preflight says so.
 7. `propose`: a plan passes the same check as Mercury's own proposal (the incident's scope, the
@@ -247,12 +253,15 @@ line then says who proposed it, and the incident's list can tell later how it wa
 ## The per-incident cap {#the-cap}
 
 **AI spend per incident** (Settings › Installation › AI, the AI troubleshooting card, $1.00 by
-default) holds every attempt: what the incident's AI calls have cost so far plus the next
-attempt's worst case is compared with it. At the cap exactly is allowed; past it, nothing
-starts, the card says which cap would be passed (spent, the worst case, their sum and the cap),
-and **Hand over…** is the next action. An attempt's worst case is two calls at the per-call cap
-of the AI's pinned model (at most $0.25 today). There is no "no cap", and Mercury never raises
-it. **AI mode** on the same card is Manual or Off; Off offers no AI at all.
+default) holds every call of the incident's investigations. What it has spent is every call of
+its own investigations, one its watchdog stopped or that failed after its calls included, each
+counted once, read again before each call; calls in flight hold their share. A call is sent only
+when what is left covers its hold (its counted prompt and its task's typical answer), and it is
+stopped mid-answer, "budget ran out mid-answer", before it would pass the cap
+([The day cap](installation-settings#ai-cap)). A start is refused when what is left cannot pay
+even the least one call costs: nothing starts, the card says which cap (spent, held, what
+remains and the cap), and **Hand over…** is the next action. There is no "no cap", and Mercury
+never raises it. **AI mode** on the same card is Manual or Off; Off offers no AI at all.
 
 ## Cancel and Retry are gone {#cancel}
 
