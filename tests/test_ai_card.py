@@ -188,7 +188,7 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
           {"reason": "the lab's proof of concept, capped"})
     sent = []
 
-    def echo(body, key):
+    def echo(body, key, **_kw):          # the adapter's keywords (progress, 7b0bb884)
         sent.append(json.dumps(body))
         if "echo" not in json.dumps(body["output_config"]):
             # Premise corrected (the operator, 2026-11-15): the Test also sends each AI

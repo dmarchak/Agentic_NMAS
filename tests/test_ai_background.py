@@ -221,13 +221,15 @@ def test_off_stops_the_next_call_at_once_and_is_recorded(bg):
 
 
 def test_a_switch_turned_off_between_admit_and_the_caps_is_refused_off(bg, monkeypatch):
+    # The gateway's caps read `remaining` inside the reservations' lock (7b0bb884: the spending
+    # limits govern, `gateway._capped_send`'s `left`), so Off is pressed as that read begins.
     _on()
-    real = B.over_cap
+    real = B.remaining
 
-    def off_first(trigger, worst, day, reserved=None):
+    def off_first(trigger, day, reserved=None):
         B.turn_off("Lab", "fake_loop", actor=ADMIN, verified="access")
-        return real(trigger, worst, day, reserved)
-    monkeypatch.setattr(B, "over_cap", off_first)
+        return real(trigger, day, reserved)
+    monkeypatch.setattr(B, "remaining", off_first)
     got = _call(bg)
     assert got.get("error") == "feature_off" and bg.sent == []
 
@@ -239,10 +241,12 @@ def test_the_features_day_cap_stops_it_naming_both_operands(bg):
     _plant(0.499999)
     got = _call(bg)
     assert got["ok"] is False and got.get("error") == "feature_cap" and bg.sent == []
-    assert ("fake_loop's spend on lab today $0.5000 plus $0.0000 reserved by its 0 call(s) in "
-            "flight plus this call's worst case $") in got.get("detail", "")
-    assert "is over its day cap $0.5000; it stops until the day ends or an admin raises the " \
-           "cap; nothing was sent" in got.get("detail", "")
+    # The refusal names the cap, what was spent, what calls in flight hold, what remains and
+    # this call's hold (7b0bb884: its counted prompt plus its task's typical answer).
+    detail = got.get("detail", "")
+    assert ("fake_loop's day cap on lab $0.5000: spent $0.5000 plus $0.0000 held by 0 call(s) "
+            "in flight leaves $0.0000, under this call's counted prompt") in detail
+    assert "plus its typical answer" in detail and detail.endswith("; nothing was sent")
     row = calls.read()["rows"][0]
     assert row["verdict"] == "feature_cap" and row["cap_kind"] == "day"
 
@@ -261,7 +265,8 @@ def test_the_features_month_cap_stops_it_on_an_ordinary_day(bg, monkeypatch):
     # Earlier this month (the cap's day is UTC by default), so today's spend is nothing.
     _plant(0.999999, at="2026-11-01T00:30:00Z")
     got = _call(bg)
-    assert got.get("error") == "feature_cap" and "is over its month cap $1.0000" in got.get("detail", "")
+    assert got.get("error") == "feature_cap"
+    assert "fake_loop's month cap on lab $1.0000: spent $1.0000" in got.get("detail", "")
     assert calls.read()["rows"][0]["cap_kind"] == "month"
 
 
@@ -274,7 +279,8 @@ def test_on_the_months_first_day_the_month_cap_counts_today_and_not_last_month(b
     assert _call(bg)["ok"] is True
     _plant(0.999999, at="2026-11-01T00:30:00Z")
     got = _call(bg, job="j2")
-    assert got.get("error") == "feature_cap" and "is over its month cap $1.0000" in got.get("detail", "")
+    assert got.get("error") == "feature_cap"
+    assert "fake_loop's month cap on lab $1.0000: spent $1.0000" in got.get("detail", "")
     assert calls.read()["rows"][0]["cap_kind"] == "month"
 
 
@@ -292,7 +298,8 @@ def test_the_installations_day_cap_still_comes_first(bg):
     calls.record({"id": calls.new_id(), "feature": TASK, "actor": "a@example.com",
                   "verdict": "ok", "cost_usd": 1.499999})
     got = _call(bg)
-    assert got.get("error") == "over_cap" and "is over the day cap $1.5000" in got.get("detail", "")
+    assert got.get("error") == "over_cap"
+    assert "the installation's day cap $1.5000: spent $1.5000" in got.get("detail", "")
 
 
 def test_raising_the_cap_is_how_a_stopped_feature_runs_again(bg):
@@ -343,8 +350,10 @@ def test_with_no_measured_call_the_estimate_uses_the_worst_case_and_says_so(bg):
     worst = profiles.cap_per_call(TASK)
     assert est["label"] == "an estimate, not a measurement of this feature's spend"
     assert est["cost"]["measured"] is False and est["cost"]["usd_per_call"] == worst
-    assert "its per-call cap, the most one call can cost, is used, so this is an upper bound" \
-        in est["cost"]["basis"]
+    # No call has a cap of its own (7b0bb884): the stand-in is the pin's old bounds, said as
+    # not measured.
+    assert est["cost"]["basis"].startswith(f"not measured yet: no {TASK} call on ")
+    assert "its pin's 2,000 prompt tokens and 64 answer tokens stand in" in est["cost"]["basis"]
     assert est["calls_per_day"] == 4.0
     assert est["usd_per_day"] == pytest.approx(4.0 * worst)
     assert est["usd_per_month"] == pytest.approx(4.0 * worst * 30)
@@ -364,6 +373,26 @@ def test_the_measured_cost_is_the_mean_of_the_tasks_sent_calls_on_its_model(bg):
     assert est["cost"]["usd_per_call"] == pytest.approx(0.002)
     assert est["usd_per_day"] == pytest.approx(0.008)
     assert est["suggested"] == {"day_cap_usd": 0.02, "month_cap_usd": 0.6}
+
+
+def test_a_held_measure_is_computed_again_once_a_row_is_recorded(bg):
+    """C3788 holds each measure until the record changes (`calls.version`); 7b0bb884's shared
+    `_held_measure` held it under a key without the version, so the first answer of a day was
+    kept whatever was recorded after it (a gateway call's hold sized on a stale median). A row
+    appended moves the version, and the mean cost and the typical output are read again."""
+    model = profiles.TASKS[TASK]["model"]
+    # A record that exists (another task's call), so it has a version and the measure is held.
+    calls.record({"id": calls.new_id(), "feature": "explain", "model": model, "actor": "a",
+                  "verdict": "ok", "cost_usd": 0.5, "tokens": {"input_tokens": 1}})
+    assert calls.version() is not None
+    assert B.measured_cost(TASK)["measured"] is False
+    assert B.typical_output(TASK)["measured"] is False
+    calls.record({"id": calls.new_id(), "feature": TASK, "model": model, "actor": "a",
+                  "verdict": "ok", "cost_usd": 0.004, "stop_reason": "end_turn",
+                  "tokens": {"input_tokens": 1, "output_tokens": 7}})
+    cost, typical = B.measured_cost(TASK), B.typical_output(TASK)
+    assert cost["measured"] is True and cost["usd_per_call"] == pytest.approx(0.004)
+    assert typical["measured"] is True and typical["tokens"] == 7
 
 
 def test_an_unmeasured_frequency_is_unknown_never_guessed(bg):
@@ -403,10 +432,12 @@ def test_the_features_caps_count_on_the_calls_own_day_and_record_its_worst_case(
     got = gateway.ask(TASK, ("ping", 1), connection.Ping, {"word": "w"},
                       actor=triggers.actor_of(t), trigger=t, send=bg.send, today="2026-01-15")
     assert got.get("error") == "feature_cap" and bg.sent == []
-    assert "fake_loop's spend on lab today $0.5000" in got.get("detail", "")
+    assert "fake_loop's day cap on lab $0.5000: spent $0.5000" in got.get("detail", "")
+    # The refusal's row keeps the call's hold (7b0bb884: its counted prompt plus its typical
+    # answer, in place of a worst case), the figure the detail compares.
     row = calls.read()["rows"][0]
-    assert isinstance(row.get("worst_usd"), float) and row["worst_usd"] > 0
-    assert f"this call's worst case ${row['worst_usd']:.4f}" in got["detail"]
+    assert isinstance(row.get("hold_usd"), float) and row["hold_usd"] > 0
+    assert f"${row['hold_usd']:.4f}; nothing was sent" in got["detail"]
 
 
 def test_a_background_call_naming_no_network_names_none_and_is_refused(bg):
@@ -453,13 +484,14 @@ def test_switches_that_cannot_be_read_are_said_and_refused(bg, monkeypatch):
 def test_a_switch_turned_off_mid_call_says_admits_words_and_names_no_cap(bg, monkeypatch):
     # Turned off between `admit` and the caps: the refusal is admit's own (where an admin turns
     # it on), and its row names no cap, since no cap stopped it.
+    # The caps read `remaining` inside the reservations' lock (7b0bb884).
     _on()
-    real = B.over_cap
+    real = B.remaining
 
-    def off_first(trigger, worst, day, reserved=None):
+    def off_first(trigger, day, reserved=None):
         B.turn_off("Lab", "fake_loop", actor=ADMIN, verified="access")
-        return real(trigger, worst, day, reserved)
-    monkeypatch.setattr(B, "over_cap", off_first)
+        return real(trigger, day, reserved)
+    monkeypatch.setattr(B, "remaining", off_first)
     got = _call(bg)
     assert got.get("detail", "") == ("the background feature fake_loop is off for the network "
                                      "lab: an admin turns it on in Settings › AI, after its "
@@ -499,7 +531,7 @@ def test_the_month_caps_refusal_names_this_month(bg):
     got = gateway.ask(TASK, ("ping", 1), connection.Ping, {"word": "w"},
                       actor=triggers.actor_of(t), trigger=t, send=bg.send, today="2026-01-15")
     assert got.get("error") == "feature_cap" and bg.sent == []
-    assert ("fake_loop's spend on lab this month $1.0000 plus $0.0000 reserved by its 0 "
-            "call(s) in flight plus this call's worst case $") \
-        in got.get("detail", ""), got
-    assert "is over its month cap $1.0000; it stops until the month ends" in got["detail"]
+    # The month's cap named as the month's, with its spend this month (7b0bb884's words).
+    assert ("fake_loop's month cap on lab $1.0000: spent $1.0000 plus $0.0000 held by 0 "
+            "call(s) in flight leaves $0.0000") in got.get("detail", ""), got
+    assert calls.read()["rows"][0]["cap_kind"] == "month"

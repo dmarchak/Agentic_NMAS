@@ -475,23 +475,38 @@ def test_a_planted_secret_in_a_reads_answer_never_reaches_the_gateway():
     assert reads["read:2"]["withheld"] == 2
 
 
+def _roomy(room):
+    """An iterative feature whose reads have *room* characters in all (`LoopFeature.read_room`:
+    the room the model's context window leaves, C3890)."""
+    return _feature(again=(("ping", 1), First), iterative=True, max_reads=9, wall_s=240.0,
+                    read_room=room)
+
+
 def test_an_answer_past_the_bound_is_cut_saying_so_with_the_whole_answers_hash():
+    """A read's 4,096-byte cap is gone (7b0bb884, the operator 2026-11-16: evidence by
+    relevance and whole, cut only to stay inside the context window): an answer of 10,400
+    bytes is sent whole; with a room for reads declared under it, the newest answer is cut to
+    fit, said in its own words, and its whole size and hash stay as read."""
     line = "flow table 0 priority 10 é packets 900 bytes 1200\n"
     text = line * 200
-    runner = Runner({"topology": text})
+    whole = text.encode("utf-8")
     gw = FakeGateway(_first(_ask("topology")), _second())
-    got = _run(gw, family=_family(run=runner))
+    got = _run(gw, family=_family(run=Runner({"topology": text})))
+    (read,) = json.loads(gw.calls[1]["parts"]["mercury_reads"])
+    assert read["answer"] == text and read["cut"] is False and got["reads"][0]["cut"] is False
+    assert read["bytes"] == len(whole) > 4096
+    gw = FakeGateway(_first(_ask("topology")), _second())
+    got = _run(gw, family=_family(run=Runner({"topology": text})), feature=_roomy(2000))
     (read,) = json.loads(gw.calls[1]["parts"]["mercury_reads"])
     answer = read["answer"]
-    whole = text.encode("utf-8")
-    assert len(answer.encode("utf-8")) <= RL.AI_READ_CAP == 4096
     assert read["cut"] is True and got["reads"][0]["cut"] is True
-    shown = answer.rsplit("\n[cut:", 1)[0]
-    assert text.startswith(shown) and shown.endswith("bytes 1200")
-    assert answer.endswith(
-        f"[cut: {len(shown.encode('utf-8'))} of {len(whole)} bytes shown; the whole answer's "
-        f"sha256 {hashlib.sha256(whole).hexdigest()}]")
+    assert answer.endswith(RL.ROOM_CUT)
+    shown = answer[:-len(RL.ROOM_CUT)]
+    assert shown and text.startswith(shown)
+    assert RL._sent_chars(got["reads"]) <= 2000
     assert read["bytes"] == len(whole)
+    assert got["reads"][0]["sha256"] == hashlib.sha256(whole).hexdigest()
+    assert got["bound"] == "its room for reads in the context window"
 
 
 def test_an_answer_within_the_bound_is_sent_whole():
@@ -503,12 +518,16 @@ def test_an_answer_within_the_bound_is_sent_whole():
 
 
 def test_a_cut_never_splits_a_character():
+    """The one cut left (7b0bb884: to fit the context window's room) cuts characters, never a
+    character's bytes: what is shown of a two-byte text is that text's whole characters."""
     runner = Runner({"topology": "é" * 5000})
     gw = FakeGateway(_first(_ask("topology")), _second())
-    _run(gw, family=_family(run=runner))
+    got = _run(gw, family=_family(run=runner), feature=_roomy(2000))
     (read,) = json.loads(gw.calls[1]["parts"]["mercury_reads"])
-    shown = read["answer"].rsplit("\n[cut:", 1)[0]
-    assert set(shown) == {"é"} and len(read["answer"].encode("utf-8")) <= RL.AI_READ_CAP
+    assert read["cut"] is True and read["answer"].endswith(RL.ROOM_CUT)
+    shown = read["answer"][:-len(RL.ROOM_CUT)]
+    assert shown and set(shown) == {"é"} and RL._sent_chars(got["reads"]) <= 2000
+    shown.encode("utf-8").decode("utf-8")
 
 
 def test_a_citation_of_a_read_that_does_not_exist_is_refused_in_pass_2s_check():
@@ -668,9 +687,11 @@ def test_the_day_cap_reached_by_pass_1_stops_pass_2_recorded_with_no_second_requ
     assert len(world.sent) == 1, "no second request"
     assert got["ok"] is True and got["pass"] == 1 and got["state"] == "first_pass"
     assert got["second"]["error"] == "over_cap"
-    assert "over the day cap $1.5000" in got["second"]["detail"]
+    # The cap's refusal names the cap and its spend (7b0bb884's words).
+    assert "the installation's day cap $1.5000: spent $" in got["second"]["detail"]
     assert got["words"].startswith("AI analysis: asked for 1 read; 1 run; second pass not run: "
-                                   "a cap is reached: today's spend $")
+                                   "a cap is reached: the installation's day cap $1.5000: "
+                                   "spent $")
     rows = [r for r in calls.read()["rows"] if "verdict" in r]
     assert sorted((r["schema"], r["verdict"]) for r in rows) == [
         ("planted_read_first.v1", "ok"), ("planted_read_second.v1", "over_cap")]

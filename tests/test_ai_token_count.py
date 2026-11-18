@@ -142,7 +142,9 @@ def test_the_count_is_used_when_it_answers(world):
     assert key == KEY and body == world.sent[0]["body"], "the masked request the send carries"
     row = _row()
     assert row["prompt_tokens"] == 77
-    assert row["prompt_count"] == {"how": "counted", "why": "", "latency_s": 0.25}
+    # With the masked request's characters (C3890: a caller's fit reads its characters a token).
+    assert row["prompt_count"] == {"how": "counted", "why": "", "latency_s": 0.25,
+                                   "chars": _chars(body)}
 
 
 @pytest.mark.parametrize("exc,kind", [
@@ -159,42 +161,62 @@ def test_the_fallback_is_used_and_said_when_the_count_fails(world, exc, kind):
     assert row["prompt_count"] == {
         "how": "estimated", "chars_per_token": gateway.CHARS_PER_TOKEN,
         "why": f"the provider's count failed ({kind}: {exc}); the fallback over-estimate is "
-               "used"}
+               "used", "chars": _chars(world.sent[0]["body"])}
 
 
-def test_nothing_is_sent_when_the_counted_prompt_is_over_the_bound(world):
-    bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+def _chars(body) -> int:
+    """The masked request's characters as `gateway.Counter` measures them (C3890)."""
+    return len(json.dumps(body, ensure_ascii=False))
+
+
+#: connection_check's typical answer while none is measured: its pin's max_tokens (7b0bb884).
+TYPICAL = profiles.TASKS["connection_check"]["max_tokens"]
+
+
+def test_nothing_is_sent_when_the_counted_prompt_is_over_the_bound(world, monkeypatch):
+    """The bound is the model's context window less the task's typical answer (7b0bb884: the
+    only size bound), here planted at the pin's old prompt bound: the provider's count one
+    over it refuses, naming the count; at it, the call is sent."""
+    window = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+    monkeypatch.setattr(profiles, "context_window", lambda model: window)
+    bound = window - TYPICAL
     got = _ask(world, count=lambda body, key: A.Count(tokens=bound + 1))
     assert got["error"] == "prompt_too_long" and world.sent == []
-    assert got["detail"].startswith(f"this prompt is {bound + 1} tokens (counted by the "
-                                    f"provider), over the task's bound of {bound}")
+    assert got["detail"].startswith(f"this prompt is {bound + 1:,} tokens (counted by the "
+                                    f"provider); with the task's typical answer of {TYPICAL} "
+                                    "tokens")
+    assert f"the prompt may be at most {bound:,}; nothing was sent" in got["detail"]
     assert _ask(world, count=lambda body, key: A.Count(tokens=bound))["ok"] is True
 
 
-def test_a_fallback_over_the_bound_says_it_was_estimated_and_why(world):
-    bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+def test_a_fallback_over_the_bound_says_it_was_estimated_and_why(world, monkeypatch):
+    window = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+    monkeypatch.setattr(profiles, "context_window", lambda model: window)
 
     def count(body, key):
         raise A.Overloaded("HTTP 529: busy", status=529)
-    got = _ask(world, parts={"word": "w", "pack": "x" * int(bound * 2)}, count=count)
+    got = _ask(world, parts={"word": "w", "pack": "x" * int(window * 2)}, count=count)
     assert got["error"] == "prompt_too_long" and world.sent == []
     est = _row()["prompt_tokens"]
     assert got["detail"] == (
-        f"this prompt is {est} tokens (by the fallback estimate, {gateway.CHARS_PER_TOKEN} "
+        f"this prompt is {est:,} tokens (by the fallback estimate, {gateway.CHARS_PER_TOKEN} "
         "characters a token (the provider's count failed (overloaded: HTTP 529: busy); the "
-        "fallback over-estimate is used)), over the task's bound of "
-        f"{bound} (claude-haiku-5-5 charges every rate at its long tier over 100000); nothing "
-        "was sent")
+        f"fallback over-estimate is used)); with the task's typical answer of {TYPICAL} tokens "
+        "(not measured yet: no connection_check call on claude-haiku-5-5 in the last 30 days; "
+        f"the pin's max_tokens ({TYPICAL}) stands in) it is over claude-haiku-5-5's context "
+        f"window of {window:,} tokens ({profiles.LIMITS_SOURCE}): the prompt may be at most "
+        f"{window - TYPICAL:,}; nothing was sent")
 
 
 def test_the_worst_case_the_caps_judge_is_the_counted_prompts(world, monkeypatch):
-    seen = []
-    real = gateway.worst_case_usd
-    monkeypatch.setattr(gateway, "worst_case_usd",
-                        lambda model, body, tokens=None: seen.append(tokens)
-                        or real(model, body, tokens))
+    """The caps judge a hold priced from the provider's count (7b0bb884: the counted prompt,
+    every token at the cache-write rate, plus the typical answer), never the fallback
+    estimate: the row's sizing names the count's 123 tokens and its price."""
     _ask(world, count=lambda body, key: A.Count(tokens=123))
-    assert seen == [123]
+    sized = _row()["sized"]
+    rates = profiles.prices_for("claude-haiku-5-5", 123)
+    assert sized["prompt_tokens"] == 123
+    assert sized["prompt_usd"] == round(123 * rates["cache_write"] / 1_000_000, 6)
 
 
 def test_a_call_a_gate_refuses_is_never_counted(world):
@@ -394,8 +416,8 @@ def test_explains_budget_keeps_what_the_count_fits_where_the_fallback_trims(monk
     topo = {"sent": False, "network": "", "yaml": ""}
     whole = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
     budget = whole["said"]["estimate"] - 1
-    monkeypatch.setitem(profiles.TASKS, "explain",
-                        dict(profiles.TASKS["explain"], max_prompt_tokens=budget))
+    from tests.test_ai_explain import room
+    room(monkeypatch, budget)            # the context window's room (7b0bb884), planted
     fallback = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
     assert fallback["said"]["estimate"] > budget, "nothing to drop: the fallback stays over"
     c = gateway.Counter(profiles.TASKS["explain"]["model"], KEY,

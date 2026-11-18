@@ -440,7 +440,7 @@ def _ai_rows(html):
     return {m.group(1): m.group(2) for m in re.finditer(
         # Board NA-R (2026-11-02): a row is a <details>, its one line and its body inside it.
         r'<details class="att att-[a-z]+" data-attention-row="(ai_spend:[^"]+)" '
-        r'data-keep="[^"]*">(.*?)</details>', html, re.S)}
+        r'data-keep="[^"]*"[^>]*>(.*?)</details>', html, re.S)}
 
 
 def test_a_day_cap_row_draws_open_the_spend_panel_and_how_it_clears(spend):
