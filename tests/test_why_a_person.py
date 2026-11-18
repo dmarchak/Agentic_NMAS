@@ -9,7 +9,8 @@ for 20e0a401 ("Why a person is needed"), the debt pass, 2026-11-18.
 
 Each test holds one purpose:
 - each reason is the one its action, guard or saved fix gives;
-- the AI's plan, a saved script and guards 4 and 6 come before the action's own reason;
+- the AI's plan, a saved script and guard 4 come before the action's own reason (guard 6
+  holds nothing since C3909, so a standing on it says its action's reason; C4029);
 - with nothing to say and no decision standing, it says nothing;
 - the page's status line is the reason while a person is needed.
 """
@@ -39,14 +40,22 @@ def cause(monkeypatch):
 
 class TestEachReason:
     @pytest.mark.parametrize("guard", [4, {"guard": 4, "name": "intent"}])
-    def test_guard_4_is_saved_config_and_intent_disagreeing(self, guard):
+    def test_guard_4_is_a_device_mercury_may_not_heal(self, guard):
+        # Premise corrected (C4029, the operator, 2026-11-18: "Remove the retired behaviour
+        # from guard names"): guard 4 holds only an observe-only device or a host since C3909
+        # (`decide._g4`), never a golden disagreeing with intent.
         got = S._why_person({"kind": "hand_over"}, None, found(standing={"guard": guard}))
-        assert got == "Saved config and intent disagree: decide which is right"
+        assert got == ("Self-healing is off for this device (an observe-only device or a "
+                       "host): a person fixes it")
+        assert "intent" not in got
 
-    def test_guard_6_is_many_devices_at_once(self):
+    def test_guard_6_holds_nothing_so_its_action_says_why(self):
+        # Premise corrected (C4029): guard 6 holds nothing since C3909 (`decide._g6`), so a
+        # standing kept from before it is said by its action's own reason, never as many
+        # devices at once.
         got = S._why_person({"kind": "approve"}, None,
                             found(standing={"guard": {"guard": 6}}))
-        assert got == "Many devices changed at once: approve fixing them all"
+        assert got == "The AI's plan is ready: needs your approval"
 
     def test_a_saved_script_names_itself(self):
         got = S._why_person({"kind": "start"}, {"name": "bpdu-recover"}, found())
@@ -76,7 +85,7 @@ class TestTheOrder:
     def test_a_guard_comes_before_a_saved_script_and_the_action(self, cause):
         got = S._why_person({"kind": "start"}, {"name": "bpdu-recover"},
                             found(standing={"guard": 4}))
-        assert got.startswith("Saved config and intent disagree")
+        assert got.startswith("Self-healing is off for this device")   # guard 4 (C4029)
 
     def test_a_saved_script_comes_before_the_ai(self, cause):
         got = S._why_person({"kind": "approve"}, {"name": "bpdu-recover"}, found())

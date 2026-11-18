@@ -1039,9 +1039,12 @@ def _and_words(items: list) -> str:
 def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None,
                 network: str = "") -> str:
     """Why a person is needed, one short reason beside its one action (the operator,
-    2026-11-16), or ``""``: guard 4's disagreement, guard 6's many devices, a saved script, the
-    AI's plan, no saved fix yet (the AI can investigate), or nothing safe found. *network*:
-    the section's own (the Incidents row's found carries none, C4086)."""
+    2026-11-16), or ``""``: guard 4's hold (a device Mercury may not heal), a saved script, the
+    AI's plan, no saved fix yet (the AI can investigate), or nothing safe found. Guard 4 holds
+    only an observe-only device or a host since C3909 (`decide._g4`), and guard 6 holds
+    nothing (`decide._g6`), so neither is said as a golden disagreeing with intent or as many
+    devices at once (C4029, the operator, 2026-11-18). *network*: the section's own (the
+    Incidents row's found carries none, C4086)."""
     from modules import problem as P
 
     inc = (found or {}).get("incident") or {}
@@ -1049,9 +1052,8 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None,
     g = (inc.get("standing") or {}).get("guard")
     g = g.get("guard") if isinstance(g, dict) else g
     if g == 4:
-        return "Saved config and intent disagree: decide which is right"
-    if g == 6:
-        return "Many devices changed at once: approve fixing them all"
+        return ("Self-healing is off for this device (an observe-only device or a host): a "
+                "person fixes it")
     standing = inc.get("standing") or {}
     if standing.get("outcome") == "would_heal":
         # A dry run's would-heal says what Mercury would put back and why it has not (the

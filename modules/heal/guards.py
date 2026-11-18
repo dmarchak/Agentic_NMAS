@@ -106,7 +106,7 @@ def g3_planned(network: str, device: str, now: float, *, explained=None, holder=
     return None
 
 
-# ── 4: the golden departs from intent (N5) ──────────────────────────────────────────────────
+# ── 4: heal off for this device (`decide._g4`); a departing golden holds nothing (C3909) ───
 
 #: How many of the departing lines guard 4 records in its operands (the rest counted): the
 #: lines its Needs attention row draws, each with its way out (C3581).
@@ -114,10 +114,13 @@ G4_LINES = 10
 
 
 def g4_golden(golden: dict):
-    """*golden* is ``{"state": "at_intent"|"departs"|"unknown", "words", "commit", "lines",
-    "adds", "removes"}`` (`decide.Sources.golden`): the approved state is the device's last
-    golden that matched its intent. Its operands carry the departing lines as `intent_match`
-    gave them (masked), the first `G4_LINES`, and how many more there are."""
+    """Retired as a hold (C3909, the operator, 2026-11-17: "remove the hold, but don't restore
+    a golden that departs from intent"): the decision no longer asks it (`decide._g4` holds
+    only an observe-only device or a host), and a departing golden is a can't-fix of
+    Mercury's own; kept for the tests that still call it. *golden* is ``{"state":
+    "at_intent"|"departs"|"unknown", "words", "commit", "lines", "adds", "removes"}``
+    (`decide.Sources.golden`); its operands carry the departing lines as `intent_match` gave
+    them (masked), the first `G4_LINES`, and how many more there are."""
     if golden.get("state") == "at_intent":
         return None
     lines = [str(x) for x in golden.get("lines") or []]

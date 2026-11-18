@@ -3,23 +3,26 @@ docs/HEAL_TO_INTENT.md section 4 step 2, sections 5 to 7 and 11). It reads the d
 changes nothing: the decision records, and H4 acts.
 
 **The decision, per incident** (`decide_one`), each step the first that applies ends it:
-1. guards 1 to 3 (`guards.g1_kill_switch`, `g2_mode` with a halt in force, `g3_planned`),
-   before any read;
-2. guard 4, the approved state (N5): the device's newest golden carries ``Intent-Match:`` at
-   intent for it (`device_list._golden_history`), or, where no trailer was recorded, the golden
-   matches committed intent now (`intent_match.intent_match`);
-3. guard 6, many devices at once (a person decides), and guard 11 where the network stops a
-   fight (`heal_fight_stop`). Guards 5, 7, 8's wait, 9 and 10 hold nothing since the operator's
-   decision of 2026-11-16 ("Remove all time-based holds"): `heal.findings` says a problem that
-   keeps coming back and a fix something keeps undoing instead;
+1. guards 1 to 3 (`guards.g1_kill_switch`, `g2_mode`, `g3_planned`), before any read; no halt
+   holds a network (round 2 of the speed pass, the operator, 2026-11-17);
+2. guard 4 (`_g4`): an observe-only device or a host has no state Mercury may heal to, held
+   before any read. Otherwise the approved state (N5): the device's newest golden carries
+   ``Intent-Match:`` at intent for it (`device_list._golden_history`), or, where no trailer was
+   recorded, the golden matches committed intent now (`intent_match.intent_match`); a golden
+   that departs from intent holds nothing since C3909 (the operator, 2026-11-17), and its lines
+   are never restored (`restore_source`);
+3. no guard between: 6 (many devices at once) and 11 (a fix something keeps undoing) hold
+   nothing since C3909 and round 2, and 5, 7, 8's wait, 9 and 10 since the operator's decision
+   of 2026-11-16 ("Remove all time-based holds"); `heal.findings` says a problem that keeps
+   coming back and a fix something keeps undoing instead;
 4. a FRESH read of the device (`Sources.read`, the capture path's one checked read), its
-   departure from the golden compared with the one the grace period settled on
+   departure from the golden compared with the one the detect pass's read settled on
    (`drift_check.drift_diff`, `departure`): moved since, the incident is checked again;
 5. the units and their kinds (`kinds.classify`: the intersection rule, N13's units, the tier
    table, N4, N9), the program from the golden's own lines and the measured removals
    (`program`, the deploy's `_program`), its hash (`deploy.command_fingerprint`), and what it
    would cut of Mercury's reach (`expected_effects.for_device`'s ``reach_lost``: Tier 4);
-6. guard 12, the program's size; guard 14, a rolled-back heal; guard 13, the tier (`_outcome`):
+6. guard 13, the tier (`_outcome`; guards 12 and 14 hold nothing since round 2):
    AUTO and every unit's kind allowed AUTO, ``heal``; Tier 1 otherwise, ``would_heal`` (dry
    run); Tier 2 kinds the policy proposes, ``propose``; anything else, ``cant_fix``.
 

@@ -145,11 +145,15 @@ GUARDS = (
     (1, "the kill switch", (KILL_KEY,)),
     (2, "the network's mode", (MODE_KEY, UNTIL_KEY)),
     (3, "planned work", ()),
-    (4, "the device's golden departs from its intent", ()),
+    # C3909 (the operator, 2026-11-17): guard 4 holds only a device Mercury may not heal (an
+    # observe-only device or a host, `decide._g4`); a departing golden holds nothing now.
+    (4, "heal off for this device (an observe-only device or a host)", ()),
     (5, "a recent change", ("heal_topology_hold_minutes",)),
     (6, "many devices at once", ("heal_max_devices_drifting",)),
     (7, "a person working", ("heal_person_working_changes", "heal_person_working_minutes")),
-    (8, "the grace period", ("heal_grace_seconds",)),
+    # Guard 8: no grace holds an incident now (round 2); a device that could not be read or
+    # checked is a can't-fix (`guards.g8_grace`).
+    (8, "a device that could not be judged", ("heal_grace_seconds",)),
     # The operator, 2026-11-16: guards 5 and 7 to 11 hold or defer nothing; the rates (9 to 11)
     # are replaced by the findings (`heal.findings`), named here with the guards they replace.
     # Round 2 (the operator, 2026-11-17): guards 11 and 12 hold nothing either (`g11_fight`,
