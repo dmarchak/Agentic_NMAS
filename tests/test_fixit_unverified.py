@@ -288,6 +288,11 @@ class TestTheCard:
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
                 card = "document.querySelector('details[data-more=why]')"
                 b.wait_for(f"return !!{card}", 20)
+                # Premise corrected (board R5, becced07, approved 2026-11-15: everything but the
+                # title, impact, status and one action is under the card's one Details, closed
+                # by default): Details is opened first, as a person opens it.
+                b.click("#inc-details > summary")
+                b.wait_for("return document.getElementById('inc-details').open")
                 assert b.js(f"return {card}.open") is True, "open: no plan to read first"
                 text = b.js(f"return {card}.innerText")
                 assert "r2's streams stayed down after attempt 1" in text
