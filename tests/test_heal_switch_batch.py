@@ -98,6 +98,24 @@ def mode():
     return policy.current(NET)
 
 
+def test_the_press_is_timed_at_the_level_the_service_keeps(world, caplog):
+    """f123edeb (the overnight speed pass, 2026-11-17, C3907): the Self-healing press's answer
+    is timed in one line at WARNING, the level the host's service keeps, and so is the
+    switch's batch decided in its request. The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's
+    row for f123edeb and 5a808325)."""
+    import logging
+    would_heal()
+    action, on, shown = drawn(world)
+    with caplog.at_level(logging.WARNING):
+        code, body = press(world, action, on, shown)
+    assert code == 200, body
+    said = {r.getMessage().rsplit(" in ", 1)[0]: r for r in caplog.records
+            if r.levelno == logging.WARNING and r.name in ("routes.control_v2",
+                                                           "modules.control_strip")}
+    assert f"control strip: the Self-healing press on {NET} answered" in said, list(said)
+    assert f"control strip: the switch's batch decided on {NET}" in said, list(said)
+
+
 def test_nothing_open_at_the_press_turns_it_on_plainly_with_no_job(world):
     """C3909 (the operator, 2026-11-17): the line's problems gone at the press, the switch
     turns self-healing on as the switch with no line does, never refused because the line

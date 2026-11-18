@@ -245,6 +245,73 @@ class TestConfigChange:
         assert got["sighted"] == 0 and "2 networks" in got["unplaced"][0]
 
 
+# ── A port event's line (0094be69: R3's per-kind timing, the operator, 2026-11-16) ─────────
+
+def captured(name: str) -> list:
+    """The port event lines captured on s1 and documented for port security
+    (tests/fixtures/errdisable/), each ``(mnemonic, text)``."""
+    path = os.path.join(os.path.dirname(__file__), "fixtures", "errdisable", name)
+    with open(path, encoding="utf-8") as fh:
+        return [tuple(x.strip().split(": ", 1)) for x in fh if x.strip()]
+
+
+class TestAPortEventLine:
+    """An err-disable is decided as soon as its syslog line arrives, not after Grafana's
+    minute: self-healing's own syslog read carries the line (`detect_read.line_filter`), the
+    line is its incident's trigger of kind ``errdisable`` naming its port and cause
+    (`triggers.from_syslog`, `PORT_EVENT_LINES`), delivered with a wake of the detect pass,
+    and the classifier reads a port problem for it as for an alert (`errdisable.PORT_TRIGGERS`).
+    The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for 0094be69)."""
+
+    def port_line(self, mn, text, ts=T0):
+        return {"at": iso(ts), "ts": ts, "dev": "core-b", "sev": 4, "mn": mn, "text": text}
+
+    def test_self_healings_own_syslog_read_carries_each_port_event_line(self):
+        import re
+
+        from modules.heal import detect_read as D
+
+        lines = captured("s1_loki_lines.txt") + captured("psecure_lines_documented.txt")
+        assert len(lines) >= 4, "floor: both captures read"
+        for mn, _text in lines:
+            assert re.search(D.line_filter(), mn), mn
+
+    @pytest.mark.parametrize("capture,mn_end,port,cause", [
+        ("s1_loki_lines.txt", "-ERR_DISABLE", "Gi1/0", "bpduguard"),
+        ("s1_loki_lines.txt", "-BLOCK_BPDUGUARD", "Gi1/0", "bpduguard"),
+        ("psecure_lines_documented.txt", "-ERR_DISABLE", "Gi0/3", "psecure-violation"),
+        ("psecure_lines_documented.txt", "-PSECURE_VIOLATION", "GigabitEthernet0/3",
+         "psecure-violation")])
+    def test_the_line_is_its_incidents_trigger_naming_its_port_and_cause(
+            self, world, monkeypatch, capture, mn_end, port, cause):
+        woke = []
+        monkeypatch.setattr("modules.heal.detect.wake", lambda: woke.append(1))
+        (mn, text), = [x for x in captured(capture) if x[0].endswith(mn_end)]
+        got = T.from_syslog("logs-tail", {"lines": [self.port_line(mn, text)]}, now=T0)
+        assert got["sighted"] == 1 and woke, got
+        (inc,) = opened()
+        (t,) = inc["triggers"]
+        assert (inc["device"], t["kind"], t["interface"], t["cause"]) == (
+            "core-b", T.ERRDISABLE_KIND, port, cause), t
+        assert t["key"].startswith("errdis:") and t["epoch"] == T0
+        assert text in t["words"]
+
+    def test_a_port_event_line_where_healing_is_off_is_no_trigger(self, world, monkeypatch):
+        from modules import attention as A
+
+        monkeypatch.setattr(A, "_device_networks", lambda: {"core-b": ["Branch"]})
+        (mn, text), = [x for x in captured("s1_loki_lines.txt") if x[0].endswith("ERR_DISABLE")]
+        got = T.from_syslog("logs-tail", {"lines": [self.port_line(mn, text)]}, now=T0)
+        assert (got["sighted"], got["off"]) == (0, 1) and stored("Branch") == []
+
+    def test_the_classifier_reads_a_port_problem_for_it_as_for_an_alert(self):
+        from modules.heal import errdisable as E
+
+        inc = {"triggers": [{"kind": "errdisable", "interface": "Gi1/0"},
+                            {"kind": "config_change", "interface": "Gi9/9"}]}
+        assert E._alert_ports(inc) == ["Gi1/0"]
+
+
 # ── Alerts (N2) ─────────────────────────────────────────────────────────────────────────────
 
 def alert(**kw):

@@ -48,3 +48,66 @@ def test_a_batch_claim_while_its_batch_runs_is_running():
     finally:
         gate.set()
         capture_job.wait(job, 30)
+
+
+# ── fix_running's other states, and the grace's person (ee7682ba, C3862 and C3863; the debt
+# pass, 2026-11-18, docs/FAST_LANE_DEBT.md's row for ee7682ba) ─────────────────────────────
+
+def taken(did="hd-00000000a1") -> dict:
+    """An open incident on r2 whose heal decision is taken and not yet applied."""
+    return {"incident": {"id": "hi-0000000000a1", "device": "r2", "state": "standing"},
+            "entry": {}, "decisions": [{"id": did, "outcome": "heal", "taken": {"by": "t"}}]}
+
+
+def test_the_acts_mark_held_is_running_and_released_is_not(tmp_path, monkeypatch):
+    """Its act's mark held (taken before the decision, in any process) is a running heal,
+    "starting" until its job's step is known; the mark released, nothing runs."""
+    from modules.heal import interrupted
+
+    monkeypatch.setattr("modules.heal.incidents._dir", lambda network: str(tmp_path))
+    f = taken()
+    assert IP.fix_running(NET, f) == {}, "no mark: nothing runs"
+    interrupted.hold(NET, "hd-00000000a1", "r2", "the test")
+    try:
+        got = IP.fix_running(NET, f)
+        assert (got["words"], got["step"], got["decision"]) == (
+            IP.RESTORING.format(device="r2"), IP.STARTING, "hd-00000000a1"), got
+        applied = dict(f, decisions=[dict(f["decisions"][0], applied={"outcome": "healed"})])
+        assert IP.fix_running(NET, applied) == {}, "an applied decision's mark is no act"
+    finally:
+        interrupted.release(NET, "hd-00000000a1")
+    assert IP.fix_running(NET, f) == {}
+
+
+def test_its_step_log_entry_applying_is_running_with_its_newest_step_even_closed():
+    """An entry still applying (its act's rows, no ``record`` yet) is a running heal, its step
+    the act's newest recorded one, whatever the incident's state; done, it is not."""
+    from modules import run_stepper
+    from modules.heal import act as A
+
+    steps = [{"row": "started", "decision": "hd-00000000b2", "step": "take", "result": "ok"},
+             {"row": "act", "decision": "hd-00000000b2", "step": "stops", "result": "ok"}]
+    f = {"incident": {"id": "hi-0000000000b2", "device": "r2", "state": "closed"},
+         "entry": {"state": "applying", "device": "r2", "steps": steps}, "decisions": []}
+    got = IP.fix_running(NET, f)
+    want = run_stepper.current_words(A.STEPS, steps,
+                                     run_stepper.labels_for(A.STEP_LABELS, device="r2"))
+    assert want and (got["step"], got["decision"]) == (want, "hd-00000000b2"), got
+    done = dict(f, entry=dict(f["entry"], state="done"))
+    assert IP.fix_running(NET, done) == {}
+
+
+def test_the_grace_names_its_person_never_the_attributions_sentence():
+    """C3863: a person said as a person, with where the line says they were; an old grace
+    record's sentence read back; no account, nothing. IPv4, IPv6 and a console line."""
+    from modules.heal.attribution import person_said
+
+    assert person_said({"user": "lab", "line": "vty0", "address": "192.0.2.7"}) == \
+        "lab (vty0, from 192.0.2.7)"
+    assert person_said({"user": "lab", "line": "vty0", "address": "2001:db8::7"}) == \
+        "lab (vty0, from 2001:db8::7)"
+    assert person_said({"person": "the line names the account lab on vty0 from 2001:db8::7"}) \
+        == "lab (vty0, from 2001:db8::7)"
+    assert person_said({"words": "the line names the account alice on console"}) == \
+        "alice (console)"
+    assert person_said({"words": "made on the console, no account named"}) == ""

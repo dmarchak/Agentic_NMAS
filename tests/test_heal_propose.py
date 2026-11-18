@@ -490,6 +490,24 @@ class TestTheApprovedAct:
         (inc,) = I.read("Default")["incidents"]
         assert inc["state"] == "closed" and d["id"] in inc["closed_why"]
 
+    def test_its_close_keeps_the_verify_as_its_proof(self, lab, measured):
+        """39cd02c8 (the operator, 2026-11-16): an approved proposal that verifies closes its
+        incident with its verify kept (``fixed``, `act.verified_of`), as a self-heal's act
+        does, so its Fixed card draws the proof: the act's decision and device, and each verify
+        step as the act recorded it. The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row
+        for 39cd02c8)."""
+        from modules.heal import act
+
+        d = proposed()
+        got, _approval, _v = run_approved(d, FakeApproved(R8))
+        assert got["outcome"] == "healed", got["words"]
+        (inc,) = I.read("Default")["incidents"]
+        fixed = inc.get("fixed") or {}
+        assert (fixed.get("act"), fixed.get("device")) == (d["id"], "edge-b"), fixed
+        want = [s["step"] for s in got["steps"] if s["step"] in act.VERIFY_STEPS]
+        assert want, "floor: the approved act recorded verify steps"
+        assert [s["step"] for s in fixed["verify"]] == want, fixed["verify"]
+
     def test_the_reset_is_a_tier_2_record_as_the_person(self, lab, measured):
         from modules.nsot import privileged
 

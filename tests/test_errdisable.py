@@ -777,6 +777,39 @@ class TestPortSecurityWhileDown:
         result, words = E.check_cause_cleared(None, psec_run(lines))
         assert result == "fail" and "Port stays down" in words, (result, words)
 
+    def test_a_violation_count_risen_since_the_confirmation_fails_naming_both_counts(self):
+        """4a8bb0df (the debt pass, 2026-11-18, docs/FAST_LANE_DEBT.md's row for it): no new
+        violation line, but the port's count (read now through the run's sources, `show
+        port-security interface`) above the one the confirmation read after the err-disable:
+        the violator is still connected, said with both counts."""
+        lines = loki("psecure_lines_documented.txt", step=0.0)
+        risen = PSEC_DOWN.replace("Security Violation Count   : 1",
+                                  "Security Violation Count   : 3")
+        run = psec_run(lines, confirmed={"epoch": AT + 5, "psec": {"violations": 1}},
+                       answer=risen)
+        result, words = E.check_cause_cleared(None, run)
+        assert result == "fail", (result, words)
+        assert "the violation count is 3, 1 at the err-disable" in words, words
+        assert run.found["violations"] == 3
+
+    def test_a_confirmation_read_before_the_err_disable_is_no_baseline(self):
+        """A count the confirmation read before the err-disable is not "as at the
+        err-disable": a higher count now is no new violation, and the check stays deferred."""
+        lines = loki("psecure_lines_documented.txt", step=0.0)
+        risen = PSEC_DOWN.replace("Security Violation Count   : 1",
+                                  "Security Violation Count   : 3")
+        run = psec_run(lines, confirmed={"epoch": AT - 600, "psec": {"violations": 1}},
+                       answer=risen)
+        result, words = E.check_cause_cleared(None, run)
+        assert result == "deferred", (result, words)
+
+    def test_the_violating_mac_is_the_lines_and_said(self):
+        lines = loki("psecure_lines_documented.txt", step=0.0)
+        run = psec_run(lines, confirmed={"epoch": AT + 5, "psec": {"violations": 1}})
+        _result, words = E.check_cause_cleared(None, run)
+        assert run.found["mac"] == "aa:bb:cc:00:80:99", run.found
+        assert "the violating MAC aa:bb:cc:00:80:99" in words, words
+
 
 # ── One port's verified fix closes only an incident of that port (the correctness review's
 # G3 M3, 2026-11-18) ─────────────────────────────────────────────────────────────────────────

@@ -275,6 +275,21 @@ class TestTheForm:
                                    "usd_total": 0.0}
         assert counted == []
 
+    def test_the_press_is_timed_at_the_level_the_service_keeps(self, world, counted, caplog):
+        """f123edeb (the overnight speed pass, 2026-11-17, C3907): the AI troubleshooting
+        press's answer is timed in one line at WARNING, the level the host's service keeps, so
+        the morning run reads where a press's seconds go. The debt pass, 2026-11-18
+        (docs/FAST_LANE_DEBT.md's row for f123edeb and 5a808325)."""
+        import logging
+        import re
+        _html, shown, each = form_of(world)
+        with caplog.at_level(logging.WARNING, logger="routes.settings_v2"):
+            post(world, shown, each)
+        said = [r for r in caplog.records if r.name == "routes.settings_v2"
+                and "the AI troubleshooting press on" in r.getMessage()]
+        assert len(said) == 1 and said[0].levelno == logging.WARNING, caplog.text[-600:]
+        assert re.search(rf"press on {NET} answered in \d+\.\d\d s$", said[0].getMessage())
+
     def test_another_feature_lists_and_starts_nothing(self, world, counted):
         import re
         planted()
