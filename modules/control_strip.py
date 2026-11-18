@@ -337,10 +337,10 @@ def view(network: str, now: float = None, drawn: bool = False, **answer) -> dict
     except Exception as exc:                          # noqa: BLE001 (said, never drawn as off)
         cur = {"mode": "unknown", "until": "", "words": f"{type(exc).__name__}: {exc}",
                "state": "unreadable"}
-    hours = batch.default_hours(network)
+    # Turned on, Auto lasts until someone turns it off (cd0aa4cc, the operator's change to N8,
+    # 2026-11-16): the switch draws no duration and no "until about", so none is carried.
     heal = {"mode": cur.get("mode"), "on": cur.get("mode") == "auto",
             "until": cur.get("until") if cur.get("mode") == "auto" else "",
-            "would_until": batch.default_until(network, now), "hours": hours,
             "words": cur.get("words") or "", "known": cur.get("mode") in policy.MODES,
             "gear": url_for("settings_v2.network", list_name=network, tab="heal"),
             "also": "", "hash": "", "also_error": ""}

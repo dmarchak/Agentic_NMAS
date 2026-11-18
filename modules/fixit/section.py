@@ -1545,12 +1545,18 @@ def ai_offer(state: str, cs: dict, network: str = None) -> dict:
 def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",
           now: float = None) -> dict:
     """`view` as a page draws it: every text masked again on the way out (`steplog.masked`) and
-    every person named by display name (`display_names.people_payload`)."""
+    every person named by display name (`display_names.people_payload`). Only what the section
+    draws is carried: why a person is needed is drawn as the status line it becomes (`view`),
+    and the steps a gap overlooked as the finding's words and ``shown.gap_overlooked``, so
+    neither is handed on (the Incidents list reads why a person is needed from `view`)."""
     from modules import display_names
     from modules.heal import steplog
 
-    return display_names.people_payload(steplog.masked(view(
-        network, found, resolved=resolved, ended=ended, now=now)))
+    out = view(network, found, resolved=resolved, ended=ended, now=now)
+    out.pop("why_person", None)
+    if isinstance(out.get("ai_answer"), dict):
+        out["ai_answer"] = {k: v for k, v in out["ai_answer"].items() if k != "overlooked"}
+    return display_names.people_payload(steplog.masked(out))
 
 
 # ── Mercury's diagnosis, and what moved since the panel was drawn ─────────────────────────

@@ -64,7 +64,8 @@ def _new_form(network: str, code: int = 200, form=None, **said):
     from routes.saved_plans_v2 import _who as person
 
     c = fix_editor.card(network, form, who=person())
-    return _strict(render_template("v2/_fix_form.html", c=c, said=said), code)
+    return _strict(render_template("v2/_fix_form.html", c=fix_editor.drawn(c), said=said),
+                   code)
 
 
 @bp.route("/new", methods=["GET"])
@@ -114,13 +115,23 @@ def new_save():
 
 
 def _contents(network: str, key: str, code: int = 200, edit_card=None, **said):
-    """The Contents fold drawn again in place, Edit…'s form in it when *edit* (its card)."""
-    from modules import fix_page
-    from routes.saved_plans_v2 import _who as who
+    """The Contents fold drawn again in place, Edit…'s form in it when *edit* (its card): the
+    fix's page model cut to what the fold draws (`CONTENTS_DRAWS`)."""
+    from modules import fix_editor, fix_page
 
     p = fix_page.page(network, key)
-    return _strict(render_template("v2/_fix_contents.html", p=p, edit=edit_card, said=said,
-                                   form=fix_page.delete_form(network, key, who())), code)
+    fold = {k: p[k] for k in CONTENTS_DRAWS}
+    if fold["contents"]:
+        # Each check's limits on a port that is down are How it runs' (`p.limits`).
+        fold["contents"] = dict(fold["contents"], checks=[
+            {k: v for k, v in c.items() if k != "limits"} for c in fold["contents"]["checks"]])
+    return _strict(render_template("v2/_fix_contents.html", p=fold,
+                                   edit=fix_editor.drawn(edit_card), said=said), code)
+
+
+#: What the Contents fold (`_fix_contents.html`) draws of a fix's page model: the rest is the
+#: other folds' and the BLUF's, drawn by the whole page.
+CONTENTS_DRAWS = ("key", "network", "fixes", "version", "versions", "contents", "editable")
 
 
 @bp.route("/<key>/edit", methods=["GET"])
@@ -166,7 +177,8 @@ def edit_save(key):
         p = fix_page.page(ref.name, key)
         return _strict(render_template(
             "v2/fix.html", p=p, form=fix_page.delete_form(ref.name, key, who), said={},
-            edit=edit_card, contents_said=said, auto=fix_page.automatic_form(ref.name, key, who),
+            edit=fix_editor.drawn(edit_card), contents_said=said,
+            auto=fix_page.automatic_form(ref.name, key, who),
             who=_who(), active_nav="fixes"), code)
     if c["right"]:
         return page_again(403, c, level="danger", words=f"Not saved: {c['right']}")
@@ -323,15 +335,18 @@ def run_answer(network: str, key: str, code: int = 200, *, incident: str = "",
                done: str = "", level: str = "", words: str = "", **_said):
     """The answer of the existing run path pressed on a fix's page (``view=fix``): its refusal
     or its start, drawn on the page's run card; a run's state from its own record while it
-    runs. Called by `fixit_v2.fix_with_script` and `saved_plans_v2._device_draw`."""
+    runs. Called by `fixit_v2.fix_with_script` and `saved_plans_v2._device_draw`. *interface*
+    is taken from them and not carried: the answer draws the device and the run path's own
+    words, never the port alone."""
     from modules import fix_page
 
+    del interface
     said = refused or done or words
     if incident and said.startswith(incident):
         # No raw ids on the fix's page (the operator's change 3): the incident is linked.
         said = "The incident" + said[len(incident):]
     c = {"state": "answer", "key": key, "network": network, "device": device,
-         "interface": interface, "incident": incident,
+         "incident": incident,
          "level": "danger" if refused or level == "danger" else "ok",
          "words": said.replace(incident, "the incident") if incident else said, "run": None}
     if run:

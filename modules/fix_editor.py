@@ -534,3 +534,32 @@ def card(network: str, form=None, *, fix: dict = None, who: dict) -> dict:
             "built": built, "counts": counts(draft["match"], held),
             "cleared": cleared_check(draft["match"]), "right": right, "save": save,
             "version": version, "auto": (fix or {}).get("how") == "automatic"}
+
+
+def drawn(c: dict) -> dict:
+    """*c* (`card`) as `templates/v2/_fix_form.html` draws it: only what the form draws is
+    carried. Save builds the template and its fills again from the form (`card`), so neither
+    is; the example's device and port are drawn from ``built.example``, never from the draft,
+    and its filled values not at all; the preview by its program, refusals and short hash; each
+    check is drawn by its id, name and read (its own
+    ``expect`` where it has no read), each line offered by its line and words, and each line
+    held provisional by its words. *c* itself is left as it was."""
+    if not c:
+        return c
+    opts = dict(c["opts"], lines=[{"line": x["line"], "words": x["words"]}
+                                  for x in c["opts"]["lines"]],
+                checks={kind: [{"id": x["id"], "name": x["name"], "read": x["read"],
+                                "raw": {"expect": (x.get("raw") or {}).get("expect")}}
+                               for x in items]
+                        for kind, items in c["opts"]["checks"].items()})
+    built = {k: v for k, v in c["built"].items() if k not in ("doc", "fills")}
+    if built.get("preview"):
+        # Drawn by its program, its refusals and its short hash (Save's title): Save builds
+        # its preview again, so its whole hash and verdict are not carried.
+        built["preview"] = {k: built["preview"].get(k) for k in ("program", "refusals", "short")}
+    if built.get("example"):
+        built["example"] = {k: v for k, v in built["example"].items() if k != "values"}
+    built["provisional"] = [{"words": u.get("words") or ""} for u in built.get("provisional")
+                            or []]
+    draft = {k: v for k, v in c["draft"].items() if k not in ("ex_device", "ex_interface")}
+    return dict(c, opts=opts, built=built, draft=draft)

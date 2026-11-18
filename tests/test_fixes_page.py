@@ -35,10 +35,12 @@ def test_the_list_counts_and_filters_and_a_deleted_fix_shows_only_under_its_filt
     assert (every["saved"], every["deleted"]) == (1, 1), every
     assert every["total"] == every["saved"] + every["built"] and every["built"] >= 1
     assert kept["key"] in keys(every) and gone["key"] not in keys(every)
-    assert [g["key"] for g in every["groups"]] == ["saved", "builtin"]
+    # The groups are not carried since 67b90db3; ``shown`` is their count: the default list
+    # holds the saved and the built-in fixes, never the deleted.
+    assert every["shown"] == every["saved"] + every["built"], every["shown"]
     deleted = FP.listing(NET, kind="deleted")
     assert keys(deleted) == {gone["key"]}
-    assert [(g["key"], g["count"]) for g in deleted["groups"]] == [("deleted", 1)]
+    assert deleted["shown"] == 1, deleted["shown"]
     saved = FP.listing(NET, kind="saved")
     assert keys(saved) == {kept["key"]}
     found = FP.listing(NET, q="bpdu GUARD")
