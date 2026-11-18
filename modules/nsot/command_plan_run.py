@@ -1361,14 +1361,19 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
         # the fix's own approval (`saved_plans.authority_refusal`), the heal's guards for the
         # device (`decide.script_hold`), and Stop and Off (`stopped_now`).
         from modules.heal import decide
-        again = saved_plans.authority_refusal(key, authority, network)
-        if not again:
-            held = decide.script_hold(network, dict(incident or {}, device=device)
-                                      if isinstance(incident, dict) else {"device": device},
-                                      batch=bool(authority.get("batch")))
-            again = (f"held by guard {held['guard']} ({held['name']}): {held['words']}"
-                     if held else "")
-        again = again or stopped_now(network)
+        try:
+            again = saved_plans.authority_refusal(key, authority, network)
+            if not again:
+                held = decide.script_hold(network, {"id": str(incident or ""),
+                                                    "device": device},
+                                          batch=bool(authority.get("batch")))
+                again = (f"held by guard {held['guard']} ({held['name']}): {held['words']}"
+                         if held else "")
+            again = again or stopped_now(network)
+        except Exception as exc:                      # noqa: BLE001 (said; nothing is sent)
+            # A judgement that cannot be made never lets the run on, and the run is recorded
+            # (the independent review of this re-judgement, 2026-11-18).
+            again = f"its stops could not be judged again ({type(exc).__name__}: {exc})"
         if again:
             why = f"{again}, judged again once {device} was free. Nothing was sent"
             _step(rec, "hold", "refused", why)

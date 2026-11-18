@@ -714,3 +714,123 @@ class TestTheDrillExercise:
                               device="s5", now=AT + 600)
         assert got["ok"], got
         assert FD.open_on(NET, "s1", AT + 700) == {}
+
+
+# ── Port security's cause cleared, judged while the port is down (the correctness review's
+# G1 MEDIUM-1 and G3 M2, 2026-11-18) ─────────────────────────────────────────────────────────
+
+#: s5's port-security view of Gi0/3 err-disabled: its capture (Secure-up, count 0) with the
+#: status and the count the err-disable leaves (the two edits).
+PSEC_DOWN = text("s5_port_security_gi03.txt").replace("Secure-up", "Secure-shutdown").replace(
+    "Security Violation Count   : 0", "Security Violation Count   : 1")
+
+
+class _PsecSources:
+    def __init__(self, answer):
+        self.answer = answer
+
+    def read(self, host, commands):
+        return {c: self.answer for c in commands}
+
+
+def psec_run(lines, confirmed=None, answer=PSEC_DOWN):
+    """A run of errdisable-recover on s5 Gi0/3 by port security, its lines (*lines*, Loki's
+    answer) and the incident's classification read ahead, as a run's preconditions hand them."""
+    import types
+    c = {"epoch": AT, "mac": "aabb.cc00.8099"}
+    if confirmed is not None:
+        c["confirmed"] = confirmed
+    return types.SimpleNamespace(
+        derived={"interface": "GigabitEthernet0/3", "cause": "psecure-violation",
+                 "interface_short": "Gi0/3"},
+        ahead={"check_cause_cleared": {
+            "c": c, "got": {"error": "", "lines": lines, "cut": False},
+            "start": AT - E.LOOKBACK_S, "until": AT + 600}},
+        sources=_PsecSources(answer), network=NET, incident="i-1", at=AT + 600,
+        device="s5", dev={}, found={})
+
+
+class TestPortSecurityWhileDown:
+    """An err-disabled port is down, so no violation line and no count rise can arrive after
+    the err-disable: finding none is an absence nothing showed could be found, never a pass.
+    BPDU guard's branch already answers it deferred; port security's must too."""
+
+    def test_psecure_cause_cleared_is_deferred_while_the_port_is_down(self):
+        # s5's documented pair (violation and err-disable in the same second), nothing after,
+        # and the confirmation read's count equal to now's.
+        lines = loki("psecure_lines_documented.txt", step=0.0)
+        run = psec_run(lines, confirmed={"epoch": AT + 5, "psec": {"violations": 1}})
+        result, words = E.check_cause_cleared(None, run)
+        assert result == "deferred", (result, words)
+        assert "judged after the bounce" in words, words
+
+    def test_psecure_cleared_is_never_passed_when_loki_holds_no_line_for_the_port(self):
+        run = psec_run([])
+        result, words = E.check_cause_cleared(None, run)
+        assert result != "pass", (result, words)
+        assert result in ("deferred", "unreadable"), (result, words)
+
+    def test_a_violation_after_the_err_disable_still_fails(self):
+        lines = loki("psecure_lines_documented.txt", step=0.0) + [{
+            "line": text("psecure_lines_documented.txt").splitlines()[0],
+            "at": E._iso(AT + 60), "epoch": AT + 60}]
+        result, words = E.check_cause_cleared(None, psec_run(lines))
+        assert result == "fail" and "Port stays down" in words, (result, words)
+
+
+# ── One port's verified fix closes only an incident of that port (the correctness review's
+# G3 M3, 2026-11-18) ─────────────────────────────────────────────────────────────────────────
+
+def _standing(incident_id: str) -> None:
+    from modules.heal import incidents
+
+    def change(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == incident_id)
+        inc.update(state="standing", standing={"decision": "d-1", "outcome": "would_heal",
+                                               "words": "a saved script fixes it"})
+    incidents._mutate(NET, change)
+
+
+class TestOnePortsFixClosesOnlyItsPort:
+    """Incidents are one per device; a saved script's verified run recovers one port. An
+    incident holding another port's symptom is not healed by it, so it stays standing."""
+
+    def close(self, iid):
+        from modules.heal import incidents
+        from modules.nsot import saved_plans
+        got = saved_plans.close_fixed(NET, iid, {"id": "run-00000001", "device": "s1",
+                                                 "interface": "Gi1/0"},
+                                      {"key": "sp-1", "name": "recover the port"}, "test")
+        inc = next(i for i in incidents.read(NET)["incidents"] if i["id"] == iid)
+        return got, inc
+
+    def test_a_verified_port_fix_leaves_another_ports_symptom_standing(self, store):
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        opened("Interface down", "GigabitEthernet2/0", at=AT + 25)
+        _standing(iid)
+        got, inc = self.close(iid)
+        assert inc["state"] == "standing", (got, inc.get("closed"))
+        assert got == {}, got
+
+    def test_a_verified_port_fix_closes_an_incident_of_that_port_alone(self, store):
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        _standing(iid)
+        got, inc = self.close(iid)
+        assert inc["state"] == "closed" and got, (got, inc.get("state"))
+        assert inc["fixed"]["run"] == "run-00000001", inc.get("fixed")
+
+    def test_a_verified_fix_closes_a_watching_incident_fixed(self, store):
+        """Self-healing Off leaves an incident watching (1e49b3a9); a person's saved fix pressed
+        on its card and verified closes it Fixed with the run as its fix, as a plan's verified
+        run closes a watching one (`detect.close_verified`, ``also_watching``): the review of
+        the device-write fixes, "1e49b3a9 and d1ee447f together"."""
+        from modules.heal import incidents
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        assert next(i for i in incidents.read(NET)["incidents"]
+                    if i["id"] == iid)["state"] == "watching"
+        got, inc = self.close(iid)
+        assert inc["state"] == "closed" and got, (got, inc.get("state"))
+        assert inc["fixed"]["run"] == "run-00000001", inc.get("fixed")

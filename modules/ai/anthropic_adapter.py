@@ -419,6 +419,11 @@ def _read_stream(resp, *, clock, progress=None) -> tuple:
         missing = type(exc).__name__
     else:
         missing = "" if stopped or msg.get("stop_reason") else None
+    if missing is None and not events:
+        # Said as what it was: a 200 carrying no event at all is no stream (a proxy's HTML
+        # page), never "a stream that ended" (the correctness review's audit, half 1 row 4).
+        raise failed(StreamFailed, "HTTP 200 with a body that is not an event stream: no "
+                                   "event in it")
     if missing is None:
         raise failed(StreamFailed, f"the stream ended without message_stop after {events} "
                                    "event(s)")
@@ -463,7 +468,7 @@ def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time
             except _EarlyError as exc:
                 early = exc
             except StreamFailed as exc:
-                exc.attempts, exc.headers = attempt, kept
+                exc.attempts, exc.headers, exc.status = attempt, kept, status
                 raise
             else:
                 return Reply(status=status, body=parsed, headers=kept, attempts=attempt,
