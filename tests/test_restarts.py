@@ -371,3 +371,27 @@ class TestTheFarEnd:
         assert restarts.far_ends_of(got["record"]) == []
         assert restarts.explained_by("r3", "Lab", now + 10) is None
 
+
+class TestOnlyAPersonsWindowHoldsAHeal:
+    """Guard 3 (`heal.guards.g3_planned`) asks `explained_by_person` (70e89a47, the operator,
+    2026-11-17: "planned-work windows I set"): a window a person declared (``api``, the
+    planned-restart endpoint; ``reload``, the Reload's own) explains and holds; one a deploy or
+    a heal declared itself explains its signals (`explained_by`) and holds no heal."""
+
+    def test_a_deploys_window_explains_and_holds_nothing(self, store):
+        from modules import restarts
+        now = time.time()
+        assert restarts.record_planned(["r4"], now, now + 300, "operator@example.com",
+                                       "a deploy", "deploy", list_name="Lab")["ok"]
+        assert restarts.explained_by("r4", "Lab", now + 10)["how"] == "restarting"
+        assert restarts.explained_by_person("r4", "Lab", now + 10) is None
+
+    def test_a_persons_window_holds(self, store):
+        from modules import restarts
+        now = time.time()
+        for via in restarts.PERSON_VIAS:
+            assert restarts.record_planned(["r4"], now, now + 300, "operator@example.com",
+                                           f"declared by {via}", via, list_name="Lab")["ok"]
+            got = restarts.explained_by_person("r4", "Lab", now + 10)
+            assert got and got["how"] == "restarting", via
+

@@ -86,7 +86,7 @@ def marks(lab, tmp_path, monkeypatch):  # noqa: F811
     data = tmp_path / "data"
     data.mkdir()
     monkeypatch.setattr("modules.config.DATA_DIR", str(data))
-    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now, **kw: None),
                           ("modules.nsot.device_ops.holder", lambda n, d: None),
                           ("modules.change_windows.holding", lambda now=None, given=None: None),
                           ("modules.heal.detect.wake", lambda: None),

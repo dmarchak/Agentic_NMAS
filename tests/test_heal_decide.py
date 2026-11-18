@@ -354,7 +354,7 @@ def settle(running, golden=GOLDEN, how="persisted", device="edge-b", triggers=No
 @pytest.fixture
 def lab(networks, monkeypatch):
     """Default marked lab, dry run; no planned work, hold or window."""
-    monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now: None)
+    monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now, **kw: None)
     monkeypatch.setattr("modules.nsot.device_ops.holder", lambda n, d: None)
     monkeypatch.setattr("modules.change_windows.holding", lambda now=None, given=None: None)
     monkeypatch.setattr("modules.heal.detect.wake", lambda: None)
@@ -533,7 +533,7 @@ class TestGuards:
     def test_3_planned_work_is_held_until_its_end_and_settle(self, lab, monkeypatch):
         from modules import restarts
 
-        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now: {
+        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now, **kw: {
             "end": T0 + 300, "words": "edge-b is restarting as planned"})
         d = one(GOLDEN + ROUTE4)
         assert (d["outcome"], d["guard"]["guard"]) == ("held", 3)
@@ -661,7 +661,7 @@ class TestGuards:
 
     def test_the_first_that_applies_is_named(self, lab, monkeypatch):
         """3 before 4: planned work and a departing golden, and 3 is named."""
-        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now: {
+        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now, **kw: {
             "end": T0 + 60, "words": "restarting"})
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, state="departs"))
         assert d["guard"]["guard"] == 3
@@ -739,7 +739,7 @@ class TestTheRecordAndTheSeams:
         assert [d["kind"] for d in DS.proposals("Default")] == ["process_reset"]
 
     def test_held_with_a_time_sends_the_incident_back_to_watching(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now: {
+        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now, **kw: {
             "end": T0 + 60, "words": "restarting"})
         self.run(GOLDEN + ROUTE4)
         (inc,) = I.read("Default")["incidents"]
@@ -749,7 +749,7 @@ class TestTheRecordAndTheSeams:
                                                                                  monkeypatch):
         from modules.heal import detect
 
-        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now: {
+        monkeypatch.setattr("modules.restarts.explained_by", lambda d, n, now, **kw: {
             "end": T0 + 60, "words": "restarting"})
         self.run(GOLDEN + ROUTE4)
         (inc,) = I.read("Default")["incidents"]
