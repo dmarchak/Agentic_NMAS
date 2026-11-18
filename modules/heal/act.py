@@ -16,8 +16,9 @@ re-adds a removal's lines from the pre-change read. What a heal adds is said her
    work, and a person who confirmed the policy (the setter is who is accountable);
 3. **read** the device again (the capture path's one checked read), holding it from here to
    the end of its tail (`hold_device`: another operation's hold is a declared wait, never an
-   outcome), so this read is the deploy's stage-4 read too (one read, `PipelineContext.pre_read`;
-   the operator, 2026-11-16, item 4);
+   outcome); this read is the capture the deploy's stage 4 compares a read again before the
+   push with (`PipelineContext.pre_read`; C3967, the operator's decision 16, 2026-11-18: a
+   change made from outside between the two is refused, nothing sent);
 4. **plan against that read**: its units classified again and the program recomputed
    (`decide.program`, the decision's own computation), refused unless its hash is the
    decision's ``program_hash``, naming what moved (the departure, the units, the program's
@@ -1355,11 +1356,10 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
                         "reason": pol.get("reason") or ""},
              "person": dict(decision.get("person") or {}), "program_hash": prog["hash"],
              # The receipt says what the deploy's stage 4 compared (the review, finding 3).
-             "read_before": (f"stage 4's comparison with the capture (C78) was made against "
-                             f"this heal's own read of {device} at apply, made holding the "
-                             "device and held since, so no second read was taken; the window "
-                             "from that read to the push is the plan and the pipeline's "
-                             "stages 1 to 5 alone")}
+             "read_before": (f"stage 4 read {device} again before the push and compared it "
+                             f"with this heal's own read at apply (C78), made holding the "
+                             "device and held since; a change made from outside between the "
+                             "two is refused, nothing sent (C3967)")}
     # Section 4: the program and its hash are written to the step log BEFORE anything is sent,
     # so a heal whose job ends mid-apply leaves what it was sending (H6).
     try:
