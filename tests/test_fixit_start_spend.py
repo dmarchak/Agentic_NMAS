@@ -129,11 +129,19 @@ class TestTheSwitchIsLinkedWhereItIsNamed:
         # from Needs attention; keep it only on Incidents"): the switch is on Troubleshoot ›
         # Incidents' strip, where Needs attention's was before.
         want = f"/v2/incidents?list={NET}#ctl-ai"
-        status = re.search(r'<p class="fixit-status"[^>]*>(.*?)</p>', html, re.S).group(1)
-        assert "automatic troubleshooting is off for this network" in re.sub(
-            r"<[^>]+>", "", status), status
-        assert f'<a href="{want}" data-switch="fixit_auto">automatic troubleshooting</a>' \
-            in status, status
+        # Premise corrected (board R5's status line, becced07; 9f62b2c7 and 106c117d, the
+        # operator, 2026-11-16: the status says why a person is needed, from the incident's
+        # record): this incident's status says Mercury has no fix it runs by itself and the AI
+        # can investigate, naming no switch, where it said "automatic troubleshooting is off for
+        # this network". A status that names the switch links it (`switch_linked`); the costs
+        # line names it here, linked (below).
+        status = re.search(r'data-bluf="status" data-status[^>]*>(.*?)</div>', html,
+                           re.S).group(1)
+        plain = re.sub(r"<[^>]+>", "", status)
+        assert plain.endswith("The AI can investigate"), status
+        assert "automatic troubleshooting" not in plain or (
+            f'<a href="{want}" data-switch="fixit_auto">automatic troubleshooting</a>'
+            in status), status
         costs = re.search(r'<p class="small fixit-auto"[^>]*>(.*?)</p>', html, re.S).group(1)
         assert f'<a href="{want}" data-switch="fixit_auto">off for {NET}</a>' in costs, costs
         # Followed, the link opens the switch it names, which works: pressed before the
