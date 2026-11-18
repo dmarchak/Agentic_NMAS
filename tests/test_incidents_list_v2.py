@@ -240,12 +240,24 @@ CHIP = "/v2/incidents/heal-auto"
 
 def auto_on(now=None, hours=2):
     """Auto confirmed on the lab's network by a person, from *now* for *hours* (the policy's
-    own writer, tests/test_heal_policy.py's `auto`): its expiry as the policy now reads it."""
-    from modules.heal import policy
+    own writer, tests/test_heal_policy.py's `auto`): its expiry as the policy now reads it.
+
+    The switch-on's retry (`heal.retry.run_soon`, its own thread: the operator, 2026-11-16,
+    "switched on, every open incident whose fixes failed is tried again once") is recorded,
+    not started, as tests/test_heal_switch_batch.py records it: these tests hold the chip, and
+    a retry thread on a planted standing incident outlived its test into the next one's store
+    (measured 2026-11-18, -n 2: test_a_chip_says_a_store_it_cannot_read's teardown found
+    lists/default/heal/incidents.json.lock, its setup log "Default's retry (switched_on)
+    failed: Refused: no heal incident hi-… is held")."""
+    from modules.heal import policy, retry
     from tests.test_heal_policy import auto
 
     now = time.time() if now is None else now
-    auto(NET, now=now, hours=hours)
+    retries = []
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(retry, "run_soon",
+                   lambda network, trigger, **kw: retries.append(dict(kw, trigger=trigger)))
+        auto(NET, now=now, hours=hours)
     return policy.current(NET)
 
 
