@@ -26,6 +26,24 @@ The address can be kept and shared; it stays the incident's for as long as its r
 Only self-healing incidents (an id that begins `hi-`) have a page yet. An alert incident and an
 SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
+## At a glance {#at-a-glance}
+
+The top of the page tells the incident's story before any detail:
+
+- **The lifecycle bar:** eight stages, Detected, Self-heal tried, Diagnosing, Fix proposed,
+  Approved, Applying, Verifying and Healed, each with the time its own record gives. The stage
+  the incident is at now is marked; one it skipped (a self-heal that needed no AI skips
+  Diagnosing, Fix proposed and Approved) is drawn faint, and a failed verify is drawn red,
+  never Healed.
+- **Summary:** four lines. What happened; the likely cause (the AI's first hypothesis, or
+  "Inconclusive" with its reason when the AI ended without a fix); the evidence, four lines
+  each opening to its raw text, with the rest counted; and what to do next.
+- **Hypotheses:** what the AI considered, the one its plan acts on first, each with what it
+  cites and the read that would confirm it.
+- **The right rail:** confidence, severity and risk, which Mercury does not record yet (each
+  says what it needs), and the AI call: its model, prompt, tokens, cost and latency, from the
+  record of AI calls, with a link to History.
+
 ## The header {#header}
 
 The title is the problem, in plain words, at most 70 characters on one line, and it is the same

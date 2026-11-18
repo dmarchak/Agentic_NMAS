@@ -1597,6 +1597,12 @@ def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     model["item"] = item
     model["fixit"] = with_item(fixit, item, st["needs"]) if "bluf" in fixit else dict(
         fixit, **composed(model, fixit, item, st["needs"], found=found))
+    # The story at a glance (the redesign brief §4.1): the lifecycle bar, the four-line summary,
+    # the hypotheses and the AI call, from this model and the troubleshooting record; masked
+    # and its people named as the model is.
+    from modules import incident_story
+    model["story"] = display_names.people_payload(steplog.masked(
+        incident_story.build(model, network, found)))
     return model
 
 

@@ -1,0 +1,213 @@
+{
+ "device": {
+  "id": "uid:da11388c-9c2a-43d2-ac2e-d7d5b3017b83",
+  "name": "s5"
+ },
+ "incident": "hi-ed64c53852c5",
+ "lines": [
+  {
+   "at": "2026-11-17T17:59:35Z",
+   "by": "operator@example.invalid",
+   "epoch": 1794938375.631374,
+   "failure": {
+    "at": "2026-11-17T17:54:07Z",
+    "id": "hi-ed64c53852c5",
+    "kind": "decision",
+    "outcome": "cant_fix"
+   },
+   "job": "",
+   "start": "decision:hi-ed64c53852c5",
+   "state": "started",
+   "trigger": "person",
+   "verified": "access",
+   "which": "",
+   "words": "started at turn-on"
+  },
+  {
+   "ai": "ai:fixit-troubleshoot",
+   "at": "2026-11-17T18:00:24Z",
+   "by": "operator@example.invalid",
+   "calls": [
+    "ai-32c642bea0ba4e30"
+   ],
+   "epoch": 1794938424.5174115,
+   "operation": "errdisable-recover",
+   "params": {
+    "cause": "psecure-violation",
+    "interface": "GigabitEthernet0/3"
+   },
+   "params_hash": "a82b640d99e0383b",
+   "prompt": "fixit_troubleshoot.v18",
+   "proposal": "p1",
+   "shown": {
+    "cites": [
+     "read:1",
+     "read:2",
+     "read:3",
+     "read:4"
+    ],
+    "hypotheses": [
+     {
+      "cites": [
+       "incident:1",
+       "incident:2",
+       "read:1",
+       "read:2",
+       "read:3",
+       "logs:2"
+      ],
+      "claim": "Unauthorised MAC aabb.cc00.8099 on VLAN 10 hit the Gi0/3 maximum of 1 and shut the port; no auto-recovery.",
+      "confirm": "show port-security interface GigabitEthernet0/3",
+      "unverified_words": ""
+     },
+     {
+      "cites": [
+       "read:3",
+       "read:4"
+      ],
+      "claim": "The violator is still attached; 9 violations so far suggest it will trip again after recovery.",
+      "confirm": "show mac address-table interface GigabitEthernet0/3",
+      "unverified_words": ""
+     }
+    ],
+    "needs_human": true,
+    "passes": 1,
+    "preconditions_read": {
+     "1": {
+      "checked": [
+       {
+        "name": "The port is err-disabled by the cause now",
+        "result": "pass",
+        "reused": [
+         {
+          "age_s": 17.0,
+          "command": "show interfaces status err-disabled",
+          "from": "during the investigation",
+          "run": "20261117T175955345446Z-a4ae960d29564bc983c6763c41788998"
+         }
+        ],
+        "words": "Gi0/3 err-disabled by psecure-violation (`show interfaces status err-disabled` read 17 s ago, during the investigation)"
+       },
+       {
+        "name": "The switch does not recover the cause itself",
+        "result": "pass",
+        "reused": [
+         {
+          "age_s": 16.6,
+          "command": "show errdisable recovery",
+          "from": "during the investigation",
+          "run": "20261117T175955345446Z-a4ae960d29564bc983c6763c41788998"
+         }
+        ],
+        "words": "`show errdisable recovery` lists psecure-violation's timer Disabled: no errdisable recovery for port security (`show errdisable recovery` read 17 s ago, during the investigation)"
+       },
+       {
+        "name": "The cause has cleared",
+        "result": "pass",
+        "reused": [
+         {
+          "age_s": 16.0,
+          "command": "show port-security interface GigabitEthernet0/3",
+          "from": "during the investigation",
+          "run": "20261117T175955345446Z-a4ae960d29564bc983c6763c41788998"
+         }
+        ],
+        "words": "no new violation on Gi0/3 since its err-disable at 2026-11-17T17:53:41Z; violation count 9, as at the err-disable; the violating MAC aa:bb:cc:00:80:99 (`show port-security interface GigabitEthernet0/3` read 16 s ago, during the investigation)"
+       }
+      ],
+      "hash": "4d35b69d4a246a00",
+      "ok": true,
+      "refused": "",
+      "reuse": {
+       "live": 0,
+       "live_s": 0.0,
+       "reused": 3,
+       "took_s": 9.1
+      }
+     }
+    },
+    "rationale": "Gi0/3 on s5 is err-disabled by port-security: MAC aabb.cc00.8099 broke the one-MAC limit (read:3). Errdisable recovery is off for psecure-violation (read:2), so the port stays down until recovered. The violator may still be attached.",
+    "reads": "AI analysis: asked for 4 reads; 4 run before the first call (Mercury's standard reads); answered in one call",
+    "steps": [
+     {
+      "cites": [
+       "read:1",
+       "read:2",
+       "read:3",
+       "read:4"
+      ],
+      "n": 1,
+      "only_unverified": false,
+      "operation": "errdisable-recover",
+      "unverified_words": "",
+      "why": "Recovers the port from psecure-violation; auto-recovery is off. Before approving, confirm aabb.cc00.8099 is unplugged, or it will trip again."
+     }
+    ],
+    "why": "Recovers the port from psecure-violation; auto-recovery is off. Before approving, confirm aabb.cc00.8099 is unplugged, or it will trip again."
+   },
+   "source": "ai",
+   "steps": [
+    {
+     "operation": "errdisable-recover",
+     "params": {
+      "cause": "psecure-violation",
+      "interface": "GigabitEthernet0/3"
+     },
+     "params_hash": "a82b640d99e0383b"
+    }
+   ],
+   "took": {
+    "01 the request and, at once, the reads' scope and the standard reads": 22.4,
+    "02 the request (the pack, the attempts, Seen before, the fit)": 8.7,
+    "03 the request: pack": 5.6,
+    "04 the request: pack:model": 0.0,
+    "05 the request: pack:logs": 0.6,
+    "06 the request: pack:history": 2.0,
+    "07 the request: pack:intent": 5.4,
+    "08 the request: topology": 0.7,
+    "09 the request: attempts": 1.1,
+    "10 the request: seen_before": 0.0,
+    "11 the request: run_steps, after_run and the ladder": 0.0,
+    "12 the request: held, the catalogue and the contexts": 0.1,
+    "13 the request: the fit": 1.1,
+    "14 the reads' scope (beside the request)": 16.1,
+    "15 the standard reads (5, one device session)": 6.2,
+    "16 pass 1: the prompt built, the standard reads fitted and logged": 0.2,
+    "17 before call 1": 0.0,
+    "18 call 1 (fixit_troubleshoot.v18, its send)": 12.5,
+    "19 call 1: of which the provider count": 0.0,
+    "20 call 1: of which the gates and request build less the count": 1.0,
+    "21 call 1: of which the model call (stream, parse)": 11.4,
+    "22 pass 1: Mercury's check of its answer": 0.1,
+    "23 after the last call": 0.0,
+    "24 the plan's preflight, step 1": 9.1
+   },
+   "verified": "access"
+  },
+  {
+   "ai_usd": 0.0536895,
+   "at": "2026-11-17T18:01:20Z",
+   "attempts": 0,
+   "by": "operator@example.invalid",
+   "choice": "approve",
+   "decides": "p1",
+   "epoch": 1794938480.561489,
+   "job": "",
+   "plan_hash": "37340172ebf0a9ce",
+   "run": "20261117T180120561407Z-cce36e90dcd4483eae2ace3f25077d42",
+   "verified": "access"
+  },
+  {
+   "ai_usd": 0.0536895,
+   "at": "2026-11-17T18:03:32Z",
+   "attempts": 1,
+   "by": "operator@example.invalid",
+   "choice": "save",
+   "epoch": 1794938612.525836,
+   "saved": "dont_save",
+   "verified": "access"
+  }
+ ],
+ "network": "Default",
+ "version": 1
+}
