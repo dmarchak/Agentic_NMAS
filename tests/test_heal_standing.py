@@ -204,6 +204,17 @@ class TestTheWalks:
 
 # ── C2813 and C2840: a revert, and what judges a standing incident again ───────────────────
 
+def golden_now(monkeypatch, state):
+    """The golden a drift run's clean read is judged by now (`decide.Sources.golden`, the
+    heal's live read), in *state* (``at_intent`` or ``departs``), its device found
+    (`decide.Sources.device`): only a golden at its intent makes a read at it end anything
+    (`act.golden_not_proof`, the correctness review's G4-D3)."""
+    monkeypatch.setattr(DC.Sources, "device", lambda self, device: Fake("").device(device))
+    monkeypatch.setattr(DC.Sources, "golden", lambda self, device, dev: {
+        "text": GOLDEN, "commit": "c0ffee", "state": state,
+        "words": "at intent" if state == "at_intent" else "departs (+1)"})
+
+
 def read_as(state, departure=""):
     def check(network, device, by):
         return {"state": state, "departure": departure, "changed_lines": 0 if state == "clean"
@@ -280,8 +291,9 @@ class TestEnded:
         assert the("core-b")["state"] == "standing", d
         return d
 
-    def test_a_drift_run_that_read_it_at_its_golden_ends_it(self, fold):
+    def test_a_drift_run_that_read_it_at_its_golden_ends_it(self, fold, monkeypatch):
         d = self.standing()
+        golden_now(monkeypatch, "at_intent")       # a read at it is the approved state (G4-D3)
         got = T.after_drift_record("Default", {"triggered_by": "scheduled", "drifted_devices": [],
                                                "clean_devices": [{"hostname": "core-b",
                                                                   "read_at": T0 + 3600}]},
@@ -306,10 +318,11 @@ class TestEnded:
         T.after_drift_record("Default", result, now=T0 + 3601)
         assert the("core-b")["state"] == "standing"
 
-    def test_guard_4s_hold_is_not_ended_by_a_read_at_its_golden(self, fold):
+    def test_guard_4s_hold_is_not_ended_by_a_read_at_its_golden(self, fold, monkeypatch):
         # A golden departing from intent: guard 4's hold before C3909, a Tier 3 can't-fix since
         # (the operator, 2026-11-17); its cause is still the golden, which no read ends.
         assert self.standing(state="departs")["outcome"] == "cant_fix"
+        golden_now(monkeypatch, "departs")         # still departing when the drift run reads
         T.after_drift_record("Default", {"triggered_by": "scheduled", "drifted_devices": [],
                                          "clean_devices": [{"hostname": "core-b",
                                                             "read_at": T0 + 3600}]},

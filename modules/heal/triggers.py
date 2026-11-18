@@ -844,6 +844,16 @@ def clean_ended(network: str, result: dict, now: float) -> list:
                 act.request_confirm(network, inc["id"], (
                     f"the drift check ({by}) read {host} at its golden at {_iso(at)}"))
                 continue
+            # The correctness review's G4-D3 (C3966): a read at a golden that departs from
+            # intent leaves the device off its intent, so it ends nothing; judged as the
+            # confirmation read judges it (`act.golden_not_proof`), on the golden read now.
+            from modules.heal import act
+            src = decide.Sources(network)
+            nothing = act.golden_not_proof(host, src.golden(host, src.device(host)))
+            if nothing:
+                log.info("heal: %s's clean read in %s ends nothing: %s", host, network,
+                         nothing)
+                continue
             d = decide.end_standing(
                 network, inc["id"],
                 (f"nothing to heal: the drift check ({by}) read {host} at its golden at "
