@@ -104,6 +104,7 @@ EXCEPTIONS = {
     "modules/heal_page.py": (SUPPORT, "the Self-healing tab's model (board H, H9)"),
     "modules/notify_page.py": (SUPPORT, "Settings › Installation › Notifications' model (board "
                                         "H, H9)"),
+    "modules/server_timing.py": (SUPPORT, "Server-Timing per section on a page's response"),
     "modules/settings_schema.py": (SUPPORT, "the settings' schema"),
     "modules/settings_scope.py": (SUPPORT, "where each setting lives"),
     "modules/topology_layout.py": (SUPPORT, "the Topology page's layout"),

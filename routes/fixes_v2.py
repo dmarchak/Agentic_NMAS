@@ -52,10 +52,14 @@ def page():
     a = request.args
     mode = (a.get("mode") or "").strip()
     kind = (a.get("kind") or "").strip()
-    p = fix_page.listing(ref.name, q=(a.get("q") or "").strip()[:80],
-                         mode=mode if mode in fix_page.MODES else "",
-                         kind=kind if kind in ("saved", "builtin", "deleted") else "")
-    return _strict(render_template("v2/fixes.html", p=p, who=_who(), active_nav="fixes"))
+    from modules import server_timing
+    with server_timing.timed("fixes listing"):
+        p = fix_page.listing(ref.name, q=(a.get("q") or "").strip()[:80],
+                             mode=mode if mode in fix_page.MODES else "",
+                             kind=kind if kind in ("saved", "builtin", "deleted") else "")
+    with server_timing.timed("render"):
+        html = render_template("v2/fixes.html", p=p, who=_who(), active_nav="fixes")
+    return _strict(html)
 
 
 def _new_form(network: str, code: int = 200, form=None, **said):

@@ -30,6 +30,10 @@ def register_blueprints(app) -> list:
     # refused request is timed too. It stamps a time and decides nothing.
     from modules import request_log
     request_log.install(app)
+    # Server-Timing per section (the redesign brief §6 step 1): sections a page recorded, and
+    # the request's total from request_log's stamp. Timing only.
+    from modules import server_timing
+    server_timing.install(app)
 
     # The Host and same-origin checks (the operator, 2026-11-05; modules/request_origin.py),
     # off unless an install turns them on, ahead of the gate: a foreign Host or a cross-site

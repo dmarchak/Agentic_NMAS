@@ -39,13 +39,17 @@ def page():
     # list rows ('Mercury working' -> Fixed)". No batch card is drawn, and no incident is
     # hidden in one (`_batch_rows` stays for Needs attention's card).
     batch = []
+    from modules import server_timing
     p = incidents_list.page(ref.name, request.args.get("tab") or "open",
                             request.args.get("q") or "", request.args.get("device") or "",
                             batched=[h["incident"] for r in batch
                                      for h in (r.get("card") or {}).get("held") or []])
-    return _strict(render_template("v2/incidents.html", p=p, who=_who(),
-                                   active_nav="incidents",
-                                   strip=control_strip.view(ref.name), batch_rows=batch))
+    with server_timing.timed("control strip"):
+        strip = control_strip.view(ref.name)
+    with server_timing.timed("render"):
+        html = render_template("v2/incidents.html", p=p, who=_who(), active_nav="incidents",
+                               strip=strip, batch_rows=batch)
+    return _strict(html)
 
 
 def _batch_rows(network: str) -> list:

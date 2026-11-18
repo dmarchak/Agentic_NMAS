@@ -40,18 +40,21 @@ def incident(incident_id):
     # Needs attention's list as it is drawn for this request (the value the background holds,
     # masked, a run's hold marked): the incident's own item on it carries the page's action.
     # Asked for only by an id that has a page.
+    from modules import server_timing
     from routes.v2 import _attention, with_heal_analysis
     p = incident_page.page(ref.name, incident_id, attention=_attention)
     if p["kind"] == "page":
         # A can't-fix's AI analysis in full, in the AI troubleshooting section (C3488).
-        with_heal_analysis(p["fixit"])
+        with server_timing.timed("heal analysis"):
+            with_heal_analysis(p["fixit"])
     if p["kind"] == "folded":
         return redirect(url_for("incident_v2.incident", incident_id=p["into"], list=ref.name),
                         code=302)
     code = 404 if p["kind"] in ("unknown", "other_kind") else 200
     # Its home is Troubleshooting › Incidents (board T; provisional, operator review pending).
-    return _strict(render_template("v2/incident.html", p=p, who=_who(), active_nav="incidents"),
-                   code)
+    with server_timing.timed("render"):
+        html = render_template("v2/incident.html", p=p, who=_who(), active_nav="incidents")
+    return _strict(html, code)
 
 
 @bp.route("/<incident_id>/step", methods=["GET"])

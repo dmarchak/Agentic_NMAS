@@ -506,6 +506,8 @@ def page(network: str, tab: str = "open", q: str = "", device: str = "",
     finally:
         filestore.PathLock.unwatch_waits()
         pipeline.lap(laps, "groups and model")
+        from modules import server_timing
+        server_timing.laps(laps)
         log.warning("incidents page %s on %s: %.2f s; %s; lock waits: %s", tab, network,
                  laps[-1][1] - laps[0][1],
                  ", ".join(f"{n} {b - a:.2f}" for (_, a), (n, b) in zip(laps, laps[1:])),

@@ -1336,6 +1336,8 @@ def page(network: str, incident_id: str, attention: dict = None) -> dict:
     finally:
         filestore.PathLock.unwatch_waits()
         pipeline.lap(laps, "rest")
+        from modules import server_timing
+        server_timing.laps(laps)
         t0 = laps[0][1]
         log.warning("incident page %s on %s: %.2f s; %s; lock waits: %s", incident_id, network,
                  laps[-1][1] - t0,
