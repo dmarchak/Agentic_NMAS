@@ -204,6 +204,48 @@ class TestAScriptSaved:
         assert record_of(iid)["state"] == "standing"
 
 
+class TestNowAuto:
+    """C3844 (c4948c2c, the operator, 2026-11-16): while the network is in Auto, each standing
+    would-heal decided in dry run is decided again once per Auto confirmation (`now_auto`,
+    asked on every detect pass), whichever path turned Auto on; a can't-fix is not its to take.
+    The decision itself (`decide.run`) recorded, not run."""
+
+    def would_heal(self, device):
+        inc = settle(GOLDEN, device=device)
+        d = DS.record(NET, {"incident": inc["id"], "device": device, "outcome": "would_heal",
+                            "mode": "dry_run", "kind": "added_line", "tier": 1,
+                            "words": f"{device}: would remove an added line"}, T0 - 5)
+        I.stand(NET, inc["id"], d, now=T0 - 5)
+        return inc["id"]
+
+    def test_a_dry_run_would_heal_once_per_confirmation(self, world, monkeypatch):
+        from modules.heal import decide, policy
+
+        decided = []
+        monkeypatch.setattr(decide, "run", lambda network, **kw: decided.append(kw) or {
+            "decided": []})
+        wh, cf = self.would_heal("edge-b"), standing("edge-c")
+        at = policy.current(NET, T0)["confirmed"]["at"]
+        got = retry.now_auto(NET, now=T0)
+        assert got["retried"] == [wh] and got["key"] == f"now_auto:{at}", got
+        assert len(decided) == 1, "the fresh decision asked once"
+        assert record_of(cf)["state"] == "standing" and not record_of(cf).get("retries")
+        stand_again(wh, T0 + 10)
+        I._mutate(NET, lambda doc: next(i for i in doc["incidents"] if i["id"] == wh)[
+            "standing"].update(outcome="would_heal", mode="dry_run"))
+        again = retry.now_auto(NET, now=T0 + 20)
+        assert again["ran"] is False and again["words"] == "none", again
+        assert len(decided) == 1
+
+    def test_not_in_auto_it_reads_and_does_nothing(self, world, monkeypatch):
+        from modules.heal import decide
+
+        monkeypatch.setattr(decide, "run", lambda network, **kw: pytest.fail("decided"))
+        self.would_heal("edge-b")
+        confirm(NET, now=T0 - 30, heal_mode="dry_run", reason="back to watching")
+        assert retry.now_auto(NET, now=T0)["words"] == "not in Auto"
+
+
 class TestDaily:
     def test_only_once_its_last_try_is_a_day_old(self, world):
         iid = standing(at=T0 - 5)
