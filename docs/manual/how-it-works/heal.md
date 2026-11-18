@@ -306,8 +306,11 @@ daily retry decided.
 golden commit or its read against the new golden fails (a restart that cut the tail short
 included), the incident it closed is reopened, standing on that failed step: "fixed, and a step
 after it failed: <why>". Only a heal's own tail reopens its own incident, and only one closed by
-that heal; a past incident is never reopened. The heal's card still says Fixed, the failed step
-flagged under it, and Needs attention keeps its own item about the step.
+that heal; a past incident is never reopened. When its device is already in another open
+incident (a device is in one open incident at a time), the failure attaches to that incident
+instead: the closed one stays closed, and the AI may start troubleshooting on the open one with
+the failed step as its failure. The heal's card still says Fixed, the failed step flagged under
+it, and Needs attention keeps its own item about the step.
 
 ### Confirm first {#confirm}
 
