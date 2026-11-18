@@ -193,7 +193,10 @@ class TestTheCollectorStepsSession:
         from modules.heal import resubscribe as R
         real = R.plan
 
-        def plan(network, device, subs, *, readd=False, collector=False, sources=None):
+        # Premise corrected (17215a95: the collector close alone is a plan's step, asked of
+        # `resubscribe.plan` with ``close_only``): the stand-in takes its whole signature.
+        def plan(network, device, subs, *, readd=False, collector=False, sources=None,
+                 close_only=False):
             got = real(network, device, subs, readd=readd, sources=sources)
             if collector:
                 got = dict(got, close={"remote": "192.0.2.6:57002", "local": "192.0.2.10:57000"})
