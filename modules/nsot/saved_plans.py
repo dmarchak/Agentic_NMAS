@@ -1182,9 +1182,9 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
         values = fill(e, problem)
     except Refused as exc:
         return dict(out, **_settle(key, row["id"], words=f"refused: {exc}"))
-    # The run's own preview runs provisional shapes (`command_plan_run.run`): this one matches
-    # it, so its hash is the run's (round 2, 2026-11-17).
-    p = CP.preview(network, key, values, sources=sources, person_plan=True)
+    # Strict, as the run's own preview is for an Automatic fire (`command_plan_run.run`): a
+    # shape still PROVISIONAL refuses (the operator's ruling 4, 2026-11-18, C4043).
+    p = CP.preview(network, key, values, sources=sources)
     out.update(ok=bool(p["ok"]), hash=p["hash"], values=p["values"],
                words=("would run" if p["ok"] else "would be refused: "
                       + "; ".join(p["refusals"])))
@@ -1269,11 +1269,10 @@ def _previewed(network: str, e: dict, prob, person: bool = False) -> dict:
         values = fill(e, prob)
     except Refused:
         return {}
-    # A provisional shape refuses nothing, a person's offer (`fix_offers`) or an Automatic fire
-    # (`script_preview`) alike (the operator, 2026-11-17, round 2). *person* is kept for its
-    # callers.
-    del person
-    p = CP.preview(network, e["key"], values, person_plan=True)
+    # *person*: a person's press offers it (`fix_offers`), so a provisional shape refuses
+    # nothing (the operator, 2026-11-17); an Automatic fire (`script_preview`) stays strict
+    # (the operator's ruling 4, 2026-11-18, C4043).
+    p = CP.preview(network, e["key"], values, person_plan=person)
     if not p["ok"]:
         return {}
     d = p.get("drawn") or {}
