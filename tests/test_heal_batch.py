@@ -248,27 +248,6 @@ class TestTheStripRoutes:
         again = app_client.get("/v2/control/strip?list=Default&part=run").get_data(as_text=True)
         assert 'data-part="run"' in again and 'data-ctl="heal"' not in again
 
-    def test_fix_all_answers_in_needs_attentions_run_part(self, app_client):
-        """The batch card is on Needs attention, so its press's answer is the run part drawn
-        there in place (`#control-strip`, the card's ``hx-target``), never the switches."""
-        from modules.heal import policy
-        from modules.nsot import capture_job
-        r = app_client.post("/v2/control/Default/fix-all", data={"hash": "x"})
-        body = r.get_data(as_text=True)
-        assert r.status_code == 409 and "Nothing was started" in body
-        assert 'id="control-strip"' in body and 'data-part="run"' in body
-        assert 'data-ctl="heal"' not in body and 'class="ctl-run-only card"' in body
-        # And what it said is so: no batch job, self-healing as it was.
-        assert not [j for j in capture_job.card_jobs() if j["kind"] == B.KIND]
-        assert policy.current("Default")["mode"] == "dry_run"
-
-    def test_a_moved_batch_is_refused_on_the_strip(self, app_client):
-        from modules.heal import policy
-        from modules.nsot import capture_job
-        r = app_client.post("/v2/control/Default/fix-all", data={"hash": "x"})
-        assert r.status_code == 409 and "Nothing was started" in r.get_data(as_text=True)
-        assert not [j for j in capture_job.card_jobs() if j["kind"] == B.KIND]
-        assert policy.current("Default")["mode"] == "dry_run"
 
 
 def test_the_default_duration_is_one_hour_and_n8_still_bounds_it():

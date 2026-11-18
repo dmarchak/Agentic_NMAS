@@ -232,19 +232,6 @@ def batch_preview(network: str, rows: list = None) -> dict:
                          script_items=batch_script_items(network))
 
 
-def fix_all(network: str, shown: str, *, actor: str, verified: str, ident) -> dict:
-    """G6's one press (`heal.batch.press`), with what the heal loop never reads handed in: the
-    incidents for the AI as the card listed them, the saved scripts' matches with their
-    previewed plans, and the AI's starts (`heal_notice.start_catch_up`). Raises
-    `heal.batch.Refused`, nothing started."""
-    from modules import heal_notice
-    from modules.heal import batch
-
-    return batch.press(network, shown, actor=actor, verified=verified, ident=ident,
-                       ai_items=batch_ai_items(network), start_ai=heal_notice.start_catch_up,
-                       script_items=batch_script_items(network))
-
-
 def switch_preview(network: str) -> dict:
     """The Self-healing switch's batch on *network* (C3823): `heal.batch.preview` with
     ``switch`` (guard 6's restores and the Automatic saved scripts' matches, no AI), the

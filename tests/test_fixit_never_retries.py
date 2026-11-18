@@ -62,10 +62,10 @@ PERSON_CALLERS = {("routes.fixit_v2", "_ask"), ("routes.fixit_v2", "ask_again"),
 #: The turn-on's catch-up (C3732; the operator, 2026-11-15: "Turning it on shows the list
 #: first ... each tickable, and records what was chosen"): a person's press too, each open
 #: incident started once under its failure's key (`claim_start`) with the person's trigger.
-#: Since Gate 2 (C3769) it is pressed in one of two places, never Settings › AI's Turn on: AI
+#: Since Gate 2 (C3769) it is pressed in one place, never Settings › AI's Turn on: AI
 #: troubleshooting's one control set to Automatic (`settings_v2.ai_ts_level`, through
-#: `troubleshoot_control.set_level`), and G6's Turn on self-healing and fix all on the control
-#: strip (`control_v2.fix_all`, through `control_strip.fix_all`), bound to the batch's hash.
+#: `troubleshoot_control.set_level`). G6's Turn on self-healing and fix all, the other, is
+#: removed (`control_v2.fix_all`, the operator's decision 9, 2026-11-18, C3959).
 #: Premise corrected: the same press, two refactors since. f123edeb (the overnight speed pass,
 #: 2026-11-17) made `settings_v2.ai_ts_level` a timer around `_ai_ts_level`; 8f1d8006 (the
 #: operator, 2026-11-16: "Every switch flips instantly; the work it starts happens after, in the
@@ -75,7 +75,6 @@ TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_ts_level"),
                     ("routes.settings_v2", "_ai_ts_level"),
                     ("modules.troubleshoot_control", "set_level"),
                     ("modules.troubleshoot_control", "start_catch_up_after"),
-                    ("routes.control_v2", "fix_all"), ("modules.control_strip", "fix_all"),
                     ("modules.heal_notice", "start_catch_up"),
                     ("modules.heal_notice", "catch_up_investigation")}
 #: The definitions that name the catch-up's start: the two presses' own paths (Automatic's
@@ -84,7 +83,7 @@ TURN_ON_CATCH_UP = {("routes.settings_v2", "ai_ts_level"),
 #: R1's start in its press mode (`fixit_v2._ask`).
 CATCH_UP_CALLERS = {("modules.troubleshoot_control", "set_level"),
                     ("modules.troubleshoot_control", "start_catch_up_after"),
-                    ("modules.control_strip", "fix_all"), ("routes.fixit_v2", "_ask")}
+                    ("routes.fixit_v2", "_ask")}
 
 
 def reaching(planted: str = "", without=()) -> set:
@@ -136,17 +135,14 @@ class TestByParsing:
 
     @pytest.mark.parametrize("endpoint", ["fixit_v2.modify",
                                           "fixit_v2.ask_again", "fixit_v2.start",
-                                          "settings_v2.ai_on", "settings_v2.ai_ts_level",
-                                          "control_v2.fix_all"])
+                                          "settings_v2.ai_on", "settings_v2.ai_ts_level"])
     def test_the_retry_route_is_a_post_a_person_makes(self, endpoint):
         import app as A
         from modules.route_gates import GATES
         rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == endpoint]
         assert len(rules) == 1
         assert rules[0].methods - {"OPTIONS"} == {"POST"}
-        # Fix all is bound to the batch's hash as previewed: a confirm, a person's too.
-        assert GATES[endpoint].kind == ("confirm" if endpoint == "control_v2.fix_all"
-                                        else "configure")
+        assert GATES[endpoint].kind == "configure"
 
     @pytest.mark.parametrize("planted", [
         # a GET route

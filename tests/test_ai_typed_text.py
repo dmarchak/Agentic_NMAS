@@ -500,10 +500,6 @@ FIELDS = {
                             "Mercury computed), compared at the press; never sent",
         "args.answer": "where the answer is drawn (``strip`` for the control strip), a token",
         "args.tab": "the Settings tab drawn back (a token), never sent"},
-    # The control strip's Turn on self-healing and fix all (G6): bound to the batch's hash as
-    # previewed; it starts AI troubleshooting on the incidents the batch lists, nothing typed.
-    "control_v2.fix_all": {
-        "form.hash": "the batch's hash as previewed (a hash Mercury computed)"},
     # Lab 9 B2 (board lab9-sdn E): SDN › Policies' Draft the policy; the person's answer to
     # Mercury's own question (which host a word means) continues the same sentence.
     "sdn_policies_v2.draft": {

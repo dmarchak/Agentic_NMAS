@@ -207,12 +207,6 @@ ALSO_REACHES = {
         "day and month caps and the overall day cap (C3745); setting the level itself needs "
         "no AI and stays usable, since it is how AI troubleshooting is turned on or off, and "
         "with hosted AI off the listed ones start nothing and their cards say why"),
-    "control_v2.fix_all": (
-        "Turn on self-healing and fix all (G6) runs the batch Mercury previewed, bound to its "
-        "hash, and starts AI troubleshooting on each open incident it lists with no fix of "
-        "Mercury's own, as the person's press under the same caps; the press itself is "
-        "self-healing's and needs no AI: with hosted AI off the batch runs and those "
-        "incidents start nothing, their cards saying why"),
 }
 
 #: Where a viewer who may configure fixes it: the AI (hosted) card.
