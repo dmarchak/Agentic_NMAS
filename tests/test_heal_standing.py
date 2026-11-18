@@ -431,6 +431,7 @@ class TestW5:
         from modules.ai import heal_analysis as HA
 
         inc = self.standing_cant_fix(time.time() - 60)       # hi-2be00d44ca90's shape
+        golden_now(monkeypatch, "at_intent")                 # C4109: only there it ends
         events, waited, analysed = [], [], []
         monkeypatch.setattr(HA, "analyse", lambda *a, **k: analysed.append(a) or {})
         got = heal_notice.notice(
@@ -468,11 +469,14 @@ class TestW5:
             symptom=lambda device, t: "present" if case == "store-present" else "gone")
         assert [e["event"] for e in events] == ["cant_fix"], case
 
-    def test_the_detect_pass_ends_a_standing_cant_fix_whose_symptom_cleared(self, lab):
+    def test_the_detect_pass_ends_a_standing_cant_fix_whose_symptom_cleared(self, lab,
+                                                                             monkeypatch):
         """A symptom read present or stale ends nothing; read gone, the standing can't-fix ends
         on that read, the flap window's quiet time no longer waited (106c117d, the operator,
-        2026-11-16: "never on a quiet timer")."""
+        2026-11-16: "never on a quiet timer"), its golden at its intent (C4109: at a departing
+        golden it ends nothing, tests/test_heal_ends_at_golden.py)."""
         inc = self.standing_cant_fix(T0 - 900)
+        golden_now(monkeypatch, "at_intent")
         for t, state in ((T0 + 60, "present"), (T0 + 61, "stale")):
             assert pass_at(t, read_as("clean"), symptom=lambda d, tr, s=state: s)["cleared"] \
                 == [], (t, state)

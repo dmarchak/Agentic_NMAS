@@ -1505,6 +1505,10 @@ def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None
             act.request_confirm(network, incident_id, (
                 f"its symptoms read gone and quiet {minutes} minutes (the can't-fix notice)"))
             return {}
+        # C4109 (ruling 0): at a golden departing from intent (or unknown) the device is off
+        # its intent, so it ends nothing, and the can't-fix is told as before.
+        if decide.golden_ends_nothing(network, again["device"]):
+            return {}
         return decide.end_standing(
             network, incident_id,
             (f"nothing to heal: every symptom the incident named has cleared by itself at "
