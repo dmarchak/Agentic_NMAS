@@ -430,11 +430,19 @@ class TestTheRun:
         assert ev["event"] == "action" and "Gi1/0" in ev["happened"]
 
     def test_err_disabled_again_is_rolled_back_saying_what_it_achieved(self, lab):
+        """Premise corrected (4a8bb0df, the operator, 2026-11-16: "a re-trip is its own outcome
+        with no rollback"): the port err-disabled again by its own cause is the run's outcome,
+        ``retripped``, said with what it achieved ("Port left err-disabled; nothing more
+        sent."), recorded as a recurrence and notified as a can't-fix; nothing more is sent and
+        nothing rolled back, where the bounce was rolled back with ``no shutdown``."""
         lab["sw"] = Switch(again=True)
         rec = go(lab)
-        assert rec["outcome"] == "rolled_back", rec["why"]
-        rb = next(s for s in rec["steps"] if s["step"] == "rollback")
-        assert " no shutdown" in rb["commands"]
+        assert rec["outcome"] == "retripped", rec["why"]
+        assert "Port left err-disabled; nothing more sent." in rec["why"]
+        assert "rollback" not in [s["step"] for s in rec["steps"]]
+        assert lab["sw"].batches == [[f"interface {PORT}", " shutdown", " no shutdown"]], \
+            "the bounce alone was sent"
+        assert rec["recurrence"]["port"] == "Gi1/0" and rec["recurrence"]["cause"] == "bpduguard"
         assert lab["events"][0]["event"] == "cant_fix"
 
     def test_a_bpdu_since_the_err_disable_refuses_with_nothing_sent(self, lab):
