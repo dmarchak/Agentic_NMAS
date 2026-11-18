@@ -185,6 +185,68 @@ class TestEveryDeviceAtOnce:
             assert entry["batch"] == "hb-1" and entry["outcome"] == got[item["device"]]
 
 
+class TestAsPreviewed:
+    """8f1d8006 (C3866, the operator, 2026-11-16: "every switch flips at once"): a restore of
+    the batch is decided from the decision the batch previewed, no device read
+    (`batch._as_previewed`): its program and hash the previewed ones, judged again by THE tier
+    rule as self-healing is now and by guard 4; one that cannot be so is None, and `_one`
+    decides it again in full. A would-heal decided by the real decision in dry run. The debt
+    pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for 8f1d8006)."""
+
+    APPROVAL = {"id": "hb-2", "by": "op@example.com", "named": "self-healing switched on"}
+
+    @pytest.fixture
+    def restore(self, lab, monkeypatch):  # noqa: F811
+        from modules.heal import decide, decisions, incidents, retry
+
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **k: None)
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [
+            {"hostname": "edge-b", "ip": "192.0.2.2", "device_type": "cisco_ios"}])
+        inc = settle(GOLDEN + ROUTE4, device="edge-b", claim=False)
+        (d,) = decide.run("Default", now=T0, sources=Fake(GOLDEN + ROUTE4))["decided"]
+        full = decisions.find("Default", d["decision"])
+        item = {"device": "edge-b", "incident": inc["id"], "decision": full["id"],
+                "from": "would_heal", "program_hash": full["program_hash"]}
+        confirm("Default", now=T0 + 5, heal_mode="auto", heal_kinds_auto=["added_line"])
+        held = next(i for i in incidents.read("Default")["incidents"] if i["id"] == inc["id"])
+        return held, item, full
+
+    def made(self, restore):
+        inc, item, _full = restore
+        return B._as_previewed("Default", inc, item, self.APPROVAL, time.time())
+
+    def test_a_would_heal_is_its_previewed_heal_with_no_second_read(self, restore):
+        _inc, _item, full = restore
+        got = self.made(restore)
+        assert got is not None and got["outcome"] == "heal", got
+        assert (got["program"], got["program_hash"], got["previewed"]) == (
+            full["program"], full["program_hash"], full["id"])
+        assert got["batch"]["id"] == "hb-2" and got["batch"]["named"] == self.APPROVAL["named"]
+        assert "decided as the batch previewed it, with no second read" in got["steps"][1][
+            "words"]
+
+    def test_a_moved_program_is_decided_again(self, restore):
+        inc, item, _full = restore
+        moved = dict(item, program_hash="0" * 16)
+        assert B._as_previewed("Default", inc, moved, self.APPROVAL, time.time()) is None
+
+    def test_not_in_auto_is_decided_again(self, restore):
+        confirm("Default", now=T0 + 6, heal_mode="dry_run", reason="back to watching")
+        assert self.made(restore) is None
+
+    def test_a_kind_auto_does_not_fix_is_decided_again(self, restore):
+        confirm("Default", now=T0 + 6, heal_mode="auto", heal_kinds_auto=["missing_line"],
+                reason="another kind only")
+        assert self.made(restore) is None
+
+    def test_guard_4_holding_is_decided_again(self, restore, monkeypatch):
+        from modules.heal import decide
+
+        monkeypatch.setattr(decide, "guard_holds", lambda network, inc, guard, now=None: {
+            "guard": 4, "name": "observe only", "words": "Mercury changes nothing on it"})
+        assert self.made(restore) is None
+
+
 class TestThePress:
     @pytest.fixture
     def held(self, monkeypatch):
