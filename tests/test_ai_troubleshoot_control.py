@@ -234,7 +234,10 @@ class TestOnePress:
         (rec,) = [x for x in I.changes()["rows"] if x.get("kind") == "ai_background_on"]
         assert sorted(rec["catch_up"]["ticked"]) == sorted(got[k] for k in LISTED)
         assert rec["catch_up"]["unticked"] == []
-        assert "started on 4 open incidents now" in html
+        # Premise corrected (8f1d8006, the operator, 2026-11-16: "Every switch flips
+        # instantly; the work it starts happens after, in the background", C3866): the press
+        # answers at once, its catch-up a job after it (run in the request here).
+        assert "Starting the AI on 5 incidents…" in html, html[-1500:]
 
     def test_a_line_that_moved_since_it_was_drawn_is_refused_naming_both(self, world, counted):
         planted()

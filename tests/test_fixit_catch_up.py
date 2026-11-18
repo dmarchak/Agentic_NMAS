@@ -295,7 +295,10 @@ class TestTheChoice:
         (line,) = F.starts(inc_of(got["held4"]))["starts"]
         assert (line["start"], line["trigger"], line["state"], line["words"], line["by"]) == (
             f"held:{got['held4']}", "person", "started", A.CATCH_UP_WORDS, TEST_PERSON)
-        assert "started on 4 open incidents now" in out
+        # Premise corrected (8f1d8006, the operator, 2026-11-16: "Every switch flips
+        # instantly; the work it starts happens after, in the background", C3866): the press
+        # answers at once, its catch-up a job after it (run in the request here).
+        assert STARTING.format(n=5) in out, out[-1500:]
         # Read again, none of them is listed again (each start took its failure's key).
         _html, shown, each = form_of(world)
         assert all(got[k] not in _html for k in LISTED)
@@ -349,7 +352,9 @@ class TestTheCaps:
         _html, shown, each = form_of(world)
         assert "its incident's AI cap would be passed" in _html
         r, out = post(world, shown, each)
-        assert r.status_code == 200 and "a cap would be passed" in out, out
+        # Premise corrected (8f1d8006, C3866): the press answers at once; the catch-up's job
+        # refuses each start at its cap after it, each card naming the cap (below).
+        assert r.status_code == 200 and STARTING.format(n=5) in out, out
         assert counted == [] and world.sent == []
         (line,) = F.starts(inc_of(got["cant_fix"]))["starts"]
         assert (line["state"], line["which"], line["trigger"]) == ("capped", "incident",
@@ -368,7 +373,9 @@ class TestTheCaps:
         got = planted()
         _html, shown, each = form_of(world)
         r, out = post(world, shown, each, day="0.01", month="0.10")
-        assert r.status_code == 200 and "a cap would be passed" in out, out
+        # Premise corrected (8f1d8006, C3866): the press answers at once; each refusal is its
+        # card's (below).
+        assert r.status_code == 200 and STARTING.format(n=5) in out, out
         assert counted == [] and world.sent == []
         (line,) = F.starts(inc_of(got["stream"]))["starts"]
         assert (line["state"], line["which"], line["trigger"]) == ("capped", "day", "person")
