@@ -48,7 +48,8 @@ incident every 30 seconds, and at once when a trigger arrives. One pass, per net
      check, not on its alerts clearing". An approved plan's run ends it at once when the run
      ends, and this pass ends any it missed. Only a run this incident's own troubleshooting
      started counts (a run on the same device that names no incident may have fixed another
-     port), only a plan that ran to its end (one stopped at a later step fixed nothing), and
+     port), only a plan that ran to its end, whatever kind of step passed (one stopped at a
+     later step fixed nothing, even when an earlier re-subscribe or saved action verified), and
      only a run that sent and verified (one whose precondition found nothing to do sent
      nothing). A trigger after that check (the err-disable again, the alert fired again) is the
      problem back: the incident stands on it. Its alert still firing 5 minutes after the check
