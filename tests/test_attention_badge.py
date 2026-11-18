@@ -211,6 +211,36 @@ class TestARowThatClearsByTime:
             findings.started(incs[1]) + day), rows["recurrence"]
         assert rows["fight"]["clears_at"] == attention._iso(ats[1] + day), rows["fight"]
 
+    def test_a_fight_never_says_self_healing_stops_while_nothing_stops_it(self, monkeypatch):
+        """The correctness review's G2-L5 (2026-11-18; 70e89a47): round 2 retired the fight's
+        stop (`guards.g11_fight` holds nothing), yet with ``heal_fight_stop`` on the fight row
+        said "this network stops fixing it while it lasts" and its notice "self-healing stops
+        fixing it": a stop drawn that holds nothing. Both say what happens: Mercury keeps
+        fixing it."""
+        from modules import acknowledgements as ACK
+        from modules.heal import findings, guards
+        from modules.heal import incidents as INC
+
+        assert guards.g11_fight({"times": 9}, True) is None, "floor: the stop holds nothing"
+        now = 1_790_000_000.0
+        incs = [{"id": f"hi-{n}", "device": "edge1",
+                 "triggers": [{"epoch": now - 3600 * (5 - n)}]} for n in range(4)]
+        monkeypatch.setattr(INC, "read", lambda lst: {"state": "ok", "incidents": incs})
+        monkeypatch.setattr(ACK, "read", lambda: {"state": "ok", "rows": []})
+        monkeypatch.setattr(findings, "recurrences", lambda *a, **k: [])
+        ats = [now - 4000, now - 3000, now - 2000, now - 1000]
+        fight = {"device": "edge1", "object": "Gi0/1", "operation": "errdisable-recover",
+                 "what": "Gi0/1", "times": 4, "fixes": incs, "back": incs, "first": ats[0],
+                 "ats": ats}
+        monkeypatch.setattr(findings, "fights", lambda *a, **k: [fight])
+        mode = {"guards": {"heal_fight_stop": {"value": True}}}
+        rows = {r["kind"]: r for r in attention._heal_finding_rows("Lab", [], now, [],
+                                                                   mode=mode)}
+        assert "stops fixing it" not in rows["fight"]["cause"], rows["fight"]["cause"]
+        assert "Mercury keeps fixing it" in rows["fight"]["cause"], rows["fight"]["cause"]
+        said = findings.notice("Lab", fight, stop=True)["outcome"]
+        assert "stops fixing" not in said and "keeps fixing it" in said, said
+
 
 class TestTheDoubtMark:
     def _doubt(self, live, stale, now):
